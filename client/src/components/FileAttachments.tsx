@@ -14,6 +14,7 @@ import {
   X,
   Eye,
   ZoomIn,
+  Camera,
 } from 'lucide-react';
 import { apiUploadFilesWithProgress, apiFetchAttachments, apiDeleteAttachment } from '../hooks/useApi';
 import type { UploadProgress } from '../hooks/useApi';
@@ -127,6 +128,7 @@ export default function FileAttachments({
   const [totalUploadFiles, setTotalUploadFiles] = useState(0);
   const [currentFileName, setCurrentFileName] = useState<string | undefined>();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const fetchFiles = useCallback(async () => {
     try {
@@ -256,6 +258,7 @@ export default function FileAttachments({
 
       {/* Upload Zone */}
       {!readOnly && (
+        <>
         <div
           onDrop={handleDrop}
           onDragOver={handleDragOver}
@@ -293,6 +296,29 @@ export default function FileAttachments({
             </div>
           )}
         </div>
+        {/* Take Photo — phones/tablets only. capture="environment" opens the
+            rear camera directly (the mixed-type accept list above makes some
+            mobile browsers skip the camera option entirely). Reuses the same
+            change handler/upload pipeline. */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleFileInput}
+          accept="image/*"
+          capture="environment"
+        />
+        {!uploading && (
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            className="md:hidden mt-1.5 w-full flex items-center justify-center gap-2 py-2.5 border border-rmpg-600 text-rmpg-200 text-xs font-bold uppercase tracking-wider hover:border-rmpg-400 active:scale-[0.99]"
+          >
+            <Camera className="w-4 h-4" />
+            Take photo
+          </button>
+        )}
+        </>
       )}
 
       {/* Content */}
