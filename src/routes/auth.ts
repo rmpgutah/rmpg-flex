@@ -7,6 +7,14 @@ import { authMiddleware } from '../middleware/auth';
 import { rateLimitAllow } from '../utils/rateLimit';
 import { signResource, type SignedResourceParams } from '../utils/signedAccess';
 import {
+  generateRegistrationOptions, verifyRegistrationResponse,
+  generateAuthenticationOptions, verifyAuthenticationResponse,
+} from '@simplewebauthn/server';
+import type {
+  AuthenticatorTransportFuture, RegistrationResponseJSON, AuthenticationResponseJSON,
+} from '@simplewebauthn/server';
+import { isoBase64URL } from '@simplewebauthn/server/helpers';
+import {
   generateTotpSecret, verifyTotpCode, buildOtpauthUrl,
   encryptTotpSecret, decryptTotpSecret,
   generateBackupCodes, hashBackupCode,
