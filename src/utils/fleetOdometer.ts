@@ -29,6 +29,22 @@ export async function setFleetOdometer(db: DB, vehicleId: number | null | undefi
   }
 }
 
+/** Current odometer reading for the fleet vehicle assigned to a unit, or null. */
+export async function vehicleOdometerForUnit(db: DB, unitId: number | null | undefined): Promise<number | null> {
+  if (unitId == null) return null;
+  try {
+    const row = await db.prepare(
+      `SELECT current_mileage FROM fleet_vehicles WHERE assigned_unit_id = ? AND archived_at IS NULL
+        ORDER BY current_mileage DESC LIMIT 1`,
+    ).bind(unitId).first<{ current_mileage: number | null }>();
+    const mi = row?.current_mileage != null ? Number(row.current_mileage) : null;
+    return mi != null && Number.isFinite(mi) && mi > 0 && mi <= MAX_ODOMETER ? mi : null;
+  } catch (err) {
+    console.warn('[fleetOdometer] unit lookup failed (non-fatal):', err);
+    return null;
+  }
+}
+
 /** Add GPS-derived trip distance (meters) onto the vehicle's odometer. */
 export async function accrueFleetOdometer(db: DB, vehicleId: number | null | undefined, distanceM: number | null | undefined): Promise<void> {
   if (vehicleId == null || distanceM == null) return;

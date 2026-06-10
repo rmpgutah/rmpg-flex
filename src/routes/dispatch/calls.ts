@@ -10,6 +10,7 @@ import { emitAlert } from '../../utils/alertHub';
 import { geocodeAddress } from '../geocode';
 import { resolveDistrict } from '../../utils/districtResolver';
 import { parseUnitIds, canonicalUnitIdsJson } from './unitIds';
+import { setFleetOdometer, vehicleOdometerForUnit } from '../../utils/fleetOdometer';
 
 const calls = new Hono<Env>();
 
@@ -969,6 +970,54 @@ calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
     // Keep assigned units in lockstep with the call (release on terminal
     // statuses, follow on engaged ones) — see syncUnitsWithCallStatus.
     await syncUnitsWithCallStatus(db, c.env, id, status);
+
+    // Auto-mileage — same chain as the GPS auto-transitions (gps.ts): enroute
+    // snapshots the assigned vehicle's odometer into starting_mileage; onscene
+    // derives ending_mileage from starting + the active trip's GPS distance
+    // and re-anchors the fleet odometer. Only fills BLANK fields, so anything
+    // the officer/dispatcher typed in the call edit form always wins.
+    if (status === 'enroute' || status === 'onscene') {
+      try {
+        const au = await queryFirst<{ id: number }>(db,
+          'SELECT id FROM units WHERE current_call_id = ? LIMIT 1', id);
+        if (au) {
+          if (status === 'enroute' && merged.starting_mileage == null) {
+            const odo = await vehicleOdometerForUnit(db, au.id);
+            if (odo != null) {
+              await execute(db,
+                `UPDATE calls_for_service SET starting_mileage = ?, updated_at = datetime('now')
+                  WHERE id = ? AND starting_mileage IS NULL`, odo, id);
+              (merged as Record<string, unknown>).starting_mileage = odo;
+            }
+          } else if (status === 'onscene' && merged.ending_mileage == null) {
+            let startMi: number | null = merged.starting_mileage != null ? Number(merged.starting_mileage) : null;
+            if (startMi == null) {
+              startMi = await vehicleOdometerForUnit(db, au.id);
+              if (startMi != null) {
+                await execute(db,
+                  `UPDATE calls_for_service SET starting_mileage = ?, updated_at = datetime('now')
+                    WHERE id = ? AND starting_mileage IS NULL`, startMi, id);
+                (merged as Record<string, unknown>).starting_mileage = startMi;
+              }
+            }
+            const trip = await queryFirst<{ distance_m: number | null; vehicle_id: number | null }>(db,
+              `SELECT distance_m, vehicle_id FROM unit_trips WHERE unit_id = ? AND status = 'active'
+               ORDER BY start_time DESC LIMIT 1`, au.id);
+            const miles = trip?.distance_m != null ? trip.distance_m / 1609.344 : null;
+            if (startMi != null && miles != null && miles >= 0.05) {
+              const arrivalMi = Math.round((startMi + miles) * 10) / 10;
+              await execute(db,
+                `UPDATE calls_for_service SET ending_mileage = ?, updated_at = datetime('now')
+                  WHERE id = ? AND ending_mileage IS NULL`, arrivalMi, id);
+              (merged as Record<string, unknown>).ending_mileage = arrivalMi;
+              await setFleetOdometer(db, trip?.vehicle_id ?? null, arrivalMi);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[calls] auto-mileage failed (non-fatal):', err);
+      }
+    }
 
     // Fan the transition to every console via AlertHubDO. Previously this handler
     // emitted NO broadcast at all, so dispatched→enroute→onscene→cleared changes
