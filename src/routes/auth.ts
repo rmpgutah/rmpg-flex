@@ -393,15 +393,26 @@ auth.get('/me', authMiddleware, async (c) => {
   return c.json({ user: userPayload(user) });
 });
 
+// Enforce the advertised password policy (GET /password-policy) — previously
+// only length was checked, so "12345678" satisfied a policy that requires
+// upper/lower/digit/special. Returns an error string, or null when valid.
+function validateNewPassword(pwd: string): string | null {
+  if (typeof pwd !== 'string' || pwd.length < 8) return 'Password must be at least 8 characters';
+  if (!/[A-Z]/.test(pwd)) return 'Password must contain an uppercase letter';
+  if (!/[a-z]/.test(pwd)) return 'Password must contain a lowercase letter';
+  if (!/[0-9]/.test(pwd)) return 'Password must contain a number';
+  if (!/[^A-Za-z0-9]/.test(pwd)) return 'Password must contain a special character';
+  return null;
+}
+
 auth.put('/password', authMiddleware, async (c) => {
   try {
     const { current_password, new_password } = await c.req.json();
     if (!current_password || !new_password) {
       return c.json({ error: 'Current and new password required' }, 400);
     }
-    if (new_password.length < 8) {
-      return c.json({ error: 'Password must be at least 8 characters' }, 400);
-    }
+    const policyErr = validateNewPassword(new_password);
+    if (policyErr) return c.json({ error: policyErr }, 400);
 
     const userId = c.get('userId');
     const db = getDb(c.env);
@@ -436,9 +447,8 @@ auth.post('/change-password', authMiddleware, async (c) => {
     if (!current || !next) {
       return c.json({ error: 'Current and new password required' }, 400);
     }
-    if (next.length < 8) {
-      return c.json({ error: 'Password must be at least 8 characters' }, 400);
-    }
+    const policyErr = validateNewPassword(next);
+    if (policyErr) return c.json({ error: policyErr }, 400);
 
     const userId = c.get('userId');
     const db = getDb(c.env);
@@ -471,9 +481,8 @@ auth.post('/login/change-password', authMiddleware, async (c) => {
   try {
     const body = await c.req.json<{ newPassword?: string; new_password?: string }>();
     const next = body.newPassword ?? body.new_password ?? '';
-    if (!next || next.length < 8) {
-      return c.json({ error: 'New password must be at least 8 characters' }, 400);
-    }
+    const policyErr = validateNewPassword(next);
+    if (policyErr) return c.json({ error: policyErr }, 400);
 
     const userId = c.get('userId');
     const db = getDb(c.env);

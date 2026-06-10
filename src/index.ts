@@ -101,7 +101,8 @@ app.use('*', secureHeaders({
 app.use('*', cors({
   origin: (origin: string, c: any) => {
     const allowedOrigins = (c.env.CORS_ORIGINS || 'https://rmpgutah.us').split(',').map((s: string) => s.trim());
-    if (allowedOrigins.includes('*')) return origin;
+    // No wildcard support: '*' combined with credentials:true would let any
+    // site make authenticated cross-origin calls. Origins must be explicit.
     if (!origin || allowedOrigins.includes(origin)) return origin;
     return allowedOrigins[0];
   },

@@ -143,15 +143,28 @@ email.get('/oauth/callback', async (c) => {
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
   const oauthErr = url.searchParams.get('error');
-  if (oauthErr) return c.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(oauthErr)}`);
+  if (oauthErr) {
+    // This is a public endpoint — never reflect attacker-controllable text into
+    // the redirect. Only pass through the standard OAuth error codes.
+    const KNOWN_OAUTH_ERRORS = new Set([
+      'access_denied', 'invalid_request', 'unauthorized_client', 'invalid_grant',
+      'unsupported_response_type', 'invalid_scope', 'server_error', 'temporarily_unavailable',
+    ]);
+    const safeErr = KNOWN_OAUTH_ERRORS.has(oauthErr) ? oauthErr : 'oauth_error';
+    return c.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(safeErr)}`);
+  }
   if (!code || !state) return c.redirect('/admin?tab=email&status=error&message=Missing+code+or+state');
 
-  // Verify CSRF state token
-  const stored = await getCfg(c.env.DB, K.oauthState);
-  if (!stored || stored !== state) {
+  // Verify CSRF state token — atomic compare-and-delete so a concurrent
+  // replay of the same state can't pass between a SELECT and a DELETE.
+  const consumed = await execute(
+    c.env.DB,
+    "DELETE FROM system_config WHERE config_key = ? AND config_value = ? AND category = 'integrations'",
+    K.oauthState, state,
+  );
+  if (((consumed?.meta?.changes as number | undefined) ?? 0) === 0) {
     return c.redirect('/admin?tab=email&status=error&message=Invalid+state');
   }
-  await delCfg(c.env.DB, K.oauthState);
 
   const clientId = await getCfgDecrypted(c.env, K.clientId);
   const clientSecret = await getCfgDecrypted(c.env, K.clientSecret);
