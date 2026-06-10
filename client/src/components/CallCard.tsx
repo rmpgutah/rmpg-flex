@@ -348,11 +348,18 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             );
             return null;
           })()}
-          {call.dispatch_code && !(call.incident_type === 'pso_client_request' && call.pso_attempt_number) && (
-            <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0" title={`Dispatch zone: ${call.dispatch_code}`}>
-              {call.dispatch_code}
-            </span>
-          )}
+          {!(call.incident_type === 'pso_client_request' && call.pso_attempt_number) && (() => {
+            // Full Z/S/B composite ("SL1/SSL/A1") derived from geography fields,
+            // falling back to the stored dispatch_code — same presentation as
+            // the dispatch detail panel's gold badge.
+            const code = sectionZoneBeatCombined('', call.zone_id, call.beat_id) || call.dispatch_code;
+            if (!code) return null;
+            return (
+              <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0" title={`Sector/Zone/Beat: ${code}`}>
+                {code}
+              </span>
+            );
+          })()}
           {signalInfo && (() => {
             const sp = signalInfo;
             const pri = sp.priority || 'P3';
@@ -487,22 +494,9 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
               {call.client_name || (call as any).pso_requestor_name}
             </div>
           )}
-          {/* Dispatch geography on the card is the SHORT CODE only — the
-              Section/Zone/Beat chart code (e.g. "SL1/HER/A1") via the parser,
-              NOT the long Area›Section›Zone›Beat names (those live on the Map UI
-              "What's Here"). Hidden when it would merely echo the dispatch_code
-              badge already shown in the header. Zero extra requests — the
-              sector/zone/beat ids ride on the call via LIST_VIEW_COLUMNS. */}
-          {(() => {
-            const szb = sectionZoneBeatCombined(call.sector_id, call.zone_id, call.beat_id);
-            if (!szb || szb === call.dispatch_code) return null;
-            return (
-              <div className="text-[9px] text-rmpg-400 truncate flex items-center gap-0.5 font-mono" title="Section / Zone / Beat (short code)">
-                <MapPin className="w-2.5 h-2.5 flex-shrink-0 text-rmpg-500" />
-                {szb}
-              </div>
-            );
-          })()}
+          {/* Dispatch geography (Z/S/B short code) now renders in the gold
+              header badge above — derived from the same parser — so a footer
+              repeat here would always echo it. Intentionally removed. */}
         </div>
       </div>
 
