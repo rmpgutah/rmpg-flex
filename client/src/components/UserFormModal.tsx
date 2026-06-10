@@ -401,10 +401,12 @@ export default function UserFormModal({
               placeholder="123 Main St"
               value={form.address}
               onChange={(val) => set('address', val)}
+              fillWith="street"
               onSelect={(addr: ParsedAddress) => {
+                // Street line only — city/state/zip live in their own fields.
                 setForm((prev) => ({
                   ...prev,
-                  address: addr.formatted || addr.street,
+                  address: addr.street || addr.formatted,
                   city: addr.city || prev.city,
                   state: addr.state || prev.state,
                   zip: addr.zip || prev.zip,
@@ -421,7 +423,13 @@ export default function UserFormModal({
                  value={form.city}
                  onChange={(val) => set('city', val)}
                  name="city"
-                 addressOnly={false}
+                 types="place"
+                 fillWith="text"
+                 onSelect={(addr: ParsedAddress) => setForm((prev) => ({
+                   ...prev,
+                   city: addr.text || prev.city,
+                   state: addr.state || prev.state,
+                 }))}
                />
              </div>
              <div>
@@ -432,8 +440,12 @@ export default function UserFormModal({
                  value={form.state}
                  onChange={(val) => set('state', val)}
                  name="state"
-                 addressOnly={false}
-                 country="us"
+                 types="region"
+                 fillWith="text"
+                 onSelect={(addr: ParsedAddress) => setForm((prev) => ({
+                   ...prev,
+                   state: addr.state || addr.text || prev.state,
+                 }))}
                />
              </div>
              <div>
@@ -444,7 +456,14 @@ export default function UserFormModal({
                  value={form.zip}
                  onChange={(val) => set('zip', val)}
                  name="zip"
-                 addressOnly={false}
+                 types="postcode"
+                 fillWith="text"
+                 onSelect={(addr: ParsedAddress) => setForm((prev) => ({
+                   ...prev,
+                   zip: addr.text || addr.zip || prev.zip,
+                   city: prev.city || addr.city,
+                   state: prev.state || addr.state,
+                 }))}
                />
              </div>
            </div>
