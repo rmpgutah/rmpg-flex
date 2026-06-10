@@ -2466,6 +2466,7 @@ export default function DispatchPage() {
                   {selectedCall.cross_street && (
                     <div className="text-xs text-rmpg-400 mt-0.5">Near: {selectedCall.cross_street}</div>
                   )}
+                  <div className="mt-1"><ZsbBadge zoneId={selectedCall.zone_id} beatId={selectedCall.beat_id} dispatchCode={selectedCall.dispatch_code} sectionCode={getSectionCode(selectedCall.sector_id ?? '')} /></div>
                   {/* Other active calls at this same address — click to jump. */}
                   {stackedCallsForSelected.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-rmpg-700/30">

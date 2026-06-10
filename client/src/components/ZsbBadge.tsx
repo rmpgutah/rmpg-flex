@@ -13,32 +13,11 @@
 // needed — safe to render in long card lists. Falls back to the
 // stored dispatch_code when geography fields are absent.
 // ============================================================
-import { sectionPrefix, zoneLeaf, beatLeaf } from '../utils/dispatchCodeParts';
+import { zsbComposite } from '../utils/dispatchCodeParts';
 
-/**
- * Derive the printout composite "SEC/ZONE/BEAT" (e.g. "SL1/SSL/A1") for a
- * record. Codes usually embed their parents (zone "SL1-SSL", beat
- * "SL1-SSL/A1"), but some rows carry leaf-only values ("A1") — so the parts
- * are recovered from whichever field has them and re-joined, instead of
- * trusting any single field's embedded form.
- */
-export function zsbComposite(opts: {
-  zoneId?: string | null;
-  beatId?: string | null;
-  dispatchCode?: string | null;
-  /** Resolved Spillman sector code (e.g. from getSectionCode) when the caller has one. */
-  sectionCode?: string | null;
-}): string {
-  // beat "SL1-SSL/A1" → zone part "SL1-SSL"; lets a full beat code stand in
-  // for a missing zone_id (and vice versa: zone_id covers a leaf-only beat).
-  const beatZonePart = (opts.beatId || '').includes('/') ? (opts.beatId || '').split('/')[0] : '';
-  const zoneCode = opts.zoneId || beatZonePart;
-  const sec = opts.sectionCode || sectionPrefix(zoneCode);
-  const zn = zoneLeaf(zoneCode);
-  const bt = beatLeaf(opts.beatId || '');
-  const composite = [sec, zn, bt].filter(Boolean).join('/');
-  return composite || opts.dispatchCode || '';
-}
+// Canonical derivation lives in utils/dispatchCodeParts so non-component
+// code (PDF generators, mappers) shares the exact same formatting.
+export { zsbComposite };
 
 export default function ZsbBadge({
   zoneId, beatId, dispatchCode, sectionCode, copyable = true, className = '',
