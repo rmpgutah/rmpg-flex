@@ -57,6 +57,8 @@ import mapData from './routes/mapData';
 import tiles from './routes/tiles';
 import geo from './routes/geo';
 import admin from './routes/admin';
+import emailRoute from './routes/email';
+import emailOauthCallback from './routes/emailOauthCallback';
 import announcements from './routes/announcements';
 import affairs from './routes/affairs';
 import ai from './routes/ai';
@@ -260,6 +262,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
+  { prefix: '/api/email', router: emailRoute, auth: 'required',
+    note: 'AdminEmailTab credential storage + status. /admin/* writes are role-gated (admin|manager).' },
+  { prefix: '/api/email-oauth', router: emailOauthCallback, auth: 'public',
+    note: 'MUST be public — Microsoft redirects the browser here with no JWT. Token exchange happens server-side using stored client_secret.' },
   { prefix: '/api/announcements', router: announcements, auth: 'required',
     note: 'Officer-facing reader for active/role-scoped broadcasts. Admin CRUD lives under /api/admin/announcements.' },
   { prefix: '/api/ai', router: ai, auth: 'required',

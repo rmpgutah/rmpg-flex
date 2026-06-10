@@ -245,7 +245,7 @@ export default function ShiftCard() {
       {error && <div className="text-amber-400 text-[11px] mb-2 leading-snug">{error}</div>}
 
       {isActive && (
-        <div className="grid grid-cols-3 gap-2 mb-3 px-1">
+        <div className="grid grid-cols-3 grid-keep gap-2 mb-3 px-1">
           <div className="flex flex-col">
             <span className="text-gray-500 text-[9px] uppercase tracking-widest">Hours</span>
             <span className="text-white text-base font-bold font-mono">{hours.toFixed(1)}</span>

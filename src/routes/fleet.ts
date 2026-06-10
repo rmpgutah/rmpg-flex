@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
+import { verifySignedResource } from '../utils/signedAccess';
 
 const fleet = new Hono<Env>();
 
@@ -418,6 +419,147 @@ fleet.get('/dashcam-videos/:id{[0-9]+}/neighbors', async (c) => {
   } catch { return c.json({}); }
 });
 
+// POST /dashcam-videos — multipart upload (mirrors the bodycam single-shot
+// upload in personnel/bodyCameraUploads.ts; storage prefix dashcam-videos/
+// in env.UPLOADS, referenced by dashcam_videos.file_path). Write access is
+// already gated to manager-tier by the router-level write middleware above.
+fleet.post('/dashcam-videos', async (c) => {
+  try {
+    const ct = c.req.header('content-type') || '';
+    if (!ct.startsWith('multipart/form-data')) {
+      return c.json({ error: 'multipart/form-data required' }, 400);
+    }
+    const form = await c.req.formData();
+    // workers-types types FormData.get() as `string | null`; at runtime file
+    // fields return File. Same cast as bodyCameraUploads.ts.
+    const file = form.get('video') as unknown as File | string | null;
+    if (!file || typeof file === 'string' || !(file instanceof Blob)) {
+      return c.json({ error: 'video file is required' }, 400);
+    }
+    const title = String(form.get('title') || '').trim();
+    if (!title) return c.json({ error: 'title is required' }, 400);
+
+    // Live schema: vehicle_id and camera_id are both NOT NULL with enforced
+    // FKs (fleet_vehicles / dash_cameras) — require and validate both.
+    const vehicleId = Number(form.get('vehicle_id'));
+    const cameraId = Number(form.get('camera_id'));
+    if (!Number.isInteger(vehicleId) || vehicleId <= 0) {
+      return c.json({ error: 'vehicle_id is required' }, 400);
+    }
+    if (!Number.isInteger(cameraId) || cameraId <= 0) {
+      return c.json({ error: 'camera_id is required' }, 400);
+    }
+    const classification = String(form.get('classification') || 'routine');
+    if (!DC_CLASSIFICATIONS.includes(classification)) {
+      return c.json({ error: 'Invalid classification', code: 'INVALID_CLASSIFICATION' }, 400);
+    }
+    const durationRaw = form.get('duration_seconds');
+    const duration = durationRaw != null && durationRaw !== '' ? Number(durationRaw) : null;
+
+    const r2Key = `dashcam-videos/${crypto.randomUUID()}`;
+    const mimeType = file.type || 'video/mp4';
+    await c.env.UPLOADS.put(r2Key, file.stream(), {
+      httpMetadata: { contentType: mimeType },
+    });
+
+    const db = getDb(c.env);
+    const actor = c.get('user') as { id?: number; full_name?: string } | undefined;
+    const result = await execute(db, `
+      INSERT INTO dashcam_videos
+        (camera_id, vehicle_id, title, case_number, notes, classification,
+         file_path, mime_type, file_size, duration_seconds, recorded_at, uploaded_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      cameraId, vehicleId, title,
+      form.get('case_number') || null,
+      form.get('notes') || null,
+      classification,
+      r2Key, mimeType, file.size, duration,
+      form.get('recorded_at') || null,
+      actor?.full_name || String(actor?.id ?? ''),
+    );
+    const newId = result.meta?.last_row_id;
+    if (!newId) {
+      // R2 succeeded but the DB didn't — leaves an orphan R2 object;
+      // cleanup is a follow-up sweep, same trade-off as bodycam uploads.
+      return c.json({ error: 'Insert succeeded but no id returned' }, 500);
+    }
+    const created = await queryFirst<Record<string, unknown>>(db,
+      'SELECT * FROM dashcam_videos WHERE id = ?', newId);
+    return c.json(created, 201);
+  } catch (err) {
+    console.error('POST /fleet/dashcam-videos failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /dashcam-videos/:id/stream — range-supporting playback.
+//
+// Auth: <video src> can't carry an Authorization header. Preferred path is
+// the HMAC-signed URL (?sig=&exp=&nonce= issued by POST /api/auth/sign-urls,
+// verified here via verifySignedResource — authMiddleware forwards header-less
+// requests matching this path when sig+exp are present). A plain JWT (header,
+// cookie, or legacy ?token=) also works since authMiddleware sets `user`.
+fleet.get('/dashcam-videos/:id{[0-9]+}/stream', async (c) => {
+  try {
+    const idStr = c.req.param('id');
+    const id = Number(idStr);
+    const user = c.get('user') as { id?: number } | undefined;
+    if (!user) {
+      const ok = await verifySignedResource(c.env.JWT_SECRET, 'dashcam', idStr, {
+        sig: c.req.query('sig'), exp: c.req.query('exp'), nonce: c.req.query('nonce'),
+      });
+      if (!ok) return c.json({ error: 'Authentication required' }, 401);
+    }
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{ file_path: string | null; mime_type: string | null }>(
+      db, 'SELECT file_path, mime_type FROM dashcam_videos WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+    if (!row.file_path) return c.json({ error: 'No file attached', code: 'NO_FILE' }, 404);
+
+    // Range: only "bytes=START-END" / "bytes=START-" supported; anything else
+    // falls through to a full 200 (same policy as the bodycam stream).
+    const rangeHeader = c.req.header('Range');
+    let r2Range: R2Range | undefined;
+    let rangeStart = 0;
+    let rangeEnd = -1;
+    if (rangeHeader) {
+      const m = rangeHeader.trim().match(/^bytes=(\d+)-(\d*)$/);
+      if (m) {
+        rangeStart = Number(m[1]);
+        rangeEnd = m[2] ? Number(m[2]) : -1;
+        r2Range = rangeEnd >= 0
+          ? { offset: rangeStart, length: rangeEnd - rangeStart + 1 }
+          : { offset: rangeStart };
+      }
+    }
+
+    const obj = r2Range
+      ? await c.env.UPLOADS.get(row.file_path, { range: r2Range })
+      : await c.env.UPLOADS.get(row.file_path);
+    if (!obj) return c.json({ error: 'File not in storage' }, 404);
+
+    const totalSize = obj.size;
+    const headers: Record<string, string> = {
+      'Content-Type': row.mime_type || obj.httpMetadata?.contentType || 'video/mp4',
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'private, max-age=0, no-store',
+    };
+    if (r2Range) {
+      const end = rangeEnd >= 0 ? Math.min(rangeEnd, totalSize - 1) : totalSize - 1;
+      headers['Content-Range'] = `bytes ${rangeStart}-${end}/${totalSize}`;
+      headers['Content-Length'] = String(end - rangeStart + 1);
+      return new Response(obj.body, { status: 206, headers });
+    }
+    headers['Content-Length'] = String(totalSize);
+    return new Response(obj.body, { status: 200, headers });
+  } catch (err) {
+    console.error('GET /fleet/dashcam-videos/:id/stream failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
 // PUT /dashcam-videos/:id — accepts a PARTIAL body. Quick-classify sends only
 // { classification }; the full edit modal sends title/case_number/notes/address
 // plus speed_mph/latitude/longitude as STRINGS (coerced to numbers here).
@@ -461,10 +603,15 @@ fleet.delete('/dashcam-videos/:id{[0-9]+}', requireRole('admin', 'manager'), asy
   try {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
-    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM dashcam_videos WHERE id = ?', id);
+    const existing = await queryFirst<{ id: number; file_path?: string | null }>(db, 'SELECT id, file_path FROM dashcam_videos WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
     try { await execute(db, 'DELETE FROM dashcam_video_links WHERE video_id = ?', id); } catch { /* links table may be absent */ }
     await execute(db, 'DELETE FROM dashcam_videos WHERE id = ?', id);
+    if (existing.file_path) {
+      // Best-effort R2 cleanup — the row is already gone; an orphan object
+      // is preferable to a 500 after a successful delete.
+      await c.env.UPLOADS.delete(existing.file_path).catch(() => undefined);
+    }
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /fleet/dashcam-videos/:id failed:', err);

@@ -537,7 +537,7 @@ export default function PersonFormModal({
                  placeholder="City, State or Country"
                  value={form.place_of_birth}
                  onChange={(val) => setForm((prev) => ({ ...prev, place_of_birth: val }))}
-                 addressOnly={false}
+                 types="place,region,country"
                />
              </FormField>
              <FormField label="Citizenship">
@@ -887,10 +887,12 @@ export default function PersonFormModal({
               placeholder="Street address"
               value={form.address}
               onChange={(val) => setForm((prev) => ({ ...prev, address: val }))}
+              fillWith="street"
               onSelect={(addr: ParsedAddress) => {
+                // Street line only — city/state/zip live in their own fields.
                 setForm((prev) => ({
                   ...prev,
-                  address: addr.formatted || addr.street,
+                  address: addr.street || addr.formatted,
                   city: addr.city || prev.city,
                   state: addr.state || prev.state,
                   zip: addr.zip || prev.zip,
@@ -906,7 +908,13 @@ export default function PersonFormModal({
                placeholder="City"
                value={form.city}
                onChange={(val) => setForm((prev) => ({ ...prev, city: val }))}
-               addressOnly={false}
+               types="place"
+               fillWith="text"
+               onSelect={(addr: ParsedAddress) => setForm((prev) => ({
+                 ...prev,
+                 city: addr.text || prev.city,
+                 state: addr.state || prev.state,
+               }))}
              />
            </FormField>
            <FormField label="State">
@@ -916,8 +924,12 @@ export default function PersonFormModal({
                placeholder="State (e.g., UT)"
                value={form.state}
                onChange={(val) => setForm((prev) => ({ ...prev, state: val }))}
-               addressOnly={false}
-               country="us"
+               types="region"
+               fillWith="text"
+               onSelect={(addr: ParsedAddress) => setForm((prev) => ({
+                 ...prev,
+                 state: addr.state || addr.text || prev.state,
+               }))}
              />
            </FormField>
            <FormField label="ZIP">
@@ -927,7 +939,14 @@ export default function PersonFormModal({
                placeholder="ZIP Code"
                value={form.zip}
                onChange={(val) => setForm((prev) => ({ ...prev, zip: val }))}
-               addressOnly={false}
+               types="postcode"
+               fillWith="text"
+               onSelect={(addr: ParsedAddress) => setForm((prev) => ({
+                 ...prev,
+                 zip: addr.text || addr.zip || prev.zip,
+                 city: prev.city || addr.city,
+                 state: prev.state || addr.state,
+               }))}
              />
            </FormField>
           </div>

@@ -71,7 +71,7 @@ import {
   announceDirectedNote, announceLocalAction, announceSpeedAdvisory,
 } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
-import { useDistrictOptions } from '../../hooks/useDistrictLookup';
+import { useDistrictOptions, normalizeSectorId } from '../../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../../hooks/useAddressAutofill';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import QuickPsoModal from '../../components/QuickPsoModal';
@@ -4686,19 +4686,32 @@ export default function DispatchPage() {
                         {selectedCall.location_building && <span className="text-rmpg-200"><span className="text-rmpg-400">Bldg:</span> {selectedCall.location_building}</span>}
                         {selectedCall.location_floor && <span className="text-rmpg-200"><span className="text-rmpg-400">Floor:</span> {selectedCall.location_floor}</span>}
                         {selectedCall.location_room && <span className="text-rmpg-200"><span className="text-rmpg-400">Rm:</span> {selectedCall.location_room}</span>}
-                        {selectedCall.dispatch_code && (
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            title="Dispatch zone code — click to copy"
-                            onClick={() => { try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } }}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } } }}
-                            className="cursor-pointer hover:brightness-110 text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums"
-                            style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}
-                          >
-                            {selectedCall.dispatch_code}
-                          </span>
-                        )}
+                        {(() => {
+                          // Yellow Z/S/B chart-code badge. Prefer the stored
+                          // dispatch_code, but always render the full printout-form
+                          // composite SEC/ZONE/BEAT (e.g. "SL1/SSL/A1") — derived
+                          // from the geography fields when the stored code is
+                          // missing or partial.
+                          const sec = getSectionCode(selectedCall.sector_id ?? '') || sectionPrefix(selectedCall.zone_id || '');
+                          const zn = zoneLeaf(selectedCall.zone_id || '');
+                          const bt = beatLeaf(selectedCall.beat_id || '');
+                          const composite = [sec, zn, bt].filter(Boolean).join('/');
+                          const code = composite || selectedCall.dispatch_code || '';
+                          if (!code) return null;
+                          return (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              title="Sector/Zone/Beat chart code — click to copy"
+                              onClick={() => { try { navigator.clipboard?.writeText(code); } catch { /* clipboard unavailable */ } }}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(code); } catch { /* clipboard unavailable */ } } }}
+                              className="cursor-pointer hover:brightness-110 text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums"
+                              style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}
+                            >
+                              {code}
+                            </span>
+                          );
+                        })()}
                         {selectedCall.sector_id && (() => {
                           const area = getArea(selectedCall.sector_id);
                           return area ? <span className="text-rmpg-200" title="Dispatch Area — top of the geography hierarchy"><span className="text-rmpg-400">Area:</span> {[area.code, area.name].filter(Boolean).join(' — ')}</span> : null;
@@ -4707,8 +4720,8 @@ export default function DispatchPage() {
                           // Police format: show the Spillman sector code ("SL1"), not the
                           // numeric dispatch_sectors.id row key. Fall back to the id only
                           // if the districts lookup hasn't loaded / has no code.
-                          const code = getSectionCode(selectedCall.sector_id) || selectedCall.sector_id;
-                          const name = sectionLabels.get(String(selectedCall.sector_id)) || '';
+                          const code = getSectionCode(selectedCall.sector_id) || sectionPrefix(selectedCall.zone_id || '') || selectedCall.sector_id;
+                          const name = sectionLabels.get(normalizeSectorId(selectedCall.sector_id)) || '';
                           return <span className="text-rmpg-200" title="Spillman sector code"><span className="text-rmpg-400">Sec:</span> {[code, name].filter(Boolean).join(' — ')}</span>;
                         })()}
                         {selectedCall.zone_id && <span className="text-rmpg-200" title="Zone (within sector)"><span className="text-rmpg-400">Zone:</span> {[zoneLeaf(selectedCall.zone_id), zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
@@ -4717,8 +4730,13 @@ export default function DispatchPage() {
                           // to its name. getBeatLabel falls back to the raw code, so guard
                           // against an "C — C" echo. Lookups stay keyed by the full code.
                           const code = beatLeaf(selectedCall.beat_id);
+                          // Beat labels are "beat_name — beat_descriptor" and beat_name
+                          // usually IS the leaf code, so prefixing blindly echoes it
+                          // ("A1 — A1 — SSL/A1"). Only prepend when the label adds info.
                           const label = getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id);
-                          const text = label && label !== selectedCall.beat_id ? `${code} — ${label}` : code;
+                          const text = !label || label === selectedCall.beat_id || label === code ? code
+                            : label.startsWith(`${code} — `) ? label
+                            : `${code} — ${label}`;
                           return <span className="text-rmpg-200" title="Beat (within zone)"><span className="text-rmpg-400">Beat:</span> {text}</span>;
                         })()}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (

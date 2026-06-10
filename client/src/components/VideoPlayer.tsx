@@ -13,6 +13,7 @@ import type { BodyCamVideo, VideoClassification } from '../types';
 import { VIDEO_CLASSIFICATION_COLORS } from '../pages/personnel/utils/personnelConstants';
 import VideoHudOverlay from './VideoHudOverlay';
 import { parseTimestamp } from '../utils/dateUtils';
+import { getSignedParams, buildSignedQuerySync } from '../utils/signedUrls';
 
 interface Props {
   isOpen: boolean;
@@ -32,13 +33,36 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Per-resource signed params (sig/exp/nonce) from /api/auth/sign-urls —
+  // keeps the session JWT out of the URL (it lands in CF/proxy logs).
+  // Falls back to the legacy ?token= only if signing fails (offline, or a
+  // not-yet-deployed Worker).
+  const [signedQuery, setSignedQuery] = useState<string>((video as any)?._signedQuery || '');
+  useEffect(() => {
+    if (!isOpen || !video?.id || (video as any)?._signedQuery) return;
+    let cancelled = false;
+    getSignedParams('bodycam', video.id).then((p) => {
+      if (cancelled) return;
+      if (p) {
+        setSignedQuery(buildSignedQuerySync(p));
+      } else {
+        const token = getAuthHeaders()['Authorization']?.replace('Bearer ', '') || '';
+        setSignedQuery(`token=${encodeURIComponent(token)}`);
+      }
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, video?.id]);
+
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
     const onTime = () => setCurrentTime(vid.currentTime);
     vid.addEventListener('timeupdate', onTime);
     return () => vid.removeEventListener('timeupdate', onTime);
-  }, [isOpen, video]);
+    // signedQuery: the <video> only mounts once signing resolves, so re-run
+    // to attach the listener to the freshly mounted element.
+  }, [isOpen, video, signedQuery]);
 
   if (!isOpen || !video) return null;
 
@@ -73,11 +97,9 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
 
   const classLabel = (cls: string) => cls.replace(/_/g, ' ').toUpperCase();
 
-  const signedQuery = (video as any)._signedQuery || (() => {
-    const token = getAuthHeaders()['Authorization']?.replace('Bearer ', '') || '';
-    return `token=${encodeURIComponent(token)}`;
-  })();
-  const streamUrl = `${apiBase}/personnel/bodycam-videos/${video.id}/stream?${signedQuery}`;
+  // Empty until signing resolves — the <video> element gets no src rather
+  // than a JWT-bearing URL it would immediately fetch.
+  const streamUrl = signedQuery ? `${apiBase}/personnel/bodycam-videos/${video.id}/stream?${signedQuery}` : '';
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -146,15 +168,21 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
 
         {/* Video + HUD Overlay */}
         <div className="relative bg-black">
-          <video
-            ref={videoRef}
-            controls
-            autoPlay
-            className="w-full max-h-[70vh]"
-            src={streamUrl}
-          >
-            Your browser does not support the video tag.
-          </video>
+          {streamUrl ? (
+            <video
+              ref={videoRef}
+              controls
+              autoPlay
+              className="w-full max-h-[70vh]"
+              src={streamUrl}
+            >
+              Your browser does not support the video tag.
+            </video>
+          ) : (
+            <div className="w-full h-[40vh] flex items-center justify-center text-[11px] text-rmpg-500">
+              AUTHORIZING STREAM…
+            </div>
+          )}
 
           {/* ── Police-Style HUD Overlay ── */}
           {hudVisible && (

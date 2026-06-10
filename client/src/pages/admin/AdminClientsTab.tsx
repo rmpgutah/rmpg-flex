@@ -297,7 +297,7 @@ export default function AdminClientsTab({
                     }`}>
                       {client.is_active ? 'Active' : 'Inactive'}
                     </span>
-                    <div className="flex items-center gap-1">
+                    <div className="hidden md:flex items-center gap-1">
                       <button type="button"
                         onClick={(e) => { e.stopPropagation(); openEditClient(client); }}
                         className="p-1 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors rounded-sm"

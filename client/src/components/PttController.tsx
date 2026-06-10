@@ -198,6 +198,7 @@ export default function PttController() {
     <div
       role="status"
       aria-live="polite"
+      className="ptt-pill"
       style={{
         position: 'fixed', right: 12, bottom: 30, zIndex: 9000,
         display: 'flex', alignItems: 'stretch', gap: 0,

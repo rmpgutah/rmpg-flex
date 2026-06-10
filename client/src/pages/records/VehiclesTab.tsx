@@ -687,7 +687,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                     })}
                   </div>
                 )}
-                <div className="flex items-center gap-1">
+                <div className="hidden md:flex items-center gap-1">
                   {(!showArchived || user?.role === 'admin') && (
                     <button type="button" onClick={(e) => { e.stopPropagation(); openEditVehicle(v); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Edit">
                       <Pencil className="w-3 h-3" />

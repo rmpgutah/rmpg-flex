@@ -282,17 +282,10 @@ const STUBS: StubRule[] = [
     body: { top: [], total: 0 },
     reason: 'no entity_statutes table (use utah_statutes for lookup, not analytics)',
   },
-  // ── WebAuthn / TOTP MFA setup (security tab on profile page) ────────
-  // Profile page hits these on every open. Stub the read shape so the
-  // security tab renders an "MFA not enrolled" state. Enrollment POSTs
-  // (register-options, register-verify, etc.) stay 404 — enabling MFA
-  // would need real `webauthn_credentials` + `user_totp_secrets` tables.
-  {
-    match: /^\/api\/auth\/webauthn\/(credentials|status)(\?.*)?$/,
-    methods: ['GET'],
-    body: { credentials: [], enrolled: false },
-    reason: 'no webauthn_credentials table; security tab shows un-enrolled state',
-  },
+  // WebAuthn stubs REMOVED 2026-06-10 — the rewrite now implements the full
+  // surface (status/credentials/register/authenticate) backed by the
+  // webauthn_credentials table (mig 0090, created on live D1). Routed via the
+  // /api/auth/webauthn prefix in API_ROUTES below.
   // ── ServeManager job linked-records (typo in legacy handler) ────────
   // Legacy queries `FROM calls` — that table doesn't exist on live D1;
   // the actual dispatch table is `calls_for_service`. The fix can't be
@@ -658,12 +651,9 @@ const STUBS: StubRule[] = [
     body: { valid: false, error: 'password reset is not yet ported' },
     reason: 'no /auth/reset-password/validate in rewrite',
   },
-  {
-    match: /^\/api\/auth\/sign-urls(\?.*)?$/,
-    methods: ['POST'],
-    body: { urls: {}, message: 'sign-urls is not yet ported' },
-    reason: 'no /auth/sign-urls in rewrite; R2 upload falls back to legacy',
-  },
+  // sign-urls stub REMOVED 2026-06-10: the rewrite now implements
+  // POST /api/auth/sign-urls (per-resource HMAC media signatures) —
+  // routed to env.API via the prefix rule below.
   // WebAuthn — proxy already stubs /credentials + /status. Add the OPTIONS
   // + verify endpoints. These are no-op stubs since the rewrite doesn't
   // implement WebAuthn; the user's security settings page renders empty.
@@ -1332,12 +1322,17 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/auth/2fa/setup' },
   { kind: 'prefix', value: '/api/auth/2fa/backup-codes' },
   { kind: 'prefix', value: '/api/auth/totp/status' },
+  { kind: 'prefix', value: '/api/auth/sign-urls' },
+  { kind: 'prefix', value: '/api/auth/webauthn' },
   { kind: 'prefix', value: '/api/auth/2fa/status' },
   // /api/auth/signature GET+PUT (UserProfileModal, PrintRecordButton,
   // IncidentsPage) — auth.ts persists/reads users.digital_signature. The GET
   // was stubbed null in this proxy for months while PUT fell through to a
   // worker that saved it: signatures were being stored but never displayed.
   { kind: 'prefix', value: '/api/auth/signature' },
+  // Signed media URLs (sig/exp/nonce for <video>/<audio> tags) — rewrite-only
+  // endpoint (src/routes/auth.ts POST /sign-urls); legacy never had it.
+  { kind: 'prefix', value: '/api/auth/sign-urls' },
   // Offline-cache sync engine (browser IndexedDB) — entire namespace
   // lives on the new Worker: /sync/pull, /sync/push, /secrets,
   // /my-secret, /secrets/generate. Legacy never implemented any of

@@ -6,6 +6,15 @@ import { normalizeDob } from '../utils/normalizeDob';
 
 const records = new Hono<Env>();
 
+// Inline role gate — same pattern as admin.ts. Destructive / chain-of-custody
+// operations must not be reachable by every authenticated role (client_viewer
+// included). Returns an error string when the caller's role is insufficient.
+function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
+  const u = c.get('user');
+  if (!u || !roles.includes(u.role)) return 'Insufficient role';
+  return null;
+}
+
 // GET /records/properties
 records.get('/properties', async (c) => {
   try {
@@ -737,6 +746,8 @@ records.put('/vehicles/:id', async (c) => {
 // DELETE /records/vehicles/:id
 records.delete('/vehicles/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM vehicles_records WHERE id = ?', id);
@@ -1078,6 +1089,8 @@ function coerceBooleanField(key: string, val: unknown): unknown {
 // POST /records/evidence — create evidence.
 records.post('/evidence', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
     // Live D1 uses `evidence_type` not `type` — accept either client field.
@@ -1127,6 +1140,8 @@ records.post('/evidence', async (c) => {
 // PUT /records/evidence/:id
 records.put('/evidence/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM evidence WHERE id = ?', id);
@@ -1157,6 +1172,8 @@ records.put('/evidence/:id', async (c) => {
 // DELETE /records/evidence/:id
 records.delete('/evidence/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM evidence WHERE id = ?', id);
@@ -1804,6 +1821,8 @@ records.post('/links', async (c) => {
 // DELETE /records/links/:id — remove a link.
 records.delete('/links/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const user = c.get('user');
     const id = Number(c.req.param('id'));

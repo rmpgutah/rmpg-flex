@@ -280,7 +280,7 @@ export default function MobileShiftPage() {
 
           {/* FUEL */}
           <Section title="Fuel level">
-            <div className="grid grid-cols-5 gap-1">
+            <div className="grid grid-cols-5 grid-keep gap-1">
               {FUEL_LEVELS.map((lvl) => (
                 <button key={lvl} type="button"
                   onClick={() => setFuel(lvl)}

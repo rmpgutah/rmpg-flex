@@ -427,6 +427,7 @@ export default function LoginPage() {
         className="w-full max-w-lg mb-1 sm:mb-3 px-3 sm:px-0 relative z-10"
         role="alert"
         aria-label="Security warning"
+        style={{ marginTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div
           style={{
