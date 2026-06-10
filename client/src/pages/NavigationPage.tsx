@@ -1782,13 +1782,13 @@ export default function NavigationPage() {
           a one-way trip — tap Drive to return to the follow-me map. */}
       <div
         className="absolute top-0 inset-x-0 flex items-center gap-2 px-3 py-2 backdrop-blur-md border-b border-rmpg-800 z-30"
-        style={{ background: 'linear-gradient(180deg, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.78) 100%)' }}
+        style={{ background: 'linear-gradient(180deg, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.78) 100%)', paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
       >
         <Navigation2 className="w-4 h-4 text-brand-400" />
         <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100">Navigation</span>
         <div className="ml-2"><NavViewToggle mode={viewMode} onMode={setViewMode} /></div>
       </div>
-      <div className="absolute inset-x-0 bottom-0 overflow-y-auto" style={{ top: 44 }}>
+      <div className="absolute inset-x-0 bottom-0 overflow-y-auto" style={{ top: 'calc(44px + env(safe-area-inset-top, 0px))' }}>
         <ModuleDirectoryPage />
       </div>
     </div>
@@ -1804,7 +1804,7 @@ export default function NavigationPage() {
 
       {/* Tactical viewport framing — corner brackets (non-interactive) for a
           command-display feel; sized to clear the header and dashboard. */}
-      <div className="absolute z-10 pointer-events-none" style={{ top: 44, bottom: 190, left: 6, right: 6 }}>
+      <div className="absolute z-10 pointer-events-none" style={{ top: 'calc(44px + env(safe-area-inset-top, 0px))', bottom: 190, left: 6, right: 6 }}>
         <div className="absolute top-0 left-0 border-t-2 border-l-2 border-brand-500/40" style={{ width: 16, height: 16 }} />
         <div className="absolute top-0 right-0 border-t-2 border-r-2 border-brand-500/40" style={{ width: 16, height: 16 }} />
         <div className="absolute bottom-0 left-0 border-b-2 border-l-2 border-brand-500/40" style={{ width: 16, height: 16 }} />
@@ -1815,7 +1815,7 @@ export default function NavigationPage() {
           of squashing, so every control stays a real tap target in-vehicle. */}
       <div
         className={`absolute top-0 inset-x-0 flex items-center gap-2 px-3 py-2 backdrop-blur-md border-b border-rmpg-800 z-20 ${isMobile ? 'overflow-x-auto whitespace-nowrap [&>*]:shrink-0' : ''}`}
-        style={{ background: 'linear-gradient(180deg, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.78) 100%)' }}
+        style={{ background: 'linear-gradient(180deg, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.78) 100%)', paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
       >
         <div className="absolute bottom-0 inset-x-0 h-px pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(212,160,23,0.4) 30%, #d4a017 50%, rgba(212,160,23,0.4) 70%, transparent 95%)' }} />
         <Navigation2 className="w-4 h-4 text-brand-400" style={{ filter: 'drop-shadow(0 0 3px rgba(212,160,23,0.5))' }} />
@@ -1970,7 +1970,7 @@ export default function NavigationPage() {
 
       {/* Turn-by-turn banner (top) */}
       {activeRoute && step && (
-        <div ref={bannerRef} className="absolute top-12 inset-x-2 z-20 panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ borderRadius: 2 }}>
+        <div ref={bannerRef} className="absolute inset-x-2 z-20 panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ borderRadius: 2, top: 'calc(48px + env(safe-area-inset-top, 0px))' }}>
           <div className="flex items-center gap-3 px-3 py-2">
             <StepIcon className="w-9 h-9 text-brand-400 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -2048,7 +2048,7 @@ export default function NavigationPage() {
           it eats too much of a narrow in-vehicle screen (and GPU) — the main
           follow-me map already covers the block ahead. */}
       {!isMobile && (
-      <div className="absolute z-20" style={{ top: sideTop, right: 8, width: 196, height: 148 }}>
+      <div className="absolute z-20" style={{ top: `calc(${sideTop}px + env(safe-area-inset-top, 0px))`, right: 8, width: 196, height: 148 }}>
         <div className="relative w-full h-full panel-beveled border border-rmpg-600 overflow-hidden shadow-xl" style={{ borderRadius: 2 }}>
           <div ref={insetContainerRef} className="absolute inset-0" />
           <div className="absolute top-1 left-1 flex items-center gap-1 px-1 py-0.5 bg-surface-deep/80 backdrop-blur-sm" style={{ borderRadius: 2 }}>
@@ -2070,7 +2070,7 @@ export default function NavigationPage() {
       {crimeOn && crimeCounts.total > 0 && (
         <div
           className="absolute z-20 panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl"
-          style={{ top: isMobile ? sideTop : sideTop + 156, right: 8, width: isMobile ? 150 : 190, maxWidth: '44vw', borderRadius: 2 }}
+          style={{ top: `calc(${isMobile ? sideTop : sideTop + 156}px + env(safe-area-inset-top, 0px))`, right: 8, width: isMobile ? 150 : 190, maxWidth: '44vw', borderRadius: 2 }}
         >
           <div className="relative flex items-center gap-1 px-2 py-1 border-b border-rmpg-700">
             <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(212,160,23,0.5))' }} />
@@ -2147,7 +2147,7 @@ export default function NavigationPage() {
         </div>
       )}
       {!activeRoute && (
-        <div className="absolute top-12 inset-x-2 z-20 panel-beveled bg-surface-deep/85 backdrop-blur-md border border-rmpg-700 px-3 py-1.5 flex items-center gap-2" style={{ borderRadius: 2 }}>
+        <div className="absolute inset-x-2 z-20 panel-beveled bg-surface-deep/85 backdrop-blur-md border border-rmpg-700 px-3 py-1.5 flex items-center gap-2" style={{ borderRadius: 2, top: 'calc(48px + env(safe-area-inset-top, 0px))' }}>
           <MapPin className="w-3.5 h-3.5 text-rmpg-500 shrink-0" />
           <span className="text-[10px] uppercase text-rmpg-500 shrink-0">Following GPS</span>
           {currentStreet && <span className="text-[11px] text-rmpg-200 truncate">· {currentStreet}</span>}
@@ -2159,7 +2159,7 @@ export default function NavigationPage() {
           (point where the contact is vs where the unit is facing), threat
           coloring, and a pulsing P1/P2 threat tally. */}
       {(callContacts.length > 0 || unitContacts.length > 0) && (
-        <div className="absolute z-20" style={{ top: sideTop, left: 8, width: isMobile ? 150 : 200, maxWidth: '44vw' }}>
+        <div className="absolute z-20" style={{ top: `calc(${sideTop}px + env(safe-area-inset-top, 0px))`, left: 8, width: isMobile ? 150 : 200, maxWidth: '44vw' }}>
           <div className="panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl overflow-hidden" style={{ borderRadius: 2 }}>
             <div className="relative flex items-center gap-1.5 px-2 py-1 border-b border-rmpg-700">
               <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, rgba(212,160,23,0.5), transparent)' }} />

@@ -731,7 +731,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   )}
                   <WarrantBadge flags={person.flags} size="sm" />
                 </div>
-                <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-[10px] text-rmpg-400">
                   {person.date_of_birth && <span>DOB: {safeDateDisplay(person.date_of_birth)}{(() => { const b = parseTimestamp(person.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
                   {person.gender && <span>{humanizeGender(person.gender)}</span>}
                   {person.race && <span>{humanizeRace(person.race)}</span>}
@@ -762,7 +762,16 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                     )}
                   </div>
                 )}
-                <div className="flex items-center gap-1">
+                {/* Phone: only the call action — the rest of the cluster would
+                    eat the whole row width at 44px touch size; row tap opens
+                    the detail panel and long-press has the full menu. */}
+                {person.phone && (
+                  <a href={`tel:${person.phone}`} onClick={e => e.stopPropagation()}
+                    className="md:hidden flex items-center justify-center w-9 h-9 border border-rmpg-700 text-green-400" title={`Call ${formatPhoneDisplay(person.phone)}`}>
+                    <Phone className="w-4 h-4" />
+                  </a>
+                )}
+                <div className="hidden md:flex items-center gap-1">
                   {/* Quick actions */}
                   {person.phone && (
                     <a href={`tel:${person.phone}`} onClick={e => e.stopPropagation()}

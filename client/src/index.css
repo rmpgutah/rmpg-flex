@@ -2304,18 +2304,18 @@ body.fx-noise::after {
 
   /* ── GRID LAYOUT HELPERS ───────────────────────────────── */
   /* Force 1-column on small phones for grid layouts */
-  .grid-cols-2,
-  .sm\:grid-cols-2 {
+  .grid-cols-2:not(.grid-keep),
+  .sm\:grid-cols-2:not(.grid-keep) {
     grid-template-columns: 1fr !important;
   }
-  .grid-cols-3,
-  .sm\:grid-cols-3,
-  .md\:grid-cols-3 {
+  .grid-cols-3:not(.grid-keep),
+  .sm\:grid-cols-3:not(.grid-keep),
+  .md\:grid-cols-3:not(.grid-keep) {
     grid-template-columns: 1fr !important;
   }
-  .grid-cols-4,
-  .sm\:grid-cols-4,
-  .md\:grid-cols-4 {
+  .grid-cols-4:not(.grid-keep),
+  .sm\:grid-cols-4:not(.grid-keep),
+  .md\:grid-cols-4:not(.grid-keep) {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 
@@ -10067,5 +10067,48 @@ td.sparkline-cell {
   [aria-modal="true"] > div:first-child,
   .modal-panel {
     max-width: calc(100vw - 16px) !important;
+  }
+}
+
+/* E. Wide stat grids on phones. The 768px block above already
+   collapses grid-cols-2/3/4, but 5- and 6-column stat strips
+   (CommandCenter KPIs, Microbilt usage, fleet analytics) were
+   missed and render ~70px-wide unreadable cards. Collapse them
+   to 2-up. Components whose N-up layout is intentional on phones
+   (e.g. MobileShiftPage fuel-level buttons) opt out with
+   .grid-keep, which preserves the authored template. */
+@media (max-width: 768px) {
+  .grid-cols-5:not(.grid-keep),
+  .grid-cols-6:not(.grid-keep),
+  .sm\:grid-cols-5:not(.grid-keep),
+  .sm\:grid-cols-6:not(.grid-keep) {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* G. Radio monitoring / PTT pill sits at bottom:30 inline-styled, which
+   lands on top of the mobile bottom nav (HOME/DISPATCH/MAP/ALERTS/MORE)
+   and hides the tab labels. Lift it above the nav on phones. */
+@media (max-width: 768px) {
+  .ptt-pill {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+    right: 8px !important;
+    max-width: calc(100vw - 16px);
+  }
+}
+
+/* F. Hover-revealed controls on touch devices. ~28 places use
+   `opacity-0 group-hover:opacity-100` (attachment download/delete,
+   email row actions, doc panels, dispatch call actions, ...) which
+   makes those controls UNREACHABLE on phones/tablets — touch has no
+   hover. On coarse pointers, anything that would appear on hover is
+   simply always visible. */
+@media (pointer: coarse) {
+  .group-hover\:opacity-100,
+  .hover\:opacity-100 {
+    opacity: 1 !important;
+  }
+  .group-hover\:visible {
+    visibility: visible !important;
   }
 }

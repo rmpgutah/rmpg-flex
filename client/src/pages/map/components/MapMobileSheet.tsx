@@ -84,7 +84,7 @@ export default function MapMobileSheet({
                 onClick={() => setMobileSheetTab(id)}
                 role="tab"
                 aria-selected={mobileSheetTab === id}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 active:scale-[0.97]"
+                className="flex flex-1 items-center justify-center gap-1.5 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all duration-150 active:scale-[0.97]"
                 style={{
                   minHeight: 44,
                   color: mobileSheetTab === id ? color : '#666666',
@@ -207,7 +207,7 @@ export default function MapMobileSheet({
             {/* Map Style Selector (mobile) */}
             <div className="px-4 py-3 space-y-1.5" style={{ background: '#050505', border: '1px solid #2b2b2b', borderRadius: 2 }}>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-widest mb-1">Map Style</div>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-3 grid-keep gap-1.5">
                 {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {
                   const isActive = mapStyle === key;
                   return (
