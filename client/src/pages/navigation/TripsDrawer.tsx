@@ -69,7 +69,9 @@ const HARSH_META = [
 ] as const;
 
 // One trip in the timeline. `active` pins it at the top with a live badge.
-function TripRow({ trip, active, onOpen }: { trip: Trip; active: boolean; onOpen: () => void }) {
+// `showUnit` tags the row with its unit number — used in the agency-wide
+// (no unit assigned) view so each trip says which unit ran it.
+function TripRow({ trip, active, showUnit, onOpen }: { trip: Trip; active: boolean; showUnit?: boolean; onOpen: () => void }) {
   const isResponse = trip.trip_type === 'call_response';
   const accent = isResponse ? '#d4a017' : '#888888';
   const mi = tripMiles(trip);
@@ -90,6 +92,11 @@ function TripRow({ trip, active, onOpen }: { trip: Trip; active: boolean; onOpen
       {/* top line: type badge + active pill + date + chevron */}
       <div className="flex items-center gap-1.5">
         <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: accent }} />
+        {showUnit && trip.unit_id != null && (
+          <span className="text-[8px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: '#d4a017', background: 'rgba(212,160,23,0.12)' }}>
+            U{trip.unit_id}
+          </span>
+        )}
         <span className="text-[10px] font-bold uppercase tracking-wide truncate" style={{ color: accent }}>
           {tripLabel(trip)}
         </span>
@@ -236,7 +243,9 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
       <div className="relative flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 shrink-0">
         <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, #d4a01766, transparent)' }} />
         <RouteIcon className="w-4 h-4 text-brand-400" />
-        <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100 flex-1">Trips</span>
+        <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100">Trips</span>
+        <span className="text-[9px] font-mono font-bold text-brand-300">{unitId != null ? `UNIT ${unitId}` : 'ALL UNITS'}</span>
+        <span className="flex-1" />
         <span className="text-[10px] font-mono text-rmpg-400">{timeline.length}</span>
         <button
           onClick={handleExportPdf}
@@ -255,12 +264,14 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
       {/* timeline */}
       <div className="flex-1 overflow-y-auto scrollbar-dark px-2 py-2 space-y-1.5">
         {unitId == null && (
-          <div className="text-[11px] text-rmpg-600 px-2 py-6 text-center">No unit assigned — go on-duty to log trips.</div>
+          <div className="text-[9px] text-rmpg-600 px-2 pb-1 text-center">
+            No unit assigned — showing the agency-wide trip log. Go on-duty to log your own.
+          </div>
         )}
-        {unitId != null && timeline.length === 0 && (
+        {timeline.length === 0 && (
           <div className="flex flex-col items-center gap-2 text-[11px] text-rmpg-600 px-2 py-8 text-center">
             <RouteIcon className="w-5 h-5 text-rmpg-700" />
-            No trips logged for this unit yet.
+            {unitId != null ? 'No trips logged for this unit yet.' : 'No trips logged yet.'}
             <button
               onClick={reload}
               className="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 border border-rmpg-700 text-brand-300 hover:border-brand-500 hover:text-white"
@@ -271,7 +282,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
           </div>
         )}
         {timeline.map(({ trip, active }) => (
-          <TripRow key={trip.id} trip={trip} active={active} onOpen={() => setSelectedTripId(trip.id)} />
+          <TripRow key={trip.id} trip={trip} active={active} showUnit={unitId == null} onOpen={() => setSelectedTripId(trip.id)} />
         ))}
       </div>
     </div>

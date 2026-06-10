@@ -141,6 +141,8 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
   const [calls, setCalls] = useState<RawCall[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Agency-wide view when no unit is assigned — rows then tag their own unit.
+  const allUnits = unitId == null && !unitCallSign;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -151,7 +153,10 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
       const startIso = start.toISOString().slice(0, 19).replace('T', ' ');
       const res = await apiFetch<{ data?: RawCall[] } | RawCall[]>(`/dispatch/calls?startDate=${encodeURIComponent(startIso)}&limit=500`);
       const rows = Array.isArray(res) ? res : res?.data ?? [];
-      setCalls(rows.filter((c) => callBelongsToUnit(c, unitId, unitCallSign)));
+      // No unit identity (off-duty / unassigned) → show the agency-wide run log
+      // so CALL HISTORY is always viewable; otherwise filter to this unit.
+      const allUnits = unitId == null && !unitCallSign;
+      setCalls(allUnits ? rows : rows.filter((c) => callBelongsToUnit(c, unitId, unitCallSign)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load history');
       setCalls([]);
@@ -188,7 +193,9 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
         <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, #d4a01766, transparent)' }} />
         <History className="w-4 h-4 text-brand-400" />
         <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100 flex-1">Call History</span>
-        {unitCallSign && <span className="text-[9px] font-mono font-bold text-brand-300">UNIT {unitCallSign}</span>}
+        <span className="text-[9px] font-mono font-bold text-brand-300">
+          {unitCallSign ? `UNIT ${unitCallSign}` : unitId != null ? `UNIT ${unitId}` : 'ALL UNITS'}
+        </span>
         <button onClick={load} className="text-rmpg-500 hover:text-white" aria-label="Refresh call history" title="Refresh">
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
@@ -241,7 +248,9 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
         {error && <div className="text-[10px] text-red-400 px-2 py-2">{error}</div>}
         {!loading && !error && sorted.length === 0 && (
           <div className="text-[11px] text-rmpg-600 px-2 py-6 text-center">
-            No runs for {unitCallSign ? `unit ${unitCallSign}` : 'this unit'} in this window.
+            {unitId == null && !unitCallSign
+              ? 'No runs in this window.'
+              : `No runs for ${unitCallSign ? `unit ${unitCallSign}` : 'this unit'} in this window.`}
           </div>
         )}
 
@@ -263,6 +272,11 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
               <div className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: PRIO_COLOR[c.priority] || '#888' }} />
                 <span className="text-[11px] font-mono font-bold text-rmpg-100 shrink-0">{c.call_number}</span>
+                {allUnits && meaningful(c.unit_call_signs) && (
+                  <span className="text-[8px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: '#d4a017', background: 'rgba(212,160,23,0.12)' }} title="Assigned unit(s)">
+                    {c.unit_call_signs}
+                  </span>
+                )}
                 <span className="text-[10px] text-rmpg-300 truncate flex-1" title={c.incident_type}>{c.incident_type?.replace(/_/g, ' ')}</span>
                 <span className="text-[8px] font-bold uppercase px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: STATUS_COLOR[c.status] || '#888', background: `${STATUS_COLOR[c.status] || '#888'}22` }}>{c.status}</span>
                 <span className="text-[8px] font-mono text-rmpg-600 shrink-0">{fmtDateShort(c.dispatched_at || c.created_at)}</span>

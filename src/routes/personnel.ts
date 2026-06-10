@@ -3,6 +3,7 @@ import type { Context } from 'hono';
 import { hashSync } from 'bcryptjs';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { setFleetOdometer } from '../utils/fleetOdometer';
 import { bodyCamerasRouter, bodycamVideosRouter } from './personnel/bodyCameras';
 // Side-effect import: registers upload + stream handlers on
 // bodycamVideosRouter. Splits the upload/stream surface (PR 2) into
@@ -904,7 +905,8 @@ personnel.put('/time/:id', async (c) => {
     const existing = await queryFirst<{
       id: number; clock_in: string | null; clock_out: string | null;
       break_minutes: number | null; notes: string | null; status: string;
-    }>(db, 'SELECT id, clock_in, clock_out, break_minutes, notes, status FROM time_entries WHERE id = ?', id);
+      starting_mileage: number | null; ending_mileage: number | null; vehicle_id: number | null;
+    }>(db, 'SELECT id, clock_in, clock_out, break_minutes, notes, status, starting_mileage, ending_mileage, vehicle_id FROM time_entries WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Time entry not found', code: 'ENTRY_NOT_FOUND' }, 404);
 
     const body = await c.req.json<Record<string, unknown>>();
@@ -944,6 +946,29 @@ personnel.put('/time/:id', async (c) => {
       edits.push({ edit_type: 'notes_changed', old: existing.notes, new: newNotes });
     }
 
+    // Mileage corrections — admins fix mis-keyed odometer readings here. Send a
+    // number to set, null/'' to clear. Same audit treatment as the time fields
+    // (this feeds the trip-log PDF + payroll mileage rollups).
+    const parseMileage = (v: unknown): number | null => {
+      if (v == null || v === '') return null;
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 && n <= 999_999 ? Math.round(n * 10) / 10 : null;
+    };
+    const newStartMi = body.starting_mileage === undefined ? existing.starting_mileage : parseMileage(body.starting_mileage);
+    if (body.starting_mileage !== undefined && newStartMi !== existing.starting_mileage) {
+      edits.push({ edit_type: 'starting_mileage_changed', old: existing.starting_mileage != null ? String(existing.starting_mileage) : null, new: newStartMi != null ? String(newStartMi) : null });
+    }
+    const newEndMi = body.ending_mileage === undefined ? existing.ending_mileage : parseMileage(body.ending_mileage);
+    if (body.ending_mileage !== undefined && newEndMi !== existing.ending_mileage) {
+      edits.push({ edit_type: 'ending_mileage_changed', old: existing.ending_mileage != null ? String(existing.ending_mileage) : null, new: newEndMi != null ? String(newEndMi) : null });
+    }
+    if (newStartMi != null && newEndMi != null && newEndMi < newStartMi) {
+      return c.json({ error: 'Ending mileage cannot be less than starting mileage', code: 'MILEAGE_DECREASING' }, 400);
+    }
+    const newTotalMiles = newStartMi != null && newEndMi != null
+      ? Math.max(0, Math.round((newEndMi - newStartMi) * 10) / 10)
+      : null;
+
     if (edits.length === 0) {
       return c.json({ error: 'No changes supplied', code: 'NO_CHANGES' }, 400);
     }
@@ -959,10 +984,31 @@ personnel.put('/time/:id', async (c) => {
       db,
       `UPDATE time_entries
           SET clock_in = ?, clock_out = ?, break_minutes = ?, total_hours = ?, notes = ?,
+              starting_mileage = ?, ending_mileage = ?, total_miles = ?,
               status = ?, edit_reason = ?, edited_by = ?, edited_at = datetime('now','localtime')
         WHERE id = ?`,
-      newClockIn, newClockOut, newBreak, totalHours, newNotes, newStatus, reason, actor?.id ?? null, id,
+      newClockIn, newClockOut, newBreak, totalHours, newNotes,
+      newStartMi, newEndMi, newTotalMiles, newStatus, reason, actor?.id ?? null, id,
     );
+
+    // If the corrected ending odometer is the vehicle's LATEST completed reading,
+    // re-anchor fleet_vehicles.current_mileage so the fleet page reflects the fix.
+    if (body.ending_mileage !== undefined && newEndMi != null && existing.vehicle_id != null) {
+      try {
+        const newer = await queryFirst<{ id: number }>(
+          db,
+          `SELECT id FROM time_entries
+            WHERE vehicle_id = ? AND ending_mileage IS NOT NULL AND id != ? AND clock_out > (SELECT clock_out FROM time_entries WHERE id = ?)
+            LIMIT 1`,
+          existing.vehicle_id, id, id,
+        );
+        if (!newer) {
+          await setFleetOdometer(db, Number(existing.vehicle_id), newEndMi);
+        }
+      } catch (err) {
+        console.warn('PUT /personnel/time/:id fleet odometer sync failed (non-fatal):', err);
+      }
+    }
 
     const editorName = actor?.full_name || actor?.username || 'Unknown';
     for (const e of edits) {

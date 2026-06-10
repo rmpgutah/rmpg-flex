@@ -3,7 +3,7 @@ import { LE_TEMPLATES } from './categories/law-enforcement';
 import { SEC_TEMPLATES } from './categories/security';
 import { HR_TEMPLATES } from './categories/hr';
 import { LEGAL_TEMPLATES } from './categories/legal';
-import { AGENCY_HEADER, title, section, field } from './_shared';
+import { AGENCY_HEADER, LETTER_BODY, buildAgencyHeader, DEFAULT_HEADER, title, section, field, type HeaderConfig } from './_shared';
 
 
 export const TEMPLATES: DocumentTemplate[] = [
@@ -478,15 +478,22 @@ ${section('OBJECTIVES COVERED')}<p>&nbsp;</p>
       { key: 'recipient', label: 'Recipient', source: 'manual' },
       { key: 'address', label: 'Recipient Address', source: 'manual' },
       { key: 'date', label: 'Date', source: 'manual' },
+      { key: 're', label: 'RE / Subject', source: 'manual' },
       { key: 'sender', label: 'Sender', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<p>{{date}}</p><p>&nbsp;</p>
-<p>{{recipient}}<br>{{address}}</p><p>&nbsp;</p>
-<p>Dear {{recipient}},</p>
-<p>&nbsp;</p><p>&nbsp;</p>
-<p>Sincerely,</p><p>&nbsp;</p>
-<p>{{sender}}<br>Rocky Mountain Protective Group</p>`,
+<p style="margin-top:18px;"><span style="${LETTER_BODY}">{{date}}</span></p>
+<p style="margin-top:18px;margin-bottom:0;"><span style="${LETTER_BODY}">{{recipient}}<br>{{address}}</span></p>
+<p style="margin-top:18px;"><span style="${LETTER_BODY}"><strong>RE:&nbsp;&nbsp;{{re}}</strong></span></p>
+<p style="margin-top:18px;"><span style="${LETTER_BODY}">Dear {{recipient}}:</span></p>
+<p style="margin-top:14px;line-height:1.6;"><span style="${LETTER_BODY}">&nbsp;</span></p>
+<p style="line-height:1.6;"><span style="${LETTER_BODY}">&nbsp;</span></p>
+<p style="line-height:1.6;"><span style="${LETTER_BODY}">&nbsp;</span></p>
+<p style="margin-top:22px;margin-bottom:0;"><span style="${LETTER_BODY}">Sincerely,</span></p>
+<p style="margin-top:0;margin-bottom:0;"><span style="${LETTER_BODY}">&nbsp;</span></p>
+<p style="margin-top:0;margin-bottom:0;"><span style="${LETTER_BODY}">&nbsp;</span></p>
+<p style="margin-top:0;margin-bottom:0;"><span style="${LETTER_BODY}">_______________________________</span></p>
+<p style="margin-top:2px;"><span style="${LETTER_BODY}">{{sender}}<br>Rocky Mountain Protective Group<br>Salt Lake City, Utah</span></p>`,
   },
   {
     id: 'meeting-minutes',
@@ -657,7 +664,7 @@ ${section('STATEMENT')}
 <p>&nbsp;</p>
 <p>&nbsp;</p>
 ${section('AFFIRMATION')}
-<p>I, {{witness_name}}, affirm that the above statement is true and correct to the best of my knowledge. I understand that providing false information to law enforcement may be a criminal offense.</p>
+<p>I, {{witness_name}}, affirm that the above statement is true and correct to the best of my knowledge. I understand that providing false information in an official investigation may be a criminal offense.</p>
 <div style="margin-top:40px;">
   <table>
     <tr>
@@ -1728,8 +1735,22 @@ export function getTemplate(id: string): DocumentTemplate | undefined {
   return TEMPLATES.find(t => t.id === id);
 }
 
-export function populateTemplate(template: DocumentTemplate, values: Record<string, string>): string {
+export function populateTemplate(
+  template: DocumentTemplate,
+  values: Record<string, string>,
+  headerConfig?: Partial<HeaderConfig> | null,
+): string {
   let html = template.content;
+  // Admin-customized letterhead: every template embeds the same AGENCY_HEADER
+  // string at module load, so a literal swap re-headers all ~150 templates
+  // without touching them. Absent/blank config falls back to the default.
+  if (headerConfig && (headerConfig.org_name || headerConfig.tagline != null || headerConfig.address != null)) {
+    html = html.split(AGENCY_HEADER).join(buildAgencyHeader({
+      org_name: headerConfig.org_name?.trim() || DEFAULT_HEADER.org_name,
+      tagline: headerConfig.tagline ?? DEFAULT_HEADER.tagline,
+      address: headerConfig.address ?? DEFAULT_HEADER.address,
+    }));
+  }
   for (const field of template.fields) {
     const val = values[field.key] || '';
     html = html.split(`{{${field.key}}}`).join(val);

@@ -120,7 +120,10 @@ export default function ShiftCard() {
         method: 'POST',
         body: JSON.stringify({
           vehicle_id: mileagePrompt.vehicleId,
-          starting_mileage: mileage,
+          // 0 = the modal's Skip affordance — omit the reading and let the
+          // server default to the fleet odometer (kept current by duty
+          // readings + GPS trip accruals).
+          ...(mileage > 0 ? { starting_mileage: mileage } : {}),
           ...(overrideReason ? { override_reason: overrideReason } : {}),
         }),
       });
@@ -172,7 +175,8 @@ export default function ShiftCard() {
       await apiFetch('/dispatch/duty/end', {
         method: 'POST',
         body: JSON.stringify({
-          ending_mileage: mileage,
+          // 0 = Skip — server closes with the GPS-accrued fleet odometer.
+          ...(mileage > 0 ? { ending_mileage: mileage } : {}),
           ...(overrideReason ? { override_reason: overrideReason } : {}),
         }),
       });
@@ -312,7 +316,7 @@ export default function ShiftCard() {
           previousMileage={mileagePrompt.previous}
           isManager={isManager}
           submitLabel={mileagePrompt.mode === 'starting' ? 'Start Shift' : 'End Shift'}
-          hideSkip
+          skipLabel="Skip — Use Vehicle Odometer"
           onSubmit={mileagePrompt.mode === 'starting' ? submitStartingMileage : submitEndingMileage}
           onCancel={() => setMileagePrompt(null)}
         />

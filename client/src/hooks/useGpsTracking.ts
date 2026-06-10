@@ -1398,9 +1398,19 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // (supported on Chrome Android, Chrome Desktop, Edge, etc.)
   useEffect(() => {
     let wakeLock: any = null;
+    let disposed = false;
+    let reacquireTimer: ReturnType<typeof setTimeout> | null = null;
     const handleWakeLockRelease = () => {
-      // Wake lock released (e.g., user switched tabs) — will re-acquire via visibilitychange
       wakeLock = null;
+      // The OS can release the lock while the page is still VISIBLE (battery
+      // saver, permission dialogs, Android power menu). Without this retry the
+      // screen would lock mid-patrol and GPS would throttle until the officer
+      // happened to tap something. Tab-hidden releases are re-acquired by the
+      // visibilitychange handler instead — the guard inside requestWakeLock
+      // makes a retry while hidden a harmless no-op.
+      if (!disposed && document.visibilityState === 'visible') {
+        reacquireTimer = setTimeout(() => { requestWakeLock(); }, 3_000);
+      }
     };
     const requestWakeLock = async () => {
       // WakeLock requires user-activation context + visible page; otherwise the
@@ -1435,6 +1445,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     window.addEventListener('keydown', handleFirstClick, { once: true });
 
     return () => {
+      disposed = true;
+      if (reacquireTimer) clearTimeout(reacquireTimer);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('click', handleFirstClick);
       window.removeEventListener('keydown', handleFirstClick);

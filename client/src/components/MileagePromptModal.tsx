@@ -15,6 +15,8 @@ interface MileagePromptModalProps {
   submitLabel?: string;
   /** Hide the "Skip — No Mileage" affordance. Used by the shift lifecycle, where mileage is strictly required. */
   hideSkip?: boolean;
+  /** Label for the skip affordance (default "Skip — No Mileage"). */
+  skipLabel?: string;
   onSubmit: (mileage: number, vehicleId: string, overrideReason?: string) => void;
   onCancel: () => void;
 }
@@ -36,7 +38,7 @@ interface MileagePromptModalProps {
 export default function MileagePromptModal({
   mode, callNumber, vehicleId, startingMileage,
   previousMileage, isManager = false,
-  submitLabel, hideSkip = false,
+  submitLabel, hideSkip = false, skipLabel,
   onSubmit, onCancel,
 }: MileagePromptModalProps) {
   const [mileage, setMileage] = useState('');
@@ -226,7 +228,7 @@ export default function MileagePromptModal({
         >
           {!hideSkip && (
             <button type="button" onClick={handleSkip} className="toolbar-btn text-xs px-4 py-2 min-h-[44px] sm:min-h-0 text-amber-400 hover:text-amber-300 order-2 sm:order-1">
-              Skip — No Mileage
+              {skipLabel || 'Skip — No Mileage'}
             </button>
           )}
           <div className="flex gap-2 order-1 sm:order-2">

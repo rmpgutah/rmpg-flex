@@ -140,15 +140,19 @@ function getSplashLogoDataUri() {
           path.join(process.resourcesPath, 'rmpg flex.png'),
           path.join(process.resourcesPath, 'RMPG Logo Dark.png'),
           path.join(process.resourcesPath, 'icon.png'),
+          // Last resort if extraResources were stripped (e.g. unpacked run)
+          path.join(__dirname, '..', 'client', 'public', 'rmpg flex.png'),
         ];
     for (const p of candidates) {
       if (fs.existsSync(p)) {
         const ext = path.extname(p).slice(1).toLowerCase() || 'png';
         const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
         const b64 = fs.readFileSync(p).toString('base64');
+        console.log('[SPLASH] logo loaded from', p);
         return `data:${mime};base64,${b64}`;
       }
     }
+    console.warn('[SPLASH] no logo file found — using text fallback');
   } catch (err) {
     console.warn('[SPLASH] logo load failed:', err && err.message);
   }

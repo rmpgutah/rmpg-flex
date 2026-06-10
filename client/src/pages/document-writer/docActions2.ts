@@ -10,6 +10,10 @@
 // toolbar piecemeal or invoked from a command palette / slash menu.
 
 import type { Editor } from '@tiptap/react';
+// Wave-5 actions live in their own module; appended to ACTION_REGISTRY below.
+// (docActions3 imports DocAction from here as a TYPE only — erased at runtime,
+// so there is no import cycle.)
+import { WAVE5_ACTIONS } from './docActions3';
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -557,12 +561,12 @@ export function insertEvidenceStamp(editor: Editor, itemNum: string): void {
 }
 export function insertConfidentialBanner(editor: Editor): void {
   editor.chain().focus().insertContentAt(0,
-    `<div data-classification="confidential" style="background:#c93030;color:#fff;text-align:center;padding:4px;font-weight:bold;letter-spacing:3px;">CONFIDENTIAL — LAW ENFORCEMENT SENSITIVE</div>`,
+    `<div data-classification="confidential" style="background:#c93030;color:#fff;text-align:center;padding:4px;font-weight:bold;letter-spacing:3px;">CONFIDENTIAL — RESTRICTED</div>`,
   ).run();
 }
 export function insertLawEnforcementOnlyBanner(editor: Editor): void {
   editor.chain().focus().insertContentAt(0,
-    `<div data-classification="leo" style="background:#000;color:#d4a017;text-align:center;padding:4px;font-weight:bold;letter-spacing:3px;border:1px solid #d4a017;">FOR LAW ENFORCEMENT USE ONLY</div>`,
+    `<div data-classification="leo" style="background:#000;color:#d4a017;text-align:center;padding:4px;font-weight:bold;letter-spacing:3px;border:1px solid #d4a017;">FOR OFFICIAL USE ONLY</div>`,
   ).run();
 }
 export function insertCaseNumberHeader(editor: Editor, caseNum: string): void {
@@ -1147,6 +1151,9 @@ export const ACTION_REGISTRY: DocAction[] = [
   { name: 'Margins…',               group: 'Utility',    fn: () => setMargins(promptNum('Top (in):', 1), promptNum('Right (in):', 1), promptNum('Bottom (in):', 1), promptNum('Left (in):', 1)) },
   { name: 'QR code…',               group: 'Utility',    fn: (e) => insertQrCode(e, promptText('Data / URL:')) },
   { name: 'Barcode…',               group: 'Utility',    fn: (e) => insertBarcode(e, promptText('Data:')) },
+  // Wave-5: 100 more features (symbols, wraps/format, police & legal blocks,
+  // productivity fields) — defined in docActions3, surfaced via the palette.
+  ...WAVE5_ACTIONS,
 ];
 
 /** Distinct group names in registry order. Drives palette tabs. */

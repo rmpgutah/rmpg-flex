@@ -496,6 +496,8 @@ export default function MdtPage() {
     } catch (err: any) {
       if (err?.code === 'NEEDS_VEHICLE') {
         addToast('No take-home vehicle set — pick one on the Shift card to go on duty', 'warning');
+      } else if (err?.code === 'NEEDS_MILEAGE') {
+        addToast('No odometer history for this vehicle — start your shift from the Shift card once to seed it', 'warning');
       } else if (err?.code === 'NO_UNIT') {
         addToast('No unit assigned — ask dispatch to assign you a unit', 'error');
       } else {

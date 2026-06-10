@@ -71,8 +71,14 @@
 }
 .writer-content .ProseMirror td,
 .writer-content .ProseMirror th {
+  /* Spacing + sizing are driven by CSS custom properties set on the parent
+   * <table> (TableFormatting extension); these defaults match the prior look.
+   * --rmpg-cell-px = side-to-side padding, --rmpg-cell-py = top-to-bottom
+   * padding, --rmpg-row-h = row height, --rmpg-tbl-border = grid line weight. */
   border: 1px solid rgba(128, 128, 128, 0.6);
-  padding: 4px 8px;
+  border-width: var(--rmpg-tbl-border, 1px);
+  padding: var(--rmpg-cell-py, 4px) var(--rmpg-cell-px, 8px);
+  height: var(--rmpg-row-h, auto);
   vertical-align: top;
 }
 .writer-content .ProseMirror th { background: rgba(128, 128, 128, 0.16); font-weight: 700; }
