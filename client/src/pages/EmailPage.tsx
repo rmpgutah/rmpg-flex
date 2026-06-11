@@ -15,6 +15,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
 import { useToast } from '../components/ToastProvider';
 import IconButton from '../components/IconButton';
+import DocumentViewer from '../components/DocumentViewer';
 import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import sanitizeHtml from 'sanitize-html';
 import EnrollmentBanner from '../components/email/EnrollmentBanner';
@@ -1897,6 +1898,49 @@ export default function EmailPage() {
   const [loadingMessage, setLoadingMessage] = useState(false);
   const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
 
+  // Attachment viewer — fetch via authed blob (bare <a href> can't send the JWT)
+  const [attViewer, setAttViewer] = useState<{ url: string; title: string; type: 'pdf' | 'image' } | null>(null);
+  const [attBusyId, setAttBusyId] = useState<string | null>(null);
+
+  const fetchAttachmentBlob = useCallback(async (att: EmailAttachment): Promise<string> => {
+    const blob = await apiFetchBlob(`/email/messages/${encodeURIComponent(selectedMessage!.id)}/attachments/${encodeURIComponent(att.id)}?inline=1`);
+    return URL.createObjectURL(blob);
+  }, [selectedMessage]);
+
+  const handleDownloadAttachment = useCallback(async (att: EmailAttachment) => {
+    setAttBusyId(att.id);
+    try {
+      const url = await fetchAttachmentBlob(att);
+      const a = document.createElement('a');
+      a.href = url; a.download = att.name || 'attachment';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (err) {
+      console.error('[EmailPage] attachment download failed:', err);
+      showSnackbar('Failed to download attachment', 'error');
+    } finally { setAttBusyId(null); }
+  }, [fetchAttachmentBlob]);
+
+  const handleOpenAttachment = useCallback(async (att: EmailAttachment) => {
+    const ext = (att.name || '').split('.').pop()?.toLowerCase() || '';
+    const ct = (att.contentType || '').toLowerCase();
+    const isImage = ct.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext);
+    const isPdf = ct === 'application/pdf' || ext === 'pdf';
+    if (!isImage && !isPdf) { void handleDownloadAttachment(att); return; } // no in-browser renderer for doc/xlsx etc.
+    setAttBusyId(att.id);
+    try {
+      const url = await fetchAttachmentBlob(att);
+      setAttViewer({ url, title: att.name || 'Attachment', type: isPdf ? 'pdf' : 'image' });
+    } catch (err) {
+      console.error('[EmailPage] attachment open failed:', err);
+      showSnackbar('Failed to open attachment', 'error');
+    } finally { setAttBusyId(null); }
+  }, [fetchAttachmentBlob, handleDownloadAttachment]);
+
+  const closeAttViewer = useCallback(() => {
+    setAttViewer(prev => { if (prev) URL.revokeObjectURL(prev.url); return null; });
+  }, []);
+
   // Search
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -3062,19 +3106,27 @@ export default function EmailPage() {
                       const isDoc = ['doc','docx','rtf','odt'].includes(ext);
                       const isSheet = ['xls','xlsx','csv'].includes(ext);
                       const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : isDoc ? '#888888' : isSheet ? '#10b981' : '#8b5cf6';
+                      const viewable = isImage || isPdf;
                       return (
-                        <a key={att.id} href={`/api/email/messages/${selectedMessage!.id}/attachments/${att.id}`} target="_blank" rel="noopener"
+                        <div key={att.id}
                           className="flex items-center gap-2 px-3 py-2 bg-surface-sunken border border-border-subtle rounded-sm text-[10px] text-rmpg-300 hover:text-white hover:border-brand-500/40 transition-all hover:shadow-lg group min-w-[140px]">
-                          <div className="w-8 h-8 rounded-sm flex items-center justify-center text-[8px] font-bold uppercase flex-shrink-0"
-                            style={{ backgroundColor: fileColor + '15', color: fileColor }}>
-                            {ext.slice(0, 4)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate max-w-[140px] text-[10px] font-medium">{att.name}</div>
-                            <div className="text-[9px] text-rmpg-500">{formatSize(att.size)}</div>
-                          </div>
-                          <Download className="w-3.5 h-3.5 text-rmpg-500 group-hover:text-brand-400 transition-colors flex-shrink-0" />
-                        </a>
+                          <button type="button" onClick={() => handleOpenAttachment(att)} disabled={attBusyId === att.id}
+                            className="flex items-center gap-2 min-w-0 flex-1 text-left disabled:opacity-50"
+                            title={viewable ? 'Open in viewer' : 'Download'}>
+                            <div className="w-8 h-8 rounded-sm flex items-center justify-center text-[8px] font-bold uppercase flex-shrink-0"
+                              style={{ backgroundColor: fileColor + '15', color: fileColor }}>
+                              {attBusyId === att.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : ext.slice(0, 4)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate max-w-[140px] text-[10px] font-medium">{att.name}</div>
+                              <div className="text-[9px] text-rmpg-500">{formatSize(att.size)}{viewable ? ' · click to view' : ''}</div>
+                            </div>
+                          </button>
+                          <IconButton aria-label={`Download ${att.name}`} onClick={() => handleDownloadAttachment(att)}
+                            className="flex-shrink-0 p-0.5">
+                            <Download className="w-3.5 h-3.5 text-rmpg-500 group-hover:text-brand-400 transition-colors" />
+                          </IconButton>
+                        </div>
                       );
                     })}
                   </div>
@@ -3157,6 +3209,11 @@ export default function EmailPage() {
           onClose={() => setComposing(null)}
           onSent={() => { showSnackbar('Email sent'); handleRefresh(); }}
         />
+      )}
+
+      {/* ─── Attachment Viewer (in-app PDF/image overlay) ─── */}
+      {attViewer && (
+        <DocumentViewer isOpen onClose={closeAttViewer} src={attViewer.url} title={attViewer.title} type={attViewer.type} />
       )}
     </div>
   );
