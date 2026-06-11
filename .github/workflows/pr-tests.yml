@@ -43,6 +43,20 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm test
 
+  client-hook-order-guard:
+    name: Hooks-after-early-return guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      # Grep-guard for React error #310 (hook declared after a conditional
+      # `return null` — see PR #1128). No ESLint in this repo, so this is the
+      # only automated check for the Rules of Hooks. No deps needed.
+      - run: node scripts/check-hooks-after-early-return.js
+
   client-typecheck:
     name: Client TypeScript check
     runs-on: ubuntu-latest
