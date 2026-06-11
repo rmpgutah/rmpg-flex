@@ -585,7 +585,12 @@
 //       analytics field names, maintenance-schedule urgency, lifecycle
 //       computed fields, driver-performance GPS enrichment, SUM fan-out
 //       fix in lifecycle/comparison.
-const CACHE_NAME = 'rmpg-flex-v881';
+// v882: PS-211 trip log PDF fixes — first-section title no longer struck
+//       through by the header rule (all v2 forms), PERIOD header label,
+//       MM/DD-stamped start/end on multi-day reports, 1-decimal distances,
+//       episode-based harsh counts + GPS-teleport distance filtering,
+//       zero-movement rows dropped.
+const CACHE_NAME = 'rmpg-flex-v882';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

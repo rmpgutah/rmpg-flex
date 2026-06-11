@@ -1037,6 +1037,9 @@ pm.get('/trip-log/generate', async (c) => {
       const duration = t.duration_seconds != null
         ? Math.round(Number(t.duration_seconds) / 60)
         : Math.max(0, Math.round((new Date(end.replace(' ', 'T') + 'Z').getTime() - new Date(start.replace(' ', 'T') + 'Z').getTime()) / 60000));
+      // Zero-movement blip (0.0 mi, 0 min): a detector artifact, not a trip.
+      // Printing it wastes a PS-211 line and reads as a data error.
+      if (distance < 0.05 && duration < 1) continue;
       const mileage = findMileagePair(start);
       patrolRows.push({
         type: 'PATROL',
@@ -1198,10 +1201,20 @@ async function computeBreadcrumbStats(
   let distanceMeters = 0;
   let harshA = 0, harshB = 0, harshC = 0;
   let prev: { lat: number; lng: number; speedMs: number; t: number } | null = null;
+  // Episode flags: a sustained hard accel/brake spans several consecutive
+  // 1Hz fixes. Counting every exceeding PAIR (the old behavior) booked one
+  // braking maneuver as 5-10 "events", producing absurd PS-211 rows like
+  // "A:25 B:23" on an 11-minute drive. Count only the TRANSITION into an
+  // exceedance episode.
+  let inAccelEpisode = false;
+  let inBrakeEpisode = false;
+  /** Reject teleport segments: > 80 m/s (~179 mph, mirrors the client GPS
+   *  jump gate) implied speed means a GPS glitch, not driving. Without this,
+   *  one bad fix added miles of phantom distance (PS-211 showed a 64.5 mi /
+   *  16 min "trip" ≈ 242 mph average). */
+  const MAX_PLAUSIBLE_MPS = 80;
   for (const r of rows) {
     const speedMs = r.speed != null ? Number(r.speed) : 0;
-    const mph = mphFromMs(speedMs);
-    if (mph > maxMph) maxMph = mph;
     const t = new Date(r.recorded_at.replace(' ', 'T') + 'Z').getTime();
     if (prev) {
       // Haversine in meters.
@@ -1209,14 +1222,35 @@ async function computeBreadcrumbStats(
       const dLng = ((r.longitude - prev.lng) * Math.PI) / 180;
       const a = Math.sin(dLat / 2) ** 2 + Math.cos(prev.lat * Math.PI / 180) * Math.cos(r.latitude * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
       const dMeters = 2 * 6371000 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      distanceMeters += dMeters;
-      // Harsh events: > 4 m/s² accel/brake (matches avlTracking).
       const dtSec = Math.max(0.5, (t - prev.t) / 1000);
+      if (dMeters / dtSec > MAX_PLAUSIBLE_MPS) {
+        // Teleport glitch — skip the segment entirely (no distance, no harsh,
+        // no max-speed from this pair) and re-anchor at the new fix.
+        prev = { lat: r.latitude, lng: r.longitude, speedMs, t };
+        inAccelEpisode = false;
+        inBrakeEpisode = false;
+        continue;
+      }
+      distanceMeters += dMeters;
+      // Harsh events: > 4 m/s² accel/brake (matches avlTracking), counted
+      // once per episode (transition into exceedance), not per fix-pair.
       const dV = speedMs - prev.speedMs;
       const accelMps2 = dV / dtSec;
-      if (accelMps2 > 4) harshA++;
-      if (accelMps2 < -4) harshB++;
+      if (accelMps2 > 4) {
+        if (!inAccelEpisode) harshA++;
+        inAccelEpisode = true;
+      } else {
+        inAccelEpisode = false;
+      }
+      if (accelMps2 < -4) {
+        if (!inBrakeEpisode) harshB++;
+        inBrakeEpisode = true;
+      } else {
+        inBrakeEpisode = false;
+      }
     }
+    const mph = mphFromMs(speedMs);
+    if (mph > maxMph) maxMph = mph;
     prev = { lat: r.latitude, lng: r.longitude, speedMs, t };
   }
   // C bucket: standing count of cornering proxies is unreliable from
