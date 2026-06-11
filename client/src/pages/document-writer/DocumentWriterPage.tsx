@@ -69,6 +69,7 @@ import Redaction from './extensions/redaction';
 import Suggestion from './extensions/suggestion';
 import { loadAppearance, saveAppearance, applyAppearance, type EditorAppearance } from './appearance';
 import { htmlToMarkdown, htmlToPlainText, htmlToRtf, downloadFile, copyRich, copyText } from './exporters';
+import { htmlToDocxBlob } from './docxExport';
 import { writeDraft, readDraft, clearDraft, saveSnapshot } from './autosave';
 import { PAGE_SIZES, DEFAULT_DOC_SETTINGS, type DocumentTemplate, type DocSettings, type WriterTheme } from './types';
 import './writer.css';
@@ -153,6 +154,9 @@ export default function DocumentWriterPage() {
   });
   const pageRef = useRef<HTMLDivElement>(null);
   const documentIdRef = useRef<string | null>(null);
+  // Mirror of docSettings so the debounced autosave can read current page
+  // geometry/properties without re-subscribing on every settings change.
+  const docSettingsRef = useRef<DocSettings>(DEFAULT_DOC_SETTINGS);
   const recentIdRef = useRef<string>(`doc-${new Date().toISOString()}`);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const bgImageInputRef = useRef<HTMLInputElement>(null);
@@ -218,11 +222,18 @@ export default function DocumentWriterPage() {
     setSaving(true);
     setErrorNotice(null);
     try {
-      const html = editor.getHTML();
       const safeName = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'Untitled Document';
-      const blob = new Blob([html], { type: 'text/html' });
+      // Persist a real, editable Word document (.docx) — Word/Pages/Docs all
+      // open it — instead of a raw .html file. Edit round-trips still come from
+      // the local autosave/JSON snapshot, so the Documents copy is the writable
+      // deliverable.
+      const blob = htmlToDocxBlob(editor.getHTML(), docSettings.page, {
+        title: docSettings.properties.title || title,
+        author,
+      });
+      const docxType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       const formData = new FormData();
-      formData.append('files', new File([blob], `${safeName}.html`, { type: 'text/html' }));
+      formData.append('files', new File([blob], `${safeName}.docx`, { type: docxType }));
       const folderId = searchParams.get('folderId');
       if (folderId) formData.append('folder_id', folderId);
       const token = localStorage.getItem('rmpg_token');
@@ -249,7 +260,7 @@ export default function DocumentWriterPage() {
     } finally {
       setSaving(false);
     }
-  }, [editor, title, searchParams]);
+  }, [editor, title, author, docSettings.page, docSettings.properties.title, searchParams]);
 
   const handleExportPdf = useCallback(() => {
     if (!editor) return;
@@ -321,6 +332,23 @@ export default function DocumentWriterPage() {
     else if (format === 'rtf') downloadFile(`${safe}.rtf`, htmlToRtf(html), 'application/rtf');
     else downloadFile(`${safe}.html`, html, 'text/html');
   }, [editor, title]);
+
+  // Download the document as a real, editable Word (.docx) file — opens in
+  // Word, Pages, Google Docs, and LibreOffice. Carries the current page size +
+  // margins into the file's section properties.
+  const handleExportDocx = useCallback(() => {
+    if (!editor) return;
+    const safe = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'document';
+    const blob = htmlToDocxBlob(editor.getHTML(), docSettings.page, {
+      title: docSettings.properties.title || title,
+      author,
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${safe}.docx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }, [editor, title, author, docSettings.page, docSettings.properties.title]);
 
   const handleEmailDoc = useCallback(() => {
     if (!editor) return;
@@ -394,6 +422,7 @@ export default function DocumentWriterPage() {
   // Keep a ref of the current server document id so the debounced autosave
   // effect can read it without resetting on every id change.
   useEffect(() => { documentIdRef.current = documentId; }, [documentId]);
+  useEffect(() => { docSettingsRef.current = docSettings; }, [docSettings]);
 
   // Insert an officer signature block auto-filled from the logged-in user
   // (name / badge / rank / department + today's date).
@@ -682,9 +711,14 @@ export default function DocumentWriterPage() {
         setServerSaveState('saving');
         try {
           const safeName = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'Untitled Document';
-          const blob = new Blob([editor.getHTML()], { type: 'text/html' });
+          // Keep the server copy as an editable .docx, matching the Save path.
+          const blob = htmlToDocxBlob(editor.getHTML(), docSettingsRef.current.page, {
+            title: docSettingsRef.current.properties.title || title,
+            author,
+          });
+          const docxType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
           const formData = new FormData();
-          formData.append('files', new File([blob], `${safeName}.html`, { type: 'text/html' }));
+          formData.append('files', new File([blob], `${safeName}.docx`, { type: docxType }));
           const folderId = searchParams.get('folderId');
           if (folderId) formData.append('folder_id', folderId);
           const token = localStorage.getItem('rmpg_token');
@@ -701,7 +735,7 @@ export default function DocumentWriterPage() {
     };
     editor.on('update', schedule);
     return () => { editor.off('update', schedule); window.clearTimeout(timer); };
-  }, [mode, editor, title, searchParams]);
+  }, [mode, editor, title, author, searchParams]);
 
   // Track the document in the local "recent documents" history (debounced).
   useEffect(() => {
@@ -842,7 +876,7 @@ export default function DocumentWriterPage() {
               onFind: () => setFindMode('find'), onReplace: () => setFindMode('replace'),
               onToggleOutline: () => setShowOutline((v) => !v), onToggleComments: () => setShowComments((v) => !v),
               onAddComment: handleAddComment, onSnapshot: handleSnapshot,
-              onExport: handleExport, onEmail: handleEmailDoc, onPastePlain: handlePastePlain, onCopyAs: handleCopyAs,
+              onExport: handleExport, onExportDocx: handleExportDocx, onEmail: handleEmailDoc, onPastePlain: handlePastePlain, onCopyAs: handleCopyAs,
               onInsertEmbed: handleInsertEmbed, zoom, setZoom, viewMode, setViewMode,
               language, setLanguage, autoSavedAt,
               onToggleSnapshots: () => setShowSnapshots((v) => !v),

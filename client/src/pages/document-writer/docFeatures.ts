@@ -88,6 +88,48 @@ export function isActivePreset(settings: DocSettings, preset: PagePreset): boole
   return settings.page.size === preset.size && settings.page.orientation === preset.orientation;
 }
 
+// ── Margin presets ───────────────────────────────────────────────────────────
+// Margins are stored in CSS px at 96dpi (1in = 96px), matching PageSetup.margins
+// and the print @page rule. Values below are inches × 96. "Custom" carries no
+// margins object — selecting it leaves the current numbers untouched so the
+// per-side inputs act as the manual editor.
+
+export interface MarginPreset {
+  id: 'narrow' | 'standard' | 'legal' | 'formal' | 'custom';
+  label: string;
+  /** Margins in px @96dpi; omitted for "custom" (keep current values). */
+  margins?: { top: number; right: number; bottom: number; left: number };
+}
+
+const IN = 96; // px per inch at 96dpi
+
+export const MARGIN_PRESETS: MarginPreset[] = [
+  { id: 'narrow', label: 'Narrow', margins: { top: 0.5 * IN, right: 0.5 * IN, bottom: 0.5 * IN, left: 0.5 * IN } },
+  { id: 'standard', label: 'Standard', margins: { top: 1 * IN, right: 1 * IN, bottom: 1 * IN, left: 1 * IN } },
+  // Legal filings/pleadings: 1in top/bottom/right, wider 1.5in binding edge.
+  { id: 'legal', label: 'Legal', margins: { top: 1 * IN, right: 1 * IN, bottom: 1 * IN, left: 1.5 * IN } },
+  // Formal letterhead: deeper 1.5in top to clear the masthead, 1.25in sides.
+  { id: 'formal', label: 'Formal', margins: { top: 1.5 * IN, right: 1.25 * IN, bottom: 1 * IN, left: 1.25 * IN } },
+  { id: 'custom', label: 'Custom' },
+];
+
+/** Apply a margin preset (no-op for "custom"). Returns next settings. */
+export function applyMarginPreset(settings: DocSettings, preset: MarginPreset): DocSettings {
+  if (!preset.margins) return settings;
+  return { ...settings, page: { ...settings.page, margins: { ...preset.margins } } };
+}
+
+/** Id of the preset matching the current margins, or 'custom' if none match. */
+export function activeMarginPresetId(settings: DocSettings): MarginPreset['id'] {
+  const m = settings.page.margins;
+  const hit = MARGIN_PRESETS.find(
+    (p) => p.margins &&
+      p.margins.top === m.top && p.margins.right === m.right &&
+      p.margins.bottom === m.bottom && p.margins.left === m.left,
+  );
+  return hit ? hit.id : 'custom';
+}
+
 // ── Export selection only ───────────────────────────────────────────────────
 
 /** The current selection as plain text + an HTML fragment, or null if nothing

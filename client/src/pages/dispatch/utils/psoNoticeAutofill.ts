@@ -15,6 +15,7 @@
 
 import type { CallForService } from '../../../types';
 import { applyCallPdfAutofill } from './callPdfAutofill';
+import { importWithRetry } from '../../../utils/importWithRetry';
 import type {
   NoticeOfCommunicationData,
   NoticeOfCommunicationAttempt,
@@ -96,7 +97,7 @@ function splitStamp(ts?: string): { date: string; time: string } {
  */
 export async function fetchServeJobForCall(callId: string | number): Promise<ServeJobInfo | null> {
   try {
-    const { apiFetch } = await import('../../../hooks/useApi');
+    const { apiFetch } = await importWithRetry(() => import('../../../hooks/useApi'));
     const rows = await apiFetch<any[]>('/process-server?limit=500');
     const list = Array.isArray(rows) ? rows : [];
     const row = list.find((r) => r && r.call_id != null && String(r.call_id) === String(callId));
@@ -197,8 +198,8 @@ export function buildNoticeOfCommunicationFromCall(
 export async function openNoticeOfCommunication(call: CallForService, ctx: PsoNoticeContext): Promise<void> {
   const serveJob = await fetchServeJobForCall(call.id);
   const data = buildNoticeOfCommunicationFromCall(call, ctx, serveJob);
-  const { generateNoticeOfCommunication } = await import('../../../utils/psoNoticePdfGenerator');
+  const { generateNoticeOfCommunication } = await importWithRetry(() => import('../../../utils/psoNoticePdfGenerator'));
   const doc = await generateNoticeOfCommunication(data);
-  const { openPdfDocument } = await import('../../../utils/openPdfDocument');
+  const { openPdfDocument } = await importWithRetry(() => import('../../../utils/openPdfDocument'));
   openPdfDocument(doc, `Notice-of-Communication-${data.callNumber || 'PSO'}.pdf`);
 }
