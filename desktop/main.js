@@ -773,6 +773,50 @@ ipcMain.on('window:maximize', () => {
 ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('app:version', () => app.getVersion());
 
+// ─── Crash-safe printing ─────────────────────────────────────
+// macOS 26's native print panel (NSPrintPanel → PrintingUI →
+// PJCSessionHasApplicationSetPrinter) segfaults when opened from
+// Electron 40 — window.print() hard-crashes the whole app
+// (EXC_BAD_ACCESS in CrBrowserMain). We never open the AppKit panel:
+// every print renders via Chromium's printToPDF (no AppKit) and the
+// PDF is handed to macOS Preview, whose print dialog is stable.
+const { webFrameMain } = require('electron');
+
+const PRINT_OVERRIDE_JS = `(() => {
+  if (window.__rmpgPrintPatched) return;
+  window.__rmpgPrintPatched = true;
+  window.print = () => {
+    try {
+      if (window.electron && window.electron.printToPdf) { window.electron.printToPdf(); return; }
+    } catch (e) {}
+    // Subframes (iframes / window.open) have no preload bridge —
+    // delegate to the top frame, which is patched and bridged.
+    try { window.top.print(); } catch (e) {}
+  };
+})();`;
+
+app.on('web-contents-created', (_event, wc) => {
+  wc.on('did-frame-finish-load', (_ev, _isMainFrame, frameProcessId, frameRoutingId) => {
+    try {
+      const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
+      if (frame) frame.executeJavaScript(PRINT_OVERRIDE_JS).catch(() => {});
+    } catch (e) { /* frame may already be gone */ }
+  });
+});
+
+ipcMain.handle('print:to-pdf', async (event) => {
+  const fs = require('fs');
+  try {
+    const pdf = await event.sender.printToPDF({ printBackground: true });
+    const file = path.join(app.getPath('temp'), `rmpg-print-${Date.now()}.pdf`);
+    await fs.promises.writeFile(file, pdf);
+    const err = await shell.openPath(file); // opens in Preview; user prints from there
+    return { ok: !err, file, error: err || undefined };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 // ─── Recon Connect launcher ───────────────────────────────
 // Spawns the locally-installed toolkit in a detached terminal window. The
 // Python CLI lives outside Flex; we only hand off — no stdio piping, no
