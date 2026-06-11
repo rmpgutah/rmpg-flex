@@ -16,12 +16,25 @@
 
 import { getCachedMapboxAccessToken } from './mapboxApiKey';
 
+/** One computed egress (exit) route from the target location. */
+export interface EgressRoute {
+  label: string;            // 'A' | 'B' | 'C'
+  distanceM: number;        // driving distance, meters
+  via: string;              // first named road on the route (UPPER), '' if unnamed
+  compass: string;          // overall direction of travel from target (N/NE/...)
+  end: [number, number];    // [lng, lat] of the route's far end
+}
+
 export interface LocationMapImage {
   dataUrl: string;   // image/jpeg data URL, white-matted (no alpha)
   width: number;     // intrinsic pixel width
   height: number;    // intrinsic pixel height
   lat: number;
   lng: number;
+  /** Drivable exit routes baked into the raster as cased path lines
+   *  (present only when opts.egressRoutes was set and Directions
+   *  succeeded — best-effort, may be absent/empty). */
+  egress?: EgressRoute[];
 }
 
 export interface LocationMapOptions {
@@ -37,6 +50,9 @@ export interface LocationMapOptions {
   style?: string;
   /** Marker color (6-hex, no '#'). Defaults to RMPG gold. */
   markerColor?: string;
+  /** Compute drivable exit routes (Mapbox Directions, best-effort) and
+   *  bake them into the raster as cased path lines. */
+  egressRoutes?: boolean;
 }
 
 const isFiniteNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
@@ -72,6 +88,105 @@ async function directForwardGeocode(query: string, token: string): Promise<[numb
   return null;
 }
 
+const DIRECTIONS_TIMEOUT_MS = 6000;
+
+/** Google polyline encoding (precision 5) — Mapbox static `path()` overlays
+ *  take encoded polylines, which keeps the URL far under the 8KB cap. */
+function encodePolyline(coords: [number, number][]): string {
+  let out = '';
+  let prevLat = 0;
+  let prevLng = 0;
+  const enc = (v: number) => {
+    let n = v < 0 ? ~(v << 1) : v << 1;
+    let s = '';
+    while (n >= 0x20) {
+      s += String.fromCharCode((0x20 | (n & 0x1f)) + 63);
+      n >>= 5;
+    }
+    return s + String.fromCharCode(n + 63);
+  };
+  for (const [lng, lat] of coords) {
+    const iLat = Math.round(lat * 1e5);
+    const iLng = Math.round(lng * 1e5);
+    out += enc(iLat - prevLat) + enc(iLng - prevLng);
+    prevLat = iLat;
+    prevLng = iLng;
+  }
+  return out;
+}
+
+const COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+function compass8(fromLat: number, fromLng: number, toLat: number, toLng: number): string {
+  const dy = toLat - fromLat;
+  const dx = (toLng - fromLng) * Math.cos((fromLat * Math.PI) / 180);
+  const deg = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+  return COMPASS_8[Math.round(deg / 45) % 8];
+}
+
+/**
+ * Compute up to 3 distinct drivable exit routes away from the target via
+ * Mapbox Directions (driving). Destinations are offset ~550m at the four
+ * cardinal bearings; routes that converge onto the same corridor (far ends
+ * within ~120m of each other) are deduped, shortest kept. Best-effort: any
+ * network/parse failure just drops that bearing.
+ */
+async function fetchEgressRoutes(
+  lat: number,
+  lng: number,
+  token: string,
+): Promise<{ route: EgressRoute; coords: [number, number][] }[]> {
+  const OFFSET_M = 550;
+  const latRad = (lat * Math.PI) / 180;
+  const dests: [number, number][] = [0, 90, 180, 270].map((bDeg) => {
+    const b = (bDeg * Math.PI) / 180;
+    const dLat = (OFFSET_M * Math.cos(b)) / 111320;
+    const dLng = (OFFSET_M * Math.sin(b)) / (111320 * Math.cos(latRad));
+    return [lng + dLng, lat + dLat];
+  });
+
+  const results = await Promise.all(dests.map(async ([dl, da]) => {
+    const url =
+      `https://api.mapbox.com/directions/v5/mapbox/driving/` +
+      `${lng},${lat};${dl},${da}` +
+      `?geometries=geojson&overview=simplified&steps=true&access_token=${encodeURIComponent(token)}`;
+    const res = await fetchWithTimeout(url, DIRECTIONS_TIMEOUT_MS);
+    if (!res || !res.ok) return null;
+    const data = await res.json().catch(() => null);
+    const r = data?.routes?.[0];
+    const coords: unknown = r?.geometry?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2 || !isFiniteNum(r?.distance)) return null;
+    const steps: { name?: string }[] = r?.legs?.[0]?.steps ?? [];
+    const via = (steps.find((s) => s.name && s.name.trim())?.name || '').toUpperCase();
+    return { coords: coords as [number, number][], distanceM: r.distance as number, via };
+  }));
+
+  // Dedupe corridors: two routes whose far ends sit within ~120m share an
+  // egress corridor — keep the shorter.
+  const kept: { coords: [number, number][]; distanceM: number; via: string }[] = [];
+  for (const r of results.filter((x): x is NonNullable<typeof x> => !!x).sort((a, b) => a.distanceM - b.distanceM)) {
+    const end = r.coords[r.coords.length - 1];
+    const clash = kept.some((k) => {
+      const ke = k.coords[k.coords.length - 1];
+      const dy = (ke[1] - end[1]) * 111320;
+      const dx = (ke[0] - end[0]) * 111320 * Math.cos(latRad);
+      return Math.hypot(dx, dy) < 120;
+    });
+    if (!clash) kept.push(r);
+    if (kept.length >= 3) break;
+  }
+
+  return kept.map((r, i) => ({
+    coords: r.coords,
+    route: {
+      label: String.fromCharCode(65 + i),
+      distanceM: r.distanceM,
+      via: r.via,
+      compass: compass8(lat, lng, r.coords[r.coords.length - 1][1], r.coords[r.coords.length - 1][0]),
+      end: r.coords[r.coords.length - 1],
+    },
+  }));
+}
+
 /**
  * Resolve a location to a rasterized static-map image, or null if it can't
  * be produced. Never throws, never blocks indefinitely, never touches auth.
@@ -101,9 +216,27 @@ export async function fetchLocationMapImage(opts: LocationMapOptions): Promise<L
     const h = Math.max(120, Math.min(opts.heightPx ?? 440, 1280));
     const zoom = opts.zoom ?? 15;
     const style = opts.style ?? 'mapbox/streets-v12';
+    // Egress overlays: each route is a cased line (dark 5px under, white
+    // 2.5px over) so it reads over any satellite ground cover. Computed
+    // before the static request so the paths bake into the raster.
+    let egressInfo: EgressRoute[] | undefined;
+    let pathOverlays = '';
+    if (opts.egressRoutes) {
+      const found = await fetchEgressRoutes(lat, lng, token);
+      if (found.length) {
+        egressInfo = found.map((f) => f.route);
+        pathOverlays = found
+          .map((f) => {
+            const enc = encodeURIComponent(encodePolyline(f.coords));
+            return `path-5+0a0a0a-0.9(${enc}),path-2.5+ffffff-1(${enc})`;
+          })
+          .join(',') + ',';
+      }
+    }
+
     const marker = `pin-l+${opts.markerColor ?? 'd4a017'}(${lng},${lat})`;
     const url =
-      `https://api.mapbox.com/styles/v1/${style}/static/${marker}/` +
+      `https://api.mapbox.com/styles/v1/${style}/static/${pathOverlays}${marker}/` +
       `${lng},${lat},${zoom},0/${w}x${h}@2x` +
       `?access_token=${encodeURIComponent(token)}&attribution=true&logo=true`;
 
@@ -136,7 +269,7 @@ export async function fetchLocationMapImage(opts: LocationMapOptions): Promise<L
       reader.readAsDataURL(outBlob);
     });
 
-    return { dataUrl, width: outW, height: outH, lat, lng };
+    return { dataUrl, width: outW, height: outH, lat, lng, egress: egressInfo };
   } catch {
     return null;
   }
