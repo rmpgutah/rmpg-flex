@@ -46,7 +46,7 @@ import { recordPosture } from '../components/records/recordVisuals';
 import { type Trip, tripMiles, tripDurationMin } from '../hooks/useTrips';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, resetActiveFieldCounter } from './pdfGenerator';
-import { fetchLocationMapImage } from './pdfStaticMap';
+import { fetchLocationMapImage, fetchTacticalContext } from './pdfStaticMap';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, formatEnumValue,
@@ -1546,6 +1546,32 @@ function titleCase(str: string): string {
  * without OffscreenCanvas) it returns `y` unchanged and the document
  * continues text-only — never throws, never blanks the page.
  */
+/**
+ * Approximate solar rise/set (suncalc-style NOAA approximation, ±2min) —
+ * computed OFFLINE so the tactical block's light-condition readout never
+ * costs a network call. Returns null inside polar day/night edge cases.
+ */
+function sunTimes(d: Date, lat: number, lng: number): { sunrise: Date; sunset: Date } | null {
+  const rad = Math.PI / 180;
+  const dayMs = 86400000;
+  const J1970 = 2440588;
+  const J2000 = 2451545;
+  const toJulian = (date: Date) => date.valueOf() / dayMs - 0.5 + J1970;
+  const fromJulian = (j: number) => new Date((j + 0.5 - J1970) * dayMs);
+  const n = Math.round(toJulian(d) - J2000 - 0.0009 - -lng / 360);
+  const ds = J2000 + 0.0009 + -lng / 360 + n;
+  const M = rad * (357.5291 + 0.98560028 * (ds - J2000));
+  const C = rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
+  const L = M + C + rad * 102.9372 + Math.PI;
+  const Jtransit = ds + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+  const dec = Math.asin(Math.sin(L) * Math.sin(rad * 23.4397));
+  const phi = rad * lat;
+  const cosH = (Math.sin(rad * -0.833) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec));
+  if (cosH < -1 || cosH > 1) return null;
+  const w = Math.acos(cosH);
+  return { sunrise: fromJulian(Jtransit - w / (2 * Math.PI)), sunset: fromJulian(Jtransit + w / (2 * Math.PI)) };
+}
+
 async function addLocationMapSection(
   doc: jsPDF,
   opts: {
@@ -1560,6 +1586,9 @@ async function addLocationMapSection(
     /** Extra labeled cells appended to the LOCATION DATA strip's top row
      *  (cross street, property, suite, ...). */
     details?: { label: string; value: string; ratio?: number }[];
+    /** Incident timestamp (ISO) driving the light-condition readout —
+     *  defaults to generation time. */
+    eventIso?: string | null;
   },
   y: number,
 ): Promise<number> {
@@ -1570,9 +1599,12 @@ async function addLocationMapSection(
     style: opts.style,
     zoom: opts.zoom,
     egressRoutes: true, // tactical planning overlay — best-effort, may be absent
+    overviewInset: true,
   });
   if (!img) return y;
   const egress = img.egress ?? [];
+  // Support-facility + elevation context (best-effort; null in tests/offline).
+  const tac = await fetchTacticalContext(img.lat, img.lng);
 
   const lx = getLeftX();
   const ffw = getFullFieldWidth(doc);
@@ -1588,7 +1620,7 @@ async function addLocationMapSection(
   const offX = lx + (ffw - drawW) / 2;
 
   // Reserve header (~5) + image + LOCATION DATA grid (2 rows) + pads.
-  y = checkPageBreak(doc, y, drawH + 8 + (egress.length ? 3 : 2) * SPACING.FORM_CELL_H + 8, opts.priority);
+  y = checkPageBreak(doc, y, drawH + 8 + (2 + (egress.length ? 1 : 0) + 2) * SPACING.FORM_CELL_H + 8, opts.priority);
   const sec = openAutoSection(doc, opts.title, y);
   y = sec.contentY;
   const imgY = y;
@@ -1660,6 +1692,63 @@ async function addLocationMapSection(
     doc.setTextColor(20, 20, 20);
     doc.text(`${niceM} M`, bx + barMm + 2, by);
   }
+  // Range rings — dashed perimeter circles at a clean ground distance and
+  // its half, clipped-safe (largest nice radius that fits inside the frame
+  // with 6mm clearance). Gives the reviewer instant standoff distances.
+  {
+    const fitMm = Math.min(drawW, drawH) / 2 - 6;
+    const ringM = [1000, 500, 200, 100, 50].find((m) => m / mPerMm <= fitMm); // halves stay integer-clean
+    if (ringM) {
+      const dash = (doc as unknown as { setLineDashPattern?: (p: number[], ph: number) => void });
+      for (const m of [ringM, ringM / 2]) {
+        const rMm = m / mPerMm;
+        dash.setLineDashPattern?.([1.4, 1.4], 0);
+        doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.55); doc.circle(cxm, cym, rMm);
+        doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.2); doc.circle(cxm, cym, rMm);
+        dash.setLineDashPattern?.([], 0);
+        // Ring label plate at 45° NE on the circle
+        const lx2 = cxm + rMm * Math.SQRT1_2;
+        const ly2 = cym - rMm * Math.SQRT1_2;
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(20, 20, 20);
+        doc.setLineWidth(0.2);
+        const lbl = `${m} M`;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(4.5);
+        const lw = doc.getTextWidth(lbl) + 1.6;
+        doc.rect(lx2 - lw / 2, ly2 - 1.7, lw, 3, 'FD');
+        doc.setTextColor(20, 20, 20);
+        doc.text(lbl, lx2, ly2 + 0.6, { align: 'center' });
+      }
+    }
+  }
+
+  // Overview inset (PiP, top-left) — wide-area streets render framing the
+  // close-up; kept clear of the bottom corners so the Mapbox logo +
+  // attribution baked into the main raster stay visible (TOS).
+  let insetRect: { x: number; y: number; w: number; h: number } | null = null;
+  if (img.insetDataUrl) {
+    const iw = 40;
+    const ih = 26.7;
+    const ix = offX + 2;
+    const iy = imgY + 2;
+    insetRect = { x: ix - 1, y: iy - 1, w: iw + 2, h: ih + 2 };
+    try {
+      doc.setFillColor(255, 255, 255);
+      doc.rect(ix - 0.7, iy - 0.7, iw + 1.4, ih + 1.4, 'F');
+      doc.addImage(img.insetDataUrl, 'JPEG', ix, iy, iw, ih);
+      doc.setDrawColor(20, 20, 20);
+      doc.setLineWidth(0.3);
+      doc.rect(ix, iy, iw, ih);
+      doc.setFillColor(20, 20, 20);
+      doc.rect(ix, iy + ih - 3, 16, 3, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(4.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text('AREA OVERVIEW', ix + 1, iy + ih - 0.9);
+    } catch { /* inset optional */ }
+  }
+
   // EXIT plates — one per computed egress route, placed at the route's far
   // end projected into the frame (Web Mercator around the image center; the
   // static render is centered on the target). Plates clamp to a 4mm inset
@@ -1683,6 +1772,12 @@ async function addLocationMapSection(
       const plateH = 4.2;
       ex = Math.max(offX + 4, Math.min(ex, offX + drawW - plateW - 4));
       ey = Math.max(imgY + 4, Math.min(ey, imgY + drawH - plateH - 4));
+      // Keep plates clear of the overview inset (top-left PiP).
+      if (insetRect &&
+          ex < insetRect.x + insetRect.w && ex + plateW > insetRect.x &&
+          ey < insetRect.y + insetRect.h && ey + plateH > insetRect.y) {
+        ey = insetRect.y + insetRect.h + 1;
+      }
       doc.setFillColor(20, 20, 20);
       doc.setDrawColor(255, 255, 255);
       doc.setLineWidth(0.3);
@@ -1727,9 +1822,53 @@ async function addLocationMapSection(
   if (egress.length) {
     const egressCells: FormCell[] = egress.map((r) => ({
       label: `EGRESS ${r.label}`,
-      value: `${(r.distanceM / 1609.344).toFixed(2)} MI ${r.compass}${r.via ? ` VIA ${r.via}` : ''}`,
+      value:
+        `${(r.distanceM / 1609.344).toFixed(2)} MI ${r.compass}` +
+        `${r.via ? ` VIA ${r.via}` : ''}` +
+        `${r.durationS > 0 ? ` - ${Math.max(1, Math.round(r.durationS / 60))} MIN` : ''}`,
     }));
     y = drawFormRow(doc, egressCells, offX, y, drawW);
+  }
+
+  // ── TACTICAL REVIEW rows — environment + nearest support facilities. ──
+  // Sun times are computed offline from the incident timestamp; elevation
+  // and the MEDICAL/FIRE/LAW ENF cells come from fetchTacticalContext and
+  // degrade to absent when offline.
+  {
+    const evt = opts.eventIso ? new Date(opts.eventIso) : new Date();
+    const evtOk = Number.isFinite(evt.valueOf());
+    const sun = evtOk ? sunTimes(evt, img.lat, img.lng) : null;
+    const fmtMT = (d: Date) =>
+      d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Denver' });
+    let light = EMPTY_FIELD;
+    if (sun && evtOk) {
+      const t = evt.valueOf();
+      const PAD = 30 * 60000;
+      light = t < sun.sunrise.valueOf() - PAD || t > sun.sunset.valueOf() + PAD
+        ? 'DARKNESS'
+        : (t < sun.sunrise.valueOf() + PAD || t > sun.sunset.valueOf() - PAD ? 'TWILIGHT' : 'DAYLIGHT');
+    }
+    const envCells: FormCell[] = [
+      {
+        label: 'ELEVATION',
+        value: tac?.elevationM != null ? `${Math.round(tac.elevationM * 3.28084)} FT (${Math.round(tac.elevationM)} M)` : EMPTY_FIELD,
+      },
+      { label: 'SUNRISE (MT)', value: sun ? fmtMT(sun.sunrise) : EMPTY_FIELD },
+      { label: 'SUNSET (MT)', value: sun ? fmtMT(sun.sunset) : EMPTY_FIELD },
+      { label: 'LIGHT AT REPORT', value: light },
+    ];
+    y = drawFormRow(doc, envCells, offX, y, drawW);
+    if (tac?.pois.length) {
+      const poiCells: FormCell[] = tac.pois.map((p) => {
+        const name = p.name.length > 26 ? p.name.slice(0, 25).trimEnd() + '.' : p.name;
+        return {
+          label: `NEAREST ${p.kind}`,
+          value: `${name} - ${(p.distanceM / 1609.344).toFixed(2)} MI ${p.compass}`,
+          valueFontSize: 6,
+        };
+      });
+      y = drawFormRow(doc, poiCells, offX, y, drawW, SPACING.FORM_CELL_H + 1);
+    }
   }
   y += 1;
   return closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -2333,6 +2472,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     zoom: 17,
     priority: prio,
     details: [{ label: 'CROSS STREET', value: data.cross_street || '' }],
+    eventIso: data.created_at,
   }, y);
 
   // Flags — before Scene Conditions
