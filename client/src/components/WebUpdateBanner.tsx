@@ -23,6 +23,25 @@ import { devLog } from '../utils/devLog';
  * forceRefresh bridge isn't available (older EXE without the new preload).
  */
 
+/** Minimum spacing between SW-update auto-reloads. 2026-06-11 incident:
+ *  /sw.js byte-flapped at the edge, so updatefound→activate→reload looped
+ *  every 1-3 minutes and operators "couldn't scroll" — every reload threw
+ *  them back to the top of the page. A real deploy only needs ONE reload;
+ *  anything more frequent is churn. */
+const RELOAD_COOLDOWN_MS = 5 * 60_000;
+const RELOAD_STAMP_KEY = 'rmpg_last_sw_reload';
+
+function reloadCooldownActive(): boolean {
+  try {
+    const last = parseInt(localStorage.getItem(RELOAD_STAMP_KEY) || '0', 10);
+    return Number.isFinite(last) && Date.now() - last < RELOAD_COOLDOWN_MS;
+  } catch { return false; }
+}
+
+function stampReload(): void {
+  try { localStorage.setItem(RELOAD_STAMP_KEY, String(Date.now())); } catch { /* private mode */ }
+}
+
 /** True when reloading right now would NOT lose unsaved work. */
 function isSafeToReload(): boolean {
   const ae = document.activeElement as HTMLElement | null;
@@ -68,8 +87,18 @@ export default function WebUpdateBanner() {
     // so the update lands the moment the operator finishes their current edit.
     const tryReload = () => {
       if (cancelled) return;
+      // Cooldown FIRST: if we already reloaded for an update in the last
+      // 5 minutes, this "new" update is almost certainly SW churn, not a
+      // real deploy. Stop retrying entirely — the next genuine update (or
+      // a manual refresh) picks it up.
+      if (reloadCooldownActive()) {
+        devLog('[WEB-UPDATE] update detected but reload cooldown active — skipping');
+        if (retryRef.current) clearInterval(retryRef.current);
+        return;
+      }
       if (isSafeToReload()) {
         if (retryRef.current) clearInterval(retryRef.current);
+        stampReload();
         doReload();
       }
     };
