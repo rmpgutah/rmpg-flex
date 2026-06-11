@@ -119,6 +119,9 @@ export default function DlSearchPage() {
   const [leBlock, setLeBlock] = useState('');
   const [deepSweep, setDeepSweep] = useState<{ sources: any[]; total: number } | null>(null);
   const [deepSweepLoading, setDeepSweepLoading] = useState(false);
+  const [mvrSubjects, setMvrSubjects] = useState<DlSubject[] | null>(null);
+  const [mvrLoading, setMvrLoading] = useState(false);
+  const [mvrSource, setMvrSource] = useState('');
   const [showLiveScanner, setShowLiveScanner] = useState(false);
   const [recentScans, setRecentScans] = useState<any[]>(() => {
     try { return JSON.parse(localStorage.getItem('rmpg-dl-recent-scans') || '[]'); } catch { return []; }
@@ -184,10 +187,37 @@ export default function DlSearchPage() {
 
   // After a scan, look the subject up in the records system —
   // exact DL-number match first, then name + DOB.
-  const lookupExistingRecords = useCallback(async (parsed: { last_name?: string; first_name?: string; date_of_birth?: string; dl_number?: string }) => {
+  const lookupExistingRecords = useCallback(async (parsed: { last_name?: string; first_name?: string; date_of_birth?: string; dl_number?: string; dl_state?: string }) => {
     setMatchLoading(true);
     setScanMatches(null);
     setDeepSweep(null);
+    setMvrSubjects(null);
+    setMvrSource('');
+
+    // ── DMV / MVR poll (MicroBilt — the licensed DMV-records channel) ──
+    // Runs on every scan with whatever keys the barcode gave us. The
+    // RapidAPI verify stays one-click (per-query cost) but is prefilled.
+    if (parsed.last_name || (parsed as any).dl_number) {
+      setMvrLoading(true);
+      const body: any = {};
+      if (parsed.first_name) body.firstName = parsed.first_name;
+      if (parsed.last_name) body.lastName = parsed.last_name;
+      if ((parsed as any).dl_number) body.dlNumber = (parsed as any).dl_number;
+      if ((parsed as any).dl_state) body.state = (parsed as any).dl_state;
+      if (parsed.date_of_birth) body.dob = parsed.date_of_birth;
+      apiFetch<DlSearchResponse>('/microbilt/dl/search', { method: 'POST', body: JSON.stringify(body) })
+        .then(d => { setMvrSubjects(d?.subjects || []); setMvrSource(d?.source || ''); })
+        .catch(() => setMvrSubjects([]))
+        .finally(() => setMvrLoading(false));
+    }
+
+    // Prefill the search/verify form from the scan — one-click Verify
+    // (RapidAPI) and instant re-search without retyping.
+    if (parsed.last_name) setLastName(parsed.last_name);
+    if (parsed.first_name) setFirstName(parsed.first_name);
+    if ((parsed as any).dl_number) setDlNumber((parsed as any).dl_number);
+    if ((parsed as any).dl_state) setState((parsed as any).dl_state);
+    if (parsed.date_of_birth) setDob(parsed.date_of_birth);
 
     // Deep sweep covers the hard-to-find sources (statewide warrants,
     // bookings, FIs, gang intel, sex-offender registry, watchlist, alias
@@ -201,6 +231,7 @@ export default function DlSearchPage() {
       const qs = new URLSearchParams({ last: parsed.last_name });
       if (parsed.first_name) qs.set('first', parsed.first_name);
       if (parsed.date_of_birth) qs.set('dob', parsed.date_of_birth);
+      if ((parsed as any).dl_number) qs.set('dl', (parsed as any).dl_number);
       if (personId) qs.set('person_id', String(personId));
       apiFetch<{ sources: any[]; total: number; profile?: any }>(`/dl-records/deep-sweep?${qs}`)
         .then(d => setDeepSweep(d && Array.isArray(d.sources) ? d : { sources: [], total: 0 }))
@@ -1065,8 +1096,14 @@ export default function DlSearchPage() {
             </div>
             <div className="p-4 space-y-3">
               {/* ── Officer-safety + status alerts ── */}
-              {(scanMatches?.some((m: any) => m.active_warrants > 0) || scanAlerts.length > 0 || deepSweep?.sources.some((s: any) => s.danger) || (deepSweep as any)?.profile?.person) && (
+              {(scanMatches?.some((m: any) => m.active_warrants > 0) || scanAlerts.length > 0 || deepSweep?.sources.some((s: any) => s.danger) || (deepSweep as any)?.profile?.person || mvrSubjects?.some(s => /suspend|revok|cancel|denied/i.test(s.dl_status || ''))) && (
                 <div className="space-y-1">
+                  {mvrSubjects?.filter(s => /suspend|revok|cancel|denied/i.test(s.dl_status || '')).map((s, i) => (
+                    <div key={`mvr-${i}`} className="flex items-center gap-2 px-3 py-2 bg-red-900/40 border border-red-600/70 text-red-300 text-[11px] font-bold uppercase tracking-wide">
+                      <AlertTriangle size={14} className="flex-shrink-0 text-red-400" />
+                      ⚠ DMV STATUS: {(s.dl_status || '').toUpperCase()} — {s.last_name}, {s.first_name} · {s.dl_number} ({s.dl_state})
+                    </div>
+                  ))}
                   {(() => {
                     const p = (deepSweep as any)?.profile?.person;
                     if (!p) return null;
@@ -1190,6 +1227,47 @@ export default function DlSearchPage() {
                       ))}
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* ── DMV / MVR (MicroBilt licensed records) ── */}
+              {(mvrLoading || (mvrSubjects && mvrSubjects.length > 0)) && (
+                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
+                  <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1a1a1a]">
+                    <span className="text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+                      <CreditCard size={11} /> DMV / MVR Records
+                      {mvrLoading
+                        ? <Loader2 size={10} className="animate-spin" />
+                        : <span className="text-[#d4a017]">{mvrSubjects!.length} record{mvrSubjects!.length === 1 ? '' : 's'}{mvrSource ? ` · ${mvrSource}` : ''}</span>}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setShowOcrPreview(false); handleVerifyDl(); }}
+                      disabled={verifying || !dlNumber.trim()}
+                      className="px-2 py-1 bg-green-700 hover:bg-green-600 disabled:opacity-40 rounded-sm text-[9px] font-bold text-white"
+                      title="Run DL verification (RapidAPI) with the scanned keys"
+                    >
+                      {verifying ? 'Verifying...' : 'Verify DL'}
+                    </button>
+                  </div>
+                  {mvrSubjects && mvrSubjects.map((s, i) => {
+                    const bad = /suspend|revok|cancel|denied|expired/i.test(s.dl_status || '');
+                    return (
+                      <div key={`${s.dl_number}-${i}`} className={`px-3 py-1.5 border-t border-[#101010] text-[10px] ${bad ? 'bg-red-900/10' : ''}`}>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-white font-bold">{s.last_name}, {s.first_name} {s.middle_name || ''}</span>
+                          <span className={`text-[8px] font-bold uppercase px-1 py-px border ${bad ? 'bg-red-900/50 text-red-300 border-red-600/70' : 'bg-green-900/40 text-green-400 border-green-700/50'}`}>{s.dl_status || 'STATUS N/A'}</span>
+                          <span className="text-[#8899aa] font-mono">{s.dl_number} ({s.dl_state})</span>
+                        </div>
+                        <div className="text-[#8899aa] mt-0.5">
+                          {[s.dl_class && `Class ${s.dl_class}`, s.dl_expiration && `Exp ${formatDate(s.dl_expiration)}`,
+                            s.dl_restrictions && `Restr: ${s.dl_restrictions}`, s.dl_endorsements && `End: ${s.dl_endorsements}`,
+                            s.addresses?.[0]?.address && `${s.addresses[0].address}, ${s.addresses[0].city || ''}`]
+                            .filter(Boolean).join(' · ')}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 

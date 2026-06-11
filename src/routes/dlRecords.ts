@@ -306,8 +306,12 @@ dlRecords.get('/deep-sweep', async (c) => {
       try { return await fn(); } catch { return []; }
     };
 
+    // MVR keys: exact-ish DL number (normalised) when supplied by the scan.
+    const dlNum = (c.req.query('dl') || '').trim().replace(/\W/g, '');
+    const dlLike = dlNum ? `%${dlNum}%` : null;
+
     const [utahWarrants, arrests, cites, fis, gang, trespass, serves, boloRows,
-           sexOffenders, watchlist, aliasHits, caseHits] = await Promise.all([
+           sexOffenders, watchlist, aliasHits, caseHits, mvrCitations, dlHistory] = await Promise.all([
       // Statewide scraped Utah warrants — NOT in the local warrants table.
       soft(() => query<Record<string, any>>(db, `
         SELECT id, first_name, middle_name, last_name, age, city, charges, court_name,
@@ -393,6 +397,26 @@ dlRecords.get('/deep-sweep', async (c) => {
         LEFT JOIN cases c ON c.id = cp.case_id
         WHERE cp.person_name LIKE ? AND cp.person_name LIKE ?
         ORDER BY cp.created_at DESC LIMIT 10`, bothLike, firstAny)),
+      // MVR: driving record keyed on the scanned DL number — citations
+      // store person_dl free-text, so these never surface via person links.
+      dlLike
+        ? soft(() => query<Record<string, any>>(db, `
+            SELECT id, citation_number, citation_date, violation_description, violation,
+                   status, disposition, fine_amount, is_warning, speed_clocked, speed_limit,
+                   dui_related, accident_related, bac_level, vehicle_plate, vehicle_state
+            FROM citations
+            WHERE REPLACE(REPLACE(COALESCE(person_dl, ''), '-', ''), ' ', '') LIKE ?
+            ORDER BY citation_date DESC LIMIT 15`, dlLike))
+        : Promise.resolve([] as Record<string, any>[]),
+      // DL record history — prior fetches/verifications of this license.
+      dlLike
+        ? soft(() => query<Record<string, any>>(db, `
+            SELECT id, dl_number, dl_state, dl_status, dl_class, dl_expiration,
+                   source, fetched_at, updated_at
+            FROM dl_records
+            WHERE REPLACE(REPLACE(dl_number, '-', ''), ' ', '') LIKE ?
+            ORDER BY updated_at DESC LIMIT 10`, dlLike))
+        : Promise.resolve([] as Record<string, any>[]),
     ]);
 
     // ── Full subject profile when a person record is already matched ──
@@ -542,6 +566,30 @@ dlRecords.get('/deep-sweep', async (c) => {
         rows: caseHits.map(ch => ({
           id: ch.case_id || ch.id, dob_match: null, danger: false,
           summary: `${ch.case_number || `CASE-${ch.case_id}`} (${ch.status || 'n/a'}) — ${ch.title || ''} · role: ${ch.role || 'involved'} · as "${ch.person_name}"`,
+        })),
+      },
+      {
+        key: 'mvr', label: 'Driving Record / MVR (by DL number)',
+        danger: mvrCitations.some(m => m.dui_related || m.accident_related),
+        rows: mvrCitations.map(m => {
+          const bits: string[] = [];
+          if (m.dui_related) bits.push(`DUI${m.bac_level ? ` BAC ${m.bac_level}` : ''}`);
+          if (m.accident_related) bits.push('ACCIDENT');
+          if (m.speed_clocked) bits.push(`${m.speed_clocked}/${m.speed_limit || '?'} mph`);
+          if (m.is_warning) bits.push('warning only');
+          return {
+            id: m.id, dob_match: null,
+            danger: !!(m.dui_related || m.accident_related),
+            summary: `#${m.citation_number || m.id} ${m.citation_date || ''} — ${m.violation_description || m.violation || 'violation n/a'}${bits.length ? ` · ${bits.join(' · ')}` : ''}${m.vehicle_plate ? ` · ${m.vehicle_plate} ${m.vehicle_state || ''}` : ''} · ${m.disposition || m.status || ''}`,
+          };
+        }),
+      },
+      {
+        key: 'dl_history', label: 'License Record History', danger: false,
+        rows: dlHistory.map(h => ({
+          id: h.id, dob_match: null,
+          danger: /suspend|revok|cancel|denied/i.test(h.dl_status || ''),
+          summary: `${h.dl_number} (${h.dl_state}) — ${h.dl_status || 'status n/a'} · class ${h.dl_class || '?'} · exp ${h.dl_expiration || 'n/a'} · via ${h.source || 'n/a'} ${String(h.fetched_at || h.updated_at || '').slice(0, 10)}`,
         })),
       },
     ].filter(s => s.rows.length > 0);
