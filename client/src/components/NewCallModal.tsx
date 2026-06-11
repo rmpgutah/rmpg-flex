@@ -193,7 +193,6 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const [vehicleSearchResults, setVehicleSearchResults] = useState<any[]>([]);
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
-  const [callerAddressUnit, setCallerAddressUnit] = useState('');
   const personSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vehicleSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const personDropdownRef = useRef<HTMLDivElement>(null);

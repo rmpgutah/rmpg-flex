@@ -564,7 +564,9 @@
 //   declared after the `if (!isOpen) return null` early return (opening the
 //   modal changed the hook count → React #310 crashed the page); same class
 //   fixed in ReconConnectPage (effects below the role-gate early return).
-const CACHE_NAME = 'rmpg-flex-v876';
+// v877: remove duplicate callerAddressUnit useState in NewCallModal — the
+//   #1128/#1130 squash race landed the same fix twice (broke client tsc/build).
+const CACHE_NAME = 'rmpg-flex-v877';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

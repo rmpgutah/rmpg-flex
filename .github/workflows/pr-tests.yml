@@ -47,6 +47,8 @@ jobs:
     name: Hooks-after-early-return guard
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
