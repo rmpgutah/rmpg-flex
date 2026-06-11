@@ -47,6 +47,7 @@ import { type Trip, tripMiles, tripDurationMin } from '../hooks/useTrips';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, resetActiveFieldCounter } from './pdfGenerator';
 import { fetchLocationMapImage, fetchTacticalContext } from './pdfStaticMap';
+import { toMgrs } from './mgrs';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, formatEnumValue,
@@ -1620,7 +1621,7 @@ async function addLocationMapSection(
   const offX = lx + (ffw - drawW) / 2;
 
   // Reserve header (~5) + image + LOCATION DATA grid (2 rows) + pads.
-  y = checkPageBreak(doc, y, drawH + 8 + (2 + (egress.length ? 1 : 0) + 2) * SPACING.FORM_CELL_H + 8, opts.priority);
+  y = checkPageBreak(doc, y, drawH + 8 + (2 + (egress.length ? 1 : 0) + 3) * SPACING.FORM_CELL_H + 10, opts.priority);
   const sec = openAutoSection(doc, opts.title, y);
   y = sec.contentY;
   const imgY = y;
@@ -1667,6 +1668,31 @@ async function addLocationMapSection(
     doc.setFontSize(5.5);
     doc.setTextColor(20, 20, 20);
     doc.text('N', nx, ny + 2.4, { align: 'center' });
+  }
+
+  // SWAT side designations — ALPHA/BRAVO/CHARLIE/DELTA plates centered on
+  // each frame edge with the azimuth of that side. Static renders are
+  // north-up, so ALPHA (the reference side) is fixed to the north edge —
+  // standard side-lettering proceeds clockwise.
+  {
+    const sides: { lbl: string; x: number; y: number }[] = [
+      { lbl: 'A - 000\u00B0', x: cxm, y: imgY + 3.4 },
+      { lbl: 'B - 090\u00B0', x: offX + drawW - 8.5, y: cym },
+      { lbl: 'C - 180\u00B0', x: cxm, y: imgY + drawH - 3.4 },
+      { lbl: 'D - 270\u00B0', x: offX + 8.5, y: cym },
+    ];
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5);
+    for (const s of sides) {
+      const w2 = doc.getTextWidth(s.lbl) + 2.4;
+      const h2 = 3.4;
+      doc.setFillColor(20, 20, 20);
+      doc.setDrawColor(255, 255, 255);
+      doc.setLineWidth(0.25);
+      doc.rect(s.x - w2 / 2, s.y - h2 / 2, w2, h2, 'FD');
+      doc.setTextColor(255, 255, 255);
+      doc.text(s.lbl, s.x, s.y + 1.1, { align: 'center' });
+    }
   }
 
   // Ground-truth scale bar (bottom-left). Mapbox styles use 512px tiles, so
@@ -1788,6 +1814,38 @@ async function addLocationMapSection(
       doc.text(`EXIT ${route.label}`, ex + plateW / 2, ey + plateH - 1.4, { align: 'center' });
     }
   }
+
+  // Hazard / sensitive-occupancy symbols — lettered diamonds (S school,
+  // D daycare, F fuel) at each site's projected position. Only plotted
+  // when the site falls inside the frame; the HAZARDS data row below
+  // carries the full name/distance/bearing either way.
+  if (tac?.hazards.length) {
+    const world = 512 * Math.pow(2, zoomUsed);
+    const mercX = (lngV: number) => world * (lngV / 360 + 0.5);
+    const mercY = (latV: number) => {
+      const phi = (latV * Math.PI) / 180;
+      return world * (0.5 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / (2 * Math.PI));
+    };
+    const cX = mercX(img.lng);
+    const cY = mercY(img.lat);
+    const pxPerMmX = (img.width / 2) / drawW;
+    const pxPerMmY = (img.height / 2) / drawH;
+    for (const hz of tac.hazards) {
+      const hx = cxm + (mercX(hz.lng) - cX) / pxPerMmX;
+      const hy = cym + (mercY(hz.lat) - cY) / pxPerMmY;
+      const R2 = 2.6;
+      if (hx < offX + R2 + 1 || hx > offX + drawW - R2 - 1 || hy < imgY + R2 + 1 || hy > imgY + drawH - R2 - 1) continue;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(20, 20, 20);
+      doc.setLineWidth(0.35);
+      doc.triangle(hx, hy - R2, hx - R2, hy, hx + R2, hy, 'FD');
+      doc.triangle(hx - R2, hy, hx + R2, hy, hx, hy + R2, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(4.8);
+      doc.setTextColor(20, 20, 20);
+      doc.text(hz.letter, hx, hy + 0.85, { align: 'center' });
+    }
+  }
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   y = imgY + drawH;
@@ -1809,11 +1867,13 @@ async function addLocationMapSection(
     { label: 'TARGET ADDRESS', value: opts.caption || opts.address || '', ratio: 2.6 },
     ...(opts.details || []).map((c) => ({ label: c.label, value: c.value || EMPTY_FIELD, ratio: c.ratio ?? 1 })),
   ];
+  const frameM = Math.round(mPerMm * drawW);
   const botCells: FormCell[] = [
-    { label: 'LATITUDE (DD)', value: img.lat.toFixed(6) },
-    { label: 'LONGITUDE (DD)', value: img.lng.toFixed(6) },
-    { label: 'GRID REF (DMS)', value: `${toDMS(img.lat, 'N', 'S')}  ${toDMS(img.lng, 'E', 'W')}`, ratio: 1.7 },
-    { label: 'APPROX SCALE', value: `1:${Math.round(mPerMm * 1000).toLocaleString('en-US')}` },
+    { label: 'LATITUDE (DD)', value: img.lat.toFixed(6), ratio: 0.9 },
+    { label: 'LONGITUDE (DD)', value: img.lng.toFixed(6), ratio: 0.95 },
+    { label: 'GRID (DMS)', value: `${toDMS(img.lat, 'N', 'S')} ${toDMS(img.lng, 'E', 'W')}`, ratio: 1.55, valueFontSize: 6 },
+    { label: 'GRID (MGRS)', value: toMgrs(img.lat, img.lng) || EMPTY_FIELD, ratio: 1.35, valueFontSize: 6 },
+    { label: 'SCALE / FRAME', value: `1:${Math.round(mPerMm * 1000).toLocaleString('en-US')} / ${frameM} M`, ratio: 1.1, valueFontSize: 6 },
   ];
   y = drawFormRow(doc, topCells, offX, y, drawW);
   y = drawFormRow(doc, botCells, offX, y, drawW);
@@ -1870,6 +1930,17 @@ async function addLocationMapSection(
         };
       });
       y = drawFormRow(doc, poiCells, offX, y, drawW, SPACING.FORM_CELL_H + 1);
+    }
+    if (tac?.hazards.length) {
+      const hazCells: FormCell[] = tac.hazards.map((h) => {
+        const name = h.name.length > 22 ? h.name.slice(0, 21).trimEnd() + '.' : h.name;
+        return {
+          label: `HAZARD ${h.letter} - ${h.kind}`,
+          value: `${name} - ${h.distanceM < 1000 ? `${Math.round(h.distanceM)} M` : `${(h.distanceM / 1609.344).toFixed(2)} MI`} ${h.compass}`,
+          valueFontSize: 6,
+        };
+      });
+      y = drawFormRow(doc, hazCells, offX, y, drawW, SPACING.FORM_CELL_H + 1);
     }
   }
   y += 1;

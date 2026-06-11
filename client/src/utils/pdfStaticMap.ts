@@ -203,9 +203,23 @@ export interface TacticalPoi {
   compass: string;          // bearing from target (N/NE/...)
 }
 
+/** Plottable hazard / sensitive-occupancy site near the target. */
+export interface TacticalHazard {
+  kind: 'SCHOOL' | 'DAYCARE' | 'FUEL';
+  letter: string;           // map-symbol letter: S / D / F
+  name: string;             // UPPER
+  lat: number;
+  lng: number;
+  distanceM: number;
+  compass: string;
+}
+
 export interface TacticalContext {
   elevationM?: number;      // ground elevation at target (terrain contour)
   pois: TacticalPoi[];
+  /** Schools / daycares / fuel within ~700m — sensitive occupancies and
+   *  fire/explosion hazards a planner must clear or stage away from. */
+  hazards: TacticalHazard[];
 }
 
 function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -264,8 +278,38 @@ export async function fetchTacticalContext(lat: number, lng: number): Promise<Ta
       };
     }));
 
-    const [elevationM, pois] = await Promise.all([elevP, poiP]);
-    return { elevationM, pois: pois.filter((p): p is TacticalPoi => !!p) };
+    const HAZARD_QUERIES: { kind: TacticalHazard['kind']; letter: string; q: string }[] = [
+      { kind: 'SCHOOL', letter: 'S', q: 'school' },
+      { kind: 'DAYCARE', letter: 'D', q: 'daycare' },
+      { kind: 'FUEL', letter: 'F', q: 'gas station' },
+    ];
+    const HAZARD_RADIUS_M = 700;
+    const hazP = Promise.all(HAZARD_QUERIES.map(async ({ kind, letter, q }): Promise<TacticalHazard[]> => {
+      const url =
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json` +
+        `?proximity=${lng},${lat}&types=poi&limit=3&country=us&access_token=${encodeURIComponent(token)}`;
+      const res = await fetchWithTimeout(url, GEOCODE_TIMEOUT_MS);
+      if (!res || !res.ok) return [];
+      const data = await res.json().catch(() => null);
+      const feats: { text?: string; center?: [number, number] }[] = data?.features ?? [];
+      return feats
+        .filter((f) => f.text && Array.isArray(f.center) && isFiniteNum(f.center[0]) && isFiniteNum(f.center[1]))
+        .map((f) => ({
+          kind, letter,
+          name: String(f.text).toUpperCase(),
+          lat: f.center![1], lng: f.center![0],
+          distanceM: haversineM(lat, lng, f.center![1], f.center![0]),
+          compass: compass8(lat, lng, f.center![1], f.center![0]),
+        }))
+        .filter((h) => h.distanceM <= HAZARD_RADIUS_M);
+    }));
+
+    const [elevationM, pois, hazNested] = await Promise.all([elevP, poiP, hazP]);
+    return {
+      elevationM,
+      pois: pois.filter((p): p is TacticalPoi => !!p),
+      hazards: hazNested.flat().sort((a, b) => a.distanceM - b.distanceM).slice(0, 4),
+    };
   } catch {
     return null;
   }
