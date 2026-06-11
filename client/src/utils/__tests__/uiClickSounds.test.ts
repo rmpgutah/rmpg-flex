@@ -1,45 +1,14 @@
-// Tests the gates around UI click ticks — toggle, silent mode,
-// throttle, interactive-target filtering. WebAudio is mocked (jsdom
-// has none) and the module is re-imported per test so its shared
-// AudioContext / throttle state can't leak between cases.
+// Tests the gates around UI click ticks — toggle, silent mode, throttle,
+// interactive-target filtering. Clicks are SAMPLE-ONLY: the module plays
+// the click.wav asset via soundAssets and must build no oscillator
+// fallback (an asset miss is intentional silence). The asset layer is
+// mocked; the module is re-imported per test so throttle state can't leak.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Force the synth fallback path — the sampled-asset layer is tested
-// separately (it would otherwise create its own AudioContext and
-// fetch WAVs, neither of which exist in jsdom).
+const playSoundAsset = vi.fn();
 vi.mock('../soundAssets', () => ({
-  playSoundAsset: vi.fn(() => false),
-  preloadSoundAssets: vi.fn(),
+  playSoundAsset: (...args: unknown[]) => playSoundAsset(...args),
 }));
-
-function mockAudioContext() {
-  const node = () => ({
-    connect: vi.fn(),
-    gain: { value: 0, setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
-    frequency: { value: 0, setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
-    Q: { value: 0 },
-    type: '',
-    start: vi.fn(),
-    stop: vi.fn(),
-  });
-  const instances: any[] = [];
-  const ctor = vi.fn().mockImplementation(function (this: unknown) {
-    const inst = {
-      state: 'running',
-      currentTime: 0,
-      destination: {},
-      resume: vi.fn(),
-      close: vi.fn(),
-      createGain: vi.fn(node),
-      createBiquadFilter: vi.fn(node),
-      createOscillator: vi.fn(node),
-    };
-    instances.push(inst);
-    return inst;
-  });
-  (window as any).AudioContext = ctor;
-  return { ctor, instances };
-}
 
 async function loadModule() {
   vi.resetModules();
@@ -49,8 +18,11 @@ async function loadModule() {
 describe('uiClickSounds', () => {
   beforeEach(() => {
     localStorage.clear();
+    playSoundAsset.mockReset();
+    playSoundAsset.mockReturnValue(true);
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);
+    delete (window as any).AudioContext;
   });
 
   it('defaults to enabled and persists the toggle', async () => {
@@ -62,59 +34,61 @@ describe('uiClickSounds', () => {
     expect(m.clickSoundsEnabled()).toBe(true);
   });
 
-  it('ticks when enabled and audible', async () => {
-    const { ctor } = mockAudioContext();
+  it('plays the sampled click when enabled and audible', async () => {
     const m = await loadModule();
     m.playUiClick();
-    expect(ctor).toHaveBeenCalledTimes(1);
+    expect(playSoundAsset).toHaveBeenCalledTimes(1);
+    expect(playSoundAsset).toHaveBeenCalledWith('click');
   });
 
-  it('reuses one shared AudioContext and throttles rapid ticks', async () => {
-    const { ctor, instances } = mockAudioContext();
+  it('stays silent (no synth fallback) when the asset is not ready', async () => {
+    const ctor = vi.fn();
+    (window as any).AudioContext = ctor;
+    playSoundAsset.mockReturnValue(false); // asset miss
     const m = await loadModule();
-
     m.playUiClick();
-    expect(ctor).toHaveBeenCalledTimes(1);
-    const oscAfterFirst = instances[0].createOscillator.mock.calls.length;
+    expect(playSoundAsset).toHaveBeenCalledTimes(1);
+    expect(ctor).not.toHaveBeenCalled(); // no oscillator graph, ever
+  });
 
-    m.playUiClick(); // within 35ms throttle — no new oscillator
-    expect(instances[0].createOscillator.mock.calls.length).toBe(oscAfterFirst);
+  it('throttles rapid ticks', async () => {
+    const m = await loadModule();
+    m.playUiClick();
+    m.playUiClick(); // within 35ms throttle
+    expect(playSoundAsset).toHaveBeenCalledTimes(1);
 
     vi.setSystemTime(1_000_200); // past throttle
     m.playUiClick();
-    expect(ctor).toHaveBeenCalledTimes(1); // context reused, not rebuilt
-    expect(instances[0].createOscillator.mock.calls.length).toBeGreaterThan(oscAfterFirst);
+    expect(playSoundAsset).toHaveBeenCalledTimes(2);
   });
 
   it('is silent when toggled off or in silent audio mode', async () => {
-    const { ctor } = mockAudioContext();
     const m = await loadModule();
 
     m.setClickSoundsEnabled(false);
     m.playUiClick();
-    expect(ctor).not.toHaveBeenCalled();
+    expect(playSoundAsset).not.toHaveBeenCalled();
 
     m.setClickSoundsEnabled(true);
     localStorage.setItem('rmpg_unit_audio_mode', 'silent');
     m.playUiClick();
-    expect(ctor).not.toHaveBeenCalled();
+    expect(playSoundAsset).not.toHaveBeenCalled();
   });
 
   it('document listener ticks for buttons but not plain divs', async () => {
-    const { ctor } = mockAudioContext();
     const m = await loadModule();
     m.initUiClickSounds();
 
     const btn = document.createElement('button');
     document.body.appendChild(btn);
     btn.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
-    expect(ctor).toHaveBeenCalledTimes(1);
+    expect(playSoundAsset).toHaveBeenCalledTimes(1);
 
     vi.setSystemTime(1_000_500);
     const div = document.createElement('div');
     document.body.appendChild(div);
     div.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
-    expect(ctor).toHaveBeenCalledTimes(1); // unchanged
+    expect(playSoundAsset).toHaveBeenCalledTimes(1); // unchanged
 
     btn.remove();
     div.remove();

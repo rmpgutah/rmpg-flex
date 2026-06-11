@@ -41,12 +41,39 @@ const buffers = new Map<string, AudioBuffer>();
 const failed = new Set<string>();
 const loading = new Set<string>();
 
+// Hearing-safety ceiling: no sample may ever play above this gain,
+// regardless of what a caller (or a bad localStorage remap) requests.
+// WAVs are peak-normalized to -1 dBFS, so gain is the absolute level.
+const MAX_GAIN = 0.5;
+
+let limiter: DynamicsCompressorNode | null = null;
+
 function getCtx(): AudioContext | null {
   if (ctx && ctx.state !== 'closed') return ctx;
   const Ctx = window.AudioContext || (window as any).webkitAudioContext;
   if (!Ctx) return null;
   ctx = new Ctx();
+  limiter = null;
   return ctx;
+}
+
+/** Shared output limiter — clamps transient spikes (overlapping plays,
+ *  loud assets dropped in by hand) so the output can never slam. */
+function getOutput(ac: AudioContext): AudioNode {
+  if (limiter) return limiter;
+  try {
+    const comp = ac.createDynamicsCompressor();
+    comp.threshold.value = -18; // start taming well below full scale
+    comp.knee.value = 12;
+    comp.ratio.value = 12;      // limiter-like
+    comp.attack.value = 0.002;
+    comp.release.value = 0.15;
+    comp.connect(ac.destination);
+    limiter = comp;
+    return comp;
+  } catch {
+    return ac.destination; // ancient WebAudio — play unlimited rather than not at all
+  }
 }
 
 function load(key: string): void {
@@ -83,9 +110,9 @@ export function startSoundAsset(key: string, gain: number): SoundHandle | null {
     const src = ac.createBufferSource();
     src.buffer = buf;
     const g = ac.createGain();
-    g.gain.value = gain;
+    g.gain.value = Math.min(Math.max(gain, 0), MAX_GAIN);
     src.connect(g);
-    g.connect(ac.destination);
+    g.connect(getOutput(ac));
     src.start();
     return {
       stop: () => {
