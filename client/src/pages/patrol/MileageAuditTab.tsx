@@ -48,6 +48,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import IconButton from '../../components/IconButton';
 import { useToast } from '../../components/ToastProvider';
+import TripManagerSection from './TripManagerSection';
 import { computeChainGaps, computeNewRowDistance, chainRowKey } from './mileageChainMath';
 import { useAuth } from '../../context/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -974,6 +975,18 @@ export default function MileageAuditTab() {
           )}
         </div>
       )}
+
+      {/* Full trip CRUD — every logged trip (dispatch unit_trips + nav
+          nav_trip_log) with add/edit/delete for admin/manager/supervisor.
+          Mutations refresh the chain + audit panels via refresh(). */}
+      <TripManagerSection
+        officerId={officerId}
+        unitId={unitId}
+        from={from}
+        to={to}
+        canEdit={canFix}
+        onChanged={refresh}
+      />
 
       {tripLog && (
         <div className="px-3 py-2 bg-green-950/20 border border-green-700/50 text-[11px] text-green-300 flex items-center gap-2">

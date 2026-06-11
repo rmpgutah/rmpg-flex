@@ -991,13 +991,66 @@ pm.get('/trip-log/generate', async (c) => {
     const utParams: unknown[] = [from, to];
     if (Number.isFinite(officerId)) { utWhere.push('officer_id = ?'); utParams.push(officerId); }
     else if (Number.isFinite(unitId)) { utWhere.push('unit_id = ?'); utParams.push(unitId); }
-    const unitTrips = await query<{ start_time: string | null; end_time: string | null; start_mileage: number | null; end_mileage: number | null }>(db, `
-      SELECT start_time, end_time, start_mileage, end_mileage
+    const unitTrips = await query<{
+      start_time: string | null; end_time: string | null;
+      start_mileage: number | null; end_mileage: number | null;
+      distance_m: number | null; duration_s: number | null; max_speed: number | null;
+      harsh_accel_count: number | null; harsh_brake_count: number | null; harsh_corner_count: number | null;
+    }>(db, `
+      SELECT start_time, end_time, start_mileage, end_mileage,
+             distance_m, duration_s, max_speed,
+             harsh_accel_count, harsh_brake_count, harsh_corner_count
         FROM unit_trips
        WHERE ${utWhere.join(' AND ')}
        ORDER BY start_time ASC
        LIMIT 1000
     `, ...utParams);
+
+    // CALL_RESPONSE unit_trips that don't correspond to a CFS row already
+    // in the report (the CFS path above only sees calls with mileage; the
+    // dispatch trip engine logs the drive regardless). Without these, a
+    // response drive on a mileage-less call silently vanished from PS-211.
+    const seenCallIds = new Set(responseRows.map((r) => r.call_id).filter((id) => id != null));
+    const utRespWhere: string[] = ["status = 'closed'", "trip_type = 'call_response'", 'date(start_time) >= date(?)', 'date(start_time) <= date(?)'];
+    const utRespParams: unknown[] = [from, to];
+    if (Number.isFinite(officerId)) { utRespWhere.push('officer_id = ?'); utRespParams.push(officerId); }
+    else if (Number.isFinite(unitId)) { utRespWhere.push('unit_id = ?'); utRespParams.push(unitId); }
+    const utResponses = await query<Record<string, unknown>>(db, `
+      SELECT id, call_id, call_number, start_time, end_time,
+             start_mileage, end_mileage, distance_m, duration_s, max_speed,
+             harsh_accel_count, harsh_brake_count, harsh_corner_count
+        FROM unit_trips
+       WHERE ${utRespWhere.join(' AND ')}
+       ORDER BY start_time ASC
+       LIMIT 1000
+    `, ...utRespParams);
+    for (const ut of utResponses) {
+      if (ut.call_id != null && seenCallIds.has(ut.call_id as number)) continue;
+      const start = ut.start_time as string;
+      if (!start) continue;
+      const end = (ut.end_time as string) || start;
+      const distM = ut.distance_m != null ? Number(ut.distance_m) : 0;
+      const sm = ut.start_mileage != null ? Number(ut.start_mileage) : null;
+      const em = ut.end_mileage != null ? Number(ut.end_mileage) : null;
+      const odoDist = sm != null && em != null ? Math.max(0, em - sm) : 0;
+      responseRows.push({
+        type: 'RESPONSE',
+        call_id: (ut.call_id as number) ?? null,
+        call_number: (ut.call_number as string) ?? null,
+        start,
+        end,
+        distance_mi: round1(odoDist > 0 ? odoDist : distM / 1609.34),
+        duration_min: ut.duration_s != null ? Math.round(Number(ut.duration_s) / 60) : 0,
+        mileage_from: sm,
+        mileage_to: em,
+        max_mph: ut.max_speed != null ? Math.round(Number(ut.max_speed)) : 0,
+        harsh: {
+          a: Number(ut.harsh_accel_count ?? 0),
+          b: Number(ut.harsh_brake_count ?? 0),
+          c: Number(ut.harsh_corner_count ?? 0),
+        },
+      });
+    }
     // Pair a nav_trip_log row with the unit_trips row whose start_time is
     // within ±2 minutes — the two systems segment differently but converge
     // on the same real trip. We mark each unit_trips row as consumed so a
@@ -1059,28 +1112,45 @@ pm.get('/trip-log/generate', async (c) => {
     // Any unit_trips PATROL rows that didn't pair with a nav_trip_log entry
     // (the dispatch trip system tracked the drive, nav didn't) still belong
     // in the report so mileage continuity isn't broken.
+    // Include them even when no odometer was stamped (the 2026-06 live data
+    // has ZERO mileage-stamped patrol unit_trips — the old `continue` made
+    // every dispatch-tracked patrol drive vanish). Distance falls back to
+    // the GPS-accumulated distance_m; speed/harsh come from the trip engine.
+    const toMs = (s: string) => new Date(s.replace(' ', 'T') + (/[zZ]|[+-]\d{2}:?\d{2}$/.test(s) ? '' : 'Z')).getTime();
+    const navWindows = patrolRows.map((r) => ({ s: toMs(r.start), e: toMs(r.end) }));
     for (let i = 0; i < unitTrips.length; i++) {
       if (consumed[i]) continue;
       const ut = unitTrips[i];
-      if (!ut.start_time || (ut.start_mileage == null && ut.end_mileage == null)) continue;
+      if (!ut.start_time) continue;
       const start = ut.start_time;
       const end = ut.end_time || start;
-      const distance = ut.start_mileage != null && ut.end_mileage != null
+      // Same-drive guard: if this trip's midpoint falls inside a nav trip's
+      // window, the drive is already on the report — don't double-count.
+      const mid = (toMs(start) + toMs(end)) / 2;
+      if (navWindows.some((w) => mid >= w.s && mid <= w.e)) continue;
+      const odoDist = ut.start_mileage != null && ut.end_mileage != null
         ? Math.max(0, Number(ut.end_mileage) - Number(ut.start_mileage))
         : 0;
-      const duration = Math.max(0, Math.round((new Date(end.replace(' ', 'T') + 'Z').getTime() - new Date(start.replace(' ', 'T') + 'Z').getTime()) / 60000));
+      const gpsDist = ut.distance_m != null ? Number(ut.distance_m) / 1609.34 : 0;
+      const duration = ut.duration_s != null
+        ? Math.round(Number(ut.duration_s) / 60)
+        : Math.max(0, Math.round((new Date(end.replace(' ', 'T') + 'Z').getTime() - new Date(start.replace(' ', 'T') + 'Z').getTime()) / 60000));
       patrolRows.push({
         type: 'PATROL',
         call_id: null,
         call_number: null,
         start,
         end,
-        distance_mi: round1(distance),
+        distance_mi: round1(odoDist > 0 ? odoDist : gpsDist),
         duration_min: duration,
         mileage_from: ut.start_mileage,
         mileage_to: ut.end_mileage,
-        max_mph: 0,
-        harsh: { a: 0, b: 0, c: 0 },
+        max_mph: ut.max_speed != null ? Math.round(Number(ut.max_speed)) : 0,
+        harsh: {
+          a: Number(ut.harsh_accel_count ?? 0),
+          b: Number(ut.harsh_brake_count ?? 0),
+          c: Number(ut.harsh_corner_count ?? 0),
+        },
       });
     }
 
@@ -1127,6 +1197,205 @@ pm.get('/trip-log/generate', async (c) => {
   } catch (err) {
     console.error('GET /patrol/trip-log/generate failed:', err);
     return c.json({ error: 'Failed to generate trip log', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// TRIP MANAGEMENT — full add / edit / delete over both trip
+// systems (unit_trips + nav_trip_log) for the Patrol surface.
+// Admin/manager/supervisor only; every mutation writes a
+// mileage_audit row (entry_table = the trip table) so the PS-211
+// audit trail covers manual trip surgery too.
+// ════════════════════════════════════════════════════════════
+
+const TRIP_TABLES: Record<string, string> = { unit: 'unit_trips', nav: 'nav_trip_log' };
+
+function requireTripEditor(c: { get: (k: 'user') => unknown }): { id: number; role: string } | null {
+  const user = c.get('user') as { id: number; role: string } | undefined;
+  if (!user || !['admin', 'manager', 'supervisor'].includes(user.role)) return null;
+  return user;
+}
+
+async function auditTripChange(
+  db: D1Database,
+  opts: { table: string; entryId: number; field: string; before: unknown; after: unknown; reason: string; userId: number; officerId?: number | null; unitId?: number | null },
+): Promise<void> {
+  try {
+    await db.prepare(
+      `INSERT INTO mileage_audit (scope_type, scope_key, officer_id, unit_id, entry_table, entry_id, field, before_value, after_value, delta, cascade_count, reason, created_by)
+       VALUES ('trip', ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, ?)`,
+    ).bind(
+      `trip:${opts.table}:${opts.entryId}`,
+      opts.officerId ?? null, opts.unitId ?? null,
+      opts.table, opts.entryId, opts.field,
+      opts.before == null ? null : String(opts.before),
+      opts.after == null ? null : String(opts.after),
+      opts.reason, opts.userId,
+    ).run();
+  } catch (e) {
+    console.warn('trip audit write failed (continuing):', (e as Error)?.message);
+  }
+}
+
+// GET /trips — merged editable trip list for the management table.
+pm.get('/trips', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = c.req.query('officer_id') ? parseInt(c.req.query('officer_id')!, 10) : NaN;
+    const unitId = c.req.query('unit_id') ? parseInt(c.req.query('unit_id')!, 10) : NaN;
+    const from = c.req.query('from') || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const to = c.req.query('to') || new Date().toISOString().slice(0, 10);
+
+    const utWhere: string[] = ['date(start_time) >= date(?)', 'date(start_time) <= date(?)'];
+    const utParams: unknown[] = [from, to];
+    if (Number.isFinite(officerId)) { utWhere.push('officer_id = ?'); utParams.push(officerId); }
+    if (Number.isFinite(unitId)) { utWhere.push('unit_id = ?'); utParams.push(unitId); }
+    const ut = await query<Record<string, unknown>>(db, `
+      SELECT id, 'unit' as source, trip_type, status, call_id, call_number,
+             officer_id, unit_id, start_time, end_time,
+             start_mileage, end_mileage, distance_m, duration_s, max_speed
+        FROM unit_trips WHERE ${utWhere.join(' AND ')}
+       ORDER BY start_time DESC LIMIT 500`, ...utParams);
+
+    const navWhere: string[] = ['date(start_time) >= date(?)', 'date(start_time) <= date(?)'];
+    const navParams: unknown[] = [from, to];
+    if (Number.isFinite(officerId)) { navWhere.push('officer_id = ?'); navParams.push(officerId); }
+    if (Number.isFinite(unitId)) { navWhere.push('unit_id = ?'); navParams.push(unitId); }
+    const nav = await query<Record<string, unknown>>(db, `
+      SELECT id, 'nav' as source, 'patrol' as trip_type, status, NULL as call_id, NULL as call_number,
+             officer_id, unit_id, start_time, end_time,
+             NULL as start_mileage, NULL as end_mileage,
+             distance_miles * 1609.34 as distance_m, duration_seconds as duration_s,
+             max_speed_mph as max_speed
+        FROM nav_trip_log WHERE ${navWhere.join(' AND ')}
+       ORDER BY start_time DESC LIMIT 500`, ...navParams);
+
+    const trips = [...ut, ...nav]
+      .map((t) => ({ ...t, distance_mi: t.distance_m != null ? Math.round((Number(t.distance_m) / 1609.34) * 10) / 10 : null } as Record<string, unknown>))
+      .sort((a, b) => (String(a.start_time) < String(b.start_time) ? 1 : -1));
+    return c.json({ trips });
+  } catch (err) {
+    console.error('GET /patrol/trips failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// POST /trips — manually add a trip (always unit_trips; close_reason 'manual').
+pm.post('/trips', async (c) => {
+  try {
+    const user = requireTripEditor(c);
+    if (!user) return c.json({ error: 'Admin / manager / supervisor only', code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+    if (!body.start_time) return c.json({ error: 'start_time required' }, 400);
+    if (!body.reason || !String(body.reason).trim()) return c.json({ error: 'reason required for the audit trail' }, 400);
+    const tripType = body.trip_type === 'call_response' ? 'call_response' : 'patrol';
+    const distanceM = body.distance_mi != null ? Math.round(Number(body.distance_mi) * 1609.34) : null;
+    const result = await db.prepare(`
+      INSERT INTO unit_trips (unit_id, officer_id, trip_type, status, call_number,
+                              start_time, end_time, start_mileage, end_mileage,
+                              distance_m, duration_s, close_reason, created_at, updated_at)
+      VALUES (?,?,?,'closed',?,?,?,?,?,?,?, 'manual', datetime('now'), datetime('now'))`,
+    ).bind(
+      body.unit_id ?? null, body.officer_id ?? null, tripType, body.call_number ?? null,
+      body.start_time, body.end_time ?? body.start_time,
+      body.start_mileage ?? null, body.end_mileage ?? null,
+      distanceM,
+      body.duration_s ?? null,
+    ).run();
+    const id = result.meta.last_row_id as number;
+    await auditTripChange(db, {
+      table: 'unit_trips', entryId: id, field: 'created',
+      before: null, after: `manual ${tripType} trip`, reason: String(body.reason).trim(),
+      userId: user.id, officerId: (body.officer_id as number) ?? null, unitId: (body.unit_id as number) ?? null,
+    });
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM unit_trips WHERE id = ?', id);
+    return c.json({ success: true, trip: created }, 201);
+  } catch (err) {
+    console.error('POST /patrol/trips failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// PUT /trips/:source/:id — edit allowlisted fields on either trip table.
+pm.put('/trips/:source/:id', async (c) => {
+  try {
+    const user = requireTripEditor(c);
+    if (!user) return c.json({ error: 'Admin / manager / supervisor only', code: 'FORBIDDEN' }, 403);
+    const table = TRIP_TABLES[c.req.param('source')];
+    const id = parseInt(c.req.param('id'), 10);
+    if (!table || !Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid source or id' }, 400);
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+    if (!body.reason || !String(body.reason).trim()) return c.json({ error: 'reason required for the audit trail' }, 400);
+    const reason = String(body.reason).trim();
+
+    const ALLOW: Record<string, string[]> = {
+      unit_trips: ['trip_type', 'call_number', 'start_time', 'end_time', 'start_mileage', 'end_mileage', 'distance_m', 'duration_s', 'max_speed'],
+      nav_trip_log: ['start_time', 'end_time', 'distance_miles', 'duration_seconds', 'max_speed_mph', 'purpose', 'notes'],
+    };
+    // Client convenience: accept distance_mi and convert for unit_trips.
+    if (table === 'unit_trips' && body.distance_mi != null && body.distance_m === undefined) {
+      body.distance_m = Math.round(Number(body.distance_mi) * 1609.34);
+    }
+    if (table === 'nav_trip_log' && body.distance_mi != null && body.distance_miles === undefined) {
+      body.distance_miles = Number(body.distance_mi);
+    }
+    const before = await queryFirst<Record<string, unknown>>(db, `SELECT * FROM ${table} WHERE id = ?`, id);
+    if (!before) return c.json({ error: 'Trip not found' }, 404);
+
+    const sets: string[] = []; const binds: unknown[] = []; const changed: string[] = [];
+    for (const col of ALLOW[table]) {
+      if (Object.prototype.hasOwnProperty.call(body, col)) {
+        sets.push(`${col} = ?`);
+        binds.push(body[col] === '' ? null : body[col]);
+        changed.push(col);
+      }
+    }
+    if (sets.length === 0) return c.json({ error: 'No editable fields in body' }, 400);
+    if (table === 'unit_trips') sets.push(`updated_at = datetime('now')`);
+    binds.push(id);
+    await db.prepare(`UPDATE ${table} SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run();
+
+    for (const col of changed) {
+      await auditTripChange(db, {
+        table, entryId: id, field: col,
+        before: before[col], after: body[col], reason,
+        userId: user.id, officerId: (before.officer_id as number) ?? null, unitId: (before.unit_id as number) ?? null,
+      });
+    }
+    const updated = await queryFirst<Record<string, unknown>>(db, `SELECT * FROM ${table} WHERE id = ?`, id);
+    return c.json({ success: true, trip: updated });
+  } catch (err) {
+    console.error('PUT /patrol/trips failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// DELETE /trips/:source/:id — remove a trip row (audited).
+pm.delete('/trips/:source/:id', async (c) => {
+  try {
+    const user = requireTripEditor(c);
+    if (!user) return c.json({ error: 'Admin / manager / supervisor only', code: 'FORBIDDEN' }, 403);
+    const table = TRIP_TABLES[c.req.param('source')];
+    const id = parseInt(c.req.param('id'), 10);
+    if (!table || !Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid source or id' }, 400);
+    const reason = (c.req.query('reason') || '').trim();
+    if (!reason) return c.json({ error: 'reason query param required for the audit trail' }, 400);
+    const db = getDb(c.env);
+    const before = await queryFirst<Record<string, unknown>>(db, `SELECT * FROM ${table} WHERE id = ?`, id);
+    if (!before) return c.json({ error: 'Trip not found' }, 404);
+    await db.prepare(`DELETE FROM ${table} WHERE id = ?`).bind(id).run();
+    await auditTripChange(db, {
+      table, entryId: id, field: 'deleted',
+      before: `${before.trip_type ?? 'patrol'} ${before.start_time}→${before.end_time} ${before.distance_m ?? before.distance_miles ?? ''}`,
+      after: null, reason,
+      userId: user.id, officerId: (before.officer_id as number) ?? null, unitId: (before.unit_id as number) ?? null,
+    });
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /patrol/trips failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
   }
 });
 
