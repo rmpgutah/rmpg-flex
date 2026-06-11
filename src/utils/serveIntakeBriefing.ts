@@ -13,7 +13,7 @@
 //   • officer_safety_caution / domestic_violence
 //                           — INTEGER 0/1 flags shown as red badges
 //                             and in the Flags tab.
-//   • descriptionPrefix     — a ⚠ marker prepended to the call
+//   • descriptionPrefix     — an OFFICER SAFETY marker prepended to the call
 //                             description so the queue row itself
 //                             reads "hot" at a glance.
 //
@@ -136,7 +136,7 @@ export interface PsoBriefing {
   sceneSafety: string;
   officerSafetyCaution: 0 | 1;
   domesticViolence: 0 | 1;
-  descriptionPrefix: string;    // '' or '⚠ OFFICER SAFETY · '
+  descriptionPrefix: string;    // '' or 'OFFICER SAFETY · '
 }
 
 // ── Tactical knowledge base ──────────────────────────────────
@@ -207,7 +207,7 @@ function buildBriefingNoteText(input: BriefingInput): string {
   const parties = [queueRow.plaintiff, queueRow.defendant].filter(Boolean).join(' v. ');
 
   const lines: string[] = [];
-  lines.push('**📋 PROCESS SERVICE — INTAKE BRIEFING** _(auto-generated)_');
+  lines.push('**PROCESS SERVICE — INTAKE BRIEFING** *(auto-generated)*');
 
   lines.push('**■ SERVICE PROFILE**');
   if (isBusiness) {
@@ -224,7 +224,7 @@ function buildBriefingNoteText(input: BriefingInput): string {
     lines.push('**■ CASE**');
     if (caseLine) lines.push(caseLine);
     if (parties) lines.push(`Parties: ${parties}`);
-    if (queueRow.deadline) lines.push(`SERVICE DEADLINE: ${queueRow.deadline}`);
+    if (queueRow.deadline) lines.push(`__SERVICE DEADLINE: ${queueRow.deadline}__`);
     if (queueRow.court_date) lines.push(`Hearing date: ${queueRow.court_date}`);
   }
 
@@ -309,24 +309,24 @@ export function buildOcrContext(
     .map(([, label]) => label);
 
   const lines: string[] = [];
-  lines.push('**🔍 OCR & EXTRACTION CONTEXT** _(auto-generated)_');
+  lines.push('**OCR & EXTRACTION CONTEXT** *(auto-generated)*');
   lines.push('**■ SOURCE DOCUMENTS**');
   for (const d of docs) {
     const engine = ENGINE_LABEL[d.ocr_engine || ''] || d.ocr_engine || 'unknown';
     const pct = `${Math.round((d.confidence || 0) * 100)}%`;
     lines.push(d.success
       ? `• ${d.file_name} — ${d.doc_type || 'unclassified'} · ${engine} · ${pct} confidence${d.page_count ? ` · ${d.page_count} pg` : ''}`
-      : `• ${d.file_name} — ⚠ extraction FAILED (review manually)`);
+      : `• ${d.file_name} — __extraction FAILED__ (review manually)`);
   }
   lines.push('**■ DATA QUALITY**');
   lines.push(`• Auto-populated ${filled} field${filled === 1 ? '' : 's'} from ${docs.length} document${docs.length === 1 ? '' : 's'}`);
   if (missingCritical.length) {
-    lines.push(`• NOT FOUND in documents — verify before service: ${missingCritical.join(', ')}`);
+    lines.push(`• __NOT FOUND in documents — verify before service:__ ${missingCritical.join(', ')}`);
   }
   if (allDates.length) {
     lines.push(`• Dates seen in documents: ${[...allDates].sort().join(', ')}`);
   }
-  lines.push(`_Extracted ${nowIso.slice(0, 10)} — verify against source documents before filing affidavits._`);
+  lines.push(`*Extracted ${nowIso.slice(0, 10)} — verify against source documents before filing affidavits.*`);
 
   const okDocs = docs.filter((d) => d.success).length;
   const topConf = Math.max(0, ...docs.map((d) => d.confidence || 0));
@@ -344,7 +344,7 @@ export function buildPsoBriefing(input: BriefingInput, nowIso: string): PsoBrief
   if (assessment.caution) {
     const high = assessment.severity === 'high';
     const lines: string[] = [];
-    lines.push(`**⚠️ OFFICER SAFETY — RISK ASSESSMENT: ${high ? 'ELEVATED' : 'BASELINE'}**`);
+    lines.push(`**OFFICER SAFETY — RISK ASSESSMENT: ${high ? 'ELEVATED' : 'BASELINE'}**`);
     lines.push('**Indicators:**');
     for (const r of assessment.reasons) lines.push(`• ${r}`);
     lines.push('**Posture:**');
@@ -374,6 +374,6 @@ export function buildPsoBriefing(input: BriefingInput, nowIso: string): PsoBrief
     sceneSafety: assessment.sceneSafety,
     officerSafetyCaution: assessment.caution ? 1 : 0,
     domesticViolence: assessment.domesticViolence ? 1 : 0,
-    descriptionPrefix: assessment.severity === 'high' ? '⚠ OFFICER SAFETY · ' : '',
+    descriptionPrefix: assessment.severity === 'high' ? 'OFFICER SAFETY · ' : '',
   };
 }
