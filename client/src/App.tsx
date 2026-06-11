@@ -29,7 +29,18 @@ const MapPage = lazyRetry(importMap);
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
 ): React.LazyExoticComponent<T> {
-  return lazy(() => factory().catch((err) => {
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  // Retry the import in place before escalating to a reload. A reload only
+  // helps when OUR index.html is stale; during a Pages deploy-propagation
+  // window the fresh index references a chunk the CDN is still replicating
+  // (server 500s) — there a reload re-fails instantly, the second failure
+  // lands inside the 30s guard, and the ErrorBoundary card strands the user
+  // (seen live 2026-06-10, fleet chunk 500 for ~15 min after 4 back-to-back
+  // deploys). Two delayed re-imports (1.5s, 4s) ride out that window.
+  const withRetry = () => factory()
+    .catch(() => sleep(1500).then(factory))
+    .catch(() => sleep(4000).then(factory));
+  return lazy(() => withRetry().catch((err) => {
     // A lazy chunk failed to load — almost always a stale bundle after a
     // deploy: this long-lived tab requests an old hash the server no longer
     // serves. Reload ONCE per 30s to pick up the fresh index. On that first

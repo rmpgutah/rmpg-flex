@@ -557,7 +557,10 @@
 //   otpauthUrl (qrcode pkg); setup surfaces capture backup codes from the
 //   verify response (previously rendered an empty list). Sessions cron
 //   purge added.
-const CACHE_NAME = 'rmpg-flex-v872';
+// v873: lazyRetry now retries a failed chunk import in place (1.5s/4s backoff)
+//   before reloading — rides out Pages deploy-propagation 500s instead of
+//   stranding users on the ErrorBoundary card (2026-06-10 fleet-chunk incident).
+const CACHE_NAME = 'rmpg-flex-v873';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
