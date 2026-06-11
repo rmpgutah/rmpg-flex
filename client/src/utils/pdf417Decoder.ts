@@ -60,6 +60,30 @@ function toImageData(img: HTMLImageElement, scale: number, contrastBoost: boolea
   return data;
 }
 
+/**
+ * Fast single-pass decode for live camera frames. No preprocessing —
+ * called many times per second, so each attempt must be cheap; the
+ * camera supplies fresh framing/focus variation between attempts.
+ */
+export async function decodePdf417Frame(imageData: ImageData): Promise<string | null> {
+  ensureModule();
+  try {
+    const results = await readBarcodes(imageData, {
+      formats: ['PDF417'],
+      tryHarder: false,
+      tryRotate: true,
+      tryInvert: true,
+      tryDownscale: true,
+      textMode: 'Plain',
+      maxNumberOfSymbols: 1,
+    });
+    const text = results[0]?.text;
+    return text && text.length > 20 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface Pdf417DecodeOutcome {
   text: string;
   passes: number; // how many attempts it took (diagnostics)

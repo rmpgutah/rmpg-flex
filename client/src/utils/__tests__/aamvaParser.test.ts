@@ -109,3 +109,72 @@ describe('parseAamva — version/format variants', () => {
     expect(() => parseAamva('just some text')).toThrow();
   });
 });
+
+describe('assessAamva — derived scan alerts', () => {
+  const NOW = new Date(2026, 5, 11); // 2026-06-11
+
+  const base = () => parseAamva(
+    '@\n\x1e\rANSI 636040080002DLDAQ1\nDCSDOE\nDACJANE\nDBB01151990\nDBA01152027\n',
+  );
+
+  it('no alerts for a valid adult license', async () => {
+    const { assessAamva } = await import('../aamvaParser');
+    expect(assessAamva(base(), NOW)).toEqual([]);
+  });
+
+  it('flags an expired license as danger', async () => {
+    const { assessAamva } = await import('../aamvaParser');
+    const r = { ...base(), dl_expiry: '2025-01-15' };
+    const alerts = assessAamva(r, NOW);
+    expect(alerts.some(a => a.code === 'EXPIRED' && a.level === 'danger')).toBe(true);
+  });
+
+  it('warns when expiring within 30 days', async () => {
+    const { assessAamva } = await import('../aamvaParser');
+    const r = { ...base(), dl_expiry: '2026-06-30' };
+    expect(assessAamva(r, NOW).some(a => a.code === 'EXPIRING' && a.level === 'warning')).toBe(true);
+  });
+
+  it('flags minors (danger) and under-21 (warning) with correct ages', async () => {
+    const { assessAamva } = await import('../aamvaParser');
+    expect(assessAamva({ ...base(), date_of_birth: '2010-01-15' }, NOW)
+      .find(a => a.code === 'MINOR')?.message).toContain('age 16');
+    expect(assessAamva({ ...base(), date_of_birth: '2006-12-25' }, NOW)
+      .find(a => a.code === 'UNDER_21')?.message).toContain('age 19');
+  });
+
+  it('respects birthday-not-yet-reached when computing age', async () => {
+    const { assessAamva } = await import('../aamvaParser');
+    // 18th birthday is 2026-07-01 — still 17 on 2026-06-11
+    expect(assessAamva({ ...base(), date_of_birth: '2008-07-01' }, NOW)
+      .find(a => a.code === 'MINOR')?.message).toContain('age 17');
+  });
+
+  it('flags ID-only cards and temporary documents', async () => {
+    const { assessAamva } = await import('../aamvaParser');
+    const r = { ...base(), card_type: 'ID' as const, raw_elements: { ...base().raw_elements, DDD: '1' } };
+    const codes = assessAamva(r, NOW).map(a => a.code);
+    expect(codes).toContain('ID_CARD');
+    expect(codes).toContain('LIMITED_DURATION');
+  });
+});
+
+describe('describeAamva — English readout', () => {
+  it('translates every element with code dictionaries', async () => {
+    const { describeAamva } = await import('../aamvaParser');
+    const r = parseAamva(
+      '@\n\x1e\rANSI 636040080002DLDAQ123\nDCSDOE\nDACJANE\nDBB01151990\nDBC2\nDAU070 in\nDCAD\nDCBB\nDCDM\nDAYGRN\n',
+    );
+    const rows = describeAamva(r);
+    const byCode = Object.fromEntries(rows.map(x => [x.code, x]));
+    expect(byCode.DCB.english).toContain('Corrective lenses');
+    expect(byCode.DCD.english).toContain('Motorcycle');
+    expect(byCode.DCA.english).toContain('regular operator');
+    expect(byCode.DBC.english).toBe('Female');
+    expect(byCode.DAU.english).toBe('5\'10"');
+    expect(byCode.DAY.english).toBe('Green');
+    expect(byCode.DBB.english).toBe('1990-01-15');
+    // every decoded element appears
+    expect(rows.length).toBe(Object.keys(r.raw_elements).length);
+  });
+});

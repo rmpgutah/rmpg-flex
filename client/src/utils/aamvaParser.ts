@@ -459,3 +459,78 @@ export function describeAamva(r: AamvaResult): ReadoutRow[] {
   }
   return rows;
 }
+
+// ============================================================
+// Scan intelligence — derived officer-relevant alerts.
+// ============================================================
+
+export interface ScanAlert {
+  level: 'danger' | 'warning' | 'info';
+  code: string;
+  message: string;
+}
+
+function daysBetween(a: Date, b: Date): number {
+  return Math.floor((b.getTime() - a.getTime()) / 86_400_000);
+}
+
+function ageOn(dobIso: string, now: Date): number | null {
+  const m = dobIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const dob = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (isNaN(dob.getTime())) return null;
+  let age = now.getFullYear() - dob.getFullYear();
+  const had = now.getMonth() > dob.getMonth() ||
+    (now.getMonth() === dob.getMonth() && now.getDate() >= dob.getDate());
+  if (!had) age--;
+  return age;
+}
+
+/**
+ * Derive officer-relevant alerts from a parsed scan: expired or
+ * soon-expiring license, minor / under-21 subject, ID-only card,
+ * temporary documents.
+ */
+export function assessAamva(r: AamvaResult, now: Date = new Date()): ScanAlert[] {
+  const alerts: ScanAlert[] = [];
+
+  // Expiration
+  const expM = r.dl_expiry.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (expM) {
+    const exp = new Date(Number(expM[1]), Number(expM[2]) - 1, Number(expM[3]), 23, 59, 59);
+    if (exp.getTime() < now.getTime()) {
+      alerts.push({
+        level: 'danger', code: 'EXPIRED',
+        message: `LICENSE EXPIRED ${r.dl_expiry} (${daysBetween(exp, now)} days ago)`,
+      });
+    } else if (daysBetween(now, exp) <= 30) {
+      alerts.push({
+        level: 'warning', code: 'EXPIRING',
+        message: `License expires soon — ${r.dl_expiry} (${daysBetween(now, exp)} days)`,
+      });
+    }
+  }
+
+  // Age
+  const age = r.date_of_birth ? ageOn(r.date_of_birth, now) : null;
+  if (age !== null) {
+    if (age < 18) {
+      alerts.push({ level: 'danger', code: 'MINOR', message: `SUBJECT IS A MINOR — age ${age} (DOB ${r.date_of_birth})` });
+    } else if (age < 21) {
+      alerts.push({ level: 'warning', code: 'UNDER_21', message: `Subject is under 21 — age ${age} (DOB ${r.date_of_birth})` });
+    }
+  }
+
+  // Card / document type
+  if (r.card_type === 'ID') {
+    alerts.push({ level: 'info', code: 'ID_CARD', message: 'Identification card only — NOT a driver\'s license' });
+  }
+  if (r.raw_elements.DDD?.trim() === '1') {
+    alerts.push({ level: 'warning', code: 'LIMITED_DURATION', message: 'Limited-duration / temporary document' });
+  }
+  if (r.is_real_id === false) {
+    alerts.push({ level: 'info', code: 'NOT_REAL_ID', message: 'Not REAL ID compliant' });
+  }
+
+  return alerts;
+}

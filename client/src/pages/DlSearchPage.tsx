@@ -9,7 +9,8 @@ import {useState, useCallback, useEffect, useRef} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, CreditCard, User, MapPin, ChevronRight, Shield, ShieldCheck, Calendar, Database, Wifi, Plus, AlertTriangle, Camera, Loader2, X, Eye, ScanLine, UserCheck, Upload } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import type { ReadoutRow } from '../utils/aamvaParser';
+import type { ReadoutRow, ScanAlert } from '../utils/aamvaParser';
+import LiveDlScanner from '../components/LiveDlScanner';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ManualDlEntryModal, { type ManualDlFormData } from '../components/ManualDlEntryModal';
@@ -113,7 +114,26 @@ export default function DlSearchPage() {
   const [scanMatches, setScanMatches] = useState<any[] | null>(null);
   const [matchLoading, setMatchLoading] = useState(false);
   const [uploadedRecord, setUploadedRecord] = useState<number | null>(null);
+  const [scanAlerts, setScanAlerts] = useState<ScanAlert[]>([]);
+  const [showLiveScanner, setShowLiveScanner] = useState(false);
+  const [recentScans, setRecentScans] = useState<any[]>(() => {
+    try { return JSON.parse(localStorage.getItem('rmpg-dl-recent-scans') || '[]'); } catch { return []; }
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Always-fresh handle for the shared barcode pipeline — the relay-poll
+  // effect runs on a stable interval and must not capture a stale closure.
+  const processBarcodeTextRef = useRef<((raw: string, opts?: { silent?: boolean; skipRelay?: boolean }) => Promise<boolean>) | null>(null);
+
+  const rememberScan = useCallback((entry: { name: string; dl_number: string; dl_state: string; aamva_raw?: string; payload: Record<string, unknown> }) => {
+    setRecentScans(prev => {
+      const next = [
+        { ...entry, ts: Date.now() },
+        ...prev.filter((s: any) => !(s.dl_number === entry.dl_number && s.dl_state === entry.dl_state)),
+      ].slice(0, 10);
+      try { localStorage.setItem('rmpg-dl-recent-scans', JSON.stringify(next)); } catch { /* storage full */ }
+      return next;
+    });
+  }, []);
 
   // ── Phone → desktop relay ──
   // Phone: push every successful scan to the relay so the officer's
@@ -138,19 +158,16 @@ export default function DlSearchPage() {
         const data = await apiFetch<{ payload: any }>('/dl-records/scan-relay/poll');
         if (stopped || !data?.payload) return;
         const { aamva_raw, ...fields } = data.payload;
-        if (aamva_raw) {
-          try {
-            const { parseAamva, describeAamva } = await import('../utils/aamvaParser');
-            setScanReadout(describeAamva(parseAamva(aamva_raw)));
-          } catch { setScanReadout(null); }
-        } else {
-          setScanReadout(null);
+        addToast(`DL scan received from phone — ${fields.first_name || ''} ${fields.last_name || ''}`.trim(), 'success');
+        if (aamva_raw && processBarcodeTextRef.current && await processBarcodeTextRef.current(aamva_raw, { silent: true, skipRelay: true })) {
+          return; // full pipeline ran (readout, alerts, lookup, history)
         }
+        setScanReadout(null);
+        setScanAlerts([]);
         setUploadedRecord(null);
         setShowFullReadout(false);
         setOcrResult(fields);
         setShowOcrPreview(true);
-        addToast(`DL scan received from phone — ${fields.first_name || ''} ${fields.last_name || ''}`.trim(), 'success');
         lookupExistingRecords(fields);
       } catch { /* quiet — retry next tick */ }
     };
@@ -188,6 +205,15 @@ export default function DlSearchPage() {
       }
       // DL-number matches first
       matches.sort((a, b) => (a.match_type === 'DL NUMBER MATCH' ? -1 : 0) - (b.match_type === 'DL NUMBER MATCH' ? -1 : 0));
+
+      // Officer safety: check matched persons for active warrants.
+      await Promise.all(matches.slice(0, 4).map(async (m) => {
+        try {
+          const hist = await apiFetch<any>(`/records/persons/${m.id}/system-history`);
+          m.active_warrants = hist?.summary?.active_warrants ?? (Array.isArray(hist?.warrants) ? hist.warrants.filter((w: any) => w.status === 'active').length : 0);
+          m.total_warrants = hist?.summary?.total_warrants ?? (Array.isArray(hist?.warrants) ? hist.warrants.length : 0);
+        } catch { /* history unavailable — show match without warrant info */ }
+      }));
       setScanMatches(matches);
     } catch {
       setScanMatches([]);
@@ -315,28 +341,16 @@ export default function DlSearchPage() {
     setIsManualSubmitting(false);
   }, [lastName, dlNumber, handleSearch]);
 
-  const handleOcrUpload = useCallback(async (file: File) => {
-    setOcrLoading(true);
-    setOcrResult(null);
-    setScanReadout(null);
-    setScanMatches(null);
-    setShowFullReadout(false);
-    setUploadedRecord(null);
-
-    // ── Pass 1: PDF417 barcode (back of card) ──
-    // The AAMVA barcode is authoritative — every field exactly as the
-    // issuing DMV encoded it. Only fall back to OCR (front of card)
-    // when no barcode is found in the image.
+  // Shared barcode pipeline — used by photo upload, the live camera
+  // scanner, recent-scan replay, and phone-relay receipt.
+  const processBarcodeText = useCallback(async (rawText: string, opts?: { silent?: boolean; skipRelay?: boolean }): Promise<boolean> => {
     try {
-      const [{ decodePdf417 }, { parseAamva, looksLikeAamva, describeAamva }] = await Promise.all([
-        import('../utils/pdf417Decoder'),
-        import('../utils/aamvaParser'),
-      ]);
-      const decoded = await decodePdf417(file);
-      if (decoded && looksLikeAamva(decoded.text)) {
-        const parsed = parseAamva(decoded.text);
-        setScanReadout(describeAamva(parsed));
-        const resultObj = {
+      const { parseAamva, looksLikeAamva, describeAamva, assessAamva } = await import('../utils/aamvaParser');
+      if (!looksLikeAamva(rawText)) return false;
+      const parsed = parseAamva(rawText);
+      setScanReadout(describeAamva(parsed));
+      setScanAlerts(assessAamva(parsed));
+      const resultObj = {
           first_name: parsed.first_name,
           middle_name: parsed.middle_name,
           last_name: parsed.last_name,
@@ -365,14 +379,46 @@ export default function DlSearchPage() {
           veteran: parsed.is_veteran === null ? '' : parsed.is_veteran ? 'YES' : 'NO',
           scan_method: 'PDF417 BARCODE',
         };
-        setOcrResult(resultObj);
-        setShowOcrPreview(true);
-        addToast('PDF417 barcode read — all DMV-encoded fields extracted', 'success');
+      setUploadedRecord(null);
+      setShowFullReadout(false);
+      setOcrResult(resultObj);
+      setShowOcrPreview(true);
+      if (!opts?.silent) addToast('PDF417 barcode read — all DMV-encoded fields extracted', 'success');
+      // Pull any existing record for this subject (async — modal shows progress)
+      lookupExistingRecords(parsed);
+      // Phone as scanning device: mirror the scan to the desktop session
+      if (isMobile && !opts?.skipRelay) pushScanToDesktop({ ...resultObj, aamva_raw: rawText });
+      rememberScan({
+        name: `${parsed.last_name}, ${parsed.first_name}`.replace(/^, |, $/g, ''),
+        dl_number: parsed.dl_number, dl_state: parsed.dl_state,
+        aamva_raw: rawText, payload: resultObj,
+      });
+      return true;
+    } catch (err) {
+      console.warn('[DL Scan] AAMVA parse failed:', err);
+      return false;
+    }
+  }, [addToast, isMobile, lookupExistingRecords, pushScanToDesktop, rememberScan]);
+  processBarcodeTextRef.current = processBarcodeText;
+
+  const handleOcrUpload = useCallback(async (file: File) => {
+    setOcrLoading(true);
+    setOcrResult(null);
+    setScanReadout(null);
+    setScanMatches(null);
+    setScanAlerts([]);
+    setShowFullReadout(false);
+    setUploadedRecord(null);
+
+    // ── Pass 1: PDF417 barcode (back of card) ──
+    // The AAMVA barcode is authoritative — every field exactly as the
+    // issuing DMV encoded it. Only fall back to OCR (front of card)
+    // when no barcode is found in the image.
+    try {
+      const { decodePdf417 } = await import('../utils/pdf417Decoder');
+      const decoded = await decodePdf417(file);
+      if (decoded && await processBarcodeText(decoded.text)) {
         setOcrLoading(false);
-        // Pull any existing record for this subject (async — modal shows progress)
-        lookupExistingRecords(parsed);
-        // Phone as scanning device: mirror the scan to the desktop session
-        if (isMobile) pushScanToDesktop({ ...resultObj, aamva_raw: decoded.text });
         return;
       }
     } catch (err) {
@@ -412,7 +458,7 @@ export default function DlSearchPage() {
     } finally {
       setOcrLoading(false);
     }
-  }, [addToast, lookupExistingRecords, isMobile, pushScanToDesktop]);
+  }, [addToast, lookupExistingRecords, isMobile, pushScanToDesktop, processBarcodeText]);
 
   const handleCreatePersonFromOcr = useCallback(async () => {
     if (!ocrResult) return;
@@ -520,8 +566,8 @@ export default function DlSearchPage() {
       <button type="button" onClick={() => setShowManualEntry(true)} className="toolbar-btn text-[10px]">
         <Plus className="w-3 h-3" /> Manual Entry
       </button>
-      <button type="button" onClick={() => fileInputRef.current?.click()} disabled={ocrLoading} className="toolbar-btn text-[10px]">
-        {ocrLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />}
+      <button type="button" onClick={() => setShowLiveScanner(true)} disabled={ocrLoading} className="toolbar-btn text-[10px]">
+        {ocrLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ScanLine className="w-3 h-3" />}
         {ocrLoading ? 'Scanning...' : 'Scan DL'}
       </button>
       <button
@@ -608,15 +654,44 @@ export default function DlSearchPage() {
                     <CreditCard size={28} className="text-[#333333]" />
                     <button
                       type="button"
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => setShowLiveScanner(true)}
                       disabled={ocrLoading}
                       className="flex items-center gap-2 px-5 py-2.5 bg-[#d4a017] hover:bg-[#b88a12] disabled:opacity-40 rounded-sm text-[12px] font-bold text-black transition-colors uppercase tracking-wider"
                     >
                       {ocrLoading ? <Loader2 size={15} className="animate-spin" /> : <ScanLine size={15} />}
                       {ocrLoading ? 'Reading Barcode...' : 'Scan License'}
                     </button>
-                    <span className="text-[9px] text-[#556677]">Camera capture or photo upload</span>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={ocrLoading}
+                      className="flex items-center gap-1.5 text-[9px] text-[#8899aa] hover:text-white"
+                    >
+                      <Upload size={11} /> or upload a photo
+                    </button>
+                    <span className="text-[9px] text-[#556677]">Live camera — reads automatically, no shutter</span>
                   </div>
+
+                  {recentScans.length > 0 && (
+                    <div className="border border-[#1a1a1a] rounded-sm bg-[#080808]">
+                      <div className="px-2 py-1 text-[8px] font-bold text-[#556677] uppercase tracking-wider border-b border-[#141414]">Recent Scans</div>
+                      <div className="max-h-32 overflow-y-auto">
+                        {recentScans.map((s: any) => (
+                          <button
+                            key={`${s.dl_number}-${s.ts}`}
+                            type="button"
+                            onClick={() => {
+                              if (s.aamva_raw) { processBarcodeText(s.aamva_raw, { silent: true, skipRelay: true }); }
+                            }}
+                            className="w-full flex items-center justify-between gap-2 px-2 py-1 text-left hover:bg-[#141414] border-b border-[#101010]"
+                          >
+                            <span className="text-[10px] text-[#c0ccdd] truncate">{s.name || 'UNKNOWN'}</span>
+                            <span className="text-[8px] font-mono text-[#556677] flex-shrink-0">{s.dl_state} {s.dl_number} · {new Date(s.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-1 text-[9px] text-[#556677] leading-relaxed">
                     <p><span className="text-[#c0ccdd] font-semibold">→ Scan the BACK of the card</span> — the PDF417 barcode gives an exact, DMV-encoded read of every field (full English readout).</p>
                     <p>→ Existing person records are <span className="text-[#c0ccdd] font-semibold">pulled automatically</span> on a DL-number or name+DOB match.</p>
@@ -842,6 +917,18 @@ export default function DlSearchPage() {
         </div>
       </div>
 
+      {showLiveScanner && (
+        <LiveDlScanner
+          onDecoded={async (text) => {
+            setShowLiveScanner(false);
+            const ok = await processBarcodeText(text);
+            if (!ok) addToast('Barcode read but not a driver license payload', 'warning');
+          }}
+          onClose={() => setShowLiveScanner(false)}
+          onUploadInstead={() => { setShowLiveScanner(false); fileInputRef.current?.click(); }}
+        />
+      )}
+
       <ManualDlEntryModal
         isOpen={showManualEntry}
         onClose={() => setShowManualEntry(false)}
@@ -943,6 +1030,31 @@ export default function DlSearchPage() {
               </button>
             </div>
             <div className="p-4 space-y-3">
+              {/* ── Officer-safety + status alerts ── */}
+              {(scanMatches?.some((m: any) => m.active_warrants > 0) || scanAlerts.length > 0) && (
+                <div className="space-y-1">
+                  {scanMatches?.filter((m: any) => m.active_warrants > 0).map((m: any) => (
+                    <div key={`w-${m.id}`} className="flex items-center gap-2 px-3 py-2 bg-red-900/40 border border-red-600/70 text-red-300 text-[11px] font-bold uppercase tracking-wide">
+                      <AlertTriangle size={14} className="flex-shrink-0 text-red-400" />
+                      ⚠ ACTIVE WARRANT{m.active_warrants > 1 ? `S (${m.active_warrants})` : ''} — {m.last_name}, {m.first_name} (#{m.id})
+                    </div>
+                  ))}
+                  {scanAlerts.map((a) => (
+                    <div
+                      key={a.code}
+                      className={`flex items-center gap-2 px-3 py-1.5 border text-[10px] font-bold uppercase tracking-wide ${
+                        a.level === 'danger' ? 'bg-red-900/30 border-red-700/50 text-red-400'
+                        : a.level === 'warning' ? 'bg-amber-900/30 border-amber-700/50 text-amber-400'
+                        : 'bg-[#141414] border-[#2e2e2e] text-[#8899aa]'
+                      }`}
+                    >
+                      <AlertTriangle size={12} className="flex-shrink-0" />
+                      {a.message}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* ── Records-system match ── */}
               <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
                 <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
@@ -973,7 +1085,15 @@ export default function DlSearchPage() {
                           <div className="text-[11px] text-white font-bold truncate">
                             {p.last_name}, {p.first_name} <span className="text-[#556677] font-normal">#{p.id}</span>
                           </div>
-                          <div className="text-[8px] text-[#d4a017] font-bold uppercase tracking-wider">{p.match_type}{p.dob ? ` · DOB ${String(p.dob).slice(0, 10)}` : ''}</div>
+                          <div className="text-[8px] text-[#d4a017] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                            {p.match_type}{p.dob ? ` · DOB ${String(p.dob).slice(0, 10)}` : ''}
+                            {p.active_warrants > 0 && (
+                              <span className="px-1 py-px bg-red-900/60 text-red-300 border border-red-600/70 font-bold">{p.active_warrants} ACTIVE WARRANT{p.active_warrants > 1 ? 'S' : ''}</span>
+                            )}
+                            {p.active_warrants === 0 && p.total_warrants > 0 && (
+                              <span className="px-1 py-px bg-[#141414] text-[#8899aa] border border-[#2e2e2e]">{p.total_warrants} prior warrant{p.total_warrants > 1 ? 's' : ''}</span>
+                            )}
+                          </div>
                         </div>
                         <button
                           type="button"
