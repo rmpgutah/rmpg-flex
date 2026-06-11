@@ -825,8 +825,8 @@ const API_ROUTES: RouteRule[] = [
   // and /dl-records/ocr-scan (external RapidAPI / OCR round-trips) do NOT
   // match and correctly fall through to env.LEGACY.
   { kind: 'regex', value: /^\/api\/dl-records(\/\d+)?(\?.*)?$/ },
-  // Phone → desktop scan relay (rewrite-only; no legacy counterpart).
-  { kind: 'regex', value: /^\/api\/dl-records\/scan-relay(\/poll)?(\?.*)?$/ },
+  // Phone → desktop scan relay + deep records sweep (rewrite-only).
+  { kind: 'regex', value: /^\/api\/dl-records\/(scan-relay(\/poll)?|deep-sweep)(\?.*)?$/ },
 
   // ── More specific dispatch sub-paths (new in rewrite) ──
   // /api/dispatch/calls/:id/{recommended-units, closest-unit, auto-assign,

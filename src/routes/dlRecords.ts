@@ -278,6 +278,163 @@ dlRecords.get('/scan-relay/poll', async (c) => {
   }
 });
 
+// ============================================================
+// Deep records sweep — hard-to-find LE sources by name
+// ============================================================
+// When a scanned name pings, sweep the LE tables that the basic
+// person match never touches: statewide scraped warrants, arrest/
+// booking records, citations, field interviews, gang intel, trespass
+// orders, BOLOs, civil process. Every sub-query is soft-guarded —
+// a drifted table returns [] rather than failing the sweep.
+// Column names verified against live D1 2026-06-11.
+dlRecords.get('/deep-sweep', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const last = (c.req.query('last') || '').trim();
+    const first = (c.req.query('first') || '').trim();
+    const dob = (c.req.query('dob') || '').trim(); // YYYY-MM-DD, refinement only
+    if (last.length < 2) return c.json({ error: 'last name (min 2 chars) required', code: 'LAST_REQUIRED' }, 400);
+
+    const lastLike = `${last}%`;
+    const firstLike = first ? `${first}%` : '%';
+    const bothLike = `%${last}%`;
+    const firstAny = first ? `%${first}%` : '%';
+
+    const soft = async <T>(fn: () => Promise<T[]>): Promise<T[]> => {
+      try { return await fn(); } catch { return []; }
+    };
+
+    const [utahWarrants, arrests, cites, fis, gang, trespass, serves, boloRows] = await Promise.all([
+      // Statewide scraped Utah warrants — NOT in the local warrants table.
+      soft(() => query<Record<string, any>>(db, `
+        SELECT id, first_name, middle_name, last_name, age, city, charges, court_name,
+               issue_date, is_active, last_seen_at
+        FROM utah_warrants
+        WHERE last_name LIKE ? AND first_name LIKE ?
+        ORDER BY is_active DESC, issue_date DESC LIMIT 10`, lastLike, firstLike)),
+      soft(() => query<Record<string, any>>(db, `
+        SELECT id, full_name, first_name, last_name, date_of_birth, booking_date,
+               charges, county, agency, status, release_date, bail_amount
+        FROM arrest_records
+        WHERE (last_name LIKE ? AND first_name LIKE ?) OR full_name LIKE (? || '%' )
+        ORDER BY booking_date DESC LIMIT 10`, lastLike, firstLike, last)),
+      soft(() => query<Record<string, any>>(db, `
+        SELECT id, citation_number, citation_date, violation_description, violation,
+               fine_amount, status, disposition, person_name, violator_name, person_dob
+        FROM citations
+        WHERE (violator_name LIKE ? AND violator_name LIKE ?)
+           OR (person_name LIKE ? AND person_name LIKE ?)
+        ORDER BY citation_date DESC LIMIT 10`, bothLike, firstAny, bothLike, firstAny)),
+      soft(() => query<Record<string, any>>(db, `
+        SELECT id, fi_number, interview_date, date, location, contact_reason,
+               subject_first_name, subject_last_name, subject_dob, gang_affiliation, disposition
+        FROM field_interviews
+        WHERE subject_last_name LIKE ? AND subject_first_name LIKE ?
+        ORDER BY COALESCE(interview_date, date) DESC LIMIT 10`, lastLike, firstLike)),
+      soft(() => query<Record<string, any>>(db, `
+        SELECT id, name, moniker, gang_name, status, threat_level
+        FROM gang_intel_members
+        WHERE name LIKE ? AND name LIKE ?
+        ORDER BY threat_level DESC LIMIT 10`, bothLike, firstAny)),
+      soft(() => query<Record<string, any>>(db, `
+        SELECT id, order_number, status, subject_name, subject_first_name, subject_last_name,
+               subject_dob, property_name, property_address, order_type, expiration_date
+        FROM trespass_orders
+        WHERE (subject_last_name LIKE ? AND subject_first_name LIKE ?)
+           OR (subject_name LIKE ? AND subject_name LIKE ?)
+        ORDER BY created_at DESC LIMIT 10`, lastLike, firstLike, bothLike, firstAny)),
+      soft(() => query<Record<string, any>>(db, `
+        SELECT id, case_number, status, document_type, court_name, deadline,
+               COALESCE(recipient_name, defendant_name) AS subject_name
+        FROM serve_queue
+        WHERE (recipient_name LIKE ? AND recipient_name LIKE ?)
+           OR (defendant_name LIKE ? AND defendant_name LIKE ?)
+        ORDER BY created_at DESC LIMIT 10`, bothLike, firstAny, bothLike, firstAny)),
+      soft(() => query<Record<string, any>>(db, `
+        SELECT id, bolo_number, type, title, description, subject_description, status, priority, created_at
+        FROM bolos
+        WHERE status = 'active'
+          AND (title LIKE ? OR description LIKE ? OR subject_description LIKE ?)
+        ORDER BY created_at DESC LIMIT 10`, bothLike, bothLike, bothLike)),
+    ]);
+
+    // DOB refinement: when a row carries a DOB and the scan supplied one,
+    // a mismatch demotes (kept, flagged) rather than drops — names recur,
+    // but officers should see near-misses with the discrepancy visible.
+    const dobFlag = (rowDob: unknown) => {
+      if (!dob || !rowDob) return null;
+      return String(rowDob).slice(0, 10) === dob;
+    };
+
+    const sources = [
+      {
+        key: 'utah_warrants', label: 'Utah Statewide Warrants', danger: utahWarrants.some(w => w.is_active),
+        rows: utahWarrants.map(w => ({
+          id: w.id, dob_match: null,
+          danger: !!w.is_active,
+          summary: `${w.last_name}, ${w.first_name}${w.middle_name ? ' ' + w.middle_name : ''}${w.age ? ` (${w.age})` : ''} — ${w.is_active ? 'ACTIVE' : 'cleared'} · ${w.charges || 'charges n/a'} · ${w.court_name || ''} ${w.issue_date || ''}`.trim(),
+        })),
+      },
+      {
+        key: 'arrests', label: 'Arrest / Booking Records', danger: false,
+        rows: arrests.map(a => ({
+          id: a.id, dob_match: dobFlag(a.date_of_birth), danger: false,
+          summary: `${a.full_name || `${a.last_name}, ${a.first_name}`} — booked ${a.booking_date || 'n/a'} · ${a.charges || 'charges n/a'} · ${a.county || a.agency || ''}${a.status ? ` · ${a.status}` : ''}`,
+        })),
+      },
+      {
+        key: 'citations', label: 'Citations', danger: false,
+        rows: cites.map(ct => ({
+          id: ct.id, dob_match: dobFlag(ct.person_dob), danger: false,
+          summary: `#${ct.citation_number || ct.id} ${ct.citation_date || ''} — ${ct.violation_description || ct.violation || 'violation n/a'} · ${ct.status || ''}${ct.fine_amount ? ` · $${ct.fine_amount}` : ''}`,
+        })),
+      },
+      {
+        key: 'field_interviews', label: 'Field Interviews', danger: false,
+        rows: fis.map(f => ({
+          id: f.id, dob_match: dobFlag(f.subject_dob), danger: !!f.gang_affiliation,
+          summary: `${f.fi_number || `FI-${f.id}`} ${f.interview_date || f.date || ''} — ${f.contact_reason || 'contact'} @ ${f.location || 'n/a'}${f.gang_affiliation ? ` · GANG: ${f.gang_affiliation}` : ''}`,
+        })),
+      },
+      {
+        key: 'gang_intel', label: 'Gang Intelligence', danger: gang.length > 0,
+        rows: gang.map(g => ({
+          id: g.id, dob_match: null, danger: true,
+          summary: `${g.name}${g.moniker ? ` "${g.moniker}"` : ''} — ${g.gang_name || 'gang n/a'} · threat: ${g.threat_level || 'n/a'} · ${g.status || ''}`,
+        })),
+      },
+      {
+        key: 'trespass', label: 'Trespass Orders', danger: false,
+        rows: trespass.map(t => ({
+          id: t.id, dob_match: dobFlag(t.subject_dob),
+          danger: t.status === 'active',
+          summary: `${t.order_number || `TO-${t.id}`} ${t.status || ''} — ${t.property_name || t.property_address || 'property n/a'}${t.expiration_date ? ` · expires ${t.expiration_date}` : ''}`,
+        })),
+      },
+      {
+        key: 'civil_process', label: 'Civil Process (Serve Queue)', danger: false,
+        rows: serves.map(s => ({
+          id: s.id, dob_match: null, danger: false,
+          summary: `${s.subject_name || ''} — ${s.document_type || 'document'} · ${s.status || ''} · ${s.court_name || ''}${s.deadline ? ` · due ${s.deadline}` : ''}`,
+        })),
+      },
+      {
+        key: 'bolos', label: 'Active BOLOs (text match)', danger: boloRows.length > 0,
+        rows: boloRows.map(b => ({
+          id: b.id, dob_match: null, danger: true,
+          summary: `${b.bolo_number || `BOLO-${b.id}`} [${b.priority || 'n/a'}] ${b.title || ''} — ${(b.subject_description || b.description || '').slice(0, 120)}`,
+        })),
+      },
+    ].filter(s => s.rows.length > 0);
+
+    return c.json({ sources, total: sources.reduce((n, s) => n + s.rows.length, 0) });
+  } catch (err) {
+    return c.json({ sources: [], total: 0, degraded: true });
+  }
+});
+
 // ── GET /:id — single record (+ addresses) ──────────────────
 dlRecords.get('/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'officer', 'dispatcher');

@@ -117,6 +117,8 @@ export default function DlSearchPage() {
   const [scanAlerts, setScanAlerts] = useState<ScanAlert[]>([]);
   const [leFields, setLeFields] = useState<LeField[] | null>(null);
   const [leBlock, setLeBlock] = useState('');
+  const [deepSweep, setDeepSweep] = useState<{ sources: any[]; total: number } | null>(null);
+  const [deepSweepLoading, setDeepSweepLoading] = useState(false);
   const [showLiveScanner, setShowLiveScanner] = useState(false);
   const [recentScans, setRecentScans] = useState<any[]>(() => {
     try { return JSON.parse(localStorage.getItem('rmpg-dl-recent-scans') || '[]'); } catch { return []; }
@@ -185,6 +187,22 @@ export default function DlSearchPage() {
   const lookupExistingRecords = useCallback(async (parsed: { last_name?: string; first_name?: string; date_of_birth?: string; dl_number?: string }) => {
     setMatchLoading(true);
     setScanMatches(null);
+    setDeepSweep(null);
+
+    // Deep sweep runs in parallel with the person match — it covers the
+    // hard-to-find sources (statewide warrants, bookings, FIs, gang intel,
+    // trespass, BOLOs, civil process) that a persons-table match misses.
+    if (parsed.last_name && parsed.last_name.length >= 2) {
+      setDeepSweepLoading(true);
+      const qs = new URLSearchParams({ last: parsed.last_name });
+      if (parsed.first_name) qs.set('first', parsed.first_name);
+      if (parsed.date_of_birth) qs.set('dob', parsed.date_of_birth);
+      apiFetch<{ sources: any[]; total: number }>(`/dl-records/deep-sweep?${qs}`)
+        .then(d => setDeepSweep(d && Array.isArray(d.sources) ? d : { sources: [], total: 0 }))
+        .catch(() => setDeepSweep({ sources: [], total: 0 }))
+        .finally(() => setDeepSweepLoading(false));
+    }
+
     try {
       const matches: any[] = [];
       const seen = new Set<number>();
@@ -1039,8 +1057,14 @@ export default function DlSearchPage() {
             </div>
             <div className="p-4 space-y-3">
               {/* ── Officer-safety + status alerts ── */}
-              {(scanMatches?.some((m: any) => m.active_warrants > 0) || scanAlerts.length > 0) && (
+              {(scanMatches?.some((m: any) => m.active_warrants > 0) || scanAlerts.length > 0 || deepSweep?.sources.some((s: any) => s.danger)) && (
                 <div className="space-y-1">
+                  {deepSweep?.sources.filter((s: any) => s.danger).map((s: any) => (
+                    <div key={`ds-${s.key}`} className="flex items-center gap-2 px-3 py-2 bg-red-900/40 border border-red-600/70 text-red-300 text-[11px] font-bold uppercase tracking-wide">
+                      <AlertTriangle size={14} className="flex-shrink-0 text-red-400" />
+                      ⚠ {s.label.toUpperCase()} HIT — {s.rows.filter((r: any) => r.danger).length || s.rows.length} record{s.rows.length > 1 ? 's' : ''} (see sweep below)
+                    </div>
+                  ))}
                   {scanMatches?.filter((m: any) => m.active_warrants > 0).map((m: any) => (
                     <div key={`w-${m.id}`} className="flex items-center gap-2 px-3 py-2 bg-red-900/40 border border-red-600/70 text-red-300 text-[11px] font-bold uppercase tracking-wide">
                       <AlertTriangle size={14} className="flex-shrink-0 text-red-400" />
@@ -1119,6 +1143,33 @@ export default function DlSearchPage() {
                   )}
                 </div>
               </div>
+
+              {/* ── Deep records sweep (hard-to-find LE sources) ── */}
+              {(deepSweepLoading || (deepSweep && deepSweep.total > 0)) && (
+                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
+                  <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+                    <Search size={11} /> Deep Records Sweep
+                    {deepSweepLoading
+                      ? <Loader2 size={10} className="animate-spin" />
+                      : <span className="text-[#d4a017]">{deepSweep!.total} hit{deepSweep!.total === 1 ? '' : 's'} across {deepSweep!.sources.length} source{deepSweep!.sources.length === 1 ? '' : 's'}</span>}
+                  </div>
+                  {deepSweep && deepSweep.sources.map((src: any) => (
+                    <div key={src.key} className="border-b border-[#141414] last:border-b-0">
+                      <div className={`px-3 py-1 text-[8px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${src.danger ? 'text-red-400' : 'text-[#8899aa]'}`}>
+                        {src.danger && <AlertTriangle size={10} />}
+                        {src.label} ({src.rows.length})
+                      </div>
+                      {src.rows.map((row: any) => (
+                        <div key={`${src.key}-${row.id}`} className={`px-3 py-1 text-[10px] border-t border-[#101010] flex items-start gap-1.5 ${row.danger ? 'text-red-300 bg-red-900/10' : 'text-[#c0ccdd]'}`}>
+                          <span className="flex-1 leading-snug">{row.summary}</span>
+                          {row.dob_match === true && <span className="text-[7px] font-bold px-1 py-px bg-green-900/50 text-green-400 border border-green-700/50 flex-shrink-0 uppercase">DOB ✓</span>}
+                          {row.dob_match === false && <span className="text-[7px] font-bold px-1 py-px bg-[#141414] text-[#888888] border border-[#2e2e2e] flex-shrink-0 uppercase">DOB differs</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* ── Law-enforcement format (NCIC/NLETS fielded) ── */}
               {leFields && leFields.length > 0 && (
