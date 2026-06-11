@@ -274,7 +274,7 @@ ct.post('/events/from-citation', async (c) => {
     eventNumber, body.event_type ?? 'arraignment', body.event_date, body.event_time ?? null,
     body.court_name ?? cit.court_name ?? null, body.citation_id,
     body.defendant_name ?? cit.violator_name ?? null,
-    body.defendant_person_id ?? cit.violator_person_id ?? null,
+    body.defendant_person_id ?? cit.person_id ?? null,
     user?.id ?? null,
   );
   return c.json({ success: true, id: r.meta.last_row_id, event_number: eventNumber }, 201);

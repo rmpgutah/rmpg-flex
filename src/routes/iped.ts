@@ -88,7 +88,7 @@ iped.get('/status', async (c) => {
       db, `SELECT COUNT(*) AS sets, COALESCE(SUM(hash_count), 0) AS hashes FROM forensic_hash_sets`,
     );
     const flagged = await queryFirst<{ c: number }>(
-      db, `SELECT COUNT(*) AS c FROM forensic_hash_results WHERE is_match = 1`,
+      db, `SELECT COUNT(*) AS c FROM forensic_hash_results WHERE match_found = 1`,
     ).catch(() => ({ c: 0 }));
     const totalJobs = jobs?.total ?? 0;
     const configured = !!c.env.IPED_API_KEY || !!cfg.installPath || !!cfg.webApiUrl;
