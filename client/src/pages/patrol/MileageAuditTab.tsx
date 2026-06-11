@@ -196,8 +196,13 @@ export default function MileageAuditTab() {
   useEffect(() => {
     (async () => {
       try {
-        const u = await apiFetch<any[]>('/personnel?role=officer');
-        setOfficers((Array.isArray(u) ? u : []).map((r: any) => ({ id: r.id, full_name: r.full_name || r.username })));
+        // ALL personnel — the old ?role=officer filter hid admins/managers/
+        // supervisors who also drive (e.g. the owner), so the dropdown only
+        // showed one name. Anyone can hold a mileage chain.
+        const u = await apiFetch<any[]>('/personnel');
+        setOfficers((Array.isArray(u) ? u : [])
+          .map((r: any) => ({ id: r.id, full_name: r.full_name || r.username }))
+          .sort((a, b) => String(a.full_name).localeCompare(String(b.full_name))));
       } catch {
         // Non-fatal — officer dropdown just stays empty.
       }

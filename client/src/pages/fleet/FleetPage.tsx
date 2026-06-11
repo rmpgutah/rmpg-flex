@@ -491,10 +491,14 @@ export default function FleetPage() {
         description: maintForm.description.trim(),
         mileage_at_service: maintForm.mileage_at_service ? parseInt(maintForm.mileage_at_service, 10) : null,
         cost: maintForm.cost ? parseFloat(maintForm.cost) : null,
+        labor_cost: maintForm.labor_cost ? parseFloat(maintForm.labor_cost) : null,
         vendor: maintForm.vendor.trim() || null,
         performed_by: maintForm.performed_by.trim() || null,
         performed_at: maintForm.performed_at || nowLocalISO(),
         next_due_date: maintForm.next_due_date || null,
+        next_due_mileage: maintForm.next_due_mileage ? parseInt(maintForm.next_due_mileage, 10) : null,
+        service_tasks: maintForm.service_tasks.trim() || null,
+        notes: maintForm.notes.trim() || null,
       };
       if (modal === 'edit_maintenance' && editingMaintenanceId) {
         await apiFetch(`/fleet/maintenance/${editingMaintenanceId}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -1009,10 +1013,14 @@ export default function FleetPage() {
       description: record.description || '',
       mileage_at_service: record.mileage_at_service != null ? String(record.mileage_at_service) : '',
       cost: record.cost != null ? String(record.cost) : '',
+      labor_cost: (record as any).labor_cost != null ? String((record as any).labor_cost) : '',
       vendor: record.vendor || '',
       performed_by: record.performed_by || '',
       performed_at: toDatetimeLocal(record.performed_at),
       next_due_date: record.next_due_date ? toDatetimeLocal(record.next_due_date) : '',
+      next_due_mileage: (record as any).next_due_mileage != null ? String((record as any).next_due_mileage) : '',
+      service_tasks: (record as any).service_tasks || '',
+      notes: (record as any).notes || '',
     });
     setEditingMaintenanceId(record.id);
     setModal('edit_maintenance');

@@ -594,7 +594,12 @@
 //       patrol trips) with a DATE column + America/Denver times; Patrol
 //       Trip Log Management (full add/edit/delete, audited); Fleet
 //       "Mileage Distribution" panel → "Daily Mileage Run" (GPS miles/day).
-const CACHE_NAME = 'rmpg-flex-v883';
+// v884: Fleet sub-records pass — tires D1_TYPE_ERROR (undefined binds) +
+//       diagram column-name fix + full tire edit/delete; damage + recall
+//       full edit/delete; maintenance modal gains labor cost, next-due
+//       mileage, service tasks, notes; Mileage Audit officer dropdown
+//       shows ALL personnel (was role=officer only).
+const CACHE_NAME = 'rmpg-flex-v884';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

@@ -57,6 +57,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
     isActive: showForm,
   });
   const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -85,17 +86,44 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
     if (!form.description.trim()) { addToast('Description is required', 'error'); return; }
     if (submitting) return;
     setSubmitting(true);
-    try { await apiFetch(`/fleet/${vehicleId}/damage-reports`, {
-      // Map UI fields to handler columns (location / repair_cost).
-      method: 'POST', body: JSON.stringify({
-        damage_date: form.damage_date,
-        damage_type: form.damage_type,
-        location: form.location_on_vehicle || null,
-        severity: form.severity,
-        description: form.description,
-        repair_cost: form.repair_estimate ? Number(form.repair_estimate) : null,
-      }),
-    }); addToast('Damage reported', 'success'); clearDraft(); setShowForm(false); load(); } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to report damage', 'error'); } finally { setSubmitting(false); }
+    // Map UI fields to handler columns (location / repair_cost).
+    const payload = {
+      damage_date: form.damage_date,
+      damage_type: form.damage_type,
+      location: form.location_on_vehicle || null,
+      severity: form.severity,
+      description: form.description,
+      repair_cost: form.repair_estimate ? Number(form.repair_estimate) : null,
+    };
+    try {
+      if (editingId != null) {
+        await apiFetch(`/fleet/damage-reports/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        addToast('Damage report updated', 'success');
+      } else {
+        await apiFetch(`/fleet/${vehicleId}/damage-reports`, { method: 'POST', body: JSON.stringify(payload) });
+        addToast('Damage reported', 'success');
+      }
+      clearDraft(); setShowForm(false); setEditingId(null); load();
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to save damage report', 'error'); } finally { setSubmitting(false); }
+  };
+
+  const startEdit = (r: DamageReport) => {
+    setForm(() => ({
+      damage_date: (r.damage_date || '').slice(0, 10) || localToday(),
+      damage_type: r.damage_type || '',
+      location_on_vehicle: r.location_on_vehicle || (r as any).location || '',
+      severity: r.severity || 'minor',
+      description: r.description || '',
+      repair_estimate: r.repair_cost != null ? String(r.repair_cost) : '',
+    }));
+    setEditingId(r.id);
+    setShowForm(true);
+  };
+
+  const handleDelete = async (r: DamageReport) => {
+    if (!window.confirm(`Delete this ${r.severity} ${r.damage_type} report?`)) return;
+    try { await apiFetch(`/fleet/damage/${r.id}`, { method: 'DELETE' }); addToast('Damage report deleted', 'success'); load(); }
+    catch (e) { addToast(e instanceof Error ? e.message : 'Failed to delete report', 'error'); }
   };
 
   const updateRepairStatus = async (id: number, repair_status: string) => {
@@ -175,6 +203,8 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
               </div>
             </div>
             <div className="flex items-center gap-1">
+              <button type="button" onClick={() => startEdit(r)} className="toolbar-btn text-[9px]">Edit</button>
+              <button type="button" onClick={() => handleDelete(r)} className="toolbar-btn text-[9px] text-red-400">Del</button>
               <span className={`text-[9px] font-bold ${REPAIR_COLORS[r.repair_status] || 'text-rmpg-400'}`}>{toDisplayLabel(r.repair_status || '')}</span>
               {r.repair_status !== 'completed' && (
                 <select id="ff-fleetdamagetab-5" value={r.repair_status} onChange={e => updateRepairStatus(r.id, e.target.value)} className="input-field text-[9px] py-0.5 px-1">
