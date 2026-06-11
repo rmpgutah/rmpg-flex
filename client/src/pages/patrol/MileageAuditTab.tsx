@@ -69,10 +69,24 @@ type ChainRow = {
   closed_at: string | null;
   starting_mileage: number | null;
   ending_mileage: number | null;
+  /** GPS-recorded distance in METERS (unit_trip rows). Patrol trips usually
+   *  have no odometer stamps — this is their distance source. */
+  distance_m?: number | null;
+  duration_s?: number | null;
   starting_mileage_corrected?: boolean;
   ending_mileage_corrected?: boolean;
   last_fix?: { delta: number; reason: string | null; created_at: string; created_by_name: string | null } | null;
   audit_count?: number;
+};
+
+/** Row distance in miles: odometer delta when both readings exist, else the
+ *  GPS-recorded distance_m (how odometer-less PATROL trips report). */
+const rowDistanceMi = (row: Pick<ChainRow, 'starting_mileage' | 'ending_mileage' | 'distance_m'>): number | null => {
+  if (row.starting_mileage != null && row.ending_mileage != null) {
+    return Math.max(0, Number(row.ending_mileage) - Number(row.starting_mileage));
+  }
+  if (row.distance_m != null && row.distance_m > 0) return row.distance_m * 0.000621371;
+  return null;
 };
 
 type AuditRow = {
@@ -494,9 +508,8 @@ export default function MileageAuditTab() {
   const totals = useMemo(() => {
     let distance = 0, duration = 0, harshA = 0, harshB = 0, harshC = 0;
     for (const r of rows) {
-      const sm = r.starting_mileage;
-      const em = r.ending_mileage;
-      if (sm != null && em != null) distance += Math.max(0, em - sm);
+      const d = rowDistanceMi(r);
+      if (d != null) distance += d;
       const dur = (() => {
         const a = r.cleared_at || r.closed_at;
         const b = r.dispatched_at || r.enroute_at || r.onscene_at || a;
@@ -682,7 +695,8 @@ export default function MileageAuditTab() {
             {rows.map((row) => {
               const sm = row.starting_mileage;
               const em = row.ending_mileage;
-              const distance = (sm != null && em != null) ? (em - sm).toFixed(1) : '—';
+              const distMi = rowDistanceMi(row);
+              const distance = distMi != null ? distMi.toFixed(1) : '—';
               const cleared = row.cleared_at || row.closed_at;
               const isOpen = openFixRowId === row.id;
               const corrected = row.ending_mileage_corrected || row.starting_mileage_corrected;
@@ -778,7 +792,8 @@ export default function MileageAuditTab() {
                 {rows.map((row) => {
                   const sm = row.starting_mileage;
                   const em = row.ending_mileage;
-                  const distance = (sm != null && em != null) ? (em - sm).toFixed(1) : '—';
+                  const distMi = rowDistanceMi(row);
+                  const distance = distMi != null ? distMi.toFixed(1) : '—';
                   const cleared = row.cleared_at || row.closed_at;
                   const isOpen = openFixRowId === row.id;
                   const gap = chainGaps.get(chainRowKey(row));
