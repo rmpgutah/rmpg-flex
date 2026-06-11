@@ -40,6 +40,7 @@ const DEFAULT_PSO_DATA = {
 export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFullForm, clients = [] }: QuickPsoModalProps) {
   const [formData, setFormData] = useState({ ...DEFAULT_PSO_DATA });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [locationUnit, setLocationUnit] = useState('');
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstInputRef = useRef<HTMLSelectElement>(null);
@@ -88,8 +89,6 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
   const update = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
-
-  const [locationUnit, setLocationUnit] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
