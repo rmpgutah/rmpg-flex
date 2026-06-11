@@ -1,3 +1,8 @@
+// ⚠️ SUPERSEDED / NOT WIRED: the live email pipeline is runEmailPoll() in
+// routes/email.ts (per-user owner_user_id cache). This module's upsertSQL is
+// incompatible with the live email_messages schema (UNIQUE(owner_user_id,
+// graph_id), owner_user_id NOT NULL) and nothing calls syncEmail(). Do not
+// wire it back without fixing both.
 // Microsoft Graph → D1 incremental sync for the inbox.
 //
 // Strategy: Graph's /me/mailFolders/inbox/messages/delta endpoint
