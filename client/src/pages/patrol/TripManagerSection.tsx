@@ -102,6 +102,9 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
   const [adding, setAdding] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  // Inline delete confirmation (key + reason) — replaces window.prompt.
+  const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
 
   const fetchTrips = useCallback(async () => {
     setLoading(true);
@@ -190,14 +193,18 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
     }
   };
 
-  const submitDelete = async (t: ManagedTrip) => {
-    const reason = window.prompt(`Delete this ${t.trip_type} trip (${tsLocal(t.start_time)})?\nEnter a reason for the audit trail:`);
-    if (reason == null) return;
+  // NOTE: no window.prompt here — Electron doesn't implement prompt()
+  // (returns null silently) and Chrome can suppress it, so the original
+  // prompt-based delete looked completely dead ("cannot delete records on
+  // Patrol"). The reason is collected with an inline row instead.
+  const submitDelete = async (t: ManagedTrip, reason: string) => {
     if (!reason.trim()) { addToast('Reason is required for the audit trail', 'error'); return; }
     setDeletingKey(`${t.source}:${t.id}`);
     try {
       await apiFetch(`/patrol/trips/${t.source}/${t.id}?reason=${encodeURIComponent(reason.trim())}`, { method: 'DELETE' });
       addToast('Trip deleted', 'success');
+      setConfirmDeleteKey(null);
+      setDeleteReason('');
       fetchTrips();
       onChanged?.();
     } catch (err: any) {
@@ -362,6 +369,38 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
                     </tr>
                   );
                 }
+                if (confirmDeleteKey === key) {
+                  return (
+                    <tr key={key} className="bg-red-950/20 border-b border-red-900/40">
+                      <td className="px-2 py-1 font-mono font-bold text-[10px] text-red-400" colSpan={4}>
+                        DELETE {t.trip_type === 'call_response' ? 'RESPONSE' : 'PATROL'} trip · {tsLocal(t.start_time)} → {tsLocal(t.end_time)}
+                      </td>
+                      <td className="px-2 py-1" colSpan={5}>
+                        <div className="flex gap-1 items-center justify-end">
+                          <input
+                            value={deleteReason}
+                            onChange={(e) => setDeleteReason(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') submitDelete(t, deleteReason); }}
+                            placeholder="Reason (required, audited)"
+                            autoFocus
+                            className="bg-[#141414] border border-red-700/60 text-[10px] px-1 py-0.5 w-56"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => submitDelete(t, deleteReason)}
+                            disabled={deletingKey === key}
+                            className="text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 bg-red-900/40 border border-red-700/60 text-red-300 hover:bg-red-900/70 transition-colors disabled:opacity-50"
+                          >
+                            {deletingKey === key ? 'Deleting…' : 'Confirm Delete'}
+                          </button>
+                          <IconButton aria-label="Cancel delete" onClick={() => { setConfirmDeleteKey(null); setDeleteReason(''); }} className="text-rmpg-400 hover:text-white">
+                            <X className="w-3.5 h-3.5" />
+                          </IconButton>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
                 return (
                   <tr key={key} className="border-b border-[#1a1a1a] hover:bg-[#0c0c0c] transition-colors">
                     <td className={`px-2 py-[2px] font-mono font-bold text-[10px] ${t.trip_type === 'call_response' ? 'text-[#d4a017]' : 'text-rmpg-300'}`}>
@@ -386,7 +425,8 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
                           <IconButton aria-label={`Edit trip ${t.id}`} onClick={() => startEdit(t)} className="text-rmpg-400 hover:text-[#d4a017]">
                             <Pencil className="w-3 h-3" />
                           </IconButton>
-                          <IconButton aria-label={`Delete trip ${t.id}`} onClick={() => submitDelete(t)}
+                          <IconButton aria-label={`Delete trip ${t.id}`}
+                            onClick={() => { setEditingKey(null); setAdding(false); setConfirmDeleteKey(key); setDeleteReason(''); }}
                             disabled={deletingKey === key} className="text-rmpg-400 hover:text-red-400">
                             <Trash2 className="w-3 h-3" />
                           </IconButton>

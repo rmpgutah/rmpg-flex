@@ -599,7 +599,10 @@
 //       full edit/delete; maintenance modal gains labor cost, next-due
 //       mileage, service tasks, notes; Mileage Audit officer dropdown
 //       shows ALL personnel (was role=officer only).
-const CACHE_NAME = 'rmpg-flex-v884';
+// v886: Patrol trip delete fixed — window.prompt() is unimplemented in the
+//       Electron wrapper (silently returns null), so the audited-reason
+//       prompt made delete look dead. Inline confirm row + reason field.
+const CACHE_NAME = 'rmpg-flex-v886';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
