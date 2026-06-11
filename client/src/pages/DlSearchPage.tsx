@@ -1077,6 +1077,13 @@ export default function DlSearchPage() {
                       <div className={`px-3 py-1 text-[8px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${src.danger ? 'text-red-400' : 'text-[#8899aa]'}`}>
                         {src.danger && <AlertTriangle size={10} />}
                         {src.label} ({src.rows.length})
+                        {src.key === 'utah_sor' && (
+                          <a
+                            href="https://www.communitynotification.com/cap_main.php?office=54438"
+                            target="_blank" rel="noopener noreferrer"
+                            className="ml-auto text-[8px] font-bold text-[#d4a017] hover:underline normal-case tracking-normal"
+                          >Open official registry ↗</a>
+                        )}
                       </div>
                       {src.rows.map((row: any) => (
                         <div key={`${src.key}-${row.id}`} className={`px-3 py-1 text-[10px] border-t border-[#101010] flex items-start gap-1.5 ${row.danger ? 'text-red-300 bg-red-900/10' : 'text-[#c0ccdd]'}`}>

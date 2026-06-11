@@ -31,6 +31,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { runUtahSorPoll, importSorRows } from '../utils/utahSorPoller';
 
 const dlRecords = new Hono<Env>();
 
@@ -395,6 +396,59 @@ dlRecords.post('/scan-log', async (c) => {
 });
 
 // ============================================================
+// Utah Sex Offender Registry — status, import, manual poll
+// ============================================================
+// GET  /sor/status  — feed configured? row count + last run
+// POST /sor/import  — bulk-load offender rows the agency lawfully holds
+// POST /sor/poll    — trigger the configured feed pull on demand
+dlRecords.get('/sor/status', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const count = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) n FROM utah_sex_offenders');
+    const cfg = await queryFirst<{ config_value: string }>(
+      db, `SELECT config_value FROM system_config WHERE config_key = 'sor_feed_url' ORDER BY id DESC LIMIT 1`);
+    const lastRun = await queryFirst<Record<string, any>>(
+      db, 'SELECT ran_at, status, records_seen, records_upserted, detail FROM utah_sor_runs ORDER BY id DESC LIMIT 1');
+    return c.json({
+      records: count?.n ?? 0,
+      feed_configured: !!(cfg?.config_value && /^https:\/\//i.test(cfg.config_value)),
+      last_run: lastRun ?? null,
+    });
+  } catch { return c.json({ records: 0, feed_configured: false, last_run: null }); }
+});
+
+dlRecords.post('/sor/import', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const b = await c.req.json<{ rows?: Record<string, any>[] }>();
+    if (!Array.isArray(b.rows) || b.rows.length === 0) {
+      return c.json({ error: 'rows[] required', code: 'NO_ROWS' }, 400);
+    }
+    const r = await importSorRows(db, b.rows);
+    await audit(db, (c.get('userId') as number) ?? null, 'sor_import', r.imported,
+      `Imported ${r.imported} Utah SOR record(s)`);
+    return c.json({ success: true, imported: r.imported });
+  } catch (err) {
+    return c.json({ error: 'Import failed', detail: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+dlRecords.post('/sor/poll', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const r = await runUtahSorPoll(getDb(c.env));
+    return c.json(r);
+  } catch (err) {
+    return c.json({ configured: false, seen: 0, upserted: 0, error: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+// ============================================================
 // Deep records sweep — hard-to-find LE sources by name
 // ============================================================
 // When a scanned name pings, sweep the LE tables that the basic
@@ -427,7 +481,7 @@ dlRecords.get('/deep-sweep', async (c) => {
     const dlLike = dlNum ? `%${dlNum}%` : null;
 
     const [utahWarrants, arrests, cites, fis, gang, trespass, serves, boloRows,
-           sexOffenders, watchlist, aliasHits, caseHits, mvrCitations, dlHistory] = await Promise.all([
+           sexOffenders, watchlist, aliasHits, caseHits, mvrCitations, dlHistory, utahSor] = await Promise.all([
       // Statewide scraped Utah warrants — NOT in the local warrants table.
       soft(() => query<Record<string, any>>(db, `
         SELECT id, first_name, middle_name, last_name, age, city, charges, court_name,
@@ -533,6 +587,13 @@ dlRecords.get('/deep-sweep', async (c) => {
             WHERE REPLACE(REPLACE(dl_number, '-', ''), ' ', '') LIKE ?
             ORDER BY updated_at DESC LIMIT 10`, dlLike))
         : Promise.resolve([] as Record<string, any>[]),
+      // Utah Sex Offender Registry — the agency-fed local store.
+      soft(() => query<Record<string, any>>(db, `
+        SELECT id, registry_id, first_name, last_name, date_of_birth, address, city, zip,
+               offense, risk_level, registration_status, compliance_status, photo_url, aliases
+        FROM utah_sex_offenders
+        WHERE last_name LIKE ? AND first_name LIKE ?
+        ORDER BY last_name LIMIT 10`, lastLike, firstLike)),
     ]);
 
     // ── Full subject profile when a person record is already matched ──
@@ -666,10 +727,18 @@ dlRecords.get('/deep-sweep', async (c) => {
         })),
       },
       {
-        key: 'sex_offenders', label: 'Sex Offender Registry', danger: sexOffenders.length > 0,
+        key: 'sex_offenders', label: 'Sex Offender Registry (flagged persons)', danger: sexOffenders.length > 0,
         rows: sexOffenders.map(p => ({
           id: p.id, dob_match: dobFlag(p.dob), danger: true,
           summary: `${p.last_name}, ${p.first_name}${p.dob ? ` DOB ${String(p.dob).slice(0, 10)}` : ''} — REGISTERED SEX OFFENDER${p.sor_number ? ` · SOR# ${p.sor_number}` : ''}${p.address ? ` · ${p.address}, ${p.city || ''}` : ''}`,
+        })),
+      },
+      {
+        key: 'utah_sor', label: 'Utah Sex Offender Registry', danger: utahSor.length > 0,
+        rows: utahSor.map(o => ({
+          id: o.id, dob_match: dobFlag(o.date_of_birth), danger: true,
+          image: o.photo_url || null,
+          summary: `${o.last_name}, ${o.first_name}${o.date_of_birth ? ` DOB ${String(o.date_of_birth).slice(0, 10)}` : ''} — UTAH SOR${o.risk_level ? ` · ${o.risk_level} RISK` : ''}${o.registration_status ? ` · ${o.registration_status}` : ''}${o.compliance_status ? ` · ${o.compliance_status}` : ''} · ${o.offense || 'offense n/a'}${o.address ? ` · ${o.address}, ${o.city || ''} ${o.zip || ''}` : ''}`,
         })),
       },
       {
