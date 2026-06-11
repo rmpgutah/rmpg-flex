@@ -3870,7 +3870,18 @@ fleet.get('/daily-gps-mileage', async (c) => {
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     };
 
+    // Reject teleport segments + garbage fixes. A single (0,0) breadcrumb
+    // made the Daily Mileage Run chart show ~15,000 mi on 2026-06-10 (SLC →
+    // null island and back). 80 m/s (~179 mph) implied speed mirrors the
+    // PS-211 computeBreadcrumbStats gate.
+    const MAX_PLAUSIBLE_MPS = 80;
+    const validFix = (lat: number, lng: number) =>
+      Number.isFinite(lat) && Number.isFinite(lng) &&
+      Math.abs(lat) <= 90 && Math.abs(lng) <= 180 &&
+      !(Math.abs(lat) < 0.1 && Math.abs(lng) < 0.1);
+
     for (const r of rows) {
+      if (!validFix(r.latitude, r.longitude)) continue;
       const day = String(r.recorded_at).slice(0, 10);
       const key = `${r.vehicle_number}|${day}`;
       const prev = prevPt.get(r.vehicle_number ?? '');
@@ -3881,9 +3892,11 @@ fleet.get('/daily-gps-mileage', async (c) => {
         if (prevDay !== day) { prevPt.set(r.vehicle_number ?? '', { lat: r.latitude, lng: r.longitude, ts: r.recorded_at }); continue; }
         // Gap > 5 min = separate trip; don't bridge with a straight line.
         const gapMs = new Date(r.recorded_at).getTime() - new Date(prev.ts).getTime();
-        const meters = gapMs <= 5 * 60_000
+        let meters = gapMs <= 5 * 60_000
           ? haversineMeters(prev.lat, prev.lng, r.latitude, r.longitude)
           : 0;
+        // Teleport: implied speed beyond plausible driving = GPS glitch.
+        if (meters > 0 && gapMs > 0 && meters / (gapMs / 1000) > MAX_PLAUSIBLE_MPS) meters = 0;
         if (meters > 0) {
           const entry = byVehDay.get(key);
           if (entry) entry.miles += meters / 1609.34;
@@ -3951,12 +3964,18 @@ fleet.get('/:id/gps-mileage', async (c) => {
     let totalMeters = 0;
     let validSegments = 0;
     let prev: { lat: number; lng: number; ts: string } | null = null;
+    // Same garbage-fix + teleport gates as /daily-gps-mileage (80 m/s).
+    const okFix = (lat: number, lng: number) =>
+      Number.isFinite(lat) && Number.isFinite(lng) &&
+      Math.abs(lat) <= 90 && Math.abs(lng) <= 180 &&
+      !(Math.abs(lat) < 0.1 && Math.abs(lng) < 0.1);
     for (const r of rows) {
+      if (!okFix(r.latitude, r.longitude)) continue;
       if (prev) {
         const gapMs = new Date(r.recorded_at).getTime() - new Date(prev.ts).getTime();
         if (gapMs > 0 && gapMs <= 5 * 60_000) {
           const m = haversineMeters(prev.lat, prev.lng, r.latitude, r.longitude);
-          if (m > 0) { totalMeters += m; validSegments++; }
+          if (m > 0 && m / (gapMs / 1000) <= 80) { totalMeters += m; validSegments++; }
         }
       }
       prev = { lat: r.latitude, lng: r.longitude, ts: r.recorded_at };
