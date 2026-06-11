@@ -1010,7 +1010,7 @@ records.get('/evidence', async (c) => {
 records.get('/evidence/stats', async (c) => {
   try {
     const db = getDb(c.env);
-    const row = await queryFirst<Record<string, unknown>>(db, "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'collected' THEN 1 ELSE 0 END) as collected, SUM(CASE WHEN status = 'stored' THEN 1 ELSE 0 END) as stored, SUM(CASE WHEN status IN ('transferred','destroyed','returned') THEN 1 ELSE 0 END) as closed FROM evidence");
+    const row = await queryFirst<Record<string, unknown>>(db, "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'received' THEN 1 ELSE 0 END) as collected, SUM(CASE WHEN status = 'in_storage' THEN 1 ELSE 0 END) as stored, SUM(CASE WHEN status IN ('submitted_to_le','disposed','released') THEN 1 ELSE 0 END) as closed FROM evidence");
     return c.json(row || { total: 0, collected: 0, stored: 0, closed: 0 });
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
@@ -1028,7 +1028,7 @@ records.get('/evidence/locations', async (c) => {
 records.get('/evidence/aging-report', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, "SELECT e.*, u.full_name as collected_by_name, julianday('now') - julianday(e.created_at) as age_days FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.status IN ('collected', 'stored') ORDER BY e.created_at ASC LIMIT 200");
+    const rows = await query<Record<string, unknown>>(db, "SELECT e.*, u.full_name as collected_by_name, julianday('now') - julianday(e.created_at) as age_days FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.status IN ('received', 'in_storage') ORDER BY e.created_at ASC LIMIT 200");
     return c.json(rows);
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
@@ -1189,10 +1189,10 @@ records.post('/evidence/:id/archive', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const existing = await queryFirst<{ id: number; status: string }>(db, "SELECT id, status FROM evidence WHERE id = ? AND status NOT IN ('destroyed', 'returned')", id);
+    const existing = await queryFirst<{ id: number; status: string }>(db, "SELECT id, status FROM evidence WHERE id = ? AND status NOT IN ('disposed', 'released')", id);
     if (!existing) return c.json({ error: 'Evidence not found or already finalized' }, 404);
-    await execute(db, "UPDATE evidence SET status = 'destroyed' WHERE id = ?", id);
-    return c.json({ success: true, archived: true, status: 'destroyed' });
+    await execute(db, "UPDATE evidence SET status = 'disposed' WHERE id = ?", id);
+    return c.json({ success: true, archived: true, status: 'disposed' });
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -1201,10 +1201,10 @@ records.post('/evidence/:id/unarchive', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const existing = await queryFirst<{ id: number; status: string }>(db, "SELECT id, status FROM evidence WHERE id = ? AND status = 'destroyed'", id);
+    const existing = await queryFirst<{ id: number; status: string }>(db, "SELECT id, status FROM evidence WHERE id = ? AND status = 'disposed'", id);
     if (!existing) return c.json({ error: 'Evidence not found or not archived' }, 404);
-    await execute(db, "UPDATE evidence SET status = 'stored' WHERE id = ?", id);
-    return c.json({ success: true, archived: false, status: 'stored' });
+    await execute(db, "UPDATE evidence SET status = 'in_storage' WHERE id = ?", id);
+    return c.json({ success: true, archived: false, status: 'in_storage' });
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -1480,23 +1480,23 @@ records.post('/retention/enforce', async (c) => {
       let count = 0;
       if (recordType === 'evidence') {
         const expired = await query<{ id: number }>(db,
-          `SELECT id FROM evidence WHERE status IN ('stored','collected')
+          `SELECT id FROM evidence WHERE status IN ('in_storage','received')
            AND datetime(created_at) < datetime('now',?) LIMIT 500`, `-${days} days`);
         if (expired.length > 0) {
           const ids = expired.map((r: any) => r.id);
           const ps = ids.map(() => '?').join(',');
-          await execute(db, `UPDATE evidence SET status='destroyed' WHERE id IN (${ps})`, ...ids);
+          await execute(db, `UPDATE evidence SET status='disposed' WHERE id IN (${ps})`, ...ids);
           count = ids.length;
         }
       } else if (recordType === 'incidents') {
         const expired = await query<{ id: number }>(db,
-          `SELECT id FROM incidents WHERE status IN ('closed','approved')
+          `SELECT id FROM incidents WHERE status = 'approved' AND archived_at IS NULL
            AND datetime(created_at) < datetime('now',?) LIMIT 500`, `-${days} days`);
         if (expired.length > 0) {
           const ids = expired.map((r: any) => r.id);
           const ps = ids.map(() => '?').join(',');
           await execute(db,
-            `UPDATE incidents SET status='archived',updated_at=datetime('now') WHERE id IN (${ps})`,
+            `UPDATE incidents SET archived_at=datetime('now'),updated_at=datetime('now') WHERE id IN (${ps})`,
             ...ids);
           count = ids.length;
         }
