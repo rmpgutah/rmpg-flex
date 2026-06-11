@@ -6,7 +6,7 @@
 // automatic updates via electron-updater.
 // ============================================================
 
-const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net } = require('electron');
+const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb');
@@ -626,6 +626,15 @@ async function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: true,
+      // Keep the renderer running at full rate when the window is minimized,
+      // occluded, or otherwise not focused. Chromium throttles background
+      // windows by default — setInterval clamped to ~1/min, rAF paused — which
+      // slowed the nav trip engine's 15s route-upload + 30s auto-end checks to
+      // a crawl whenever the officer switched away from the CAD. The GPS NMEA
+      // reader lives in the main process (never throttled), but the detection +
+      // upload logic runs here in the renderer, so it must not be throttled for
+      // navigation to keep calculating + recording movement off-screen.
+      backgroundThrottling: false,
     },
     // macOS titlebar
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
@@ -2306,6 +2315,42 @@ ipcMain.handle('geo:internal-gps-stop', async () => {
     internalGpsReader = null;
   }
   return { ok: true };
+});
+
+// ─── Power management (keep navigation alive off-screen) ─────
+// While a vehicle trip is active, the renderer asks the main process to hold a
+// powerSaveBlocker so the Toughbook doesn't suspend mid-patrol. We use
+// 'prevent-app-suspension' (NOT 'prevent-display-sleep'): the display may turn
+// off to save power, but the system stays awake so the nav engine keeps
+// calculating + uploading breadcrumbs in the background. The blocker is
+// released the moment the trip ends (renderer calls power:allow-sleep) so a
+// parked/idle unit returns to normal power behavior. Idempotent: repeated
+// keep-awake calls reuse the single active blocker id.
+let powerBlockerId = null;
+ipcMain.handle('power:keep-awake', () => {
+  try {
+    if (powerBlockerId == null || !powerSaveBlocker.isStarted(powerBlockerId)) {
+      powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+      console.log('[POWER] prevent-app-suspension started (id', powerBlockerId + ') — active trip');
+    }
+    return { ok: true, blocking: true };
+  } catch (err) {
+    console.warn('[POWER] keep-awake failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+});
+ipcMain.handle('power:allow-sleep', () => {
+  try {
+    if (powerBlockerId != null && powerSaveBlocker.isStarted(powerBlockerId)) {
+      powerSaveBlocker.stop(powerBlockerId);
+      console.log('[POWER] prevent-app-suspension stopped — trip ended');
+    }
+    powerBlockerId = null;
+    return { ok: true, blocking: false };
+  } catch (err) {
+    console.warn('[POWER] allow-sleep failed:', err.message);
+    return { ok: false, error: err.message };
+  }
 });
 
 // ─── IP Geolocation Fallback ─────────────────────────────────
