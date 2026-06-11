@@ -37,6 +37,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ vehicle_id: vehicleId || '', recall_number: '', manufacturer: '', description: '', severity: 'standard', remedy: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -63,20 +64,44 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
     if (!Number.isInteger(vid) || vid <= 0) { addToast('A valid vehicle is required for a recall', 'error'); return; }
     if (submitting) return;
     setSubmitting(true);
+    // Map UI fields to the handler's columns (nhtsa_number / issue_date / notes).
+    const payload = {
+      nhtsa_number: form.recall_number.trim(),
+      description: form.description.trim(),
+      severity: form.severity,
+      notes: [form.manufacturer && `Mfr: ${form.manufacturer}`, form.remedy && `Remedy: ${form.remedy}`].filter(Boolean).join(' — ') || null,
+    };
     try {
-      // Map UI fields to the handler's columns (nhtsa_number / issue_date / notes).
-      await apiFetch('/fleet/recalls', { method: 'POST', body: JSON.stringify({
-        vehicle_id: vid,
-        nhtsa_number: form.recall_number.trim(),
-        description: form.description.trim(),
-        severity: form.severity,
-        issue_date: localToday(),
-        notes: [form.manufacturer && `Mfr: ${form.manufacturer}`, form.remedy && `Remedy: ${form.remedy}`].filter(Boolean).join(' — ') || null,
-      }) });
-      addToast('Recall created', 'success'); setShowForm(false);
+      if (editingId != null) {
+        await apiFetch(`/fleet/recalls/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        addToast('Recall updated', 'success');
+      } else {
+        await apiFetch('/fleet/recalls', { method: 'POST', body: JSON.stringify({ ...payload, vehicle_id: vid, issue_date: localToday() }) });
+        addToast('Recall created', 'success');
+      }
+      setShowForm(false); setEditingId(null);
       setForm({ vehicle_id: vehicleId || '', recall_number: '', manufacturer: '', description: '', severity: 'standard', remedy: '' });
       load();
-    } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to create recall', 'error'); } finally { setSubmitting(false); }
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to save recall', 'error'); } finally { setSubmitting(false); }
+  };
+
+  const startEdit = (r: Recall) => {
+    setForm({
+      vehicle_id: r.vehicle_id || vehicleId || '',
+      recall_number: r.recall_number || (r as any).nhtsa_number || '',
+      manufacturer: r.manufacturer || '',
+      description: r.description || '',
+      severity: r.severity || 'standard',
+      remedy: r.remedy || '',
+    });
+    setEditingId(r.id);
+    setShowForm(true);
+  };
+
+  const handleDelete = async (r: Recall) => {
+    if (!window.confirm(`Delete recall ${r.recall_number || (r as any).nhtsa_number || r.id}?`)) return;
+    try { await apiFetch(`/fleet/recalls/${r.id}`, { method: 'DELETE' }); addToast('Recall deleted', 'success'); load(); }
+    catch (e) { addToast(e instanceof Error ? e.message : 'Failed to delete recall', 'error'); }
   };
 
   const updateStatus = async (id: number, status: string) => {
@@ -134,12 +159,16 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
                   {r.remedy && <p className="text-[10px] text-rmpg-400 mt-1">Remedy: {r.remedy}</p>}
                   {(r.completed_date || (r as any).remedy_date) && <p className="text-[10px] text-green-400">Completed: {parseTimestamp(r.completed_date || (r as any).remedy_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>}
                 </div>
-                {r.status !== 'completed' && r.status !== 'not_applicable' && (
-                  <div className="flex gap-1">
-                    {r.status === 'open' && <button type="button" onClick={() => updateStatus(r.id, 'scheduled')} className="toolbar-btn text-[9px]"><Calendar className="w-3 h-3" /> Schedule</button>}
-                    <button type="button" onClick={() => updateStatus(r.id, 'completed')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
-                  </div>
-                )}
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => startEdit(r)} className="toolbar-btn text-[9px]">Edit</button>
+                  <button type="button" onClick={() => handleDelete(r)} className="toolbar-btn text-[9px] text-red-400">Del</button>
+                  {r.status !== 'completed' && r.status !== 'not_applicable' && (
+                    <>
+                      {r.status === 'open' && <button type="button" onClick={() => updateStatus(r.id, 'scheduled')} className="toolbar-btn text-[9px]"><Calendar className="w-3 h-3" /> Schedule</button>}
+                      <button type="button" onClick={() => updateStatus(r.id, 'completed')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           ))}

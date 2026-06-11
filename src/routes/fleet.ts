@@ -1400,7 +1400,7 @@ fleet.post('/:id/maintenance', async (c) => {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.type || !body.performed_at) return c.json({ error: 'type and performed_at required' }, 400);
-    const result = await execute(db, `INSERT INTO fleet_maintenance (vehicle_id, type, description, mileage_at_service, cost, vendor, performed_by, performed_at, next_due_date, next_due_mileage) VALUES (?,?,?,?,?,?,?,?,?,?)`, vehicleId, body.type, body.description ?? null, body.mileage_at_service ?? null, body.cost ?? null, body.vendor ?? null, body.performed_by ?? null, body.performed_at, body.next_due_date ?? null, body.next_due_mileage ?? null);
+    const result = await execute(db, `INSERT INTO fleet_maintenance (vehicle_id, type, description, mileage_at_service, cost, labor_cost, vendor, performed_by, performed_at, next_due_date, next_due_mileage, service_tasks, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, body.type, body.description ?? null, body.mileage_at_service ?? null, body.cost ?? null, body.labor_cost ?? null, body.vendor ?? null, body.performed_by ?? null, body.performed_at, body.next_due_date ?? null, body.next_due_mileage ?? null, body.service_tasks ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_maintenance WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/maintenance failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -1414,7 +1414,7 @@ fleet.put('/maintenance/:id', async (c) => {
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM fleet_maintenance WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Maintenance record not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
-    const cols = ['type', 'description', 'mileage_at_service', 'cost', 'vendor', 'performed_by', 'performed_at', 'next_due_date', 'next_due_mileage'];
+    const cols = ['type', 'description', 'mileage_at_service', 'cost', 'labor_cost', 'vendor', 'performed_by', 'performed_at', 'next_due_date', 'next_due_mileage', 'service_tasks', 'notes'];
     const setCols: string[] = []; const bindings: unknown[] = [];
     for (const key of cols) { if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); } }
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
@@ -2313,7 +2313,7 @@ fleet.post('/:id/tires', async (c) => {
     const vehicleId = Number(c.req.param('id'));
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
-    const result = await execute(db, `INSERT INTO fleet_tires (vehicle_id, tire_position, brand, model, size, dot_code, tread_depth, pressure_psi, installed_date, installed_mileage, cost, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, body.tire_position, body.brand, body.model, body.size, body.dot_code, body.tread_depth, body.pressure_psi, body.installed_date ?? null, body.installed_mileage, body.cost, body.notes ?? null);
+    const result = await execute(db, `INSERT INTO fleet_tires (vehicle_id, tire_position, brand, model, size, dot_code, tread_depth, pressure_psi, installed_date, installed_mileage, cost, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, body.tire_position ?? null, body.brand ?? null, body.model ?? null, body.size ?? null, body.dot_code ?? null, body.tread_depth ?? null, body.pressure_psi ?? null, body.installed_date ?? null, body.installed_mileage ?? null, body.cost ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_tires WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/tires failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -2324,7 +2324,7 @@ fleet.put('/tires/:id', async (c) => {
     const id = Number(c.req.param('id'));
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
-    const cols = ['tire_position', 'brand', 'model', 'size', 'dot_code', 'tread_depth', 'pressure_psi', 'cost', 'notes', 'removed_date', 'removed_mileage'];
+    const cols = ['tire_position', 'brand', 'model', 'size', 'dot_code', 'tread_depth', 'pressure_psi', 'installed_date', 'installed_mileage', 'cost', 'notes', 'removed_date', 'removed_mileage'];
     const setCols: string[] = []; const bindings: unknown[] = [];
     for (const key of cols) { if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); } }
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
@@ -2356,7 +2356,7 @@ fleet.post('/:id/damage', async (c) => {
     const vehicleId = Number(c.req.param('id'));
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
-    const result = await execute(db, `INSERT INTO fleet_damage (vehicle_id, damage_type, location, severity, description, reported_by, reported_date, repair_cost, repair_status, repair_date, photo_urls, notes) VALUES (?,?,?,?,?,?,datetime('now'),?,?,?,?,?)`, vehicleId, body.damage_type, body.location, body.severity, body.description, (c.get('user') as { full_name: string } | undefined)?.full_name ?? null, body.repair_cost, body.repair_status ?? 'pending', body.repair_date ?? null, body.photo_urls ?? null, body.notes ?? null);
+    const result = await execute(db, `INSERT INTO fleet_damage (vehicle_id, damage_type, location, severity, description, reported_by, reported_date, repair_cost, repair_status, repair_date, photo_urls, notes) VALUES (?,?,?,?,?,?,datetime('now'),?,?,?,?,?)`, vehicleId, body.damage_type ?? null, body.location ?? null, body.severity ?? null, body.description ?? null, (c.get('user') as { full_name: string } | undefined)?.full_name ?? null, body.repair_cost ?? null, body.repair_status ?? 'pending', body.repair_date ?? null, body.photo_urls ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_damage WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/damage failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -2386,7 +2386,7 @@ fleet.post('/:id/damage-reports', async (c) => {
   try {
     const vehicleId = Number(c.req.param('id')); if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
     const db = getDb(c.env); const body = await c.req.json<Record<string, unknown>>();
-    const result = await execute(db, `INSERT INTO fleet_damage (vehicle_id, damage_type, location, severity, description, reported_by, reported_date, repair_cost, repair_status, photo_urls, notes) VALUES (?,?,?,?,?,?,datetime('now'),?,?,?,?)`, vehicleId, body.damage_type, body.location, body.severity, body.description, (c.get('user') as { full_name: string } | undefined)?.full_name ?? null, body.repair_cost, body.repair_status ?? 'pending', body.photo_urls ?? null, body.notes ?? null);
+    const result = await execute(db, `INSERT INTO fleet_damage (vehicle_id, damage_type, location, severity, description, reported_by, reported_date, repair_cost, repair_status, photo_urls, notes) VALUES (?,?,?,?,?,?,datetime('now'),?,?,?,?)`, vehicleId, body.damage_type ?? null, body.location ?? null, body.severity ?? null, body.description ?? null, (c.get('user') as { full_name: string } | undefined)?.full_name ?? null, body.repair_cost ?? null, body.repair_status ?? 'pending', body.photo_urls ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_damage WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/damage-reports failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -2395,7 +2395,7 @@ fleet.put('/damage-reports/:id', async (c) => {
   try {
     const id = Number(c.req.param('id')); if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const db = getDb(c.env); const body = await c.req.json<Record<string, unknown>>();
-    const cols = ['repair_status']; const setCols: string[] = []; const bindings: unknown[] = [];
+    const cols = ['damage_type', 'location', 'severity', 'description', 'repair_cost', 'repair_status', 'repair_date', 'photo_urls', 'notes']; const setCols: string[] = []; const bindings: unknown[] = [];
     for (const key of cols) { if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); } }
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id); await execute(db, `UPDATE fleet_damage SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
@@ -2430,7 +2430,7 @@ fleet.post('/recalls', async (c) => {
   try {
     const db = getDb(c.env); const body = await c.req.json<Record<string, unknown>>();
     if (!body.vehicle_id) return c.json({ error: 'vehicle_id required' }, 400);
-    const result = await execute(db, `INSERT INTO fleet_recalls (vehicle_id, nhtsa_number, description, severity, issue_date, remedy_date, status, notes) VALUES (?,?,?,?,?,?,?,?)`, body.vehicle_id, body.nhtsa_number, body.description, body.severity ?? 'medium', body.issue_date, body.remedy_date ?? null, body.status ?? 'open', body.notes ?? null);
+    const result = await execute(db, `INSERT INTO fleet_recalls (vehicle_id, nhtsa_number, description, severity, issue_date, remedy_date, status, notes) VALUES (?,?,?,?,?,?,?,?)`, body.vehicle_id, body.nhtsa_number ?? null, body.description ?? null, body.severity ?? 'medium', body.issue_date ?? null, body.remedy_date ?? null, body.status ?? 'open', body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_recalls WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/recalls failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -2465,7 +2465,7 @@ fleet.post('/:id/recalls', async (c) => {
   try {
     const vehicleId = Number(c.req.param('id'));
     const db = getDb(c.env); const body = await c.req.json<Record<string, unknown>>();
-    const result = await execute(db, `INSERT INTO fleet_recalls (vehicle_id, nhtsa_number, description, severity, issue_date, remedy_date, status, notes) VALUES (?,?,?,?,?,?,?,?)`, vehicleId, body.nhtsa_number, body.description, body.severity ?? 'medium', body.issue_date, body.remedy_date ?? null, body.status ?? 'open', body.notes ?? null);
+    const result = await execute(db, `INSERT INTO fleet_recalls (vehicle_id, nhtsa_number, description, severity, issue_date, remedy_date, status, notes) VALUES (?,?,?,?,?,?,?,?)`, vehicleId, body.nhtsa_number ?? null, body.description ?? null, body.severity ?? 'medium', body.issue_date ?? null, body.remedy_date ?? null, body.status ?? 'open', body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_recalls WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/recalls failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -2492,7 +2492,7 @@ fleet.post('/parts', async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
-    const result = await execute(db, `INSERT INTO fleet_parts (part_number, name, category, description, unit_cost, quantity_on_hand, reorder_point, supplier, compatible_vehicles, location) VALUES (?,?,?,?,?,?,?,?,?,?)`, body.part_number, body.name, body.category, body.description ?? null, body.unit_cost, body.quantity_on_hand ?? 0, body.reorder_point ?? 0, body.supplier ?? null, body.compatible_vehicles ?? null, body.location ?? null);
+    const result = await execute(db, `INSERT INTO fleet_parts (part_number, name, category, description, unit_cost, quantity_on_hand, reorder_point, supplier, compatible_vehicles, location) VALUES (?,?,?,?,?,?,?,?,?,?)`, body.part_number ?? null, body.name ?? null, body.category ?? null, body.description ?? null, body.unit_cost ?? null, body.quantity_on_hand ?? 0, body.reorder_point ?? 0, body.supplier ?? null, body.compatible_vehicles ?? null, body.location ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_parts WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/parts failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }

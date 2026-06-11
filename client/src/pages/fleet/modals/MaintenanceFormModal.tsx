@@ -7,15 +7,20 @@ export interface MaintenanceFormState {
   description: string;
   mileage_at_service: string;
   cost: string;
+  labor_cost: string;
   vendor: string;
   performed_by: string;
   performed_at: string;
   next_due_date: string;
+  next_due_mileage: string;
+  service_tasks: string;
+  notes: string;
 }
 
 export const EMPTY_MAINT_FORM: MaintenanceFormState = {
-  type: 'oil_change', description: '', mileage_at_service: '', cost: '',
-  vendor: '', performed_by: '', performed_at: '', next_due_date: '',
+  type: 'oil_change', description: '', mileage_at_service: '', cost: '', labor_cost: '',
+  vendor: '', performed_by: '', performed_at: '', next_due_date: '', next_due_mileage: '',
+  service_tasks: '', notes: '',
 };
 
 const MAINTENANCE_TYPES = [
@@ -119,9 +124,14 @@ export default function MaintenanceFormModal({ isOpen, mode = 'create', form, on
                 onChange={(e) => setField('mileage_at_service', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Cost ($)</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Total Cost ($)</label>
               <input id="ff-maintenanceformmodal-4" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" value={form.cost}
                 onChange={(e) => setField('cost', e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Labor Cost ($)</label>
+              <input id="ff-maintenanceformmodal-8" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" value={form.labor_cost}
+                onChange={(e) => setField('labor_cost', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Vendor</label>
@@ -133,10 +143,25 @@ export default function MaintenanceFormModal({ isOpen, mode = 'create', form, on
               <input id="ff-maintenanceformmodal-6" className="input-dark w-full text-[11px] min-h-[36px]" value={form.performed_by}
                 onChange={(e) => setField('performed_by', e.target.value)} />
             </div>
-            <div className="col-span-2">
+            <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Next Due Date/Time</label>
               <input id="ff-maintenanceformmodal-7" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1" value={form.next_due_date}
                 onChange={(e) => setField('next_due_date', e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Next Due Mileage</label>
+              <input id="ff-maintenanceformmodal-9" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.next_due_mileage}
+                onChange={(e) => setField('next_due_mileage', e.target.value)} placeholder="e.g. 96000" />
+            </div>
+            <div className="col-span-2">
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Service Tasks (comma-separated)</label>
+              <input id="ff-maintenanceformmodal-10" className="input-dark w-full text-[11px] min-h-[36px]" value={form.service_tasks}
+                onChange={(e) => setField('service_tasks', e.target.value)} placeholder="oil filter, drain plug gasket, cabin filter…" />
+            </div>
+            <div className="col-span-2">
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
+              <textarea id="ff-maintenanceformmodal-11" className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
+                onChange={(e) => setField('notes', e.target.value)} maxLength={2000} placeholder="Warranty info, invoice #, parts detail, follow-ups…" />
             </div>
           </div>
         </div>

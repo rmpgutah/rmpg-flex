@@ -590,7 +590,16 @@
 //       MM/DD-stamped start/end on multi-day reports, 1-decimal distances,
 //       episode-based harsh counts + GPS-teleport distance filtering,
 //       zero-movement rows dropped.
-const CACHE_NAME = 'rmpg-flex-v882';
+// v883: PS-211 shows ALL trips (call_response unit_trips + mileage-less
+//       patrol trips) with a DATE column + America/Denver times; Patrol
+//       Trip Log Management (full add/edit/delete, audited); Fleet
+//       "Mileage Distribution" panel → "Daily Mileage Run" (GPS miles/day).
+// v884: Fleet sub-records pass — tires D1_TYPE_ERROR (undefined binds) +
+//       diagram column-name fix + full tire edit/delete; damage + recall
+//       full edit/delete; maintenance modal gains labor cost, next-due
+//       mileage, service tasks, notes; Mileage Audit officer dropdown
+//       shows ALL personnel (was role=officer only).
+const CACHE_NAME = 'rmpg-flex-v884';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

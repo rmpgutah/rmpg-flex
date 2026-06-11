@@ -318,6 +318,19 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
   const [dailyGpsMileage, setDailyGpsMileage] = useState<any[]>([]);
   const [dailyGpsLoading, setDailyGpsLoading] = useState(false);
 
+  // Daily Mileage Run — fleet miles per day, summed across vehicles from the
+  // GPS-derived per-vehicle daily mileage (/fleet/daily-gps-mileage).
+  const dailyMileageRun = useMemo(() => {
+    const byDate = new Map<string, number>();
+    for (const r of dailyGpsMileage as Array<{ date: string; miles: number }>) {
+      if (!r?.date) continue;
+      byDate.set(r.date, (byDate.get(r.date) ?? 0) + (Number(r.miles) || 0));
+    }
+    return Array.from(byDate.entries())
+      .map(([date, miles]) => ({ date, miles: Math.round(miles * 10) / 10 }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [dailyGpsMileage]);
+
   useEffect(() => {
     apiFetch<any>('/fleet/fleet-cost-analytics').then((d: any) => d && setCostAnalytics(d)).catch(() => {});
     apiFetch<any>('/fleet/inspection-stats').then((d: any) => d && setInspectionStats(d)).catch(() => {});
@@ -586,25 +599,41 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
       </div>
 
-      {/* ROW 4: Mileage Distribution + Fleet Status */}
+      {/* ROW 4: Daily Mileage Run + Fleet Status */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Mileage Distribution (Bar Chart) */}
+        {/* Daily Mileage Run (GPS miles per day, fleet-wide) */}
         <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
-            <Gauge className="w-3 h-3" /> Mileage Distribution
+            <Gauge className="w-3 h-3" /> Daily Mileage Run
           </h4>
-          {mileage_distribution.some(d => d.count > 0) ? (
+          {dailyMileageRun.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={mileage_distribution}>
+              <BarChart data={dailyMileageRun}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
-                <XAxis dataKey="range" tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }} />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: '#666666', fontSize: 8 }}
+                  tickLine={false}
+                  axisLine={{ stroke: '#222222' }}
+                  tickFormatter={(v) => {
+                    const d = parseTimestamp(v);
+                    return `${d.getMonth() + 1}/${d.getDate()}`;
+                  }}
+                />
                 <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }} />
-                <Tooltip {...CHART_TOOLTIP_STYLE} />
-                <Bar dataKey="count" fill="#4a90c4" radius={[2, 2, 0, 0]} />
+                <Tooltip
+                  {...CHART_TOOLTIP_STYLE}
+                  formatter={(value: any) => [`${value} mi`, 'Miles']}
+                  labelFormatter={(label) => {
+                    const d = parseTimestamp(label);
+                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  }}
+                />
+                <Bar dataKey="miles" fill="#d4a017" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[180px] flex items-center justify-center text-[10px] text-rmpg-500">No data</div>
+            <div className="h-[180px] flex items-center justify-center text-[10px] text-rmpg-500">No GPS mileage data</div>
           )}
         </div>
 
