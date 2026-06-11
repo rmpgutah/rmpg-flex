@@ -78,12 +78,14 @@ const outDir = path.join(__dirname, '..', 'client', 'public', 'sounds');
 fs.mkdirSync(outDir, { recursive: true });
 console.log('Rendering Spillman-style console sounds →', outDir);
 
-// click.wav — mechanical key tick: noise transient + pitched flick
+// click.wav — soft key tick: muted thock, no harsh noise snap.
+// Subtle by design: sine body in a lower register, gentle attack,
+// only a whisper of filtered noise for the mechanical character.
 {
-  const s = make(0.07);
-  noiseBurst(s, { at: 0, dur: 0.02, gain: 0.5, lowpass: 5200 });
-  tone(s, { at: 0, dur: 0.03, f0: 2100, f1: 1350, gain: 0.55, attack: 0.002, type: 'square' });
-  tone(s, { at: 0, dur: 0.018, f0: 4200, f1: 3100, gain: 0.12, attack: 0.001 });
+  const s = make(0.06);
+  noiseBurst(s, { at: 0, dur: 0.012, gain: 0.12, lowpass: 2400 });
+  tone(s, { at: 0, dur: 0.035, f0: 1500, f1: 1050, gain: 0.55, attack: 0.006 });
+  tone(s, { at: 0, dur: 0.02, f0: 3000, f1: 2400, gain: 0.05, attack: 0.004 });
   writeWav(path.join(outDir, 'click.wav'), s);
 }
 
@@ -116,16 +118,17 @@ console.log('Rendering Spillman-style console sounds →', outDir);
   writeWav(path.join(outDir, 'delete.wav'), s);
 }
 
-// login.wav — sign-on acknowledge: two data blips + firm confirm chord w/ ring-out
+// login.wav — sign-on acknowledge, softened: two gentle sine blips
+// (down an octave-ish from the original square pair, slower attacks,
+// no noise snap) into a warm low confirm chord with a smooth tail.
 {
-  const s = make(1.1);
-  tone(s, { at: 0.0, dur: 0.07, f0: 1318, gain: 0.42, type: 'square' });
-  tone(s, { at: 0.11, dur: 0.07, f0: 1760, gain: 0.42, type: 'square' });
-  noiseBurst(s, { at: 0.0, dur: 0.008, gain: 0.08, lowpass: 6000 });
-  noiseBurst(s, { at: 0.11, dur: 0.008, gain: 0.08, lowpass: 6000 });
-  // confirm: root + fifth, detuned layers, long exponential tail
-  for (const [f, g] of [[523, 0.5], [524.5, 0.22], [659, 0.26], [661, 0.12]]) {
-    tone(s, { at: 0.26, dur: 0.8, f0: f, gain: g, attack: 0.015, harmonics: 3 });
+  const s = make(1.0);
+  tone(s, { at: 0.0, dur: 0.09, f0: 988, gain: 0.30, attack: 0.012 });
+  tone(s, { at: 0.13, dur: 0.09, f0: 1318, gain: 0.30, attack: 0.012 });
+  // confirm: root + fifth, detuned layers, long smooth tail — fewer
+  // harmonics and a slower attack so it swells in rather than striking
+  for (const [f, g] of [[523, 0.45], [524.5, 0.20], [659, 0.20], [661, 0.09]]) {
+    tone(s, { at: 0.28, dur: 0.7, f0: f, gain: g, attack: 0.05, harmonics: 1 });
   }
   writeWav(path.join(outDir, 'login.wav'), s);
 }

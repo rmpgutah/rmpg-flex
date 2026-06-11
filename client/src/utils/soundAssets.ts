@@ -24,12 +24,14 @@
 /** UI feedback sounds (always preloaded — they fire constantly). */
 export type UiSoundKey = 'click' | 'submit' | 'update' | 'delete' | 'login';
 
+// Deliberately quiet — UI feedback should sit under the dispatch tones,
+// felt more than heard. Clicks especially fire on every interaction.
 const UI_GAIN: Record<UiSoundKey, number> = {
-  click: 0.18,
-  submit: 0.35,
-  update: 0.35,
-  delete: 0.35,
-  login: 0.5,
+  click: 0.07,
+  submit: 0.3,
+  update: 0.3,
+  delete: 0.3,
+  login: 0.28,
 };
 
 export interface SoundHandle { stop: () => void }
