@@ -158,6 +158,17 @@ fleet.get('/analytics', async (c) => {
     }
   };
 
+  // ?period=30d|90d|1y|all — scopes the KPI cards (costs, pass rate).
+  // Trend charts stay 12-month regardless; the period selector reads
+  // as "the stats window" in the UI, not the chart x-axis.
+  const PERIODS: Record<string, string | null> = { '30d': '-30 days', '90d': '-90 days', '1y': '-12 months', 'all': null };
+  const periodKey = (c.req.query('period') || '90d').toLowerCase();
+  const periodMod = PERIODS[periodKey] !== undefined ? PERIODS[periodKey] : '-90 days';
+  // SQL fragments: empty string disables the filter for 'all'.
+  const maintPeriod = periodMod ? `AND performed_at >= datetime('now', '${periodMod}')` : '';
+  const fuelPeriod = periodMod ? `AND fuel_date >= date('now', '${periodMod}')` : '';
+  const inspPeriod = periodMod ? `AND inspection_date >= date('now', '${periodMod}')` : '';
+
   // maintenance_cost_trend — last 12 months bucketed by performed_at month.
   // strftime('%Y-%m', ...) groups MST-stored timestamps cleanly into months;
   // we don't shift to UTC because the dashboard's "this month" semantics
@@ -214,42 +225,75 @@ fleet.get('/analytics', async (c) => {
     return rows.map(r => ({ ...r, color: STATUS_COLORS[r.status] ?? '#888888' }));
   }, []);
 
-  // fuel_economy_trend — monthly. avg_mpg null when distance can't be
-  // derived (no consecutive odometer readings in the window).
+  // fuel_economy_trend — monthly. MPG per month = per-vehicle odometer
+  // span ÷ gallons within the month, summed across vehicles. Needs ≥2
+  // odometer readings in the month for a vehicle to contribute; months
+  // without derivable distance return null (chart connectNulls).
   const fuel_economy_trend = await safe(() => query<{
     month: string; avg_mpg: number | null; total_gallons: number; total_cost: number;
   }>(
     db,
-    `SELECT strftime('%Y-%m', fuel_date) as month,
-            NULL as avg_mpg,
+    `WITH monthly AS (
+       SELECT strftime('%Y-%m', fuel_date) as month,
+              vehicle_id,
+              SUM(gallons) as gallons,
+              SUM(total_cost) as cost,
+              CASE WHEN COUNT(odometer) >= 2 THEN MAX(odometer) - MIN(odometer) END as miles
+       FROM fleet_fuel_log
+       WHERE fuel_date >= date('now', '-12 months')
+       GROUP BY month, vehicle_id
+     )
+     SELECT month,
+            CASE WHEN SUM(CASE WHEN miles > 0 THEN gallons END) > 0
+                 THEN ROUND(SUM(miles) * 1.0 / SUM(CASE WHEN miles > 0 THEN gallons END), 1)
+            END as avg_mpg,
             COALESCE(SUM(gallons), 0) as total_gallons,
-            COALESCE(SUM(total_cost), 0) as total_cost
-     FROM fleet_fuel_log
-     WHERE fuel_date >= date('now', '-12 months')
+            COALESCE(SUM(cost), 0) as total_cost
+     FROM monthly
      GROUP BY month
      ORDER BY month`,
   ), []);
 
-  // Aggregate summary — uses materialized totals on fleet_vehicles
-  // (total_maintenance_cost / total_fuel_cost / avg_mpg, added via
-  // addCol in the legacy schema). Falls back to 0 if those columns
-  // aren't populated yet for a given row.
-  const summary = await safe(() => queryFirst<{
-    total_vehicles: number;
-    avg_mileage: number;
-    avg_mpg: number | null;
-    total_maintenance_cost: number;
-    total_fuel_cost: number;
-  }>(
-    db,
-    `SELECT COUNT(*) as total_vehicles,
-            COALESCE(AVG(current_mileage), 0) as avg_mileage,
-            AVG(NULLIF(avg_mpg, 0)) as avg_mpg,
-            COALESCE(SUM(total_maintenance_cost), 0) as total_maintenance_cost,
-            COALESCE(SUM(total_fuel_cost), 0) as total_fuel_cost
-     FROM fleet_vehicles
-     WHERE archived_at IS NULL`,
-  ), null);
+  // Aggregate summary — costs come from the SOURCE tables
+  // (fleet_maintenance / fleet_fuel_log), period-scoped. The
+  // materialized fleet_vehicles.total_* columns are NULL on live
+  // (never backfilled) and previously made this card read $0 while
+  // the trend chart (which queries the source tables) showed real
+  // bars. avg_mpg is derived from fuel-log odometer spans.
+  const summary = await safe(async () => {
+    const veh = await queryFirst<{ total_vehicles: number; avg_mileage: number }>(
+      db,
+      `SELECT COUNT(*) as total_vehicles, COALESCE(AVG(current_mileage), 0) as avg_mileage
+       FROM fleet_vehicles WHERE archived_at IS NULL`,
+    );
+    const maint = await queryFirst<{ total: number }>(
+      db, `SELECT COALESCE(SUM(cost), 0) as total FROM fleet_maintenance WHERE 1=1 ${maintPeriod}`,
+    );
+    const fuel = await queryFirst<{ total: number }>(
+      db, `SELECT COALESCE(SUM(total_cost), 0) as total FROM fleet_fuel_log WHERE 1=1 ${fuelPeriod}`,
+    );
+    // Lifetime MPG per vehicle (odometer span ÷ gallons), averaged.
+    const mpg = await queryFirst<{ avg_mpg: number | null }>(
+      db,
+      `WITH per_vehicle AS (
+         SELECT vehicle_id,
+                MAX(odometer) - MIN(odometer) as miles,
+                SUM(gallons) as gallons
+         FROM fleet_fuel_log
+         WHERE odometer IS NOT NULL AND gallons > 0
+         GROUP BY vehicle_id
+         HAVING COUNT(*) >= 2 AND miles > 0
+       )
+       SELECT ROUND(AVG(miles * 1.0 / gallons), 1) as avg_mpg FROM per_vehicle`,
+    );
+    return {
+      total_vehicles: veh?.total_vehicles ?? 0,
+      avg_mileage: veh?.avg_mileage ?? 0,
+      avg_mpg: mpg?.avg_mpg ?? null,
+      total_maintenance_cost: maint?.total ?? 0,
+      total_fuel_cost: fuel?.total ?? 0,
+    };
+  }, null);
 
   const vehicles_needing_service = (await safe(() => queryFirst<{ n: number }>(
     db,
@@ -266,6 +310,173 @@ fleet.get('/analytics', async (c) => {
        AND inspection_date >= date('now', '-90 days')`,
   ), null))?.n ?? 0;
 
+  // service_compliance — overdue = the vehicles_needing_service set;
+  // compliant = remaining active vehicles.
+  const service_compliance = await safe(async () => {
+    const total = (await queryFirst<{ n: number }>(
+      db, `SELECT COUNT(*) as n FROM fleet_vehicles WHERE archived_at IS NULL AND status != 'retired'`,
+    ))?.n ?? 0;
+    const overdue = vehicles_needing_service;
+    const compliant = Math.max(0, total - overdue);
+    return { compliant, overdue, rate: total > 0 ? Math.round((compliant / total) * 1000) / 10 : 100 };
+  }, { compliant: 0, overdue: 0, rate: 100 });
+
+  // inspection_pass_rate — period-scoped pass/fail counts.
+  const inspection_pass_rate = await safe(async () => {
+    const row = await queryFirst<{ total: number; passed: number; failed: number }>(
+      db,
+      `SELECT COUNT(*) as total,
+              SUM(CASE WHEN overall_result = 'pass' THEN 1 ELSE 0 END) as passed,
+              SUM(CASE WHEN overall_result = 'fail' THEN 1 ELSE 0 END) as failed
+       FROM fleet_inspections WHERE 1=1 ${inspPeriod}`,
+    );
+    const total = row?.total ?? 0;
+    const passed = row?.passed ?? 0;
+    return { total, passed, failed: row?.failed ?? 0, rate: total > 0 ? Math.round((passed / total) * 1000) / 10 : 100 };
+  }, { total: 0, passed: 0, failed: 0, rate: 100 });
+
+  // utilization — assigned = active vehicles with a unit on the
+  // authoritative link (fleet_vehicles.assigned_unit_id).
+  const utilization = await safe(async () => {
+    const row = await queryFirst<{ total: number; assigned: number }>(
+      db,
+      `SELECT COUNT(*) as total,
+              SUM(CASE WHEN assigned_unit_id IS NOT NULL THEN 1 ELSE 0 END) as assigned
+       FROM fleet_vehicles WHERE archived_at IS NULL AND status != 'retired'`,
+    );
+    const total = row?.total ?? 0;
+    const assigned = row?.assigned ?? 0;
+    return { assigned, unassigned: Math.max(0, total - assigned), rate: total > 0 ? Math.round((assigned / total) * 100) : 0 };
+  }, { assigned: 0, unassigned: 0, rate: 0 });
+
+  // daily_usage — last 30 days from gps_breadcrumbs: how many fleet
+  // vehicles (units holding an active fleet vehicle) pinged each day.
+  // moving = speed > 2 mph filters out stationary idle pings.
+  const daily_usage = await safe(() => query<{
+    date: string; active_vehicles: number; total_pings: number; moving_pings: number;
+  }>(
+    db,
+    `SELECT date(g.recorded_at) as date,
+            COUNT(DISTINCT fv.id) as active_vehicles,
+            COUNT(*) as total_pings,
+            SUM(CASE WHEN g.speed > 2 THEN 1 ELSE 0 END) as moving_pings
+     FROM gps_breadcrumbs g
+     JOIN fleet_vehicles fv ON fv.assigned_unit_id = g.unit_id AND fv.archived_at IS NULL
+     WHERE g.recorded_at >= datetime('now', '-30 days')
+     GROUP BY date(g.recorded_at)
+     ORDER BY date`,
+  ), []);
+
+  // avg_daily_miles — fleet average derived from fuel-log odometer
+  // spans (matches the client's "Fleet avg from fuel logs" caption).
+  const avg_daily_miles = await safe(async () => {
+    const row = await queryFirst<{ v: number | null }>(
+      db,
+      `WITH per_vehicle AS (
+         SELECT vehicle_id,
+                (MAX(odometer) - MIN(odometer)) * 1.0 /
+                  MAX(1, julianday(MAX(fuel_date)) - julianday(MIN(fuel_date))) as daily
+         FROM fleet_fuel_log
+         WHERE odometer IS NOT NULL
+         GROUP BY vehicle_id
+         HAVING COUNT(*) >= 2 AND MAX(odometer) > MIN(odometer)
+       )
+       SELECT ROUND(AVG(daily), 1) as v FROM per_vehicle`,
+    );
+    return row?.v ?? null;
+  }, null);
+
+  // maintenance_forecast — per active vehicle with a known service
+  // target. est_days prefers the mileage runway (miles ÷ that
+  // vehicle's avg daily miles); falls back to the calendar date.
+  const maintenance_forecast = await safe(async () => {
+    const vehicles = await query<{
+      id: number; vehicle_number: string; current_mileage: number | null;
+      next_service_due: string | null; next_service_mileage: number | null;
+    }>(
+      db,
+      `SELECT id, vehicle_number, current_mileage, next_service_due, next_service_mileage
+       FROM fleet_vehicles
+       WHERE archived_at IS NULL AND status != 'retired'
+         AND (next_service_due IS NOT NULL OR next_service_mileage IS NOT NULL)
+       ORDER BY vehicle_number`,
+    );
+    const dailyByVehicle = await query<{ vehicle_id: number; daily: number }>(
+      db,
+      `SELECT vehicle_id,
+              (MAX(odometer) - MIN(odometer)) * 1.0 /
+                MAX(1, julianday(MAX(fuel_date)) - julianday(MIN(fuel_date))) as daily
+       FROM fleet_fuel_log
+       WHERE odometer IS NOT NULL
+       GROUP BY vehicle_id
+       HAVING COUNT(*) >= 2 AND MAX(odometer) > MIN(odometer)`,
+    );
+    const dailyMap = new Map(dailyByVehicle.map((d) => [d.vehicle_id, d.daily]));
+    const today = Date.now();
+    return vehicles.map((v) => {
+      const daily = dailyMap.get(v.id) ?? null;
+      const milesUntil = (v.next_service_mileage != null && v.current_mileage != null)
+        ? v.next_service_mileage - v.current_mileage : null;
+      let estDays: number | null = null;
+      if (milesUntil != null && daily && daily > 0) estDays = Math.round(milesUntil / daily);
+      else if (v.next_service_due) {
+        const due = Date.parse(v.next_service_due);
+        if (!Number.isNaN(due)) estDays = Math.round((due - today) / 86_400_000);
+      }
+      return {
+        id: v.id,
+        vehicle_number: v.vehicle_number,
+        current_mileage: v.current_mileage,
+        next_service_due: v.next_service_mileage ?? v.next_service_due,
+        avg_daily_miles: daily != null ? Math.round(daily * 10) / 10 : null,
+        miles_until_service: milesUntil,
+        est_days_until_service: estDays,
+      };
+    });
+  }, []);
+
+  const oldest_vehicle_year = (await safe(() => queryFirst<{ y: number | null }>(
+    db,
+    `SELECT MIN(year) as y FROM fleet_vehicles
+     WHERE archived_at IS NULL AND status != 'retired' AND year IS NOT NULL`,
+  ), null))?.y ?? null;
+
+  // cost_per_mile_ranking — period costs ÷ miles driven (fuel-log
+  // odometer span in the same window); null when distance unknown.
+  const cost_per_mile_ranking = await safe(() => query<{
+    id: number; vehicle_number: string; make: string; model: string; year: number;
+    current_mileage: number; maintenance_cost: number; fuel_cost: number;
+    total_cost: number; cost_per_mile: number | null;
+  }>(
+    db,
+    `SELECT v.id, v.vehicle_number, v.make, v.model, v.year, v.current_mileage,
+            COALESCE(m.cost, 0) as maintenance_cost,
+            COALESCE(f.cost, 0) as fuel_cost,
+            COALESCE(m.cost, 0) + COALESCE(f.cost, 0) as total_cost,
+            CASE WHEN f.miles > 0
+                 THEN ROUND((COALESCE(m.cost, 0) + COALESCE(f.cost, 0)) / f.miles, 2)
+            END as cost_per_mile
+     FROM fleet_vehicles v
+     LEFT JOIN (SELECT vehicle_id, SUM(cost) as cost FROM fleet_maintenance WHERE 1=1 ${maintPeriod} GROUP BY vehicle_id) m
+       ON m.vehicle_id = v.id
+     LEFT JOIN (SELECT vehicle_id, SUM(total_cost) as cost,
+                       CASE WHEN COUNT(odometer) >= 2 THEN MAX(odometer) - MIN(odometer) END as miles
+                FROM fleet_fuel_log WHERE 1=1 ${fuelPeriod} GROUP BY vehicle_id) f
+       ON f.vehicle_id = v.id
+     WHERE v.archived_at IS NULL
+     ORDER BY cost_per_mile IS NULL, cost_per_mile DESC`,
+  ), []);
+
+  // top_issues — maintenance grouped by type, period-scoped.
+  const top_issues = await safe(() => query<{ type: string; count: number; total_cost: number }>(
+    db,
+    `SELECT COALESCE(type, 'other') as type, COUNT(*) as count, COALESCE(SUM(cost), 0) as total_cost
+     FROM fleet_maintenance WHERE 1=1 ${maintPeriod}
+     GROUP BY COALESCE(type, 'other')
+     ORDER BY count DESC
+     LIMIT 10`,
+  ), []);
+
   return c.json({
     maintenance_cost_trend,
     mileage_distribution,
@@ -280,18 +491,15 @@ fleet.get('/analytics', async (c) => {
       vehicles_needing_service,
       inspections_failing,
     },
-    // Fields the FleetAnalyticsTab destructures but whose endpoints
-    // live in separate handlers. Return empty defaults so an unguarded
-    // destructuring (pre-May-2026 client builds) never reads undefined.
-    cost_per_mile_ranking: [],
-    service_compliance: { compliant: 0, overdue: 0, rate: 100 },
-    inspection_pass_rate: { total: 0, passed: 0, failed: 0, rate: 100 },
-    utilization: { assigned: 0, unassigned: 0, rate: 0 },
-    daily_usage: [],
-    maintenance_forecast: [],
-    oldest_vehicle_year: null,
-    avg_daily_miles: null,
-    top_issues: [],
+    cost_per_mile_ranking,
+    service_compliance,
+    inspection_pass_rate,
+    utilization,
+    daily_usage,
+    maintenance_forecast,
+    oldest_vehicle_year,
+    avg_daily_miles,
+    top_issues,
   });
 });
 

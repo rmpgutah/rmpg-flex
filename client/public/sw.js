@@ -575,7 +575,10 @@
 //       distance + chain-neighbor continuity via /patrol/mileage/
 //       fix-suggestions), live row-distance/GPS-deviation calculations in
 //       the fix form, and chain-gap badges on the Start→End column.
-const CACHE_NAME = 'rmpg-flex-v879';
+// v880: Fleet analytics implemented (utilization, daily usage, forecast,
+//       MPG/cost KPIs from source tables) + assignments/inspections
+//       bare-array shape fix.
+const CACHE_NAME = 'rmpg-flex-v880';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
