@@ -189,19 +189,24 @@ export default function DlSearchPage() {
     setScanMatches(null);
     setDeepSweep(null);
 
-    // Deep sweep runs in parallel with the person match — it covers the
-    // hard-to-find sources (statewide warrants, bookings, FIs, gang intel,
-    // trespass, BOLOs, civil process) that a persons-table match misses.
-    if (parsed.last_name && parsed.last_name.length >= 2) {
+    // Deep sweep covers the hard-to-find sources (statewide warrants,
+    // bookings, FIs, gang intel, sex-offender registry, watchlist, alias
+    // hits, cases, trespass, BOLOs, civil process) that a persons-table
+    // match misses. When a person record matches, the sweep also pulls
+    // the full subject profile (flags, criminal history, registry alerts,
+    // vehicles) keyed on person_id.
+    const runDeepSweep = (personId?: number) => {
+      if (!parsed.last_name || parsed.last_name.length < 2) return;
       setDeepSweepLoading(true);
       const qs = new URLSearchParams({ last: parsed.last_name });
       if (parsed.first_name) qs.set('first', parsed.first_name);
       if (parsed.date_of_birth) qs.set('dob', parsed.date_of_birth);
-      apiFetch<{ sources: any[]; total: number }>(`/dl-records/deep-sweep?${qs}`)
+      if (personId) qs.set('person_id', String(personId));
+      apiFetch<{ sources: any[]; total: number; profile?: any }>(`/dl-records/deep-sweep?${qs}`)
         .then(d => setDeepSweep(d && Array.isArray(d.sources) ? d : { sources: [], total: 0 }))
         .catch(() => setDeepSweep({ sources: [], total: 0 }))
         .finally(() => setDeepSweepLoading(false));
-    }
+    };
 
     try {
       const matches: any[] = [];
@@ -237,8 +242,11 @@ export default function DlSearchPage() {
         } catch { /* history unavailable — show match without warrant info */ }
       }));
       setScanMatches(matches);
+      // Full-detail sweep keyed to the best match (DL-number match first).
+      runDeepSweep(matches[0]?.id);
     } catch {
       setScanMatches([]);
+      runDeepSweep();
     } finally {
       setMatchLoading(false);
     }
@@ -1057,8 +1065,22 @@ export default function DlSearchPage() {
             </div>
             <div className="p-4 space-y-3">
               {/* ── Officer-safety + status alerts ── */}
-              {(scanMatches?.some((m: any) => m.active_warrants > 0) || scanAlerts.length > 0 || deepSweep?.sources.some((s: any) => s.danger)) && (
+              {(scanMatches?.some((m: any) => m.active_warrants > 0) || scanAlerts.length > 0 || deepSweep?.sources.some((s: any) => s.danger) || (deepSweep as any)?.profile?.person) && (
                 <div className="space-y-1">
+                  {(() => {
+                    const p = (deepSweep as any)?.profile?.person;
+                    if (!p) return null;
+                    const real = (v: any) => { const s = String(v ?? '').trim(); return s && !/^(none|n\/a|na|no|0|\[\]|unknown)$/i.test(s) ? s : ''; };
+                    const msgs: string[] = [];
+                    if (p.is_sex_offender === 1 || p.is_sex_offender === true || real(p.sor_number)) msgs.push('REGISTERED SEX OFFENDER');
+                    if (real(p.watchlist_match)) msgs.push(`WATCHLIST MATCH: ${p.watchlist_match}`);
+                    if (real(p.probation_parole)) msgs.push(`ON SUPERVISION: ${p.probation_parole}`);
+                    return msgs.map(m => (
+                      <div key={m} className="flex items-center gap-2 px-3 py-2 bg-red-900/40 border border-red-600/70 text-red-300 text-[11px] font-bold uppercase tracking-wide">
+                        <AlertTriangle size={14} className="flex-shrink-0 text-red-400" /> ⚠ {m} — {p.last_name}, {p.first_name} (#{p.id})
+                      </div>
+                    ));
+                  })()}
                   {deepSweep?.sources.filter((s: any) => s.danger).map((s: any) => (
                     <div key={`ds-${s.key}`} className="flex items-center gap-2 px-3 py-2 bg-red-900/40 border border-red-600/70 text-red-300 text-[11px] font-bold uppercase tracking-wide">
                       <AlertTriangle size={14} className="flex-shrink-0 text-red-400" />
@@ -1170,6 +1192,64 @@ export default function DlSearchPage() {
                   ))}
                 </div>
               )}
+
+              {/* ── Subject profile — full detail on a person match ── */}
+              {(deepSweep as any)?.profile?.person && (() => {
+                const prof = (deepSweep as any).profile;
+                const p = prof.person;
+                // Live text cols store literal "None"/"N/A"/"0" — sentinel-guard
+                // before treating a value as a real flag.
+                const real = (v: any) => {
+                  const s = String(v ?? '').trim();
+                  return s && !/^(none|n\/a|na|no|0|\[\]|unknown)$/i.test(s) ? s : '';
+                };
+                const chips: Array<{ label: string; danger: boolean }> = [];
+                if (p.is_sex_offender === 1 || p.is_sex_offender === true || real(p.sor_number)) chips.push({ label: `SEX OFFENDER${real(p.sor_number) ? ` · SOR# ${p.sor_number}` : ''}`, danger: true });
+                if (real(p.watchlist_match)) chips.push({ label: `WATCHLIST: ${p.watchlist_match}`, danger: true });
+                if (real(p.gang_affiliation)) chips.push({ label: `GANG: ${p.gang_affiliation}`, danger: true });
+                if (real(p.caution_flags)) chips.push({ label: `CAUTION: ${String(p.caution_flags).replace(/[[\]"]/g, '')}`, danger: true });
+                if (real(p.probation_parole)) chips.push({ label: `SUPERVISION: ${p.probation_parole}${real(p.probation_parole_officer) ? ` (PO ${p.probation_parole_officer})` : ''}`, danger: true });
+                if (real(p.mental_health_flags)) chips.push({ label: `MENTAL HEALTH: ${p.mental_health_flags}`, danger: false });
+                if (real(p.substance_abuse)) chips.push({ label: `SUBSTANCE: ${p.substance_abuse}`, danger: false });
+                if (real(p.known_associates)) chips.push({ label: `ASSOCIATES: ${String(p.known_associates).slice(0, 80)}`, danger: false });
+                if (real(p.aliases) || real(p.alias_nickname)) chips.push({ label: `ALIASES: ${real(p.aliases) || p.alias_nickname}`, danger: false });
+                if (real(p.ncic_number)) chips.push({ label: `NCIC# ${p.ncic_number}`, danger: false });
+                if (real(p.fbi_number)) chips.push({ label: `FBI# ${p.fbi_number}`, danger: false });
+                if (real(p.scars_marks_tattoos) || real(p.tattoo_description)) chips.push({ label: `SMT: ${(real(p.scars_marks_tattoos) || p.tattoo_description).slice(0, 80)}`, danger: false });
+                const lists: Array<{ title: string; rows: string[] }> = [
+                  { title: `Criminal History (${prof.criminal_history?.length || 0})`, rows: (prof.criminal_history || []).map((h: any) => `${h.offense_date || 'n/d'} — ${h.offense || h.record_type}${h.offense_level ? ` (${h.offense_level})` : ''}${h.disposition ? ` · ${h.disposition}` : ''}${h.agency ? ` · ${h.agency}` : ''}`) },
+                  { title: `Registry Alerts (${prof.registry_alerts?.length || 0})`, rows: (prof.registry_alerts || []).map((a: any) => `${a.alert_type || 'alert'} [${a.severity || 'n/a'}] ${a.status || ''} — ${a.description || ''}${a.last_compliance_result ? ` · compliance: ${a.last_compliance_result}` : ''}`) },
+                  { title: `Vehicles (${prof.vehicles?.length || 0})`, rows: (prof.vehicles || []).map((v: any) => `${v.plate_number || 'NO PLATE'} ${v.state || ''} — ${[v.year, v.color, v.make, v.model].filter(Boolean).join(' ')}${v.is_stolen ? ' · ⚠ STOLEN' : ''}`) },
+                  { title: `Field Interviews (${prof.field_interviews?.length || 0})`, rows: (prof.field_interviews || []).map((f: any) => `${f.fi_number || `FI-${f.id}`} ${f.interview_date || f.date || ''} — ${f.contact_reason || ''} @ ${f.location || 'n/a'}`) },
+                  { title: `Citations (${prof.citations?.length || 0})`, rows: (prof.citations || []).map((ct: any) => `#${ct.citation_number || ct.id} ${ct.citation_date || ''} — ${ct.violation_description || ct.violation || ''} · ${ct.status || ''}`) },
+                  { title: `Trespass Orders (${prof.trespass_orders?.length || 0})`, rows: (prof.trespass_orders || []).map((t: any) => `${t.order_number || `TO-${t.id}`} ${t.status || ''} — ${t.property_name || t.property_address || ''}`) },
+                ].filter(l => l.rows.length > 0);
+                if (chips.length === 0 && lists.length === 0) return null;
+                return (
+                  <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
+                    <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5">
+                      <User size={11} /> Subject Profile — Full Detail (#{p.id} {p.last_name}, {p.first_name})
+                    </div>
+                    {chips.length > 0 && (
+                      <div className="p-2 flex flex-wrap gap-1">
+                        {chips.map((ch) => (
+                          <span key={ch.label} className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${ch.danger ? 'bg-red-900/40 text-red-300 border-red-600/70' : 'bg-[#141414] text-[#c0ccdd] border-[#2e2e2e]'}`}>
+                            {ch.label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {lists.map((l) => (
+                      <div key={l.title} className="border-t border-[#141414]">
+                        <div className="px-3 py-1 text-[8px] font-bold text-[#8899aa] uppercase tracking-wider">{l.title}</div>
+                        {l.rows.map((r, i) => (
+                          <div key={i} className="px-3 py-[3px] text-[10px] text-[#c0ccdd] border-t border-[#101010] leading-snug">{r}</div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {/* ── Law-enforcement format (NCIC/NLETS fielded) ── */}
               {leFields && leFields.length > 0 && (

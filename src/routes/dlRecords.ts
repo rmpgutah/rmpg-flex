@@ -306,7 +306,8 @@ dlRecords.get('/deep-sweep', async (c) => {
       try { return await fn(); } catch { return []; }
     };
 
-    const [utahWarrants, arrests, cites, fis, gang, trespass, serves, boloRows] = await Promise.all([
+    const [utahWarrants, arrests, cites, fis, gang, trespass, serves, boloRows,
+           sexOffenders, watchlist, aliasHits, caseHits] = await Promise.all([
       // Statewide scraped Utah warrants — NOT in the local warrants table.
       soft(() => query<Record<string, any>>(db, `
         SELECT id, first_name, middle_name, last_name, age, city, charges, court_name,
@@ -358,7 +359,89 @@ dlRecords.get('/deep-sweep', async (c) => {
         WHERE status = 'active'
           AND (title LIKE ? OR description LIKE ? OR subject_description LIKE ?)
         ORDER BY created_at DESC LIMIT 10`, bothLike, bothLike, bothLike)),
+      // Sex Offender Registry — flagged persons + SOR numbers.
+      soft(() => query<Record<string, any>>(db, `
+        SELECT id, first_name, last_name, dob, sor_number, address, city, state,
+               gang_affiliation, caution_flags
+        FROM persons
+        WHERE (is_sex_offender = 1 OR (sor_number IS NOT NULL AND sor_number != ''))
+          AND last_name LIKE ? AND first_name LIKE ?
+        ORDER BY last_name LIMIT 10`, lastLike, firstLike)),
+      // Watchlist / caution / probation-parole flagged persons.
+      soft(() => query<Record<string, any>>(db, `
+        SELECT id, first_name, last_name, dob, watchlist_match, caution_flags,
+               gang_affiliation, probation_parole, probation_parole_officer,
+               mental_health_flags, substance_abuse
+        FROM persons
+        WHERE last_name LIKE ? AND first_name LIKE ?
+          AND (watchlist_match IS NOT NULL AND watchlist_match != '' AND watchlist_match != '0'
+               OR (caution_flags IS NOT NULL AND caution_flags != '' AND caution_flags != '[]')
+               OR (probation_parole IS NOT NULL AND probation_parole != '' AND probation_parole NOT IN ('None','N/A','No','0')))
+        ORDER BY last_name LIMIT 10`, lastLike, firstLike)),
+      // Alias hits — the scanned name appearing as someone ELSE's alias.
+      soft(() => query<Record<string, any>>(db, `
+        SELECT id, first_name, last_name, dob, aliases, alias_nickname
+        FROM persons
+        WHERE (aliases LIKE ? OR alias_nickname LIKE ?)
+          AND NOT (last_name LIKE ? AND first_name LIKE ?)
+        ORDER BY last_name LIMIT 10`, bothLike, bothLike, lastLike, firstLike)),
+      // Case involvement — case_persons carries free-text person_name.
+      soft(() => query<Record<string, any>>(db, `
+        SELECT cp.id, cp.person_name, cp.role, c.id AS case_id, c.case_number,
+               c.title, c.status, c.created_at
+        FROM case_persons cp
+        LEFT JOIN cases c ON c.id = cp.case_id
+        WHERE cp.person_name LIKE ? AND cp.person_name LIKE ?
+        ORDER BY cp.created_at DESC LIMIT 10`, bothLike, firstAny)),
     ]);
+
+    // ── Full subject profile when a person record is already matched ──
+    // The scan flow passes the best person match's id; pull everything
+    // safety-relevant in one shot: flags off the person row, criminal
+    // history, registry alerts, linked vehicles, FIs and citations.
+    const personId = parseInt(c.req.query('person_id') || '', 10);
+    let profile: Record<string, unknown> | null = null;
+    if (!isNaN(personId) && personId > 0) {
+      const [person, crimHistory, regAlerts, vehicles, personFis, personCites, personTrespass] = await Promise.all([
+        (async () => { try {
+          return await queryFirst<Record<string, any>>(db, `
+            SELECT id, first_name, last_name, dob, is_sex_offender, sor_number,
+                   gang_affiliation, caution_flags, flags, watchlist_match, watchlist_checked_at,
+                   probation_parole, probation_parole_officer, known_associates,
+                   mental_health_flags, substance_abuse, ncic_number, fbi_number,
+                   state_id_number, aliases, alias_nickname, scars_marks_tattoos,
+                   tattoo_description, distinguishing_features, date_last_seen, location_last_seen,
+                   fi_count, last_fi_date
+            FROM persons WHERE id = ?`, personId);
+        } catch { return null; } })(),
+        soft(() => query<Record<string, any>>(db, `
+          SELECT record_type, offense, offense_level, statute, case_number, agency,
+                 jurisdiction, offense_date, disposition, sentence
+          FROM criminal_history WHERE person_id = ? ORDER BY offense_date DESC LIMIT 25`, personId)),
+        soft(() => query<Record<string, any>>(db, `
+          SELECT alert_type, status, severity, description, alert_address,
+                 last_compliance_check, last_compliance_result, expiration_date
+          FROM offender_alerts WHERE person_id = ? ORDER BY created_at DESC LIMIT 10`, personId)),
+        soft(() => query<Record<string, any>>(db, `
+          SELECT id, plate_number, state, make, model, color, year, is_stolen, status
+          FROM vehicles_records WHERE owner_person_id = ? LIMIT 10`, personId)),
+        soft(() => query<Record<string, any>>(db, `
+          SELECT id, fi_number, interview_date, date, location, contact_reason, gang_affiliation
+          FROM field_interviews WHERE person_id = ? ORDER BY COALESCE(interview_date, date) DESC LIMIT 10`, personId)),
+        soft(() => query<Record<string, any>>(db, `
+          SELECT id, citation_number, citation_date, violation_description, violation, status
+          FROM citations WHERE person_id = ? ORDER BY citation_date DESC LIMIT 10`, personId)),
+        soft(() => query<Record<string, any>>(db, `
+          SELECT id, order_number, status, property_name, property_address, expiration_date
+          FROM trespass_orders WHERE person_id = ? ORDER BY created_at DESC LIMIT 10`, personId)),
+      ]);
+      if (person) {
+        profile = {
+          person, criminal_history: crimHistory, registry_alerts: regAlerts,
+          vehicles, field_interviews: personFis, citations: personCites, trespass_orders: personTrespass,
+        };
+      }
+    }
 
     // DOB refinement: when a row carries a DOB and the scan supplied one,
     // a mismatch demotes (kept, flagged) rather than drops — names recur,
@@ -427,9 +510,43 @@ dlRecords.get('/deep-sweep', async (c) => {
           summary: `${b.bolo_number || `BOLO-${b.id}`} [${b.priority || 'n/a'}] ${b.title || ''} — ${(b.subject_description || b.description || '').slice(0, 120)}`,
         })),
       },
+      {
+        key: 'sex_offenders', label: 'Sex Offender Registry', danger: sexOffenders.length > 0,
+        rows: sexOffenders.map(p => ({
+          id: p.id, dob_match: dobFlag(p.dob), danger: true,
+          summary: `${p.last_name}, ${p.first_name}${p.dob ? ` DOB ${String(p.dob).slice(0, 10)}` : ''} — REGISTERED SEX OFFENDER${p.sor_number ? ` · SOR# ${p.sor_number}` : ''}${p.address ? ` · ${p.address}, ${p.city || ''}` : ''}`,
+        })),
+      },
+      {
+        key: 'watchlist', label: 'Watchlist / Caution / Supervision', danger: watchlist.length > 0,
+        rows: watchlist.map(p => {
+          const bits: string[] = [];
+          if (p.watchlist_match && p.watchlist_match !== '0') bits.push(`WATCHLIST: ${p.watchlist_match}`);
+          if (p.caution_flags && p.caution_flags !== '[]') bits.push(`CAUTION: ${String(p.caution_flags).replace(/[[\]"]/g, '')}`);
+          if (p.probation_parole && !/^(none|n\/a|no|0)$/i.test(p.probation_parole)) bits.push(`SUPERVISION: ${p.probation_parole}${p.probation_parole_officer ? ` (PO: ${p.probation_parole_officer})` : ''}`);
+          return {
+            id: p.id, dob_match: dobFlag(p.dob), danger: true,
+            summary: `${p.last_name}, ${p.first_name}${p.dob ? ` DOB ${String(p.dob).slice(0, 10)}` : ''} — ${bits.join(' · ') || 'flagged'}`,
+          };
+        }),
+      },
+      {
+        key: 'alias_hits', label: 'Known Alias Of (different identity)', danger: aliasHits.length > 0,
+        rows: aliasHits.map(p => ({
+          id: p.id, dob_match: null, danger: true,
+          summary: `Scanned name matches a known alias of ${p.last_name}, ${p.first_name}${p.dob ? ` DOB ${String(p.dob).slice(0, 10)}` : ''} (#${p.id}) — aliases: ${p.aliases || p.alias_nickname}`,
+        })),
+      },
+      {
+        key: 'cases', label: 'Case Involvement', danger: false,
+        rows: caseHits.map(ch => ({
+          id: ch.case_id || ch.id, dob_match: null, danger: false,
+          summary: `${ch.case_number || `CASE-${ch.case_id}`} (${ch.status || 'n/a'}) — ${ch.title || ''} · role: ${ch.role || 'involved'} · as "${ch.person_name}"`,
+        })),
+      },
     ].filter(s => s.rows.length > 0);
 
-    return c.json({ sources, total: sources.reduce((n, s) => n + s.rows.length, 0) });
+    return c.json({ sources, total: sources.reduce((n, s) => n + s.rows.length, 0), profile });
   } catch (err) {
     return c.json({ sources: [], total: 0, degraded: true });
   }
