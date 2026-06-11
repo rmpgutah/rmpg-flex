@@ -15,9 +15,10 @@
 // the same `rmpg_nav_detection` localStorage key + double-POSTing /trip/start.
 // ============================================================
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useNavTripDetection } from '../hooks/useNavTripDetection';
+import { useNavGuidanceEngine, type NavGuidanceEngine } from '../hooks/useNavGuidanceEngine';
 
 type NavTripDetection = ReturnType<typeof useNavTripDetection>;
 
@@ -25,6 +26,11 @@ export interface NavTripContextValue extends NavTripDetection {
   /** The provider's read-only GPS state — exposed so consumers (NavPage) can
    *  render position/speed/unit without spinning up a second tracker. */
   gps: ReturnType<typeof useGpsTracking>;
+  /** App-wide turn-by-turn guidance engine. Lives HERE (not in the drive HUD)
+   *  so an active route keeps computing progress/ETA/reroutes while the
+   *  officer is on Dispatch, Records, or any other page — leaving /navigation
+   *  no longer resets navigation. The HUD only renders this engine's state. */
+  guidance: NavGuidanceEngine;
 }
 
 const NavTripContext = createContext<NavTripContextValue | null>(null);
@@ -63,8 +69,18 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
     isForeground: true,
   });
 
+  // App-wide turn-by-turn guidance. Every accepted GPS fix feeds the engine so
+  // route progress, remaining ETA, off-route detection, and traffic reroutes
+  // keep computing regardless of which page is mounted. updateOrigin bails
+  // immediately when no destination is set, so this is a no-op off-route.
+  const guidance = useNavGuidanceEngine();
+  const { updateOrigin } = guidance;
+  useEffect(() => {
+    if (position) updateOrigin(position.latitude, position.longitude);
+  }, [position, updateOrigin]);
+
   return (
-    <NavTripContext.Provider value={{ ...trip, gps }}>
+    <NavTripContext.Provider value={{ ...trip, gps, guidance }}>
       {children}
     </NavTripContext.Provider>
   );

@@ -7,11 +7,14 @@
 //   • Speedometer (mph) + heading compass rose with cardinal
 //   • Live position / accuracy / fix-source (GPS·WiFi·IP) / link / last-sync
 //   • Session travel stats (distance, duration, max speed)
-//   • Turn-by-turn directions to the unit's assigned call (via useMapRouting):
-//     next-maneuver banner with directional arrow, distance to the turn, live
-//     remaining ETA + distance, progress bar, congestion + off-route alerts.
+//   • Turn-by-turn directions to the unit's assigned call: next-maneuver
+//     banner with directional arrow, distance to the turn, live remaining
+//     ETA + distance, progress bar, congestion + off-route alerts.
 //
-// All GPS state comes from useGpsTracking; all routing math from useMapRouting.
+// All GPS state comes from useGpsTracking. Routing math lives in the APP-WIDE
+// guidance engine (NavTripContext → useNavGuidanceEngine) so navigation keeps
+// calculating while the officer is on Dispatch/Records/etc — this page only
+// renders the engine's state and paints its route on the local map.
 // EVERYTHING degrades: if Mapbox can't load, the instruments still render over a
 // dark backdrop, so the screen is never blank in a moving vehicle.
 // ============================================================
@@ -44,7 +47,10 @@ import {
 } from './navigation/hud/hudUnits';
 import { buildMovementReport } from './navigation/vehicleTelemetry';
 import { useGpsTracking } from '../hooks/useGpsTracking';
-import { useMapRouting, snapToRoute } from '../hooks/useMapRouting';
+import { snapToRoute } from '../hooks/useMapRouting';
+import { buildCongestionGradient, CONGESTION_COLOR } from '../hooks/useNavGuidanceEngine';
+import { useNavTrip } from '../context/NavTripContext';
+import { whenStyleReady } from './map/utils/safeAddSource';
 import { playTone } from '../utils/dispatchTones';
 import { useMap3D } from './map/hooks/useMap3D';
 import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
@@ -490,9 +496,84 @@ export default function NavigationPage() {
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
-  const { activeRoute, routeProgress, routeGeom, offRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({
-    map: mapReady ? mapInstanceRef.current : null,
-  });
+  // ── App-wide guidance engine (NavTripContext) ──
+  // The route/ETA/progress/reroute CALCULATIONS live in the always-mounted
+  // NavTripProvider, so navigation keeps running while the officer is on
+  // Dispatch, Records, or any other page — opening/closing this HUD neither
+  // starts nor resets it. This page only renders the engine's state and
+  // paints the route line on its own map (the effects just below).
+  const navCtx = useNavTrip();
+  const guidance = navCtx?.guidance ?? null;
+  const activeRoute = guidance?.activeRoute ?? null;
+  const routeProgress = guidance?.routeProgress ?? null;
+  const routeGeom = guidance?.routeGeom ?? null;
+  const routeRender = guidance?.routeRender ?? null;
+  const offRoute = guidance?.offRoute ?? false;
+
+  // Draw / clear the engine's route on the drive map. Re-runs when the engine
+  // produces a new route (including reroutes while this page was unmounted)
+  // and when the map rebuilds after WebGL context recovery (mapReady cycles).
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    const removeRouteLayers = () => {
+      try {
+        safeRemoveLayer(map, 'rmpg-route-traveled');
+        safeRemoveLayer(map, 'rmpg-route-layer');
+        safeRemoveSource(map, 'rmpg-route-source');
+      } catch { /* map/style torn down */ }
+    };
+    if (!routeRender) {
+      removeRouteLayers();
+      return;
+    }
+    const gradient = buildCongestionGradient(routeRender.cum, routeRender.totalMeters, routeRender.congestion);
+    whenStyleReady(map, () => {
+      try {
+        removeRouteLayers();
+        map.addSource('rmpg-route-source', {
+          type: 'geojson',
+          lineMetrics: true, // required for line-gradient
+          data: { type: 'Feature', properties: {}, geometry: routeRender.geometry },
+        });
+        // Traveled-portion underlay (dimmed) — trimmed by the progress effect.
+        map.addLayer({
+          id: 'rmpg-route-traveled',
+          type: 'line',
+          source: 'rmpg-route-source',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': '#3a3a3a', 'line-width': 7, 'line-opacity': 0.5, 'line-gradient': ['step', ['line-progress'], '#3a3a3a', 0.0001, 'rgba(0,0,0,0)'] },
+        });
+        map.addLayer({
+          id: 'rmpg-route-layer',
+          type: 'line',
+          source: 'rmpg-route-source',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            ...(gradient ? { 'line-gradient': gradient } : { 'line-color': CONGESTION_COLOR.unknown }),
+            'line-width': 5,
+            'line-opacity': 0.9,
+          },
+        });
+      } catch { /* style race — banner/HUD still render from engine state */ }
+    });
+    return removeRouteLayers;
+  }, [routeRender, mapReady]);
+
+  // Trim the traveled (dimmed) portion of the line as the engine's progress
+  // advances — including progress made while this page was unmounted.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady || !routeProgress) return;
+    if (!hasLayer(map, 'rmpg-route-traveled')) return;
+    try {
+      map.setPaintProperty('rmpg-route-traveled', 'line-gradient', [
+        'step', ['line-progress'],
+        'rgba(58,58,58,0.55)', Math.max(routeProgress.fraction, 0.0001), 'rgba(0,0,0,0)',
+      ]);
+    } catch { /* style not ready */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeProgress?.fraction, mapReady, routeRender]);
 
   // ── 3D corner inset ("chase-cam" perspective map) ──
   const insetContainerRef = useRef<HTMLDivElement | null>(null);
@@ -823,8 +904,9 @@ export default function NavigationPage() {
           essential: true,
         });
       }
-      // Recompute route progress / off-route from the live position.
-      updateOrigin(gps.latitude, gps.longitude);
+      // Route progress / off-route recompute now happens app-wide in
+      // NavTripProvider (guidance.updateOrigin fed by the provider's GPS),
+      // so no per-page origin push is needed here.
       // Terrain-derived instruments: sample TRUE ground elevation from the 3D
       // DEM (exaggerated:false → real meters, not the 1.15× visual lift) and
       // accumulate session ascent with a 1.5 ft deadband so DEM noise / minor
@@ -886,10 +968,29 @@ export default function NavigationPage() {
     });
   };
 
-  // ── Auto-route to the unit's assigned call, once the map is ready ──
+  // ── Re-adopt an in-flight route on mount ──
+  // The guidance engine outlives this page: if the officer routed somewhere,
+  // switched to Dispatch/Records, and came back, the destination is still
+  // active in NavTripContext. Seed the page-local refs (arrival alerts,
+  // destination label) from it and CLAIM the route so the assigned-call
+  // auto-route below can't clobber it. Runs once, before the auto-route
+  // effect (declaration order = mount execution order).
   const routedCallRef = useRef<number | null>(null);
   useEffect(() => {
+    const dest = guidance?.getDestination();
+    if (!dest) return;
+    destCoordsRef.current = { lat: dest.lat, lng: dest.lng };
+    setDestLabel(dest.label ?? (dest.callNumber !== dest.unitCallSign ? dest.callNumber : null));
+    routedCallRef.current = -1; // claim — an engine route is already active
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Auto-route to the unit's assigned call, once the map is ready ──
+  useEffect(() => {
     if (!mapReady || gps.latitude == null || gps.longitude == null) return;
+    // Guidance already active (re-adopted above, or started elsewhere) —
+    // never clobber a live route with the assigned-call auto-route.
+    if (guidance?.getDestination()) return;
     let cancelled = false;
     (async () => {
       try {
@@ -902,11 +1003,12 @@ export default function NavigationPage() {
         const unit = resp && typeof resp === 'object' ? ('unit' in resp ? resp.unit : resp) : null;
         if (cancelled || !unit || typeof unit.id !== 'number' || !unit.current_call_id) return;
         if (routedCallRef.current === unit.current_call_id) return; // already routed
+        if (guidance?.getDestination()) return; // raced a manual route — keep it
         const call = await apiFetch<{ call_number: string; latitude: number | null; longitude: number | null }>(`/dispatch/calls/${unit.current_call_id}`).catch(() => null);
         if (cancelled || !call || call.latitude == null || call.longitude == null) return;
         routedCallRef.current = unit.current_call_id;
         destCoordsRef.current = { lat: call.latitude, lng: call.longitude };
-        await showRoute(unit.call_sign, call.call_number, gps.latitude!, gps.longitude!, call.latitude, call.longitude);
+        await guidance?.startGuidance(unit.call_sign, call.call_number, gps.latitude!, gps.longitude!, call.latitude, call.longitude);
       } catch { /* best-effort — drive screen still follows GPS without a route */ }
     })();
     return () => { cancelled = true; };
@@ -947,11 +1049,11 @@ export default function NavigationPage() {
     setSearchQuery('');
     setSearchResults([]);
     if (gps.latitude != null && gps.longitude != null) {
-      await showRoute('NAV', label, gps.latitude, gps.longitude, lat, lng).catch(() => {});
+      await guidance?.startGuidance('NAV', label, gps.latitude, gps.longitude, lat, lng, label)?.catch(() => {});
     }
   };
   const clearDestination = () => {
-    clearRoute();
+    guidance?.stopGuidance();
     destCoordsRef.current = null;
     setDestLabel(null);
     routedCallRef.current = null;

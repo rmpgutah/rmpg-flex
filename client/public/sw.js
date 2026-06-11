@@ -567,7 +567,11 @@
 // v877: Toughbook background nav — hold an Electron powerSaveBlocker
 //       (prevent-app-suspension) while a trip is active so route uploads +
 //       auto-end keep firing off-screen; pairs with backgroundThrottling:false.
-const CACHE_NAME = 'rmpg-flex-v877';
+// v878: app-wide turn-by-turn guidance — route/ETA/progress/reroute engine
+//       hoisted from NavigationPage into NavTripContext (useNavGuidanceEngine)
+//       so navigation keeps calculating on Dispatch/Records/etc; returning to
+//       the drive HUD re-adopts the live route instead of resetting it.
+const CACHE_NAME = 'rmpg-flex-v878';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
