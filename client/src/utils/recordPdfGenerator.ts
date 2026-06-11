@@ -1569,8 +1569,10 @@ async function addLocationMapSection(
     address: opts.address,
     style: opts.style,
     zoom: opts.zoom,
+    egressRoutes: true, // tactical planning overlay — best-effort, may be absent
   });
   if (!img) return y;
+  const egress = img.egress ?? [];
 
   const lx = getLeftX();
   const ffw = getFullFieldWidth(doc);
@@ -1586,7 +1588,7 @@ async function addLocationMapSection(
   const offX = lx + (ffw - drawW) / 2;
 
   // Reserve header (~5) + image + LOCATION DATA grid (2 rows) + pads.
-  y = checkPageBreak(doc, y, drawH + 8 + 2 * SPACING.FORM_CELL_H + 8, opts.priority);
+  y = checkPageBreak(doc, y, drawH + 8 + (egress.length ? 3 : 2) * SPACING.FORM_CELL_H + 8, opts.priority);
   const sec = openAutoSection(doc, opts.title, y);
   y = sec.contentY;
   const imgY = y;
@@ -1658,6 +1660,39 @@ async function addLocationMapSection(
     doc.setTextColor(20, 20, 20);
     doc.text(`${niceM} M`, bx + barMm + 2, by);
   }
+  // EXIT plates — one per computed egress route, placed at the route's far
+  // end projected into the frame (Web Mercator around the image center; the
+  // static render is centered on the target). Plates clamp to a 4mm inset
+  // so a route that leaves the frame still gets its label on the edge it
+  // exits through.
+  if (egress.length) {
+    const world = 512 * Math.pow(2, zoomUsed); // logical px
+    const mercX = (lngV: number) => world * (lngV / 360 + 0.5);
+    const mercY = (latV: number) => {
+      const phi = (latV * Math.PI) / 180;
+      return world * (0.5 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / (2 * Math.PI));
+    };
+    const cX = mercX(img.lng);
+    const cY = mercY(img.lat);
+    const pxPerMmX = (img.width / 2) / drawW;
+    const pxPerMmY = (img.height / 2) / drawH;
+    for (const route of egress) {
+      let ex = cxm + (mercX(route.end[0]) - cX) / pxPerMmX;
+      let ey = cym + (mercY(route.end[1]) - cY) / pxPerMmY;
+      const plateW = 10.5;
+      const plateH = 4.2;
+      ex = Math.max(offX + 4, Math.min(ex, offX + drawW - plateW - 4));
+      ey = Math.max(imgY + 4, Math.min(ey, imgY + drawH - plateH - 4));
+      doc.setFillColor(20, 20, 20);
+      doc.setDrawColor(255, 255, 255);
+      doc.setLineWidth(0.3);
+      doc.rect(ex, ey, plateW, plateH, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`EXIT ${route.label}`, ex + plateW / 2, ey + plateH - 1.4, { align: 'center' });
+    }
+  }
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   y = imgY + drawH;
@@ -1687,6 +1722,15 @@ async function addLocationMapSection(
   ];
   y = drawFormRow(doc, topCells, offX, y, drawW);
   y = drawFormRow(doc, botCells, offX, y, drawW);
+  // Egress / planning row — one cell per computed exit route: driving
+  // distance, overall direction, and the first named road out.
+  if (egress.length) {
+    const egressCells: FormCell[] = egress.map((r) => ({
+      label: `EGRESS ${r.label}`,
+      value: `${(r.distanceM / 1609.344).toFixed(2)} MI ${r.compass}${r.via ? ` VIA ${r.via}` : ''}`,
+    }));
+    y = drawFormRow(doc, egressCells, offX, y, drawW);
+  }
   y += 1;
   return closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
 }
