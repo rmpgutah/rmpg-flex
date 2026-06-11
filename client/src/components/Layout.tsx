@@ -1602,7 +1602,37 @@ export default function Layout() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}
-        <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
+        <main
+          id="main-content"
+          className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark"
+          key={location.pathname}
+          style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}
+          // Persist scroll per-path so SW-update reloads (and any other full
+          // page reload) put the operator back where they were instead of
+          // snapping to the top — the 2026-06-11 "can't scroll" reload loop
+          // made every page feel scroll-locked because each reload reset it.
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            try { sessionStorage.setItem(`rmpg_scroll:${location.pathname}`, String(el.scrollTop)); } catch { /* full */ }
+          }}
+          ref={(el) => {
+            if (!el) return;
+            try {
+              const saved = sessionStorage.getItem(`rmpg_scroll:${location.pathname}`);
+              if (saved && el.scrollTop === 0) {
+                const target = parseInt(saved, 10);
+                // Restore after the page's first content paint — content
+                // loads async, so retry briefly until it's tall enough.
+                let attempts = 0;
+                const tryRestore = () => {
+                  if (el.scrollHeight - el.clientHeight >= target) { el.scrollTop = target; return; }
+                  if (++attempts < 20) setTimeout(tryRestore, 250);
+                };
+                tryRestore();
+              }
+            } catch { /* private mode */ }
+          }}
+        >
           {/* Officer-facing admin broadcasts (Admin → Announcements) */}
           <AnnouncementBanner />
 
