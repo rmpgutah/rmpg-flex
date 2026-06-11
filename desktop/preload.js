@@ -33,6 +33,12 @@ contextBridge.exposeInMainWorld('electron', {
   // navigator.geolocation fails (common on desktop without GPS)
   getIpLocation: () => ipcRenderer.invoke('geo:ip-locate'),
 
+  // ─── Power management (keep navigation alive off-screen) ───
+  // While a trip is active the renderer holds a wake lock so the machine
+  // doesn't suspend mid-patrol (display may still sleep). Released on trip end.
+  keepAwake: () => ipcRenderer.invoke('power:keep-awake'),
+  allowSleep: () => ipcRenderer.invoke('power:allow-sleep'),
+
   // ─── Internal GPS (Panasonic Toughbook) ────────────
   // Reads raw NMEA from the Toughbook's internal u-blox module
   // via serial port. Used instead of navigator.geolocation when
