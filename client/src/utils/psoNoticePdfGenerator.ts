@@ -22,6 +22,7 @@
 
 import jsPDF from 'jspdf';
 import { sanitizePdfText } from './pdfGenerator';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 export interface NoticeOfCommunicationAttempt {
   number: number;
@@ -152,6 +153,7 @@ function legalDate(iso: string): string {
 
 export async function generateNoticeOfCommunication(data: NoticeOfCommunicationData): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
 

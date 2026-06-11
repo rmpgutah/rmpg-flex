@@ -4,6 +4,7 @@ import jsPDF from 'jspdf';
 import { apiFetch } from '../../hooks/useApi';
 
 import RichTextArea from '../../components/RichTextArea';
+import { registerArialFont } from '../../utils/pdf/fonts/registerArial';
 export type ToolArg = { name: string; label: string; placeholder?: string; required?: boolean };
 export type ToolDef = {
   id: string;
@@ -252,6 +253,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
 
   const exportPdf = () => {
     const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
     const m = 40;
     let y = m;
     doc.setFont('helvetica', 'bold').setFontSize(14);

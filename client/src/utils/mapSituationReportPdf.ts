@@ -17,6 +17,7 @@ import {
   hexToRgb,
 } from './pdfGenerator';
 import { LAYOUT } from './pdfTokens';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 export interface SitRepCall {
   call_number: string;
@@ -83,6 +84,7 @@ export async function generateMapSituationReport(data: MapSituationReportData): 
   const accent = hexToRgb(branding.accent_color || DEFAULT_PDF_BRANDING.accent_color);
 
   const doc = new jsPDF('portrait', 'mm', 'letter');
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = LAYOUT.PAGE_MARGIN;
