@@ -1,13 +1,14 @@
 // ============================================================
-// RMPG Flex — Driver's License Search Page
-// Standalone DL search against structured local records +
-// live MicroBilt API. Split-panel layout with search form,
-// results list, and detailed DL record view.
+// RMPG Flex — Driver's License Scanner + Search Page
+// PDF417/OCR scanner with deep records sweep, plus search against
+// the department's local DL records store. External DMV providers
+// (MicroBilt/RapidAPI) are intentionally not wired — no live
+// credentials are provisioned. Split-panel layout.
 // ============================================================
 
 import {useState, useCallback, useEffect, useRef} from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, CreditCard, User, MapPin, ChevronRight, Shield, ShieldCheck, Calendar, Database, Wifi, Plus, AlertTriangle, Camera, Loader2, X, Eye, ScanLine, UserCheck, Upload } from 'lucide-react';
+import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Camera, Loader2, X, Eye, ScanLine, UserCheck, Upload } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import type { ReadoutRow, ScanAlert, LeField } from '../utils/aamvaParser';
 import LiveDlScanner from '../components/LiveDlScanner';
@@ -119,9 +120,6 @@ export default function DlSearchPage() {
   const [leBlock, setLeBlock] = useState('');
   const [deepSweep, setDeepSweep] = useState<{ sources: any[]; total: number } | null>(null);
   const [deepSweepLoading, setDeepSweepLoading] = useState(false);
-  const [mvrSubjects, setMvrSubjects] = useState<DlSubject[] | null>(null);
-  const [mvrLoading, setMvrLoading] = useState(false);
-  const [mvrSource, setMvrSource] = useState('');
   const [showLiveScanner, setShowLiveScanner] = useState(false);
   const [recentScans, setRecentScans] = useState<any[]>(() => {
     try { return JSON.parse(localStorage.getItem('rmpg-dl-recent-scans') || '[]'); } catch { return []; }
@@ -191,28 +189,8 @@ export default function DlSearchPage() {
     setMatchLoading(true);
     setScanMatches(null);
     setDeepSweep(null);
-    setMvrSubjects(null);
-    setMvrSource('');
 
-    // ── DMV / MVR poll (MicroBilt — the licensed DMV-records channel) ──
-    // Runs on every scan with whatever keys the barcode gave us. The
-    // RapidAPI verify stays one-click (per-query cost) but is prefilled.
-    if (parsed.last_name || (parsed as any).dl_number) {
-      setMvrLoading(true);
-      const body: any = {};
-      if (parsed.first_name) body.firstName = parsed.first_name;
-      if (parsed.last_name) body.lastName = parsed.last_name;
-      if ((parsed as any).dl_number) body.dlNumber = (parsed as any).dl_number;
-      if ((parsed as any).dl_state) body.state = (parsed as any).dl_state;
-      if (parsed.date_of_birth) body.dob = parsed.date_of_birth;
-      apiFetch<DlSearchResponse>('/microbilt/dl/search', { method: 'POST', body: JSON.stringify(body) })
-        .then(d => { setMvrSubjects(d?.subjects || []); setMvrSource(d?.source || ''); })
-        .catch(() => setMvrSubjects([]))
-        .finally(() => setMvrLoading(false));
-    }
-
-    // Prefill the search/verify form from the scan — one-click Verify
-    // (RapidAPI) and instant re-search without retyping.
+    // Prefill the search form from the scan for instant re-query.
     if (parsed.last_name) setLastName(parsed.last_name);
     if (parsed.first_name) setFirstName(parsed.first_name);
     if ((parsed as any).dl_number) setDlNumber((parsed as any).dl_number);
@@ -309,59 +287,6 @@ export default function DlSearchPage() {
     }
   }, []);
 
-  // ── DL Verification via RapidAPI ──
-  const [verifying, setVerifying] = useState(false);
-  const [verifyResult, setVerifyResult] = useState<any>(null);
-
-  const handleVerifyDl = useCallback(async () => {
-    if (!dlNumber.trim()) { addToast('Enter a DL number to verify', 'warning'); return; }
-    setVerifying(true);
-    setVerifyResult(null);
-    try {
-      const data = await apiFetch<any>('/dl-records/verify', {
-        method: 'POST',
-        body: JSON.stringify({ dl_number: dlNumber.trim(), date_of_birth: dob || undefined, dl_state: state || undefined }),
-      });
-      setVerifyResult(data.parsed);
-      if (data.parsed?.verified) {
-        addToast('DL Verified', 'success');
-      } else {
-        addToast('DL could not be verified', 'warning');
-      }
-    } catch (err: any) {
-      addToast(err.message || 'Verification failed', 'error');
-    } finally {
-      setVerifying(false);
-    }
-  }, [dlNumber, dob, state, addToast]);
-
-  const handleCreatePersonFromVerify = useCallback(async () => {
-    if (!verifyResult) return;
-    try {
-      const nameParts = (verifyResult.name || '').split(' ');
-      const resp = await apiFetch<any>('/records/persons', {
-        method: 'POST',
-        body: JSON.stringify({
-          first_name: verifyResult.first_name || nameParts[0] || '',
-          last_name: verifyResult.last_name || nameParts.slice(-1)[0] || '',
-          dob: verifyResult.date_of_birth || '',
-          address: verifyResult.address || '',
-          dl_number: verifyResult.dl_number || '',
-          dl_state: verifyResult.dl_state || '',
-          dl_class: verifyResult.dl_class || '',
-          dl_expiry: verifyResult.dl_expiry || '',
-          notes: `Created from DL verification on ${new Date().toLocaleDateString()}`,
-          flags: ['dl_verify_imported'],
-        }),
-      });
-      if (resp?.id) {
-        addToast(`Person record #${resp.id} created from verification`, 'success');
-      }
-    } catch (err: any) {
-      addToast(err.message || 'Failed to create person record', 'error');
-    }
-  }, [verifyResult, addToast]);
-
   // ── Feature 42: Registration Alerts ──
   const [regAlerts, setRegAlerts] = useState<any>(null);
   const handleCheckRegistration = async () => {
@@ -390,19 +315,22 @@ export default function DlSearchPage() {
     setSelected(null);
     setFetchError('');
     try {
-      const body: any = {};
-      if (firstName.trim()) body.firstName = firstName.trim();
-      if (lastName.trim()) body.lastName = lastName.trim();
-      if (dlNumber.trim()) body.dlNumber = dlNumber.trim();
-      if (state) body.state = state;
-      if (dob) body.dob = dob;
-
-      const data = await apiFetch<DlSearchResponse>('/microbilt/dl/search', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-      setResults(data.subjects || []);
-      setSource(data.source || 'NONE');
+      // Search the local DL records store (the live, owned data layer).
+      // External DMV providers (MicroBilt/RapidAPI) are not configured —
+      // results reflect records this department has captured or scanned.
+      const term = (dlNumber.trim() || lastName.trim() || firstName.trim());
+      const data = await apiFetch<{ data: DlSubject[]; total: number }>(
+        `/dl-records?search=${encodeURIComponent(term)}&per_page=200`,
+      );
+      let rows = Array.isArray(data?.data) ? data.data : [];
+      // Client-side refine across the supplied fields.
+      const f = firstName.trim().toLowerCase(), l = lastName.trim().toLowerCase(), st = state;
+      rows = rows.filter(r =>
+        (!f || (r.first_name || '').toLowerCase().includes(f)) &&
+        (!l || (r.last_name || '').toLowerCase().includes(l)) &&
+        (!st || r.dl_state === st));
+      setResults(rows);
+      setSource('LOCAL');
     } catch (err: any) {
       console.error('DL search error:', err);
       setFetchError(err?.message || 'Failed to load data');
@@ -598,12 +526,9 @@ export default function DlSearchPage() {
     }
   }, [ocrResult, addToast]);
 
-  const sourceBadge = (src: string) => {
-    if (src === 'MICROBILT_API' || src === 'MICROBILT_DL') {
-      return <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-green-900/50 text-green-400 border border-green-700/50 inline-flex items-center gap-0.5"><Wifi className="w-2.5 h-2.5" />API</span>;
-    }
-    return <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-gray-900/50 text-gray-400 border border-gray-700/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>;
-  };
+  const sourceBadge = (_src: string) => (
+    <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-gray-900/50 text-gray-400 border border-gray-700/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>
+  );
 
   const statusBadge = (status: string) => {
     if (!status) return null;
@@ -660,16 +585,6 @@ export default function DlSearchPage() {
       <button type="button" onClick={() => setShowLiveScanner(true)} disabled={ocrLoading} className="toolbar-btn text-[10px]">
         {ocrLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ScanLine className="w-3 h-3" />}
         {ocrLoading ? 'Scanning...' : 'Scan DL'}
-      </button>
-      <button
-        type="button"
-        onClick={handleVerifyDl}
-        disabled={verifying || !dlNumber.trim()}
-        className="flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
-        title="Verify DL via RapidAPI"
-      >
-        {verifying ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-        Verify
       </button>
     </div>
   );
@@ -732,7 +647,7 @@ export default function DlSearchPage() {
               <div className="text-center">
                 <CreditCard className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
                 <p>Search by name, DL number, or state</p>
-                <p className="text-[9px] text-rmpg-600 mt-1">Searches local records + MicroBilt API</p>
+                <p className="text-[9px] text-rmpg-600 mt-1">Searches the department's local DL records</p>
               </div>
               {/* ── Driver's License Scanner ── */}
               <div className="border border-[#2e2e2e] rounded-sm bg-[#0c0c0c] w-full max-w-sm">
@@ -1027,81 +942,6 @@ export default function DlSearchPage() {
         isSubmitting={isManualSubmitting}
       />
 
-      {/* DL Verification Result Panel */}
-      {verifyResult && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#141414] border border-[#1a1a1a] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] bg-[#0c0c0c]">
-              <div className="flex items-center gap-2">
-                <ShieldCheck size={14} className={verifyResult.verified ? 'text-green-400' : 'text-amber-400'} />
-                <span className="text-[12px] font-bold text-white uppercase tracking-wider">
-                  DL Verification {verifyResult.verified ? '- VERIFIED' : '- NOT VERIFIED'}
-                </span>
-              </div>
-              <button type="button" onClick={() => setVerifyResult(null)} className="text-[#556677] hover:text-white">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-4 space-y-1">
-              {verifyResult.verified && (
-                <div className="mb-3 px-3 py-2 bg-green-900/30 border border-green-700/50 text-green-400 text-[11px] font-bold flex items-center gap-2">
-                  <ShieldCheck size={14} /> License verified successfully
-                </div>
-              )}
-              {!verifyResult.verified && (
-                <div className="mb-3 px-3 py-2 bg-amber-900/30 border border-amber-700/50 text-amber-400 text-[11px] font-bold flex items-center gap-2">
-                  <AlertTriangle size={14} /> Could not verify this license
-                </div>
-              )}
-              {([
-                ['DL Number', verifyResult.dl_number],
-                ['Name', verifyResult.name],
-                ['Father Name', verifyResult.father_name],
-                ['Date of Birth', verifyResult.date_of_birth],
-                ['Address', verifyResult.address],
-                ['DL Class', verifyResult.dl_class],
-                ['DL Status', verifyResult.dl_status],
-                ['Validity', verifyResult.dl_validity],
-                ['Issue Date', verifyResult.dl_issue_date],
-                ['Expiry', verifyResult.dl_expiry],
-                ['State', verifyResult.dl_state],
-                ['Blood Group', verifyResult.blood_group],
-              ] as [string, string][]).filter(([_, val]) => val).map(([label, val]) => (
-                <div key={label} className="flex items-center gap-2 text-[11px] py-0.5">
-                  <span className="text-[#556677] w-28 flex-shrink-0 font-mono uppercase text-[9px]">{label}</span>
-                  <span className="text-white font-mono">{val}</span>
-                </div>
-              ))}
-              {verifyResult.photo_url && (
-                <div className="mt-2">
-                  <span className="text-[9px] text-[#556677] uppercase font-mono">Photo</span>
-                  <img src={verifyResult.photo_url} alt="DL Photo" className="mt-1 w-24 h-auto border border-[#1a1a1a] rounded-sm" />
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1a1a1a] bg-[#0c0c0c]">
-              {verifyResult.verified && (
-                <button
-                  type="button"
-                  onClick={handleCreatePersonFromVerify}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-sm text-[11px] font-bold text-white transition-colors"
-                >
-                  <Plus size={14} />
-                  Create Person Record
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setVerifyResult(null)}
-                className="px-4 py-2 bg-[#181818] hover:bg-[#1a1a1a] border border-[#1a1a1a] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* DL Scanner Results Modal */}
       {showOcrPreview && ocrResult && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -1122,14 +962,8 @@ export default function DlSearchPage() {
             </div>
             <div className="p-4 space-y-3">
               {/* ── Officer-safety + status alerts ── */}
-              {(scanMatches?.some((m: any) => m.active_warrants > 0) || scanAlerts.length > 0 || deepSweep?.sources.some((s: any) => s.danger) || (deepSweep as any)?.profile?.person || mvrSubjects?.some(s => /suspend|revok|cancel|denied/i.test(s.dl_status || ''))) && (
+              {(scanMatches?.some((m: any) => m.active_warrants > 0) || scanAlerts.length > 0 || deepSweep?.sources.some((s: any) => s.danger) || (deepSweep as any)?.profile?.person) && (
                 <div className="space-y-1">
-                  {mvrSubjects?.filter(s => /suspend|revok|cancel|denied/i.test(s.dl_status || '')).map((s, i) => (
-                    <div key={`mvr-${i}`} className="flex items-center gap-2 px-3 py-2 bg-red-900/40 border border-red-600/70 text-red-300 text-[11px] font-bold uppercase tracking-wide">
-                      <AlertTriangle size={14} className="flex-shrink-0 text-red-400" />
-                      ⚠ DMV STATUS: {(s.dl_status || '').toUpperCase()} — {s.last_name}, {s.first_name} · {s.dl_number} ({s.dl_state})
-                    </div>
-                  ))}
                   {(() => {
                     const p = (deepSweep as any)?.profile?.person;
                     if (!p) return null;
@@ -1256,47 +1090,6 @@ export default function DlSearchPage() {
                       ))}
                     </div>
                   ))}
-                </div>
-              )}
-
-              {/* ── DMV / MVR (MicroBilt licensed records) ── */}
-              {(mvrLoading || (mvrSubjects && mvrSubjects.length > 0)) && (
-                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
-                  <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1a1a1a]">
-                    <span className="text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
-                      <CreditCard size={11} /> DMV / MVR Records
-                      {mvrLoading
-                        ? <Loader2 size={10} className="animate-spin" />
-                        : <span className="text-[#d4a017]">{mvrSubjects!.length} record{mvrSubjects!.length === 1 ? '' : 's'}{mvrSource ? ` · ${mvrSource}` : ''}</span>}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => { setShowOcrPreview(false); handleVerifyDl(); }}
-                      disabled={verifying || !dlNumber.trim()}
-                      className="px-2 py-1 bg-green-700 hover:bg-green-600 disabled:opacity-40 rounded-sm text-[9px] font-bold text-white"
-                      title="Run DL verification (RapidAPI) with the scanned keys"
-                    >
-                      {verifying ? 'Verifying...' : 'Verify DL'}
-                    </button>
-                  </div>
-                  {mvrSubjects && mvrSubjects.map((s, i) => {
-                    const bad = /suspend|revok|cancel|denied|expired/i.test(s.dl_status || '');
-                    return (
-                      <div key={`${s.dl_number}-${i}`} className={`px-3 py-1.5 border-t border-[#101010] text-[10px] ${bad ? 'bg-red-900/10' : ''}`}>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-white font-bold">{s.last_name}, {s.first_name} {s.middle_name || ''}</span>
-                          <span className={`text-[8px] font-bold uppercase px-1 py-px border ${bad ? 'bg-red-900/50 text-red-300 border-red-600/70' : 'bg-green-900/40 text-green-400 border-green-700/50'}`}>{s.dl_status || 'STATUS N/A'}</span>
-                          <span className="text-[#8899aa] font-mono">{s.dl_number} ({s.dl_state})</span>
-                        </div>
-                        <div className="text-[#8899aa] mt-0.5">
-                          {[s.dl_class && `Class ${s.dl_class}`, s.dl_expiration && `Exp ${formatDate(s.dl_expiration)}`,
-                            s.dl_restrictions && `Restr: ${s.dl_restrictions}`, s.dl_endorsements && `End: ${s.dl_endorsements}`,
-                            s.addresses?.[0]?.address && `${s.addresses[0].address}, ${s.addresses[0].city || ''}`]
-                            .filter(Boolean).join(' · ')}
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               )}
 
