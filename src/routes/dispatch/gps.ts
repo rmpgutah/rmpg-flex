@@ -54,7 +54,14 @@ gps.post('/', async (c) => {
     // GOOD fix in it is blocked indefinitely (silent loss). Drop only the bad
     // point so the good ones still persist.
     const normalized = rawPoints.map(norm);
-    const points = normalized.filter((pt) => Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude));
+    // Validity = finite, in-range, and not "null island". A single (0,0)
+    // breadcrumb on 2026-06-10 put a 15,000-mile day on the fleet Daily
+    // Mileage Run chart (SLC → west Africa and back via haversine), so the
+    // filter also guards the trip engine + units mirror downstream.
+    const points = normalized.filter((pt) =>
+      Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude) &&
+      Math.abs(pt.latitude) <= 90 && Math.abs(pt.longitude) <= 180 &&
+      !(Math.abs(pt.latitude) < 0.1 && Math.abs(pt.longitude) < 0.1));
     if (points.length !== normalized.length) {
       console.warn(`[gps] dropped ${normalized.length - points.length} fix(es) with non-finite coords`);
     }
@@ -98,7 +105,6 @@ gps.post('/', async (c) => {
     }));
     const results = await executeBatch(db, stmts);
     const inserted = results.map((r) => Number(r.meta.last_row_id)).filter(Boolean);
-
     // Mirror latest fix onto units row, including heading + speed so the
     // NavigationPage map turning arrow and speed label work.
     if (lastPt && lastPt.latitude != null && lastPt.longitude != null && unitId) {
