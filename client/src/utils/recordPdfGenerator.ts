@@ -1835,7 +1835,9 @@ async function addLocationMapSection(
   // and the MEDICAL/FIRE/LAW ENF cells come from fetchTacticalContext and
   // degrade to absent when offline.
   {
-    const evt = opts.eventIso ? new Date(opts.eventIso) : new Date();
+    // parseTimestamp (not new Date(string)) — server timestamps may lack a
+    // timezone suffix and must resolve via the shared Mountain-Time rules.
+    const evt = opts.eventIso ? parseTimestamp(opts.eventIso) : new Date();
     const evtOk = Number.isFinite(evt.valueOf());
     const sun = evtOk ? sunTimes(evt, img.lat, img.lng) : null;
     const fmtMT = (d: Date) =>
