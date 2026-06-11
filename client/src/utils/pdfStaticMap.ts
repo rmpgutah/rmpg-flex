@@ -20,6 +20,7 @@ import { getCachedMapboxAccessToken } from './mapboxApiKey';
 export interface EgressRoute {
   label: string;            // 'A' | 'B' | 'C'
   distanceM: number;        // driving distance, meters
+  durationS: number;        // driving time, seconds
   via: string;              // first named road on the route (UPPER), '' if unnamed
   compass: string;          // overall direction of travel from target (N/NE/...)
   end: [number, number];    // [lng, lat] of the route's far end
@@ -35,6 +36,9 @@ export interface LocationMapImage {
    *  (present only when opts.egressRoutes was set and Directions
    *  succeeded — best-effort, may be absent/empty). */
   egress?: EgressRoute[];
+  /** Wide-area overview raster (streets style, ~z13) for the
+   *  picture-in-picture inset. Present only when opts.overviewInset. */
+  insetDataUrl?: string;
 }
 
 export interface LocationMapOptions {
@@ -53,6 +57,8 @@ export interface LocationMapOptions {
   /** Compute drivable exit routes (Mapbox Directions, best-effort) and
    *  bake them into the raster as cased path lines. */
   egressRoutes?: boolean;
+  /** Also fetch a wide-area overview raster for a PiP inset. */
+  overviewInset?: boolean;
 }
 
 const isFiniteNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
@@ -157,12 +163,12 @@ async function fetchEgressRoutes(
     if (!Array.isArray(coords) || coords.length < 2 || !isFiniteNum(r?.distance)) return null;
     const steps: { name?: string }[] = r?.legs?.[0]?.steps ?? [];
     const via = (steps.find((s) => s.name && s.name.trim())?.name || '').toUpperCase();
-    return { coords: coords as [number, number][], distanceM: r.distance as number, via };
+    return { coords: coords as [number, number][], distanceM: r.distance as number, durationS: isFiniteNum(r?.duration) ? (r.duration as number) : 0, via };
   }));
 
   // Dedupe corridors: two routes whose far ends sit within ~120m share an
   // egress corridor — keep the shorter.
-  const kept: { coords: [number, number][]; distanceM: number; via: string }[] = [];
+  const kept: { coords: [number, number][]; distanceM: number; durationS: number; via: string }[] = [];
   for (const r of results.filter((x): x is NonNullable<typeof x> => !!x).sort((a, b) => a.distanceM - b.distanceM)) {
     const end = r.coords[r.coords.length - 1];
     const clash = kept.some((k) => {
@@ -180,11 +186,89 @@ async function fetchEgressRoutes(
     route: {
       label: String.fromCharCode(65 + i),
       distanceM: r.distanceM,
+      durationS: r.durationS,
       via: r.via,
       compass: compass8(lat, lng, r.coords[r.coords.length - 1][1], r.coords[r.coords.length - 1][0]),
       end: r.coords[r.coords.length - 1],
     },
   }));
+}
+
+// ── Tactical context (elevation + nearest support facilities) ──────────────
+
+export interface TacticalPoi {
+  kind: string;             // 'MEDICAL' | 'FIRE' | 'LAW ENF'
+  name: string;             // facility name (UPPER)
+  distanceM: number;        // straight-line meters from target
+  compass: string;          // bearing from target (N/NE/...)
+}
+
+export interface TacticalContext {
+  elevationM?: number;      // ground elevation at target (terrain contour)
+  pois: TacticalPoi[];
+}
+
+function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/**
+ * Best-effort tactical context for the location-analysis block: ground
+ * elevation (Mapbox terrain tilequery) and the nearest hospital / fire
+ * station / police facility (POI geocoding with proximity bias). Same
+ * isolation rules as the static map: cached token only, every call
+ * timeout-bounded, every failure degrades to "absent".
+ */
+export async function fetchTacticalContext(lat: number, lng: number): Promise<TacticalContext | null> {
+  try {
+    const token = getCachedMapboxAccessToken();
+    if (!token) return null;
+
+    const elevP = (async (): Promise<number | undefined> => {
+      const url =
+        `https://api.mapbox.com/v4/mapbox.mapbox-terrain-v2/tilequery/${lng},${lat}.json` +
+        `?layers=contour&limit=1&access_token=${encodeURIComponent(token)}`;
+      const res = await fetchWithTimeout(url, GEOCODE_TIMEOUT_MS);
+      if (!res || !res.ok) return undefined;
+      const data = await res.json().catch(() => null);
+      const ele = data?.features?.[0]?.properties?.ele;
+      return isFiniteNum(ele) ? ele : undefined;
+    })();
+
+    const POI_QUERIES: { kind: string; q: string }[] = [
+      { kind: 'MEDICAL', q: 'hospital' },
+      { kind: 'FIRE', q: 'fire station' },
+      { kind: 'LAW ENF', q: 'police' },
+    ];
+    const poiP = Promise.all(POI_QUERIES.map(async ({ kind, q }): Promise<TacticalPoi | null> => {
+      const url =
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json` +
+        `?proximity=${lng},${lat}&types=poi&limit=1&country=us&access_token=${encodeURIComponent(token)}`;
+      const res = await fetchWithTimeout(url, GEOCODE_TIMEOUT_MS);
+      if (!res || !res.ok) return null;
+      const data = await res.json().catch(() => null);
+      const f = data?.features?.[0];
+      const c = f?.center;
+      if (!f?.text || !Array.isArray(c) || !isFiniteNum(c[0]) || !isFiniteNum(c[1])) return null;
+      return {
+        kind,
+        name: String(f.text).toUpperCase(),
+        distanceM: haversineM(lat, lng, c[1], c[0]),
+        compass: compass8(lat, lng, c[1], c[0]),
+      };
+    }));
+
+    const [elevationM, pois] = await Promise.all([elevP, poiP]);
+    return { elevationM, pois: pois.filter((p): p is TacticalPoi => !!p) };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -269,7 +353,41 @@ export async function fetchLocationMapImage(opts: LocationMapOptions): Promise<L
       reader.readAsDataURL(outBlob);
     });
 
-    return { dataUrl, width: outW, height: outH, lat, lng, egress: egressInfo };
+    // Wide-area overview inset (PiP) — separate small streets-style render
+    // at z13 so arterials/highways context frames the close-up. Best-effort.
+    let insetDataUrl: string | undefined;
+    if (opts.overviewInset) {
+      const insetUrl =
+        `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/` +
+        `pin-s+d4a017(${lng},${lat})/${lng},${lat},13,0/300x200@2x` +
+        `?access_token=${encodeURIComponent(token)}&attribution=false&logo=false`;
+      const insetRes = await fetchWithTimeout(insetUrl, STATIC_TIMEOUT_MS);
+      if (insetRes && insetRes.ok) {
+        const insetBlob = await insetRes.blob();
+        if (insetBlob.type.startsWith('image/')) {
+          try {
+            const ibmp = await createImageBitmap(insetBlob);
+            const icv = new OffscreenCanvas(ibmp.width, ibmp.height);
+            const ictx = icv.getContext('2d');
+            if (ictx) {
+              ictx.fillStyle = '#ffffff';
+              ictx.fillRect(0, 0, ibmp.width, ibmp.height);
+              ictx.drawImage(ibmp, 0, 0);
+              const ib = await icv.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
+              const ir = new FileReader();
+              insetDataUrl = await new Promise<string>((resolve, reject) => {
+                ir.onload = () => resolve(ir.result as string);
+                ir.onerror = reject;
+                ir.readAsDataURL(ib);
+              });
+            }
+            ibmp.close();
+          } catch { /* inset is optional — skip on any decode failure */ }
+        }
+      }
+    }
+
+    return { dataUrl, width: outW, height: outH, lat, lng, egress: egressInfo, insetDataUrl };
   } catch {
     return null;
   }
