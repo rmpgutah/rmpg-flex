@@ -566,6 +566,12 @@ si.post('/upload', async (c) => {
   if (!noRecords && failedDocs.length > 0) {
     warning = `Entry created, but ${failedDocs.length} document(s) didn't extract (${failedDocs.join(', ')}). Some fields may be missing — review those documents.`;
   }
+  // Duplicate intake: an ACTIVE queue entry already covers this case +
+  // recipient. The uploaded documents were attached to it (back-link above);
+  // no new call/queue/person records were created.
+  if (commit.duplicate_of) {
+    warning = `Active serve entry #${commit.duplicate_of.serve_queue_id} already exists for this case and recipient (status: ${commit.duplicate_of.status}). Documents were attached to the existing entry — no new call was created.`;
+  }
 
   // Intake can spawn a CAD call (createServiceCall writes calls_for_service
   // directly, bypassing the calls.ts POST broadcast). Fan it to every dispatch
@@ -608,6 +614,8 @@ si.post('/upload', async (c) => {
     // critical fields the extractor could not find (verify-before-service).
     intake_note: commit.intake_note ?? null,
     missing_critical: commit.missing_critical ?? [],
+    attempt_plan: commit.attempt_plan ?? [],
+    duplicate_of: commit.duplicate_of ?? null,
     merged: {
       documentType: bestDocType,
       confidence: bestConfidence,

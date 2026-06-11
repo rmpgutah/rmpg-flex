@@ -35,6 +35,8 @@ import { deriveCrossStreetFromCoords } from './crossStreet';
 import { parseLocationParts } from './parseLocationParts';
 import { buildPsoBriefing, buildOcrContext } from './serveIntakeBriefing';
 import type { IntakeDocMeta, OcrContext } from './serveIntakeBriefing';
+import { planAttemptWindows, escalatePriorityForDeadline } from './serveDiligencePlanner';
+import type { AttemptWindow } from './serveDiligencePlanner';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 
 // ── Sentinel client for intake-generated properties ──────────
@@ -483,6 +485,12 @@ export interface CommitResult {
   // OCR provenance summary (only when the caller supplied per-doc metadata).
   intake_note?: string | null;
   missing_critical?: string[];
+  // Diligence plan computed at intake (also embedded in parsed_data._intake).
+  attempt_plan?: AttemptWindow[];
+  // Set when an ACTIVE queue entry already exists for this case+recipient —
+  // no new records are created; uploaded documents attach to the existing
+  // entry instead (serve_queue_id points at it).
+  duplicate_of?: { serve_queue_id: number; status: string; case_number: string | null } | null;
 }
 
 export interface CommitInput {
@@ -508,6 +516,44 @@ export interface CommitInput {
 export async function commitIntake(db: D1Database, input: CommitInput): Promise<CommitResult> {
   const { fields, queueRow, userId } = input;
   const get = (k: string) => (fields[k]?.value || '').trim();
+  const nowIso = new Date().toISOString();
+
+  // ── Duplicate-intake guard ─────────────────────────────────
+  // A re-uploaded packet (or a client-side duplicate job, common in
+  // ServeManager exports) must not spawn a second active queue entry +
+  // CAD call for the same paper — double-serving wastes attempts and
+  // reads badly in court. Match on case number + recipient when both
+  // exist, else recipient + address. Only ACTIVE entries block; a served/
+  // cancelled/failed prior entry means this is a legitimate re-serve.
+  const ACTIVE = "('pending','assigned','in_progress','attempted')";
+  let dup: { id: number; status: string; case_number: string | null } | null = null;
+  if (queueRow.case_number && queueRow.recipient_name) {
+    dup = await queryFirst(db,
+      `SELECT id, status, case_number FROM serve_queue
+       WHERE status IN ${ACTIVE} AND case_number = ? AND LOWER(recipient_name) = LOWER(?)
+       ORDER BY id DESC LIMIT 1`,
+      queueRow.case_number, queueRow.recipient_name) as any;
+  } else if (queueRow.recipient_name && queueRow.recipient_address) {
+    dup = await queryFirst(db,
+      `SELECT id, status, case_number FROM serve_queue
+       WHERE status IN ${ACTIVE} AND LOWER(recipient_name) = LOWER(?) AND LOWER(recipient_address) = LOWER(?)
+       ORDER BY id DESC LIMIT 1`,
+      queueRow.recipient_name, queueRow.recipient_address) as any;
+  }
+  if (dup) {
+    return {
+      serve_queue_id: dup.id, person_id: null, agent_person_id: null,
+      business_id: null, property_id: null, call_id: null, call_number: null,
+      created: { person: false, agent_person: false, business: false, property: false, call: false },
+      duplicate_of: { serve_queue_id: dup.id, status: dup.status, case_number: dup.case_number ?? null },
+    };
+  }
+
+  // ── Deadline-driven priority escalation + diligence plan ──
+  // ≤3 days to deadline → urgent, ≤7 → rush (raise-only). Computed BEFORE
+  // the briefing/call/queue writes so every consumer sees the same value.
+  queueRow.priority = escalatePriorityForDeadline(queueRow.priority, nowIso, queueRow.deadline);
+  const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline);
 
   const isBusiness = get('recipient_type').toLowerCase() === 'business';
   const businessName = get('recipient_business_name') || (isBusiness ? get('recipient_last_name') : '');
@@ -637,7 +683,6 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   }
 
   // ── OCR provenance context (filed on call notes + queue row) ──
-  const nowIso = new Date().toISOString();
   const ocrContext: OcrContext | null = input.docs?.length
     ? buildOcrContext(input.docs, fields, input.allDates ?? [], nowIso)
     : null;
@@ -662,6 +707,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       agentName: agentFullName,
       fullLocation: fullLocation || addr,
       docCount: input.docCount,
+      attemptPlan,
     }, nowIso);
     // File the OCR provenance note AFTER the intake briefing so the feed
     // reads: safety → briefing → extraction context.
@@ -742,17 +788,18 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       ),
       // Machine-readable extraction audit block — queryable via
       // json_extract(parsed_data, '$._intake.missing_critical') etc.
-      ...(ocrContext ? {
-        _intake: {
-          extracted_at: nowIso,
+      _intake: {
+        extracted_at: nowIso,
+        attempt_plan: attemptPlan,
+        ...(ocrContext ? {
           documents: input.docs!.map((d) => ({
             file_name: d.file_name, doc_type: d.doc_type,
             ocr_engine: d.ocr_engine, confidence: d.confidence, success: d.success,
           })),
           all_dates: input.allDates ?? [],
           missing_critical: ocrContext.missingCritical,
-        },
-      } : {}),
+        } : {}),
+      },
     });
     // Queue notes = extracted service windows + a compact provenance line so
     // the serve-queue views carry the OCR context without the full markdown.
@@ -804,6 +851,8 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   return {
     intake_note: ocrContext?.noteText ?? null,
     missing_critical: ocrContext?.missingCritical ?? [],
+    attempt_plan: attemptPlan,
+    duplicate_of: null,
     serve_queue_id: queueId,
     person_id: person.id || null,
     agent_person_id: agentPerson.id || null,

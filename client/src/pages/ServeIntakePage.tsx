@@ -102,6 +102,11 @@ interface IntakeResult {
     confidence?: number; success?: boolean; page_count?: number | null;
   }>;
   missing_critical?: string[];
+  // Diligence planner output — dated attempt windows computed at intake.
+  attempt_plan?: Array<{ attempt: number; date: string; weekday: string; window: string; focus: string }>;
+  // Set when this packet matched an existing ACTIVE queue entry: documents
+  // were attached to it and no new call/queue records were created.
+  duplicate_of?: { serve_queue_id: number; status: string; case_number: string | null } | null;
 }
 
 interface OcrScanResult {
@@ -902,6 +907,15 @@ export default function ServeIntakePage() {
               <span className="text-sm font-bold text-green-400">INTAKE COMPLETE</span>
             </div>
 
+            {result.duplicate_of && (
+              <div className="bg-amber-900/30 border border-amber-700/50 rounded-sm p-2 mb-3 text-[11px] text-amber-300">
+                <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+                Duplicate intake: active serve entry #{result.duplicate_of.serve_queue_id}
+                {result.duplicate_of.case_number ? ` (case ${result.duplicate_of.case_number})` : ''} already covers this
+                recipient — status {result.duplicate_of.status}. Documents were attached to the existing entry; no new call was created.
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="panel-beveled bg-surface-raised p-3">
                 <div className="flex items-center gap-1.5 mb-2">
@@ -984,6 +998,22 @@ export default function ServeIntakePage() {
                 )}
               </div>
             ) : null}
+
+            {/* Diligence planner — dated attempt windows. Mirrors the
+                RECOMMENDED ATTEMPT PLAN section of the intake briefing. */}
+            {!result.duplicate_of && result.attempt_plan && result.attempt_plan.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-rmpg-700">
+                <p className="text-[9px] text-rmpg-400 uppercase font-bold mb-1.5">Recommended Attempt Plan</p>
+                {result.attempt_plan.map((w) => (
+                  <div key={w.attempt} className="flex items-center gap-2 text-[10px] py-[2px]">
+                    <span className="text-rmpg-500 font-bold">#{w.attempt}</span>
+                    <span className="text-white font-mono">{w.weekday} {w.date}</span>
+                    <span className="text-brand-400 font-mono">{w.window}</span>
+                    <span className="text-rmpg-500">{w.focus}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2">

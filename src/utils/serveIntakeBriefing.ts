@@ -29,6 +29,7 @@
 // ============================================================
 
 import type { ExtractedField, QueueRow } from './serveIntakeExtract';
+import type { AttemptWindow } from './serveDiligencePlanner';
 
 // ── Operator policy switches ─────────────────────────────────
 const FLAG_EVICTION = true;        // eviction / unlawful detainer → HIGH
@@ -122,6 +123,7 @@ export interface BriefingInput {
   agentName: string;            // registered agent (corporate service)
   fullLocation: string;         // assembled address string
   docCount: number;
+  attemptPlan?: AttemptWindow[]; // diligence planner output (dated windows)
 }
 
 export interface BriefingNote {
@@ -269,6 +271,14 @@ function buildBriefingNoteText(input: BriefingInput): string {
 
   lines.push('**■ TACTICAL APPROACH**');
   for (const l of tacticalApproachLines(input, hint)) lines.push(`• ${l}`);
+
+  if (input.attemptPlan?.length) {
+    lines.push('**■ RECOMMENDED ATTEMPT PLAN**');
+    for (const w of input.attemptPlan) {
+      lines.push(`• Attempt ${w.attempt}: ${w.weekday} ${w.date}, ${w.window}  (${w.focus})`);
+    }
+    lines.push('• Adjust to client-specified windows and field conditions; following the plan satisfies the time-variance diligence standard.');
+  }
 
   lines.push('**■ DILIGENCE STANDARD**');
   for (const l of DILIGENCE_LINES) lines.push(`• ${l}`);
