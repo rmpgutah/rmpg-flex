@@ -318,11 +318,24 @@ export function sanitizePdfText(text: string): string {
     .replace(/\u2022/g, '*')     // • bullet
     .replace(/\u00A0/g, ' ')     // non-breaking space
     .replace(/\u200B/g, '')      // zero-width space
-    .replace(/\u00B7/g, '.')     // · middle dot
+    .replace(/\u00B7/g, '-')     // · middle dot — '-' reads as a separator ('.' looked like a stray period)
     .replace(/\u2713/g, '[X]')   // ✓ check mark
     .replace(/\u2717/g, '[ ]')   // ✗ cross mark
     .replace(/\u26A0/g, '[!]')   // ⚠ warning
-    .replace(/[^\x00-\xFF]/g, '?') // Replace any remaining non-Latin-1 chars
+    // Strip emoji plumbing BEFORE the catch-all: variation selectors
+    // (U+FE0F after \u26A0 etc.) and zero-width joiners are invisible
+    // modifiers that the '?' catch-all surfaced as a literal "?" (caught
+    // 2026-06-11 on PS-201: "[!]? OFFICER SAFETY").
+    .replace(/[\uFE00-\uFE0F\u200D]/g, '')
+    // Emoji / supplementary-plane chars are surrogate PAIRS — the old
+    // per-code-unit '?' replacement turned one pictograph into "??".
+    // Drop them entirely; a formal report renders words, not pictographs.
+    // (also consume one adjacent space so "EMOJI WORD" doesn't leave a
+    // stray leading/doubled space behind)
+    .replace(/[\uD800-\uDFFF]+ ?/g, '')
+    .replace(/ ?[\uD800-\uDFFF]+/g, '')
+    .replace(/[^\x00-\xFF]/g, '') // Drop remaining non-Latin-1 chars ('?' placeholders read as data errors)
+    .replace(/[ \t]{2,}/g, ' ')   // collapse double spaces left by stripped pictographs
     .toUpperCase();              // Police-form convention: ALL CAPS (applied
                                  // globally as the single sanitization chokepoint
                                  // so every render path emits uppercase text).
