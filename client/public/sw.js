@@ -578,7 +578,12 @@
 // v880: Fleet analytics implemented (utilization, daily usage, forecast,
 //       MPG/cost KPIs from source tables) + assignments/inspections
 //       bare-array shape fix.
-const CACHE_NAME = 'rmpg-flex-v880';
+// v881: Fleet per-vehicle analytics wave 2 — combined-cost-trend/monthly-
+//       spend/daily-gps-mileage wrapper keys, inspection-stats + cost-
+//       analytics field names, maintenance-schedule urgency, lifecycle
+//       computed fields, driver-performance GPS enrichment, SUM fan-out
+//       fix in lifecycle/comparison.
+const CACHE_NAME = 'rmpg-flex-v881';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
