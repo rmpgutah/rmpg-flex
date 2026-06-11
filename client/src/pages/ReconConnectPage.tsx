@@ -83,6 +83,27 @@ export default function ReconConnectPage() {
   const api = (typeof window !== 'undefined' ? (window as any).electron : null) as any;
   const hasTerminalApi = Boolean(api?.reconSpawn);
 
+  useEffect(() => {
+    const onResize = () => { try { fitRef.current?.fit(); } catch { /* ignore */ } };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    if (!api?.onReconData) return;
+    const unsubData = api.onReconData((id: string, chunk: string) => {
+      if (id === sessionId) termRef.current?.write(chunk);
+    });
+    const unsubExit = api.onReconExit?.((id: string, code: number) => {
+      if (id !== sessionId) return;
+      termRef.current?.writeln(`\r\n\x1b[33m[process exited with code ${code}]\x1b[0m`);
+      sessionIdRef.current = null;
+      setTermState('idle');
+      setSessionId(null);
+    });
+    return () => { try { unsubData?.(); unsubExit?.(); } catch { /* ignore */ } };
+  }, [sessionId]);
+
   if (!canAccessReconConnect(user?.role)) {
     return (
       <div className="p-6">
@@ -134,27 +155,6 @@ export default function ReconConnectPage() {
     fitRef.current = fit;
     return term;
   };
-
-  useEffect(() => {
-    const onResize = () => { try { fitRef.current?.fit(); } catch { /* ignore */ } };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  useEffect(() => {
-    if (!api?.onReconData) return;
-    const unsubData = api.onReconData((id: string, chunk: string) => {
-      if (id === sessionId) termRef.current?.write(chunk);
-    });
-    const unsubExit = api.onReconExit?.((id: string, code: number) => {
-      if (id !== sessionId) return;
-      termRef.current?.writeln(`\r\n\x1b[33m[process exited with code ${code}]\x1b[0m`);
-      sessionIdRef.current = null;
-      setTermState('idle');
-      setSessionId(null);
-    });
-    return () => { try { unsubData?.(); unsubExit?.(); } catch { /* ignore */ } };
-  }, [sessionId]);
 
   const runRecon = async (mode: 'install' | 'launch') => {
     if (!hasTerminalApi) {

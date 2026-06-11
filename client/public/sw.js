@@ -560,8 +560,11 @@
 // v873: lazyRetry now retries a failed chunk import in place (1.5s/4s backoff)
 //   before reloading — rides out Pages deploy-propagation 500s instead of
 //   stranding users on the ErrorBoundary card (2026-06-10 fleet-chunk incident).
-// v875: NewCallModal/QuickPsoModal hooks moved above early returns (React #310 guard).
-const CACHE_NAME = 'rmpg-flex-v875';
+// v876: rules-of-hooks crash sweep — NewCallModal/QuickPsoModal useState was
+//   declared after the `if (!isOpen) return null` early return (opening the
+//   modal changed the hook count → React #310 crashed the page); same class
+//   fixed in ReconConnectPage (effects below the role-gate early return).
+const CACHE_NAME = 'rmpg-flex-v876';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

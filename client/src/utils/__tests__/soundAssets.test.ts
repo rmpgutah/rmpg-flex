@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 function mockAudioContext(decodeOk = true) {
   const sources: any[] = [];
+  const gains: any[] = [];
   const ctor = vi.fn().mockImplementation(function (this: unknown) {
     return {
       state: 'running',
@@ -19,11 +20,15 @@ function mockAudioContext(decodeOk = true) {
         sources.push(src);
         return src;
       }),
-      createGain: vi.fn(() => ({ gain: { value: 0, setValueAtTime: vi.fn() }, connect: vi.fn() })),
+      createGain: vi.fn(() => {
+        const g = { gain: { value: 0, setValueAtTime: vi.fn() }, connect: vi.fn() };
+        gains.push(g);
+        return g;
+      }),
     };
   });
   (window as any).AudioContext = ctor;
-  return { ctor, sources };
+  return { ctor, sources, gains };
 }
 
 async function loadModule() {
@@ -74,6 +79,20 @@ describe('soundAssets', () => {
     expect((global.fetch as any).mock.calls.map((c: any[]) => c[0]).sort()).toEqual([
       '/sounds/click.wav', '/sounds/delete.wav', '/sounds/login.wav', '/sounds/submit.wav', '/sounds/update.wav',
     ]);
+  });
+
+  it('clamps requested gain to the hearing-safety ceiling', async () => {
+    const { gains } = mockAudioContext();
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) }) as any;
+    const m = await loadModule();
+
+    m.startSoundAsset('alarm', 9); // trigger load
+    await flush(); await flush();
+    m.startSoundAsset('alarm', 9); // absurd gain request
+
+    const playGain = gains[gains.length - 1];
+    expect(playGain.gain.value).toBeLessThanOrEqual(0.5);
+    expect(playGain.gain.value).toBeGreaterThan(0);
   });
 
   it('startSoundAsset returns a working stop handle once decoded', async () => {
