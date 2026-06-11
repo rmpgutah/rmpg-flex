@@ -599,7 +599,10 @@
 //       full edit/delete; maintenance modal gains labor cost, next-due
 //       mileage, service tasks, notes; Mileage Audit officer dropdown
 //       shows ALL personnel (was role=officer only).
-const CACHE_NAME = 'rmpg-flex-v884';
+// v885: SW-update reload-loop fix — auto-reload capped to once per 5 min
+//       (sw.js byte-flap at the edge looped reloads every 1-3 min = "can't
+//       scroll") + per-path scroll restore across reloads.
+const CACHE_NAME = 'rmpg-flex-v885';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
