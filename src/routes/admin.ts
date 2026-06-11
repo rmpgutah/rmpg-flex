@@ -1156,10 +1156,12 @@ admin.post('/system/lockdown', async (c) => {
   const { enabled, reason }: { enabled: boolean; reason?: string } = await c.req.json().catch(() => ({ enabled: false }));
   try {
     const db = getDb(c.env);
+    // Same composite-unique-index trap as system-settings above: live UNIQUE
+    // is (config_key, config_value), so ON CONFLICT(config_key) throws.
+    await execute(db, `DELETE FROM system_config WHERE config_key = 'system_lockdown'`);
     await execute(db,
       `INSERT INTO system_config (config_key, config_value, updated_at)
-       VALUES ('system_lockdown', ?, datetime('now'))
-       ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, updated_at = excluded.updated_at`,
+       VALUES ('system_lockdown', ?, datetime('now'))`,
       JSON.stringify({ enabled, reason: reason || null, at: new Date().toISOString() }));
     return c.json({ success: true, lockdown: enabled });
   } catch { return c.json({ error: 'Failed' }, 500); }
