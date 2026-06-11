@@ -192,6 +192,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const [vehicleSearchResults, setVehicleSearchResults] = useState<any[]>([]);
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
+  const [callerAddressUnit, setCallerAddressUnit] = useState('');
   const personSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vehicleSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const personDropdownRef = useRef<HTMLDivElement>(null);
@@ -355,8 +356,6 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   }, [isOpen]);
 
   if (!isOpen) return null;
-
-  const [callerAddressUnit, setCallerAddressUnit] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
