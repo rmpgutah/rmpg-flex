@@ -279,6 +279,11 @@ export function sanitizePdfText(text: string): string {
     // would mangle real bullet content.
     .replace(/\*\*/g, '')
     .replace(/__/g, '')
+    // Paired single-underscore italic markers around a parenthetical —
+    // "_(AUTO-GENERATED)_" rendered literally on PS-201 notes (caught
+    // 2026-06-11). Paired-only so real underscores in case numbers /
+    // filenames (CASE_123, REPORT_FINAL.PDF) are never touched.
+    .replace(/_\((.*?)\)_/g, '($1)')
     .replace(/\*(?=\w)/g, '')
     .replace(/(?<=\w)\*/g, '')
     // Render-side patch for known concatenated-word artifacts in stored

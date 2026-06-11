@@ -20,3 +20,13 @@ describe('sanitizePdfText — formal output', () => {
     expect(sanitizePdfText('CASE 中文 NOTE')).toBe('CASE NOTE');
   });
 });
+
+describe('sanitizePdfText — markdown leftovers', () => {
+  it('unwraps paired underscore italics around parentheticals', () => {
+    expect(sanitizePdfText('INTAKE BRIEFING _(auto-generated)_')).toBe('INTAKE BRIEFING (AUTO-GENERATED)');
+  });
+
+  it('keeps real underscores in identifiers', () => {
+    expect(sanitizePdfText('CASE_123 REPORT_FINAL.PDF')).toBe('CASE_123 REPORT_FINAL.PDF');
+  });
+});
