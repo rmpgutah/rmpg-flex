@@ -57,6 +57,7 @@ import {
   type WatermarkVariant, type PriorityLevel,
 } from './pdfFormHelpers';
 import type { ClassificationLevel } from './pdfTokens';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 // ── Re-exports so callers only need to import from pdfGenerator ──
 export {
@@ -4086,6 +4087,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
 
 export function generatePdfReport(reportType: PdfReportType, data: IncidentData, options: PdfReportOptions = {}): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
 
   setActiveFormKey(reportType);

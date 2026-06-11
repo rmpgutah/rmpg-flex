@@ -34,6 +34,7 @@ import {
   getProportionalColumns, getCapHeight,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 // ── Data Interfaces ──────────────────────────────────────────
 
@@ -279,6 +280,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   await loadPdfAssets();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -429,6 +431,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   await loadPdfAssets();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -650,6 +653,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
   await loadPdfAssets();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -804,6 +808,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   await loadPdfAssets();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',

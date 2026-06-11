@@ -9,6 +9,7 @@ import type { RenderOptions } from './renderer';
 import type { FormSchema, SchemaSection, RenderCallback } from './types';
 import type { CitationCopyVariant } from '../forms/citationInstructions';
 import { TYPOGRAPHY, RULE_WEIGHTS } from './style';
+import { registerArialFont } from '../../fonts/registerArial';
 
 const OUTER_MARGIN = 10;
 // 4mm gap from header bottom rule to first section header — enough that
@@ -36,6 +37,7 @@ export async function renderMultiCopyPdfV2<T>(
   options?: RenderOptions,
 ): Promise<jsPDF> {
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+  if (!options?.coreFontsOnly) registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
 
   copies.forEach((copy, i) => {
     if (i > 0) doc.addPage();

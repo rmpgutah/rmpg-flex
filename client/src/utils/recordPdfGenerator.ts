@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { registerArialFont } from './pdf/fonts/registerArial';
 import QRCode from 'qrcode';
 import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
 import { hasValue, toNum } from './sentinel';
@@ -5933,6 +5934,7 @@ export async function generateRecordPdf<T extends RecordPdfType>(
   options: RecordPdfOptions = {},
 ): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
 
   // Set form key for footer form numbers
@@ -6203,6 +6205,7 @@ export interface BoloPdfOptions extends RecordPdfOptions {
 /** Generate a multi-page BOLO (Be On The Lookout) packet PDF */
 export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions = {}): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageW = doc.internal.pageSize.getWidth();
   const margin = LAYOUT.PAGE_MARGIN;
@@ -6442,6 +6445,7 @@ export interface WarrantSummaryData {
 /** Generate a single-page Warrant Activity Summary Report */
 export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: RecordPdfOptions = {}): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageW = doc.internal.pageSize.getWidth();
   const margin = LAYOUT.PAGE_MARGIN;
