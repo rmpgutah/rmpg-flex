@@ -205,6 +205,59 @@ export default function DlSearchPage() {
   const handleOcrUpload = useCallback(async (file: File) => {
     setOcrLoading(true);
     setOcrResult(null);
+
+    // ── Pass 1: PDF417 barcode (back of card) ──
+    // The AAMVA barcode is authoritative — every field exactly as the
+    // issuing DMV encoded it. Only fall back to OCR (front of card)
+    // when no barcode is found in the image.
+    try {
+      const [{ decodePdf417 }, { parseAamva, looksLikeAamva }] = await Promise.all([
+        import('../utils/pdf417Decoder'),
+        import('../utils/aamvaParser'),
+      ]);
+      const decoded = await decodePdf417(file);
+      if (decoded && looksLikeAamva(decoded.text)) {
+        const parsed = parseAamva(decoded.text);
+        setOcrResult({
+          first_name: parsed.first_name,
+          middle_name: parsed.middle_name,
+          last_name: parsed.last_name,
+          suffix: parsed.suffix,
+          date_of_birth: parsed.date_of_birth,
+          gender: parsed.gender,
+          height: parsed.height,
+          weight: parsed.weight,
+          eye_color: parsed.eye_color,
+          hair_color: parsed.hair_color,
+          address: parsed.address,
+          city: parsed.city,
+          state: parsed.state,
+          zip: parsed.zip,
+          dl_number: parsed.dl_number,
+          dl_state: parsed.dl_state,
+          dl_class: parsed.dl_class,
+          dl_expiry: parsed.dl_expiry,
+          dl_issue_date: parsed.dl_issue_date,
+          dl_restrictions: parsed.dl_restrictions,
+          dl_endorsements: parsed.dl_endorsements,
+          country: parsed.country,
+          document_discriminator: parsed.document_discriminator,
+          real_id: parsed.is_real_id === null ? '' : parsed.is_real_id ? 'YES' : 'NO',
+          organ_donor: parsed.is_organ_donor === null ? '' : parsed.is_organ_donor ? 'YES' : 'NO',
+          veteran: parsed.is_veteran === null ? '' : parsed.is_veteran ? 'YES' : 'NO',
+          scan_method: 'PDF417 BARCODE',
+        });
+        setShowOcrPreview(true);
+        addToast('PDF417 barcode read — all DMV-encoded fields extracted', 'success');
+        setOcrLoading(false);
+        return;
+      }
+    } catch (err) {
+      // Barcode path is best-effort; OCR fallback below.
+      console.warn('[DL Scan] PDF417 decode failed, falling back to OCR:', err);
+    }
+
+    // ── Pass 2: OCR fallback (front of card) ──
     try {
       const formData = new FormData();
       formData.append('image', file);
@@ -274,7 +327,7 @@ export default function DlSearchPage() {
             method: 'POST',
             body: JSON.stringify({
               ...ocrResult,
-              source: 'DL_OCR_SCAN',
+              source: ocrResult.scan_method === 'PDF417 BARCODE' ? 'DL_BARCODE_SCAN' : 'DL_OCR_SCAN',
             }),
           });
         } catch { /* secondary — person record is primary */ }
@@ -426,7 +479,7 @@ export default function DlSearchPage() {
                   <CreditCard size={14} className="text-[#d4a017]" />
                   <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Scan Driver's License</span>
                 </div>
-                <p className="text-[10px] text-[#556677]">Upload a photo of a driver's license to auto-extract all fields and create a person record.</p>
+                <p className="text-[10px] text-[#556677]">Photograph the <span className="text-[#c0ccdd] font-semibold">BACK of the card</span> (PDF417 barcode) for an exact DMV-encoded read of every field, or the front for OCR. Auto-creates a person record.</p>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
