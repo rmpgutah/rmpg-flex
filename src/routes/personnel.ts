@@ -257,7 +257,7 @@ personnel.post('/equipment/:id/checkin', async (c) => {
     try {
       const user = c.get('user') as Record<string, unknown> | undefined;
       await execute(db,
-        `INSERT INTO equipment_checkout_log (equipment_id, officer_id, action, performed_by, notes, created_at) VALUES (?, ?, 'checkin', ?, ?, datetime('now'))`,
+        `INSERT INTO equipment_checkout_log (equipment_id, officer_id, checkout_date, action, performed_by, notes, created_at) VALUES (?, ?, datetime('now'), 'checkin', ?, ?, datetime('now'))`,
         id, item.officer_id, user?.id ?? null, body.notes ?? null);
     } catch { /* log table may not exist */ }
     const updated = await queryFirst<Record<string, unknown>>(db, `${EQUIPMENT_SELECT} WHERE oe.id = ?`, id);
@@ -354,8 +354,8 @@ personnel.post('/equipment/:id/checkin', async (c) => {
     if (!eq) return c.json({ error: 'Equipment not found' }, 404);
     await execute(
       db,
-      `INSERT INTO equipment_checkout_log (equipment_id, officer_id, return_date, action, equipment_name, checked_by)
-       VALUES (?, ?, datetime('now','localtime'), 'checkin', ?, ?)`,
+      `INSERT INTO equipment_checkout_log (equipment_id, officer_id, checkout_date, return_date, action, equipment_name, checked_by)
+       VALUES (?, ?, datetime('now','localtime'), datetime('now','localtime'), 'checkin', ?, ?)`,
       id, eq.officer_id, eq.equipment_type, actor?.id ?? null);
     await execute(db, "UPDATE officer_equipment SET status = 'returned', returned_date = datetime('now','localtime'), updated_at = datetime('now','localtime') WHERE id = ?", id);
     return c.json({ success: true });

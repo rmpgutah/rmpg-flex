@@ -31,7 +31,6 @@ import { runAllSourceScans } from './utils/warrantSources/runScan';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
 import { syncAllVehicleGpsMileage } from './routes/fleet';
-import { syncEmail } from './utils/emailSync';
 import { processScheduledEmails, applyRulesToRecent } from './utils/emailProcessor';
 import { sweepTrips } from './utils/tripStore';
 import { runEmailPoll, drainEmailOutbox, drainScheduledEmails, resurfaceSnoozedEmails } from './routes/email';
