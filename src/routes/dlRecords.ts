@@ -279,6 +279,122 @@ dlRecords.get('/scan-relay/poll', async (c) => {
 });
 
 // ============================================================
+// POST /ocr-scan — front-of-card OCR via Workers AI vision
+// ============================================================
+// The legacy /ocr-scan never made it to the CF era (the proxy served a
+// success:false stub, so photo-upload fallback always errored with
+// "OCR returned no data"). This is the real implementation: Llama 3.2
+// 11B Vision reads the card face and returns the same parsed shape the
+// scanner pipeline already consumes.
+dlRecords.post('/ocr-scan', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    let form: FormData;
+    try { form = await c.req.formData(); } catch {
+      return c.json({ error: 'Expected multipart/form-data', code: 'BAD_FORM' }, 400);
+    }
+    const file = form.get('image') as File | null;
+    if (!file || typeof (file as any).arrayBuffer !== 'function') {
+      return c.json({ error: 'Missing image field', code: 'NO_IMAGE' }, 400);
+    }
+    if (file.size === 0 || file.size > 8_000_000) {
+      return c.json({ error: 'Image size out of range (max 8MB)', code: 'IMAGE_SIZE' }, 400);
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+
+    const prompt = `You are reading a photo of a US driver's license or ID card (front face).
+Return STRICT JSON only — no commentary, no markdown fences — with exactly these keys
+(empty string when not visible):
+{"first_name":"","middle_name":"","last_name":"","suffix":"","date_of_birth":"YYYY-MM-DD",
+"gender":"Male|Female|","height":"","weight":"","eye_color":"","hair_color":"",
+"address":"","city":"","state":"","zip":"","dl_number":"","dl_state":"",
+"dl_class":"","dl_expiry":"YYYY-MM-DD","dl_issue_date":"YYYY-MM-DD",
+"dl_restrictions":"","dl_endorsements":""}
+Transcribe exactly what is printed. dl_state is the issuing state's 2-letter code.`;
+
+    const out = await (c.env as any).AI.run('@cf/meta/llama-3.2-11b-vision-instruct', {
+      image: Array.from(bytes),
+      prompt,
+      max_tokens: 800,
+    }) as { response?: string; description?: string };
+
+    const raw = (out?.response || out?.description || '').trim();
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return c.json({ success: false, error: 'Vision model returned no structured data', raw_ocr: raw.slice(0, 500) });
+    }
+    let parsed: Record<string, string>;
+    try { parsed = JSON.parse(jsonMatch[0]); } catch {
+      return c.json({ success: false, error: 'Vision output was not valid JSON', raw_ocr: raw.slice(0, 500) });
+    }
+    // Drop hallucinated non-string values; keep the contract flat strings.
+    for (const k of Object.keys(parsed)) {
+      if (typeof parsed[k] !== 'string') parsed[k] = String(parsed[k] ?? '');
+    }
+    if (!parsed.last_name && !parsed.dl_number) {
+      return c.json({ success: false, error: 'Could not read a name or license number from this photo' });
+    }
+    return c.json({ success: true, parsed: { ...parsed, scan_method: 'VISION OCR' }, ocrEngine: 'workers-ai-vision' });
+  } catch (err) {
+    return c.json({
+      success: false, error: 'OCR failed',
+      detail: err instanceof Error ? err.message : String(err),
+    }, 500);
+  }
+});
+
+// ============================================================
+// POST /scan-log — link + log every scan into the system
+// ============================================================
+// Officer-safety requirement: every ID scan and what it found is a
+// system record. Writes dl_scan_log, upserts the dl_records store
+// (source DL_SCAN → license history), and adds an activity_log entry.
+dlRecords.post('/scan-log', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const userId = (c.get('userId') as number) ?? null;
+    const b = await c.req.json<Record<string, any>>();
+    const findings = JSON.stringify(b.findings ?? {}).slice(0, 32_000);
+
+    const result = await execute(db, `
+      INSERT INTO dl_scan_log (user_id, scan_method, dl_number, dl_state, subject_name, dob, person_id, findings)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      userId, b.scan_method || 'PDF417', b.dl_number || '', b.dl_state || '',
+      b.subject_name || '', b.dob || '', b.person_id ?? null, findings,
+    );
+
+    // License history link — every scanned license lands in dl_records.
+    if (b.dl_number && b.dl_state && b.last_name) {
+      try {
+        const existing = await queryFirst<{ id: number }>(
+          db, 'SELECT id FROM dl_records WHERE dl_number = ? AND dl_state = ?', b.dl_number, b.dl_state);
+        if (!existing) {
+          await execute(db, `
+            INSERT INTO dl_records (dl_number, dl_state, dl_class, dl_expiration, dl_issue_date,
+              first_name, middle_name, last_name, full_name, date_of_birth, gender,
+              height, weight, eye_color, hair_color, source, fetched_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DL_SCAN', datetime('now'), datetime('now'))`,
+            b.dl_number, b.dl_state, b.dl_class || '', b.dl_expiry || '', b.dl_issue_date || '',
+            b.first_name || '', b.middle_name || '', b.last_name || '',
+            `${b.first_name || ''} ${b.last_name || ''}`.trim(), b.dob || '', b.gender || '',
+            b.height || '', b.weight || '', b.eye_color || '', b.hair_color || '');
+        }
+      } catch { /* link is best-effort; the log row is the record */ }
+    }
+
+    await audit(db, userId, 'dl_scan', Number(result.meta.last_row_id),
+      `ID scan: ${b.subject_name || 'unknown'} ${b.dl_number ? `· ${b.dl_number} (${b.dl_state})` : ''} · ${b.scan_method || 'PDF417'}${b.person_id ? ` · linked person #${b.person_id}` : ''}`);
+
+    return c.json({ success: true, id: result.meta.last_row_id });
+  } catch (err) {
+    return c.json({ success: false, error: 'Failed to log scan' }, 500);
+  }
+});
+
+// ============================================================
 // Deep records sweep — hard-to-find LE sources by name
 // ============================================================
 // When a scanned name pings, sweep the LE tables that the basic
@@ -321,7 +437,7 @@ dlRecords.get('/deep-sweep', async (c) => {
         ORDER BY is_active DESC, issue_date DESC LIMIT 10`, lastLike, firstLike)),
       soft(() => query<Record<string, any>>(db, `
         SELECT id, full_name, first_name, last_name, date_of_birth, booking_date,
-               charges, county, agency, status, release_date, bail_amount
+               charges, county, agency, status, release_date, bail_amount, mugshot_url
         FROM arrest_records
         WHERE (last_name LIKE ? AND first_name LIKE ?) OR full_name LIKE (? || '%' )
         ORDER BY booking_date DESC LIMIT 10`, lastLike, firstLike, last)),
@@ -426,7 +542,7 @@ dlRecords.get('/deep-sweep', async (c) => {
     const personId = parseInt(c.req.query('person_id') || '', 10);
     let profile: Record<string, unknown> | null = null;
     if (!isNaN(personId) && personId > 0) {
-      const [person, crimHistory, regAlerts, vehicles, personFis, personCites, personTrespass] = await Promise.all([
+      const [person, crimHistory, regAlerts, vehicles, personFis, personCites, personTrespass, incidents, calls] = await Promise.all([
         (async () => { try {
           return await queryFirst<Record<string, any>>(db, `
             SELECT id, first_name, last_name, dob, is_sex_offender, sor_number,
@@ -435,7 +551,7 @@ dlRecords.get('/deep-sweep', async (c) => {
                    mental_health_flags, substance_abuse, ncic_number, fbi_number,
                    state_id_number, aliases, alias_nickname, scars_marks_tattoos,
                    tattoo_description, distinguishing_features, date_last_seen, location_last_seen,
-                   fi_count, last_fi_date
+                   fi_count, last_fi_date, photo_url, photo, id_image_url
             FROM persons WHERE id = ?`, personId);
         } catch { return null; } })(),
         soft(() => query<Record<string, any>>(db, `
@@ -458,11 +574,25 @@ dlRecords.get('/deep-sweep', async (c) => {
         soft(() => query<Record<string, any>>(db, `
           SELECT id, order_number, status, property_name, property_address, expiration_date
           FROM trespass_orders WHERE person_id = ? ORDER BY created_at DESC LIMIT 10`, personId)),
+        // Incident reports the subject is a party to.
+        soft(() => query<Record<string, any>>(db, `
+          SELECT i.id, i.incident_number, i.incident_type, i.status, i.occurred_date,
+                 i.location_address, i.disposition, ip.role,
+                 i.weapons_involved, i.domestic_violence, i.gang_related, i.dui_related
+          FROM incident_persons ip JOIN incidents i ON i.id = ip.incident_id
+          WHERE ip.person_id = ? ORDER BY i.occurred_date DESC LIMIT 15`, personId)),
+        // CAD calls the subject is attached to.
+        soft(() => query<Record<string, any>>(db, `
+          SELECT c2.id, c2.call_number, c2.incident_type AS call_type, c2.status, c2.created_at,
+                 c2.location_address, cp.role, cp.person_type
+          FROM call_persons cp JOIN calls_for_service c2 ON c2.id = cp.call_id
+          WHERE cp.person_id = ? ORDER BY c2.created_at DESC LIMIT 15`, personId)),
       ]);
       if (person) {
         profile = {
           person, criminal_history: crimHistory, registry_alerts: regAlerts,
           vehicles, field_interviews: personFis, citations: personCites, trespass_orders: personTrespass,
+          incidents, calls,
         };
       }
     }
@@ -488,6 +618,7 @@ dlRecords.get('/deep-sweep', async (c) => {
         key: 'arrests', label: 'Arrest / Booking Records', danger: false,
         rows: arrests.map(a => ({
           id: a.id, dob_match: dobFlag(a.date_of_birth), danger: false,
+          image: a.mugshot_url || null,
           summary: `${a.full_name || `${a.last_name}, ${a.first_name}`} — booked ${a.booking_date || 'n/a'} · ${a.charges || 'charges n/a'} · ${a.county || a.agency || ''}${a.status ? ` · ${a.status}` : ''}`,
         })),
       },

@@ -234,7 +234,33 @@ export default function DlSearchPage() {
       if ((parsed as any).dl_number) qs.set('dl', (parsed as any).dl_number);
       if (personId) qs.set('person_id', String(personId));
       apiFetch<{ sources: any[]; total: number; profile?: any }>(`/dl-records/deep-sweep?${qs}`)
-        .then(d => setDeepSweep(d && Array.isArray(d.sources) ? d : { sources: [], total: 0 }))
+        .then(d => {
+          const sweep = d && Array.isArray(d.sources) ? d : { sources: [], total: 0 } as any;
+          setDeepSweep(sweep);
+          // ── System of record: every scan + its findings is logged ──
+          apiFetch('/dl-records/scan-log', {
+            method: 'POST',
+            body: JSON.stringify({
+              scan_method: (parsed as any).scan_method || 'PDF417 BARCODE',
+              dl_number: (parsed as any).dl_number || '',
+              dl_state: (parsed as any).dl_state || '',
+              subject_name: `${parsed.last_name || ''}, ${parsed.first_name || ''}`.replace(/^, |, $/g, ''),
+              dob: parsed.date_of_birth || '',
+              person_id: personId ?? null,
+              first_name: parsed.first_name, last_name: parsed.last_name,
+              dl_class: (parsed as any).dl_class, dl_expiry: (parsed as any).dl_expiry,
+              findings: {
+                sweep_total: sweep.total,
+                sources: (sweep.sources || []).map((s: any) => ({ key: s.key, count: s.rows.length, danger: !!s.danger })),
+                profile_flags: sweep.profile?.person ? {
+                  sex_offender: !!sweep.profile.person.is_sex_offender,
+                  watchlist: sweep.profile.person.watchlist_match || null,
+                  supervision: sweep.profile.person.probation_parole || null,
+                } : null,
+              },
+            }),
+          }).catch(() => { /* logging is best-effort, never blocks the scan */ });
+        })
         .catch(() => setDeepSweep({ sources: [], total: 0 }))
         .finally(() => setDeepSweepLoading(false));
     };
@@ -516,7 +542,7 @@ export default function DlSearchPage() {
         lookupExistingRecords(data.parsed);
         if (isMobile) pushScanToDesktop(data.parsed);
       } else {
-        addToast('OCR returned no data', 'warning');
+        addToast(data.error || 'OCR could not read this photo — try the BACK barcode instead', 'warning');
       }
     } catch (err: any) {
       addToast(err.message || 'DL scan failed', 'error');
@@ -1220,6 +1246,9 @@ export default function DlSearchPage() {
                       </div>
                       {src.rows.map((row: any) => (
                         <div key={`${src.key}-${row.id}`} className={`px-3 py-1 text-[10px] border-t border-[#101010] flex items-start gap-1.5 ${row.danger ? 'text-red-300 bg-red-900/10' : 'text-[#c0ccdd]'}`}>
+                          {row.image && (
+                            <img src={row.image} alt="Booking photo" className="w-9 h-11 object-cover border border-[#2e2e2e] bg-black flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                          )}
                           <span className="flex-1 leading-snug">{row.summary}</span>
                           {row.dob_match === true && <span className="text-[7px] font-bold px-1 py-px bg-green-900/50 text-green-400 border border-green-700/50 flex-shrink-0 uppercase">DOB ✓</span>}
                           {row.dob_match === false && <span className="text-[7px] font-bold px-1 py-px bg-[#141414] text-[#888888] border border-[#2e2e2e] flex-shrink-0 uppercase">DOB differs</span>}
@@ -1301,6 +1330,8 @@ export default function DlSearchPage() {
                   { title: `Field Interviews (${prof.field_interviews?.length || 0})`, rows: (prof.field_interviews || []).map((f: any) => `${f.fi_number || `FI-${f.id}`} ${f.interview_date || f.date || ''} — ${f.contact_reason || ''} @ ${f.location || 'n/a'}`) },
                   { title: `Citations (${prof.citations?.length || 0})`, rows: (prof.citations || []).map((ct: any) => `#${ct.citation_number || ct.id} ${ct.citation_date || ''} — ${ct.violation_description || ct.violation || ''} · ${ct.status || ''}`) },
                   { title: `Trespass Orders (${prof.trespass_orders?.length || 0})`, rows: (prof.trespass_orders || []).map((t: any) => `${t.order_number || `TO-${t.id}`} ${t.status || ''} — ${t.property_name || t.property_address || ''}`) },
+                  { title: `Incident Reports (${prof.incidents?.length || 0})`, rows: (prof.incidents || []).map((inc: any) => { const fl = [inc.weapons_involved && 'WEAPONS', inc.domestic_violence && 'DV', inc.gang_related && 'GANG', inc.dui_related && 'DUI'].filter(Boolean).join('/'); return `${inc.incident_number || `INC-${inc.id}`} ${inc.occurred_date || ''} — ${inc.incident_type || ''} (${inc.role || 'party'}) @ ${inc.location_address || 'n/a'}${fl ? ` · ⚠ ${fl}` : ''} · ${inc.disposition || inc.status || ''}`; }) },
+                  { title: `CAD Call History (${prof.calls?.length || 0})`, rows: (prof.calls || []).map((cl: any) => `${cl.call_number || `CFS-${cl.id}`} ${String(cl.created_at || '').slice(0, 10)} — ${cl.call_type || ''} (${cl.role || cl.person_type || 'involved'}) @ ${cl.location_address || 'n/a'} · ${cl.status || ''}`) },
                 ].filter(l => l.rows.length > 0);
                 if (chips.length === 0 && lists.length === 0) return null;
                 return (
@@ -1308,6 +1339,14 @@ export default function DlSearchPage() {
                     <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5">
                       <User size={11} /> Subject Profile — Full Detail (#{p.id} {p.last_name}, {p.first_name})
                     </div>
+                    {(p.photo_url || p.photo || p.id_image_url) && (
+                      <div className="p-2 flex items-start gap-2 border-b border-[#141414]">
+                        {[p.photo_url || p.photo, p.id_image_url].filter(Boolean).slice(0, 2).map((src: string, i: number) => (
+                          <img key={i} src={src} alt={i === 0 ? 'Subject photo' : 'ID image'} className="w-20 h-24 object-cover border border-[#2e2e2e] bg-black" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        ))}
+                        <span className="text-[8px] text-[#556677] uppercase">Photos on file</span>
+                      </div>
+                    )}
                     {chips.length > 0 && (
                       <div className="p-2 flex flex-wrap gap-1">
                         {chips.map((ch) => (
