@@ -254,7 +254,15 @@ pm.get('/mileage/chain', async (c) => {
              t.distance_m, t.duration_s
         FROM unit_trips t
        WHERE ${tripWhere.join(' AND ')}
-         AND (t.start_mileage IS NOT NULL OR t.end_mileage IS NOT NULL)
+         -- Patrol trips rarely carry odometer stamps (live D1 2026-06-10: 0 of
+         -- 50 closed patrol trips had start/end_mileage) — they carry GPS
+         -- distance_m instead. Requiring an odometer reading here excluded
+         -- EVERY patrol trip, so the chain showed calls only. Include any trip
+         -- with real movement; the engine already noise-discards <50m blips,
+         -- and the client renders distance from distance_m when odometer
+         -- readings are missing.
+         AND (t.start_mileage IS NOT NULL OR t.end_mileage IS NOT NULL
+              OR (t.distance_m IS NOT NULL AND t.distance_m > 0))
        ORDER BY COALESCE(t.end_time, t.start_time) ASC
        LIMIT 1000
     `, ...tripParams);

@@ -575,7 +575,11 @@
 //       distance + chain-neighbor continuity via /patrol/mileage/
 //       fix-suggestions), live row-distance/GPS-deviation calculations in
 //       the fix form, and chain-gap badges on the Start→End column.
-// v880: email attachments open in-app via authed blob fetch + DocumentViewer
+// v880: GPS trail render fix — adjacency-preserving speed-colored segments
+//       (the per-color LineString grouping drew straight diagonal chords
+//       between non-consecutive fixes) + gap/teleport splitting + arrow
+//       marker leak. Mileage chain now includes odometer-less PATROL trips
+//       (distance from GPS distance_m — live patrol trips carry no odometer).
 const CACHE_NAME = 'rmpg-flex-v880';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [

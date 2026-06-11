@@ -321,7 +321,8 @@ export default function FleetPage() {
     if (activeTab === 'inspections') fetchInspections(selectedId);
     if (activeTab === 'assignments') fetchAssignments(selectedId);
     if (activeTab === 'analytics') fetchVehicleAnalytics();
-    if (activeTab === 'personnel') fetchPersonnel(selectedId);
+    // Personnel tab renders the shared `assignments` state too — fetch both.
+    if (activeTab === 'personnel') { fetchPersonnel(selectedId); fetchAssignments(selectedId); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, activeTab]);
 
@@ -347,15 +348,17 @@ export default function FleetPage() {
 
   const fetchInspections = async (id: string | number) => {
     try {
-      const data = await apiFetch<{ data: FleetInspection[] }>(`/fleet/${id}/inspections`);
-      setInspections(data.data || []);
+      // Worker returns a bare array; older builds wrapped in { data }.
+      const data = await apiFetch<FleetInspection[] | { data: FleetInspection[] }>(`/fleet/${id}/inspections`);
+      setInspections(Array.isArray(data) ? data : data.data || []);
     } catch { addToast('Failed to load inspections', 'error'); }
   };
 
   const fetchAssignments = async (id: string | number) => {
     try {
-      const data = await apiFetch<{ data: FleetAssignment[] }>(`/fleet/${id}/assignments`);
-      setAssignments(data.data || []);
+      // Worker returns a bare array; older builds wrapped in { data }.
+      const data = await apiFetch<FleetAssignment[] | { data: FleetAssignment[] }>(`/fleet/${id}/assignments`);
+      setAssignments(Array.isArray(data) ? data : data.data || []);
     } catch { addToast('Failed to load assignments', 'error'); }
   };
 
