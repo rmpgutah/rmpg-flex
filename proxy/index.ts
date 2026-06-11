@@ -822,7 +822,7 @@ const API_ROUTES: RouteRule[] = [
   // match and correctly fall through to env.LEGACY.
   { kind: 'regex', value: /^\/api\/dl-records(\/\d+)?(\?.*)?$/ },
   // Phone → desktop scan relay, deep sweep, scan log, vision OCR, SOR (rewrite-only).
-  { kind: 'regex', value: /^\/api\/dl-records\/(scan-relay(\/poll)?|deep-sweep|scan-log|ocr-scan|sor\/(status|import|poll))(\?.*)?$/ },
+  { kind: 'regex', value: /^\/api\/dl-records\/(scan-relay(\/poll)?|deep-sweep|scan-log|ocr-scan|court-lookup|sor\/(status|import|poll))(\?.*)?$/ },
 
   // ── More specific dispatch sub-paths (new in rewrite) ──
   // /api/dispatch/calls/:id/{recommended-units, closest-unit, auto-assign,

@@ -120,6 +120,8 @@ export default function DlSearchPage() {
   const [leBlock, setLeBlock] = useState('');
   const [deepSweep, setDeepSweep] = useState<{ sources: any[]; total: number } | null>(null);
   const [deepSweepLoading, setDeepSweepLoading] = useState(false);
+  const [courtRecords, setCourtRecords] = useState<any[] | null>(null);
+  const [courtLoading, setCourtLoading] = useState(false);
   const [showLiveScanner, setShowLiveScanner] = useState(false);
   const [recentScans, setRecentScans] = useState<any[]>(() => {
     try { return JSON.parse(localStorage.getItem('rmpg-dl-recent-scans') || '[]'); } catch { return []; }
@@ -189,6 +191,19 @@ export default function DlSearchPage() {
     setMatchLoading(true);
     setScanMatches(null);
     setDeepSweep(null);
+    setCourtRecords(null);
+
+    // Open-source federal court records (CourtListener) — external API,
+    // fired in parallel so it never blocks the D1 sweep.
+    if (parsed.last_name && parsed.last_name.length >= 2) {
+      setCourtLoading(true);
+      const cq = new URLSearchParams({ last: parsed.last_name });
+      if (parsed.first_name) cq.set('first', parsed.first_name);
+      apiFetch<{ records: any[] }>(`/dl-records/court-lookup?${cq}`)
+        .then(d => setCourtRecords(Array.isArray(d?.records) ? d.records : []))
+        .catch(() => setCourtRecords([]))
+        .finally(() => setCourtLoading(false));
+    }
 
     // Prefill the search form from the scan for instant re-query.
     if (parsed.last_name) setLastName(parsed.last_name);
@@ -1167,6 +1182,35 @@ export default function DlSearchPage() {
                   </div>
                 );
               })()}
+
+              {/* ── Open-source federal court records (CourtListener) ── */}
+              {(courtLoading || (courtRecords && courtRecords.length > 0)) && (
+                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
+                  <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+                    <Database size={11} /> Federal Court Records
+                    {courtLoading
+                      ? <Loader2 size={10} className="animate-spin" />
+                      : <span className="text-[#d4a017]">{courtRecords!.length} case{courtRecords!.length === 1 ? '' : 's'} · CourtListener/PACER</span>}
+                  </div>
+                  {courtRecords && courtRecords.length > 0 && (
+                    <div className="px-3 py-1 text-[8px] text-[#7a6a3a] bg-[#15120a] border-b border-[#1a1a1a]">
+                      ⚠ Name match only — verify identity (DOB/identifiers) before relying on these. Not confirmed to be this subject.
+                    </div>
+                  )}
+                  {courtRecords && courtRecords.map((r: any, i: number) => (
+                    <div key={i} className={`px-3 py-1 text-[10px] border-t border-[#101010] ${r.is_criminal ? 'bg-red-900/10' : ''}`}>
+                      <div className="flex items-center gap-1.5">
+                        {r.is_criminal && <span className="text-[7px] font-bold px-1 py-px bg-red-900/50 text-red-300 border border-red-600/70 uppercase">Criminal</span>}
+                        <span className="text-white font-medium">{r.case_name}</span>
+                      </div>
+                      <div className="text-[#8899aa] mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        {[r.court, r.docket_number, r.date_filed].filter(Boolean).join(' · ')}
+                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[#d4a017] hover:underline">view ↗</a>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* ── Law-enforcement format (NCIC/NLETS fielded) ── */}
               {leFields && leFields.length > 0 && (

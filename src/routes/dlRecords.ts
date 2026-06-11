@@ -32,6 +32,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { runUtahSorPoll, importSorRows } from '../utils/utahSorPoller';
+import { lookupCourtRecords } from '../utils/courtRecordsLookup';
 
 const dlRecords = new Hono<Env>();
 
@@ -445,6 +446,22 @@ dlRecords.post('/sor/poll', async (c) => {
     return c.json(r);
   } catch (err) {
     return c.json({ configured: false, seen: 0, upserted: 0, error: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+// ============================================================
+// GET /court-lookup — open-source federal court records (CourtListener)
+// ============================================================
+// Separate from the deep sweep because it makes an external API call;
+// the client fires it in parallel so D1 sweep latency is unaffected.
+dlRecords.get('/court-lookup', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const r = await lookupCourtRecords(getDb(c.env), c.req.query('last') || '', c.req.query('first') || '');
+    return c.json(r);
+  } catch {
+    return c.json({ source: 'COURTLISTENER', records: [], cached: false });
   }
 });
 
