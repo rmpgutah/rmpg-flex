@@ -32,7 +32,7 @@ import {
   type SortMode, type SectionBlock,
 } from '../docTools';
 import { FONT_FAMILIES, FONT_SIZES, type DocSettings, type WriterTheme } from '../types';
-import { PAGE_PRESETS, isActivePreset } from '../docFeatures';
+import { PAGE_PRESETS, isActivePreset, MARGIN_PRESETS, applyMarginPreset, activeMarginPresetId } from '../docFeatures';
 
 /** Page-level actions/state the toolbar drives (find/replace, comments, view,
  *  export, clipboard, media) — bundled to keep the prop list manageable. */
@@ -44,6 +44,7 @@ export interface WriterExtActions {
   onAddComment: () => void;
   onSnapshot: () => void;
   onExport: (format: 'md' | 'txt' | 'rtf' | 'html') => void;
+  onExportDocx: () => void;
   onEmail: () => void;
   onPastePlain: () => void;
   onCopyAs: (format: 'plain' | 'html' | 'md') => void;
@@ -780,13 +781,16 @@ export default function WriterToolbar({
         </ToolbarMenu>
 
         {/* Export menu (features 126–140) */}
-        <ToolbarMenu label="Export" icon={FileDown} width={200}>
-          <MenuButton onClick={onExportPdf}>PDF (print)</MenuButton>
-          <MenuButton onClick={() => ext.onExport('html')}>HTML (raw fragment)</MenuButton>
-          <MenuButton onClick={ext.onExportStandaloneHtml}><span className="flex items-center gap-1"><FileCode2 className="w-3 h-3" /> HTML (styled standalone)</span></MenuButton>
+        <ToolbarMenu label="Export" icon={FileDown} width={210}>
+          <div className="text-[10px] text-rmpg-500">Documents</div>
+          <MenuButton onClick={ext.onExportDocx}>Word (.docx) — editable</MenuButton>
+          <MenuButton onClick={onExportPdf}>PDF</MenuButton>
+          <MenuButton onClick={() => ext.onExport('rtf')}>Rich Text (.rtf)</MenuButton>
+          <div className="text-[10px] text-rmpg-500 pt-1">Other formats</div>
           <MenuButton onClick={() => ext.onExport('md')}>Markdown</MenuButton>
           <MenuButton onClick={() => ext.onExport('txt')}>Plain text</MenuButton>
-          <MenuButton onClick={() => ext.onExport('rtf')}>RTF (Word)</MenuButton>
+          <MenuButton onClick={() => ext.onExport('html')}>HTML (raw fragment)</MenuButton>
+          <MenuButton onClick={ext.onExportStandaloneHtml}><span className="flex items-center gap-1"><FileCode2 className="w-3 h-3" /> HTML (styled standalone)</span></MenuButton>
           <MenuButton onClick={ext.onEmail}>Email document…</MenuButton>
           <div className="text-[10px] text-rmpg-500 pt-1">Editor document (JSON)</div>
           <MenuButton onClick={ext.onExportJson}>Export as JSON…</MenuButton>
@@ -803,6 +807,18 @@ export default function WriterToolbar({
           <MenuRow label="Orientation">
             <select className={selCls} value={docSettings.page.orientation} onChange={(e) => setPage({ orientation: e.target.value as 'portrait' | 'landscape' })}>
               <option value="portrait">Portrait</option><option value="landscape">Landscape</option>
+            </select>
+          </MenuRow>
+          <MenuRow label="Margins">
+            <select
+              className={selCls}
+              value={activeMarginPresetId(docSettings)}
+              onChange={(e) => {
+                const preset = MARGIN_PRESETS.find((p) => p.id === e.target.value);
+                if (preset) setDocSettings((s) => applyMarginPreset(s, preset));
+              }}
+            >
+              {MARGIN_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
           </MenuRow>
           <div className="text-[10px] text-rmpg-500 pt-1">Margins (px)</div>
