@@ -641,12 +641,13 @@ gps.get('/pursuit-segments', async (c) => {
               MAX(g.speed) AS max_speed, AVG(g.speed) AS avg_speed,
               COUNT(g.id) AS point_count
        FROM calls_for_service cfs
+       JOIN calls_for_service_ext ext ON ext.id = cfs.id
        JOIN units u ON JSON_EXTRACT(cfs.assigned_unit_ids, '$[0]') = u.id
        LEFT JOIN users usr ON usr.id = u.officer_id
        LEFT JOIN gps_breadcrumbs g ON g.unit_id = u.id
          AND g.recorded_at >= cfs.received_at
          AND (cfs.closed_at IS NULL OR g.recorded_at <= cfs.closed_at)
-       WHERE (cfs.vehicle_pursuit = 1 OR cfs.foot_pursuit = 1)
+       WHERE (ext.vehicle_pursuit = 1 OR ext.foot_pursuit = 1)
          AND cfs.received_at >= datetime('now', '-' || ? || ' hours')
        GROUP BY cfs.id
        ORDER BY cfs.received_at DESC LIMIT 50`, hours);
