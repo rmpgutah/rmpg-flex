@@ -528,6 +528,14 @@ si.post('/upload', async (c) => {
       userId: user.id,
       documentSummary: docSummary,
       docCount: documents.length,
+      // Per-document OCR provenance → "OCR & EXTRACTION CONTEXT" note on the
+      // call + compact line on serve_queue.notes + parsed_data._intake audit.
+      docs: documents.map((d) => ({
+        file_name: d.file_name, doc_type: d.doc_type ?? null,
+        ocr_engine: d.ocr_engine ?? null, confidence: d.confidence ?? 0,
+        success: !!d.success, page_count: d.page_count ?? null,
+      })),
+      allDates: [...allDates],
       env: c.env,
     });
     // Back-link the document rows to the new queue entry.
@@ -596,6 +604,10 @@ si.post('/upload', async (c) => {
     // produce these — only /upload has R2 keys + per-document model
     // confidence + page counts).
     documents,
+    // OCR provenance for the success card: the filed context note + the
+    // critical fields the extractor could not find (verify-before-service).
+    intake_note: commit.intake_note ?? null,
+    missing_critical: commit.missing_critical ?? [],
     merged: {
       documentType: bestDocType,
       confidence: bestConfidence,

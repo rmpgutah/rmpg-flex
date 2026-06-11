@@ -33,7 +33,8 @@ import { geocodeAddress } from '../routes/geocode';
 import { resolveDistrict } from './districtResolver';
 import { deriveCrossStreetFromCoords } from './crossStreet';
 import { parseLocationParts } from './parseLocationParts';
-import { buildPsoBriefing } from './serveIntakeBriefing';
+import { buildPsoBriefing, buildOcrContext } from './serveIntakeBriefing';
+import type { IntakeDocMeta, OcrContext } from './serveIntakeBriefing';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 
 // ── Sentinel client for intake-generated properties ──────────
@@ -479,6 +480,9 @@ export interface CommitResult {
     person: boolean; agent_person: boolean; business: boolean;
     property: boolean; call: boolean;
   };
+  // OCR provenance summary (only when the caller supplied per-doc metadata).
+  intake_note?: string | null;
+  missing_critical?: string[];
 }
 
 export interface CommitInput {
@@ -487,6 +491,13 @@ export interface CommitInput {
   userId: number | null;
   documentSummary: string;             // free-text inserted into call.description
   docCount: number;                    // number of uploaded docs (for the briefing note)
+  // Per-document OCR provenance (file → engine/confidence/type) + every date
+  // the extractor saw. When present, commitIntake files an "OCR & EXTRACTION
+  // CONTEXT" note on the CFS Notes feed, appends a compact provenance line to
+  // serve_queue.notes, and embeds a machine-readable `_intake` block in
+  // parsed_data. Optional — the legacy /intake path has no per-doc metadata.
+  docs?: IntakeDocMeta[];
+  allDates?: string[];
   // Full Worker bindings. KV powers the geocode cache; DB + MAP_DATA back the
   // R2 geofence (district resolve); MAPBOX_ACCESS_TOKEN powers cross-street
   // derivation. All geo enrichment is best-effort — a miss never blocks commit.
@@ -625,6 +636,12 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
     });
   }
 
+  // ── OCR provenance context (filed on call notes + queue row) ──
+  const nowIso = new Date().toISOString();
+  const ocrContext: OcrContext | null = input.docs?.length
+    ? buildOcrContext(input.docs, fields, input.allDates ?? [], nowIso)
+    : null;
+
   // ── 4. CFS call row ──────────────────────────────────────
   let callId: number | null = null;
   let callNumber: string | null = null;
@@ -645,7 +662,17 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       agentName: agentFullName,
       fullLocation: fullLocation || addr,
       docCount: input.docCount,
-    }, new Date().toISOString());
+    }, nowIso);
+    // File the OCR provenance note AFTER the intake briefing so the feed
+    // reads: safety → briefing → extraction context.
+    if (ocrContext) {
+      briefing.notes.push({
+        id: `intake-ocr-${Date.now() + 2}`,
+        author: 'OCR',
+        text: ocrContext.noteText,
+        timestamp: nowIso,
+      });
+    }
     const description = briefing.descriptionPrefix + input.documentSummary;
 
     try {
@@ -707,13 +734,30 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
     // for (attorney_phone/email/bar, filing_date, documents_to_serve,
     // recipient_phone/county, job_number, fee_amount, process_type, server_name,
     // registered_agent_name) — queryable via json_extract(parsed_data, '$.field').
-    const parsedData = JSON.stringify(
-      Object.fromEntries(
+    const parsedData = JSON.stringify({
+      ...Object.fromEntries(
         Object.entries(fields)
           .map(([k, v]) => [k, (v?.value || '').trim()] as const)
           .filter(([, val]) => val),
       ),
-    );
+      // Machine-readable extraction audit block — queryable via
+      // json_extract(parsed_data, '$._intake.missing_critical') etc.
+      ...(ocrContext ? {
+        _intake: {
+          extracted_at: nowIso,
+          documents: input.docs!.map((d) => ({
+            file_name: d.file_name, doc_type: d.doc_type,
+            ocr_engine: d.ocr_engine, confidence: d.confidence, success: d.success,
+          })),
+          all_dates: input.allDates ?? [],
+          missing_critical: ocrContext.missingCritical,
+        },
+      } : {}),
+    });
+    // Queue notes = extracted service windows + a compact provenance line so
+    // the serve-queue views carry the OCR context without the full markdown.
+    const queueNotes = [queueRow.notes, ocrContext?.queueLine]
+      .filter(Boolean).join('\n') || null;
     const ins = await execute(
       db,
       `INSERT INTO serve_queue (
@@ -736,7 +780,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       queueRow.court_name, queueRow.jurisdiction,
       queueRow.client_name, queueRow.attorney_name,
       queueRow.priority, queueRow.deadline,
-      queueRow.service_instructions, queueRow.notes,
+      queueRow.service_instructions, queueNotes,
       queueRow.plaintiff, queueRow.defendant, queueRow.court_date, parsedData,
     );
     queueId = Number(ins.meta.last_row_id);
@@ -758,6 +802,8 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   }
 
   return {
+    intake_note: ocrContext?.noteText ?? null,
+    missing_critical: ocrContext?.missingCritical ?? [],
     serve_queue_id: queueId,
     person_id: person.id || null,
     agent_person_id: agentPerson.id || null,

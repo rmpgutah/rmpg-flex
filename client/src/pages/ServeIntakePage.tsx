@@ -95,6 +95,13 @@ interface IntakeResult {
     deadlineStr: string;
     serverName: string;
   };
+  // /upload-only extras: per-document OCR provenance + the critical fields
+  // the extractor could NOT find (rendered as a verify-before-service strip).
+  documents?: Array<{
+    file_name: string; doc_type?: string | null; ocr_engine?: string | null;
+    confidence?: number; success?: boolean; page_count?: number | null;
+  }>;
+  missing_critical?: string[];
 }
 
 interface OcrScanResult {
@@ -947,6 +954,36 @@ export default function ServeIntakePage() {
               {result.extracted?.fee && <div><span className="text-rmpg-500">Fee:</span> <span className="text-rmpg-300">{result.extracted.fee}</span></div>}
               {result.extracted?.serviceWindows && <div className="col-span-2"><span className="text-rmpg-500">Service Windows:</span> <span className="text-rmpg-300">{result.extracted.serviceWindows}</span></div>}
             </div>
+
+            {/* OCR & extraction context — per-document provenance + the
+                critical fields OCR couldn't find. Mirrors the 'OCR' note
+                filed on the call's Notes tab so the uploader sees what to
+                verify without opening dispatch. */}
+            {(result.documents?.length || result.missing_critical?.length) ? (
+              <div className="mt-3 pt-3 border-t border-rmpg-700">
+                <p className="text-[9px] text-rmpg-400 uppercase font-bold mb-1.5">Extraction Context</p>
+                {result.documents?.map((d) => (
+                  <div key={d.file_name} className="flex items-center gap-2 text-[10px] py-[2px]">
+                    <span className="text-rmpg-300 truncate max-w-[260px]">{d.file_name}</span>
+                    {d.success !== false ? (
+                      <>
+                        <span className="text-rmpg-500">{(d.doc_type || 'unclassified').replace(/_/g, ' ')}</span>
+                        <span className="text-rmpg-500">{d.ocr_engine === 'pdfjs-client' ? 'PDF text' : d.ocr_engine === 'workers-ai-vision' ? 'Vision OCR' : d.ocr_engine || ''}</span>
+                        <span className={`font-bold ${confidenceColor(d.confidence ?? 0)}`}>{Math.round((d.confidence ?? 0) * 100)}%</span>
+                      </>
+                    ) : (
+                      <span className="text-red-400 font-bold">extraction failed — review manually</span>
+                    )}
+                  </div>
+                ))}
+                {result.missing_critical && result.missing_critical.length > 0 && (
+                  <p className="text-[10px] text-amber-400 mt-1.5">
+                    <AlertTriangle className="w-3 h-3 inline mr-1" />
+                    Not found in documents — verify before service: {result.missing_critical.join(', ')}
+                  </p>
+                )}
+              </div>
+            ) : null}
           </div>
 
           <div className="grid grid-cols-2 gap-2">

@@ -173,6 +173,92 @@ function buildBriefingNoteText(input: BriefingInput): string {
   return lines.join('\n');
 }
 
+// ── OCR & extraction context ─────────────────────────────────
+// Per-upload provenance the briefing note deliberately omits: which file
+// each piece of data came from, what OCR engine read it, per-document
+// confidence, every date the extractor saw, and which critical fields it
+// could NOT find. Filed three ways by commitIntake:
+//   1. full markdown note on the CFS Notes feed (author 'OCR')
+//   2. compact one-liner appended to serve_queue.notes
+//   3. machine-readable `_intake` block inside serve_queue.parsed_data
+
+export interface IntakeDocMeta {
+  file_name: string;
+  doc_type: string | null;
+  ocr_engine: string | null;
+  confidence: number;          // 0..1
+  success: boolean;
+  page_count?: number | null;
+}
+
+// Fields an officer needs before knocking — reported explicitly when the
+// extractor came up empty so a blank never reads as "OCR forgot".
+const CRITICAL_FIELDS: Array<[key: string, label: string]> = [
+  ['recipient_first_name', 'recipient name'],
+  ['recipient_address', 'address'],
+  ['case_number', 'case number'],
+  ['court_name', 'court'],
+  ['service_deadline', 'service deadline'],
+  ['recipient_dob', 'DOB'],
+  ['recipient_phone', 'phone'],
+];
+
+const ENGINE_LABEL: Record<string, string> = {
+  'pdfjs-client': 'PDF text layer',
+  'workers-ai-vision': 'Vision OCR',
+  tesseract: 'Tesseract OCR',
+  pdftotext: 'pdftotext',
+};
+
+export interface OcrContext {
+  noteText: string;            // full markdown note (CFS Notes feed)
+  queueLine: string;           // compact line for serve_queue.notes
+  missingCritical: string[];   // labels of critical fields not found
+}
+
+export function buildOcrContext(
+  docs: IntakeDocMeta[],
+  fields: Record<string, ExtractedField>,
+  allDates: string[],
+  nowIso: string,
+): OcrContext {
+  const filled = Object.values(fields).filter((f) => (f.value || '').trim()).length;
+  const missingCritical = CRITICAL_FIELDS
+    .filter(([k]) => {
+      // Name counts as present if EITHER the person name or business name landed.
+      if (k === 'recipient_first_name') {
+        return !get(fields, 'recipient_first_name') && !get(fields, 'recipient_business_name');
+      }
+      return !get(fields, k);
+    })
+    .map(([, label]) => label);
+
+  const lines: string[] = [];
+  lines.push('**🔍 OCR & EXTRACTION CONTEXT** _(auto-generated)_');
+  for (const d of docs) {
+    const engine = ENGINE_LABEL[d.ocr_engine || ''] || d.ocr_engine || 'unknown';
+    const pct = `${Math.round((d.confidence || 0) * 100)}%`;
+    lines.push(d.success
+      ? `• ${d.file_name} — ${d.doc_type || 'unclassified'} · ${engine} · ${pct} confidence${d.page_count ? ` · ${d.page_count} pg` : ''}`
+      : `• ${d.file_name} — ⚠ extraction FAILED (review manually)`);
+  }
+  lines.push(`**Auto-populated:** ${filled} field${filled === 1 ? '' : 's'} from ${docs.length} document${docs.length === 1 ? '' : 's'}`);
+  if (missingCritical.length) {
+    lines.push(`**Not found in documents:** ${missingCritical.join(', ')} — verify before service`);
+  }
+  if (allDates.length) {
+    lines.push(`**Dates seen in documents:** ${[...allDates].sort().join(', ')}`);
+  }
+  lines.push(`_Extracted ${nowIso.slice(0, 10)} — verify against source documents before filing affidavits._`);
+
+  const okDocs = docs.filter((d) => d.success).length;
+  const topConf = Math.max(0, ...docs.map((d) => d.confidence || 0));
+  const queueLine = `[OCR intake ${nowIso.slice(0, 10)}: ${okDocs}/${docs.length} docs read, ${Math.round(topConf * 100)}% confidence`
+    + (missingCritical.length ? `; verify: ${missingCritical.join(', ')}` : '') + ']';
+
+  return { noteText: lines.join('\n'), queueLine, missingCritical };
+}
+
 export function buildPsoBriefing(input: BriefingInput, nowIso: string): PsoBriefing {
   const assessment = assessOfficerSafety(input.fields, input.queueRow);
   const notes: BriefingNote[] = [];
