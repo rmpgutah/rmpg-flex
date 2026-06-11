@@ -138,3 +138,20 @@ CREATE TRIGGER IF NOT EXISTS addresses_fts_au AFTER UPDATE ON addresses BEGIN
   INSERT INTO addresses_fts(addresses_fts, rowid, full_add) VALUES ('delete', old.id, old.full_add);
   INSERT INTO addresses_fts(rowid, full_add) VALUES (new.id, new.full_add);
 END;
+
+-- ── time_entry_edits: CHECK constraint rebuild (applied live 2026-06-10) ──
+-- The original CHECK(edit_type IN (...)) listed only 5 types; PR #1102 added
+-- starting/ending_mileage_changed audit rows, which SQLITE_CONSTRAINT'd every
+-- mileage edit. Rebuilt live WITHOUT the CHECK (audit table; the allowlist
+-- only ever causes drift). Fresh DBs: create it un-CHECKed from the start.
+CREATE TABLE IF NOT EXISTS time_entry_edits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  time_entry_id INTEGER NOT NULL REFERENCES time_entries(id) ON DELETE CASCADE,
+  edited_by INTEGER NOT NULL REFERENCES users(id),
+  edited_by_name TEXT NOT NULL,
+  edit_type TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
