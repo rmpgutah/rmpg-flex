@@ -36,10 +36,15 @@ export async function renderPdfV2<T>(
 
   const headerBottomY = drawDefaultHeader(doc, schema.meta, {
     caseNumber: schema.header.caseNumberAccessor?.(data),
+    caseLabel: schema.header.caseLabel,
   });
 
   const layout = new LayoutEngine(doc, {
-    topMargin: headerBottomY + 1,
+    // +4mm, not +1: drawSectionHeader renders its title with cursorY as the
+    // text BASELINE, and a 9pt bold title has ~2.3mm of cap height above the
+    // baseline. At +1 the first section's title overlapped the header's thin
+    // bottom rule — every form's first section header rendered struck-through.
+    topMargin: headerBottomY + 4,
     bottomMargin: 18,
     leftMargin: 10,
     rightMargin: 10,

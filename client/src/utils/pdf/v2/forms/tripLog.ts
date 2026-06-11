@@ -83,21 +83,35 @@ const fmtTime = (iso: string | null | undefined): string => {
   return String(iso);
 };
 
+/** Timestamp for the START/END columns. A bare HH:MM is ambiguous the moment
+ *  the report spans more than one day (a week of trips all reading "04:26"
+ *  with no date), so multi-day reports prefix MM/DD. */
+const fmtStamp = (iso: string | null | undefined, multiDay: boolean): string => {
+  if (!iso) return '—';
+  const time = fmtTime(iso);
+  if (!multiDay) return time;
+  const d = String(iso).match(/\d{4}-(\d{2})-(\d{2})/);
+  return d ? `${d[1]}/${d[2]} ${time}` : time;
+};
+
 const fmtDate = (iso: string | null | undefined): string => {
   if (!iso) return '—';
   return String(iso).slice(0, 10);
 };
 
+// START/END carry an MM/DD prefix on multi-day reports, so they get more
+// width than the old time-only 0.5; MILEAGE gives some back (1.6 was sized
+// for "92,564.6-92,572.8" with slack to spare).
 const TRIP_LOG_COLUMNS: TableColumn[] = [
-  { key: 'type',         header: 'Type',          ratio: 0.7 },
-  { key: 'call_number',  header: 'Call #',        ratio: 0.9 },
-  { key: 'start',        header: 'Start',         ratio: 0.5 },
-  { key: 'end',          header: 'End',            ratio: 0.5 },
-  { key: 'distance_mi',  header: 'Dist (mi)',     ratio: 0.6 },
-  { key: 'duration_min', header: 'Dur (m)',        ratio: 0.5 },
-  { key: 'mileage',      header: 'Mileage',       ratio: 1.6 },
-  { key: 'max_mph',      header: 'Max MPH',       ratio: 0.6 },
-  { key: 'harsh',        header: 'Harsh (A/B/C)', ratio: 0.9 },
+  { key: 'type',         header: 'Type',          ratio: 0.75 },
+  { key: 'call_number',  header: 'Call #',        ratio: 0.8 },
+  { key: 'start',        header: 'Start',         ratio: 0.8 },
+  { key: 'end',          header: 'End',            ratio: 0.8 },
+  { key: 'distance_mi',  header: 'Dist (mi)',     ratio: 0.55 },
+  { key: 'duration_min', header: 'Dur (m)',        ratio: 0.45 },
+  { key: 'mileage',      header: 'Mileage',       ratio: 1.15 },
+  { key: 'max_mph',      header: 'Max MPH',       ratio: 0.55 },
+  { key: 'harsh',        header: 'Harsh (A/B/C)', ratio: 0.95 },
 ];
 
 export const tripLogSchema: FormSchema<TripLogData> = {
@@ -109,7 +123,9 @@ export const tripLogSchema: FormSchema<TripLogData> = {
   header: {
     kind: 'default',
     formId: 'trip_log',
-    // The "case" slot in the header reads as REPORT PERIOD (date range).
+    // The "case" slot in the header carries the REPORT PERIOD (date range) —
+    // caseLabel renames the prefix so it doesn't print as "CASE 2026-06-04…".
+    caseLabel: 'PERIOD',
     caseNumberAccessor: (d) => {
       const { from, to } = d.meta.period;
       return from === to ? from : `${from} — ${to}`;
@@ -171,19 +187,24 @@ export const tripLogSchema: FormSchema<TripLogData> = {
           kind: 'table',
           label: '',
           columns: TRIP_LOG_COLUMNS,
-          accessor: (d) => (d.rows || []).map((r) => ({
-            type: r.type,
-            call_number: r.call_number || '—',
-            start: fmtTime(r.start),
-            end: fmtTime(r.end),
-            distance_mi: fmtMin(r.distance_mi),
-            duration_min: fmtMin(r.duration_min),
-            mileage: r.mileage_from != null && r.mileage_to != null
-              ? `${fmtMi(r.mileage_from)}-${fmtMi(r.mileage_to)}`
-              : '—',
-            max_mph: fmtMph(r.max_mph),
-            harsh: fmtHarsh(r.harsh),
-          })),
+          accessor: (d) => {
+            const multiDay = d.meta.period.from !== d.meta.period.to;
+            return (d.rows || []).map((r) => ({
+              type: r.type,
+              call_number: r.call_number || '—',
+              start: fmtStamp(r.start, multiDay),
+              end: fmtStamp(r.end, multiDay),
+              // fmtMi, not fmtMin — distance was rendered through the integer
+              // duration formatter, so the column mixed "1.8" with "2"/"0"/"46".
+              distance_mi: fmtMi(r.distance_mi),
+              duration_min: fmtMin(r.duration_min),
+              mileage: r.mileage_from != null && r.mileage_to != null
+                ? `${fmtMi(r.mileage_from)}-${fmtMi(r.mileage_to)}`
+                : '—',
+              max_mph: fmtMph(r.max_mph),
+              harsh: fmtHarsh(r.harsh),
+            }));
+          },
           path: 'rows',
         },
       ],

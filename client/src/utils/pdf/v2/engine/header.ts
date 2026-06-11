@@ -4,6 +4,8 @@ import type { FormMeta } from './types';
 
 export interface HeaderContext {
   caseNumber?: string;
+  /** Label for the caseNumber value (default 'CASE') — see HeaderSpec.caseLabel. */
+  caseLabel?: string;
   pageNumber?: number;
   totalPages?: number;
 }
@@ -61,7 +63,7 @@ export function drawDefaultHeader(
   doc.setFont('helvetica', TYPOGRAPHY.formMeta.weight);
   doc.setFontSize(TYPOGRAPHY.formMeta.size);
   const parts = [`FORM ${meta.formNumber}`];
-  if (ctx.caseNumber) parts.push(`CASE ${ctx.caseNumber}`);
+  if (ctx.caseNumber) parts.push(`${ctx.caseLabel || 'CASE'} ${ctx.caseNumber}`);
   if (ctx.pageNumber && ctx.totalPages) parts.push(`PAGE ${ctx.pageNumber} OF ${ctx.totalPages}`);
   doc.text(parts.join('  ·  '), right, y, { align: 'right' });
 

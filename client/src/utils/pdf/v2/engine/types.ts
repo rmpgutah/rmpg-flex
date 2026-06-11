@@ -10,6 +10,11 @@ export interface HeaderSpec<T = any> {
   kind: 'default';
   formId: string;
   caseNumberAccessor?: (d: T) => string | undefined;
+  /** Label for the caseNumber slot in the header meta row. Defaults to
+   *  'CASE'; forms whose "case" value is really something else (e.g. the
+   *  PS-211 trip log's report period) override it so the header doesn't
+   *  mislabel a date range as a case number. */
+  caseLabel?: string;
 }
 
 export interface FooterSpec {
