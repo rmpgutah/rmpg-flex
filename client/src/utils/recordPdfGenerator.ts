@@ -61,8 +61,8 @@ export interface RecordPdfOptions {
 }
 import {
   drawNibrsHeader, drawFormSection,
-  drawDispatchTimelineStrip, drawChainOfCustodyTable,
-  type TimelineEvent, type CustodyTransfer,
+  drawDispatchTimelineStrip, drawChainOfCustodyTable, drawFormRow,
+  type TimelineEvent, type CustodyTransfer, type FormCell,
 } from './pdfFormHelpers';
 
 // ── Active Officer Signature (set per-generation, cleared after) ─
@@ -1557,6 +1557,9 @@ async function addLocationMapSection(
     style?: string;
     zoom?: number;
     priority?: string;
+    /** Extra labeled cells appended to the LOCATION DATA strip's top row
+     *  (cross street, property, suite, ...). */
+    details?: { label: string; value: string; ratio?: number }[];
   },
   y: number,
 ): Promise<number> {
@@ -1582,27 +1585,109 @@ async function addLocationMapSection(
   }
   const offX = lx + (ffw - drawW) / 2;
 
-  // Reserve header (~5) + image + caption (~6) + section pad before drawing.
-  y = checkPageBreak(doc, y, drawH + 15, opts.priority);
+  // Reserve header (~5) + image + LOCATION DATA grid (2 rows) + pads.
+  y = checkPageBreak(doc, y, drawH + 8 + 2 * SPACING.FORM_CELL_H + 8, opts.priority);
   const sec = openAutoSection(doc, opts.title, y);
   y = sec.contentY;
+  const imgY = y;
   try {
-    doc.addImage(img.dataUrl, 'JPEG', offX, y, drawW, drawH);
+    doc.addImage(img.dataUrl, 'JPEG', offX, imgY, drawW, drawH);
     doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
     doc.setLineWidth(0.3);
-    doc.rect(offX, y, drawW, drawH);
-    y += drawH;
+    doc.rect(offX, imgY, drawW, drawH);
   } catch {
     return closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
-  // Caption strip: address (if given) + precise coordinates.
-  const captionText = `${opts.caption ? sanitizePdfText(opts.caption) + '  -  ' : ''}${img.lat.toFixed(5)}, ${img.lng.toFixed(5)}`;
-  y += 1.5;
-  doc.setFont(PDF_VALUE_FONT, 'normal');
-  doc.setFontSize(6);
-  doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(captionText.toUpperCase(), offX + 0.5, y + 2.5);
-  y += 4;
+
+  // ── Tactical overlay (SWAT location-analysis treatment, 2026-06-11) ──
+  // The static image is CENTERED on the target coordinate, so the reticle
+  // axes pass exactly through the location the pin marks. Every overlay
+  // stroke is double-drawn (wide white underlay + thin dark line) so it
+  // stays legible over both dark rooftops and pale concrete.
+  const cxm = offX + drawW / 2;
+  const cym = imgY + drawH / 2;
+  const hair = (x1: number, y1: number, x2: number, y2: number) => {
+    doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.7); doc.line(x1, y1, x2, y2);
+    doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.2); doc.line(x1, y1, x2, y2);
+  };
+  const GAP = 5;   // center gap so the hairlines never obscure the structure
+  const RING = 3.4;
+  hair(offX, cym, cxm - GAP, cym);
+  hair(cxm + GAP, cym, offX + drawW, cym);
+  hair(cxm, imgY, cxm, cym - GAP);
+  hair(cxm, cym + GAP, cxm, imgY + drawH);
+  doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.7); doc.circle(cxm, cym, RING);
+  doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.25); doc.circle(cxm, cym, RING);
+
+  // North indicator (static renders are always north-up / bearing 0).
+  {
+    const nx = offX + drawW - 6.5;
+    const ny = imgY + 6.5;
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(20, 20, 20);
+    doc.setLineWidth(0.25);
+    doc.circle(nx, ny, 3.4, 'FD');
+    doc.setFillColor(20, 20, 20);
+    doc.triangle(nx, ny - 2.4, nx - 1.2, ny - 0.4, nx + 1.2, ny - 0.4, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.5);
+    doc.setTextColor(20, 20, 20);
+    doc.text('N', nx, ny + 2.4, { align: 'center' });
+  }
+
+  // Ground-truth scale bar (bottom-left). Mapbox styles use 512px tiles, so
+  // ground resolution per LOGICAL pixel = 156543.03392·cos(lat)/2^(zoom+1);
+  // the request is @2x, so logical width = img.width/2.
+  const zoomUsed = opts.zoom ?? 15;
+  const mPerLogicalPx = (156543.03392 * Math.cos((img.lat * Math.PI) / 180)) / Math.pow(2, zoomUsed + 1);
+  const mPerMm = ((img.width / 2) * mPerLogicalPx) / drawW;
+  {
+    const niceM = [10, 20, 25, 50, 100, 200, 250, 500, 1000].find((m) => m / mPerMm >= 16) ?? 1000;
+    const barMm = niceM / mPerMm;
+    const bx = offX + 3;
+    const by = imgY + drawH - 4;
+    doc.setFillColor(255, 255, 255);
+    doc.rect(bx - 1.2, by - 3.4, barMm + 16, 5.4, 'F');
+    doc.setDrawColor(20, 20, 20);
+    doc.setLineWidth(0.3);
+    doc.line(bx, by, bx + barMm, by);
+    doc.line(bx, by - 1.4, bx, by);
+    doc.line(bx + barMm, by - 1.4, bx + barMm, by);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5);
+    doc.setTextColor(20, 20, 20);
+    doc.text(`${niceM} M`, bx + barMm + 2, by);
+  }
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  y = imgY + drawH;
+
+  // ── LOCATION DATA strip — bordered grid flush against the image frame.
+  // Replaces the old single caption line with a detailed address/grid
+  // readout: target address (+ caller-supplied cells like cross street),
+  // then decimal-degree coords, a DMS grid reference, and the print scale.
+  const toDMS = (v: number, pos: string, neg: string): string => {
+    const hemi = v < 0 ? neg : pos;
+    const a = Math.abs(v);
+    const d = Math.floor(a);
+    const mF = (a - d) * 60;
+    const m = Math.floor(mF);
+    const s = ((mF - m) * 60).toFixed(1);
+    return `${d}\u00B0${String(m).padStart(2, '0')}'${s.padStart(4, '0')}"${hemi}`;
+  };
+  const topCells: FormCell[] = [
+    { label: 'TARGET ADDRESS', value: opts.caption || opts.address || '', ratio: 2.6 },
+    ...(opts.details || []).map((c) => ({ label: c.label, value: c.value || EMPTY_FIELD, ratio: c.ratio ?? 1 })),
+  ];
+  const botCells: FormCell[] = [
+    { label: 'LATITUDE (DD)', value: img.lat.toFixed(6) },
+    { label: 'LONGITUDE (DD)', value: img.lng.toFixed(6) },
+    { label: 'GRID REF (DMS)', value: `${toDMS(img.lat, 'N', 'S')}  ${toDMS(img.lng, 'E', 'W')}`, ratio: 1.7 },
+    { label: 'APPROX SCALE', value: `1:${Math.round(mPerMm * 1000).toLocaleString('en-US')}` },
+  ];
+  y = drawFormRow(doc, topCells, offX, y, drawW);
+  y = drawFormRow(doc, botCells, offX, y, drawW);
+  y += 1;
   return closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
 }
 
@@ -2188,12 +2273,12 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // CFS address-location map — static Mapbox snapshot with a marker pin at
-  // the incident coordinates (geocodes data.location when lat/lng absent).
-  // Satellite-streets at close zoom 18 so the actual structure/lot is visible
-  // (a property-level view, not a several-blocks-wide z15 overview) while the
-  // hybrid style keeps the fronting road + street labels in frame. Matches the
-  // Property record's location map for a consistent aerial close-up.
+  // CFS address-location map — SWAT location-analysis treatment (2026-06-11):
+  // satellite-streets at zoom 17 (one step out from the old z18 close-up so
+  // approach routes / adjacent structures are in frame), centered reticle +
+  // north indicator + ground scale bar drawn over the image, and a bordered
+  // LOCATION DATA grid (target address, cross street, DD + DMS grid, scale)
+  // flush beneath the frame.
   y = await addLocationMapSection(doc, {
     title: 'Incident Location Map',
     lat: data.latitude,
@@ -2201,8 +2286,9 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     address: data.location || (data as any).location_address,
     caption: data.location || (data as any).location_address,
     style: 'mapbox/satellite-streets-v12',
-    zoom: 18,
+    zoom: 17,
     priority: prio,
+    details: [{ label: 'CROSS STREET', value: data.cross_street || '' }],
   }, y);
 
   // Flags — before Scene Conditions
@@ -5411,11 +5497,10 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Property / business site map — satellite-streets at close zoom 18 frames
-  // the actual structure + parking/lot tight in view (a property-level close-up,
-  // not zoomed out), while the hybrid style keeps the fronting road + labels
-  // visible. Geocodes the full address when lat/lng absent (business records
-  // store no coordinates).
+  // Property / business site map — same SWAT location-analysis treatment as
+  // the CFS map: zoom 17 (structure + surrounding approach in frame), reticle
+  // + north + scale overlay, LOCATION DATA grid below. Geocodes the full
+  // address when lat/lng absent (business records store no coordinates).
   y = await addLocationMapSection(doc, {
     title: 'Location Map',
     lat: data.latitude,
@@ -5423,7 +5508,8 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     address: `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim(),
     caption: data.address || data.name,
     style: 'mapbox/satellite-streets-v12',
-    zoom: 18,
+    zoom: 17,
+    details: [{ label: 'PROPERTY', value: data.name || '' }],
   }, y);
 
   // ── Access & Security ──
