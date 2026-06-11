@@ -6,8 +6,10 @@
 // ============================================================
 
 import {useState, useCallback, useEffect, useRef} from 'react';
-import { Search, CreditCard, User, MapPin, ChevronRight, Shield, ShieldCheck, Calendar, Database, Wifi, Plus, AlertTriangle, Camera, Loader2, X, Eye } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, CreditCard, User, MapPin, ChevronRight, Shield, ShieldCheck, Calendar, Database, Wifi, Plus, AlertTriangle, Camera, Loader2, X, Eye, ScanLine, UserCheck, Upload } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import type { ReadoutRow } from '../utils/aamvaParser';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ManualDlEntryModal, { type ManualDlFormData } from '../components/ManualDlEntryModal';
@@ -15,6 +17,30 @@ import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+
+// QR code that opens this scanner page on the officer's phone —
+// scans made there relay to this desktop session automatically.
+function PhoneScanQr() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    let cancelled = false;
+    import('bwip-js/browser').then(({ default: bwipjs }) => {
+      if (cancelled || !canvasRef.current) return;
+      try {
+        bwipjs.toCanvas(canvasRef.current, {
+          bcid: 'qrcode',
+          text: `${window.location.origin}/dl-search`,
+          scale: 2,
+          backgroundcolor: 'FFFFFF',
+          paddingwidth: 4,
+          paddingheight: 4,
+        });
+      } catch { /* QR render is decorative — page works without it */ }
+    }).catch(() => { /* ignore */ });
+    return () => { cancelled = true; };
+  }, []);
+  return <canvas ref={canvasRef} className="w-20 h-20" aria-label="QR code to open the DL scanner on your phone" />;
+}
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
@@ -77,11 +103,98 @@ export default function DlSearchPage() {
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [isManualSubmitting, setIsManualSubmitting] = useState(false);
 
-  // ── DL OCR Scanner ──
+  // ── DL Scanner (PDF417 barcode-first, OCR fallback) ──
+  const navigate = useNavigate();
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrResult, setOcrResult] = useState<any>(null);
   const [showOcrPreview, setShowOcrPreview] = useState(false);
+  const [scanReadout, setScanReadout] = useState<ReadoutRow[] | null>(null);
+  const [showFullReadout, setShowFullReadout] = useState(false);
+  const [scanMatches, setScanMatches] = useState<any[] | null>(null);
+  const [matchLoading, setMatchLoading] = useState(false);
+  const [uploadedRecord, setUploadedRecord] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Phone → desktop relay ──
+  // Phone: push every successful scan to the relay so the officer's
+  // logged-in desktop session populates immediately.
+  const pushScanToDesktop = useCallback(async (payload: Record<string, unknown>) => {
+    try {
+      await apiFetch('/dl-records/scan-relay', { method: 'POST', body: JSON.stringify({ payload }) });
+      addToast('Scan sent to your desktop session', 'success');
+    } catch {
+      // Relay is best-effort — the phone still shows the scan locally.
+    }
+  }, [addToast]);
+
+  // Desktop: poll for scans pushed from this user's phone while the
+  // scanner page is open. D1-backed, so a phone push is visible on the
+  // very next tick (~4s worst case).
+  useEffect(() => {
+    if (isMobile) return;
+    let stopped = false;
+    const tick = async () => {
+      try {
+        const data = await apiFetch<{ payload: any }>('/dl-records/scan-relay/poll');
+        if (stopped || !data?.payload) return;
+        const { aamva_raw, ...fields } = data.payload;
+        if (aamva_raw) {
+          try {
+            const { parseAamva, describeAamva } = await import('../utils/aamvaParser');
+            setScanReadout(describeAamva(parseAamva(aamva_raw)));
+          } catch { setScanReadout(null); }
+        } else {
+          setScanReadout(null);
+        }
+        setUploadedRecord(null);
+        setShowFullReadout(false);
+        setOcrResult(fields);
+        setShowOcrPreview(true);
+        addToast(`DL scan received from phone — ${fields.first_name || ''} ${fields.last_name || ''}`.trim(), 'success');
+        lookupExistingRecords(fields);
+      } catch { /* quiet — retry next tick */ }
+    };
+    const iv = setInterval(tick, 4000);
+    return () => { stopped = true; clearInterval(iv); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile]);
+
+  // After a scan, look the subject up in the records system —
+  // exact DL-number match first, then name + DOB.
+  const lookupExistingRecords = useCallback(async (parsed: { last_name?: string; first_name?: string; date_of_birth?: string; dl_number?: string }) => {
+    setMatchLoading(true);
+    setScanMatches(null);
+    try {
+      const matches: any[] = [];
+      const seen = new Set<number>();
+      if (parsed.last_name) {
+        const rows = await apiFetch<any[]>(`/records/persons/search?q=${encodeURIComponent(parsed.last_name)}`).catch(() => []);
+        for (const p of Array.isArray(rows) ? rows : []) {
+          let matchType = '';
+          if (parsed.dl_number && p.dl_number && String(p.dl_number).replace(/\W/g, '').toUpperCase() === parsed.dl_number.replace(/\W/g, '').toUpperCase()) {
+            matchType = 'DL NUMBER MATCH';
+          } else if (
+            parsed.first_name && p.first_name &&
+            String(p.first_name).toUpperCase() === parsed.first_name.toUpperCase() &&
+            parsed.date_of_birth && p.dob && String(p.dob).slice(0, 10) === parsed.date_of_birth
+          ) {
+            matchType = 'NAME + DOB MATCH';
+          }
+          if (matchType && p.id && !seen.has(p.id)) {
+            seen.add(p.id);
+            matches.push({ ...p, match_type: matchType });
+          }
+        }
+      }
+      // DL-number matches first
+      matches.sort((a, b) => (a.match_type === 'DL NUMBER MATCH' ? -1 : 0) - (b.match_type === 'DL NUMBER MATCH' ? -1 : 0));
+      setScanMatches(matches);
+    } catch {
+      setScanMatches([]);
+    } finally {
+      setMatchLoading(false);
+    }
+  }, []);
 
   // ── DL Verification via RapidAPI ──
   const [verifying, setVerifying] = useState(false);
@@ -205,20 +318,25 @@ export default function DlSearchPage() {
   const handleOcrUpload = useCallback(async (file: File) => {
     setOcrLoading(true);
     setOcrResult(null);
+    setScanReadout(null);
+    setScanMatches(null);
+    setShowFullReadout(false);
+    setUploadedRecord(null);
 
     // ── Pass 1: PDF417 barcode (back of card) ──
     // The AAMVA barcode is authoritative — every field exactly as the
     // issuing DMV encoded it. Only fall back to OCR (front of card)
     // when no barcode is found in the image.
     try {
-      const [{ decodePdf417 }, { parseAamva, looksLikeAamva }] = await Promise.all([
+      const [{ decodePdf417 }, { parseAamva, looksLikeAamva, describeAamva }] = await Promise.all([
         import('../utils/pdf417Decoder'),
         import('../utils/aamvaParser'),
       ]);
       const decoded = await decodePdf417(file);
       if (decoded && looksLikeAamva(decoded.text)) {
         const parsed = parseAamva(decoded.text);
-        setOcrResult({
+        setScanReadout(describeAamva(parsed));
+        const resultObj = {
           first_name: parsed.first_name,
           middle_name: parsed.middle_name,
           last_name: parsed.last_name,
@@ -246,10 +364,15 @@ export default function DlSearchPage() {
           organ_donor: parsed.is_organ_donor === null ? '' : parsed.is_organ_donor ? 'YES' : 'NO',
           veteran: parsed.is_veteran === null ? '' : parsed.is_veteran ? 'YES' : 'NO',
           scan_method: 'PDF417 BARCODE',
-        });
+        };
+        setOcrResult(resultObj);
         setShowOcrPreview(true);
         addToast('PDF417 barcode read — all DMV-encoded fields extracted', 'success');
         setOcrLoading(false);
+        // Pull any existing record for this subject (async — modal shows progress)
+        lookupExistingRecords(parsed);
+        // Phone as scanning device: mirror the scan to the desktop session
+        if (isMobile) pushScanToDesktop({ ...resultObj, aamva_raw: decoded.text });
         return;
       }
     } catch (err) {
@@ -279,6 +402,8 @@ export default function DlSearchPage() {
         setOcrResult(data.parsed);
         setShowOcrPreview(true);
         addToast('DL scanned successfully — review extracted data', 'success');
+        lookupExistingRecords(data.parsed);
+        if (isMobile) pushScanToDesktop(data.parsed);
       } else {
         addToast('OCR returned no data', 'warning');
       }
@@ -287,7 +412,7 @@ export default function DlSearchPage() {
     } finally {
       setOcrLoading(false);
     }
-  }, [addToast]);
+  }, [addToast, lookupExistingRecords, isMobile, pushScanToDesktop]);
 
   const handleCreatePersonFromOcr = useCallback(async () => {
     if (!ocrResult) return;
@@ -319,8 +444,7 @@ export default function DlSearchPage() {
 
       if (resp?.id) {
         addToast(`Person record #${resp.id} created for ${ocrResult.first_name} ${ocrResult.last_name}`, 'success');
-        setShowOcrPreview(false);
-        setOcrResult(null);
+        setUploadedRecord(resp.id);
         // Also save as DL record
         try {
           await apiFetch('/dl-records', {
@@ -473,24 +597,43 @@ export default function DlSearchPage() {
                 <p>Search by name, DL number, or state</p>
                 <p className="text-[9px] text-rmpg-600 mt-1">Searches local records + MicroBilt API</p>
               </div>
-              {/* DL OCR Scanner */}
-              <div className="border border-[#1a1a1a] rounded-sm p-3 bg-[#0c0c0c] space-y-2 w-full max-w-xs">
-                <div className="flex items-center gap-2">
-                  <CreditCard size={14} className="text-[#d4a017]" />
-                  <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Scan Driver's License</span>
+              {/* ── Driver's License Scanner ── */}
+              <div className="border border-[#2e2e2e] rounded-sm bg-[#0c0c0c] w-full max-w-sm">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a1a1a] bg-[#050505]">
+                  <ScanLine size={14} className="text-[#d4a017]" />
+                  <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest">Driver's License Scanner</span>
                 </div>
-                <p className="text-[10px] text-[#556677]">Photograph the <span className="text-[#c0ccdd] font-semibold">BACK of the card</span> (PDF417 barcode) for an exact DMV-encoded read of every field, or the front for OCR. Auto-creates a person record.</p>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={ocrLoading}
-                    className="flex items-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
-                  >
-                    {ocrLoading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
-                    {ocrLoading ? 'Scanning...' : 'Upload DL Photo'}
-                  </button>
-                  <span className="text-[9px] text-[#556677]">JPG, PNG, or camera capture</span>
+                <div className="p-3 space-y-3">
+                  <div className="border border-dashed border-[#2e2e2e] rounded-sm py-5 flex flex-col items-center gap-2 bg-[#080808]">
+                    <CreditCard size={28} className="text-[#333333]" />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={ocrLoading}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-[#d4a017] hover:bg-[#b88a12] disabled:opacity-40 rounded-sm text-[12px] font-bold text-black transition-colors uppercase tracking-wider"
+                    >
+                      {ocrLoading ? <Loader2 size={15} className="animate-spin" /> : <ScanLine size={15} />}
+                      {ocrLoading ? 'Reading Barcode...' : 'Scan License'}
+                    </button>
+                    <span className="text-[9px] text-[#556677]">Camera capture or photo upload</span>
+                  </div>
+                  <div className="space-y-1 text-[9px] text-[#556677] leading-relaxed">
+                    <p><span className="text-[#c0ccdd] font-semibold">→ Scan the BACK of the card</span> — the PDF417 barcode gives an exact, DMV-encoded read of every field (full English readout).</p>
+                    <p>→ Existing person records are <span className="text-[#c0ccdd] font-semibold">pulled automatically</span> on a DL-number or name+DOB match.</p>
+                    <p>→ No record? <span className="text-[#c0ccdd] font-semibold">Upload to Records</span> creates the person + DL record in one tap.</p>
+                    <p>→ Front-of-card photos fall back to OCR extraction.</p>
+                  </div>
+                  {!isMobile && (
+                    <div className="flex items-center gap-3 border-t border-[#1a1a1a] pt-3">
+                      <div className="bg-white p-1 rounded-sm flex-shrink-0">
+                        <PhoneScanQr />
+                      </div>
+                      <div className="text-[9px] text-[#556677] leading-relaxed">
+                        <p className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider mb-0.5">Use your phone as the scanner</p>
+                        <p>Scan this QR with your phone, sign in, and scan the license there — the results <span className="text-[#c0ccdd] font-semibold">appear on this screen automatically</span> (same login, within seconds).</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -781,20 +924,74 @@ export default function DlSearchPage() {
         </div>
       )}
 
-      {/* OCR Preview Modal */}
+      {/* DL Scanner Results Modal */}
       {showOcrPreview && ocrResult && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#141414] border border-[#1a1a1a] rounded-sm max-w-lg w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-[#141414] border border-[#1a1a1a] rounded-sm max-w-xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] bg-[#0c0c0c]">
               <div className="flex items-center gap-2">
-                <CreditCard size={14} className="text-[#d4a017]" />
-                <span className="text-[12px] font-bold text-white uppercase tracking-wider">DL OCR Results</span>
+                <ScanLine size={14} className="text-[#d4a017]" />
+                <span className="text-[12px] font-bold text-white uppercase tracking-wider">
+                  {scanReadout ? 'DL Scanner — PDF417 Read' : 'DL Scanner — OCR Read'}
+                </span>
+                {scanReadout && (
+                  <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-green-900/50 text-green-400 border border-green-700/50">DMV-Encoded</span>
+                )}
               </div>
               <button type="button" onClick={() => setShowOcrPreview(false)} className="text-[#556677] hover:text-white">
                 <X size={16} />
               </button>
             </div>
             <div className="p-4 space-y-3">
+              {/* ── Records-system match ── */}
+              <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
+                <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+                  <Database size={11} /> Records System
+                </div>
+                <div className="p-2 space-y-1.5">
+                  {uploadedRecord ? (
+                    <div className="flex items-center justify-between gap-2 px-2 py-1.5 bg-green-900/20 border border-green-700/40">
+                      <span className="text-[10px] text-green-400 font-bold flex items-center gap-1.5">
+                        <UserCheck size={12} /> Uploaded — Person record #{uploadedRecord} created
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setShowOcrPreview(false); navigate(`/records?tab=persons&personId=${uploadedRecord}`); }}
+                        className="px-2.5 py-1 bg-green-600 hover:bg-green-500 rounded-sm text-[10px] font-bold text-white"
+                      >
+                        Open Record
+                      </button>
+                    </div>
+                  ) : matchLoading ? (
+                    <div className="flex items-center gap-2 text-[10px] text-[#8899aa] px-2 py-1.5">
+                      <Loader2 size={12} className="animate-spin" /> Searching records for this subject...
+                    </div>
+                  ) : scanMatches && scanMatches.length > 0 ? (
+                    scanMatches.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between gap-2 px-2 py-1.5 bg-[#141414] border border-[#222222]">
+                        <div className="min-w-0">
+                          <div className="text-[11px] text-white font-bold truncate">
+                            {p.last_name}, {p.first_name} <span className="text-[#556677] font-normal">#{p.id}</span>
+                          </div>
+                          <div className="text-[8px] text-[#d4a017] font-bold uppercase tracking-wider">{p.match_type}{p.dob ? ` · DOB ${String(p.dob).slice(0, 10)}` : ''}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { setShowOcrPreview(false); navigate(`/records?tab=persons&personId=${p.id}`); }}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#d4a017] hover:bg-[#b88a12] rounded-sm text-[10px] font-bold text-black flex-shrink-0"
+                        >
+                          <UserCheck size={12} /> Pull Record
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-[10px] text-[#8899aa] px-2 py-1.5 flex items-center gap-1.5">
+                      <AlertTriangle size={11} className="text-amber-500" /> No existing record found — upload below to create one.
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="text-[9px] font-bold text-[#8899aa] uppercase tracking-wider mb-2">Extracted Information — Review Before Saving</div>
               {([
                 ['First Name', ocrResult.first_name],
@@ -823,7 +1020,7 @@ export default function DlSearchPage() {
                   <span className="text-white font-mono">{val}</span>
                 </div>
               ))}
-              {Object.entries(ocrResult).filter(([k, v]) => v && !['first_name','middle_name','last_name','date_of_birth','gender','height','weight','eye_color','hair_color','address','city','state','zip','dl_number','dl_state','dl_class','dl_expiry','dl_issue_date','dl_restrictions','dl_endorsements','full_name','source','raw_ocr'].includes(k)).length > 0 && (
+              {!scanReadout && Object.entries(ocrResult).filter(([k, v]) => v && !['first_name','middle_name','last_name','date_of_birth','gender','height','weight','eye_color','hair_color','address','city','state','zip','dl_number','dl_state','dl_class','dl_expiry','dl_issue_date','dl_restrictions','dl_endorsements','full_name','source','raw_ocr'].includes(k)).length > 0 && (
                 <div className="border-t border-[#1a1a1a] pt-2 mt-2">
                   <div className="text-[8px] text-[#556677] uppercase tracking-wider mb-1">Additional Fields</div>
                   {Object.entries(ocrResult).filter(([k, v]) => v && !['first_name','middle_name','last_name','date_of_birth','gender','height','weight','eye_color','hair_color','address','city','state','zip','dl_number','dl_state','dl_class','dl_expiry','dl_issue_date','dl_restrictions','dl_endorsements','full_name','source','raw_ocr'].includes(k)).map(([k, v]) => (
@@ -834,22 +1031,65 @@ export default function DlSearchPage() {
                   ))}
                 </div>
               )}
+
+              {/* ── Full English barcode readout (every AAMVA element) ── */}
+              {scanReadout && (
+                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c] mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowFullReadout(v => !v)}
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-[9px] font-bold text-[#8899aa] uppercase tracking-wider hover:text-white"
+                  >
+                    <span className="flex items-center gap-1.5"><ScanLine size={11} /> Full Barcode Readout — {scanReadout.length} fields decoded</span>
+                    <ChevronRight size={12} className={`transition-transform ${showFullReadout ? 'rotate-90' : ''}`} />
+                  </button>
+                  {showFullReadout && (
+                    <div className="border-t border-[#1a1a1a] max-h-72 overflow-y-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="text-[8px] text-[#556677] uppercase font-semibold">
+                            <th className="px-2 py-[3px] w-10">Code</th>
+                            <th className="px-2 py-[3px] w-36">Field</th>
+                            <th className="px-2 py-[3px]">English</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {scanReadout.map((row) => (
+                            <tr key={row.code} className="border-t border-[#141414] text-[10px] align-top">
+                              <td className="px-2 py-[2px] font-mono text-[#d4a017] text-[9px]">{row.code}</td>
+                              <td className="px-2 py-[2px] text-[#8899aa]">{row.label}</td>
+                              <td className="px-2 py-[2px] text-white">
+                                {row.english}
+                                {row.english !== row.value && row.value && (
+                                  <span className="text-[#556677] font-mono text-[8px] ml-1.5">[{row.value}]</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1a1a1a] bg-[#0c0c0c]">
-              <button
-                type="button"
-                onClick={handleCreatePersonFromOcr}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-sm text-[11px] font-bold text-white transition-colors"
-              >
-                <Plus size={14} />
-                Create Person Record
-              </button>
+              {!uploadedRecord && (
+                <button
+                  type="button"
+                  onClick={handleCreatePersonFromOcr}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-sm text-[11px] font-bold text-white transition-colors"
+                >
+                  <Upload size={14} />
+                  {scanMatches && scanMatches.length > 0 ? 'Upload as New Record' : 'Upload to Records'}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setShowOcrPreview(false)}
                 className="px-4 py-2 bg-[#181818] hover:bg-[#1a1a1a] border border-[#1a1a1a] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
               >
-                Cancel
+                Close
               </button>
             </div>
           </div>

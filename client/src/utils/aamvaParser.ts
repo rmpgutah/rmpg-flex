@@ -314,3 +314,148 @@ export const IIN_TO_STATE: Record<string, string> = {
   '636028': 'BC', '636012': 'ON', '636048': 'NB', '604427': 'SK', '604429': 'QC',
   '636016': 'NL', '636013': 'NS', '604426': 'PE', '604428': 'MB', '604432': 'AB',
 };
+
+// ============================================================
+// Full-English readout — translates every decoded element into
+// plain English for the scanner UI ("full loadout" view).
+// ============================================================
+
+/** AAMVA D.12.5 data-element dictionary (DL + ID subfile ids). */
+export const ELEMENT_LABELS: Record<string, string> = {
+  DAA: 'Full Name', DAB: 'Last Name', DAC: 'First Name', DAD: 'Middle Name(s)',
+  DAE: 'Name Suffix', DAF: 'Name Prefix', DAG: 'Street Address',
+  DAH: 'Street Address Line 2', DAI: 'City', DAJ: 'State / Jurisdiction',
+  DAK: 'Postal Code', DAL: 'Residence Street Address', DAM: 'Residence Address Line 2',
+  DAN: 'Residence City', DAO: 'Residence State', DAP: 'Residence Postal Code',
+  DAQ: 'License / ID Number', DAR: 'License Class (legacy)',
+  DAS: 'Restrictions (legacy)', DAT: 'Endorsements (legacy)',
+  DAU: 'Height', DAV: 'Height (cm)', DAW: 'Weight (lbs)', DAX: 'Weight (kg)',
+  DAY: 'Eye Color', DAZ: 'Hair Color',
+  DBA: 'Expiration Date', DBB: 'Date of Birth', DBC: 'Sex', DBD: 'Issue Date',
+  DBE: 'Issue Timestamp (legacy)', DBF: 'Number of Duplicates (legacy)',
+  DBG: 'Medical Indicator (legacy)', DBH: 'Organ Donor (legacy)',
+  DBI: 'Non-Resident Indicator (legacy)', DBJ: 'Unique Customer ID (legacy)',
+  DBK: 'Social Security Number (legacy)', DBL: 'Date of Birth (legacy)',
+  DBM: 'Social Security Number (legacy)', DBN: 'Full Name (alt)',
+  DBO: 'Last Name (alt)', DBP: 'First Name (alt)', DBQ: 'Middle Name (alt)',
+  DBR: 'Suffix (alt)', DBS: 'Prefix (alt)',
+  DCA: 'Vehicle Class', DCB: 'Restrictions', DCD: 'Endorsements',
+  DCE: 'Weight Range', DCF: 'Document Discriminator', DCG: 'Country',
+  DCH: 'Federal Commercial Vehicle Codes',
+  DCI: 'Place of Birth', DCJ: 'Audit Information', DCK: 'Inventory Control Number',
+  DCL: 'Race / Ethnicity', DCM: 'Standard Vehicle Classification',
+  DCN: 'Standard Endorsement Code', DCO: 'Standard Restriction Code',
+  DCP: 'Jurisdiction Vehicle Classification Description',
+  DCQ: 'Jurisdiction Endorsement Description',
+  DCR: 'Jurisdiction Restriction Description',
+  DCS: 'Last Name', DCT: 'First/Given Name(s)', DCU: 'Name Suffix',
+  DDA: 'REAL ID Compliance', DDB: 'Card Revision Date', DDC: 'HazMat Endorsement Expiry',
+  DDD: 'Limited Duration Document', DDE: 'Last Name Truncated',
+  DDF: 'First Name Truncated', DDG: 'Middle Name Truncated',
+  DDH: 'Under 18 Until', DDI: 'Under 21 Until', DDJ: 'Under 19 Until',
+  DDK: 'Organ Donor', DDL: 'Veteran',
+};
+
+/** AAMVA standard restriction codes (CDL + common non-CDL). */
+export const RESTRICTION_CODES: Record<string, string> = {
+  A: 'With corrective lenses... (jurisdiction-defined A)', B: 'Corrective lenses required',
+  C: 'Mechanical aid required', D: 'Prosthetic aid required',
+  E: 'No manual transmission (automatic only)', F: 'Outside mirror required',
+  G: 'Daylight driving only', H: 'Employment purposes only',
+  I: 'Limited — other', J: 'Other (see jurisdiction)',
+  K: 'CDL intrastate only', L: 'No air-brake equipped CMV',
+  M: 'No Class A passenger vehicle', N: 'No Class A or B passenger vehicle',
+  O: 'No tractor-trailer CMV', P: 'No passengers in CMV bus',
+  V: 'Medical variance', W: 'Farm waiver',
+  X: 'No cargo in tank vehicle', Z: 'No full air brake CMV',
+};
+
+/** AAMVA standard endorsement codes. */
+export const ENDORSEMENT_CODES: Record<string, string> = {
+  H: 'Hazardous materials', L: 'Motorcycle (some jurisdictions)',
+  M: 'Motorcycle', N: 'Tank vehicle', O: 'Other (see jurisdiction)',
+  P: 'Passenger transport', S: 'School bus', T: 'Double/triple trailers',
+  W: 'Tow truck (some jurisdictions)', X: 'Tank vehicle + hazardous materials',
+};
+
+/** Common vehicle-class meanings (jurisdictions may vary). */
+export const CLASS_CODES: Record<string, string> = {
+  A: 'Class A — combination vehicles 26,001+ lbs (CDL)',
+  B: 'Class B — heavy straight vehicles 26,001+ lbs (CDL)',
+  C: 'Class C — small commercial / regular operator (varies by state)',
+  D: 'Class D — regular operator license',
+  E: 'Class E — regular operator (some states) / taxi',
+  M: 'Class M — motorcycle',
+};
+
+const TRUNCATION: Record<string, string> = { T: 'Yes — truncated', N: 'No — complete', U: 'Unknown' };
+
+function describeCodes(value: string, dict: Record<string, string>): string {
+  const v = clean(value);
+  if (!v) return 'None';
+  const parts = v.split(/[\s,;]+/).filter(Boolean);
+  const out = parts.map(p => {
+    const desc = dict[p.toUpperCase()];
+    return desc ? `${p} — ${desc}` : p;
+  });
+  return out.join('; ');
+}
+
+export interface ReadoutRow {
+  code: string;     // raw AAMVA element id
+  label: string;    // English field name
+  value: string;    // raw value as encoded
+  english: string;  // human-readable translation
+}
+
+/**
+ * Build the full English "loadout" — one row per decoded element,
+ * in spec order for known ids, with raw value AND translation.
+ */
+export function describeAamva(r: AamvaResult): ReadoutRow[] {
+  const els = r.raw_elements;
+  const date = (v: string) => parseAamvaDate(v, r.aamva_version, r.country) || v;
+  const rows: ReadoutRow[] = [];
+
+  const ENGLISH: Record<string, (v: string) => string> = {
+    DBA: date, DBB: date, DBD: date, DDB: date, DDC: date, DDH: date, DDI: date, DDJ: date,
+    DBC: v => SEX_MAP[clean(v)] || v,
+    DAU: v => parseHeight(clean(v)) || v,
+    DAY: v => EYE_MAP[clean(v)] || clean(v) || 'Unknown',
+    DAZ: v => HAIR_MAP[clean(v)] || clean(v) || 'Unknown',
+    DAW: v => (clean(v) ? `${parseInt(v, 10)} lbs` : 'Not encoded'),
+    DAX: v => (clean(v) ? `${parseInt(v, 10)} kg (${Math.round(parseInt(v, 10) * 2.20462)} lbs)` : 'Not encoded'),
+    DAK: v => cleanZip(v) || v,
+    DCA: v => CLASS_CODES[clean(v).toUpperCase()] || clean(v) || 'Not encoded',
+    DCB: v => describeCodes(v, RESTRICTION_CODES),
+    DAS: v => describeCodes(v, RESTRICTION_CODES),
+    DCD: v => describeCodes(v, ENDORSEMENT_CODES),
+    DAT: v => describeCodes(v, ENDORSEMENT_CODES),
+    DDA: v => (v.trim() === 'F' ? 'REAL ID compliant' : v.trim() === 'N' ? 'NOT REAL ID compliant' : v),
+    DDD: v => (v.trim() === '1' ? 'Yes — limited duration / temporary' : 'No'),
+    DDK: v => (v.trim() === '1' ? 'Yes — registered organ donor' : 'No'),
+    DDL: v => (v.trim() === '1' ? 'Yes — veteran designation' : 'No'),
+    DDE: v => TRUNCATION[v.trim()] || v,
+    DDF: v => TRUNCATION[v.trim()] || v,
+    DDG: v => TRUNCATION[v.trim()] || v,
+    DCG: v => (v === 'USA' ? 'United States' : v === 'CAN' ? 'Canada' : v),
+  };
+
+  // Spec-ordered known elements first, then any extras (jurisdiction Z* etc.)
+  const order = Object.keys(ELEMENT_LABELS).filter(id => id in els);
+  const extras = Object.keys(els).filter(id => !(id in ELEMENT_LABELS)).sort();
+
+  for (const id of [...order, ...extras]) {
+    const value = els[id];
+    const translate = ENGLISH[id];
+    let english = translate ? translate(value) : clean(value);
+    if (!english) english = clean(value) ? value : 'None';
+    rows.push({
+      code: id,
+      label: ELEMENT_LABELS[id] || (id.startsWith('Z') ? `Jurisdiction Field ${id}` : `Field ${id}`),
+      value,
+      english,
+    });
+  }
+  return rows;
+}

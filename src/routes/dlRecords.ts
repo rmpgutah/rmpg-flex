@@ -210,6 +210,74 @@ dlRecords.get('/', async (c) => {
   }
 });
 
+// ============================================================
+// Phone → desktop scan relay
+// ============================================================
+// An officer scans a license with their phone; the parsed result is
+// POSTed here and the logged-in desktop session (same user) picks it
+// up by polling. D1 is strongly consistent, so a row written from the
+// phone is visible to the very next desktop poll — unlike KV, whose
+// cross-colo propagation can take up to a minute.
+
+// ── POST /scan-relay — phone pushes a scan ──────────────────
+dlRecords.post('/scan-relay', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const userId = (c.get('userId') as number) ?? null;
+    if (!userId) return c.json({ error: 'No user', code: 'NO_USER' }, 401);
+    const b = await c.req.json<{ payload?: Record<string, unknown> }>();
+    if (!b.payload || typeof b.payload !== 'object') {
+      return c.json({ error: 'payload object required', code: 'NO_PAYLOAD' }, 400);
+    }
+    const json = JSON.stringify(b.payload);
+    if (json.length > 64_000) return c.json({ error: 'Payload too large', code: 'PAYLOAD_TOO_LARGE' }, 413);
+
+    // A new scan supersedes any unconsumed one — and stale rows age out.
+    await execute(db, `DELETE FROM dl_scan_relay WHERE user_id = ? OR created_at < datetime('now', '-1 hour')`, userId);
+    const result = await execute(
+      db,
+      `INSERT INTO dl_scan_relay (user_id, payload) VALUES (?, ?)`,
+      userId, json,
+    );
+    return c.json({ success: true, id: result.meta.last_row_id });
+  } catch (err) {
+    return c.json({
+      error: 'Failed to relay scan', code: 'FAILED_TO_RELAY',
+      detail: err instanceof Error ? err.message : String(err),
+    }, 500);
+  }
+});
+
+// ── GET /scan-relay/poll — desktop picks up the scan ────────
+dlRecords.get('/scan-relay/poll', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const userId = (c.get('userId') as number) ?? null;
+    if (!userId) return c.json({ error: 'No user', code: 'NO_USER' }, 401);
+
+    const row = await queryFirst<{ id: number; payload: string; created_at: string }>(
+      db,
+      `SELECT id, payload, created_at FROM dl_scan_relay
+       WHERE user_id = ? AND consumed_at IS NULL AND created_at > datetime('now', '-10 minutes')
+       ORDER BY id DESC LIMIT 1`,
+      userId,
+    );
+    if (!row) return c.json({ payload: null });
+
+    await execute(db, `UPDATE dl_scan_relay SET consumed_at = datetime('now') WHERE id = ?`, row.id);
+    let payload: unknown = null;
+    try { payload = JSON.parse(row.payload); } catch { /* corrupt row — treat as none */ }
+    return c.json({ payload, created_at: row.created_at });
+  } catch (err) {
+    // Poll failures must be quiet — the client retries on its next tick.
+    return c.json({ payload: null });
+  }
+});
+
 // ── GET /:id — single record (+ addresses) ──────────────────
 dlRecords.get('/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'officer', 'dispatcher');
