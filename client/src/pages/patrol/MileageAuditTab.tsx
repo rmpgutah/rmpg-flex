@@ -48,6 +48,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import IconButton from '../../components/IconButton';
 import { useToast } from '../../components/ToastProvider';
+import { computeChainGaps, computeNewRowDistance, chainRowKey } from './mileageChainMath';
 import { useAuth } from '../../context/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { renderPdfV2, downloadPdfV2 } from '../../utils/pdf/v2';
@@ -96,6 +97,13 @@ type Anchor = {
   scope_key?: string;
 } | null;
 
+/** GET /patrol/mileage/fix-suggestions response — data-derived autofill
+ *  candidates (GPS distance, chain-neighbor continuity) for the fix form. */
+type FixSuggestions = {
+  gps: { distance_mi: number; point_count: number; max_mph: number } | null;
+  candidates: Array<{ value: number; source: string; label: string; detail: string }>;
+};
+
 const todayIso = (): string => new Date().toISOString().slice(0, 10);
 const daysAgoIso = (n: number): string =>
   new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -143,6 +151,27 @@ export default function MileageAuditTab() {
   const [fixReason, setFixReason] = useState<string>('');
   const [fixPropagate, setFixPropagate] = useState<boolean>(true);
   const [fixSubmitting, setFixSubmitting] = useState(false);
+
+  // Data-derived autofill candidates for the open fix form (GPS-recorded
+  // distance, chain-neighbor continuity). Fetched per (row, field) from
+  // GET /patrol/mileage/fix-suggestions; clicking a chip fills the value.
+  const [fixSuggest, setFixSuggest] = useState<FixSuggestions | null>(null);
+  const [fixSuggestLoading, setFixSuggestLoading] = useState(false);
+  useEffect(() => {
+    setFixSuggest(null);
+    if (openFixRowId == null || !canFix) return;
+    // Suggestions only exist for CFS rows (unit_trip rows are read-only here).
+    const row = rows.find((r) => r.id === openFixRowId && (r.source || 'call') === 'call');
+    if (!row) return;
+    let cancelled = false;
+    setFixSuggestLoading(true);
+    apiFetch<FixSuggestions>(`/patrol/mileage/fix-suggestions?entry_id=${openFixRowId}&field=${fixField}`)
+      .then((s) => { if (!cancelled && mountedRef.current) setFixSuggest(s); })
+      .catch(() => { /* chips are an enhancement — the form works without them */ })
+      .finally(() => { if (!cancelled && mountedRef.current) setFixSuggestLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openFixRowId, fixField, canFix]);
 
   // Trip log PDF download state
   const [tripLog, setTripLog] = useState<TripLogData | null>(null);
@@ -310,6 +339,11 @@ export default function MileageAuditTab() {
     setTripLogLoading(false);
   };
 
+  // Chain-continuity calculation: rows whose starting mileage doesn't pick up
+  // where the previous event's ending left off (unrecorded miles, or the
+  // odometer going backwards). Keyed by source-qualified row key.
+  const chainGaps = useMemo(() => computeChainGaps(rows), [rows]);
+
   const renderFixForm = (row: ChainRow) => {
     const original = row[fixField as 'starting_mileage' | 'ending_mileage'];
     // A null original means we're backfilling a never-stamped value, not
@@ -317,6 +351,16 @@ export default function MileageAuditTab() {
     const isBackfill = original == null;
     const previewDelta = (parseFloat(fixAfter) || 0) - (Number(original) || 0);
     const willRewrite = !isBackfill && fixPropagate && previewDelta !== 0;
+    // Live calculation: what this row's start→end distance becomes with the
+    // entered value, and how it compares to the GPS-recorded distance.
+    const afterNum = parseFloat(fixAfter);
+    const newDistance = computeNewRowDistance(
+      fixField, afterNum,
+      row.starting_mileage != null ? Number(row.starting_mileage) : null,
+      row.ending_mileage != null ? Number(row.ending_mileage) : null,
+    );
+    const gpsMi = fixSuggest?.gps?.distance_mi ?? null;
+    const gpsDeviation = newDistance != null && gpsMi != null ? Math.round((newDistance - gpsMi) * 10) / 10 : null;
     return (
       <tr className="bg-amber-950/20">
         <td colSpan={6} className="px-3 py-2">
@@ -344,6 +388,53 @@ export default function MileageAuditTab() {
                 onChange={(e) => setFixAfter(e.target.value)}
               />
             </div>
+            {/* Data-derived autofill: GPS-recorded distance + chain-neighbor
+                continuity. One click fills the value; the admin still owns
+                the reason + Apply. */}
+            <div className="sm:col-span-2 flex items-center gap-1.5 flex-wrap min-h-[20px]">
+              {fixSuggestLoading ? (
+                <span className="text-[10px] text-rmpg-500 flex items-center gap-1">
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" /> computing suggestions…
+                </span>
+              ) : fixSuggest?.candidates?.length ? (
+                <>
+                  <span className="text-[9px] text-rmpg-400 uppercase">Autofill:</span>
+                  {fixSuggest.candidates.map((s) => (
+                    <button
+                      key={`${s.source}-${s.value}`}
+                      type="button"
+                      onClick={() => setFixAfter(String(s.value))}
+                      title={s.detail}
+                      className={`toolbar-btn text-[10px] font-mono ${parseFloat(fixAfter) === s.value ? 'text-brand-300' : ''}`}
+                    >
+                      {Number(s.value).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                      <span className="text-rmpg-400 ml-1 font-sans normal-case">{s.label}</span>
+                    </button>
+                  ))}
+                </>
+              ) : fixSuggest ? (
+                <span className="text-[10px] text-rmpg-500 italic">No GPS or chain-neighbor data to suggest from.</span>
+              ) : null}
+            </div>
+            {/* Live calculation: resulting row distance + deviation vs GPS. */}
+            {(newDistance != null || gpsMi != null) && (
+              <div className="sm:col-span-2 flex items-center gap-3 text-[10px] font-mono">
+                {newDistance != null && (
+                  <span className={newDistance < 0 ? 'text-red-400 font-bold' : 'text-rmpg-200'}>
+                    Row distance becomes {newDistance.toFixed(1)} mi
+                    {newDistance < 0 && ' — odometer would run backwards'}
+                  </span>
+                )}
+                {gpsMi != null && (
+                  <span className="text-rmpg-400" title={`Summed from ${fixSuggest!.gps!.point_count} GPS breadcrumbs over the call window`}>
+                    GPS recorded {gpsMi.toFixed(1)} mi
+                    {gpsDeviation != null && Math.abs(gpsDeviation) > 0.5 && (
+                      <span className="text-amber-400"> (Δ {gpsDeviation >= 0 ? '+' : ''}{gpsDeviation.toFixed(1)})</span>
+                    )}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="sm:col-span-2">
               <label className="block text-[9px] text-amber-300 mb-0.5">
                 Reason (required — written to mileage_audit)
@@ -596,9 +687,10 @@ export default function MileageAuditTab() {
               const isOpen = openFixRowId === row.id;
               const corrected = row.ending_mileage_corrected || row.starting_mileage_corrected;
               const isTrip = row.source === 'unit_trip';
+              const gap = chainGaps.get(chainRowKey(row));
               return (
                 <div
-                  key={row.id}
+                  key={chainRowKey(row)}
                   className={`panel-beveled p-2 ${
                     corrected ? 'bg-amber-950/20' : isTrip ? 'bg-surface-sunken' : 'bg-surface-raised'
                   }`}
@@ -626,6 +718,14 @@ export default function MileageAuditTab() {
                       {sm != null ? Number(sm).toLocaleString() : '—'}
                       <span className="text-rmpg-500 mx-1">→</span>
                       {em != null ? Number(em).toLocaleString() : '—'}
+                      {gap && (
+                        <span
+                          className={`ml-1.5 text-[9px] font-bold ${gap.gap < 0 ? 'text-red-400' : 'text-amber-400'}`}
+                          title={`Chain gap: starts ${Math.abs(gap.gap).toFixed(1)} mi ${gap.gap < 0 ? 'BELOW' : 'above'} where ${gap.prevRef} ended${gap.gap < 0 ? ' — odometer went backwards' : ' (unrecorded movement)'}`}
+                        >
+                          {gap.gap >= 0 ? '+' : ''}{gap.gap.toFixed(1)} gap
+                        </span>
+                      )}
                     </span>
                     <span className="font-mono text-[11px] tabular-nums text-brand-400">{distance} mi</span>
                   </div>
@@ -681,8 +781,9 @@ export default function MileageAuditTab() {
                   const distance = (sm != null && em != null) ? (em - sm).toFixed(1) : '—';
                   const cleared = row.cleared_at || row.closed_at;
                   const isOpen = openFixRowId === row.id;
+                  const gap = chainGaps.get(chainRowKey(row));
                   return (
-                    <React.Fragment key={row.id}>
+                    <React.Fragment key={chainRowKey(row)}>
                       <tr className={
                         row.ending_mileage_corrected || row.starting_mileage_corrected
                           ? 'bg-amber-950/20'
@@ -710,6 +811,14 @@ export default function MileageAuditTab() {
                           {sm != null ? Number(sm).toLocaleString() : '—'}
                           <span className="text-rmpg-500 mx-1">→</span>
                           {em != null ? Number(em).toLocaleString() : '—'}
+                          {gap && (
+                            <span
+                              className={`ml-1.5 text-[9px] font-bold ${gap.gap < 0 ? 'text-red-400' : 'text-amber-400'}`}
+                              title={`Chain gap: starts ${Math.abs(gap.gap).toFixed(1)} mi ${gap.gap < 0 ? 'BELOW' : 'above'} where ${gap.prevRef} ended${gap.gap < 0 ? ' — odometer went backwards' : ' (unrecorded movement)'}`}
+                            >
+                              {gap.gap >= 0 ? '+' : ''}{gap.gap.toFixed(1)} gap
+                            </span>
+                          )}
                         </td>
                         <td className="font-mono text-[11px] tabular-nums text-brand-400">
                           {distance} mi

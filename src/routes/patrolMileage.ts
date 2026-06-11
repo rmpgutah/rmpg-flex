@@ -390,6 +390,171 @@ pm.get('/mileage/audit', async (c) => {
   }
 });
 
+// ── GET /mileage/fix-suggestions ──────────────────────────
+// Autofill candidates for the admin fix/backfill form. For a given CFS row
+// and field, computes data-derived values the admin can apply in one click:
+//   • gps        — starting_mileage + GPS-recorded breadcrumb distance over
+//                  the call window (ending fix), or ending − GPS distance
+//                  (starting fix). Reuses computeBreadcrumbStats.
+//   • next_start — the NEXT mileage-bearing event's starting reading
+//                  (odometer continuity: this call should end where the
+//                  next one starts). Considers BOTH calls_for_service and
+//                  closed PATROL unit_trips, whichever is nearest in time.
+//   • prev_end   — the PREVIOUS event's ending reading (starting fix).
+// Read-only; same role gate as /mileage/fix so the chips only ever appear
+// where the Apply button works.
+pm.get('/mileage/fix-suggestions', async (c) => {
+  try {
+    const user = c.get('user') as { id: number; role: string } | undefined;
+    if (!user) return c.json({ error: 'Unauthenticated' }, 401);
+    if (!['admin', 'manager', 'supervisor'].includes(user.role)) {
+      return c.json({ error: 'Admin / manager / supervisor only', code: 'FORBIDDEN' }, 403);
+    }
+    const entryId = parseInt(c.req.query('entry_id') || '', 10);
+    const field = c.req.query('field');
+    if (!Number.isFinite(entryId)) return c.json({ error: 'entry_id required', code: 'BAD_ENTRY' }, 400);
+    if (field !== 'starting_mileage' && field !== 'ending_mileage') {
+      return c.json({ error: 'field must be starting_mileage or ending_mileage', code: 'BAD_FIELD' }, 400);
+    }
+
+    const db = getDb(c.env);
+    const call = await queryFirst<{
+      starting_mileage: number | null; ending_mileage: number | null;
+      call_number: string | null;
+      dispatched_at: string | null; enroute_at: string | null; onscene_at: string | null;
+      cleared_at: string | null; closed_at: string | null; created_at: string;
+    }>(db, `SELECT starting_mileage, ending_mileage, call_number,
+                   dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, created_at
+              FROM calls_for_service WHERE id = ?`, entryId);
+    if (!call) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
+
+    const scope = await resolveCfsScope(db, entryId);
+    const officerId = scope?.officerId ?? null;
+    const unitId = scope?.unitId ?? null;
+
+    const windowStart = call.dispatched_at || call.enroute_at || call.onscene_at || call.created_at;
+    const windowEnd = call.cleared_at || call.closed_at || new Date().toISOString();
+    const chainTime = call.cleared_at || call.closed_at || call.created_at;
+
+    // GPS-recorded distance over the call window (breadcrumb haversine sum).
+    let gps: { distance_mi: number; point_count: number; max_mph: number } | null = null;
+    if ((unitId || officerId) && windowStart && windowEnd) {
+      const stats = await computeBreadcrumbStats(db, unitId, officerId, windowStart, windowEnd);
+      if (stats.point_count > 0) {
+        gps = { distance_mi: round1(stats.distance_miles), point_count: stats.point_count, max_mph: stats.max_mph };
+      }
+    }
+
+    // Nearest mileage-bearing neighbors in the same scope — check both the
+    // CFS chain and closed PATROL trips, then pick whichever is closest in
+    // time. Same json_each + CAST scope filter as the /mileage/fix cascade
+    // (assigned_unit_ids is stored as both ["1"] and [1]).
+    const scopeWhere = `(
+        (SELECT COUNT(*) FROM json_each(assigned_unit_ids) WHERE CAST(value AS TEXT) = ?) > 0
+        OR (
+          SELECT u.officer_id FROM units u
+           WHERE u.id = (SELECT CAST(value AS INTEGER) FROM json_each(assigned_unit_ids) LIMIT 1)
+        ) = ?
+      )`;
+    type NeighborRow = { ref: string; t: string; starting_mileage: number | null; ending_mileage: number | null };
+    const neighborCfs = async (dir: 'prev' | 'next'): Promise<NeighborRow | null> => {
+      if (unitId == null && officerId == null) return null;
+      const cmp = dir === 'prev' ? '<' : '>';
+      const ord = dir === 'prev' ? 'DESC' : 'ASC';
+      const r = await queryFirst<{ id: number; call_number: string | null; t: string; starting_mileage: number | null; ending_mileage: number | null }>(
+        db,
+        `SELECT id, call_number, COALESCE(cleared_at, closed_at, created_at) AS t,
+                starting_mileage, ending_mileage
+           FROM calls_for_service
+          WHERE id != ?
+            AND (starting_mileage IS NOT NULL OR ending_mileage IS NOT NULL)
+            AND COALESCE(cleared_at, closed_at, created_at) ${cmp} ?
+            AND ${scopeWhere}
+          ORDER BY COALESCE(cleared_at, closed_at, created_at) ${ord}
+          LIMIT 1`,
+        entryId, chainTime, String(unitId ?? -1), officerId ?? -1,
+      );
+      return r ? { ref: r.call_number || `CFS #${r.id}`, t: r.t, starting_mileage: r.starting_mileage, ending_mileage: r.ending_mileage } : null;
+    };
+    const neighborTrip = async (dir: 'prev' | 'next'): Promise<NeighborRow | null> => {
+      if (unitId == null && officerId == null) return null;
+      const cmp = dir === 'prev' ? '<' : '>';
+      const ord = dir === 'prev' ? 'DESC' : 'ASC';
+      const parts: string[] = [];
+      const prm: unknown[] = [];
+      if (unitId != null) { parts.push('unit_id = ?'); prm.push(unitId); }
+      if (officerId != null) { parts.push('officer_id = ?'); prm.push(officerId); }
+      const r = await queryFirst<{ id: number; t: string; start_mileage: number | null; end_mileage: number | null }>(
+        db,
+        `SELECT id, COALESCE(end_time, start_time) AS t, start_mileage, end_mileage
+           FROM unit_trips
+          WHERE status = 'closed'
+            AND (start_mileage IS NOT NULL OR end_mileage IS NOT NULL)
+            AND COALESCE(end_time, start_time) ${cmp} ?
+            AND (${parts.join(' OR ')})
+          ORDER BY COALESCE(end_time, start_time) ${ord}
+          LIMIT 1`,
+        chainTime, ...prm,
+      );
+      return r ? { ref: `PATROL-${r.id}`, t: r.t, starting_mileage: r.start_mileage, ending_mileage: r.end_mileage } : null;
+    };
+    const pickNearest = (a: NeighborRow | null, b: NeighborRow | null, dir: 'prev' | 'next'): NeighborRow | null => {
+      if (!a) return b;
+      if (!b) return a;
+      // prev → later timestamp is nearer; next → earlier timestamp is nearer.
+      return (dir === 'prev' ? a.t >= b.t : a.t <= b.t) ? a : b;
+    };
+    const [prevC, prevT, nextC, nextT] = await Promise.all([
+      neighborCfs('prev'), neighborTrip('prev'), neighborCfs('next'), neighborTrip('next'),
+    ]);
+    const prev = pickNearest(prevC, prevT, 'prev');
+    const next = pickNearest(nextC, nextT, 'next');
+
+    // Build candidates (deduped by value).
+    const candidates: Array<{ value: number; source: string; label: string; detail: string }> = [];
+    const push = (value: number | null | undefined, source: string, label: string, detail: string) => {
+      if (value == null || !Number.isFinite(value) || value <= 0) return;
+      const v = round1(value);
+      if (candidates.some((x) => Math.abs(x.value - v) < 0.05)) return;
+      candidates.push({ value: v, source, label, detail });
+    };
+    if (field === 'ending_mileage') {
+      if (call.starting_mileage != null && gps && gps.distance_mi > 0) {
+        push(call.starting_mileage + gps.distance_mi, 'gps',
+          `GPS +${gps.distance_mi.toFixed(1)} mi`,
+          `start ${call.starting_mileage} + ${gps.distance_mi.toFixed(1)} mi recorded over ${gps.point_count} GPS points`);
+      }
+      push(next?.starting_mileage, 'next_start',
+        `${next?.ref} starts here`,
+        `odometer continuity — the next mileage-bearing event (${next?.ref}) started at this reading`);
+    } else {
+      push(prev?.ending_mileage, 'prev_end',
+        `${prev?.ref} ended here`,
+        `odometer continuity — the previous mileage-bearing event (${prev?.ref}) ended at this reading`);
+      if (call.ending_mileage != null && gps && gps.distance_mi > 0) {
+        push(call.ending_mileage - gps.distance_mi, 'gps',
+          `GPS −${gps.distance_mi.toFixed(1)} mi`,
+          `end ${call.ending_mileage} − ${gps.distance_mi.toFixed(1)} mi recorded over ${gps.point_count} GPS points`);
+      }
+    }
+
+    return c.json({
+      entry_id: entryId,
+      field,
+      current: { starting_mileage: call.starting_mileage, ending_mileage: call.ending_mileage },
+      gps,
+      neighbors: {
+        prev: prev ? { ref: prev.ref, ending_mileage: prev.ending_mileage, starting_mileage: prev.starting_mileage } : null,
+        next: next ? { ref: next.ref, ending_mileage: next.ending_mileage, starting_mileage: next.starting_mileage } : null,
+      },
+      candidates,
+    });
+  } catch (err) {
+    console.error('GET /patrol/mileage/fix-suggestions failed:', err);
+    return c.json({ error: 'Failed to compute suggestions', detail: (err as Error)?.message }, 500);
+  }
+});
+
 // ── POST /mileage/fix ────────────────────────────────────
 // Body:
 //   { entry_table, entry_id, field, after_value, reason,

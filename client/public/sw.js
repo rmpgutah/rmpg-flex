@@ -571,7 +571,11 @@
 //       hoisted from NavigationPage into NavTripContext (useNavGuidanceEngine)
 //       so navigation keeps calculating on Dispatch/Records/etc; returning to
 //       the drive HUD re-adopts the live route instead of resetting it.
-const CACHE_NAME = 'rmpg-flex-v878';
+// v879: Mileage Audit data-fix upgrades — autofill chips (GPS-recorded
+//       distance + chain-neighbor continuity via /patrol/mileage/
+//       fix-suggestions), live row-distance/GPS-deviation calculations in
+//       the fix form, and chain-gap badges on the Start→End column.
+const CACHE_NAME = 'rmpg-flex-v879';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
