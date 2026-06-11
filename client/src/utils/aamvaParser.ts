@@ -534,3 +534,78 @@ export function assessAamva(r: AamvaResult, now: Date = new Date()): ScanAlert[]
 
   return alerts;
 }
+
+// ============================================================
+// Law-enforcement formatting — NCIC/NLETS-style fielded output.
+// ============================================================
+// Formats a parsed scan using the field tags and value conventions
+// officers see on NCIC/NLETS returns (QH/QD): NAM "LAST,FIRST MIDDLE",
+// dates as CCYYMMDD, height as feet+inches digits (510), 3-letter
+// eye/hair codes, OLN/OLS for the license.
+
+export interface LeField {
+  tag: string;    // NCIC field tag, e.g. NAM, DOB, OLN
+  label: string;  // English meaning for display
+  value: string;
+}
+
+function ncicDate(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[1]}${m[2]}${m[3]}` : iso;
+}
+
+function ncicHeight(display: string): string {
+  // 5'10" → 510
+  const m = display.match(/^(\d)'(\d{2})"$/);
+  return m ? `${m[1]}${m[2]}` : display.replace(/\D/g, '');
+}
+
+function ncicSex(gender: string): string {
+  if (/^male/i.test(gender)) return 'M';
+  if (/^female/i.test(gender)) return 'F';
+  return gender ? 'U' : '';
+}
+
+/** Build the NCIC/NLETS-style field set for a parsed scan. */
+export function formatLawEnforcement(r: AamvaResult): LeField[] {
+  const nam = [r.last_name, [r.first_name, r.middle_name].filter(Boolean).join(' ')]
+    .filter(Boolean).join(',') + (r.suffix ? ` ${r.suffix}` : '');
+  const fields: Array<[string, string, string]> = [
+    ['NAM', 'Name', nam],
+    ['DOB', 'Date of Birth', ncicDate(r.date_of_birth)],
+    ['SEX', 'Sex', ncicSex(r.gender)],
+    ['RAC', 'Race', clean(r.raw_elements.DCL)],
+    ['HGT', 'Height', ncicHeight(r.height)],
+    ['WGT', 'Weight', r.weight],
+    ['EYE', 'Eye Color', clean(r.raw_elements.DAY).toUpperCase()],
+    ['HAI', 'Hair Color', clean(r.raw_elements.DAZ).toUpperCase()],
+    ['OLN', 'Operator License Number', r.dl_number],
+    ['OLS', 'License State', r.dl_state],
+    ['OLC', 'License Class', r.dl_class],
+    ['OLT', 'Card Type', r.card_type !== 'UNKNOWN' ? r.card_type : ''],
+    ['EXP', 'Expiration', ncicDate(r.dl_expiry)],
+    ['ISS', 'Issue Date', ncicDate(r.dl_issue_date)],
+    ['RES', 'Restrictions', r.dl_restrictions],
+    ['END', 'Endorsements', r.dl_endorsements],
+    ['ADR', 'Address', [r.address, r.address2].filter(Boolean).join(' ')],
+    ['CTY', 'City', r.city],
+    ['STA', 'State', r.state],
+    ['ZIP', 'ZIP', r.zip],
+    ['CTZ', 'Country', r.country],
+    ['DD', 'Document Discriminator', r.document_discriminator],
+    ['SOC', 'SSN (legacy element)', clean(r.raw_elements.DBK) || clean(r.raw_elements.DBM)],
+  ];
+  return fields
+    .filter(([, , v]) => v)
+    .map(([tag, label, value]) => ({ tag, label, value }));
+}
+
+/** Render the field set as a teletype-style block for copy/paste. */
+export function formatLeBlock(r: AamvaResult): string {
+  const fields = formatLawEnforcement(r);
+  const header = `**DL SCAN ${r.dl_state || ''} ${new Date().toISOString().slice(0, 10)}**`;
+  return [
+    header,
+    ...fields.map(f => `${f.tag.padEnd(4)}/${f.value}`),
+  ].join('\n');
+}

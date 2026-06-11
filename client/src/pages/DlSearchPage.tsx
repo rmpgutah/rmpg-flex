@@ -9,7 +9,7 @@ import {useState, useCallback, useEffect, useRef} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, CreditCard, User, MapPin, ChevronRight, Shield, ShieldCheck, Calendar, Database, Wifi, Plus, AlertTriangle, Camera, Loader2, X, Eye, ScanLine, UserCheck, Upload } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import type { ReadoutRow, ScanAlert } from '../utils/aamvaParser';
+import type { ReadoutRow, ScanAlert, LeField } from '../utils/aamvaParser';
 import LiveDlScanner from '../components/LiveDlScanner';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -115,6 +115,8 @@ export default function DlSearchPage() {
   const [matchLoading, setMatchLoading] = useState(false);
   const [uploadedRecord, setUploadedRecord] = useState<number | null>(null);
   const [scanAlerts, setScanAlerts] = useState<ScanAlert[]>([]);
+  const [leFields, setLeFields] = useState<LeField[] | null>(null);
+  const [leBlock, setLeBlock] = useState('');
   const [showLiveScanner, setShowLiveScanner] = useState(false);
   const [recentScans, setRecentScans] = useState<any[]>(() => {
     try { return JSON.parse(localStorage.getItem('rmpg-dl-recent-scans') || '[]'); } catch { return []; }
@@ -164,6 +166,8 @@ export default function DlSearchPage() {
         }
         setScanReadout(null);
         setScanAlerts([]);
+        setLeFields(null);
+        setLeBlock('');
         setUploadedRecord(null);
         setShowFullReadout(false);
         setOcrResult(fields);
@@ -345,11 +349,13 @@ export default function DlSearchPage() {
   // scanner, recent-scan replay, and phone-relay receipt.
   const processBarcodeText = useCallback(async (rawText: string, opts?: { silent?: boolean; skipRelay?: boolean }): Promise<boolean> => {
     try {
-      const { parseAamva, looksLikeAamva, describeAamva, assessAamva } = await import('../utils/aamvaParser');
+      const { parseAamva, looksLikeAamva, describeAamva, assessAamva, formatLawEnforcement, formatLeBlock } = await import('../utils/aamvaParser');
       if (!looksLikeAamva(rawText)) return false;
       const parsed = parseAamva(rawText);
       setScanReadout(describeAamva(parsed));
       setScanAlerts(assessAamva(parsed));
+      setLeFields(formatLawEnforcement(parsed));
+      setLeBlock(formatLeBlock(parsed));
       const resultObj = {
           first_name: parsed.first_name,
           middle_name: parsed.middle_name,
@@ -407,6 +413,8 @@ export default function DlSearchPage() {
     setScanReadout(null);
     setScanMatches(null);
     setScanAlerts([]);
+    setLeFields(null);
+    setLeBlock('');
     setShowFullReadout(false);
     setUploadedRecord(null);
 
@@ -1111,6 +1119,50 @@ export default function DlSearchPage() {
                   )}
                 </div>
               </div>
+
+              {/* ── Law-enforcement format (NCIC/NLETS fielded) ── */}
+              {leFields && leFields.length > 0 && (
+                <div className="border border-[#1a1a1a] rounded-sm bg-[#050505]">
+                  <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1a1a1a]">
+                    <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5">
+                      <Shield size={11} /> Law Enforcement Format — NCIC/NLETS
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(leBlock).then(
+                            () => addToast('LE-format block copied', 'success'),
+                            () => addToast('Copy failed', 'error'),
+                          );
+                        }}
+                        className="px-2 py-1 bg-[#141414] border border-[#2e2e2e] rounded-sm text-[9px] font-bold text-[#c0ccdd] hover:text-white"
+                      >
+                        Copy Block
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nam = leFields.find(f => f.tag === 'NAM')?.value || '';
+                          setShowOcrPreview(false);
+                          navigate(`/ncic?q=${encodeURIComponent(nam.split(' ')[0] || nam)}&type=xref`);
+                        }}
+                        className="px-2 py-1 bg-[#d4a017] hover:bg-[#b88a12] rounded-sm text-[9px] font-bold text-black"
+                      >
+                        Run NCIC QX
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-2 grid grid-cols-2 gap-x-4 gap-y-px font-mono">
+                    {leFields.map((f) => (
+                      <div key={f.tag} className="flex items-baseline gap-1.5 text-[10px]" title={f.label}>
+                        <span className="text-[#7fb069] w-9 flex-shrink-0 font-bold">{f.tag}/</span>
+                        <span className="text-[#e8e8e8] break-all">{f.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="text-[9px] font-bold text-[#8899aa] uppercase tracking-wider mb-2">Extracted Information — Review Before Saving</div>
               {([

@@ -178,3 +178,38 @@ describe('describeAamva — English readout', () => {
     expect(rows.length).toBe(Object.keys(r.raw_elements).length);
   });
 });
+
+describe('formatLawEnforcement — NCIC/NLETS fielded output', () => {
+  it('formats per NCIC conventions (NAM, CCYYMMDD dates, HGT digits, raw codes)', async () => {
+    const { formatLawEnforcement, formatLeBlock } = await import('../aamvaParser');
+    const r = parseAamva(UTAH_V8);
+    const fields = formatLawEnforcement(r);
+    const byTag = Object.fromEntries(fields.map(f => [f.tag, f.value]));
+    expect(byTag.NAM).toBe('SAMPLE,JOHN QUINCY');
+    expect(byTag.DOB).toBe('19850115');
+    expect(byTag.SEX).toBe('M');
+    expect(byTag.HGT).toBe('510');      // 5'10" → 510
+    expect(byTag.WGT).toBe('180');
+    expect(byTag.EYE).toBe('BRO');      // raw NCIC code, not "Brown"
+    expect(byTag.HAI).toBe('BLK');
+    expect(byTag.OLN).toBe('123456789');
+    expect(byTag.OLS).toBe('UT');
+    expect(byTag.EXP).toBe('20270115');
+    expect(byTag.ZIP).toBe('84101');
+    // empty fields omitted (restrictions were NONE)
+    expect(byTag.RES).toBeUndefined();
+
+    const block = formatLeBlock(r);
+    expect(block).toContain('NAM /SAMPLE,JOHN QUINCY');
+    expect(block).toContain('OLN /123456789');
+  });
+
+  it('maps non-binary sex to U and omits absent fields', async () => {
+    const { formatLawEnforcement } = await import('../aamvaParser');
+    const r = parseAamva('@\n\x1e\rANSI 636040080002DLDAQ77\nDCSDOE\nDACJANE\nDBC9\n');
+    const byTag = Object.fromEntries(formatLawEnforcement(r).map(f => [f.tag, f.value]));
+    expect(byTag.SEX).toBe('U');
+    expect(byTag.HGT).toBeUndefined();
+    expect(byTag.EXP).toBeUndefined();
+  });
+});
