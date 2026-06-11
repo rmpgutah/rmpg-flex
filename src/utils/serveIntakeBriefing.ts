@@ -139,37 +139,112 @@ export interface PsoBriefing {
   descriptionPrefix: string;    // '' or '⚠ OFFICER SAFETY · '
 }
 
+// ── Tactical knowledge base ──────────────────────────────────
+// Deterministic, reviewable guidance keyed off the document class and
+// recipient type — never LLM-generated, so rule citations stay accurate.
+// Utah Rules of Civil Procedure references current as of 2026.
+
+// Who may lawfully accept service, by recipient class (URCP 4(d)).
+function serviceAuthorityLines(isBusiness: boolean, hint: string): string[] {
+  const lines: string[] = [];
+  if (isBusiness) {
+    lines.push('Corporate/LLC service per URCP 4(d)(1)(E): deliver to an officer, a managing or general agent, or the registered agent. Any employee 18+ expressly authorized to accept also qualifies at the business location.');
+    lines.push('If serving at a RESIDENCE: personal delivery to the registered agent or an owner/member only — a spouse or co-resident may accept ONLY if authorized or a member of the company.');
+  } else {
+    lines.push('Individual service per URCP 4(d)(1)(A): personal delivery, or substitute service at the dwelling on a resident of suitable age and discretion, or delivery to an authorized agent.');
+  }
+  if (hint.includes('subpoena')) {
+    lines.push('Subpoena (URCP 45): confirm whether witness fees must be tendered at service — check with the hiring party before attempt if not provided.');
+  }
+  if (hasAny(hint, EVICTION_KW)) {
+    lines.push('Eviction/UD papers: personal or substitute service preferred; post-and-mail ONLY where the court has authorized alternative service — verify the order before posting.');
+  }
+  return lines;
+}
+
+// Approach guidance derived from the document class + extracted facts.
+function tacticalApproachLines(input: BriefingInput, hint: string): string[] {
+  const { fields, queueRow, isBusiness } = input;
+  const f = (k: string) => get(fields, k);
+  const lines: string[] = [];
+
+  if (isBusiness) {
+    lines.push('Attempt during posted business hours first; ask for the registered agent or a manager by name. Note the title and full name of whoever accepts — required for the affidavit.');
+  } else {
+    lines.push('Verify identity before tender (name + DOB/description if available). If substitute-serving, record the resident’s name, relationship, and physical description.');
+  }
+  const docs = (f('documents_to_serve') || '').toLowerCase();
+  if (docs.includes('bilingual') || docs.includes('spanish')) {
+    lines.push('Packet includes a BILINGUAL NOTICE — anticipate a Spanish-speaking recipient; serve the complete packet including the translated notice.');
+  }
+  if (hasAny(hint, EVICTION_KW)) {
+    lines.push('Eviction context: occupant may be distressed or displaced mid-move. De-escalate; do not discuss case merits — refer all questions to the court or counsel.');
+  }
+  if (hasAny(hint, PROTECTIVE_KW)) {
+    lines.push('Protective-order context: do NOT stage or serve in the presence of the protected party. Time the approach to avoid contact between parties.');
+  }
+  if (queueRow.notes) lines.push(`Client-specified service windows: ${queueRow.notes}.`);
+  if (!queueRow.deadline) {
+    lines.push('No service deadline on file — treat per diligence standard (first attempt within 48h; vary day/time across attempts).');
+  }
+  lines.push('Body-camera/GPS on at every attempt; photograph the location on no-answer attempts to support the diligence affidavit.');
+  return lines;
+}
+
 // Build the full structured "INTAKE BRIEFING" note + (when triggered) a
 // distinct "OFFICER SAFETY" note. Markdown bold (**) is rendered by the
 // Notes tab's renderFormattedText, so section labels stand out.
 function buildBriefingNoteText(input: BriefingInput): string {
   const { fields, queueRow, isBusiness, agentName, fullLocation, docCount } = input;
   const f = (k: string) => get(fields, k);
-
-  const recipientLine = isBusiness
-    ? `${queueRow.recipient_name || f('recipient_business_name') || 'Unknown business'}`
-      + (agentName ? `  ·  Registered Agent: ${agentName}` : '')
-    : `${queueRow.recipient_name || 'Unknown'}`
-      + (f('recipient_dob') ? `  (DOB ${f('recipient_dob')})` : '');
+  const hint = hazardHintText(fields, queueRow);
 
   const hiringParty = [queueRow.client_name, queueRow.attorney_name]
     .filter(Boolean).join(' / ');
   const callback = f('attorney_phone');
+  const caseLine = [queueRow.case_number, queueRow.court_name, queueRow.jurisdiction]
+    .filter(Boolean).join(' · ');
+  const parties = [queueRow.plaintiff, queueRow.defendant].filter(Boolean).join(' v. ');
 
   const lines: string[] = [];
   lines.push('**📋 PROCESS SERVICE — INTAKE BRIEFING** _(auto-generated)_');
-  lines.push(`**Document:** ${queueRow.document_type || 'Civil paper'}`);
-  lines.push(`**${isBusiness ? 'Serve (business)' : 'Recipient'}:** ${recipientLine}`);
-  if (f('process_type')) lines.push(`**Serve type:** ${f('process_type')}`);
-  if (fullLocation) lines.push(`**Address:** ${fullLocation}`);
-  if (queueRow.case_number || queueRow.court_name) {
-    lines.push(`**Case:** ${[queueRow.case_number, queueRow.court_name, queueRow.jurisdiction].filter(Boolean).join(' — ')}`);
+
+  lines.push('**■ SERVICE PROFILE**');
+  if (isBusiness) {
+    lines.push(`Target entity: ${queueRow.recipient_name || f('recipient_business_name') || 'Unknown business'}`);
+    if (agentName) lines.push(`Accept-service party: Registered Agent ${agentName}`);
+  } else {
+    lines.push(`Target: ${queueRow.recipient_name || 'Unknown'}${f('recipient_dob') ? `  (DOB ${f('recipient_dob')})` : ''}`);
   }
-  if (queueRow.deadline) lines.push(`**Service deadline:** ${queueRow.deadline}`);
-  if (hiringParty) lines.push(`**Hiring party:** ${hiringParty}${callback ? `  (${callback})` : ''}`);
-  if (queueRow.notes) lines.push(`**Service windows:** ${queueRow.notes}`);
-  if (queueRow.service_instructions) lines.push(`**Special instructions:** ${queueRow.service_instructions}`);
-  lines.push(`**Documents on file:** ${docCount}`);
+  if (fullLocation) lines.push(`Service address: ${fullLocation}`);
+  if (f('process_type')) lines.push(`Process type: ${f('process_type')}`);
+  lines.push(`Documents to serve: ${f('documents_to_serve') || queueRow.document_type || 'Civil paper'}  (${docCount} file${docCount === 1 ? '' : 's'} on record)`);
+
+  if (caseLine || parties) {
+    lines.push('**■ CASE**');
+    if (caseLine) lines.push(caseLine);
+    if (parties) lines.push(`Parties: ${parties}`);
+    if (queueRow.deadline) lines.push(`SERVICE DEADLINE: ${queueRow.deadline}`);
+    if (queueRow.court_date) lines.push(`Hearing date: ${queueRow.court_date}`);
+  }
+
+  lines.push('**■ SERVICE AUTHORITY**');
+  for (const l of serviceAuthorityLines(isBusiness, hint)) lines.push(`• ${l}`);
+
+  lines.push('**■ TACTICAL APPROACH**');
+  for (const l of tacticalApproachLines(input, hint)) lines.push(`• ${l}`);
+
+  if (queueRow.service_instructions) {
+    lines.push('**■ CLIENT INSTRUCTIONS (verbatim)**');
+    lines.push(queueRow.service_instructions);
+  }
+
+  if (hiringParty) {
+    lines.push('**■ CONTACTS**');
+    lines.push(`Hiring party: ${hiringParty}${callback ? `  ·  Callback: ${callback}` : ''}${f('attorney_email') ? `  ·  ${f('attorney_email')}` : ''}`);
+    if (f('job_number')) lines.push(`Client job #: ${f('job_number')}${f('server_name') ? `  ·  Assigned server: ${f('server_name')}` : ''}`);
+  }
+
   return lines.join('\n');
 }
 
@@ -235,6 +310,7 @@ export function buildOcrContext(
 
   const lines: string[] = [];
   lines.push('**🔍 OCR & EXTRACTION CONTEXT** _(auto-generated)_');
+  lines.push('**■ SOURCE DOCUMENTS**');
   for (const d of docs) {
     const engine = ENGINE_LABEL[d.ocr_engine || ''] || d.ocr_engine || 'unknown';
     const pct = `${Math.round((d.confidence || 0) * 100)}%`;
@@ -242,12 +318,13 @@ export function buildOcrContext(
       ? `• ${d.file_name} — ${d.doc_type || 'unclassified'} · ${engine} · ${pct} confidence${d.page_count ? ` · ${d.page_count} pg` : ''}`
       : `• ${d.file_name} — ⚠ extraction FAILED (review manually)`);
   }
-  lines.push(`**Auto-populated:** ${filled} field${filled === 1 ? '' : 's'} from ${docs.length} document${docs.length === 1 ? '' : 's'}`);
+  lines.push('**■ DATA QUALITY**');
+  lines.push(`• Auto-populated ${filled} field${filled === 1 ? '' : 's'} from ${docs.length} document${docs.length === 1 ? '' : 's'}`);
   if (missingCritical.length) {
-    lines.push(`**Not found in documents:** ${missingCritical.join(', ')} — verify before service`);
+    lines.push(`• NOT FOUND in documents — verify before service: ${missingCritical.join(', ')}`);
   }
   if (allDates.length) {
-    lines.push(`**Dates seen in documents:** ${[...allDates].sort().join(', ')}`);
+    lines.push(`• Dates seen in documents: ${[...allDates].sort().join(', ')}`);
   }
   lines.push(`_Extracted ${nowIso.slice(0, 10)} — verify against source documents before filing affidavits._`);
 
@@ -265,11 +342,22 @@ export function buildPsoBriefing(input: BriefingInput, nowIso: string): PsoBrief
 
   // Safety note FIRST so it sits at the top of the feed the PSO scans.
   if (assessment.caution) {
-    const label = assessment.severity === 'high' ? '⚠️ OFFICER SAFETY — ELEVATED' : '⚠️ OFFICER SAFETY';
+    const high = assessment.severity === 'high';
+    const lines: string[] = [];
+    lines.push(`**⚠️ OFFICER SAFETY — RISK ASSESSMENT: ${high ? 'ELEVATED' : 'BASELINE'}**`);
+    lines.push('**Indicators:**');
+    for (const r of assessment.reasons) lines.push(`• ${r}`);
+    lines.push('**Posture:**');
+    lines.push(high
+      ? '• Two-officer response recommended. Position for egress; do not enter the residence. Notify dispatch on arrival and clear. Disengage and re-attempt if the contact turns hostile — the paper is not worth an escalation.'
+      : '• Single-officer standard. Announce purpose, confirm identity, maintain reactionary gap at the door. Notify dispatch on arrival and clear.');
+    if (assessment.domesticViolence) {
+      lines.push('• DV flag set: verify the protected party is not present before approach; document timing in the attempt notes.');
+    }
     notes.push({
       id: `intake-safety-${Date.now()}`,
       author: 'OFFICER SAFETY',
-      text: `**${label}**\n${assessment.reasons.map((r) => `• ${r}`).join('\n')}`,
+      text: lines.join('\n'),
       timestamp: nowIso,
     });
   }
