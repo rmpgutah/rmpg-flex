@@ -69,6 +69,7 @@ import invoices from './routes/invoices';
 import useOfForce from './routes/useOfForce';
 import notificationsInbox from './routes/notificationsInbox';
 import community from './routes/community';
+import intel from './routes/intel';
 import interagency from './routes/interagency';
 import jail from './routes/jail';
 import offline from './routes/offline';
@@ -394,6 +395,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Use-of-force reports (UseOfForcePage). Defensive over the minimal use_of_force table; legacy 500d on it.' },
   { prefix: '/api/community', router: community, auth: 'required',
     note: 'Community engagement: events, tips, watch groups, alerts' },
+  { prefix: '/api/intel', router: intel, auth: 'required',
+    note: 'Intel Search: federated FTS5 search across record types (/search, /health, /reindex) + person entity-resolution suggestions. Migration 0098; index synced by the 4-hourly cron.' },
   { prefix: '/api/interagency', router: interagency, auth: 'required',
     note: 'Multi-jurisdiction data sharing: partners, agreements, exchange logs' },
   { prefix: '/api/jail', router: jail, auth: 'required',

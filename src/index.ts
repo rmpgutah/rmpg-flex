@@ -365,6 +365,18 @@ export default {
         .then((r) => { if (r.configured) console.log(`[sor] seen=${r.seen} upserted=${r.upserted}${r.error ? ` err=${r.error}` : ''}`); })
         .catch((err) => console.error('[sor] poll failed:', err)),
     );
+    // Intel Search index sync + person-resolution pass (migration 0098).
+    // Full re-sync is cheap at the current dataset size; failures are
+    // contained so they can't abort the other 4-hourly scans.
+    ctx.waitUntil(
+      import('./utils/intelIndexer')
+        .then(async ({ rebuildIntelIndex, computeResolutionSuggestions }) => {
+          const counts = await rebuildIntelIndex(env.DB);
+          const suggestions = await computeResolutionSuggestions(env.DB);
+          console.log(`[intel-index] synced ${JSON.stringify(counts)}, ${suggestions} resolution suggestions`);
+        })
+        .catch((err) => console.error('[intel-index] cron failed:', err)),
+    );
     // Dispatch anomaly detection — populates anomaly_alerts for the
     // AnomalyAlertBanner. Independent of the warrant scan; its own
     // catch so a failure here can't abort the warrant scan or crash
