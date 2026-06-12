@@ -11,6 +11,8 @@ struct RMPGFlexTesterApp: App {
                     .tabItem { Label("ID Scan", systemImage: "person.text.rectangle") }
                 FieldToolkitView()
                     .tabItem { Label("Toolkit", systemImage: "square.grid.3x3.fill") }
+                RecorderView()
+                    .tabItem { Label("Recorder", systemImage: "mic.fill") }
                 D1ConsoleView()
                     .tabItem { Label("D1 Console", systemImage: "terminal") }
                 CloudStatusView()
