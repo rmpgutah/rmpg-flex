@@ -441,6 +441,86 @@ dlRecords.get('/scan-log', async (c) => {
 });
 
 // ============================================================
+// Data-source configuration (admin) — feed URLs / API keys
+// ============================================================
+// Lets an admin wire the external data sources (Utah SOR feed,
+// CourtListener token) without touching the DB. Secrets are masked on
+// read. system_config has no UNIQUE(config_key) on live, so writes are
+// update-then-insert (mirrors admin.ts).
+const SOURCE_CONFIG_KEYS = ['sor_feed_url', 'sor_feed_key', 'courtlistener_token'] as const;
+
+async function readConfigValue(db: ReturnType<typeof getDb>, key: string): Promise<string> {
+  const r = await queryFirst<{ config_value: string }>(
+    db, `SELECT config_value FROM system_config WHERE config_key = ? ORDER BY id DESC LIMIT 1`, key);
+  return (r?.config_value || '').trim();
+}
+
+async function writeConfigValue(db: ReturnType<typeof getDb>, key: string, value: string): Promise<void> {
+  const r = await execute(db,
+    `UPDATE system_config SET config_value = ?, updated_at = datetime('now') WHERE config_key = ?`, value, key);
+  if (!r.meta.changes) {
+    await execute(db,
+      `INSERT INTO system_config (config_key, config_value, category) VALUES (?, ?, 'integrations')`, key, value);
+  }
+}
+
+function maskSecret(v: string): string {
+  if (!v) return '';
+  return v.length <= 6 ? '••••' : `${v.slice(0, 3)}••••${v.slice(-2)}`;
+}
+
+dlRecords.get('/sources-config', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const url = await readConfigValue(db, 'sor_feed_url');
+    const key = await readConfigValue(db, 'sor_feed_key');
+    const clToken = await readConfigValue(db, 'courtlistener_token');
+    const sorCount = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) n FROM utah_sex_offenders').catch(() => null);
+    const lastRun = await queryFirst<Record<string, any>>(
+      db, 'SELECT ran_at, status, records_seen, records_upserted FROM utah_sor_runs ORDER BY id DESC LIMIT 1').catch(() => null);
+    const courtCache = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) n FROM court_records_cache').catch(() => null);
+    return c.json({
+      sor_feed_url: url,                       // URL is not a secret — show in full
+      sor_feed_key_set: !!key, sor_feed_key_mask: maskSecret(key),
+      courtlistener_token_set: !!clToken, courtlistener_token_mask: maskSecret(clToken),
+      sor_records: sorCount?.n ?? 0,
+      sor_last_run: lastRun ?? null,
+      court_cache: courtCache?.n ?? 0,
+    });
+  } catch (err) {
+    return c.json({ error: 'Failed to read config', detail: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+dlRecords.put('/sources-config', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, any>>();
+    // Only write keys that are present. An empty string explicitly clears a
+    // value; `undefined` (key absent) leaves it untouched.
+    const written: string[] = [];
+    for (const k of SOURCE_CONFIG_KEYS) {
+      if (b[k] === undefined) continue;
+      const v = String(b[k] ?? '').trim();
+      if (k === 'sor_feed_url' && v && !/^https:\/\//i.test(v)) {
+        return c.json({ error: 'SOR feed URL must be HTTPS', code: 'BAD_URL' }, 400);
+      }
+      await writeConfigValue(db, k, v);
+      written.push(k);
+    }
+    await audit(db, (c.get('userId') as number) ?? null, 'sources_config_update', 0,
+      `Updated data-source config: ${written.join(', ') || 'none'}`);
+    return c.json({ success: true, updated: written });
+  } catch (err) {
+    return c.json({ error: 'Failed to save config', detail: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+// ============================================================
 // Utah Sex Offender Registry — status, import, manual poll
 // ============================================================
 // GET  /sor/status  — feed configured? row count + last run

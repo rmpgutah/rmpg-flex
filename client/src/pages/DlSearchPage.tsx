@@ -10,6 +10,7 @@ import {useState, useCallback, useEffect, useRef} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Camera, Loader2, X, Eye, ScanLine, UserCheck, Upload, History } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import type { ReadoutRow, ScanAlert, LeField } from '../utils/aamvaParser';
 import LiveDlScanner from '../components/LiveDlScanner';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -89,6 +90,8 @@ interface DlSearchResponse {
 
 export default function DlSearchPage() {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
+  const canManageSources = user?.role === 'admin' || user?.role === 'manager';
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
@@ -127,6 +130,42 @@ export default function DlSearchPage() {
   const [scanHistory, setScanHistory] = useState<any[] | null>(null);
   const [scanHistoryLoading, setScanHistoryLoading] = useState(false);
   const [scanHistoryMine, setScanHistoryMine] = useState(false);
+
+  // ── Data-source config (admin) ──
+  const [showSources, setShowSources] = useState(false);
+  const [sourcesCfg, setSourcesCfg] = useState<any>(null);
+  const [sourcesSaving, setSourcesSaving] = useState(false);
+  const [sorUrl, setSorUrl] = useState('');
+  const [sorKey, setSorKey] = useState('');
+  const [clToken, setClToken] = useState('');
+
+  const loadSources = useCallback(() => {
+    apiFetch<any>('/dl-records/sources-config')
+      .then(d => { setSourcesCfg(d); setSorUrl(d?.sor_feed_url || ''); setSorKey(''); setClToken(''); })
+      .catch(() => addToast('Failed to load data-source config', 'error'));
+  }, [addToast]);
+
+  const saveSources = useCallback(async () => {
+    setSourcesSaving(true);
+    try {
+      const body: any = { sor_feed_url: sorUrl };
+      if (sorKey) body.sor_feed_key = sorKey;          // only send if entered (don't clobber)
+      if (clToken) body.courtlistener_token = clToken;
+      await apiFetch('/dl-records/sources-config', { method: 'PUT', body: JSON.stringify(body) });
+      addToast('Data-source config saved', 'success');
+      loadSources();
+    } catch (err: any) {
+      addToast(err?.message || 'Save failed', 'error');
+    } finally { setSourcesSaving(false); }
+  }, [sorUrl, sorKey, clToken, addToast, loadSources]);
+
+  const runSorPoll = useCallback(async () => {
+    try {
+      const r = await apiFetch<any>('/dl-records/sor/poll', { method: 'POST' });
+      addToast(r?.configured ? `SOR poll: ${r.upserted} record(s) loaded` : 'No SOR feed configured', r?.configured ? 'success' : 'warning');
+      loadSources();
+    } catch (err: any) { addToast(err?.message || 'Poll failed', 'error'); }
+  }, [addToast, loadSources]);
 
   const loadScanHistory = useCallback((mine: boolean) => {
     setScanHistoryLoading(true);
@@ -616,6 +655,11 @@ export default function DlSearchPage() {
       <button type="button" onClick={() => { setShowScanHistory(true); loadScanHistory(scanHistoryMine); }} className="toolbar-btn text-[10px]">
         <History className="w-3 h-3" /> History
       </button>
+      {canManageSources && (
+        <button type="button" onClick={() => { setShowSources(true); loadSources(); }} className="toolbar-btn text-[10px]">
+          <Database className="w-3 h-3" /> Sources
+        </button>
+      )}
     </div>
   );
 
@@ -952,6 +996,68 @@ export default function DlSearchPage() {
           )}
         </div>
       </div>
+
+      {showSources && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#141414] border border-[#1a1a1a] rounded-sm max-w-lg w-full max-h-[88vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] bg-[#0c0c0c]">
+              <div className="flex items-center gap-2">
+                <Database size={14} className="text-[#d4a017]" />
+                <span className="text-[12px] font-bold text-white uppercase tracking-wider">Data Sources</span>
+                <span className="text-[8px] text-[#556677] uppercase">admin</span>
+              </div>
+              <button type="button" onClick={() => setShowSources(false)} className="text-[#556677] hover:text-white"><X size={16} /></button>
+            </div>
+            <div className="p-4 space-y-4">
+              {/* Utah SOR feed */}
+              <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
+                <div className="px-3 py-1.5 border-b border-[#1a1a1a] flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Utah Sex Offender Registry Feed</span>
+                  <span className="text-[8px] text-[#556677]">{sourcesCfg?.sor_records ?? 0} records</span>
+                </div>
+                <div className="p-3 space-y-2">
+                  <p className="text-[9px] text-[#556677] leading-relaxed">Agency-authorized feed (OffenderWatch LE API / Utah BCI). Leave blank if you don't have one — never scrape the public site.</p>
+                  <div>
+                    <label className="text-[8px] text-[#556677] uppercase font-mono">Feed URL (HTTPS)</label>
+                    <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" placeholder="https://..." value={sorUrl} onChange={e => setSorUrl(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-[8px] text-[#556677] uppercase font-mono">API Key {sourcesCfg?.sor_feed_key_set && <span className="text-[#7fb069]">· set ({sourcesCfg.sor_feed_key_mask})</span>}</label>
+                    <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" type="password" placeholder={sourcesCfg?.sor_feed_key_set ? 'leave blank to keep current' : 'bearer token'} value={sorKey} onChange={e => setSorKey(e.target.value)} />
+                  </div>
+                  {sourcesCfg?.sor_last_run && (
+                    <p className="text-[8px] text-[#556677]">Last poll: {sourcesCfg.sor_last_run.status} · {sourcesCfg.sor_last_run.records_upserted} upserted · {parseTimestamp(sourcesCfg.sor_last_run.ran_at).toLocaleString()}</p>
+                  )}
+                  <button type="button" onClick={runSorPoll} className="px-2.5 py-1 bg-[#141414] border border-[#2e2e2e] rounded-sm text-[9px] font-bold text-[#c0ccdd] hover:text-white">Run poll now</button>
+                </div>
+              </div>
+
+              {/* CourtListener */}
+              <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
+                <div className="px-3 py-1.5 border-b border-[#1a1a1a] flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">CourtListener / PACER</span>
+                  <span className="text-[8px] text-[#556677]">{sourcesCfg?.court_cache ?? 0} cached</span>
+                </div>
+                <div className="p-3 space-y-2">
+                  <p className="text-[9px] text-[#556677] leading-relaxed">Optional token raises the rate limit — federal court lookups work anonymously without one. Get a free token at courtlistener.com.</p>
+                  <div>
+                    <label className="text-[8px] text-[#556677] uppercase font-mono">API Token {sourcesCfg?.courtlistener_token_set && <span className="text-[#7fb069]">· set ({sourcesCfg.courtlistener_token_mask})</span>}</label>
+                    <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" type="password" placeholder={sourcesCfg?.courtlistener_token_set ? 'leave blank to keep current' : 'optional token'} value={clToken} onChange={e => setClToken(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[8px] text-[#556677] leading-relaxed">DMV/MVR (MicroBilt) and RapidAPI DL require a licensed broker contract and are configured separately under Admin → Integrations. Utah UCJIS/BCI requires a credentialed terminal connection.</p>
+            </div>
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1a1a1a] bg-[#0c0c0c]">
+              <button type="button" onClick={saveSources} disabled={sourcesSaving} className="flex items-center gap-2 px-4 py-2 bg-[#d4a017] hover:bg-[#b88a12] disabled:opacity-40 rounded-sm text-[11px] font-bold text-black">
+                {sourcesSaving ? <Loader2 size={13} className="animate-spin" /> : null} Save
+              </button>
+              <button type="button" onClick={() => setShowSources(false)} className="px-4 py-2 bg-[#181818] hover:bg-[#1a1a1a] border border-[#1a1a1a] rounded-sm text-[11px] text-[#8899aa] hover:text-white">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showScanHistory && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
