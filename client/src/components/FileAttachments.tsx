@@ -20,6 +20,8 @@ import { apiUploadFilesWithProgress, apiFetchAttachments, apiDeleteAttachment } 
 import type { UploadProgress } from '../hooks/useApi';
 import UploadProgressBar from './ui/UploadProgressBar';
 import ConfirmDialog from './ConfirmDialog';
+import { useAuth } from '../context/AuthContext';
+import { stampPhoto, getGeoFix, contextLabelForEntity } from '../utils/photoStamp';
 
 interface Attachment {
   id: number;
@@ -40,6 +42,12 @@ interface FileAttachmentsProps {
   entityId: string | number;
   readOnly?: boolean;
   compact?: boolean;
+  /** Override the burned-in photo-context label (else derived from entityType). */
+  photoContext?: string;
+  /** Case/incident number woven into the stamp for evidence photos. */
+  caseNumber?: string;
+  /** Disable the forensic photo stamp for this surface (default: on). */
+  disablePhotoStamp?: boolean;
 }
 
 const TOKEN_KEY = 'rmpg_token';
@@ -114,7 +122,11 @@ export default function FileAttachments({
   entityId,
   readOnly = false,
   compact = false,
+  photoContext,
+  caseNumber,
+  disablePhotoStamp = false,
 }: FileAttachmentsProps) {
+  const { user } = useAuth();
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -147,8 +159,26 @@ export default function FileAttachments({
   }, [fetchFiles]);
 
   const handleUpload = async (files: FileList | File[]) => {
-    const fileArray = Array.from(files);
+    let fileArray = Array.from(files);
     if (fileArray.length === 0) return;
+
+    // ── Forensic photo stamp ──
+    // Burn timestamp + geo + officer + context into every image before
+    // upload, so the metadata is part of the pixels (chain of custody).
+    // Best-effort: a stamp failure (geo denied, decode error) never blocks
+    // the upload — stampPhoto returns the original on any error.
+    if (!disablePhotoStamp && fileArray.some(f => f.type.startsWith('image/'))) {
+      try {
+        const geo = await getGeoFix();
+        const context = photoContext || contextLabelForEntity(entityType, caseNumber);
+        const officerLast = (user?.last_name || user?.full_name?.split(' ').slice(-1)[0] || user?.username || '').trim();
+        fileArray = await Promise.all(fileArray.map(f =>
+          f.type.startsWith('image/')
+            ? stampPhoto(f, { officerLast, badge: user?.badge_number, context, lat: geo?.lat, lon: geo?.lon })
+            : Promise.resolve(f),
+        ));
+      } catch { /* leave files unstamped on any failure */ }
+    }
 
     setUploading(true);
     setError(null);

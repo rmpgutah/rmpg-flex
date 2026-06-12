@@ -9,7 +9,7 @@
 import {useState, useCallback, useEffect, useRef} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Camera, Loader2, X, Eye, ScanLine, UserCheck, Upload, History } from 'lucide-react';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, apiUploadFilesWithProgress } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import type { ReadoutRow, ScanAlert, LeField } from '../utils/aamvaParser';
 import LiveDlScanner from '../components/LiveDlScanner';
@@ -24,6 +24,22 @@ import { useAuth } from '../context/AuthContext';
 
 // QR code that opens this scanner page on the officer's phone —
 // scans made there relay to this desktop session automatically.
+// Thumbnail for a captured ID card image blob (revokes its object URL on unmount).
+function ImgThumb({ blob, label }: { blob: Blob; label: string }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    const u = URL.createObjectURL(blob);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [blob]);
+  return (
+    <div className="relative flex-shrink-0">
+      {url && <img src={url} alt={`ID ${label}`} className="w-16 h-10 object-cover border border-[#2e2e2e] rounded-sm bg-black" />}
+      <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[7px] font-bold text-[#d4a017] text-center uppercase">{label}</span>
+    </div>
+  );
+}
+
 function PhoneScanQr() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -119,13 +135,44 @@ export default function DlSearchPage() {
   const [scanMatches, setScanMatches] = useState<any[] | null>(null);
   const [matchLoading, setMatchLoading] = useState(false);
   const [uploadedRecord, setUploadedRecord] = useState<number | null>(null);
+  // Front + back ID card images captured by the guided scanner — kept so
+  // they can be filed under the person record on create/merge.
+  const [cardImages, setCardImages] = useState<{ front: Blob | null; back: Blob | null }>({ front: null, back: null });
+  const [cardSavedTo, setCardSavedTo] = useState<number | null>(null);
+
+  // Stamp + upload the captured ID card images to a person record.
+  const fileCardImagesTo = useCallback(async (personId: number) => {
+    const { front, back } = cardImages;
+    if ((!front && !back) || cardSavedTo === personId) return;
+    try {
+      const { stampPhoto, getGeoFix } = await import('../utils/photoStamp');
+      const geo = await getGeoFix();
+      const officerLast = (user?.last_name || user?.full_name?.split(' ').slice(-1)[0] || user?.username || '').trim();
+      const mk = (blob: Blob, side: 'FRONT' | 'BACK') =>
+        stampPhoto(new File([blob], `id-${side.toLowerCase()}-${personId}.jpg`, { type: 'image/jpeg' }), {
+          officerLast, badge: user?.badge_number, context: `ID ${side} — PERSONS RECORD`, lat: geo?.lat, lon: geo?.lon,
+        });
+      const files: File[] = [];
+      if (front) files.push(await mk(front, 'FRONT'));
+      if (back) files.push(await mk(back, 'BACK'));
+      if (!files.length) return;
+      await apiUploadFilesWithProgress(files, 'person', personId, () => {});
+      setCardSavedTo(personId);
+      addToast(`ID card image${files.length > 1 ? 's' : ''} filed to record #${personId}`, 'success');
+    } catch {
+      addToast('ID card images could not be filed', 'warning');
+    }
+  }, [cardImages, cardSavedTo, user, addToast]);
   const [scanAlerts, setScanAlerts] = useState<ScanAlert[]>([]);
   const [leFields, setLeFields] = useState<LeField[] | null>(null);
   const [leBlock, setLeBlock] = useState('');
+  const [scanEval, setScanEval] = useState<import('../utils/dlFunctions').DlEvaluation | null>(null);
   const [deepSweep, setDeepSweep] = useState<{ sources: any[]; total: number } | null>(null);
   const [deepSweepLoading, setDeepSweepLoading] = useState(false);
   const [courtRecords, setCourtRecords] = useState<any[] | null>(null);
   const [courtLoading, setCourtLoading] = useState(false);
+  const [fbiRecords, setFbiRecords] = useState<any[] | null>(null);
+  const [fbiLoading, setFbiLoading] = useState(false);
   const [showLiveScanner, setShowLiveScanner] = useState(false);
   const [showScanHistory, setShowScanHistory] = useState(false);
   const [scanHistory, setScanHistory] = useState<any[] | null>(null);
@@ -223,7 +270,7 @@ export default function DlSearchPage() {
         }
         setScanReadout(null);
         setScanAlerts([]);
-        setLeFields(null);
+        setLeFields(null); setScanEval(null);
         setLeBlock('');
         setUploadedRecord(null);
         setShowFullReadout(false);
@@ -244,6 +291,18 @@ export default function DlSearchPage() {
     setScanMatches(null);
     setDeepSweep(null);
     setCourtRecords(null);
+    setFbiRecords(null);
+
+    // FBI Wanted (official public API) — external, fired in parallel.
+    if (parsed.last_name && parsed.last_name.length >= 2) {
+      setFbiLoading(true);
+      const fq = new URLSearchParams({ last: parsed.last_name });
+      if (parsed.first_name) fq.set('first', parsed.first_name);
+      apiFetch<{ records: any[] }>(`/dl-records/fbi-lookup?${fq}`)
+        .then(d => setFbiRecords(Array.isArray(d?.records) ? d.records : []))
+        .catch(() => setFbiRecords([]))
+        .finally(() => setFbiLoading(false));
+    }
 
     // Open-source federal court records (CourtListener) — external API,
     // fired in parallel so it never blocks the D1 sweep.
@@ -434,6 +493,13 @@ export default function DlSearchPage() {
       setScanAlerts(assessAamva(parsed));
       setLeFields(formatLawEnforcement(parsed));
       setLeBlock(formatLeBlock(parsed));
+      // Derived DL intelligence via the shared dlFunctions library — the same
+      // evaluateDl() bridge call the iOS app uses, so phone + desktop produce
+      // identical analysis from one parse.
+      try {
+        const { evaluateDl } = await import('../utils/dlFunctions');
+        setScanEval(evaluateDl(parsed));
+      } catch { setScanEval(null); }
       const resultObj = {
           first_name: parsed.first_name,
           middle_name: parsed.middle_name,
@@ -491,7 +557,7 @@ export default function DlSearchPage() {
     setScanReadout(null);
     setScanMatches(null);
     setScanAlerts([]);
-    setLeFields(null);
+    setLeFields(null); setScanEval(null);
     setLeBlock('');
     setShowFullReadout(false);
     setUploadedRecord(null);
@@ -601,6 +667,8 @@ export default function DlSearchPage() {
       if (resp?.id) {
         addToast(`Person record #${resp.id} created for ${ocrResult.first_name} ${ocrResult.last_name}`, 'success');
         setUploadedRecord(resp.id);
+        // File the captured front + back ID images under the new record.
+        fileCardImagesTo(resp.id);
         // Also save as DL record
         try {
           await apiFetch('/dl-records', {
@@ -615,7 +683,7 @@ export default function DlSearchPage() {
     } catch (err: any) {
       addToast(err.message || 'Failed to create person record', 'error');
     }
-  }, [ocrResult, addToast]);
+  }, [ocrResult, addToast, fileCardImagesTo]);
 
   const sourceBadge = (_src: string) => (
     <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-gray-900/50 text-gray-400 border border-gray-700/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>
@@ -702,7 +770,13 @@ export default function DlSearchPage() {
         className="hidden"
         onChange={e => {
           const file = e.target.files?.[0];
-          if (file) handleOcrUpload(file);
+          if (file) {
+            // Manual upload: no guided card capture → clear any stale images
+            // so a prior scan's front/back can't attach to this subject.
+            setCardImages({ front: null, back: null });
+            setCardSavedTo(null);
+            handleOcrUpload(file);
+          }
           e.target.value = '';
         }}
       />
@@ -791,7 +865,7 @@ export default function DlSearchPage() {
                             className="w-full flex items-center justify-between gap-2 px-2 py-1 text-left hover:bg-[#141414] border-b border-[#101010]"
                           >
                             <span className="text-[10px] text-[#c0ccdd] truncate">{s.name || 'UNKNOWN'}</span>
-                            <span className="text-[8px] font-mono text-[#556677] flex-shrink-0">{s.dl_state} {s.dl_number} · {new Date(s.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            <span className="text-[8px] font-mono text-[#556677] flex-shrink-0">{s.dl_state} {s.dl_number} · {new Date(s.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{/* new-date-ok: s.ts is an epoch-ms number (Date.now()), not a server string */}</span>
                           </button>
                         ))}
                       </div>
@@ -1161,10 +1235,22 @@ export default function DlSearchPage() {
 
       {showLiveScanner && (
         <LiveDlScanner
-          onDecoded={async (text) => {
+          onComplete={async ({ barcodeText, frontImage, backImage }) => {
             setShowLiveScanner(false);
-            const ok = await processBarcodeText(text);
-            if (!ok) addToast('Barcode read but not a driver license payload', 'warning');
+            // Retain both card images for filing under the person record.
+            setCardImages({ front: frontImage, back: backImage });
+            setCardSavedTo(null);
+            if (barcodeText) {
+              const ok = await processBarcodeText(barcodeText);
+              if (!ok) addToast('Barcode read but not a driver license payload', 'warning');
+            } else if (frontImage || backImage) {
+              // No barcode — fall back to OCR on the captured front image.
+              if (frontImage) {
+                await handleOcrUpload(new File([frontImage], 'id-front.jpg', { type: 'image/jpeg' }));
+              } else {
+                addToast('Captured images — no barcode read; review and upload', 'warning');
+              }
+            }
           }}
           onClose={() => setShowLiveScanner(false)}
           onUploadInstead={() => { setShowLiveScanner(false); fileInputRef.current?.click(); }}
@@ -1198,8 +1284,14 @@ export default function DlSearchPage() {
             </div>
             <div className="p-4 space-y-3">
               {/* ── Officer-safety + status alerts ── */}
-              {(scanMatches?.some((m: any) => m.active_warrants > 0) || scanAlerts.length > 0 || deepSweep?.sources.some((s: any) => s.danger) || (deepSweep as any)?.profile?.person) && (
+              {(scanMatches?.some((m: any) => m.active_warrants > 0) || scanAlerts.length > 0 || deepSweep?.sources.some((s: any) => s.danger) || (deepSweep as any)?.profile?.person || (fbiRecords && fbiRecords.length > 0)) && (
                 <div className="space-y-1">
+                  {fbiRecords?.filter((r: any) => r.is_danger).map((r: any, i: number) => (
+                    <div key={`fbi-${i}`} className="flex items-center gap-2 px-3 py-2 bg-red-900/40 border border-red-600/70 text-red-300 text-[11px] font-bold uppercase tracking-wide">
+                      <AlertTriangle size={14} className="flex-shrink-0 text-red-400" />
+                      ⚠ FBI WANTED — {r.title}{r.warning ? ` · ${r.warning}` : ''} (verify identity)
+                    </div>
+                  ))}
                   {(() => {
                     const p = (deepSweep as any)?.profile?.person;
                     if (!p) return null;
@@ -1239,6 +1331,18 @@ export default function DlSearchPage() {
                       {a.message}
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* ── Captured ID card images ── */}
+              {(cardImages.front || cardImages.back) && (
+                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c] flex items-center gap-3 p-2">
+                  {cardImages.front && <ImgThumb blob={cardImages.front} label="FRONT" />}
+                  {cardImages.back && <ImgThumb blob={cardImages.back} label="BACK" />}
+                  <span className="text-[9px] text-[#8899aa] leading-snug">
+                    ID card image{cardImages.front && cardImages.back ? 's' : ''} captured —
+                    {cardSavedTo ? <span className="text-[#7fb069]"> filed to record #{cardSavedTo}</span> : ' will be filed to the person record on create / pull.'}
+                  </span>
                 </div>
               )}
 
@@ -1284,8 +1388,9 @@ export default function DlSearchPage() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => { setShowOcrPreview(false); navigate(`/records?tab=persons&personId=${p.id}`); }}
+                          onClick={async () => { await fileCardImagesTo(p.id); setShowOcrPreview(false); navigate(`/records?tab=persons&personId=${p.id}`); }}
                           className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#d4a017] hover:bg-[#b88a12] rounded-sm text-[10px] font-bold text-black flex-shrink-0"
+                          title="Open the matched record and file the captured ID images to it"
                         >
                           <UserCheck size={12} /> Pull Record
                         </button>
@@ -1404,6 +1509,37 @@ export default function DlSearchPage() {
                 );
               })()}
 
+              {/* ── FBI Wanted (official public API) ── */}
+              {(fbiLoading || (fbiRecords && fbiRecords.length > 0)) && (
+                <div className="border border-red-700/40 rounded-sm bg-[#0c0c0c]">
+                  <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-red-400">
+                    <Shield size={11} /> FBI Wanted
+                    {fbiLoading
+                      ? <Loader2 size={10} className="animate-spin" />
+                      : <span>{fbiRecords!.length} bulletin{fbiRecords!.length === 1 ? '' : 's'}</span>}
+                  </div>
+                  {fbiRecords && fbiRecords.length > 0 && (
+                    <div className="px-3 py-1 text-[8px] text-[#7a6a3a] bg-[#15120a] border-b border-[#1a1a1a]">
+                      ⚠ Name match against FBI bulletins — verify identity (DOB/photo) before acting.
+                    </div>
+                  )}
+                  {fbiRecords && fbiRecords.map((r: any, i: number) => (
+                    <div key={i} className="px-3 py-1.5 text-[10px] border-t border-[#101010] flex items-start gap-2 bg-red-900/10">
+                      {r.image && <img src={r.image} alt="FBI bulletin" className="w-10 h-12 object-cover border border-[#2e2e2e] bg-black flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-white font-bold">{r.title}</span>
+                          {r.warning && <span className="text-[7px] font-bold px-1 py-px bg-red-900/60 text-red-300 border border-red-600/70 uppercase">{r.warning}</span>}
+                        </div>
+                        <div className="text-[#8899aa] mt-0.5">{[r.subjects, r.sex, r.race, r.dob && `DOB ${r.dob}`].filter(Boolean).join(' · ')}</div>
+                        {r.caution && <div className="text-[#a89878] mt-0.5 leading-snug">{r.caution.slice(0, 180)}{r.caution.length > 180 ? '…' : ''}</div>}
+                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[#d4a017] hover:underline">FBI bulletin ↗</a>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* ── Open-source federal court records (CourtListener) ── */}
               {(courtLoading || (courtRecords && courtRecords.length > 0)) && (
                 <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
@@ -1430,6 +1566,45 @@ export default function DlSearchPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* ── DL Analysis (shared dlFunctions library / iOS bridge) ── */}
+              {scanEval && (
+                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
+                  <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+                    <Shield size={11} /> DL Analysis
+                    <span className="text-[#556677] normal-case tracking-normal">scan quality {scanEval.quality}%{scanEval.usable ? '' : ' · review'}</span>
+                  </div>
+                  <div className="p-2 flex flex-wrap gap-1">
+                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${scanEval.dlValid ? 'bg-[#141414] text-[#7fb069] border-[#2e2e2e]' : 'bg-amber-900/30 text-amber-400 border-amber-700/50'}`}>
+                      DL# {scanEval.dlValid ? 'valid format' : 'format mismatch'}
+                    </span>
+                    {scanEval.jurisdictionName && (
+                      <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-[#141414] text-[#c0ccdd] border-[#2e2e2e]">{scanEval.jurisdictionName} ({scanEval.country})</span>
+                    )}
+                    {scanEval.age !== null && (
+                      <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-[#141414] text-[#c0ccdd] border-[#2e2e2e]">Age {scanEval.age} · {scanEval.ageBracket}</span>
+                    )}
+                    {scanEval.eligibility.minor && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-red-900/40 text-red-300 border-red-600/70">MINOR</span>}
+                    {!scanEval.eligibility.minor && scanEval.eligibility.under21 && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-amber-900/30 text-amber-400 border-amber-700/50">UNDER 21</span>}
+                    {scanEval.eligibility.drinking && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-[#141414] text-[#7fb069] border-[#2e2e2e]">21+</span>}
+                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${scanEval.expiry === 'expired' ? 'bg-red-900/40 text-red-300 border-red-600/70' : scanEval.expiry === 'expiring' ? 'bg-amber-900/30 text-amber-400 border-amber-700/50' : 'bg-[#141414] text-[#7fb069] border-[#2e2e2e]'}`}>
+                      License {scanEval.expiry}
+                    </span>
+                    {scanEval.badges.map((b: string) => (
+                      <span key={b} className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-[#141414] text-[#c0ccdd] border-[#2e2e2e]">{b}</span>
+                    ))}
+                  </div>
+                  {(scanEval.endorsements.length > 0 || scanEval.restrictions.length > 0) && (
+                    <div className="px-3 py-1 border-t border-[#141414] text-[9px] text-[#8899aa] space-y-0.5">
+                      {scanEval.endorsements.length > 0 && <div><span className="text-[#556677] uppercase">Endorsements:</span> {scanEval.endorsements.join(', ')}</div>}
+                      {scanEval.restrictions.length > 0 && <div><span className="text-[#556677] uppercase">Restrictions:</span> {scanEval.restrictions.join(', ')}</div>}
+                    </div>
+                  )}
+                  {scanEval.missing.length > 0 && (
+                    <div className="px-3 py-1 border-t border-[#141414] text-[9px] text-amber-400">Missing: {scanEval.missing.join(', ')}</div>
+                  )}
                 </div>
               )}
 
@@ -1594,7 +1769,7 @@ export default function DlSearchPage() {
                   try {
                     const { generateSafetySheet } = await import('../utils/dlSafetySheet');
                     const doc = generateSafetySheet({
-                      ocrResult, leFields, scanAlerts, scanMatches, deepSweep, courtRecords,
+                      ocrResult, leFields, scanAlerts, scanMatches, deepSweep, courtRecords, fbiRecords,
                       officerName: undefined,
                     });
                     doc.save(`safety-brief-${(ocrResult?.last_name || 'subject')}-${Date.now()}.pdf`);
