@@ -181,7 +181,18 @@ export const GlobalSearch: React.FC = () => {
 
         <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-600 text-[10px] text-rmpg-600">
           <span>↑↓ navigate • Enter open • Esc close</span>
-          {query.trim() && <span>{results.length} result{results.length === 1 ? '' : 's'}</span>}
+          <span className="flex items-center gap-3">
+            {query.trim() && (
+              <button
+                type="button"
+                onClick={() => { navigate(`/intel?q=${encodeURIComponent(query)}`); handleClose(); }}
+                className="text-[#d4a017] hover:underline"
+              >
+                Open in Intel Search →
+              </button>
+            )}
+            {query.trim() && <span>{results.length} result{results.length === 1 ? '' : 's'}</span>}
+          </span>
         </div>
       </div>
     </div>,

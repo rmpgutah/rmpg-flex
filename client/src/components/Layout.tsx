@@ -178,6 +178,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/downloads': 'Downloads',
   '/geography': 'Dispatch Geography',
   '/connections': 'Connections',
+  '/intel': 'Intel Search',
   '/skip-tracer': 'Skip Tracer',
   '/arrest-records': 'Arrest Records',
   '/serve-intake': 'Service Intake',
@@ -257,6 +258,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
     { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
     { path: '/forensics', icon: Network, label: 'Connections' },
+    { path: '/intel', icon: ScanSearch, label: 'Intel Search' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
     { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
     { path: '/web-research', icon: Globe, label: 'Web Research' },
@@ -306,6 +308,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
     { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
     { path: '/forensics', icon: Network, label: 'Connections' },
+    { path: '/intel', icon: ScanSearch, label: 'Intel Search' },
     { path: '/invoices', icon: DollarSign, label: 'Invoices' },
   ]},
   { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis', children: [
@@ -319,6 +322,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true, children: [
     { path: '/forensics', icon: Network, label: 'Connection Analysis' },
+    { path: '/intel', icon: ScanSearch, label: 'Intel Search' },
     { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
     { path: '/iped', icon: Microscope, label: 'IPED Forensics' },
   ]},

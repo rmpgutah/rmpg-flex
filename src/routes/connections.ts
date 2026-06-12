@@ -240,6 +240,42 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('trespass_order', r.id, 'trespassed_from', 'trespass_orders');
         for (const r of await query<any>(db, 'SELECT id FROM serve_queue WHERE recipient_person_id = ?', id))
           add('serve_job', r.id, 'serve_recipient', 'serve_queue');
+
+        // ── Derived person↔person edges (Palantir Phase 3) ──
+        // Labeled semantic links so analysts see WHY two people connect
+        // without hopping through an event node. Each rule is capped and
+        // guarded; sentinel strings ("None"/"N/A"/"0") never match.
+        // 2a. Confirmed linked identities (entity resolution, mig 0098).
+        try {
+          for (const r of await query<any>(db,
+            `SELECT person_id, canonical_person_id FROM person_canonical
+             WHERE person_id = ? OR canonical_person_id = ?
+                OR canonical_person_id = (SELECT canonical_person_id FROM person_canonical WHERE person_id = ?)
+             LIMIT 10`, id, id, id)) {
+            const other = r.person_id === id ? r.canonical_person_id : r.person_id;
+            if (other !== id) add('person', other, 'linked_identity', 'person_canonical');
+          }
+        } catch (err: any) { console.error('[Connections] linked_identity edges error:', err?.message); }
+        // 2b. Shared address (exact, sentinel-guarded).
+        try {
+          for (const r of await query<any>(db,
+            `SELECT p2.id FROM persons p1 JOIN persons p2
+               ON p2.address = p1.address AND p2.id != p1.id
+             WHERE p1.id = ? AND p1.address IS NOT NULL AND TRIM(p1.address) != ''
+               AND LOWER(TRIM(p1.address)) NOT IN ('none','n/a','na','null','0','unknown')
+             LIMIT 8`, id))
+            add('person', r.id, 'shares_address', 'persons');
+        } catch (err: any) { console.error('[Connections] shares_address edges error:', err?.message); }
+        // 2c. Shared phone (exact, sentinel-guarded).
+        try {
+          for (const r of await query<any>(db,
+            `SELECT p2.id FROM persons p1 JOIN persons p2
+               ON p2.phone = p1.phone AND p2.id != p1.id
+             WHERE p1.id = ? AND p1.phone IS NOT NULL AND TRIM(p1.phone) != ''
+               AND LOWER(TRIM(p1.phone)) NOT IN ('none','n/a','na','null','0','unknown')
+             LIMIT 8`, id))
+            add('person', r.id, 'shares_phone', 'persons');
+        } catch (err: any) { console.error('[Connections] shares_phone edges error:', err?.message); }
         break;
       }
 

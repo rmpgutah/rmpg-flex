@@ -324,6 +324,15 @@ export default {
         sweepTrips(env.DB, env).then((n) => { if (n) console.log(`[trips] sweep closed ${n}`); })
           .catch((err) => console.error('[trips] sweep failed:', err)),
       );
+      // Intel watchlist sweep — alerts when a watched person/vehicle
+      // appears in new activity (notifications inbox, HIGH priority).
+      // No-ops cheaply when intel_watchlist is empty or missing.
+      ctx.waitUntil(
+        import('./utils/intelWatchlist')
+          .then(({ sweepWatchlist }) => sweepWatchlist(env.DB))
+          .then((n) => { if (n) console.log(`[watchlist] ${n} alert(s) raised`); })
+          .catch((err) => console.error('[watchlist] sweep failed:', err)),
+      );
       // Email poll — throttled internally by ms_email_last_sync vs
       // ms_email_poll_interval. No-op when not configured.
       ctx.waitUntil(
@@ -364,6 +373,18 @@ export default {
       runUtahSorPoll(env.DB)
         .then((r) => { if (r.configured) console.log(`[sor] seen=${r.seen} upserted=${r.upserted}${r.error ? ` err=${r.error}` : ''}`); })
         .catch((err) => console.error('[sor] poll failed:', err)),
+    );
+    // Intel Search index sync + person-resolution pass (migration 0098).
+    // Full re-sync is cheap at the current dataset size; failures are
+    // contained so they can't abort the other 4-hourly scans.
+    ctx.waitUntil(
+      import('./utils/intelIndexer')
+        .then(async ({ rebuildIntelIndex, computeResolutionSuggestions }) => {
+          const counts = await rebuildIntelIndex(env.DB);
+          const suggestions = await computeResolutionSuggestions(env.DB);
+          console.log(`[intel-index] synced ${JSON.stringify(counts)}, ${suggestions} resolution suggestions`);
+        })
+        .catch((err) => console.error('[intel-index] cron failed:', err)),
     );
     // Dispatch anomaly detection — populates anomaly_alerts for the
     // AnomalyAlertBanner. Independent of the warrant scan; its own
