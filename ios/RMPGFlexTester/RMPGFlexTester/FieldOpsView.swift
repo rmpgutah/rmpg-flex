@@ -15,6 +15,8 @@ struct FieldOpsView: View {
     @State private var status: String?
     @State private var busyAction = false
     @State private var confirmPanic = false
+    @State private var showStartSheet = false
+    @State private var showEndSheet = false
     @State private var gpsPushedAt: Date?
 
     private var onShift: Bool { duty["on_shift"] as? Bool ?? false }
@@ -59,6 +61,20 @@ struct FieldOpsView: View {
                     await refresh()
                 }
             }
+            .sheet(isPresented: $showStartSheet) {
+                ShiftStartSheet(dutyState: duty) { msg in
+                    status = msg
+                    Task { await refresh() }
+                }
+                .presentationBackground(Theme.base)
+            }
+            .sheet(isPresented: $showEndSheet) {
+                ShiftEndSheet(dutyState: duty) { msg in
+                    status = msg
+                    Task { await refresh() }
+                }
+                .presentationBackground(Theme.base)
+            }
             .alert("SEND PANIC ALARM?", isPresented: $confirmPanic) {
                 Button("SEND PANIC", role: .destructive) { Task { await panic() } }
                 Button("Cancel", role: .cancel) {}
@@ -81,8 +97,8 @@ struct FieldOpsView: View {
                         .foregroundStyle(.white)
                 }
             }
-            Button(onShift ? "END SHIFT" : "START SHIFT") {
-                Task { await dutyAction(onShift ? "end" : "start") }
+            Button(onShift ? "END SHIFT (POST-TRIP)" : "START SHIFT (PRE-TRIP)") {
+                if onShift { showEndSheet = true } else { showStartSheet = true }
             }
             .font(.system(size: 13, weight: .bold))
             .frame(maxWidth: .infinity).padding(.vertical, 10)
@@ -181,6 +197,9 @@ struct FieldOpsView: View {
         await authed { c in
             if let state = try await c.requestJSON("GET", "api/dispatch/duty/me") as? [String: Any] {
                 duty = state
+                BackgroundDuty.shared.setActive(
+                    state["on_shift"] as? Bool ?? false,
+                    currentCallId: ((state["unit"] as? [String: Any])?["current_call_id"]) as? Int)
             }
             // Assigned call: the unit row carries current_call_id; resolve it.
             if let unit = duty["unit"] as? [String: Any],

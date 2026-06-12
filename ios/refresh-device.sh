@@ -44,6 +44,8 @@ cat > "$APP/Info.plist" <<EOF
 <key>MinimumOSVersion</key><string>17.0</string>
 <key>NSCameraUsageDescription</key><string>Scan driver license barcodes to relay identity data to your MDT desktop session.</string>
 <key>NSLocationWhenInUseUsageDescription</key><string>Send your unit position to the dispatch map and attach coordinates to panic alerts.</string>
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key><string>While on shift, your unit position streams to the dispatch map even when the phone is pocketed, and you get alerts when dispatch assigns you a call.</string>
+<key>UIBackgroundModes</key><array><string>location</string></array>
 <key>CFBundleIcons</key><dict>
   <key>CFBundlePrimaryIcon</key><dict>
     <key>CFBundleIconFiles</key><array><string>AppIcon60x60</string></array>
