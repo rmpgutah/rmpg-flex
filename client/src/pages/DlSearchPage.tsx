@@ -121,6 +121,7 @@ export default function DlSearchPage() {
   const [scanAlerts, setScanAlerts] = useState<ScanAlert[]>([]);
   const [leFields, setLeFields] = useState<LeField[] | null>(null);
   const [leBlock, setLeBlock] = useState('');
+  const [scanEval, setScanEval] = useState<import('../utils/dlFunctions').DlEvaluation | null>(null);
   const [deepSweep, setDeepSweep] = useState<{ sources: any[]; total: number } | null>(null);
   const [deepSweepLoading, setDeepSweepLoading] = useState(false);
   const [courtRecords, setCourtRecords] = useState<any[] | null>(null);
@@ -224,7 +225,7 @@ export default function DlSearchPage() {
         }
         setScanReadout(null);
         setScanAlerts([]);
-        setLeFields(null);
+        setLeFields(null); setScanEval(null);
         setLeBlock('');
         setUploadedRecord(null);
         setShowFullReadout(false);
@@ -447,6 +448,13 @@ export default function DlSearchPage() {
       setScanAlerts(assessAamva(parsed));
       setLeFields(formatLawEnforcement(parsed));
       setLeBlock(formatLeBlock(parsed));
+      // Derived DL intelligence via the shared dlFunctions library — the same
+      // evaluateDl() bridge call the iOS app uses, so phone + desktop produce
+      // identical analysis from one parse.
+      try {
+        const { evaluateDl } = await import('../utils/dlFunctions');
+        setScanEval(evaluateDl(parsed));
+      } catch { setScanEval(null); }
       const resultObj = {
           first_name: parsed.first_name,
           middle_name: parsed.middle_name,
@@ -504,7 +512,7 @@ export default function DlSearchPage() {
     setScanReadout(null);
     setScanMatches(null);
     setScanAlerts([]);
-    setLeFields(null);
+    setLeFields(null); setScanEval(null);
     setLeBlock('');
     setShowFullReadout(false);
     setUploadedRecord(null);
@@ -1480,6 +1488,45 @@ export default function DlSearchPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* ── DL Analysis (shared dlFunctions library / iOS bridge) ── */}
+              {scanEval && (
+                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
+                  <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+                    <Shield size={11} /> DL Analysis
+                    <span className="text-[#556677] normal-case tracking-normal">scan quality {scanEval.quality}%{scanEval.usable ? '' : ' · review'}</span>
+                  </div>
+                  <div className="p-2 flex flex-wrap gap-1">
+                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${scanEval.dlValid ? 'bg-[#141414] text-[#7fb069] border-[#2e2e2e]' : 'bg-amber-900/30 text-amber-400 border-amber-700/50'}`}>
+                      DL# {scanEval.dlValid ? 'valid format' : 'format mismatch'}
+                    </span>
+                    {scanEval.jurisdictionName && (
+                      <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-[#141414] text-[#c0ccdd] border-[#2e2e2e]">{scanEval.jurisdictionName} ({scanEval.country})</span>
+                    )}
+                    {scanEval.age !== null && (
+                      <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-[#141414] text-[#c0ccdd] border-[#2e2e2e]">Age {scanEval.age} · {scanEval.ageBracket}</span>
+                    )}
+                    {scanEval.eligibility.minor && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-red-900/40 text-red-300 border-red-600/70">MINOR</span>}
+                    {!scanEval.eligibility.minor && scanEval.eligibility.under21 && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-amber-900/30 text-amber-400 border-amber-700/50">UNDER 21</span>}
+                    {scanEval.eligibility.drinking && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-[#141414] text-[#7fb069] border-[#2e2e2e]">21+</span>}
+                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${scanEval.expiry === 'expired' ? 'bg-red-900/40 text-red-300 border-red-600/70' : scanEval.expiry === 'expiring' ? 'bg-amber-900/30 text-amber-400 border-amber-700/50' : 'bg-[#141414] text-[#7fb069] border-[#2e2e2e]'}`}>
+                      License {scanEval.expiry}
+                    </span>
+                    {scanEval.badges.map((b: string) => (
+                      <span key={b} className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-[#141414] text-[#c0ccdd] border-[#2e2e2e]">{b}</span>
+                    ))}
+                  </div>
+                  {(scanEval.endorsements.length > 0 || scanEval.restrictions.length > 0) && (
+                    <div className="px-3 py-1 border-t border-[#141414] text-[9px] text-[#8899aa] space-y-0.5">
+                      {scanEval.endorsements.length > 0 && <div><span className="text-[#556677] uppercase">Endorsements:</span> {scanEval.endorsements.join(', ')}</div>}
+                      {scanEval.restrictions.length > 0 && <div><span className="text-[#556677] uppercase">Restrictions:</span> {scanEval.restrictions.join(', ')}</div>}
+                    </div>
+                  )}
+                  {scanEval.missing.length > 0 && (
+                    <div className="px-3 py-1 border-t border-[#141414] text-[9px] text-amber-400">Missing: {scanEval.missing.join(', ')}</div>
+                  )}
                 </div>
               )}
 
