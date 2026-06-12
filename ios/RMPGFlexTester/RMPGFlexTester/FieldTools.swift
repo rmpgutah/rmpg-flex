@@ -25,10 +25,12 @@ enum ToolAction {
     case timer(label: String, seconds: Int)   // 0 = count-up
     case shiftTimer
     case pingLocation
+    case warrantSearch(byNumber: Bool)
     case fieldInterview
     case syncQueue
     case fieldPhoto
     case newBolo
+    case fuelPurchase
 }
 
 struct FieldTool: Identifiable {
@@ -84,7 +86,7 @@ enum FieldToolRegistry {
         FieldTool(id: "lk_dl", title: "DL Record Search", category: "LOOKUPS",
                   action: .lookup(path: "api/dl-records", queryKey: "search", prompt: "Name or DL number")),
         FieldTool(id: "lk_warrant_name", title: "Warrant Check (Name)", category: "LOOKUPS",
-                  action: .lookup(path: "api/warrants", queryKey: "search", prompt: "Subject name")),
+                  action: .warrantSearch(byNumber: false)),
         FieldTool(id: "lk_vehicle_plate", title: "Plate Check", category: "LOOKUPS",
                   action: .lookup(path: "api/records/vehicles", queryKey: "search", prompt: "License plate")),
         FieldTool(id: "lk_vehicle_vin", title: "VIN Check", category: "LOOKUPS",
@@ -108,7 +110,7 @@ enum FieldToolRegistry {
         FieldTool(id: "lk_incidents", title: "Incident Search", category: "LOOKUPS",
                   action: .lookup(path: "api/incidents", queryKey: "search", prompt: "Keyword / case #")),
         FieldTool(id: "lk_arrests", title: "Arrest History", category: "LOOKUPS",
-                  action: .lookup(path: "api/arrests", queryKey: "search", prompt: "Subject name")),
+                  action: .lookup(path: "api/arrests/search", queryKey: "q", prompt: "Subject name")),
         FieldTool(id: "lk_citations", title: "Citation History", category: "LOOKUPS",
                   action: .lookup(path: "api/citations", queryKey: "search", prompt: "Name or citation #")),
         FieldTool(id: "lk_evidence", title: "Evidence Search", category: "LOOKUPS",
@@ -118,13 +120,13 @@ enum FieldToolRegistry {
         FieldTool(id: "lk_my_unit", title: "My Unit Detail", category: "LOOKUPS",
                   action: .lookup(path: "api/dispatch/duty/me", queryKey: nil, prompt: nil)),
         FieldTool(id: "lk_fleet", title: "Fleet Vehicles", category: "LOOKUPS",
-                  action: .lookup(path: "api/fleet/vehicles", queryKey: nil, prompt: nil)),
+                  action: .lookup(path: "api/fleet", queryKey: nil, prompt: nil)),
         FieldTool(id: "lk_announcements", title: "Announcements", category: "LOOKUPS",
                   action: .lookup(path: "api/announcements", queryKey: nil, prompt: nil)),
         FieldTool(id: "lk_recent_calls", title: "Recent Calls (Today)", category: "LOOKUPS",
                   action: .lookup(path: "api/dispatch/calls?limit=25", queryKey: nil, prompt: nil)),
-        FieldTool(id: "lk_warrant_dl", title: "Warrant Check (DL #)", category: "LOOKUPS",
-                  action: .lookup(path: "api/warrants", queryKey: "search", prompt: "DL number")),
+        FieldTool(id: "lk_warrant_num", title: "Warrant Check (Warrant #)", category: "LOOKUPS",
+                  action: .warrantSearch(byNumber: true)),
     ]
 
     // ── 3. Unit status (full status set) ──
@@ -181,6 +183,8 @@ enum FieldToolRegistry {
                   action: .fieldPhoto),
         FieldTool(id: "ut_bolo", title: "Issue BOLO", category: "TIMERS & UTILITIES",
                   action: .newBolo),
+        FieldTool(id: "ut_fuel", title: "Log Fuel Purchase", category: "TIMERS & UTILITIES",
+                  action: .fuelPurchase),
     ]
 
     // ── 6. Legal reference cards (Utah-specific where cited) ──

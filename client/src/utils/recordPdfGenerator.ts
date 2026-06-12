@@ -284,9 +284,30 @@ function renderRecordPostureBand(
 
 // Per-type posture-flag builders — mirror the React tab builders
 // (personPostureFlags/vehiclePostureFlags) but read the *PdfData shapes.
+
+/** The `flags` column arrives from D1 as raw JSON TEXT (e.g. '[]' or
+ *  '["GANG"]'). Iterating that string directly yields CHARACTERS — live
+ *  PDFs printed "[" and "]" as threat chips (2026-06-11). Normalize to a
+ *  real array first; non-JSON strings are treated as a single flag. */
+function normalizeRecordFlags(raw: unknown): any[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    const s = raw.trim();
+    if (!s) return [];
+    if (s.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(s);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch { return []; }
+    }
+    return [s];
+  }
+  return [];
+}
+
 function personPdfPostureFlags(data: PersonPdfData): Array<string | null | undefined> {
   const flags: Array<string | null | undefined> = [];
-  for (const f of data.flags || []) flags.push(typeof f === 'object' ? (f as any).type : f);
+  for (const f of normalizeRecordFlags(data.flags)) flags.push(typeof f === 'object' && f !== null ? (f as any).type : f);
   if ((Array.isArray(data.warrants) ? data.warrants : []).some(w => (w.status || '').toLowerCase() === 'active')) flags.push('ACTIVE WARRANT');
   if (data.bolo_active) flags.push('BOLO');
   if (data.is_sex_offender) flags.push('SEX OFFENDER');
@@ -299,7 +320,7 @@ function personPdfPostureFlags(data: PersonPdfData): Array<string | null | undef
 
 function vehiclePdfPostureFlags(data: VehiclePdfData): Array<string | null | undefined> {
   const flags: Array<string | null | undefined> = [];
-  for (const f of data.flags || []) flags.push(typeof f === 'object' ? (f as any).type : f);
+  for (const f of normalizeRecordFlags(data.flags)) flags.push(typeof f === 'object' && f !== null ? (f as any).type : f);
   if (data.hazmat) flags.push('HAZMAT');
   const ss = (data.stolen_status || '').toLowerCase();
   if (ss && !['none', 'not_stolen', 'recovered', ''].includes(ss)) flags.push('STOLEN');
@@ -446,7 +467,11 @@ function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, 
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(label.toUpperCase(), x, y + 1.8);
-  y += 3.4;  // was 3.0 — +0.4mm cushion between label baseline and value top
+  // Label baseline sits at y+1.8; the 8pt Courier value cap-height is
+  // ~2.8mm, so the value baseline must clear y+1.8+2.8 or the value
+  // overprints the label (seen live on "PIERCING DESCRIPTION" /
+  // "DISTINGUISHING FEATURES" 2026-06-11). 5.2mm leaves ~0.6mm of air.
+  y += 5.2;
   // Body text — word-wrapped Courier
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
@@ -1604,8 +1629,15 @@ async function addLocationMapSection(
   });
   if (!img) return y;
   const egress = img.egress ?? [];
+  const priorityRoutes = img.priorityRoutes ?? [];
   // Support-facility + elevation context (best-effort; null in tests/offline).
   const tac = await fetchTacticalContext(img.lat, img.lng);
+  // 6-hex → RGB for route-colored plate chips matching the baked line colors.
+  const hexRgb = (hex: string): [number, number, number] => [
+    parseInt(hex.slice(0, 2), 16) || 0,
+    parseInt(hex.slice(2, 4), 16) || 0,
+    parseInt(hex.slice(4, 6), 16) || 0,
+  ];
 
   const lx = getLeftX();
   const ffw = getFullFieldWidth(doc);
@@ -1621,7 +1653,7 @@ async function addLocationMapSection(
   const offX = lx + (ffw - drawW) / 2;
 
   // Reserve header (~5) + image + LOCATION DATA grid (2 rows) + pads.
-  y = checkPageBreak(doc, y, drawH + 8 + (2 + (egress.length ? 1 : 0) + 3) * SPACING.FORM_CELL_H + 10, opts.priority);
+  y = checkPageBreak(doc, y, drawH + 8 + (2 + (egress.length ? 1 : 0) + (priorityRoutes.length ? 1 : 0) + 3) * SPACING.FORM_CELL_H + 10, opts.priority);
   const sec = openAutoSection(doc, opts.title, y);
   y = sec.contentY;
   const imgY = y;
@@ -1780,7 +1812,7 @@ async function addLocationMapSection(
   // static render is centered on the target). Plates clamp to a 4mm inset
   // so a route that leaves the frame still gets its label on the edge it
   // exits through.
-  if (egress.length) {
+  if (egress.length || priorityRoutes.length) {
     const world = 512 * Math.pow(2, zoomUsed); // logical px
     const mercX = (lngV: number) => world * (lngV / 360 + 0.5);
     const mercY = (latV: number) => {
@@ -1791,10 +1823,22 @@ async function addLocationMapSection(
     const cY = mercY(img.lat);
     const pxPerMmX = (img.width / 2) / drawW;
     const pxPerMmY = (img.height / 2) / drawH;
-    for (const route of egress) {
-      let ex = cxm + (mercX(route.end[0]) - cX) / pxPerMmX;
-      let ey = cym + (mercY(route.end[1]) - cY) / pxPerMmY;
-      const plateW = 10.5;
+    const plates: { text: string; end: [number, number]; colorHex: string }[] = [
+      ...egress.map((r) => ({ text: `EXIT ${r.label}`, end: r.end, colorHex: r.colorHex })),
+      ...priorityRoutes.map((p) => ({
+        text: p.kind === 'CASEVAC' ? 'CASEVAC' : 'HWY',
+        end: p.end,
+        colorHex: p.colorHex,
+      })),
+    ];
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.5);
+    const placed: { x: number; y: number; w: number; h: number }[] = [];
+    for (const plate of plates) {
+      let ex = cxm + (mercX(plate.end[0]) - cX) / pxPerMmX;
+      let ey = cym + (mercY(plate.end[1]) - cY) / pxPerMmY;
+      const chipW = 2.2; // route-color swatch matching the baked line
+      const plateW = doc.getTextWidth(plate.text) + 3 + chipW;
       const plateH = 4.2;
       ex = Math.max(offX + 4, Math.min(ex, offX + drawW - plateW - 4));
       ey = Math.max(imgY + 4, Math.min(ey, imgY + drawH - plateH - 4));
@@ -1804,14 +1848,23 @@ async function addLocationMapSection(
           ey < insetRect.y + insetRect.h && ey + plateH > insetRect.y) {
         ey = insetRect.y + insetRect.h + 1;
       }
+      // Off-frame route ends clamp to the same edge — nudge stacked plates
+      // apart so CASEVAC/HWY labels never overprint an EXIT plate.
+      while (placed.some((p) =>
+        ex < p.x + p.w + 1 && ex + plateW > p.x - 1 && ey < p.y + p.h + 1 && ey + plateH > p.y - 1)) {
+        ey += plateH + 1;
+        if (ey > imgY + drawH - plateH - 4) { ey = imgY + 4; ex += plateW + 2; }
+      }
+      placed.push({ x: ex, y: ey, w: plateW, h: plateH });
       doc.setFillColor(20, 20, 20);
       doc.setDrawColor(255, 255, 255);
       doc.setLineWidth(0.3);
       doc.rect(ex, ey, plateW, plateH, 'FD');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5.5);
+      const [cr, cg, cb] = hexRgb(plate.colorHex);
+      doc.setFillColor(cr, cg, cb);
+      doc.rect(ex + 0.8, ey + 1.1, chipW - 0.6, plateH - 2.2, 'F');
       doc.setTextColor(255, 255, 255);
-      doc.text(`EXIT ${route.label}`, ex + plateW / 2, ey + plateH - 1.4, { align: 'center' });
+      doc.text(plate.text, ex + chipW + 1.4, ey + plateH - 1.4);
     }
   }
 
@@ -1881,13 +1934,30 @@ async function addLocationMapSection(
   // distance, overall direction, and the first named road out.
   if (egress.length) {
     const egressCells: FormCell[] = egress.map((r) => ({
-      label: `EGRESS ${r.label}`,
+      label: `EGRESS ${r.label} (${r.compass})`,
       value:
-        `${(r.distanceM / 1609.344).toFixed(2)} MI ${r.compass}` +
-        `${r.via ? ` VIA ${r.via}` : ''}` +
-        `${r.durationS > 0 ? ` - ${Math.max(1, Math.round(r.durationS / 60))} MIN` : ''}`,
+        `${(r.distanceM / 1609.344).toFixed(2)} MI` +
+        `${r.durationS > 0 ? ` / ${Math.max(1, Math.round(r.durationS / 60))} MIN` : ''}` +
+        `${r.via ? ` VIA ${r.via}` : ''}`,
+      valueFontSize: 5.5,
     }));
     y = drawFormRow(doc, egressCells, offX, y, drawW);
+  }
+  // Priority safety routes — destination-anchored (nearest hospital /
+  // nearest controlled-access highway), real Directions paths.
+  if (priorityRoutes.length) {
+    const prCells: FormCell[] = priorityRoutes.map((p) => {
+      const name = p.name.length > 24 ? p.name.slice(0, 23).trimEnd() + '.' : p.name;
+      return {
+        label: p.kind === 'CASEVAC' ? 'CASEVAC ROUTE - MEDICAL' : 'HIGHWAY ACCESS',
+        value:
+          `${name} - ${(p.distanceM / 1609.344).toFixed(2)} MI` +
+          `${p.durationS > 0 ? ` / ${Math.max(1, Math.round(p.durationS / 60))} MIN` : ''}` +
+          `${p.via ? ` VIA ${p.via}` : ''}`,
+        valueFontSize: 5.5,
+      };
+    });
+    y = drawFormRow(doc, prCells, offX, y, drawW);
   }
 
   // ── TACTICAL REVIEW rows — environment + nearest support facilities. ──
@@ -3534,26 +3604,32 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       y += 1.5;  // explicit row-gap before the 2-col Scar/Piercing row
     }
 
-    // Scar / Piercing → 2-col row (left + right)
+    // Scar / Piercing → 2-col row (left + right). When only one of the
+    // pair is present it renders in the LEFT column — a lone value in the
+    // right column reads as floating mid-page (seen live 2026-06-11).
     if (data.scar_description || data.piercing_description) {
-      const ly = data.scar_description
-        ? addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, hfw)
-        : y;
-      const ry = data.piercing_description
-        ? addNarrativeField(doc, 'Piercing Description', data.piercing_description, rx, y, hfw)
-        : y;
-      y = Math.max(ly, ry) + 1.5;  // explicit row-gap before next 2-col row
+      if (data.scar_description && data.piercing_description) {
+        const ly = addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, hfw);
+        const ry = addNarrativeField(doc, 'Piercing Description', data.piercing_description, rx, y, hfw);
+        y = Math.max(ly, ry) + 1.5;  // explicit row-gap before next 2-col row
+      } else if (data.scar_description) {
+        y = addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, hfw) + 1.5;
+      } else {
+        y = addNarrativeField(doc, 'Piercing Description', data.piercing_description!, lx, y, hfw) + 1.5;
+      }
     }
 
-    // Distinguishing Features / Marks Location → 2-col row
+    // Distinguishing Features / Marks Location → 2-col row (same collapse)
     if (data.distinguishing_features || data.identifying_marks_location) {
-      const ly = data.distinguishing_features
-        ? addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, hfw)
-        : y;
-      const ry = data.identifying_marks_location
-        ? addNarrativeField(doc, 'Marks Location', data.identifying_marks_location, rx, y, hfw)
-        : y;
-      y = Math.max(ly, ry);
+      if (data.distinguishing_features && data.identifying_marks_location) {
+        const ly = addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, hfw);
+        const ry = addNarrativeField(doc, 'Marks Location', data.identifying_marks_location, rx, y, hfw);
+        y = Math.max(ly, ry);
+      } else if (data.distinguishing_features) {
+        y = addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, hfw);
+      } else {
+        y = addNarrativeField(doc, 'Marks Location', data.identifying_marks_location!, lx, y, hfw);
+      }
     }
 
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -3679,8 +3755,8 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       titleCase(w.type || ''),
       titleCase(w.status || ''),
       w.charge_description || 'N/A',
-      titleCase(w.offense_level || ''),
-      fmtDate(w.date_issued),
+      titleCase(w.offense_level || '') || 'N/A',
+      fmtDate(w.date_issued || (w as any).issued_date) || 'N/A',
     ]);
     y = addTableWithShading(
       doc,
@@ -3865,14 +3941,9 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = await addAttachmentsSection(doc, data.attachment_images, y, 'Attachments / Evidence Photos', prio);
   }
 
-  // ── 18. Provenance line — last-updated audit trail ────────
-  // Renders a tiny right-aligned line above the signature block:
-  // "Last updated: 04/12/2026 14:23 by S.NESBITT". Returns y
-  // unchanged if neither created_at nor updated_at is set.
-  y = addProvenanceLine(doc, {
-    createdAt: data.created_at,
-    updatedAt: data.updated_at,
-  }, y);
+  // ── 18. (removed 2026-06-11) Provenance line — the META section
+  // immediately above already prints CREATED + LAST UPDATED; the extra
+  // right-aligned "LAST UPDATED: ..." line duplicated it verbatim.
 
   // ── 19. Signature Block — full-width stacked ──────────────
   y = addStackedSignatures(doc, 'Entering Officer', '', y, getOfficerSig(), undefined, prio);

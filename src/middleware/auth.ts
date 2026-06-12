@@ -37,6 +37,7 @@ function isPublicAuthBypass(pathname: string): boolean {
 // arrives in the query string (signed params, or the legacy token fallback).
 function isMediaPath(pathname: string): boolean {
   return pathname.includes('/uploads/')
+    || pathname.includes('/field-photos/file/')
     || pathname.endsWith('/stream')
     || pathname.endsWith('/audio');
 }

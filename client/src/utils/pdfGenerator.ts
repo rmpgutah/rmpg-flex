@@ -1217,9 +1217,34 @@ export function addSignatureBlock(
 
   if (sigData?.signatureImage) {
     try {
-      const imgW = Math.min(width * 0.5, 70);
-      const imgH = sigRowH - 2;
-      doc.addImage(sigData.signatureImage, 'PNG', x + SPACING.MD + 5, row1Y + 1, imgW, imgH);
+      // Natural placement: preserve the pad image's aspect ratio (the old
+      // code stretched it to fill the whole row — squashed/cropped look),
+      // and rest it on a signature baseline like a real signed form.
+      const sigLineY = row1Y + sigRowH - 2.5;
+      doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+      doc.setLineWidth(BORDER.SIGNATURE_LINE);
+      doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_SIGNATURE_X);
+      doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      doc.text('X', x + SPACING.CONTENT_INSET, sigLineY - 1.5);
+
+      const maxW = Math.min(width * 0.5, 70);
+      const maxH = sigRowH - 3.5; // breathing room inside the row
+      let imgW = maxW;
+      let imgH = maxH;
+      try {
+        const props = doc.getImageProperties(sigData.signatureImage);
+        if (props?.width && props?.height) {
+          const scale = Math.min(maxW / props.width, maxH / props.height);
+          imgW = props.width * scale;
+          imgH = props.height * scale;
+        }
+      } catch { /* unknown dims — fall back to box fit */ }
+      // Bottom edge sits just above the baseline (ink touches the line).
+      const imgX = x + SPACING.CONTENT_INSET + 4;
+      const imgY = sigLineY - 0.5 - imgH;
+      doc.addImage(sigData.signatureImage, 'PNG', imgX, imgY, imgW, imgH);
     } catch { /* skip */ }
   } else {
     // Write-in line + X
@@ -2063,7 +2088,11 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     // Continuation header sits 1mm above HEADER_TOP in office mode.
     // Mobile mode pushes it past the PJ-700 6mm leading-edge dead zone.
     const contY = 4 + (((doc as any).__printTarget === 'mobile') ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0);
-    const contH = SPACING.SECTION_HEADER_H;
+    // Taller than SECTION_HEADER_H (4.5mm): 9pt text centered in a 4.5mm
+    // band leaves no room for descenders/commas, and the rule below used to
+    // draw THROUGH the baseline — "ZAMORA," printed as "ZAMORA." with a
+    // strikethrough (live PDF 2026-06-11).
+    const contH = SPACING.SECTION_HEADER_H + 1.7;
 
     // Spillman black-band continuation header — solid black bar, white text
     doc.setFillColor(0, 0, 0);
@@ -2086,8 +2115,9 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
       doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
     }
 
-    // Thin full-width rule just below the continuation title.
-    const contRuleY = contY + contH - 0.6;
+    // Thin full-width rule just below the black band (was contH-0.6 —
+    // INSIDE the band, striking through the white title text).
+    const contRuleY = contY + contH + 0.5;
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
     doc.setLineWidth(BORDER.SECTION_OUTER);
     doc.line(LAYOUT.PAGE_MARGIN, contRuleY, LAYOUT.PAGE_MARGIN + cw, contRuleY);

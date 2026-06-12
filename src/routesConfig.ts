@@ -119,7 +119,7 @@ import skiptracer from './routes/skiptracer';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import dlRecords from './routes/dlRecords';
-import cloudflare from './routes/cloudflare';
+import microbilt from './routes/microbilt';
 import serve from './routes/serve';
 
 import settings from './routes/settings';
@@ -502,7 +502,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
   { prefix: '/api/clearpathgps', router: stubs, auth: 'required' },
-  { prefix: '/api/microbilt', router: stubs, auth: 'required' },
+  { prefix: '/api/microbilt', router: microbilt, auth: 'required',
+    note: 'DL search (local dl_records/persons + live MicroBilt API when creds configured) + dl/stats + status. Was a stub mount — the DL SEARCH page 404d.' },
   { prefix: '/api/servemanager', router: stubs, auth: 'required' },
   { prefix: '/api/skiptracer-v2', router: stubs, auth: 'required' },
 

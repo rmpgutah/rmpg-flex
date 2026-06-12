@@ -818,8 +818,9 @@ const API_ROUTES: RouteRule[] = [
   // The legacy port of POST /dl-records 500s on live D1 (manual saves
   // never persisted — live dl_records had 0 rows), so the rewrite owns
   // the data layer. CRITICAL: the /\d+/ anchor means /dl-records/verify
-  // and /dl-records/ocr-scan (external RapidAPI / OCR round-trips) do NOT
-  // match and correctly fall through to env.LEGACY.
+  // (external RapidAPI round-trip) does NOT match and correctly falls
+  // through to env.LEGACY. ocr-scan moved to the rewrite 2026-06-11
+  // (Workers-AI vision in src/routes/dlRecords.ts) — explicit rule below.
   { kind: 'regex', value: /^\/api\/dl-records(\/\d+)?(\?.*)?$/ },
   // Phone → desktop scan relay, deep sweep, scan log, vision OCR, SOR (rewrite-only).
   { kind: 'regex', value: /^\/api\/dl-records\/(scan-relay(\/poll)?|deep-sweep|scan-log|ocr-scan|court-lookup|fbi-lookup|sources-config|sor\/(status|import|poll))(\?.*)?$/ },

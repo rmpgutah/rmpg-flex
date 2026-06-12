@@ -217,7 +217,12 @@ struct IDScanView: View {
             }
             return 0
         }
-        let warrants = count(try? await client.requestJSON("GET", "api/warrants?search=\(q)"))
+        var wbody: [String: Any] = ["lastName": last]
+        if let first = parsed.fields["first_name"] { wbody["firstName"] = first }
+        if let dob = parsed.fields["date_of_birth"] { wbody["dob"] = dob }
+        let wres = try? await client.requestJSON("POST", "api/warrants/search-all", body: wbody)
+        let wobj = wres as? [String: Any] ?? [:]
+        let warrants = ["local", "utah", "scraped"].reduce(0) { $0 + ((wobj[$1] as? [[String: Any]])?.count ?? 0) }
         let persons = count(try? await client.requestJSON("GET", "api/records/persons?search=\(q)"))
         if warrants > 0 {
             AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))

@@ -40,6 +40,19 @@ interface PrintRecordButtonProps {
   entityId?: string | number;
 }
 
+/** Record-links vehicle labels read "Make Model (PLATE)". Split into the
+ *  separate fields the PDF table expects — otherwise the whole label lands
+ *  in the PLATE column and VEHICLE prints "N/A". */
+function splitVehicleLabel(l: any): { license_plate: string; model: string; relationship: string } {
+  const raw = String(l.linked_label || '').trim();
+  const m = raw.match(/^(.*?)\s*\(([^()]+)\)$/);
+  return {
+    license_plate: m ? m[2].trim() : raw,
+    model: m ? m[1].trim() : '',
+    relationship: l.relationship,
+  };
+}
+
 export default function PrintRecordButton({
   recordType,
   recordData,
@@ -187,11 +200,10 @@ export default function PrintRecordButton({
         if (links && links.length > 0) {
           // The API enriches each row with the OTHER side as linked_type /
           // linked_label (covering links where this record is source OR
-          // target). The vehicle label already reads "Make Model (PLATE)".
-          enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => ({
-            license_plate: l.linked_label || '',
-            relationship: l.relationship,
-          }));
+          // target). The vehicle label reads "Make Model (PLATE)" — split it
+          // so the PDF's PLATE column gets the plate, not the whole label
+          // (live PDFs printed PLATE="RAM 1500 (8JAR3)" / VEHICLE="N/A").
+          enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => splitVehicleLabel(l));
           enriched.linked_properties = links
             .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
             .map((l: any) => ({
@@ -265,10 +277,7 @@ export default function PrintRecordButton({
             name: l.linked_label || '',
             relationship: l.relationship,
           }));
-          enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => ({
-            license_plate: l.linked_label || '',
-            relationship: l.relationship,
-          }));
+          enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => splitVehicleLabel(l));
         }
       } catch { /* non-fatal — endpoint may be stubbed */ }
     }
