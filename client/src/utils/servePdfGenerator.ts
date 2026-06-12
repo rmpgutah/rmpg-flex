@@ -703,6 +703,11 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
   }
 
   // ── Attempt Record ──
+  // One-page constraint: this notice is left at a door / mailed, so it must fit
+  // a single sheet. Show only the most recent attempts (the Affidavit of
+  // Non-Service carries the full history) and clamp note length.
+  const MAX_NOTICE_ATTEMPTS = 6;
+  const MAX_NOTE_CHARS = 90;
   y = checkPageBreak(doc, y, 30);
   {
     const sec = openAutoSection(doc, 'Record of Attempt(s)', y);
@@ -715,35 +720,65 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
       { label: 'RESULT', x: cols[3] },
       { label: 'NOTES', x: cols[4] },
     ];
-    const rows = data.attempts.map(a => [
-      String(a.number),
-      sanitizePdfText(a.date || '').toUpperCase(),
-      sanitizePdfText(a.time || '').toUpperCase(),
-      sanitizePdfText(serveResultLabel(a.result)).toUpperCase(),
-      sanitizePdfText(a.notes || '').toUpperCase(),
-    ]);
+    const shown = data.attempts.slice(-MAX_NOTICE_ATTEMPTS);
+    const omitted = data.attempts.length - shown.length;
+    const rows = shown.map(a => {
+      const note = sanitizePdfText(a.notes || '');
+      return [
+        String(a.number),
+        sanitizePdfText(a.date || '').toUpperCase(),
+        sanitizePdfText(a.time || '').toUpperCase(),
+        sanitizePdfText(serveResultLabel(a.result)).toUpperCase(),
+        (note.length > MAX_NOTE_CHARS ? `${note.slice(0, MAX_NOTE_CHARS - 1)}…` : note).toUpperCase(),
+      ];
+    });
     y = addTableWithShading(doc, headers, rows, y, cols);
+    if (omitted > 0) {
+      doc.setFont(PDF_VALUE_FONT, 'italic');
+      doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
+      doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      doc.text(
+        `${omitted} earlier attempt(s) omitted for space — complete history available in the service log.`,
+        lx, y + 3,
+      );
+      y += 5;
+    }
     y += SPACING.SM;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Notice Statement ──
-  y = checkPageBreak(doc, y, 30);
+  // ── Notice Statement ── (keep the whole block together — it must read as one unit)
+  y = checkPageBreak(doc, y, 60);
   {
-    const sec = openAutoSection(doc, 'Notice', y);
+    const sec = openAutoSection(doc, 'IMPORTANT NOTICE — ATTEMPTED SERVICE OF LEGAL DOCUMENTS', y);
     // addWrappedText draws at the text BASELINE — pad past the black header band
     // so the first line's ascender doesn't clip (matches the
     // psoNoticePdfGenerator fix, commit 3c0e68f9).
     y = sec.contentY + 3;
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     const contact = data.serverPhone ? ` at ${data.serverPhone}` : ' at the number on file';
+
+    // Anti-simulation disclaimer (Utah Code § 76-8-712): the loudest line on the
+    // page must make clear this is NOT court-issued process.
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    const lead = 'THIS IS NOT A COURT ORDER, A SUMMONS, OR A DEMAND FOR PAYMENT.';
+    const leadLines: string[] = doc.splitTextToSize(lead, ffw);
+    doc.text(leadLines, lx, y);
+    y += leadLines.length * 4 + 2;
+
     const noticeText =
-      `This notice is to inform you that ${company}, a licensed process service agency, has attempted ` +
-      'to personally serve you with the legal document(s) identified above in connection with the ' +
-      'referenced case. As detailed in the record of attempt(s) above, service was unsuccessful. ' +
-      `To avoid further attempts and to arrange service at a time convenient to you, please contact our ` +
-      `office${contact}. Your prompt cooperation is appreciated. This notice does not waive, extend, or ` +
-      'otherwise affect any deadline, right, or obligation arising from the underlying legal matter.';
+      `${company}, a private process service agency, has attempted to deliver the legal document(s) ` +
+      'identified above to you in connection with the referenced case. As shown in the record of ' +
+      'attempt(s) above, delivery has not been completed. To arrange delivery at a date and time ' +
+      `convenient to you, you may contact our office${contact}. You are not required to respond to ` +
+      'this notice; however, arranging a time for delivery may prevent further attempts at this address.' +
+      '\n\n' +
+      'This notice was prepared and delivered by a private process server, not by a court or ' +
+      'government agency. It does not create, waive, extend, or otherwise affect any deadline, ' +
+      'right, or obligation arising from the underlying legal matter. Process service is performed ' +
+      'pursuant to Utah Rule of Civil Procedure 4 and Utah Code § 78B-8-302.';
     y = addWrappedText(doc, noticeText, lx, y, ffw, FONT.SIZE_FIELD_VALUE);
     y += SPACING.SM;
     if (data.nextAttemptNote) {
@@ -770,7 +805,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
   doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
   doc.text(
-    'Licensed pursuant to Utah Code Title 53 / Utah Rules of Civil Procedure, Rule 4',
+    'Process service pursuant to Utah R. Civ. P. 4 and Utah Code § 78B-8-302 (registered private process server)',
     doc.internal.pageSize.getWidth() / 2, y, { align: 'center' },
   );
 
