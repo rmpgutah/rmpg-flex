@@ -110,6 +110,9 @@ struct FieldToolkitView: View {
 
     private func promptFor(_ tool: FieldTool?) -> String {
         if case .lookup(_, _, let prompt) = tool?.action { return prompt ?? "" }
+        if case .warrantSearch(let byNumber) = tool?.action {
+            return byNumber ? "Warrant number" : "Last name (or First Last)"
+        }
         if case .addCallNote = tool?.action { return "Note text" }
         return ""
     }
@@ -163,6 +166,9 @@ struct FieldToolkitView: View {
         case .lookup(_, let key, _) where key != nil:
             inputText = ""
             askingInput = tool
+        case .warrantSearch:
+            inputText = ""
+            askingInput = tool
         case .addCallNote:
             inputText = ""
             askingInput = tool
@@ -214,6 +220,27 @@ struct FieldToolkitView: View {
 
         do {
             switch tool.action {
+            case .warrantSearch(let byNumber):
+                guard let input, !input.isEmpty else { return }
+                var sbody: [String: Any] = [:]
+                if byNumber {
+                    sbody["warrantNumber"] = input
+                } else {
+                    let parts = input.split(separator: " ")
+                    if parts.count >= 2 {
+                        sbody["firstName"] = String(parts.first!)
+                        sbody["lastName"] = String(parts.last!)
+                    } else {
+                        sbody["lastName"] = input
+                    }
+                }
+                let res = try await client.requestJSON("POST", "api/warrants/search-all", body: sbody)
+                let obj = res as? [String: Any] ?? [:]
+                let hits = (["local", "utah", "scraped"].flatMap { (obj[$0] as? [[String: Any]]) ?? [] })
+                resultTitle = "WARRANTS: \(hits.count) HIT(S)"
+                resultText = hits.isEmpty ? "No warrant matches across local / Utah / scraped sources." : nil
+                resultRows = Array(hits.prefix(25))
+                showResult = true
             case .lookup(let path, let key, _):
                 var full = path
                 if let key, let input, !input.isEmpty {
