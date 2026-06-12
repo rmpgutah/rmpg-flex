@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as DL from '../dlFunctions';
 import { parseAamva } from '../aamvaParser';
 
-const NOW = new Date(Date.UTC(2026, 5, 11)); // 2026-06-11
+const NOW = new Date(Date.UTC(2026, 5, 11)); // 2026-06-11  new-date-ok: explicit UTC test fixture
 
 describe('dlFunctions — jurisdiction & IIN', () => {
   it('maps IIN ↔ state', () => {

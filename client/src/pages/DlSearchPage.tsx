@@ -788,7 +788,7 @@ export default function DlSearchPage() {
                             className="w-full flex items-center justify-between gap-2 px-2 py-1 text-left hover:bg-[#141414] border-b border-[#101010]"
                           >
                             <span className="text-[10px] text-[#c0ccdd] truncate">{s.name || 'UNKNOWN'}</span>
-                            <span className="text-[8px] font-mono text-[#556677] flex-shrink-0">{s.dl_state} {s.dl_number} · {new Date(s.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            <span className="text-[8px] font-mono text-[#556677] flex-shrink-0">{s.dl_state} {s.dl_number} · {new Date(s.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{/* new-date-ok: s.ts is an epoch-ms number (Date.now()), not a server string */}</span>
                           </button>
                         ))}
                       </div>

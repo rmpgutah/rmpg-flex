@@ -477,7 +477,7 @@ function daysBetween(a: Date, b: Date): number {
 function ageOn(dobIso: string, now: Date): number | null {
   const m = dobIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
-  const dob = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const dob = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])); // new-date-ok: local civil date from numeric Y/M/D parts, not a server string
   if (isNaN(dob.getTime())) return null;
   let age = now.getFullYear() - dob.getFullYear();
   const had = now.getMonth() > dob.getMonth() ||
@@ -497,7 +497,7 @@ export function assessAamva(r: AamvaResult, now: Date = new Date()): ScanAlert[]
   // Expiration
   const expM = r.dl_expiry.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (expM) {
-    const exp = new Date(Number(expM[1]), Number(expM[2]) - 1, Number(expM[3]), 23, 59, 59);
+    const exp = new Date(Number(expM[1]), Number(expM[2]) - 1, Number(expM[3]), 23, 59, 59); // new-date-ok: local civil expiry date from numeric Y/M/D parts
     if (exp.getTime() < now.getTime()) {
       alerts.push({
         level: 'danger', code: 'EXPIRED',

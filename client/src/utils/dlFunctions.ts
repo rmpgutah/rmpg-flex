@@ -231,7 +231,7 @@ export function candidateJurisdictionsForDl(dl: string): string[] {
 export function parseIsoDate(iso: string): Date | null {
   const m = (iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
-  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])); // new-date-ok: explicit UTC from numeric parts
   return isNaN(d.getTime()) ? null : d;
 }
 
@@ -313,7 +313,7 @@ export function addYearsIso(iso: string, years: number): string {
 
 /** 39. Today as ISO (UTC). */
 export function todayIso(now: Date = new Date()): string {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString().slice(0, 10);
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString().slice(0, 10); // new-date-ok: explicit UTC
 }
 
 /** 40. True if two ISO dates are the same calendar day. */
