@@ -2063,7 +2063,11 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     // Continuation header sits 1mm above HEADER_TOP in office mode.
     // Mobile mode pushes it past the PJ-700 6mm leading-edge dead zone.
     const contY = 4 + (((doc as any).__printTarget === 'mobile') ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0);
-    const contH = SPACING.SECTION_HEADER_H;
+    // Taller than SECTION_HEADER_H (4.5mm): 9pt text centered in a 4.5mm
+    // band leaves no room for descenders/commas, and the rule below used to
+    // draw THROUGH the baseline — "ZAMORA," printed as "ZAMORA." with a
+    // strikethrough (live PDF 2026-06-11).
+    const contH = SPACING.SECTION_HEADER_H + 1.7;
 
     // Spillman black-band continuation header — solid black bar, white text
     doc.setFillColor(0, 0, 0);
@@ -2086,8 +2090,9 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
       doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
     }
 
-    // Thin full-width rule just below the continuation title.
-    const contRuleY = contY + contH - 0.6;
+    // Thin full-width rule just below the black band (was contH-0.6 —
+    // INSIDE the band, striking through the white title text).
+    const contRuleY = contY + contH + 0.5;
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
     doc.setLineWidth(BORDER.SECTION_OUTER);
     doc.line(LAYOUT.PAGE_MARGIN, contRuleY, LAYOUT.PAGE_MARGIN + cw, contRuleY);
