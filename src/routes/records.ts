@@ -146,7 +146,12 @@ async function writePersonExt(
   const cols: string[] = [];
   const vals: unknown[] = [];
   for (const k of PERSON_EXT_COLUMNS) {
-    if (Object.prototype.hasOwnProperty.call(body, k)) { cols.push(k); vals.push(body[k] ?? null); }
+    if (Object.prototype.hasOwnProperty.call(body, k)) {
+      cols.push(k);
+      const v = body[k];
+      // Serialize arrays/objects — D1 bind() rejects them (D1_TYPE_ERROR).
+      vals.push(v !== null && typeof v === 'object' ? JSON.stringify(v) : (v ?? null));
+    }
   }
   if (cols.length === 0) return;
   const placeholders = cols.map(() => '?').join(', ');
@@ -193,6 +198,12 @@ records.post('/persons', async (c) => {
         // Coerce boolean-ish fields to integer
         if (key === 'is_sex_offender' || key === 'is_veteran') {
           params.push(val ? 1 : 0);
+        } else if (val !== null && typeof val === 'object') {
+          // D1 bind() rejects arrays/objects (D1_TYPE_ERROR). Columns like
+          // `flags` and `aliases` store JSON text, so serialize at the
+          // boundary — a client sending flags: ['dl_ocr_imported'] would
+          // otherwise crash the whole INSERT/UPDATE.
+          params.push(JSON.stringify(val));
         } else {
           params.push(val ?? null);
         }
@@ -361,6 +372,12 @@ records.put('/persons/:id', async (c) => {
         // Coerce boolean-ish fields to integer
         if (key === 'is_sex_offender' || key === 'is_veteran') {
           params.push(val ? 1 : 0);
+        } else if (val !== null && typeof val === 'object') {
+          // D1 bind() rejects arrays/objects (D1_TYPE_ERROR). Columns like
+          // `flags` and `aliases` store JSON text, so serialize at the
+          // boundary — a client sending flags: ['dl_ocr_imported'] would
+          // otherwise crash the whole INSERT/UPDATE.
+          params.push(JSON.stringify(val));
         } else {
           params.push(val ?? null);
         }
