@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { uploadWithProgress } from '../utils/uploadWithProgress';
 import type { UploadProgress } from '../utils/uploadWithProgress';
 import { refreshAccessToken } from '../utils/tokenRefresh';
-import { chimeForApiSuccess } from '../utils/actionChimes';
+import { chimeForApiSuccess, nackForApiFailure } from '../utils/actionChimes';
 
 // ─── Request Timeout ─────────────────────────────────────────
 // Default 60s — generous for flaky cellular but bounded so officers
@@ -235,6 +235,7 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           const message = errData.error || errData.message || `Request failed with status ${res.status}`;
+          nackForApiFailure(method, url, res.status);
           throw new Error(message);
         }
 
@@ -357,6 +358,7 @@ export async function apiFetch<T>(
       const retryRes = await fetchWithRetry(url, { ...fetchInit, headers });
       if (!retryRes.ok) {
         const errData = await retryRes.json().catch(() => ({}));
+        nackForApiFailure(method, url, retryRes.status);
         throw new Error(errData.error || errData.message || `Request failed with status ${retryRes.status}`);
       }
       chimeForApiSuccess(method, url);
@@ -385,6 +387,7 @@ export async function apiFetch<T>(
     error.status = res.status;
     error.payload = errData;
     error.code = errData.code;
+    nackForApiFailure(method, url, res.status);
     throw error;
   }
 

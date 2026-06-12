@@ -119,6 +119,7 @@ import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
 import LocationGate from './LocationGate';
 import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
+import { playUiNavigate } from '../utils/uiClickSounds';
 import { applyThemePreference } from '../utils/theme';
 
 const PAGE_TITLES: Record<string, string> = {
@@ -547,8 +548,8 @@ export default function Layout() {
   // scroll/resize so the panel follows the triggering button.
   const toolbarBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [dropdownRect, setDropdownRect] = useState<{ left: number; top: number; width: number } | null>(null);
-  // Close dropdown on route change
-  useEffect(() => { setOpenDropdown(null); }, [location.pathname]);
+  // Close dropdown on route change + Spillman MDT page-flip chirp
+  useEffect(() => { setOpenDropdown(null); playUiNavigate(); }, [location.pathname]);
 
   // Close dropdown on click outside
   useEffect(() => {
