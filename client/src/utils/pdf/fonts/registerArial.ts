@@ -39,7 +39,12 @@ export function registerArialFont(doc: jsPDF): 'Arial' {
     addFont: (file: string, family: string, style: string) => void;
   };
   if (d.__arialRegistered) return 'Arial';
-  for (const family of ['Arial', 'helvetica']) {
+  // Override EVERY built-in family ('helvetica', 'times', 'courier') in
+  // addition to 'Arial' so a registered document renders Arial-compatible
+  // glyphs no matter which font name a generator asks for. RMPG output is
+  // Arial-only (agency standard, 2026-06-11); generators that still say
+  // setFont('times'|'courier') get Arial without per-callsite edits.
+  for (const family of ['Arial', 'helvetica', 'times', 'courier']) {
     for (const [style, { file, b64 }] of Object.entries(VFS)) {
       d.addFileToVFS(file, b64);
       d.addFont(file, family, style);

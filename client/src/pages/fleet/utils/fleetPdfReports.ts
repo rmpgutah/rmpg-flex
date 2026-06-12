@@ -10,6 +10,7 @@
 import jsPDF from 'jspdf';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import type { FleetVehicle, FleetFuelLog, FleetFuelSummary, FleetMaintenance, FleetInspection, FleetAssignment, FleetInsurancePolicy, FleetAnalytics } from '../../../types';
+import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 
 const RMPG_GOLD = '#d4a017';
 const RMPG_BLACK = '#0a0a0a';
@@ -64,6 +65,7 @@ export function generateFleetStatusReport(data: {
   analytics: FleetAnalytics | null;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET STATUS REPORT', `Total Units: ${data.vehicles.length}  •  Active: ${data.vehicles.filter(v => v.status === 'in_service').length}`);
@@ -120,6 +122,7 @@ export function generateFleetMaintenanceReport(data: {
   records: FleetMaintenance[];
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'MAINTENANCE HISTORY REPORT');
@@ -164,6 +167,7 @@ export function generateFleetCostReport(data: {
   maintenanceRecords: FleetMaintenance[];
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET COST ANALYSIS REPORT');
@@ -219,6 +223,7 @@ export function generateFleetLifecycleReport(data: {
   assignments: FleetAssignment[];
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'VEHICLE LIFECYCLE REPORT');
@@ -280,6 +285,7 @@ export function generateFleetComplianceReport(data: {
   vehicles: FleetVehicle[];
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET COMPLIANCE REPORT', `Generated: ${new Date().toISOString().slice(0, 10)}`);
@@ -338,6 +344,7 @@ export function generateFleetUtilizationReport(data: {
   days?: number;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET UTILIZATION REPORT', `Last ${data.days ?? 30} Days`);
@@ -374,6 +381,7 @@ export function generateFleetFuelConsumptionReport(data: {
   totalCo2?: number;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET FUEL CONSUMPTION & EMISSIONS REPORT');
@@ -420,6 +428,7 @@ export function generateFleetAccidentReport(data: {
   accident: Record<string, unknown>;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   let y = headerStrip(doc, 'FLEET ACCIDENT REPORT', `Vehicle #${data.vehicle.vehicle_number}`);
   y = vehicleSummaryBlock(doc, data.vehicle, y);
 
@@ -465,6 +474,7 @@ export function generateFleetBudgetReport(data: {
   budgets: Array<{ category: string; allocated_amount: number; spent_amount: number }>;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   let y = headerStrip(doc, 'FLEET BUDGET REPORT', `Fiscal Year ${data.fiscalYear}`);
 
@@ -507,6 +517,7 @@ export function generateFleetReplacementReport(data: {
   vehicles: Array<FleetVehicle & { replacement_year?: number; replacement_reason?: string; estimated_replacement_cost?: number; rp_priority?: string; rp_status?: string }>;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET REPLACEMENT PLAN', `Projected Replacements`);
@@ -548,6 +559,7 @@ export function generateFleetDepreciationReport(data: {
   vehicles: Array<FleetVehicle & { depreciation?: { purchase_price?: number; salvage_value?: number; useful_life_months?: number; monthly_depreciation?: number; accumulated_depreciation?: number; current_book_value?: number } | null }>;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET DEPRECIATION SCHEDULE');
@@ -593,6 +605,7 @@ export function generateFleetKeyReport(data: {
   keys: Array<{ vehicle_number?: string; key_number?: string; key_type?: string; rfid_tag?: string; status?: string; current_holder?: string; last_checkout?: string; last_return?: string }>;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET KEY MANAGEMENT REPORT');
@@ -644,6 +657,7 @@ export function generateFleetScorecardReport(data: {
   avg_mpg: number | null; health_score: number;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   let y = headerStrip(doc, 'FLEET HEALTH SCORECARD', `Score: ${data.health_score}/100`);
 
@@ -707,6 +721,7 @@ export function generatePersonnelProductivityReport(data: {
   days?: number;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'PERSONNEL PRODUCTIVITY REPORT',
@@ -780,6 +795,7 @@ export function generateInspectionAnalysisReport(data: {
   overallPassRate?: number;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'INSPECTION ANALYSIS REPORT',
@@ -891,6 +907,7 @@ export function generateCostPerMileReport(data: {
   totalCost?: number;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'COST-PER-MILE ANALYSIS REPORT',
@@ -969,6 +986,7 @@ export function generateMaintenanceForecastReport(data: {
   upcomingCount?: number;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'MAINTENANCE FORECAST REPORT',
@@ -1058,6 +1076,7 @@ export function generateComplianceAuditReport(data: {
   issuesCount?: number;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'COMPLIANCE AUDIT REPORT',

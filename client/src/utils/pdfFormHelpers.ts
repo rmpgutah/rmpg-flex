@@ -575,7 +575,13 @@ export function drawNibrsHeader(
 
     // Metadata box: bordered grid with gray label column.
     if (rows.length) {
-      const labelW = 20;
+      // Auto-fit the gray label column to the widest label. The old fixed
+      // 20mm column let long labels ("CALL FOR SERVICE") run under the
+      // value text (caught 2026-06-11 on PS-201's CFS header box).
+      doc.setFont(FONT_FAMILY, 'bold');
+      doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
+      const maxLabelTextW = Math.max(...rows.map((r) => doc.getTextWidth(r.label)));
+      const labelW = Math.min(34, Math.max(20, maxLabelTextW + 3.5));
       doc.setDrawColor(...COLOR.RULE_STRONG);
       doc.setLineWidth(0.3);
       doc.rect(boxX, y, boxW, boxH);

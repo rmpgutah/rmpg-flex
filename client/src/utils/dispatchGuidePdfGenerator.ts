@@ -15,6 +15,7 @@
 import jsPDF from 'jspdf';
 import { applyPrintTarget, type PrintTarget } from './pdfTokens';
 import { SHOTS, type GuideShot } from './dispatchGuideShots';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 /** Brother PJ-700/800 6mm leading-edge dead zone, expressed in points
  *  (this generator works in pt, not mm). 6mm × 72/25.4 ≈ 17pt. */
@@ -4654,6 +4655,7 @@ export async function buildDispatchGuideDoc(options: DispatchGuidePdfOptions = {
   const liveCodes = await fetchLiveCodes();
 
   const doc = new jsPDF({ format: 'letter', unit: 'pt' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
   const topOffset = options.printTarget === 'mobile' ? MOBILE_TOP_OFFSET_PT : 0;
   const ctx: GuideContext = {
