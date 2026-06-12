@@ -823,6 +823,8 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'regex', value: /^\/api\/dl-records(\/\d+)?(\?.*)?$/ },
   // Phone → desktop scan relay, deep sweep, scan log, vision OCR, SOR (rewrite-only).
   { kind: 'regex', value: /^\/api\/dl-records\/(scan-relay(\/poll)?|deep-sweep|scan-log|ocr-scan|court-lookup|fbi-lookup|sources-config|sor\/(status|import|poll))(\?.*)?$/ },
+  // Admin Cloudflare platform integration (rewrite-only; no legacy handler).
+  { kind: 'prefix', value: '/api/cloudflare' },
 
   // ── More specific dispatch sub-paths (new in rewrite) ──
   // /api/dispatch/calls/:id/{recommended-units, closest-unit, auto-assign,
