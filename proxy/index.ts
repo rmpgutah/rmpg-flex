@@ -724,12 +724,8 @@ const STUBS: StubRule[] = [
   // ── 2026-06-07 round 3 — feature surfaces with no rewrite handler ──
   // diagnostics/ui-trap stub REMOVED 2026-06-10: redundant — /api/diagnostics
   // is routed to env.API and stubs.ts serves POST /ui-trap equivalently.
-  {
-    match: /^\/api\/dl-records\/ocr-scan(\?.*)?$/,
-    methods: ['POST'],
-    body: { success: false, error: 'OCR scan is not yet ported', fields: {} },
-    reason: 'no /dl-records/ocr-scan in rewrite; DlPage tolerates error',
-  },
+  // dl-records/ocr-scan stub REMOVED 2026-06-11: real Workers AI vision
+  // OCR now lives in src/routes/dlRecords.ts (routed to env.API below).
   // /downloads/info stub REMOVED 2026-06-07: downloads.ts has real handler.
   {
     match: /^\/api\/evidence$/,
@@ -825,6 +821,8 @@ const API_ROUTES: RouteRule[] = [
   // and /dl-records/ocr-scan (external RapidAPI / OCR round-trips) do NOT
   // match and correctly fall through to env.LEGACY.
   { kind: 'regex', value: /^\/api\/dl-records(\/\d+)?(\?.*)?$/ },
+  // Phone → desktop scan relay, deep sweep, scan log, vision OCR, SOR (rewrite-only).
+  { kind: 'regex', value: /^\/api\/dl-records\/(scan-relay(\/poll)?|deep-sweep|scan-log|ocr-scan|court-lookup|sources-config|sor\/(status|import|poll))(\?.*)?$/ },
 
   // ── More specific dispatch sub-paths (new in rewrite) ──
   // /api/dispatch/calls/:id/{recommended-units, closest-unit, auto-assign,
