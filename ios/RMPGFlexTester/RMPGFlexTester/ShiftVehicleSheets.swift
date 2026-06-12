@@ -32,6 +32,8 @@ struct ShiftStartSheet: View {
     @State private var odometer = ""
     @State private var items = PRE_TRIP_ITEMS.map { ChecklistItem(id: $0) }
     @State private var notes = ""
+    @State private var fuelLevel = "F"
+    @State private var photoUrls: [String] = []
     @State private var submitting = false
     @State private var error: String?
 
@@ -52,8 +54,10 @@ struct ShiftStartSheet: View {
                     }
                     TextField("Starting odometer (mi)", text: $odometer)
                         .keyboardType(.numberPad)
+                    FuelLevelPicker(level: $fuelLevel)
                 }
                 Section("PRE-TRIP INSPECTION") {
+                    InspectionPhotoStrip(context: "pre-trip", photoUrls: $photoUrls)
                     ForEach($items) { $item in
                         VStack(alignment: .leading, spacing: 2) {
                             Toggle(item.id, isOn: $item.pass).tint(Theme.gold)
@@ -92,7 +96,12 @@ struct ShiftStartSheet: View {
             let assignedVehicle = vehicleId
                 ?? (((res as? [String: Any])?["vehicle"] as? [String: Any])?["id"] as? Int)
             if let vid = assignedVehicle {
-                let checklist = items.map { ["item": $0.id, "result": $0.pass ? "pass" : "fail", "note": $0.note] }
+                var checklist = items.map { ["item": $0.id, "result": $0.pass ? "pass" : "fail", "note": $0.note] }
+                checklist.append(["item": "Fuel level at start", "result": fuelLevel == "E" ? "fail" : "pass",
+                                  "note": "\(fuelLevel) tank"])
+                for (i, url) in photoUrls.enumerated() {
+                    checklist.append(["item": "Photo \(i + 1)", "result": "pass", "note": url])
+                }
                 var insp: [String: Any] = [
                     "inspection_date": ISO8601DateFormatter().string(from: Date()),
                     "inspection_type": "pre_trip",
@@ -131,9 +140,13 @@ struct ShiftEndSheet: View {
 
     @State private var odometer = ""
     @State private var issues = ""
-    @State private var fuelLow = false
+    @State private var fuelLevel = "1/2"
     @State private var newDamage = false
     @State private var damageNote = ""
+    @State private var photoUrls: [String] = []
+    @State private var boughtFuel = false
+    @State private var fuelGallons = ""
+    @State private var fuelCost = ""
     @State private var submitting = false
     @State private var error: String?
 
@@ -147,11 +160,19 @@ struct ShiftEndSheet: View {
                         .keyboardType(.numberPad)
                 }
                 Section("POST-TRIP") {
-                    Toggle("Fuel below 1/2 tank", isOn: $fuelLow).tint(Theme.orange)
+                    FuelLevelPicker(level: $fuelLevel)
                     Toggle("New damage found", isOn: $newDamage).tint(Theme.red)
                     if newDamage { TextField("Describe damage", text: $damageNote) }
                     TextField("Mechanical issues this shift (blank = none)", text: $issues, axis: .vertical)
                         .lineLimit(2...4)
+                    InspectionPhotoStrip(context: "post-trip", photoUrls: $photoUrls)
+                }
+                Section("FUEL PURCHASE THIS SHIFT") {
+                    Toggle("I bought fuel", isOn: $boughtFuel).tint(Theme.gold)
+                    if boughtFuel {
+                        TextField("Gallons", text: $fuelGallons).keyboardType(.decimalPad)
+                        TextField("Total cost ($)", text: $fuelCost).keyboardType(.decimalPad)
+                    }
                 }
                 Section {
                     Button(submitting ? "ENDING…" : "END SHIFT") { Task { await submit() } }
@@ -174,12 +195,21 @@ struct ShiftEndSheet: View {
         if !odometer.isEmpty { body["ending_mileage"] = Int(odometer) ?? odometer }
         do {
             try await client.requestJSON("POST", "api/dispatch/duty/end", body: body)
+            let fuelLow = fuelLevel == "E" || fuelLevel == "1/4"
             let hasIssues = newDamage || fuelLow || !issues.isEmpty
             if let vid = vehicleId {
                 var checklist: [[String: String]] = []
-                checklist.append(["item": "Fuel level", "result": fuelLow ? "fail" : "pass", "note": fuelLow ? "Below 1/2 — refuel" : ""])
+                checklist.append(["item": "Fuel level at end", "result": fuelLow ? "fail" : "pass",
+                                  "note": "\(fuelLevel) tank" + (fuelLow ? " — refuel needed" : "")])
                 checklist.append(["item": "New damage", "result": newDamage ? "fail" : "pass", "note": damageNote])
                 if !issues.isEmpty { checklist.append(["item": "Mechanical", "result": "fail", "note": issues]) }
+                for (i, url) in photoUrls.enumerated() {
+                    checklist.append(["item": "Photo \(i + 1)", "result": "pass", "note": url])
+                }
+                if boughtFuel {
+                    _ = try? await FuelLogger.log(client: client, vehicleId: vid, gallons: fuelGallons,
+                                                  totalCost: fuelCost, odometer: odometer, vendor: "")
+                }
                 var insp: [String: Any] = [
                     "inspection_date": ISO8601DateFormatter().string(from: Date()),
                     "inspection_type": "post_trip",
