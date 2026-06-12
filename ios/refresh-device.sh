@@ -43,6 +43,7 @@ cat > "$APP/Info.plist" <<EOF
 <key>UIDeviceFamily</key><array><integer>1</integer></array>
 <key>MinimumOSVersion</key><string>17.0</string>
 <key>NSCameraUsageDescription</key><string>Scan driver license barcodes to relay identity data to your MDT desktop session.</string>
+<key>NSLocationWhenInUseUsageDescription</key><string>Send your unit position to the dispatch map and attach coordinates to panic alerts.</string>
 <key>CFBundleIcons</key><dict>
   <key>CFBundlePrimaryIcon</key><dict>
     <key>CFBundleIconFiles</key><array><string>AppIcon60x60</string></array>

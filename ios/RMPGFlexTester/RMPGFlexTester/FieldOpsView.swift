@@ -1,0 +1,251 @@
+import SwiftUI
+import CoreLocation
+import AudioToolbox
+
+// Field Ops — the phone side of the desktop CAD:
+//   • Duty: start/end shift (clock-on + unit in-service + vehicle, same as ShiftCard)
+//   • Unit status buttons → PUT /dispatch/units/:id/status (desktop board updates live)
+//   • Assigned call card from the live calls feed
+//   • GPS push → POST /dispatch/gps every 15 s (desktop map tracks the phone)
+//   • PANIC → POST /dispatch/panic (creates the P1 officer_assist CAD call)
+struct FieldOpsView: View {
+    @StateObject private var location = LocationManager.shared
+    @State private var duty: [String: Any] = [:]
+    @State private var myCall: [String: Any]?
+    @State private var status: String?
+    @State private var busyAction = false
+    @State private var confirmPanic = false
+    @State private var gpsPushedAt: Date?
+
+    private var onShift: Bool { duty["on_shift"] as? Bool ?? false }
+    private var unit: [String: Any]? { duty["unit"] as? [String: Any] }
+    private var unitStatus: String { unit?["status"] as? String ?? "—" }
+
+    private let statuses: [(String, String)] = [
+        ("available", "10-8 AVAILABLE"), ("enroute", "EN ROUTE"),
+        ("on_scene", "ON SCENE"), ("busy", "10-6 BUSY"),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 10) {
+                    dutyCard
+                    if onShift { statusCard }
+                    if let myCall { callCard(myCall) }
+                    panicButton
+                    if let status {
+                        Text(status).font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(status.hasPrefix("✓") ? Theme.gold : Theme.orange)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if let gpsPushedAt {
+                        Text("GPS → dispatch map · last push \(gpsPushedAt.formatted(date: .omitted, time: .standard))")
+                            .font(.system(size: 9)).foregroundStyle(Theme.neutral)
+                    }
+                }
+                .padding(12)
+            }
+            .background(Theme.base)
+            .navigationTitle("FIELD OPS")
+            .navigationBarTitleDisplayMode(.inline)
+            .task {
+                location.start()
+                await refresh()
+                // Poll loop: duty/call every 10 s, GPS push every 15 s while visible.
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(15))
+                    await pushGps()
+                    await refresh()
+                }
+            }
+            .alert("SEND PANIC ALARM?", isPresented: $confirmPanic) {
+                Button("SEND PANIC", role: .destructive) { Task { await panic() } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This creates a Priority-1 OFFICER ASSIST call on the dispatch board.")
+            }
+        }
+    }
+
+    private var dutyCard: some View {
+        VStack(spacing: 6) {
+            HStack {
+                Circle().fill(onShift ? Theme.gold : Theme.neutral).frame(width: 10, height: 10)
+                Text(onShift ? "ON DUTY" : "OFF DUTY")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(onShift ? Theme.gold : Theme.neutral)
+                Spacer()
+                if let cs = unit?["call_sign"] as? String {
+                    Text(cs).font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white)
+                }
+            }
+            Button(onShift ? "END SHIFT" : "START SHIFT") {
+                Task { await dutyAction(onShift ? "end" : "start") }
+            }
+            .font(.system(size: 13, weight: .bold))
+            .frame(maxWidth: .infinity).padding(.vertical, 10)
+            .background(onShift ? Theme.raised : Theme.gold)
+            .foregroundStyle(onShift ? Theme.gold : .black)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+            .disabled(busyAction)
+        }
+        .padding(10).background(Theme.raised.opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+    }
+
+    private var statusCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("UNIT STATUS: \(unitStatus.uppercased())")
+                .font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.neutral)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                ForEach(statuses, id: \.0) { value, label in
+                    Button(label) { Task { await setStatus(value) } }
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background(unitStatus == value ? Theme.gold : Theme.raised)
+                        .foregroundStyle(unitStatus == value ? .black : .white)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                        .disabled(busyAction)
+                }
+            }
+        }
+    }
+
+    private func callCard(_ call: [String: Any]) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text("ASSIGNED CALL").font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.gold)
+                Spacer()
+                Text(call["call_number"] as? String ?? "")
+                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.neutral)
+            }
+            Text((call["call_type"] as? String ?? "CALL").uppercased())
+                .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+            Text(call["location_address"] as? String ?? call["address"] as? String ?? "")
+                .font(.system(size: 12, design: .monospaced)).foregroundStyle(.white)
+            if let desc = call["description"] as? String, !desc.isEmpty {
+                Text(desc).font(.system(size: 11)).foregroundStyle(Theme.neutral).lineLimit(4)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10).background(Theme.raised)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+    }
+
+    private var panicButton: some View {
+        Button { confirmPanic = true } label: {
+            Text("⚠ PANIC")
+                .font(.system(size: 16, weight: .heavy))
+                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                .background(Theme.red).foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+        }
+    }
+
+    // ── Networking ──────────────────────────────────────────
+
+    private func client() async -> RMPGAPIClient? {
+        var client = AppConfig.apiClient()
+        if client.jwt == nil,
+           let user = KeychainStore.load(key: "rmpgUser"),
+           let pass = KeychainStore.load(key: "rmpgPass"), !user.isEmpty,
+           let token = try? await client.login(username: user, password: pass) {
+            KeychainStore.save(token, key: "rmpgJWT")
+            client.jwt = token
+        }
+        return client.jwt == nil ? nil : client
+    }
+
+    /// Re-login once on 401 (JWTs expire mid-shift), then give up gracefully.
+    private func authed(_ work: (RMPGAPIClient) async throws -> Void) async {
+        guard var c = await client() else {
+            status = "✗ Set RMPG credentials in Settings"; return
+        }
+        do { try await work(c) } catch {
+            if (error as NSError).code == 401,
+               let user = KeychainStore.load(key: "rmpgUser"),
+               let pass = KeychainStore.load(key: "rmpgPass"),
+               let token = try? await c.login(username: user, password: pass) {
+                KeychainStore.save(token, key: "rmpgJWT")
+                c.jwt = token
+                if let _ = try? await work(c) { return }
+            }
+            status = "✗ \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func refresh() async {
+        await authed { c in
+            if let state = try await c.requestJSON("GET", "api/dispatch/duty/me") as? [String: Any] {
+                duty = state
+            }
+            // Assigned call: the unit row carries current_call_id; resolve it.
+            if let unit = duty["unit"] as? [String: Any],
+               let callId = unit["current_call_id"] as? Int {
+                myCall = try? await c.requestJSON("GET", "api/dispatch/calls/\(callId)") as? [String: Any]
+            } else {
+                myCall = nil
+            }
+        }
+    }
+
+    @MainActor
+    private func dutyAction(_ action: String) async {
+        busyAction = true; defer { busyAction = false }
+        await authed { c in
+            do {
+                try await c.requestJSON("POST", "api/dispatch/duty/\(action)", body: [:])
+                status = action == "start" ? "✓ On duty — clocked in, unit in service" : "✓ Shift ended — clocked out"
+            } catch {
+                // Common 409: NO_UNIT / vehicle prompt — surface the server's words.
+                status = "✗ \(error.localizedDescription)"
+            }
+            await refresh()
+        }
+    }
+
+    @MainActor
+    private func setStatus(_ value: String) async {
+        guard let id = unit?["id"] as? Int else { status = "✗ No unit assigned"; return }
+        busyAction = true; defer { busyAction = false }
+        await authed { c in
+            try await c.requestJSON("PUT", "api/dispatch/units/\(id)/status", body: ["status": value])
+            status = "✓ Status → \(value.uppercased()) (live on dispatch board)"
+            await refresh()
+        }
+    }
+
+    @MainActor
+    private func pushGps() async {
+        guard onShift, let loc = location.last,
+              Date().timeIntervalSince(loc.timestamp) < 60 else { return }
+        await authed { c in
+            try await c.requestJSON("POST", "api/dispatch/gps", body: [
+                "latitude": loc.coordinate.latitude,
+                "longitude": loc.coordinate.longitude,
+                "speed": max(loc.speed, 0) * 2.23694,   // m/s → mph
+                "heading": max(loc.course, 0),
+                "accuracy": loc.horizontalAccuracy,
+                "source": "ios-field-app",
+            ])
+            gpsPushedAt = Date()
+        }
+    }
+
+    @MainActor
+    private func panic() async {
+        AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
+        await authed { c in
+            var body: [String: Any] = ["trigger_method": "ios_field_app"]
+            if let loc = location.last {
+                body["latitude"] = loc.coordinate.latitude
+                body["longitude"] = loc.coordinate.longitude
+            }
+            try await c.requestJSON("POST", "api/dispatch/panic", body: body)
+            status = "✓ PANIC SENT — P1 officer assist on the board"
+        }
+    }
+}

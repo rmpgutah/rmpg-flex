@@ -47,6 +47,26 @@ struct RMPGAPIClient {
         return token
     }
 
+    /// Generic authenticated request returning parsed JSON (object or array).
+    @discardableResult
+    func requestJSON(_ method: String, _ path: String, body: [String: Any]? = nil) async throws -> Any {
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = method
+        if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
+        if let body {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "RMPG", code: status,
+                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(200))"])
+        }
+        return try JSONSerialization.jsonObject(with: data)
+    }
+
     func postJSON(_ path: String, body: [String: Any]) async throws {
         var req = URLRequest(url: baseURL.appendingPathComponent(path))
         req.httpMethod = "POST"
