@@ -20,7 +20,6 @@ import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
-import { useAuth } from '../context/AuthContext';
 
 // QR code that opens this scanner page on the officer's phone —
 // scans made there relay to this desktop session automatically.
