@@ -118,6 +118,7 @@ const IntelSearchPage = lazyRetry(() => import('./pages/IntelSearchPage'));
 const PersonDossierPage = lazyRetry(() => import('./pages/PersonDossierPage'));
 const PlateLogPage = lazyRetry(() => import('./pages/PlateLogPage'));
 const QuickCapturePage = lazyRetry(() => import('./pages/QuickCapturePage'));
+const JailRecordsPage = lazyRetry(() => import('./pages/JailRecordsPage'));
 const UseOfForcePage = lazyRetry(() => import('./pages/UseOfForcePage'));
 const SecurityDashboardPage = lazyRetry(() => import('./pages/SecurityDashboardPage'));
 const HelpPage = lazyRetry(() => import('./pages/HelpPage'));
@@ -458,6 +459,7 @@ function AppRoutes() {
             <Route path="/intel/person/:id" element={<RouteErrorBoundary><PersonDossierPage /></RouteErrorBoundary>} />
             <Route path="/intel/plate-log" element={<RouteErrorBoundary><PlateLogPage /></RouteErrorBoundary>} />
             <Route path="/intel/quick-capture" element={<RouteErrorBoundary><QuickCapturePage /></RouteErrorBoundary>} />
+            <Route path="/intel/jail" element={<RouteErrorBoundary><JailRecordsPage /></RouteErrorBoundary>} />
             <Route path="/code-enforcement" element={<RouteErrorBoundary><CodeEnforcementPage /></RouteErrorBoundary>} />
             <Route path="/court" element={<RouteErrorBoundary><CourtTrackerPage /></RouteErrorBoundary>} />
             <Route path="/dar" element={<RouteErrorBoundary><DailyActivityReportsPage /></RouteErrorBoundary>} />

@@ -20,6 +20,8 @@ import { mergeTimeline, rankAssociates, type TimelineEvent, type CoOccurrence } 
 import { screenPerson, screenVehicle } from '../utils/intelScreen';
 import { runExtraction } from '../utils/intelExtract';
 import { computeEscalation, personActivityEvents } from '../utils/intelPatterns';
+import { parseRosterText, ingestBookings } from '../utils/jailIngest';
+import { runJailScan } from '../utils/jailSources/runScan';
 
 const intel = new Hono<Env>();
 
@@ -439,6 +441,60 @@ intel.post('/quick-capture', operational, async (c) => {
   }
 
   return c.json({ success: true, person_id: personId, person_reused: personReused, vehicle_id: vehicleId, fi_id: fiId, hits });
+});
+
+// ─── Jail / booking records (Wave 3a) ────────────────────────
+
+intel.get('/jail/sources', operational, async (c) => {
+  const db = getDb(c.env);
+  try {
+    return c.json(await query<any>(db, 'SELECT * FROM jail_roster_sources ORDER BY status DESC, display_name'));
+  } catch (err: any) {
+    return c.json({ error: err?.message, hint: 'migration 0101 may not have reached live D1' }, 500);
+  }
+});
+
+intel.post('/jail/scan', requireRole('admin'), async (c) => {
+  const summaries = await runJailScan(c.env as any);
+  return c.json({ success: true, summaries });
+});
+
+intel.post('/jail/ingest', supervisorPlus, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const b = await c.req.json().catch(() => ({} as any));
+  const county = String(b?.county || '').trim();
+  const sourceKey = b?.source_key || (county ? `ut-${county.toLowerCase().replace(/\s+/g, '-')}` : 'manual');
+  const format = b?.format === 'csv' ? 'csv' : 'lines';
+  const text = String(b?.text || '');
+  if (!text.trim()) return c.json({ error: 'text required' }, 400);
+  const parsed = parseRosterText(text, format).map((r, i) => ({
+    ...r, source_key: sourceKey, booking_id: '', county: county || r.county || null,
+  }));
+  if (!parsed.length) return c.json({ error: 'no rows parsed', ingested: 0, matched: 0, alerts: 0 });
+  const result = await ingestBookings(db, parsed as any, 'roster_manual', userId);
+  return c.json({ success: true, ...result, parsed: parsed.length });
+});
+
+intel.get('/jail/bookings', operational, async (c) => {
+  const db = getDb(c.env);
+  const q = (c.req.query('q') || '').trim();
+  const county = (c.req.query('county') || '').trim();
+  const limit = Math.min(Number(c.req.query('limit')) || 40, 100);
+  try {
+    const where: string[] = [`entry_source LIKE 'roster%'`];
+    const binds: any[] = [];
+    if (q) { where.push('(full_name LIKE ? OR charges LIKE ?)'); binds.push(`%${q}%`, `%${q}%`); }
+    if (county) { where.push('county = ?'); binds.push(county); }
+    const rows = await query<any>(db,
+      `SELECT ar.id, ar.full_name, ar.booking_date, ar.charges, ar.county, ar.entry_source, ar.mugshot_url,
+              (SELECT linked_id FROM arrest_cross_links WHERE arrest_record_id = ar.id AND linked_type = 'person' LIMIT 1) AS person_id
+       FROM arrest_records ar WHERE ${where.join(' AND ')} ORDER BY ar.fetched_at DESC LIMIT ?`,
+      ...binds, limit);
+    return c.json(rows);
+  } catch (err: any) {
+    return c.json({ error: err?.message }, 500);
+  }
 });
 
 // ─── Person Dossier ──────────────────────────────────────────
