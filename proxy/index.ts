@@ -822,7 +822,7 @@ const API_ROUTES: RouteRule[] = [
   // through to env.LEGACY. ocr-scan moved to the rewrite 2026-06-11
   // (Workers-AI vision in src/routes/dlRecords.ts) — explicit rule below.
   { kind: 'regex', value: /^\/api\/dl-records(\/\d+)?(\?.*)?$/ },
-  { kind: 'regex', value: /^\/api\/dl-records\/ocr-scan(\?.*)?$/ },
+  { kind: 'regex', value: /^\/api\/dl-records\/(ocr-scan|sync-from-persons)(\?.*)?$/ },
 
   // ── MicroBilt DL search (new in rewrite 2026-06-11) ──
   // POST /api/microbilt/dl/search + GET dl/stats + GET status. Neither

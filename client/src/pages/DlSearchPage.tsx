@@ -15,6 +15,7 @@ import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { useAuth } from '../context/AuthContext';
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
@@ -86,6 +87,34 @@ export default function DlSearchPage() {
   // ── DL Verification via RapidAPI ──
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<any>(null);
+
+  // ── Local DL corpus stats + persons-sync (admin/manager) ──
+  const { user } = useAuth();
+  const canSync = user?.role === 'admin' || user?.role === 'manager';
+  const [dlStats, setDlStats] = useState<{ recordCount: number; lastFetchedAt: string | null } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const loadDlStats = useCallback(() => {
+    apiFetch<{ recordCount: number; lastFetchedAt: string | null }>('/microbilt/dl/stats')
+      .then(setDlStats)
+      .catch(() => { /* stats are decorative — never block the page */ });
+  }, []);
+  useEffect(() => { loadDlStats(); }, [loadDlStats]);
+
+  const handleSyncFromPersons = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const r = await apiFetch<{ scanned: number; created: number; updated: number }>(
+        '/dl-records/sync-from-persons', { method: 'POST' },
+      );
+      addToast(`DL sync: ${r.created} created, ${r.updated} refreshed from ${r.scanned} person records`, 'success');
+      loadDlStats();
+    } catch (err: any) {
+      addToast(err?.message || 'DL sync from persons failed', 'error');
+    } finally {
+      setSyncing(false);
+    }
+  }, [addToast, loadDlStats]);
 
   const handleVerifyDl = useCallback(async () => {
     if (!dlNumber.trim()) { addToast('Enter a DL number to verify', 'warning'); return; }
@@ -419,6 +448,24 @@ export default function DlSearchPage() {
                 <CreditCard className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
                 <p>Search by name, DL number, or state</p>
                 <p className="text-[9px] text-rmpg-600 mt-1">Searches local records + MicroBilt API</p>
+                {dlStats && (
+                  <p className="text-[9px] text-[#d4a017] mt-1.5 font-bold uppercase tracking-wider">
+                    {dlStats.recordCount} local DL record{dlStats.recordCount === 1 ? '' : 's'} on file
+                    {dlStats.lastFetchedAt ? ` · last update ${formatDate(dlStats.lastFetchedAt)}` : ''}
+                  </p>
+                )}
+                {canSync && (
+                  <button
+                    type="button"
+                    onClick={handleSyncFromPersons}
+                    disabled={syncing}
+                    className="toolbar-btn text-[9px] mt-2"
+                    title="Backfill the DL store from person records that have a DL number on file"
+                  >
+                    {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />}
+                    {syncing ? 'Syncing...' : 'Sync from Person Records'}
+                  </button>
+                )}
               </div>
               {/* DL OCR Scanner */}
               <div className="border border-[#1a1a1a] rounded-sm p-3 bg-[#0c0c0c] space-y-2 w-full max-w-xs">

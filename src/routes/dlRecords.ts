@@ -296,6 +296,90 @@ dlRecords.delete('/:id', async (c) => {
   }
 });
 
+// ── POST /sync-from-persons — backfill dl_records from the RMS ───────
+// The persons table is the richest local DL source (8 records with DL
+// numbers on live at build time vs 2 in dl_records). This idempotent
+// upsert gives the DL SEARCH page a real local corpus and keeps it in
+// step as person records accumulate. Safe to run repeatedly — keyed on
+// (dl_number, dl_state); person data only fills dl_records, never the
+// reverse.
+dlRecords.post('/sync-from-persons', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const persons = await query<any>(
+      db,
+      `SELECT id, first_name, middle_name, last_name, dob, gender, height, weight,
+              eye_color, hair_color, race, dl_number, dl_state, dl_class, dl_expiry,
+              address, city, state, zip
+       FROM persons WHERE COALESCE(dl_number,'') != ''`,
+    );
+    let created = 0, updated = 0;
+    for (const p of persons) {
+      const dlState = p.dl_state || 'UT';
+      const fullName = `${p.first_name || ''} ${p.middle_name || ''} ${p.last_name || ''}`
+        .replace(/\s+/g, ' ').trim();
+      const existing = await queryFirst<{ id: number; source: string }>(
+        db, 'SELECT id, source FROM dl_records WHERE dl_number = ? AND dl_state = ?',
+        p.dl_number, dlState,
+      );
+      if (existing) {
+        // Only refresh rows we own — never clobber MICROBILT_DL / OCR /
+        // MANUAL_ENTRY data with person-record fields.
+        if (existing.source === 'PERSONS_SYNC') {
+          await execute(
+            db,
+            `UPDATE dl_records SET first_name=?, middle_name=?, last_name=?, full_name=?,
+               date_of_birth=?, gender=?, height=?, weight=?, eye_color=?, hair_color=?, race=?,
+               dl_class=?, dl_expiration=?, updated_at=datetime('now')
+             WHERE id=?`,
+            p.first_name || '', p.middle_name || '', p.last_name || '', fullName,
+            p.dob || '', p.gender || '', p.height || '', p.weight || '',
+            p.eye_color || '', p.hair_color || '', p.race || '',
+            p.dl_class || '', p.dl_expiry || '', existing.id,
+          );
+          updated++;
+        }
+        continue;
+      }
+      const result = await execute(
+        db,
+        `INSERT INTO dl_records (
+           dl_number, dl_state, dl_class, dl_status, dl_expiration, dl_issue_date,
+           dl_restrictions, dl_endorsements, first_name, middle_name, last_name,
+           full_name, suffix, date_of_birth, gender, height, weight, eye_color,
+           hair_color, race, source, fetched_at, updated_at
+         ) VALUES (?,?,?,'', ?, '', '', '', ?,?,?,?, '', ?,?,?,?,?,?,?, 'PERSONS_SYNC', datetime('now'), datetime('now'))`,
+        p.dl_number, dlState, p.dl_class || '', p.dl_expiry || '',
+        p.first_name || '', p.middle_name || '', p.last_name || '', fullName,
+        p.dob || '', p.gender || '', p.height || '', p.weight || '',
+        p.eye_color || '', p.hair_color || '', p.race || '',
+      );
+      const recordId = Number(result.meta.last_row_id);
+      if (p.address) {
+        await execute(
+          db,
+          `INSERT INTO dl_addresses (dl_record_id, address, address2, city, state, postal_code, country)
+           VALUES (?, ?, '', ?, ?, ?, 'US')`,
+          recordId, p.address || '', p.city || '', p.state || dlState, p.zip || '',
+        );
+      }
+      created++;
+    }
+    await audit(
+      db, (c.get('userId') as number) ?? null, 'dl_sync_from_persons', 0,
+      `DL sync from persons: ${created} created, ${updated} refreshed (of ${persons.length} persons with DL)`,
+    );
+    return c.json({ success: true, scanned: persons.length, created, updated });
+  } catch (err) {
+    return c.json({
+      error: 'Failed to sync DL records from persons', code: 'DL_SYNC_FAILED',
+      detail: err instanceof Error ? err.message : String(err),
+    }, 500);
+  }
+});
+
 // ── POST /ocr-scan — DL image → structured fields (Workers AI vision) ──
 // The DL SEARCH page's "SCAN DL" button uploads a license photo here and
 // expects { parsed: { first_name, ..., dl_number, dl_expiry } }. This was
