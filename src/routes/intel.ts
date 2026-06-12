@@ -17,6 +17,8 @@ import { requireRole } from '../middleware/auth';
 import { sniffIdentifiers, toFtsQuery, isRealValue } from '../utils/intelMatch';
 import { rebuildIntelIndex, computeResolutionSuggestions, INTEL_TYPES } from '../utils/intelIndexer';
 import { mergeTimeline, rankAssociates, type TimelineEvent, type CoOccurrence } from '../utils/intelDossier';
+import { screenPerson, screenVehicle } from '../utils/intelScreen';
+import { runExtraction } from '../utils/intelExtract';
 
 const intel = new Hono<Env>();
 
@@ -206,6 +208,154 @@ intel.delete('/watchlist/:entityType/:entityId', operational, async (c) => {
       : 'UPDATE intel_watchlist SET active = 0 WHERE entity_type = ? AND entity_id = ? AND added_by = ?',
     ...(supervisor ? [entityType, entityId] : [entityType, entityId, userId]));
   return c.json({ success: true });
+});
+
+// ─── Cross-hit screening (Wave 1) ────────────────────────────
+// Instant records check for any person/vehicle — called by client
+// flows right after a save/link for immediate feedback. Critical hits
+// also notify the calling user.
+
+intel.post('/screen', operational, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const body = await c.req.json().catch(() => ({} as any));
+  const entityType = String(body?.entity_type || '');
+  let hits;
+  let resolvedId: number | null = null;
+  if (entityType === 'person' && Number.isFinite(Number(body?.entity_id))) {
+    resolvedId = Number(body.entity_id);
+    hits = await screenPerson(db, resolvedId);
+  } else if (entityType === 'vehicle' && (Number.isFinite(Number(body?.entity_id)) || body?.plate)) {
+    const r = await screenVehicle(db, { vehicleId: Number(body?.entity_id) || undefined, plate: body?.plate });
+    resolvedId = r.vehicleId; hits = r.hits;
+  } else {
+    return c.json({ error: 'entity_type person|vehicle with entity_id (or plate) required' }, 400);
+  }
+  const critical = hits.filter((h) => h.severity === 'critical');
+  if (critical.length && userId) {
+    try {
+      await execute(db,
+        `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+         VALUES ('intel_screen', 'high', ?, ?, ?, ?, ?, 0, datetime('now'))`,
+        `RECORDS HIT (${entityType})`, critical.map((h) => h.detail).join('; '),
+        entityType, resolvedId, userId);
+    } catch (err: any) { console.error('[screen] notify failed:', err?.message); }
+  }
+  return c.json({ entity_type: entityType, entity_id: resolvedId, hits });
+});
+
+// ─── Narrative link suggestions (Wave 1) ─────────────────────
+
+intel.get('/suggestions', operational, async (c) => {
+  const db = getDb(c.env);
+  const status = c.req.query('status') || 'pending';
+  try {
+    const rows = await query<any>(db,
+      `SELECT s.*,
+        CASE s.entity_type
+          WHEN 'person' THEN (SELECT first_name || ' ' || last_name FROM persons WHERE id = s.entity_id)
+          ELSE (SELECT COALESCE(plate_number, make || ' ' || model) FROM vehicles_records WHERE id = s.entity_id)
+        END AS entity_label,
+        CASE s.source_type
+          WHEN 'call' THEN (SELECT COALESCE(call_number, 'CFS-' || id) FROM calls_for_service WHERE id = s.source_id)
+          ELSE (SELECT COALESCE(incident_number, 'INC-' || id) FROM incidents WHERE id = s.source_id)
+        END AS source_label
+       FROM intel_link_suggestions s WHERE s.status = ? ORDER BY s.created_at DESC LIMIT 100`, status);
+    return c.json(rows);
+  } catch (err: any) {
+    return c.json({ error: err?.message, hint: 'migration 0100 may not have reached live D1' }, 500);
+  }
+});
+
+intel.post('/suggestions/:id/confirm', operational, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const id = Number(c.req.param('id'));
+  const s = await queryFirst<any>(db, 'SELECT * FROM intel_link_suggestions WHERE id = ?', id);
+  if (!s) return c.json({ error: 'Suggestion not found' }, 404);
+  const table = s.source_type === 'call'
+    ? (s.entity_type === 'person' ? 'call_persons' : 'call_vehicles')
+    : (s.entity_type === 'person' ? 'incident_persons' : 'incident_vehicles');
+  const fk = s.source_type === 'call' ? 'call_id' : 'incident_id';
+  const col = s.entity_type === 'person' ? 'person_id' : 'vehicle_id';
+  try {
+    await execute(db,
+      `INSERT OR IGNORE INTO ${table} (${fk}, ${col}, role) VALUES (?, ?, 'mentioned')`,
+      s.source_id, s.entity_id);
+  } catch (err: any) {
+    // Some junction tables lack a role column — retry without it.
+    try {
+      await execute(db, `INSERT OR IGNORE INTO ${table} (${fk}, ${col}) VALUES (?, ?)`, s.source_id, s.entity_id);
+    } catch (e2: any) {
+      return c.json({ error: `Failed to create link: ${e2?.message}` }, 500);
+    }
+  }
+  await execute(db,
+    `UPDATE intel_link_suggestions SET status = 'confirmed', decided_by = ?, decided_at = datetime('now') WHERE id = ?`,
+    userId, id);
+  return c.json({ success: true });
+});
+
+intel.post('/suggestions/:id/reject', operational, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const r = await execute(db,
+    `UPDATE intel_link_suggestions SET status = 'rejected', decided_by = ?, decided_at = datetime('now') WHERE id = ?`,
+    userId, Number(c.req.param('id')));
+  return r.meta?.changes ? c.json({ success: true }) : c.json({ error: 'Suggestion not found' }, 404);
+});
+
+intel.post('/extract/run', requireRole('admin'), async (c) => {
+  const created = await runExtraction(getDb(c.env), Number(c.req.query('hours')) || 720);
+  return c.json({ success: true, suggestions_created: created });
+});
+
+// ─── Plate / sighting log (Wave 1) ───────────────────────────
+
+intel.post('/sightings', operational, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const body = await c.req.json().catch(() => ({} as any));
+  const plate = String(body?.plate || '').toUpperCase().replace(/[\s-]/g, '');
+  if (plate.length < 2) return c.json({ error: 'plate required' }, 400);
+  const { vehicleId, hits } = await screenVehicle(db, { plate });
+  const r = await execute(db,
+    `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    plate, body?.state || null, vehicleId,
+    body?.location_text || null,
+    Number.isFinite(Number(body?.lat)) ? Number(body.lat) : null,
+    Number.isFinite(Number(body?.lng)) ? Number(body.lng) : null,
+    body?.notes || null, userId);
+  let vehicle: any = null;
+  if (vehicleId) {
+    vehicle = await queryFirst<any>(db,
+      'SELECT id, plate_number, make, model, color, year, owner_person_id FROM vehicles_records WHERE id = ?', vehicleId);
+  }
+  const critical = hits.filter((h) => h.severity === 'critical');
+  if (critical.length && userId) {
+    try {
+      await execute(db,
+        `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+         VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
+        `PLATE HIT: ${plate}`, critical.map((h) => h.detail).join('; '), vehicleId, userId);
+    } catch (err: any) { console.error('[sightings] notify failed:', err?.message); }
+  }
+  return c.json({ success: true, id: r.meta.last_row_id, plate, vehicle, hits });
+});
+
+intel.get('/sightings', operational, async (c) => {
+  const db = getDb(c.env);
+  const plate = (c.req.query('plate') || '').toUpperCase().replace(/[\s-]/g, '');
+  const limit = Math.min(Number(c.req.query('limit')) || 25, 100);
+  try {
+    const rows = plate
+      ? await query<any>(db, `SELECT * FROM vehicle_sightings WHERE plate LIKE ? ORDER BY created_at DESC LIMIT ?`, `%${plate}%`, limit)
+      : await query<any>(db, `SELECT * FROM vehicle_sightings ORDER BY created_at DESC LIMIT ?`, limit);
+    return c.json(rows);
+  } catch (err: any) {
+    return c.json({ error: err?.message, hint: 'migration 0100 may not have reached live D1' }, 500);
+  }
 });
 
 // ─── Person Dossier ──────────────────────────────────────────

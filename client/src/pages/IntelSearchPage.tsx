@@ -9,6 +9,7 @@ import { Search } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import ResolutionReviewPanel from '../components/ResolutionReviewPanel';
+import SuggestedLinksPanel from '../components/SuggestedLinksPanel';
 
 export interface IntelHit {
   type: string; id: number; label: string; snippet: string;
@@ -68,6 +69,7 @@ export default function IntelSearchPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="INTEL SEARCH" icon={Search} />
       <ResolutionReviewPanel />
+      <SuggestedLinksPanel />
       <input
         autoFocus
         value={q}
