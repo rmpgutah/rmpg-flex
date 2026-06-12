@@ -237,7 +237,7 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
 
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
           <button type="button" className="toolbar-btn" onClick={guardedClose} disabled={saving}>Cancel</button>
-          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onSave} disabled={saving || !form.inspector_name.trim() || !form.inspection_date}>
+          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onSave} disabled={saving || !(form.inspector_name || '').trim() || !form.inspection_date}>
             {saving ? 'Saving...' : mode === 'edit' ? 'Update Inspection' : 'Submit Inspection'}
           </button>
         </div>

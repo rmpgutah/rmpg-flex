@@ -193,6 +193,11 @@ records.post('/persons', async (c) => {
         // Coerce boolean-ish fields to integer
         if (key === 'is_sex_offender' || key === 'is_veteran') {
           params.push(val ? 1 : 0);
+        } else if (val !== null && typeof val === 'object') {
+          // D1 bind() throws D1_TYPE_ERROR on arrays/objects (e.g. the DL
+          // scanner's `flags: ['dl_ocr_imported']`). JSON-encode at the write
+          // boundary — flags & *_flags columns are JSON-array TEXT anyway.
+          params.push(JSON.stringify(val));
         } else {
           params.push(val ?? null);
         }
@@ -208,6 +213,113 @@ records.post('/persons', async (c) => {
   } catch (err) {
     console.error('POST /records/persons failed:', err);
     return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ============================================================
+// POST /records/from-dl-scan — one-shot create/link from a DL scan.
+// Creates or reuses a Person (dedupe on dl_number, else name+DOB), an
+// optional Vehicle (dedupe on plate, linked via owner_person_id), and a
+// Property from the license address (dedupe on address). Everything that
+// can be linked is linked; the response says what was created vs reused.
+// ============================================================
+records.post('/from-dl-scan', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{
+      scan?: Record<string, unknown>;
+      vehicle?: Record<string, unknown>;
+      create_property?: boolean;
+    }>();
+    const scan = body.scan ?? {};
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+    const first = str(scan.first_name);
+    const last = str(scan.last_name);
+    if (!first || !last) return c.json({ error: 'scan.first_name and scan.last_name required' }, 400);
+    const dob = normalizeDob(str(scan.date_of_birth) ?? str(scan.dob));
+    const dlNumber = str(scan.dl_number);
+
+    // ── Person: reuse by DL number, else by exact name+DOB ──
+    let person = dlNumber
+      ? await queryFirst<Record<string, unknown>>(db,
+          'SELECT * FROM persons WHERE dl_number = ? LIMIT 1', dlNumber)
+      : null;
+    if (!person && dob) {
+      person = await queryFirst<Record<string, unknown>>(db,
+        `SELECT * FROM persons WHERE lower(first_name) = lower(?) AND lower(last_name) = lower(?) AND dob = ? LIMIT 1`,
+        first, last, dob);
+    }
+    let personCreated = false;
+    if (!person) {
+      const result = await execute(db, `
+        INSERT INTO persons (first_name, middle_name, last_name, dob, gender, height, weight,
+          eye_color, hair_color, address, city, state, zip, dl_number, dl_state, flags, notes, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
+        first, str(scan.middle_name), last, dob, str(scan.gender), str(scan.height),
+        str(scan.weight), str(scan.eye_color), str(scan.hair_color), str(scan.address),
+        str(scan.city), str(scan.state), str(scan.zip), dlNumber, str(scan.dl_state),
+        JSON.stringify(['dl_scan_imported']), 'Created from DL scan');
+      person = await queryFirst<Record<string, unknown>>(db,
+        'SELECT * FROM persons WHERE id = ?', Number(result.meta.last_row_id));
+      personCreated = true;
+    }
+    const personId = Number(person!.id);
+
+    // ── Vehicle: optional; reuse by plate, always (re)link to the person ──
+    let vehicle: Record<string, unknown> | null = null;
+    let vehicleCreated = false;
+    const plate = str(body.vehicle?.plate_number);
+    if (plate) {
+      vehicle = await queryFirst<Record<string, unknown>>(db,
+        'SELECT * FROM vehicles_records WHERE upper(plate_number) = upper(?) LIMIT 1', plate);
+      if (vehicle) {
+        if (vehicle.owner_person_id == null) {
+          await execute(db, 'UPDATE vehicles_records SET owner_person_id = ? WHERE id = ?', personId, vehicle.id);
+          vehicle = { ...vehicle, owner_person_id: personId };
+        }
+      } else {
+        const v = body.vehicle!;
+        const result = await execute(db, `
+          INSERT INTO vehicles_records (plate_number, state, vin, make, model, year, color,
+            owner_person_id, registered_owner, notes, created_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
+          plate, str(v.plate_state) ?? str(v.state) ?? str(scan.dl_state), str(v.vin), str(v.make), str(v.model),
+          str(v.year), str(v.color), personId, `${first} ${last}`, 'Created from DL scan');
+        vehicle = await queryFirst<Record<string, unknown>>(db,
+          'SELECT * FROM vehicles_records WHERE id = ?', Number(result.meta.last_row_id));
+        vehicleCreated = true;
+      }
+    }
+
+    // ── Property: from the license address; reuse on exact address match ──
+    let property: Record<string, unknown> | null = null;
+    let propertyCreated = false;
+    const address = str(scan.address);
+    if (body.create_property !== false && address) {
+      property = await queryFirst<Record<string, unknown>>(db,
+        'SELECT * FROM properties WHERE lower(address) = lower(?) LIMIT 1', address);
+      if (!property) {
+        const result = await execute(db, `
+          INSERT INTO properties (name, address, city, state, zip, property_type,
+            occupancy_status, owner_name, notes, is_active, created_at)
+          VALUES (?,?,?,?,?,?,?,?,?, 1, datetime('now'))`,
+          address, address, str(scan.city), str(scan.state), str(scan.zip),
+          'residential', 'occupied', `${first} ${last}`,
+          `Created from DL scan — listed address of ${first} ${last}`);
+        property = await queryFirst<Record<string, unknown>>(db,
+          'SELECT * FROM properties WHERE id = ?', Number(result.meta.last_row_id));
+        propertyCreated = true;
+      }
+    }
+
+    return c.json({
+      person, person_created: personCreated,
+      vehicle, vehicle_created: vehicleCreated,
+      property, property_created: propertyCreated,
+    }, 201);
+  } catch (err) {
+    console.error('POST /records/from-dl-scan failed:', err);
+    return c.json({ error: 'Failed to create linked records', detail: (err as Error)?.message }, 500);
   }
 });
 
