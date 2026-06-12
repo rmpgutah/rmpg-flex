@@ -96,6 +96,7 @@ import accreditation from './routes/accreditation';
 import alarms from './routes/alarms';
 import citations from './routes/citations';
 import clients from './routes/clients';
+import cloudflare from './routes/cloudflare';
 import connections from './routes/connections';
 import crm from './routes/crm';
 import crisisResponse from './routes/crisisResponse';
