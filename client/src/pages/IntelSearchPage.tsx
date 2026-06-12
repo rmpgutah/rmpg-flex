@@ -27,7 +27,7 @@ const TYPE_LABELS: Record<string, string> = {
 // Exported so GlobalSearch can share the same pivot logic.
 export function recordPath(hit: { type: string; id: number }): string {
   switch (hit.type) {
-    case 'person': return `/records?tab=persons&id=${hit.id}`;
+    case 'person': return `/intel/person/${hit.id}`;
     case 'vehicle': return `/records?tab=vehicles&id=${hit.id}`;
     case 'warrant': return `/warrants?id=${hit.id}`;
     case 'case': return `/cases?id=${hit.id}`;
