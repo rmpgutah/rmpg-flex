@@ -25,6 +25,8 @@ enum ToolAction {
     case timer(label: String, seconds: Int)   // 0 = count-up
     case shiftTimer
     case pingLocation
+    case fieldInterview
+    case syncQueue
 }
 
 struct FieldTool: Identifiable {
@@ -92,11 +94,17 @@ enum FieldToolRegistry {
         FieldTool(id: "lk_units", title: "All Units Status", category: "LOOKUPS",
                   action: .lookup(path: "api/dispatch/units", queryKey: nil, prompt: nil)),
         FieldTool(id: "lk_bolos", title: "Active BOLOs", category: "LOOKUPS",
-                  action: .lookup(path: "api/bolos", queryKey: nil, prompt: nil)),
+                  action: .lookup(path: "api/dispatch/bolos", queryKey: nil, prompt: nil)),
+        FieldTool(id: "lk_handoff", title: "Shift Handoff Notes", category: "LOOKUPS",
+                  action: .lookup(path: "api/dispatch/shift-handoff", queryKey: nil, prompt: nil)),
+        FieldTool(id: "lk_fi", title: "FI Card Search", category: "LOOKUPS",
+                  action: .lookup(path: "api/field-interviews", queryKey: "search", prompt: "Subject name")),
+        FieldTool(id: "lk_premise_alerts", title: "Premise Alerts", category: "LOOKUPS",
+                  action: .lookup(path: "api/dispatch/premise-alerts", queryKey: nil, prompt: nil)),
         FieldTool(id: "lk_premise", title: "Premise History", category: "LOOKUPS",
                   action: .lookup(path: "api/dispatch/premise-history", queryKey: "address", prompt: "Street address")),
         FieldTool(id: "lk_incidents", title: "Incident Search", category: "LOOKUPS",
-                  action: .lookup(path: "api/records/incidents", queryKey: "search", prompt: "Keyword / case #")),
+                  action: .lookup(path: "api/incidents", queryKey: "search", prompt: "Keyword / case #")),
         FieldTool(id: "lk_arrests", title: "Arrest History", category: "LOOKUPS",
                   action: .lookup(path: "api/arrests", queryKey: "search", prompt: "Subject name")),
         FieldTool(id: "lk_citations", title: "Citation History", category: "LOOKUPS",
@@ -163,6 +171,10 @@ enum FieldToolRegistry {
                   action: .timer(label: "MEAL BREAK", seconds: 1800)),
         FieldTool(id: "ut_tow", title: "Tow ETA Timer (45m)", category: "TIMERS & UTILITIES",
                   action: .timer(label: "TOW ETA", seconds: 2700)),
+        FieldTool(id: "ut_fi", title: "New FI Card", category: "TIMERS & UTILITIES",
+                  action: .fieldInterview),
+        FieldTool(id: "ut_sync", title: "Sync Offline Queue", category: "TIMERS & UTILITIES",
+                  action: .syncQueue),
     ]
 
     // ── 6. Legal reference cards (Utah-specific where cited) ──

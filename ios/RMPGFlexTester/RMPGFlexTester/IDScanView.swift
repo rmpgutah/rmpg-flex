@@ -10,6 +10,8 @@ struct IDScanView: View {
     @State private var alerts: [String] = []
     @State private var relayStatus: String?
     @State private var loginStatus: String?
+    @State private var recordCheck: String?
+    @State private var showFi = false
 
     var body: some View {
         NavigationStack {
@@ -50,6 +52,20 @@ struct IDScanView: View {
                 if let loginStatus {
                     Text(loginStatus).font(.system(size: 10)).foregroundStyle(Theme.neutral)
                 }
+                if let recordCheck {
+                    Text(recordCheck)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(recordCheck.hasPrefix("⚠") ? .black : Theme.gold)
+                        .frame(maxWidth: .infinity).padding(.vertical, 6)
+                        .background(recordCheck.hasPrefix("⚠") ? Theme.red : Theme.raised)
+                }
+                if result != nil {
+                    Button("CREATE FI CARD FROM SCAN") { showFi = true }
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 7)
+                        .background(Theme.raised).foregroundStyle(Theme.gold)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                }
 
                 if let result {
                     ScrollView {
@@ -79,6 +95,26 @@ struct IDScanView: View {
             .background(Theme.base)
             .navigationTitle("ID SCAN → MDT")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showFi) {
+                FieldInterviewForm(prefill: [
+                    "name": result?.displayName ?? "",
+                    "dob": result?.fields["date_of_birth"] ?? "",
+                ]) { body, label in
+                    Task {
+                        var client = AppConfig.apiClient()
+                        if client.jwt == nil,
+                           let u = KeychainStore.load(key: "rmpgUser"),
+                           let p = KeychainStore.load(key: "rmpgPass"),
+                           let t = try? await client.login(username: u, password: p) {
+                            KeychainStore.save(t, key: "rmpgJWT"); client.jwt = t
+                        }
+                        do { try await client.postJSON(label.isEmpty ? "api/field-interviews" : "api/field-interviews", body: body)
+                             relayStatus = "✓ FI card filed" }
+                        catch { relayStatus = "✗ FI failed: \(error.localizedDescription)" }
+                    }
+                }
+                .presentationBackground(Theme.base)
+            }
         }
     }
 
@@ -125,6 +161,36 @@ struct IDScanView: View {
             relayStatus = "✓ Sent to your desktop session — open DL Search on the MDT"
         } catch {
             relayStatus = "✗ Relay failed: \(error.localizedDescription)"
+        }
+        await recordChecks(parsed, client: client)
+    }
+
+    /// Officer-safety auto-check: warrants + local person history the moment
+    /// a license is scanned. Best-effort — silence means the check errored,
+    /// never that the subject is clear.
+    @MainActor
+    private func recordChecks(_ parsed: AamvaResult, client: RMPGAPIClient) async {
+        recordCheck = "Checking warrants & local records…"
+        let last = parsed.fields["last_name"] ?? ""
+        guard !last.isEmpty else { recordCheck = nil; return }
+        let q = parsed.displayName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? last
+        func count(_ json: Any?) -> Int {
+            if let arr = json as? [[String: Any]] { return arr.count }
+            if let obj = json as? [String: Any],
+               let arr = (obj["data"] ?? obj["results"] ?? obj["warrants"]) as? [[String: Any]] {
+                return arr.count
+            }
+            return 0
+        }
+        let warrants = count(try? await client.requestJSON("GET", "api/warrants?search=\(q)"))
+        let persons = count(try? await client.requestJSON("GET", "api/records/persons?search=\(q)"))
+        if warrants > 0 {
+            AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
+            recordCheck = "⚠ \(warrants) POSSIBLE WARRANT MATCH(ES) — VERIFY ON MDT BEFORE ACTING"
+        } else if persons > 0 {
+            recordCheck = "ℹ \(persons) local person record(s) — details on the MDT"
+        } else {
+            recordCheck = "No local warrant/person matches by name (verify identifiers on MDT)"
         }
     }
 }

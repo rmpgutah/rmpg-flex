@@ -16,6 +16,8 @@ struct FieldToolkitView: View {
     @State private var showResult = false
     @State private var timerTool: FieldTool?
     @State private var toast: String?
+    @State private var showFiSheet = false
+    @State private var queueCount = OfflineQueue.count
 
     private var filtered: [FieldTool] {
         guard !search.isEmpty else { return FieldToolRegistry.tools }
@@ -34,6 +36,11 @@ struct FieldToolkitView: View {
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                     .autocorrectionDisabled()
 
+                if queueCount > 0 {
+                    Text("⏳ \(queueCount) action(s) queued offline — tap Sync Offline Queue when back in coverage")
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 if let toast {
                     Text(toast).font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(toast.hasPrefix("✓") ? Theme.gold : Theme.orange)
@@ -80,6 +87,12 @@ struct FieldToolkitView: View {
                 Button("Cancel", role: .cancel) { askingInput = nil }
             }
             .sheet(isPresented: $showResult) { resultSheet }
+            .sheet(isPresented: $showFiSheet) {
+                FieldInterviewForm { body, label in
+                    Task { await submit("POST", "api/field-interviews", body: body, label: label) }
+                }
+                .presentationBackground(Theme.base)
+            }
             .sheet(item: $timerTool) { tool in
                 if case .timer(let label, let seconds) = tool.action {
                     FieldTimerView(label: label, totalSeconds: seconds)
@@ -155,6 +168,10 @@ struct FieldToolkitView: View {
             setTorch(on); toast = on ? "✓ Flashlight on" : "✓ Flashlight off"
         case .torchStrobe:
             strobe(); toast = "✓ Strobing 5×"
+        case .fieldInterview:
+            showFiSheet = true
+        case .syncQueue:
+            Task { await syncQueue() }
         case .coordinates:
             if let loc = LocationManager.shared.last {
                 let text = String(format: "%.6f, %.6f  (±%.0fm)",
@@ -245,9 +262,79 @@ struct FieldToolkitView: View {
                 resultRows = []; showResult = true
             default: break
             }
+        } catch where OfflineQueue.isTransport(error) {
+            // Dead zone: writes are queued for store-and-forward; reads just fail.
+            switch tool.action {
+            case .createCall, .unitStatus, .clearCall, .addCallNote, .pingLocation:
+                queueWrite(tool)
+            default:
+                toast = "✗ No signal — try again in coverage"
+            }
         } catch {
             toast = "✗ \(error.localizedDescription)"
         }
+    }
+
+    /// Re-derive the request a write-tool would have made and queue it.
+    private func queueWrite(_ tool: FieldTool) {
+        switch tool.action {
+        case .createCall(let type, let priority, let desc):
+            var body: [String: Any] = ["incident_type": type, "priority": priority,
+                                       "description": desc, "source": "ios-field-app-offline"]
+            if let loc = LocationManager.shared.last {
+                body["latitude"] = loc.coordinate.latitude
+                body["longitude"] = loc.coordinate.longitude
+                body["location_address"] = String(format: "GPS %.5f, %.5f",
+                                                  loc.coordinate.latitude, loc.coordinate.longitude)
+            } else { body["location_address"] = "Officer location (offline)" }
+            OfflineQueue.enqueue(method: "POST", path: "api/dispatch/calls", body: body, label: tool.title)
+        default:
+            // Status/clear/note need live unit/call ids — too stale to replay blind.
+            toast = "✗ No signal — \(tool.title) needs a live connection"
+            return
+        }
+        queueCount = OfflineQueue.count
+        toast = "⏳ \(tool.title) queued — will send when back in coverage"
+    }
+
+    @MainActor
+    private func submit(_ method: String, _ path: String, body: [String: Any], label: String) async {
+        var client = AppConfig.apiClient()
+        if client.jwt == nil,
+           let user = KeychainStore.load(key: "rmpgUser"),
+           let pass = KeychainStore.load(key: "rmpgPass"),
+           let token = try? await client.login(username: user, password: pass) {
+            KeychainStore.save(token, key: "rmpgJWT"); client.jwt = token
+        }
+        do {
+            try await client.requestJSON(method, path, body: body)
+            toast = "✓ \(label) submitted"
+        } catch where OfflineQueue.isTransport(error) {
+            OfflineQueue.enqueue(method: method, path: path, body: body, label: label)
+            queueCount = OfflineQueue.count
+            toast = "⏳ \(label) queued offline"
+        } catch {
+            toast = "✗ \(label): \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func syncQueue() async {
+        guard OfflineQueue.count > 0 else { toast = "✓ Queue empty"; return }
+        var client = AppConfig.apiClient()
+        if client.jwt == nil,
+           let user = KeychainStore.load(key: "rmpgUser"),
+           let pass = KeychainStore.load(key: "rmpgPass"),
+           let token = try? await client.login(username: user, password: pass) {
+            KeychainStore.save(token, key: "rmpgJWT"); client.jwt = token
+        }
+        let (sent, rejected) = await OfflineQueue.flush(using: client)
+        queueCount = OfflineQueue.count
+        var parts: [String] = []
+        if !sent.isEmpty { parts.append("✓ Sent: \(sent.joined(separator: ", "))") }
+        if !rejected.isEmpty { parts.append("✗ Rejected: \(rejected.joined(separator: "; "))") }
+        if queueCount > 0 { parts.append("⏳ \(queueCount) still queued (offline)") }
+        toast = parts.isEmpty ? "✓ Queue empty" : parts.joined(separator: "  ")
     }
 
     private func show(_ title: String, json: Any) {
