@@ -7,6 +7,8 @@ struct RMPGFlexTesterApp: App {
             TabView {
                 D1ConsoleView()
                     .tabItem { Label("D1 Console", systemImage: "terminal") }
+                CloudStatusView()
+                    .tabItem { Label("Cloud", systemImage: "cloud") }
                 SmokeTestView()
                     .tabItem { Label("Smoke", systemImage: "checkmark.shield") }
                 DataViewerView()

@@ -10,6 +10,8 @@ struct SmokeRoute: Identifiable {
 struct SmokeTestView: View {
     @State private var routes: [SmokeRoute] = [
         SmokeRoute(id: "health", path: "api/health", needsAuth: false, outcome: nil),
+        SmokeRoute(id: "mapdata", path: "api/map-data", needsAuth: false, outcome: nil),
+        SmokeRoute(id: "statutes", path: "api/statutes?limit=1", needsAuth: true, outcome: nil),
         SmokeRoute(id: "calls", path: "api/dispatch/calls?limit=1", needsAuth: true, outcome: nil),
         SmokeRoute(id: "units", path: "api/dispatch/units", needsAuth: true, outcome: nil),
         SmokeRoute(id: "warrants", path: "api/warrants?limit=1", needsAuth: true, outcome: nil),

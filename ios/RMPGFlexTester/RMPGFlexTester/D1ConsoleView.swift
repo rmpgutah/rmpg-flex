@@ -23,6 +23,14 @@ struct D1ConsoleView: View {
                     .frame(height: 120)
 
                 HStack {
+                    Menu("Presets") {
+                        Button("All tables") { sql = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name" }
+                        Button("Table columns…") { sql = "SELECT name, type FROM pragma_table_info('calls_for_service')" }
+                        Button("Key row counts") { sql = "SELECT (SELECT COUNT(*) FROM calls_for_service) AS calls, (SELECT COUNT(*) FROM persons) AS persons, (SELECT COUNT(*) FROM warrants) AS warrants, (SELECT COUNT(*) FROM units) AS units" }
+                        Button("DB size") { sql = "SELECT page_count * page_size / 1048576.0 AS size_mb FROM pragma_page_count(), pragma_page_size()" }
+                        Button("Recent calls") { sql = "SELECT id, call_number, call_type, status, created_at FROM calls_for_service ORDER BY id DESC LIMIT 10" }
+                    }
+                    .font(.system(size: 12))
                     Menu("History") {
                         ForEach(history, id: \.self) { q in
                             Button(String(q.prefix(60))) { sql = q }
