@@ -396,6 +396,50 @@ dlRecords.post('/scan-log', async (c) => {
   }
 });
 
+// ── GET /scan-log — review scan history (audit / officer safety) ────
+dlRecords.get('/scan-log', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const limit = Math.min(200, Math.max(1, parseInt(c.req.query('limit') || '50', 10) || 50));
+    const search = (c.req.query('search') || '').trim();
+    // mine=1 scopes to the current user's own scans.
+    const mine = c.req.query('mine') === '1';
+    const userId = (c.get('userId') as number) ?? null;
+
+    let where = '1=1';
+    const params: unknown[] = [];
+    if (mine && userId) { where += ' AND l.user_id = ?'; params.push(userId); }
+    if (search) {
+      where += ' AND (l.subject_name LIKE ? OR l.dl_number LIKE ?)';
+      const like = `%${search}%`;
+      params.push(like, like);
+    }
+
+    // Display name from the live users schema (full_name/username — there is
+    // no `name` column). Fall back to a stable "Officer <id>" label.
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT l.id, l.scanned_at, l.scan_method, l.dl_number, l.dl_state, l.subject_name,
+             l.dob, l.person_id, l.findings,
+             COALESCE(NULLIF(u.full_name, ''), NULLIF(u.username, ''), 'Officer ' || l.user_id) AS officer
+      FROM dl_scan_log l
+      LEFT JOIN users u ON u.id = l.user_id
+      WHERE ${where}
+      ORDER BY l.id DESC LIMIT ?`, ...params, limit);
+
+    // Parse findings JSON so the client doesn't double-decode.
+    for (const r of rows) {
+      if (typeof r.findings === 'string') {
+        try { r.findings = JSON.parse(r.findings as string); } catch { r.findings = null; }
+      }
+    }
+    return c.json({ data: rows, count: rows.length });
+  } catch (err) {
+    return c.json({ data: [], count: 0, error: 'Failed to list scans' }, 500);
+  }
+});
+
 // ============================================================
 // Utah Sex Offender Registry — status, import, manual poll
 // ============================================================

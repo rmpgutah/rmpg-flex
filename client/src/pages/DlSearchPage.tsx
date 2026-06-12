@@ -8,7 +8,7 @@
 
 import {useState, useCallback, useEffect, useRef} from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Camera, Loader2, X, Eye, ScanLine, UserCheck, Upload } from 'lucide-react';
+import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Camera, Loader2, X, Eye, ScanLine, UserCheck, Upload, History } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import type { ReadoutRow, ScanAlert, LeField } from '../utils/aamvaParser';
 import LiveDlScanner from '../components/LiveDlScanner';
@@ -123,6 +123,18 @@ export default function DlSearchPage() {
   const [courtRecords, setCourtRecords] = useState<any[] | null>(null);
   const [courtLoading, setCourtLoading] = useState(false);
   const [showLiveScanner, setShowLiveScanner] = useState(false);
+  const [showScanHistory, setShowScanHistory] = useState(false);
+  const [scanHistory, setScanHistory] = useState<any[] | null>(null);
+  const [scanHistoryLoading, setScanHistoryLoading] = useState(false);
+  const [scanHistoryMine, setScanHistoryMine] = useState(false);
+
+  const loadScanHistory = useCallback((mine: boolean) => {
+    setScanHistoryLoading(true);
+    apiFetch<{ data: any[] }>(`/dl-records/scan-log?limit=100${mine ? '&mine=1' : ''}`)
+      .then(d => setScanHistory(Array.isArray(d?.data) ? d.data : []))
+      .catch(() => setScanHistory([]))
+      .finally(() => setScanHistoryLoading(false));
+  }, []);
   const [recentScans, setRecentScans] = useState<any[]>(() => {
     try { return JSON.parse(localStorage.getItem('rmpg-dl-recent-scans') || '[]'); } catch { return []; }
   });
@@ -601,6 +613,9 @@ export default function DlSearchPage() {
         {ocrLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ScanLine className="w-3 h-3" />}
         {ocrLoading ? 'Scanning...' : 'Scan DL'}
       </button>
+      <button type="button" onClick={() => { setShowScanHistory(true); loadScanHistory(scanHistoryMine); }} className="toolbar-btn text-[10px]">
+        <History className="w-3 h-3" /> History
+      </button>
     </div>
   );
 
@@ -937,6 +952,81 @@ export default function DlSearchPage() {
           )}
         </div>
       </div>
+
+      {showScanHistory && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#141414] border border-[#1a1a1a] rounded-sm max-w-2xl w-full max-h-[88vh] flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] bg-[#0c0c0c]">
+              <div className="flex items-center gap-2">
+                <History size={14} className="text-[#d4a017]" />
+                <span className="text-[12px] font-bold text-white uppercase tracking-wider">Scan History</span>
+                <span className="text-[8px] text-[#556677] uppercase">audit log</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { const n = !scanHistoryMine; setScanHistoryMine(n); loadScanHistory(n); }}
+                  className={`px-2 py-1 rounded-sm text-[9px] font-bold border ${scanHistoryMine ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'bg-[#141414] text-[#c0ccdd] border-[#2e2e2e] hover:text-white'}`}
+                >
+                  {scanHistoryMine ? 'My Scans' : 'All Scans'}
+                </button>
+                <button type="button" onClick={() => setShowScanHistory(false)} className="text-[#556677] hover:text-white"><X size={16} /></button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {scanHistoryLoading ? (
+                <div className="flex items-center justify-center py-10 text-[11px] text-[#8899aa] gap-2"><Loader2 size={14} className="animate-spin" /> Loading...</div>
+              ) : !scanHistory || scanHistory.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-[11px] text-[#556677] gap-2">
+                  <History size={22} className="text-[#333333]" />
+                  No scans logged yet — every ID scan will appear here.
+                </div>
+              ) : (
+                <table className="w-full text-left">
+                  <thead className="sticky top-0 bg-[#0c0c0c]">
+                    <tr className="text-[8px] text-[#556677] uppercase font-semibold">
+                      <th className="px-3 py-[3px]">When</th>
+                      <th className="px-3 py-[3px]">Subject</th>
+                      <th className="px-3 py-[3px]">License</th>
+                      <th className="px-3 py-[3px]">Officer</th>
+                      <th className="px-3 py-[3px]">Findings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scanHistory.map((s) => {
+                      const f = s.findings || {};
+                      const dangerSrcs = Array.isArray(f.sources) ? f.sources.filter((x: any) => x.danger) : [];
+                      const pf = f.profile_flags || {};
+                      const flagged = !!(pf.sex_offender || pf.watchlist || pf.supervision) || dangerSrcs.length > 0;
+                      return (
+                        <tr key={s.id} className={`border-t border-[#141414] text-[10px] ${flagged ? 'bg-red-900/10' : ''}`}>
+                          <td className="px-3 py-[3px] text-[#8899aa] whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                          <td className="px-3 py-[3px] text-white">
+                            {s.person_id
+                              ? <button type="button" className="hover:text-[#d4a017] hover:underline" onClick={() => { setShowScanHistory(false); navigate(`/records?tab=persons&personId=${s.person_id}`); }}>{s.subject_name || 'unknown'}</button>
+                              : (s.subject_name || 'unknown')}
+                          </td>
+                          <td className="px-3 py-[3px] text-[#8899aa] font-mono">{s.dl_number ? `${s.dl_number} ${s.dl_state || ''}` : '—'}</td>
+                          <td className="px-3 py-[3px] text-[#8899aa]">{s.officer}</td>
+                          <td className="px-3 py-[3px]">
+                            {flagged ? (
+                              <span className="text-[8px] font-bold uppercase px-1 py-px bg-red-900/50 text-red-300 border border-red-600/70 inline-flex items-center gap-1">
+                                <AlertTriangle size={9} /> {[pf.sex_offender && 'SOR', pf.watchlist && 'WATCH', pf.supervision && 'SUPV', ...dangerSrcs.map((x: any) => x.key?.toUpperCase())].filter(Boolean).slice(0, 3).join(' ')}
+                              </span>
+                            ) : (
+                              <span className="text-[8px] text-[#556677] uppercase">{typeof f.sweep_total === 'number' ? `${f.sweep_total} hits` : 'clear'}</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showLiveScanner && (
         <LiveDlScanner
