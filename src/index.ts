@@ -403,6 +403,18 @@ export default {
         .then((n) => { if (n) console.log(`[intel-extract] ${n} suggestion(s) queued`); })
         .catch((err) => console.error('[intel-extract] cron failed:', err)),
     );
+    // Intel pattern detection + subject escalation (Wave 2) — repeat
+    // locations, near-repeat clusters, escalating subjects → anomaly_alerts.
+    ctx.waitUntil(
+      import('./utils/intelPatterns')
+        .then(async ({ detectRepeatLocations, detectNearRepeat, sweepEscalation }) => {
+          const a = await detectRepeatLocations(env.DB);
+          const b = await detectNearRepeat(env.DB);
+          const c2 = await sweepEscalation(env.DB);
+          if (a + b + c2) console.log(`[intel-pattern] alerts: repeat=${a} nearRepeat=${b} escalation=${c2}`);
+        })
+        .catch((err) => console.error('[intel-pattern] cron failed:', err)),
+    );
     // Dispatch anomaly detection — populates anomaly_alerts for the
     // AnomalyAlertBanner. Independent of the warrant scan; its own
     // catch so a failure here can't abort the warrant scan or crash

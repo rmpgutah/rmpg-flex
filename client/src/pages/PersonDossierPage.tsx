@@ -11,7 +11,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { generateDossierPdf, type DossierData } from '../utils/dossierPdfGenerator';
 
-interface DossierResponse extends DossierData { watched?: boolean }
+interface DossierResponse extends DossierData { watched?: boolean; escalation?: { recent: number; baseline: number; ratio: number; trend: string } | null }
 
 const SENTINELS = new Set(['', 'none', 'n/a', 'na', 'null', '0', 'unknown']);
 const real = (v: unknown) => v != null && !SENTINELS.has(String(v).trim().toLowerCase());
@@ -80,6 +80,11 @@ export default function PersonDossierPage() {
             {data.flags.map((f) => (
               <span key={f} className="text-[9px] font-semibold text-red-500 border border-red-900 px-2 py-[1px]">{f}</span>
             ))}
+            {data.escalation?.trend === 'escalating' && (
+              <span className="text-[9px] font-semibold text-red-500 border border-red-600 px-2 py-[1px]">
+                ESCALATING {data.escalation.ratio >= 99 ? '' : `${data.escalation.ratio.toFixed(1)}×`}
+              </span>
+            )}
             {watched && (
               <span className="text-[9px] font-semibold text-[#d4a017] border border-[#d4a017] px-2 py-[1px]">WATCHED</span>
             )}
