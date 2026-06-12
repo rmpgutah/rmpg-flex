@@ -9,7 +9,7 @@
 import {useState, useCallback, useEffect, useRef} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Camera, Loader2, X, Eye, ScanLine, UserCheck, Upload, History } from 'lucide-react';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, apiUploadFilesWithProgress } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import type { ReadoutRow, ScanAlert, LeField } from '../utils/aamvaParser';
 import LiveDlScanner from '../components/LiveDlScanner';
@@ -23,6 +23,22 @@ import { useMenuActions } from '../utils/contextMenuActions';
 
 // QR code that opens this scanner page on the officer's phone —
 // scans made there relay to this desktop session automatically.
+// Thumbnail for a captured ID card image blob (revokes its object URL on unmount).
+function ImgThumb({ blob, label }: { blob: Blob; label: string }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    const u = URL.createObjectURL(blob);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [blob]);
+  return (
+    <div className="relative flex-shrink-0">
+      {url && <img src={url} alt={`ID ${label}`} className="w-16 h-10 object-cover border border-[#2e2e2e] rounded-sm bg-black" />}
+      <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[7px] font-bold text-[#d4a017] text-center uppercase">{label}</span>
+    </div>
+  );
+}
+
 function PhoneScanQr() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -118,6 +134,34 @@ export default function DlSearchPage() {
   const [scanMatches, setScanMatches] = useState<any[] | null>(null);
   const [matchLoading, setMatchLoading] = useState(false);
   const [uploadedRecord, setUploadedRecord] = useState<number | null>(null);
+  // Front + back ID card images captured by the guided scanner — kept so
+  // they can be filed under the person record on create/merge.
+  const [cardImages, setCardImages] = useState<{ front: Blob | null; back: Blob | null }>({ front: null, back: null });
+  const [cardSavedTo, setCardSavedTo] = useState<number | null>(null);
+
+  // Stamp + upload the captured ID card images to a person record.
+  const fileCardImagesTo = useCallback(async (personId: number) => {
+    const { front, back } = cardImages;
+    if ((!front && !back) || cardSavedTo === personId) return;
+    try {
+      const { stampPhoto, getGeoFix } = await import('../utils/photoStamp');
+      const geo = await getGeoFix();
+      const officerLast = (user?.last_name || user?.full_name?.split(' ').slice(-1)[0] || user?.username || '').trim();
+      const mk = (blob: Blob, side: 'FRONT' | 'BACK') =>
+        stampPhoto(new File([blob], `id-${side.toLowerCase()}-${personId}.jpg`, { type: 'image/jpeg' }), {
+          officerLast, badge: user?.badge_number, context: `ID ${side} — PERSONS RECORD`, lat: geo?.lat, lon: geo?.lon,
+        });
+      const files: File[] = [];
+      if (front) files.push(await mk(front, 'FRONT'));
+      if (back) files.push(await mk(back, 'BACK'));
+      if (!files.length) return;
+      await apiUploadFilesWithProgress(files, 'person', personId, () => {});
+      setCardSavedTo(personId);
+      addToast(`ID card image${files.length > 1 ? 's' : ''} filed to record #${personId}`, 'success');
+    } catch {
+      addToast('ID card images could not be filed', 'warning');
+    }
+  }, [cardImages, cardSavedTo, user, addToast]);
   const [scanAlerts, setScanAlerts] = useState<ScanAlert[]>([]);
   const [leFields, setLeFields] = useState<LeField[] | null>(null);
   const [leBlock, setLeBlock] = useState('');
@@ -622,6 +666,8 @@ export default function DlSearchPage() {
       if (resp?.id) {
         addToast(`Person record #${resp.id} created for ${ocrResult.first_name} ${ocrResult.last_name}`, 'success');
         setUploadedRecord(resp.id);
+        // File the captured front + back ID images under the new record.
+        fileCardImagesTo(resp.id);
         // Also save as DL record
         try {
           await apiFetch('/dl-records', {
@@ -636,7 +682,7 @@ export default function DlSearchPage() {
     } catch (err: any) {
       addToast(err.message || 'Failed to create person record', 'error');
     }
-  }, [ocrResult, addToast]);
+  }, [ocrResult, addToast, fileCardImagesTo]);
 
   const sourceBadge = (_src: string) => (
     <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-gray-900/50 text-gray-400 border border-gray-700/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>
@@ -723,7 +769,13 @@ export default function DlSearchPage() {
         className="hidden"
         onChange={e => {
           const file = e.target.files?.[0];
-          if (file) handleOcrUpload(file);
+          if (file) {
+            // Manual upload: no guided card capture → clear any stale images
+            // so a prior scan's front/back can't attach to this subject.
+            setCardImages({ front: null, back: null });
+            setCardSavedTo(null);
+            handleOcrUpload(file);
+          }
           e.target.value = '';
         }}
       />
@@ -1182,10 +1234,22 @@ export default function DlSearchPage() {
 
       {showLiveScanner && (
         <LiveDlScanner
-          onDecoded={async (text) => {
+          onComplete={async ({ barcodeText, frontImage, backImage }) => {
             setShowLiveScanner(false);
-            const ok = await processBarcodeText(text);
-            if (!ok) addToast('Barcode read but not a driver license payload', 'warning');
+            // Retain both card images for filing under the person record.
+            setCardImages({ front: frontImage, back: backImage });
+            setCardSavedTo(null);
+            if (barcodeText) {
+              const ok = await processBarcodeText(barcodeText);
+              if (!ok) addToast('Barcode read but not a driver license payload', 'warning');
+            } else if (frontImage || backImage) {
+              // No barcode — fall back to OCR on the captured front image.
+              if (frontImage) {
+                await handleOcrUpload(new File([frontImage], 'id-front.jpg', { type: 'image/jpeg' }));
+              } else {
+                addToast('Captured images — no barcode read; review and upload', 'warning');
+              }
+            }
           }}
           onClose={() => setShowLiveScanner(false)}
           onUploadInstead={() => { setShowLiveScanner(false); fileInputRef.current?.click(); }}
@@ -1269,6 +1333,18 @@ export default function DlSearchPage() {
                 </div>
               )}
 
+              {/* ── Captured ID card images ── */}
+              {(cardImages.front || cardImages.back) && (
+                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c] flex items-center gap-3 p-2">
+                  {cardImages.front && <ImgThumb blob={cardImages.front} label="FRONT" />}
+                  {cardImages.back && <ImgThumb blob={cardImages.back} label="BACK" />}
+                  <span className="text-[9px] text-[#8899aa] leading-snug">
+                    ID card image{cardImages.front && cardImages.back ? 's' : ''} captured —
+                    {cardSavedTo ? <span className="text-[#7fb069]"> filed to record #{cardSavedTo}</span> : ' will be filed to the person record on create / pull.'}
+                  </span>
+                </div>
+              )}
+
               {/* ── Records-system match ── */}
               <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
                 <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
@@ -1311,8 +1387,9 @@ export default function DlSearchPage() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => { setShowOcrPreview(false); navigate(`/records?tab=persons&personId=${p.id}`); }}
+                          onClick={async () => { await fileCardImagesTo(p.id); setShowOcrPreview(false); navigate(`/records?tab=persons&personId=${p.id}`); }}
                           className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#d4a017] hover:bg-[#b88a12] rounded-sm text-[10px] font-bold text-black flex-shrink-0"
+                          title="Open the matched record and file the captured ID images to it"
                         >
                           <UserCheck size={12} /> Pull Record
                         </button>
