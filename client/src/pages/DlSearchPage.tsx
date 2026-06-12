@@ -1440,6 +1440,25 @@ export default function DlSearchPage() {
               )}
               <button
                 type="button"
+                onClick={async () => {
+                  try {
+                    const { generateSafetySheet } = await import('../utils/dlSafetySheet');
+                    const doc = generateSafetySheet({
+                      ocrResult, leFields, scanAlerts, scanMatches, deepSweep, courtRecords,
+                      officerName: undefined,
+                    });
+                    doc.save(`safety-brief-${(ocrResult?.last_name || 'subject')}-${Date.now()}.pdf`);
+                    addToast('Safety sheet generated', 'success');
+                  } catch (err: any) {
+                    addToast(err?.message || 'Failed to generate safety sheet', 'error');
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-[#d4a017] hover:bg-[#b88a12] rounded-sm text-[11px] font-bold text-black transition-colors"
+              >
+                <Shield size={14} /> Safety Sheet
+              </button>
+              <button
+                type="button"
                 onClick={() => setShowOcrPreview(false)}
                 className="px-4 py-2 bg-[#181818] hover:bg-[#1a1a1a] border border-[#1a1a1a] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
               >
