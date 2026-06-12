@@ -134,6 +134,7 @@ import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import stubs from './routes/stubs';
 import codeEnforcement from './routes/codeEnforcement';
+import cloudflare from './routes/cloudflare';
 import weather from './routes/weather';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
