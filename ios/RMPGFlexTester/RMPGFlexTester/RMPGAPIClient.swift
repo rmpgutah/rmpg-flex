@@ -82,6 +82,40 @@ struct RMPGAPIClient {
         }
     }
 
+    /// POST JSON and return the decoded object (for endpoints that reply
+    /// with data we need, e.g. a new recording id).
+    func postJSONReturning(_ path: String, body: [String: Any]) async throws -> Any {
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "RMPG", code: status,
+                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(150))"])
+        }
+        return try JSONSerialization.jsonObject(with: data)
+    }
+
+    /// Raw PUT of binary data (audio segment) with an explicit content-type.
+    func putData(_ path: String, data: Data, contentType: String) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = "PUT"
+        req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
+        req.httpBody = data
+        let (respData, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            let text = String(data: respData, encoding: .utf8) ?? ""
+            throw NSError(domain: "RMPG", code: status,
+                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(150))"])
+        }
+    }
+
     func probe(_ path: String) async -> SmokeOutcome {
         var req = URLRequest(url: baseURL.appendingPathComponent(path))
         if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
