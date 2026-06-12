@@ -546,6 +546,30 @@ export default function DlSearchPage() {
     }
   }, [addToast, lookupExistingRecords, isMobile, pushScanToDesktop, processBarcodeText]);
 
+  // One-shot create/link: Person + Vehicle (by plate) + Property (license
+  // address) via POST /records/from-dl-scan — dedupes server-side.
+  const [linkPlate, setLinkPlate] = useState('');
+  const handleCreateLinkedFromOcr = useCallback(async () => {
+    if (!ocrResult) return;
+    try {
+      const resp = await apiFetch<any>('/records/from-dl-scan', {
+        method: 'POST',
+        body: JSON.stringify({
+          scan: ocrResult,
+          vehicle: linkPlate.trim() ? { plate_number: linkPlate.trim().toUpperCase() } : undefined,
+        }),
+      });
+      const bits: string[] = [];
+      if (resp?.person) bits.push(`Person #${resp.person.id} ${resp.person_created ? 'created' : 'linked (existing)'}`);
+      if (resp?.vehicle) bits.push(`Vehicle #${resp.vehicle.id} ${resp.vehicle_created ? 'created' : 'linked'}`);
+      if (resp?.property) bits.push(`Property #${resp.property.id} ${resp.property_created ? 'created' : 'linked'}`);
+      addToast(bits.length ? bits.join(' · ') : 'No records created', 'success');
+      if (resp?.person?.id) setUploadedRecord(resp.person.id);
+    } catch (err: any) {
+      addToast(err.message || 'Create & link failed', 'error');
+    }
+  }, [ocrResult, linkPlate, addToast]);
+
   const handleCreatePersonFromOcr = useCallback(async () => {
     if (!ocrResult) return;
     try {
@@ -1544,6 +1568,25 @@ export default function DlSearchPage() {
                   <Upload size={14} />
                   {scanMatches && scanMatches.length > 0 ? 'Upload as New Record' : 'Upload to Records'}
                 </button>
+              )}
+              {!uploadedRecord && (
+                <>
+                  <input
+                    type="text"
+                    value={linkPlate}
+                    onChange={(e) => setLinkPlate(e.target.value)}
+                    placeholder="Plate (optional)"
+                    className="w-28 px-2 py-2 bg-[#141414] border border-[#222222] text-[11px] text-white font-mono uppercase placeholder-gray-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateLinkedFromOcr}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#d4a017] hover:bg-[#e0ac1d] rounded-sm text-[11px] font-bold text-black transition-colors"
+                  >
+                    <Database size={14} />
+                    Create &amp; Link Person + Vehicle + Property
+                  </button>
+                </>
               )}
               <button
                 type="button"
