@@ -155,6 +155,59 @@ intel.post('/reindex', requireRole('admin'), async (c) => {
   return c.json({ success: true, counts, suggestions });
 });
 
+// ─── Watchlist ───────────────────────────────────────────────
+// Watch a person/vehicle; the per-minute cron sweep (intelWatchlist.ts)
+// drops a HIGH-priority notification in the watcher's inbox when new
+// activity (calls, FIs, citations) links to the watched entity.
+
+const WATCHABLE = ['person', 'vehicle'];
+
+intel.get('/watchlist', operational, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  try {
+    return c.json(await query<any>(db,
+      `SELECT * FROM intel_watchlist WHERE active = 1 AND added_by = ? ORDER BY created_at DESC LIMIT 200`, userId));
+  } catch (err: any) {
+    return c.json({ error: err?.message, hint: 'migration 0099 may not have reached live D1' }, 500);
+  }
+});
+
+intel.post('/watchlist', operational, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const body = await c.req.json().catch(() => ({} as any));
+  const entityType = String(body?.entity_type || '');
+  const entityId = Number(body?.entity_id);
+  if (!WATCHABLE.includes(entityType) || !Number.isFinite(entityId)) {
+    return c.json({ error: 'entity_type (person|vehicle) and entity_id required' }, 400);
+  }
+  // Reactivate an existing watch instead of violating the UNIQUE key.
+  await execute(db,
+    `INSERT INTO intel_watchlist (entity_type, entity_id, reason, added_by, active, last_alert_at)
+     VALUES (?, ?, ?, ?, 1, datetime('now'))
+     ON CONFLICT(entity_type, entity_id, added_by) DO UPDATE SET
+       active = 1, reason = excluded.reason, last_alert_at = datetime('now')`,
+    entityType, entityId, body?.reason || null, userId);
+  return c.json({ success: true });
+});
+
+intel.delete('/watchlist/:entityType/:entityId', operational, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const role = String((c.get('user') as { role?: string } | undefined)?.role || '');
+  const entityType = c.req.param('entityType');
+  const entityId = Number(c.req.param('entityId'));
+  // Owner removes their own watch; supervisor+ can clear anyone's.
+  const supervisor = ['admin', 'manager', 'supervisor'].includes(role);
+  await execute(db,
+    supervisor
+      ? 'UPDATE intel_watchlist SET active = 0 WHERE entity_type = ? AND entity_id = ?'
+      : 'UPDATE intel_watchlist SET active = 0 WHERE entity_type = ? AND entity_id = ? AND added_by = ?',
+    ...(supervisor ? [entityType, entityId] : [entityType, entityId, userId]));
+  return c.json({ success: true });
+});
+
 // ─── Person Dossier ──────────────────────────────────────────
 // GET /dossier/person/:id — 360° investigative profile. Every section
 // is try/catch-isolated: a bad/missing table degrades that section to
@@ -314,9 +367,19 @@ intel.get('/dossier/person/:id', operational, async (c) => {
       pushAddr(e.subtitle.split(' — ').pop(), `${e.kind} ${e.title}`);
   }
 
+  // Watch state for the requesting user (Phase 4).
+  let watched = false;
+  try {
+    const w = await queryFirst<any>(db,
+      `SELECT 1 AS x FROM intel_watchlist WHERE entity_type = 'person' AND entity_id = ? AND added_by = ? AND active = 1`,
+      id, c.get('userId') as number);
+    watched = !!w;
+  } catch (err: any) { console.error('[dossier] watch state failed:', err?.message); }
+
   return c.json({
     person, cluster, flags, timeline, associates, vehicles,
     addresses: addresses.slice(0, 10),
+    watched,
   });
 });
 

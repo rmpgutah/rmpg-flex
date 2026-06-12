@@ -5,11 +5,13 @@
 // dossierPdfGenerator (Arial-only stack).
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { UserSearch, FileDown, Network, FolderOpen } from 'lucide-react';
+import { UserSearch, FileDown, Network, FolderOpen, Eye, EyeOff } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { generateDossierPdf, type DossierData } from '../utils/dossierPdfGenerator';
+
+interface DossierResponse extends DossierData { watched?: boolean }
 
 const SENTINELS = new Set(['', 'none', 'n/a', 'na', 'null', '0', 'unknown']);
 const real = (v: unknown) => v != null && !SENTINELS.has(String(v).trim().toLowerCase());
@@ -41,14 +43,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function PersonDossierPage() {
   const { id } = useParams<{ id: string }>();
-  const [data, setData] = useState<DossierData | null>(null);
+  const [data, setData] = useState<DossierResponse | null>(null);
+  const [watched, setWatched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     setData(null); setError(null);
-    apiFetch<DossierData>(`/intel/dossier/person/${id}`)
-      .then(setData)
+    apiFetch<DossierResponse>(`/intel/dossier/person/${id}`)
+      .then((d) => { setData(d); setWatched(!!d.watched); })
       .catch((e) => setError(e?.message || 'Failed to load dossier'));
   }, [id]);
 
@@ -77,6 +80,9 @@ export default function PersonDossierPage() {
             {data.flags.map((f) => (
               <span key={f} className="text-[9px] font-semibold text-red-500 border border-red-900 px-2 py-[1px]">{f}</span>
             ))}
+            {watched && (
+              <span className="text-[9px] font-semibold text-[#d4a017] border border-[#d4a017] px-2 py-[1px]">WATCHED</span>
+            )}
             {data.cluster.length > 0 && (
               <span className="text-[9px] text-[#d4a017] border border-[#222222] px-2 py-[1px]">
                 {data.cluster.length} LINKED IDENTIT{data.cluster.length === 1 ? 'Y' : 'IES'}
@@ -85,6 +91,18 @@ export default function PersonDossierPage() {
           </div>
         </div>
         <div className="flex gap-1">
+          <IconButton
+            aria-label={watched ? 'Remove from watchlist' : 'Add to watchlist'}
+            title={watched ? 'Watching — click to stop' : 'Watch: alert me on new activity'}
+            onClick={async () => {
+              try {
+                if (watched) await apiFetch(`/intel/watchlist/person/${p.id}`, { method: 'DELETE' });
+                else await apiFetch('/intel/watchlist', { method: 'POST', body: JSON.stringify({ entity_type: 'person', entity_id: p.id }) });
+                setWatched(!watched);
+              } catch (e) { console.error(e); }
+            }}>
+            {watched ? <Eye className="w-4 h-4 text-[#d4a017]" /> : <EyeOff className="w-4 h-4" />}
+          </IconButton>
           <IconButton aria-label="Export dossier PDF" title="Export PDF" onClick={() => generateDossierPdf(data)}>
             <FileDown className="w-4 h-4" />
           </IconButton>

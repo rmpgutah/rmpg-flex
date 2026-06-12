@@ -324,6 +324,15 @@ export default {
         sweepTrips(env.DB, env).then((n) => { if (n) console.log(`[trips] sweep closed ${n}`); })
           .catch((err) => console.error('[trips] sweep failed:', err)),
       );
+      // Intel watchlist sweep — alerts when a watched person/vehicle
+      // appears in new activity (notifications inbox, HIGH priority).
+      // No-ops cheaply when intel_watchlist is empty or missing.
+      ctx.waitUntil(
+        import('./utils/intelWatchlist')
+          .then(({ sweepWatchlist }) => sweepWatchlist(env.DB))
+          .then((n) => { if (n) console.log(`[watchlist] ${n} alert(s) raised`); })
+          .catch((err) => console.error('[watchlist] sweep failed:', err)),
+      );
       // Email poll — throttled internally by ms_email_last_sync vs
       // ms_email_poll_interval. No-op when not configured.
       ctx.waitUntil(
