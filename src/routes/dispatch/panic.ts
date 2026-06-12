@@ -13,6 +13,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../../types';
+import { requireRole } from '../../middleware/auth';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { canonicalUnitIdsJson } from './unitIds';
 import { emitAlert } from '../../utils/alertHub';
@@ -326,6 +327,116 @@ panic.post('/panic/:id/false-alarm', async (c) => {
   await clearUnitEmergency(db, updated as Record<string, unknown> | null);
   await emitAlert(c.env, 'panic_alert', { action: 'panic_false_alarm', panic: updated });
   return c.json(updated);
+});
+
+// POST /dispatch/panic/:id/deactivate — ADMIN FALLBACK. Force-terminates a
+// panic from ANY state, including states the normal transitions can't reach
+// (already-"resolved" row with a zombie AlertHubDO nag, a unit stuck in the
+// EMERGENCY overlay, an orphaned P1 CAD call). Panic state lives in four
+// places — panic_alerts, units.emergency_*, calls_for_service, AlertHubDO —
+// and this sweeps all four. Each step is independently best-effort so one
+// stuck piece of state can never block the rest (that's the whole point of
+// a fallback). Idempotent: safe to fire repeatedly.
+panic.post('/panic/:id/deactivate', requireRole('admin', 'manager'), async (c) => {
+  const db = getDb(c.env);
+  const id = c.req.param('id');
+  const userId = c.get('userId') as number;
+  const body = await c.req.json<{ notes?: string }>().catch(() => ({} as { notes?: string }));
+
+  const row = await queryFirst<Record<string, unknown>>(
+    db, 'SELECT * FROM panic_alerts WHERE id = ?', id,
+  );
+  if (!row) return c.json({ error: 'Not found' }, 404);
+
+  const steps: Record<string, boolean> = {};
+
+  // 1. Force the alert row terminal — no status precondition, unlike
+  //    resolve/cancel: a fallback must also repair half-closed rows.
+  try {
+    await execute(
+      db,
+      `UPDATE panic_alerts
+       SET status = 'resolved', resolved_by = ?, resolved_at = datetime('now'),
+           resolution_notes = COALESCE(?, resolution_notes, 'Force-deactivated by admin'),
+           updated_at = datetime('now')
+       WHERE id = ?`,
+      userId, body.notes ? `Force-deactivated by admin: ${body.notes}` : null, id,
+    );
+    steps.alert_resolved = true;
+  } catch (err) {
+    console.error('[panic] force-deactivate: alert update failed', err);
+    steps.alert_resolved = false;
+  }
+
+  // 2. Clear the EMERGENCY overlay — by officer AND by call, since drifted
+  //    state may have either link broken.
+  try {
+    await clearUnitEmergency(db, row);
+    if (row.call_id != null) {
+      await execute(
+        db,
+        `UPDATE units SET emergency_active = 0, emergency_call_id = NULL, emergency_since = NULL
+         WHERE emergency_call_id = ?`,
+        row.call_id,
+      );
+    }
+    steps.emergency_cleared = true;
+  } catch (err) {
+    console.error('[panic] force-deactivate: emergency clear failed', err);
+    steps.emergency_cleared = false;
+  }
+
+  // 3. Clear the auto-created P1 CAD call (if still open) and release any
+  //    units it holds. Only touches panic-sourced or still-open calls tied
+  //    to this alert — never archives someone else's incident.
+  if (row.call_id != null) {
+    try {
+      await execute(
+        db,
+        `UPDATE calls_for_service
+         SET status = 'cleared', cleared_at = datetime('now')
+         WHERE id = ? AND status NOT IN ('cleared','closed','cancelled','archived')`,
+        row.call_id,
+      );
+      await execute(
+        db,
+        `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = datetime('now')
+         WHERE current_call_id = ?`,
+        row.call_id,
+      );
+      steps.call_cleared = true;
+    } catch (err) {
+      console.error('[panic] force-deactivate: call clear failed', err);
+      steps.call_cleared = false;
+    }
+  }
+
+  const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
+
+  // 4. Silence the AlertHubDO 15s nag + dismiss every console's overlay.
+  //    Reuses the existing 'panic_resolved' action so all clients (and the
+  //    DO's forced-ack lifecycle) handle it with zero new client wiring.
+  try {
+    await emitAlert(c.env, 'panic_alert', { action: 'panic_resolved', panic: updated });
+    steps.broadcast = true;
+  } catch (err) {
+    console.error('[panic] force-deactivate: broadcast failed', err);
+    steps.broadcast = false;
+  }
+
+  // Audit — admin force-actions on officer-safety alerts must leave a trail.
+  try {
+    await execute(
+      db,
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
+       VALUES (?, 'panic_force_deactivated', 'panic_alert', ?, ?, ?)`,
+      userId, id,
+      `Admin force-deactivated panic #${id}${body.notes ? `: ${body.notes}` : ''} (was status=${row.status})`,
+      c.req.header('cf-connecting-ip') || 'unknown',
+    );
+  } catch { /* audit is non-fatal */ }
+
+  return c.json({ ...(updated as Record<string, unknown>), force_deactivated: true, steps });
 });
 
 // GET /dispatch/panic/:id/audio — stream the archived distress broadcast.

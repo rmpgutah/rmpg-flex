@@ -99,6 +99,9 @@ export function useDispatchVoiceAlerts(options?: {
   // value without re-running the (large) subscription effect on every auth tick.
   const selfIdRef = useRef<string | number | null | undefined>(user?.id);
   selfIdRef.current = user?.id;
+  // Panic ids already alarmed this session — AlertHubDO re-broadcasts unacked
+  // panics every 15s; each frame must not stack another banner/announcement.
+  const seenPanicIdsRef = useRef<Set<number | string>>(new Set());
 
   useEffect(() => {
     const unsubs: Array<() => void> = [];
@@ -197,10 +200,23 @@ export function useDispatchVoiceAlerts(options?: {
     unsubs.push(
       subscribe('panic_alert', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        const officerName = data.user_name || data.userName || data.officerName || 'Unknown officer';
+        // Server frames are { action, panic: {...} } — AlertHubDO re-broadcasts
+        // an unacked panic every 15s and replays on reconnect, and ALSO emits
+        // ack/resolve/cancel transitions on this same channel. Only the initial
+        // activation should alarm here, and only once per panic id — otherwise
+        // the banner stack grows one "PANIC" per re-broadcast (and per ack).
+        const action = data.action || msg.action;
+        if (action && action !== 'panic_activated') return;
+        const panic = data.panic || data;
+        const panicId = panic?.id ?? panic?.panic_id ?? data.panic_id;
+        if (panicId != null) {
+          if (seenPanicIdsRef.current.has(panicId)) return;
+          seenPanicIdsRef.current.add(panicId);
+        }
+        const officerName = panic.user_name || panic.userName || panic.officerName || data.user_name || 'Unknown officer';
         if (isEdgeTTSEnabled()) {
-          const loc = data.location || data.gps_address || '';
-          const cs = data.call_sign || data.unit || '';
+          const loc = panic.location_address || panic.location || panic.gps_address || '';
+          const cs = panic.call_sign || panic.unit || '';
           speak(composePanicNarrative(officerName, loc, cs), 'major');
         } else {
           announcePanicAlert(officerName);
