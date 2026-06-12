@@ -19,6 +19,7 @@ struct FieldToolkitView: View {
     @State private var showFiSheet = false
     @State private var showPhotoSheet = false
     @State private var showBoloSheet = false
+    @State private var showFuelSheet = false
     @State private var queueCount = OfflineQueue.count
 
     private var filtered: [FieldTool] {
@@ -97,6 +98,7 @@ struct FieldToolkitView: View {
             }
             .sheet(isPresented: $showPhotoSheet) { FieldPhotoSheet() }
             .sheet(isPresented: $showBoloSheet) { BoloComposer() }
+            .sheet(isPresented: $showFuelSheet) { FuelPurchaseSheet().presentationBackground(Theme.base) }
             .sheet(item: $timerTool) { tool in
                 if case .timer(let label, let seconds) = tool.action {
                     FieldTimerView(label: label, totalSeconds: seconds)
@@ -178,6 +180,8 @@ struct FieldToolkitView: View {
             showPhotoSheet = true
         case .newBolo:
             showBoloSheet = true
+        case .fuelPurchase:
+            showFuelSheet = true
         case .syncQueue:
             Task { await syncQueue() }
         case .coordinates:

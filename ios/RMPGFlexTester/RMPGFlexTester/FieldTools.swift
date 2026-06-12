@@ -29,6 +29,7 @@ enum ToolAction {
     case syncQueue
     case fieldPhoto
     case newBolo
+    case fuelPurchase
 }
 
 struct FieldTool: Identifiable {
@@ -181,6 +182,8 @@ enum FieldToolRegistry {
                   action: .fieldPhoto),
         FieldTool(id: "ut_bolo", title: "Issue BOLO", category: "TIMERS & UTILITIES",
                   action: .newBolo),
+        FieldTool(id: "ut_fuel", title: "Log Fuel Purchase", category: "TIMERS & UTILITIES",
+                  action: .fuelPurchase),
     ]
 
     // ── 6. Legal reference cards (Utah-specific where cited) ──
