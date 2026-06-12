@@ -296,4 +296,89 @@ dlRecords.delete('/:id', async (c) => {
   }
 });
 
+// ── POST /ocr-scan — DL image → structured fields (Workers AI vision) ──
+// The DL SEARCH page's "SCAN DL" button uploads a license photo here and
+// expects { parsed: { first_name, ..., dl_number, dl_expiry } }. This was
+// never ported (the proxy served a "not yet ported" stub). Implemented with
+// the same vision model the serve-intake OCR pipeline uses.
+const DL_VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
+const DL_MAX_IMAGE_BYTES = 4 * 1024 * 1024; // model gateway rejects >~5MB
+const DL_OCR_TIMEOUT_MS = 35_000;
+
+const DL_OCR_PROMPT = `You are reading a photo of a US driver's license (AAMVA format).
+Extract the fields below and respond with ONLY a JSON object — no prose, no markdown fences.
+Use empty string "" for anything not visible. Dates as MM/DD/YYYY.
+
+{"first_name":"","middle_name":"","last_name":"","date_of_birth":"","gender":"","height":"","weight":"","eye_color":"","hair_color":"","address":"","city":"","state":"","zip":"","dl_number":"","dl_state":"","dl_class":"","dl_expiry":"","dl_issue_date":"","dl_restrictions":"","dl_endorsements":""}
+
+Notes: dl_state is the 2-letter code of the issuing state (the big state name
+at the top). dl_number is labeled "DL", "LIC#", "DLN" or "4d". gender is M or F.
+The address block is under the name. dl_class is labeled "CLASS" or "9".`;
+
+function parseDlModelJson(out: unknown): Record<string, string> | null {
+  const text =
+    typeof out === 'string' ? out :
+    (out as any)?.response ?? (out as any)?.result ?? (out as any)?.description ?? '';
+  if (typeof text !== 'string' || !text) return null;
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const obj = JSON.parse(match[0]);
+    if (!obj || typeof obj !== 'object') return null;
+    const parsed: Record<string, string> = {};
+    for (const [k, v] of Object.entries(obj)) parsed[k] = typeof v === 'string' ? v.trim() : String(v ?? '');
+    return parsed;
+  } catch { return null; }
+}
+
+dlRecords.post('/ocr-scan', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+
+  let form: FormData;
+  try { form = await c.req.formData(); } catch {
+    return c.json({ error: 'Expected multipart/form-data (field: image)' }, 400);
+  }
+  const file = (form.get('image') ?? form.get('file')) as File | null;
+  if (!file || typeof (file as any).arrayBuffer !== 'function') {
+    return c.json({ error: 'Missing image file' }, 400);
+  }
+  if (file.size === 0 || file.size > DL_MAX_IMAGE_BYTES) {
+    return c.json({ error: `Image size out of range (0 < n <= ${DL_MAX_IMAGE_BYTES} bytes) — retake or downscale the photo` }, 400);
+  }
+
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const run = c.env.AI.run(DL_VISION_MODEL as any, {
+      image: Array.from(bytes),
+      prompt: DL_OCR_PROMPT,
+      max_tokens: 1024,
+      temperature: 0.1,
+    } as any);
+    const out = await Promise.race([
+      run,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Vision OCR timed out')), DL_OCR_TIMEOUT_MS)),
+    ]);
+    const parsed = parseDlModelJson(out);
+    if (!parsed || (!parsed.dl_number && !parsed.last_name)) {
+      return c.json({ parsed: null, error: 'Could not read license fields from the image — try a sharper, glare-free photo' }, 422);
+    }
+    // Normalize a couple of model quirks the client relies on.
+    if (parsed.gender) parsed.gender = parsed.gender.charAt(0).toUpperCase();
+    if (parsed.dl_state) parsed.dl_state = parsed.dl_state.toUpperCase().slice(0, 2);
+    if (parsed.state) parsed.state = parsed.state.toUpperCase().slice(0, 2);
+
+    await audit(
+      getDb(c.env), (c.get('userId') as number) ?? null, 'dl_ocr_scan', parsed.dl_number || 'unknown',
+      `DL OCR scan: ${parsed.last_name || '?'}, ${parsed.first_name || '?'} (${parsed.dl_state || '??'})`,
+    );
+    return c.json({ success: true, parsed, model: DL_VISION_MODEL });
+  } catch (err) {
+    return c.json({
+      error: err instanceof Error ? err.message : 'DL scan failed',
+      code: 'DL_OCR_FAILED',
+    }, 500);
+  }
+});
+
 export default dlRecords;

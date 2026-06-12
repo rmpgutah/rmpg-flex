@@ -724,12 +724,8 @@ const STUBS: StubRule[] = [
   // ── 2026-06-07 round 3 — feature surfaces with no rewrite handler ──
   // diagnostics/ui-trap stub REMOVED 2026-06-10: redundant — /api/diagnostics
   // is routed to env.API and stubs.ts serves POST /ui-trap equivalently.
-  {
-    match: /^\/api\/dl-records\/ocr-scan(\?.*)?$/,
-    methods: ['POST'],
-    body: { success: false, error: 'OCR scan is not yet ported', fields: {} },
-    reason: 'no /dl-records/ocr-scan in rewrite; DlPage tolerates error',
-  },
+  // dl-records/ocr-scan stub REMOVED 2026-06-11: real Workers-AI vision
+  // handler now in src/routes/dlRecords.ts; routed to env.API below.
   // /downloads/info stub REMOVED 2026-06-07: downloads.ts has real handler.
   {
     match: /^\/api\/evidence$/,
@@ -822,9 +818,18 @@ const API_ROUTES: RouteRule[] = [
   // The legacy port of POST /dl-records 500s on live D1 (manual saves
   // never persisted — live dl_records had 0 rows), so the rewrite owns
   // the data layer. CRITICAL: the /\d+/ anchor means /dl-records/verify
-  // and /dl-records/ocr-scan (external RapidAPI / OCR round-trips) do NOT
-  // match and correctly fall through to env.LEGACY.
+  // (external RapidAPI round-trip) does NOT match and correctly falls
+  // through to env.LEGACY. ocr-scan moved to the rewrite 2026-06-11
+  // (Workers-AI vision in src/routes/dlRecords.ts) — explicit rule below.
   { kind: 'regex', value: /^\/api\/dl-records(\/\d+)?(\?.*)?$/ },
+  { kind: 'regex', value: /^\/api\/dl-records\/ocr-scan(\?.*)?$/ },
+
+  // ── MicroBilt DL search (new in rewrite 2026-06-11) ──
+  // POST /api/microbilt/dl/search + GET dl/stats + GET status. Neither
+  // worker had these (legacy CF port never included the VPS microbilt
+  // router) — the DL SEARCH page 404'd on every search. Local
+  // dl_records/persons search + live MicroBilt API when creds configured.
+  { kind: 'regex', value: /^\/api\/microbilt\/(dl\/(search|stats)|status)(\?.*)?$/ },
 
   // ── More specific dispatch sub-paths (new in rewrite) ──
   // /api/dispatch/calls/:id/{recommended-units, closest-unit, auto-assign,

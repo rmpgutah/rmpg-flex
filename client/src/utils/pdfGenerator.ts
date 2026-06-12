@@ -1217,9 +1217,34 @@ export function addSignatureBlock(
 
   if (sigData?.signatureImage) {
     try {
-      const imgW = Math.min(width * 0.5, 70);
-      const imgH = sigRowH - 2;
-      doc.addImage(sigData.signatureImage, 'PNG', x + SPACING.MD + 5, row1Y + 1, imgW, imgH);
+      // Natural placement: preserve the pad image's aspect ratio (the old
+      // code stretched it to fill the whole row — squashed/cropped look),
+      // and rest it on a signature baseline like a real signed form.
+      const sigLineY = row1Y + sigRowH - 2.5;
+      doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+      doc.setLineWidth(BORDER.SIGNATURE_LINE);
+      doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_SIGNATURE_X);
+      doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      doc.text('X', x + SPACING.CONTENT_INSET, sigLineY - 1.5);
+
+      const maxW = Math.min(width * 0.5, 70);
+      const maxH = sigRowH - 3.5; // breathing room inside the row
+      let imgW = maxW;
+      let imgH = maxH;
+      try {
+        const props = doc.getImageProperties(sigData.signatureImage);
+        if (props?.width && props?.height) {
+          const scale = Math.min(maxW / props.width, maxH / props.height);
+          imgW = props.width * scale;
+          imgH = props.height * scale;
+        }
+      } catch { /* unknown dims — fall back to box fit */ }
+      // Bottom edge sits just above the baseline (ink touches the line).
+      const imgX = x + SPACING.CONTENT_INSET + 4;
+      const imgY = sigLineY - 0.5 - imgH;
+      doc.addImage(sigData.signatureImage, 'PNG', imgX, imgY, imgW, imgH);
     } catch { /* skip */ }
   } else {
     // Write-in line + X
