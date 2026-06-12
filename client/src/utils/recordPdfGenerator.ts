@@ -284,9 +284,30 @@ function renderRecordPostureBand(
 
 // Per-type posture-flag builders — mirror the React tab builders
 // (personPostureFlags/vehiclePostureFlags) but read the *PdfData shapes.
+
+/** The `flags` column arrives from D1 as raw JSON TEXT (e.g. '[]' or
+ *  '["GANG"]'). Iterating that string directly yields CHARACTERS — live
+ *  PDFs printed "[" and "]" as threat chips (2026-06-11). Normalize to a
+ *  real array first; non-JSON strings are treated as a single flag. */
+function normalizeRecordFlags(raw: unknown): any[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    const s = raw.trim();
+    if (!s) return [];
+    if (s.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(s);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch { return []; }
+    }
+    return [s];
+  }
+  return [];
+}
+
 function personPdfPostureFlags(data: PersonPdfData): Array<string | null | undefined> {
   const flags: Array<string | null | undefined> = [];
-  for (const f of data.flags || []) flags.push(typeof f === 'object' ? (f as any).type : f);
+  for (const f of normalizeRecordFlags(data.flags)) flags.push(typeof f === 'object' && f !== null ? (f as any).type : f);
   if ((Array.isArray(data.warrants) ? data.warrants : []).some(w => (w.status || '').toLowerCase() === 'active')) flags.push('ACTIVE WARRANT');
   if (data.bolo_active) flags.push('BOLO');
   if (data.is_sex_offender) flags.push('SEX OFFENDER');
@@ -299,7 +320,7 @@ function personPdfPostureFlags(data: PersonPdfData): Array<string | null | undef
 
 function vehiclePdfPostureFlags(data: VehiclePdfData): Array<string | null | undefined> {
   const flags: Array<string | null | undefined> = [];
-  for (const f of data.flags || []) flags.push(typeof f === 'object' ? (f as any).type : f);
+  for (const f of normalizeRecordFlags(data.flags)) flags.push(typeof f === 'object' && f !== null ? (f as any).type : f);
   if (data.hazmat) flags.push('HAZMAT');
   const ss = (data.stolen_status || '').toLowerCase();
   if (ss && !['none', 'not_stolen', 'recovered', ''].includes(ss)) flags.push('STOLEN');
@@ -446,7 +467,11 @@ function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, 
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(label.toUpperCase(), x, y + 1.8);
-  y += 3.4;  // was 3.0 — +0.4mm cushion between label baseline and value top
+  // Label baseline sits at y+1.8; the 8pt Courier value cap-height is
+  // ~2.8mm, so the value baseline must clear y+1.8+2.8 or the value
+  // overprints the label (seen live on "PIERCING DESCRIPTION" /
+  // "DISTINGUISHING FEATURES" 2026-06-11). 5.2mm leaves ~0.6mm of air.
+  y += 5.2;
   // Body text — word-wrapped Courier
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
@@ -3534,26 +3559,32 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       y += 1.5;  // explicit row-gap before the 2-col Scar/Piercing row
     }
 
-    // Scar / Piercing → 2-col row (left + right)
+    // Scar / Piercing → 2-col row (left + right). When only one of the
+    // pair is present it renders in the LEFT column — a lone value in the
+    // right column reads as floating mid-page (seen live 2026-06-11).
     if (data.scar_description || data.piercing_description) {
-      const ly = data.scar_description
-        ? addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, hfw)
-        : y;
-      const ry = data.piercing_description
-        ? addNarrativeField(doc, 'Piercing Description', data.piercing_description, rx, y, hfw)
-        : y;
-      y = Math.max(ly, ry) + 1.5;  // explicit row-gap before next 2-col row
+      if (data.scar_description && data.piercing_description) {
+        const ly = addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, hfw);
+        const ry = addNarrativeField(doc, 'Piercing Description', data.piercing_description, rx, y, hfw);
+        y = Math.max(ly, ry) + 1.5;  // explicit row-gap before next 2-col row
+      } else if (data.scar_description) {
+        y = addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, hfw) + 1.5;
+      } else {
+        y = addNarrativeField(doc, 'Piercing Description', data.piercing_description!, lx, y, hfw) + 1.5;
+      }
     }
 
-    // Distinguishing Features / Marks Location → 2-col row
+    // Distinguishing Features / Marks Location → 2-col row (same collapse)
     if (data.distinguishing_features || data.identifying_marks_location) {
-      const ly = data.distinguishing_features
-        ? addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, hfw)
-        : y;
-      const ry = data.identifying_marks_location
-        ? addNarrativeField(doc, 'Marks Location', data.identifying_marks_location, rx, y, hfw)
-        : y;
-      y = Math.max(ly, ry);
+      if (data.distinguishing_features && data.identifying_marks_location) {
+        const ly = addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, hfw);
+        const ry = addNarrativeField(doc, 'Marks Location', data.identifying_marks_location, rx, y, hfw);
+        y = Math.max(ly, ry);
+      } else if (data.distinguishing_features) {
+        y = addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, hfw);
+      } else {
+        y = addNarrativeField(doc, 'Marks Location', data.identifying_marks_location!, lx, y, hfw);
+      }
     }
 
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -3679,8 +3710,8 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       titleCase(w.type || ''),
       titleCase(w.status || ''),
       w.charge_description || 'N/A',
-      titleCase(w.offense_level || ''),
-      fmtDate(w.date_issued),
+      titleCase(w.offense_level || '') || 'N/A',
+      fmtDate(w.date_issued || (w as any).issued_date) || 'N/A',
     ]);
     y = addTableWithShading(
       doc,
@@ -3865,14 +3896,9 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = await addAttachmentsSection(doc, data.attachment_images, y, 'Attachments / Evidence Photos', prio);
   }
 
-  // ── 18. Provenance line — last-updated audit trail ────────
-  // Renders a tiny right-aligned line above the signature block:
-  // "Last updated: 04/12/2026 14:23 by S.NESBITT". Returns y
-  // unchanged if neither created_at nor updated_at is set.
-  y = addProvenanceLine(doc, {
-    createdAt: data.created_at,
-    updatedAt: data.updated_at,
-  }, y);
+  // ── 18. (removed 2026-06-11) Provenance line — the META section
+  // immediately above already prints CREATED + LAST UPDATED; the extra
+  // right-aligned "LAST UPDATED: ..." line duplicated it verbatim.
 
   // ── 19. Signature Block — full-width stacked ──────────────
   y = addStackedSignatures(doc, 'Entering Officer', '', y, getOfficerSig(), undefined, prio);

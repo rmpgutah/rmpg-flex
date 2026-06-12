@@ -81,11 +81,13 @@ function renderColorizedResponse(text: string): React.ReactNode {
       return <React.Fragment key={i}>{'\n'}</React.Fragment>;
     }
 
-    // Normal data lines — highlight field-label codes (NAM/, DOB/, etc.) inline
+    // Normal data lines — gold field-label tags (NAM/, DOB/, …) with the
+    // values in the bright parchment tone, so the two-tone read (gold index,
+    // bright data) is instantly scannable.
     const parts = line.split(/([A-Z]{2,5}\/)/g);
     if (parts.length <= 1) {
-      // No field labels found — plain amber text
-      return <React.Fragment key={i}>{line}{'\n'}</React.Fragment>;
+      // No field labels found — plain value text
+      return <React.Fragment key={i}><span className="ncic-c-value">{line}</span>{'\n'}</React.Fragment>;
     }
 
     return (
@@ -93,7 +95,9 @@ function renderColorizedResponse(text: string): React.ReactNode {
         {parts.map((part, j) =>
           /^[A-Z]{2,5}\/$/.test(part)
             ? <span key={j} className="ncic-c-label">{part}</span>
-            : <React.Fragment key={j}>{part}</React.Fragment>
+            : part
+              ? <span key={j} className="ncic-c-value">{part}</span>
+              : <React.Fragment key={j}>{part}</React.Fragment>
         )}
         {'\n'}
       </React.Fragment>

@@ -33,7 +33,10 @@ import { geocodeAddress } from '../routes/geocode';
 import { resolveDistrict } from './districtResolver';
 import { deriveCrossStreetFromCoords } from './crossStreet';
 import { parseLocationParts } from './parseLocationParts';
-import { buildPsoBriefing } from './serveIntakeBriefing';
+import { buildPsoBriefing, buildOcrContext } from './serveIntakeBriefing';
+import type { IntakeDocMeta, OcrContext } from './serveIntakeBriefing';
+import { planAttemptWindows, escalatePriorityForDeadline } from './serveDiligencePlanner';
+import type { AttemptWindow } from './serveDiligencePlanner';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 
 // ── Sentinel client for intake-generated properties ──────────
@@ -479,6 +482,15 @@ export interface CommitResult {
     person: boolean; agent_person: boolean; business: boolean;
     property: boolean; call: boolean;
   };
+  // OCR provenance summary (only when the caller supplied per-doc metadata).
+  intake_note?: string | null;
+  missing_critical?: string[];
+  // Diligence plan computed at intake (also embedded in parsed_data._intake).
+  attempt_plan?: AttemptWindow[];
+  // Set when an ACTIVE queue entry already exists for this case+recipient —
+  // no new records are created; uploaded documents attach to the existing
+  // entry instead (serve_queue_id points at it).
+  duplicate_of?: { serve_queue_id: number; status: string; case_number: string | null } | null;
 }
 
 export interface CommitInput {
@@ -487,6 +499,13 @@ export interface CommitInput {
   userId: number | null;
   documentSummary: string;             // free-text inserted into call.description
   docCount: number;                    // number of uploaded docs (for the briefing note)
+  // Per-document OCR provenance (file → engine/confidence/type) + every date
+  // the extractor saw. When present, commitIntake files an "OCR & EXTRACTION
+  // CONTEXT" note on the CFS Notes feed, appends a compact provenance line to
+  // serve_queue.notes, and embeds a machine-readable `_intake` block in
+  // parsed_data. Optional — the legacy /intake path has no per-doc metadata.
+  docs?: IntakeDocMeta[];
+  allDates?: string[];
   // Full Worker bindings. KV powers the geocode cache; DB + MAP_DATA back the
   // R2 geofence (district resolve); MAPBOX_ACCESS_TOKEN powers cross-street
   // derivation. All geo enrichment is best-effort — a miss never blocks commit.
@@ -497,6 +516,44 @@ export interface CommitInput {
 export async function commitIntake(db: D1Database, input: CommitInput): Promise<CommitResult> {
   const { fields, queueRow, userId } = input;
   const get = (k: string) => (fields[k]?.value || '').trim();
+  const nowIso = new Date().toISOString();
+
+  // ── Duplicate-intake guard ─────────────────────────────────
+  // A re-uploaded packet (or a client-side duplicate job, common in
+  // ServeManager exports) must not spawn a second active queue entry +
+  // CAD call for the same paper — double-serving wastes attempts and
+  // reads badly in court. Match on case number + recipient when both
+  // exist, else recipient + address. Only ACTIVE entries block; a served/
+  // cancelled/failed prior entry means this is a legitimate re-serve.
+  const ACTIVE = "('pending','assigned','in_progress','attempted')";
+  let dup: { id: number; status: string; case_number: string | null } | null = null;
+  if (queueRow.case_number && queueRow.recipient_name) {
+    dup = await queryFirst(db,
+      `SELECT id, status, case_number FROM serve_queue
+       WHERE status IN ${ACTIVE} AND case_number = ? AND LOWER(recipient_name) = LOWER(?)
+       ORDER BY id DESC LIMIT 1`,
+      queueRow.case_number, queueRow.recipient_name) as any;
+  } else if (queueRow.recipient_name && queueRow.recipient_address) {
+    dup = await queryFirst(db,
+      `SELECT id, status, case_number FROM serve_queue
+       WHERE status IN ${ACTIVE} AND LOWER(recipient_name) = LOWER(?) AND LOWER(recipient_address) = LOWER(?)
+       ORDER BY id DESC LIMIT 1`,
+      queueRow.recipient_name, queueRow.recipient_address) as any;
+  }
+  if (dup) {
+    return {
+      serve_queue_id: dup.id, person_id: null, agent_person_id: null,
+      business_id: null, property_id: null, call_id: null, call_number: null,
+      created: { person: false, agent_person: false, business: false, property: false, call: false },
+      duplicate_of: { serve_queue_id: dup.id, status: dup.status, case_number: dup.case_number ?? null },
+    };
+  }
+
+  // ── Deadline-driven priority escalation + diligence plan ──
+  // ≤3 days to deadline → urgent, ≤7 → rush (raise-only). Computed BEFORE
+  // the briefing/call/queue writes so every consumer sees the same value.
+  queueRow.priority = escalatePriorityForDeadline(queueRow.priority, nowIso, queueRow.deadline);
+  const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline);
 
   const isBusiness = get('recipient_type').toLowerCase() === 'business';
   const businessName = get('recipient_business_name') || (isBusiness ? get('recipient_last_name') : '');
@@ -625,6 +682,11 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
     });
   }
 
+  // ── OCR provenance context (filed on call notes + queue row) ──
+  const ocrContext: OcrContext | null = input.docs?.length
+    ? buildOcrContext(input.docs, fields, input.allDates ?? [], nowIso)
+    : null;
+
   // ── 4. CFS call row ──────────────────────────────────────
   let callId: number | null = null;
   let callNumber: string | null = null;
@@ -645,7 +707,18 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       agentName: agentFullName,
       fullLocation: fullLocation || addr,
       docCount: input.docCount,
-    }, new Date().toISOString());
+      attemptPlan,
+    }, nowIso);
+    // File the OCR provenance note AFTER the intake briefing so the feed
+    // reads: safety → briefing → extraction context.
+    if (ocrContext) {
+      briefing.notes.push({
+        id: `intake-ocr-${Date.now() + 2}`,
+        author: 'OCR',
+        text: ocrContext.noteText,
+        timestamp: nowIso,
+      });
+    }
     const description = briefing.descriptionPrefix + input.documentSummary;
 
     try {
@@ -707,13 +780,31 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
     // for (attorney_phone/email/bar, filing_date, documents_to_serve,
     // recipient_phone/county, job_number, fee_amount, process_type, server_name,
     // registered_agent_name) — queryable via json_extract(parsed_data, '$.field').
-    const parsedData = JSON.stringify(
-      Object.fromEntries(
+    const parsedData = JSON.stringify({
+      ...Object.fromEntries(
         Object.entries(fields)
           .map(([k, v]) => [k, (v?.value || '').trim()] as const)
           .filter(([, val]) => val),
       ),
-    );
+      // Machine-readable extraction audit block — queryable via
+      // json_extract(parsed_data, '$._intake.missing_critical') etc.
+      _intake: {
+        extracted_at: nowIso,
+        attempt_plan: attemptPlan,
+        ...(ocrContext ? {
+          documents: input.docs!.map((d) => ({
+            file_name: d.file_name, doc_type: d.doc_type,
+            ocr_engine: d.ocr_engine, confidence: d.confidence, success: d.success,
+          })),
+          all_dates: input.allDates ?? [],
+          missing_critical: ocrContext.missingCritical,
+        } : {}),
+      },
+    });
+    // Queue notes = extracted service windows + a compact provenance line so
+    // the serve-queue views carry the OCR context without the full markdown.
+    const queueNotes = [queueRow.notes, ocrContext?.queueLine]
+      .filter(Boolean).join('\n') || null;
     const ins = await execute(
       db,
       `INSERT INTO serve_queue (
@@ -736,7 +827,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       queueRow.court_name, queueRow.jurisdiction,
       queueRow.client_name, queueRow.attorney_name,
       queueRow.priority, queueRow.deadline,
-      queueRow.service_instructions, queueRow.notes,
+      queueRow.service_instructions, queueNotes,
       queueRow.plaintiff, queueRow.defendant, queueRow.court_date, parsedData,
     );
     queueId = Number(ins.meta.last_row_id);
@@ -758,6 +849,10 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   }
 
   return {
+    intake_note: ocrContext?.noteText ?? null,
+    missing_critical: ocrContext?.missingCritical ?? [],
+    attempt_plan: attemptPlan,
+    duplicate_of: null,
     serve_queue_id: queueId,
     person_id: person.id || null,
     agent_person_id: agentPerson.id || null,

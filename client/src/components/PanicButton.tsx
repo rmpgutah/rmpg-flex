@@ -341,11 +341,35 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     }
   }, [incomingAlert?.panic_id, addToast]);
 
+  // Admin fallback — force-deactivate sweeps ALL panic state server-side
+  // (alert row, unit EMERGENCY overlay, P1 CAD call, AlertHubDO nag), even
+  // when the normal resolve/cancel transitions are stuck or already ran.
+  const forceDeactivate = useCallback(async () => {
+    const panicId = incomingAlert?.panic_id;
+    if (!panicId) return;
+    if (!window.confirm('Force-deactivate this panic? This clears the alert, the unit EMERGENCY state, and the P1 call for ALL consoles.')) return;
+    try {
+      await apiFetch(`/dispatch/panic/${panicId}/deactivate`, {
+        method: 'POST',
+        body: JSON.stringify({ notes: 'Deactivated from panic overlay' }),
+      });
+      setIncomingAlert(null);
+      alarmRef.current?.stop();
+      alarmRef.current = null;
+      addToast('Panic force-deactivated', 'success', 5000);
+    } catch (err) {
+      console.error('Failed to force-deactivate panic:', err);
+      addToast('Failed to force-deactivate panic', 'error', 5000);
+    }
+  }, [incomingAlert?.panic_id, addToast]);
+
   // Check if current user can cancel (own panic within 30s)
   const canCancel = ownPanicId && ownPanicTime && (Date.now() - ownPanicTime < 30000);
 
   // Check if current user is supervisor+
   const isSupervisor = user?.role && SUPERVISOR_ROLES.includes(user.role);
+  // Admin/manager only — gates the force-deactivate fallback (server enforces too)
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   const handlePanicClick = () => {
     setConfirmVisible(true);
@@ -615,6 +639,16 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                     style={{ background: '#1a1a1a', border: '1px solid #444', color: '#888' }}
                   >
                     Mark False Alarm
+                  </button>
+                )}
+                {/* Admin fallback — force-deactivate from any state */}
+                {isAdmin && incomingAlert.panic_id && (
+                  <button type="button"
+                    onClick={forceDeactivate}
+                    className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
+                    style={{ background: '#1a1a1a', border: '1px solid #5a1a1a', color: '#c0392b' }}
+                  >
+                    Force Deactivate (Admin)
                   </button>
                 )}
               </div>

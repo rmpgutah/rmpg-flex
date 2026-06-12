@@ -2875,55 +2875,69 @@ body.fx-noise::after {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: inherit;
-  color: #d4a017;
+  /* Base = data value text. Warm parchment-amber reads far cleaner on the
+     pure-black CRT than the old muddy #d4a017 gold (which now belongs to the
+     field-label TAGS, not the values). */
+  color: #ecdfc4;
 }
 
 /* ── NCIC Semantic Color Classes ──
    Per-line coloring so officers can instantly
    distinguish normal data from warnings. */
 
-/* System header/footer bookends — neutral light gray (was sky blue) */
+/* System header/footer bookends — warm light phosphor (neutral, no blue) */
 .ncic-c-header {
-  color: #c8c8c8;
+  color: #d8d0bd;
   font-weight: bold;
+  letter-spacing: 0.04em;
 }
-/* Section titles — bright white */
+/* Section titles — bright warm white, the brightest read on screen */
 .ncic-c-section {
-  color: #f0f0f0;
+  color: #fbf7ec;
   font-weight: bold;
+  letter-spacing: 0.03em;
 }
 /* Danger/warning lines — bright red */
 .ncic-c-danger {
-  color: #ef4444;
+  color: #ff5252;
   font-weight: bold;
 }
 /* Caution lines — orange/amber */
 .ncic-c-caution {
-  color: #f59e0b;
+  color: #ffb224;
   font-weight: bold;
 }
-/* All clear / no record — muted green */
+/* All clear / no record — phosphor green */
 .ncic-c-clear {
-  color: #22c55e;
+  color: #3ddc6b;
+  font-weight: bold;
 }
 /* Error lines — red */
 .ncic-c-error {
-  color: #ef4444;
+  color: #ff5252;
   font-weight: bold;
 }
 /* Summary lines — gold */
 .ncic-c-summary {
-  color: #fbbf24;
+  color: #ffcf45;
   font-weight: bold;
 }
-/* Dimmed dividers / search echo — muted */
+/* Dimmed dividers / search echo — recessed but now actually legible
+   (the old #5a4a2a fell below readable contrast on pure black). */
 .ncic-c-dim {
-  color: #5a4a2a;
+  color: #8a7444;
 }
-/* Field-label codes (NAM/, DOB/, etc.) — neutral gray inline highlight (was cyan) */
+/* Field-label codes (NAM/, DOB/, etc.) — brand gold tag accent. These are
+   the scannable index of a return; gold tags + parchment values give the
+   read a clear two-tone hierarchy (was flat gray, blended into the data). */
 .ncic-c-label {
-  color: #a8a8a8;
+  color: #d4a017;
   font-weight: bold;
+}
+/* Data value text after a field label — the answer the officer reads.
+   Brightest, most legible tone so values pop against the gold tags. */
+.ncic-c-value {
+  color: #f4ecd8;
 }
 
 /* ── Per-severity phosphor glow ──
@@ -2931,12 +2945,14 @@ body.fx-noise::after {
    threat color: red danger pulses hottest, amber caution warm, green clear
    calm. Overrides the base amber glow on .ncic-output. */
 .ncic-c-danger,
-.ncic-c-error { text-shadow: 0 0 6px rgba(239, 68, 68, 0.55); }
-.ncic-c-caution { text-shadow: 0 0 5px rgba(245, 158, 11, 0.45); }
-.ncic-c-summary { text-shadow: 0 0 5px rgba(251, 191, 36, 0.45); }
-.ncic-c-clear { text-shadow: 0 0 5px rgba(34, 197, 94, 0.40); }
-.ncic-c-header { text-shadow: 0 0 4px rgba(200, 200, 200, 0.35); }
-.ncic-c-section { text-shadow: 0 0 4px rgba(240, 240, 240, 0.30); }
+.ncic-c-error { text-shadow: 0 0 6px rgba(255, 82, 82, 0.55); }
+.ncic-c-caution { text-shadow: 0 0 5px rgba(255, 178, 36, 0.45); }
+.ncic-c-summary { text-shadow: 0 0 5px rgba(255, 207, 69, 0.45); }
+.ncic-c-clear { text-shadow: 0 0 6px rgba(61, 220, 107, 0.42); }
+.ncic-c-header { text-shadow: 0 0 4px rgba(216, 208, 189, 0.32); }
+.ncic-c-section { text-shadow: 0 0 5px rgba(251, 247, 236, 0.30); }
+.ncic-c-label { text-shadow: 0 0 5px rgba(212, 160, 23, 0.40); }
+.ncic-c-value { text-shadow: 0 0 3px rgba(244, 236, 216, 0.22); }
 .ncic-c-dim { text-shadow: none; }
 
 /* The CRITICAL subject-status banner gets a steady LED-style pulse so it's

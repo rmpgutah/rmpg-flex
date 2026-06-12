@@ -95,6 +95,18 @@ interface IntakeResult {
     deadlineStr: string;
     serverName: string;
   };
+  // /upload-only extras: per-document OCR provenance + the critical fields
+  // the extractor could NOT find (rendered as a verify-before-service strip).
+  documents?: Array<{
+    file_name: string; doc_type?: string | null; ocr_engine?: string | null;
+    confidence?: number; success?: boolean; page_count?: number | null;
+  }>;
+  missing_critical?: string[];
+  // Diligence planner output — dated attempt windows computed at intake.
+  attempt_plan?: Array<{ attempt: number; date: string; weekday: string; window: string; focus: string }>;
+  // Set when this packet matched an existing ACTIVE queue entry: documents
+  // were attached to it and no new call/queue records were created.
+  duplicate_of?: { serve_queue_id: number; status: string; case_number: string | null } | null;
 }
 
 interface OcrScanResult {
@@ -895,6 +907,15 @@ export default function ServeIntakePage() {
               <span className="text-sm font-bold text-green-400">INTAKE COMPLETE</span>
             </div>
 
+            {result.duplicate_of && (
+              <div className="bg-amber-900/30 border border-amber-700/50 rounded-sm p-2 mb-3 text-[11px] text-amber-300">
+                <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+                Duplicate intake: active serve entry #{result.duplicate_of.serve_queue_id}
+                {result.duplicate_of.case_number ? ` (case ${result.duplicate_of.case_number})` : ''} already covers this
+                recipient — status {result.duplicate_of.status}. Documents were attached to the existing entry; no new call was created.
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="panel-beveled bg-surface-raised p-3">
                 <div className="flex items-center gap-1.5 mb-2">
@@ -947,6 +968,52 @@ export default function ServeIntakePage() {
               {result.extracted?.fee && <div><span className="text-rmpg-500">Fee:</span> <span className="text-rmpg-300">{result.extracted.fee}</span></div>}
               {result.extracted?.serviceWindows && <div className="col-span-2"><span className="text-rmpg-500">Service Windows:</span> <span className="text-rmpg-300">{result.extracted.serviceWindows}</span></div>}
             </div>
+
+            {/* OCR & extraction context — per-document provenance + the
+                critical fields OCR couldn't find. Mirrors the 'OCR' note
+                filed on the call's Notes tab so the uploader sees what to
+                verify without opening dispatch. */}
+            {(result.documents?.length || result.missing_critical?.length) ? (
+              <div className="mt-3 pt-3 border-t border-rmpg-700">
+                <p className="text-[9px] text-rmpg-400 uppercase font-bold mb-1.5">Extraction Context</p>
+                {result.documents?.map((d) => (
+                  <div key={d.file_name} className="flex items-center gap-2 text-[10px] py-[2px]">
+                    <span className="text-rmpg-300 truncate max-w-[260px]">{d.file_name}</span>
+                    {d.success !== false ? (
+                      <>
+                        <span className="text-rmpg-500">{(d.doc_type || 'unclassified').replace(/_/g, ' ')}</span>
+                        <span className="text-rmpg-500">{d.ocr_engine === 'pdfjs-client' ? 'PDF text' : d.ocr_engine === 'workers-ai-vision' ? 'Vision OCR' : d.ocr_engine || ''}</span>
+                        <span className={`font-bold ${confidenceColor(d.confidence ?? 0)}`}>{Math.round((d.confidence ?? 0) * 100)}%</span>
+                      </>
+                    ) : (
+                      <span className="text-red-400 font-bold">extraction failed — review manually</span>
+                    )}
+                  </div>
+                ))}
+                {result.missing_critical && result.missing_critical.length > 0 && (
+                  <p className="text-[10px] text-amber-400 mt-1.5">
+                    <AlertTriangle className="w-3 h-3 inline mr-1" />
+                    Not found in documents — verify before service: {result.missing_critical.join(', ')}
+                  </p>
+                )}
+              </div>
+            ) : null}
+
+            {/* Diligence planner — dated attempt windows. Mirrors the
+                RECOMMENDED ATTEMPT PLAN section of the intake briefing. */}
+            {!result.duplicate_of && result.attempt_plan && result.attempt_plan.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-rmpg-700">
+                <p className="text-[9px] text-rmpg-400 uppercase font-bold mb-1.5">Recommended Attempt Plan</p>
+                {result.attempt_plan.map((w) => (
+                  <div key={w.attempt} className="flex items-center gap-2 text-[10px] py-[2px]">
+                    <span className="text-rmpg-500 font-bold">#{w.attempt}</span>
+                    <span className="text-white font-mono">{w.weekday} {w.date}</span>
+                    <span className="text-brand-400 font-mono">{w.window}</span>
+                    <span className="text-rmpg-500">{w.focus}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2">

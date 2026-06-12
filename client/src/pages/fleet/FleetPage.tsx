@@ -553,13 +553,13 @@ export default function FleetPage() {
   };
 
   const handleSaveInspection = async () => {
-    if (!inspectionForm.inspector_name.trim()) { addToast('Inspector name is required', 'warning'); return; }
+    if (!(inspectionForm.inspector_name || '').trim()) { addToast('Inspector name is required', 'warning'); return; }
     if (selectedId == null) return;
     setSaving(true);
     try {
       const payload = {
         inspection_type: inspectionForm.inspection_type,
-        inspector_name: inspectionForm.inspector_name.trim(),
+        inspector_name: (inspectionForm.inspector_name || '').trim(),
         inspection_date: inspectionForm.inspection_date,
         overall_result: inspectionForm.overall_result,
         mileage: inspectionForm.mileage ? parseInt(inspectionForm.mileage, 10) : null,
@@ -1027,13 +1027,23 @@ export default function FleetPage() {
   };
 
   const openEditInspection = (inspection: FleetInspection) => {
+    // Defensive: mobile/field-app inspections may have a null inspector and a
+    // simplified checklist shape ({item,result,note}) — normalize both so the
+    // form never renders against null (was a page-crashing TypeError).
+    const rawItems = Array.isArray(inspection.items) ? inspection.items : [];
+    const items = rawItems.map((i: any) => ({
+      category: i.category ?? 'FIELD',
+      item: i.item ?? i.label ?? '',
+      status: i.status ?? (i.result === 'fail' ? 'fail' : 'pass'),
+      notes: i.notes ?? i.note ?? '',
+    }));
     setInspectionForm({
-      inspection_type: inspection.inspection_type,
-      inspector_name: inspection.inspector_name,
+      inspection_type: inspection.inspection_type ?? 'pre_trip',
+      inspector_name: inspection.inspector_name ?? '',
       inspection_date: toDatetimeLocal(inspection.inspection_date),
       mileage: inspection.mileage != null ? String(inspection.mileage) : '',
-      overall_result: inspection.overall_result,
-      items: inspection.items.map(i => ({ ...i })),
+      overall_result: inspection.overall_result ?? 'pass',
+      items,
       notes: inspection.notes || '',
     });
     setEditingInspectionId(inspection.id);
