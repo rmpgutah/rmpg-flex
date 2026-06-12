@@ -42,8 +42,15 @@ cat > "$APP/Info.plist" <<EOF
 <key>UILaunchScreen</key><dict/>
 <key>UIDeviceFamily</key><array><integer>1</integer></array>
 <key>MinimumOSVersion</key><string>17.0</string>
+<key>NSCameraUsageDescription</key><string>Scan driver license barcodes to relay identity data to your MDT desktop session.</string>
+<key>CFBundleIcons</key><dict>
+  <key>CFBundlePrimaryIcon</key><dict>
+    <key>CFBundleIconFiles</key><array><string>AppIcon60x60</string></array>
+  </dict>
+</dict>
 </dict></plist>
 EOF
+cp "$IOS_DIR/RMPGFlexTester/AppIcons/"AppIcon60x60@*.png "$APP/" 2>/dev/null || true
 
 cp "$PROFILE" "$APP/embedded.mobileprovision"
 cat > "$BUILD/ent.plist" <<EOF

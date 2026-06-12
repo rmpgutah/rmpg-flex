@@ -5,6 +5,8 @@ struct RMPGFlexTesterApp: App {
     var body: some Scene {
         WindowGroup {
             TabView {
+                IDScanView()
+                    .tabItem { Label("ID Scan", systemImage: "person.text.rectangle") }
                 D1ConsoleView()
                     .tabItem { Label("D1 Console", systemImage: "terminal") }
                 CloudStatusView()

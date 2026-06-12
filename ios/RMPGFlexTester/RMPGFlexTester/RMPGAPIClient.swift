@@ -47,6 +47,21 @@ struct RMPGAPIClient {
         return token
     }
 
+    func postJSON(_ path: String, body: [String: Any]) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "RMPG", code: status,
+                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(150))"])
+        }
+    }
+
     func probe(_ path: String) async -> SmokeOutcome {
         var req = URLRequest(url: baseURL.appendingPathComponent(path))
         if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
