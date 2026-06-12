@@ -28,6 +28,7 @@ import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { AlertHubDO } from './durable-objects/AlertHubDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
 import { runAllSourceScans } from './utils/warrantSources/runScan';
+import { runUtahSorPoll } from './utils/utahSorPoller';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
 import { syncAllVehicleGpsMileage } from './routes/fleet';
@@ -355,6 +356,14 @@ export default {
       runAllSourceScans(env.DB).catch((err) => {
         console.error('Multi-source warrant scheduled scan failed:', err);
       }),
+    );
+    // Utah Sex Offender Registry poll — pulls from an agency-authorized
+    // feed (system_config sor_feed_url/key) into utah_sex_offenders.
+    // No-op until a feed is provisioned; never scrapes the public site.
+    ctx.waitUntil(
+      runUtahSorPoll(env.DB)
+        .then((r) => { if (r.configured) console.log(`[sor] seen=${r.seen} upserted=${r.upserted}${r.error ? ` err=${r.error}` : ''}`); })
+        .catch((err) => console.error('[sor] poll failed:', err)),
     );
     // Dispatch anomaly detection — populates anomaly_alerts for the
     // AnomalyAlertBanner. Independent of the warrant scan; its own
