@@ -134,3 +134,46 @@ describe('vehicleFunctions — evaluateVehicle bridge', () => {
     expect(e.key).toBe('VIN:1FTFW1ET9DFC10312');
   });
 });
+
+describe('vehicleFunctions — ALPR / BOLO matching', () => {
+  it('edit distance + similarity + fuzzy match', () => {
+    expect(V.plateEditDistance('ABC123', 'ABC124')).toBe(1);
+    expect(V.plateSimilarity('ABC123', 'ABC123')).toBe(1);
+    expect(V.isFuzzyPlateMatch('ABC123', 'ABC124', 1)).toBe(true);
+    expect(V.isFuzzyPlateMatch('ABC123', 'XYZ999', 1)).toBe(false);
+  });
+  it('glyph confusion', () => {
+    expect(V.isGlyphConfusable('ABC0', 'ABCO')).toBe(true);  // 0↔O
+    expect(V.isGlyphConfusable('5BC', 'SBC')).toBe(true);    // 5↔S
+    expect(V.isGlyphConfusable('ABC', 'XYZ')).toBe(false);
+    expect(V.plateConfusionVariants('A0').length).toBeGreaterThan(1);
+  });
+  it('wildcard + partial matching', () => {
+    expect(V.matchesPartialPlate('ABC???', 'ABC123')).toBe(true);
+    expect(V.matchesPartialPlate('AB*', 'ABC123')).toBe(true);
+    expect(V.matchesPartialPlate('XY*', 'ABC123')).toBe(false);
+    expect(V.isPlausiblePartial('BC1', 'ABC123')).toBe(true);
+  });
+  it('candidate ranking + best match', () => {
+    const cands = ['ABC123', 'ABD123', 'XYZ999'];
+    expect(V.bestPlateMatch('ABC123', cands)).toBe('ABC123');
+    expect(V.rankPlateCandidates('ABC123', cands)[0].plate).toBe('ABC123');
+    expect(V.plateMatchConfidence(1)).toBe('exact');
+    expect(V.plateMatchConfidence(0.5)).toBe('low');
+  });
+  it('OCR cleanup + read quality', () => {
+    expect(V.cleanPlateOcr(' a-b c1*2 ')).toBe('ABC12');
+    expect(V.plateReadQuality('ABC123', 0.95)).toBe('good');
+    expect(V.plateReadQuality('A', 0.9)).toBe('unreadable');
+  });
+  it('BOLO + hotlist matching', () => {
+    const bolos = [{ plate: 'ABC123', state: 'UT' }, { vin: '1HGCM82633A004352' }];
+    const hits = V.matchVehicleBolo({ plate: 'ABC124' }, bolos, { plateMaxEdits: 1 });
+    expect(hits.length).toBe(1);
+    expect(hits[0].reason).toMatch(/plate/);
+    expect(V.isHotPlate('ABC0', ['ABCO'])).toBe(true);  // glyph-confusable hit
+    expect(V.isHotPlate('XYZ', ['ABC'])).toBe(false);
+    expect(V.plateHotKey('ut', 'abc-123')).toBe('UT:ABC123');
+    expect(V.descriptorsMatch({ make: 'TOYT', color: 'SIL' }, { make: 'Toyota', color: 'Silver' })).toBe(true);
+  });
+});

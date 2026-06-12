@@ -480,3 +480,171 @@ export function evaluateVehicle(v: VehicleInput, now: Date = new Date()): Vehicl
     key: vehicleKey(v),
   };
 }
+
+// ════════════════════════════════════════════════════════════
+// 7. PLATE-READER / ALPR / BOLO MATCHING (62–80)
+// ════════════════════════════════════════════════════════════
+// Helpers for partial/ambiguous plate reads (camera OCR, witness reports)
+// and matching a read against a BOLO/stolen list.
+
+// Characters an OCR/witness commonly confuses, in both directions.
+const GLYPH_CONFUSIONS: Record<string, string[]> = {
+  '0': ['O', 'D', 'Q'], O: ['0', 'D', 'Q'], '1': ['I', 'L', 'T'], I: ['1', 'L'],
+  '8': ['B'], B: ['8'], '5': ['S'], S: ['5'], '2': ['Z'], Z: ['2'],
+  '6': ['G'], G: ['6'], '4': ['A'], A: ['4'], D: ['0', 'O'], Q: ['0', 'O'],
+};
+
+/** 62. Levenshtein distance between two normalised plates. */
+export function plateEditDistance(a: string, b: string): number {
+  const s = normalizePlate(a), t = normalizePlate(b);
+  const dp = Array.from({ length: s.length + 1 }, (_, i) => [i, ...Array(t.length).fill(0)]);
+  for (let j = 0; j <= t.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= s.length; i++) for (let j = 1; j <= t.length; j++) {
+    dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (s[i - 1] === t[j - 1] ? 0 : 1));
+  }
+  return dp[s.length][t.length];
+}
+
+/** 63. Plate similarity 0..1 (1 = identical). */
+export function plateSimilarity(a: string, b: string): number {
+  const s = normalizePlate(a), t = normalizePlate(b);
+  const max = Math.max(s.length, t.length);
+  return max === 0 ? 1 : 1 - plateEditDistance(s, t) / max;
+}
+
+/** 64. True if two plates are a fuzzy match within `maxEdits` (default 1). */
+export function isFuzzyPlateMatch(a: string, b: string, maxEdits = 1): boolean {
+  return plateEditDistance(a, b) <= maxEdits;
+}
+
+/** 65. True if a glyph-confusion could turn read `a` into target `b`. */
+export function isGlyphConfusable(a: string, b: string): boolean {
+  const s = normalizePlate(a), t = normalizePlate(b);
+  if (s.length !== t.length) return false;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === t[i]) continue;
+    if (!(GLYPH_CONFUSIONS[s[i]] || []).includes(t[i])) return false;
+  }
+  return true;
+}
+
+/** 66. Expand a partial plate with '?'/'*' wildcards into a matcher. */
+export function plateWildcardToRegex(pattern: string): RegExp {
+  const p = normalizePlate(pattern).replace(/[^A-Z0-9?*]/g, '');
+  const src = '^' + p.replace(/\?/g, '[A-Z0-9]').replace(/\*/g, '[A-Z0-9]*') + '$';
+  return new RegExp(src);
+}
+
+/** 67. True if a full plate matches a partial/wildcard pattern. */
+export function matchesPartialPlate(pattern: string, plate: string): boolean {
+  try { return plateWildcardToRegex(pattern).test(normalizePlate(plate)); } catch { return false; }
+}
+
+/** 68. Rank a candidate list against a (possibly partial) read, best first. */
+export function rankPlateCandidates(read: string, candidates: string[]): Array<{ plate: string; score: number }> {
+  return candidates
+    .map(plate => ({ plate, score: plateSimilarity(read, plate) + (isGlyphConfusable(read, plate) ? 0.05 : 0) }))
+    .sort((a, b) => b.score - a.score);
+}
+
+/** 69. Best candidate for a read above a confidence threshold, or null. */
+export function bestPlateMatch(read: string, candidates: string[], minScore = 0.7): string | null {
+  const top = rankPlateCandidates(read, candidates)[0];
+  return top && top.score >= minScore ? top.plate : null;
+}
+
+/** 70. Confidence label for a plate read score. */
+export function plateMatchConfidence(score: number): string {
+  if (score >= 0.99) return 'exact';
+  if (score >= 0.85) return 'high';
+  if (score >= 0.7) return 'possible';
+  return 'low';
+}
+
+/** 71. Strip non-plate noise from a raw OCR string (keep alnum). */
+export function cleanPlateOcr(raw: string): string { return (raw || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+
+/** 72. True if a read could be a partial of a full plate (prefix/suffix/substring). */
+export function isPlausiblePartial(read: string, full: string): boolean {
+  const r = normalizePlate(read), f = normalizePlate(full);
+  return r.length > 0 && r.length <= f.length && (f.startsWith(r) || f.endsWith(r) || f.includes(r));
+}
+
+/** 73. Match a vehicle read against a BOLO list (plate fuzzy + VIN exact + descriptor). */
+export interface VehicleBolo { plate?: string; state?: string; vin?: string; make?: string; color?: string; year?: number; }
+export function matchVehicleBolo(
+  read: { plate?: string; state?: string; vin?: string; make?: string; color?: string; year?: number },
+  bolos: VehicleBolo[],
+  opts: { plateMaxEdits?: number } = {},
+): Array<{ bolo: VehicleBolo; reason: string; score: number }> {
+  const out: Array<{ bolo: VehicleBolo; reason: string; score: number }> = [];
+  for (const b of bolos) {
+    if (read.vin && b.vin && vinsMatch(read.vin, b.vin)) { out.push({ bolo: b, reason: 'VIN exact', score: 1 }); continue; }
+    if (read.plate && b.plate) {
+      const sim = plateSimilarity(read.plate, b.plate);
+      if (platesMatch(read.plate, b.plate)) { out.push({ bolo: b, reason: 'plate exact', score: 1 }); continue; }
+      if (plateEditDistance(read.plate, b.plate) <= (opts.plateMaxEdits ?? 1)) { out.push({ bolo: b, reason: `plate ~${Math.round(sim * 100)}%`, score: sim }); continue; }
+    }
+    // descriptor-only soft match (make+color+year) when no plate/VIN given
+    if (!read.plate && !read.vin && read.make && b.make && normalizeMake(read.make) === normalizeMake(b.make)) {
+      const colorOk = !read.color || !b.color || expandColorCode(read.color) === expandColorCode(b.color);
+      const yearOk = !read.year || !b.year || read.year === b.year;
+      if (colorOk && yearOk) out.push({ bolo: b, reason: 'descriptor', score: 0.5 });
+    }
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
+/** 74. Build a partial-plate broadcast string for a witness read. */
+export function partialPlateBroadcast(read: string, state?: string): string {
+  const r = cleanPlateOcr(read);
+  if (!r) return '';
+  return `PARTIAL PLATE ${state ? state.toUpperCase() + '-' : ''}${r.replace(/[?*]/g, 'X')}`;
+}
+
+/** 75. True if two vehicle descriptors plausibly describe the same vehicle. */
+export function descriptorsMatch(
+  a: { make?: string; color?: string; year?: number; body_style?: string },
+  b: { make?: string; color?: string; year?: number; body_style?: string },
+): boolean {
+  const makeOk = !a.make || !b.make || normalizeMake(a.make) === normalizeMake(b.make);
+  const colorOk = !a.color || !b.color || expandColorCode(a.color) === expandColorCode(b.color);
+  const yearOk = !a.year || !b.year || Math.abs(a.year - b.year) <= 1;
+  const bodyOk = !a.body_style || !b.body_style || expandBodyStyle(a.body_style) === expandBodyStyle(b.body_style);
+  return makeOk && colorOk && yearOk && bodyOk;
+}
+
+/** 76. Generate glyph-confusion variants of a plate read (for list lookup). */
+export function plateConfusionVariants(read: string, limit = 24): string[] {
+  const r = normalizePlate(read);
+  const out = new Set<string>([r]);
+  for (let i = 0; i < r.length && out.size < limit; i++) {
+    for (const alt of GLYPH_CONFUSIONS[r[i]] || []) {
+      out.add(r.slice(0, i) + alt + r.slice(i + 1));
+      if (out.size >= limit) break;
+    }
+  }
+  return [...out];
+}
+
+/** 77. True if a plate read hits a stolen/hot list (exact or 1-edit or confusable). */
+export function isHotPlate(read: string, hotList: string[]): boolean {
+  return hotList.some(h => platesMatch(read, h) || isFuzzyPlateMatch(read, h, 1) || isGlyphConfusable(read, h));
+}
+
+/** 78. Normalise a state+plate read into a stable hot-list key. */
+export function plateHotKey(state: string, plate: string): string { return `${(state || '').toUpperCase()}:${normalizePlate(plate)}`; }
+
+/** 79. Coarse plate-read quality from OCR confidence + length. */
+export function plateReadQuality(raw: string, ocrConfidence = 1): string {
+  const p = cleanPlateOcr(raw);
+  if (p.length < 2) return 'unreadable';
+  if (ocrConfidence >= 0.9 && p.length >= 5) return 'good';
+  if (ocrConfidence >= 0.6) return 'fair';
+  return 'poor';
+}
+
+/** 80. Format an ALPR hit summary line. */
+export function alprHitLine(read: string, state: string, score: number): string {
+  return `ALPR ${plateHotKey(state, read)} — ${plateMatchConfidence(score)} (${Math.round(score * 100)}%)`;
+}

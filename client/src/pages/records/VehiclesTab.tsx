@@ -20,6 +20,7 @@ import FieldGrid from '../../components/records/FieldGrid';
 import RecordBadge from '../../components/records/RecordBadge';
 import RecordHero from '../../components/records/RecordHero';
 import { recordPosture, toneStyle } from '../../components/records/recordVisuals';
+import { evaluateVehicle } from '../../utils/vehicleFunctions';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
 
 // Active-stolen check shared by the list badge, counts, list ring + posture so
@@ -851,6 +852,36 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
           {selectedVehicle.vin && (
             <div className="mt-2"><RecordField label="VIN" value={selectedVehicle.vin} mono copyable /></div>
           )}
+          {/* ── Vehicle Analysis (shared vehicleFunctions / iOS bridge) ── */}
+          {(() => {
+            const ev = evaluateVehicle({
+              vin: selectedVehicle.vin, plate: selectedVehicle.license_plate,
+              state: selectedVehicle.plate_state, year: selectedVehicle.year,
+              color: selectedVehicle.color, make: selectedVehicle.make,
+              body_style: selectedVehicle.body_style, registration_expiry: selectedVehicle.registration_expiry,
+              is_stolen: isActiveStolen(selectedVehicle),
+            });
+            const chips: Array<{ label: string; tone: 'gray' | 'gold' | 'red' | 'green' }> = [];
+            if (selectedVehicle.vin) {
+              chips.push(ev.vinValid
+                ? { label: 'VIN VALID', tone: 'green' }
+                : { label: `VIN INVALID — ${ev.vinError}`, tone: 'red' });
+              if (ev.decodedYear) chips.push({ label: `VIN YEAR ${ev.decodedYear}`, tone: 'gray' });
+              if (ev.yearMatches === false) chips.push({ label: 'YEAR MISMATCH', tone: 'red' });
+            }
+            if (ev.registration === 'expired') chips.push({ label: 'REG EXPIRED', tone: 'red' });
+            else if (ev.registration === 'expiring') chips.push({ label: 'REG EXPIRING', tone: 'gold' });
+            if (ev.classic) chips.push({ label: 'CLASSIC 25YR+', tone: 'gray' });
+            if (ev.category && ev.category !== 'passenger') chips.push({ label: ev.category.toUpperCase(), tone: 'gray' });
+            if (chips.length === 0) return null;
+            return (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {chips.map((c) => (
+                  <RecordBadge key={c.label} tone={c.tone} glow={c.tone === 'red'} pulse={false}>{c.label}</RecordBadge>
+                ))}
+              </div>
+            );
+          })()}
           {(selectedVehicle.commercial_vehicle || selectedVehicle.hazmat) && (
             <div className="flex gap-1.5 mt-2">
               {selectedVehicle.commercial_vehicle && <RecordBadge tone="gray" glow={false}>COMMERCIAL</RecordBadge>}
