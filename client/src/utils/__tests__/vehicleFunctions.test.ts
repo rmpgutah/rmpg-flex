@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as V from '../vehicleFunctions';
 
-const NOW = new Date(Date.UTC(2026, 5, 11));
+const NOW = new Date(Date.UTC(2026, 5, 11)); // new-date-ok: explicit UTC test fixture
 
 describe('vehicleFunctions — VIN', () => {
   // Known-valid VINs (real check digits).
