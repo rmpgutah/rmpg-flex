@@ -19,6 +19,7 @@ import { rebuildIntelIndex, computeResolutionSuggestions, INTEL_TYPES } from '..
 import { mergeTimeline, rankAssociates, type TimelineEvent, type CoOccurrence } from '../utils/intelDossier';
 import { screenPerson, screenVehicle } from '../utils/intelScreen';
 import { runExtraction } from '../utils/intelExtract';
+import { computeEscalation, personActivityEvents } from '../utils/intelPatterns';
 
 const intel = new Hono<Env>();
 
@@ -358,6 +359,88 @@ intel.get('/sightings', operational, async (c) => {
   }
 });
 
+// ─── Field quick-capture (Wave 2) ────────────────────────────
+// One POST: dedupe-or-create person + vehicle, write the FI, screen
+// both, return hits. 30-second field workflow.
+
+intel.post('/quick-capture', operational, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const b = await c.req.json().catch(() => ({} as any));
+  const first = String(b?.first_name || '').trim();
+  const last = String(b?.last_name || '').trim();
+  const plate = String(b?.plate || '').toUpperCase().replace(/[\s-]/g, '');
+  if (!last && !plate) return c.json({ error: 'last_name or plate required' }, 400);
+
+  let personId: number | null = null;
+  let personReused = false;
+  if (last) {
+    try {
+      const existing = b?.dob
+        ? await queryFirst<any>(db, 'SELECT id FROM persons WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) AND dob = ?', first, last, b.dob)
+        : await queryFirst<any>(db, 'SELECT id FROM persons WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)', first, last);
+      if (existing) { personId = existing.id; personReused = true; }
+      else {
+        const r = await execute(db,
+          'INSERT INTO persons (first_name, last_name, dob, notes, created_at) VALUES (?, ?, ?, ?, datetime(\'now\'))',
+          first || null, last, b?.dob || null, 'Created via intel quick-capture');
+        personId = r.meta.last_row_id as number;
+      }
+    } catch (err: any) { console.error('[quick-capture] person failed:', err?.message); }
+  }
+
+  let vehicleId: number | null = null;
+  if (plate.length >= 2) {
+    try {
+      const existing = await queryFirst<any>(db, 'SELECT id FROM vehicles_records WHERE UPPER(plate_number) = ?', plate);
+      if (existing) vehicleId = existing.id;
+      else {
+        const r = await execute(db,
+          'INSERT INTO vehicles_records (plate_number, owner_person_id, notes, created_at) VALUES (?, ?, ?, datetime(\'now\'))',
+          plate, null, 'Created via intel quick-capture');
+        vehicleId = r.meta.last_row_id as number;
+      }
+    } catch (err: any) { console.error('[quick-capture] vehicle failed:', err?.message); }
+  }
+
+  let fiId: number | null = null;
+  try {
+    const r = await execute(db,
+      `INSERT INTO field_interviews
+         (person_id, vehicle_id, officer_id, location, latitude, longitude,
+          contact_reason, narrative, subject_first_name, subject_last_name,
+          subject_dob, subject_description, vehicle_plate, status, created_at, interview_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted', datetime('now'), datetime('now'))`,
+      personId, vehicleId, userId, b?.location || null,
+      Number.isFinite(Number(b?.lat)) ? Number(b.lat) : null,
+      Number.isFinite(Number(b?.lng)) ? Number(b.lng) : null,
+      b?.contact_reason || 'field contact', b?.narrative || null,
+      first || null, last || null, b?.dob || null, b?.subject_description || null,
+      plate || null);
+    fiId = r.meta.last_row_id as number;
+    await execute(db,
+      `UPDATE field_interviews SET fi_number = 'FI-' || strftime('%Y%m%d', 'now') || '-' || id WHERE id = ? AND (fi_number IS NULL OR fi_number = '')`,
+      fiId);
+  } catch (err: any) {
+    return c.json({ error: `FI insert failed: ${err?.message}` }, 500);
+  }
+
+  const hits: any[] = [];
+  if (personId) hits.push(...await screenPerson(db, personId));
+  if (vehicleId) hits.push(...(await screenVehicle(db, { vehicleId })).hits);
+  const critical = hits.filter((h) => h.severity === 'critical');
+  if (critical.length && userId) {
+    try {
+      await execute(db,
+        `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+         VALUES ('intel_screen', 'high', ?, ?, 'person', ?, ?, 0, datetime('now'))`,
+        'RECORDS HIT: field contact', critical.map((h) => h.detail).join('; '), personId, userId);
+    } catch (err: any) { console.error('[quick-capture] notify failed:', err?.message); }
+  }
+
+  return c.json({ success: true, person_id: personId, person_reused: personReused, vehicle_id: vehicleId, fi_id: fiId, hits });
+});
+
 // ─── Person Dossier ──────────────────────────────────────────
 // GET /dossier/person/:id — 360° investigative profile. Every section
 // is try/catch-isolated: a bad/missing table degrades that section to
@@ -517,6 +600,12 @@ intel.get('/dossier/person/:id', operational, async (c) => {
       pushAddr(e.subtitle.split(' — ').pop(), `${e.kind} ${e.title}`);
   }
 
+  // Escalation scoring (Wave 2) — weighted 30d tempo vs 90d baseline.
+  let escalation = null as ReturnType<typeof computeEscalation> | null;
+  try {
+    escalation = computeEscalation(await personActivityEvents(db, id));
+  } catch (err: any) { console.error('[dossier] escalation failed:', err?.message); }
+
   // Watch state for the requesting user (Phase 4).
   let watched = false;
   try {
@@ -530,6 +619,7 @@ intel.get('/dossier/person/:id', operational, async (c) => {
     person, cluster, flags, timeline, associates, vehicles,
     addresses: addresses.slice(0, 10),
     watched,
+    escalation,
   });
 });
 
