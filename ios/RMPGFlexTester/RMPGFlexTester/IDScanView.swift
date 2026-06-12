@@ -76,24 +76,28 @@ struct IDScanView: View {
 
                 if let result {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(result.displayName)
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(.white)
-                            ForEach(rows(result), id: \.0) { label, value in
-                                HStack(alignment: .top) {
-                                    Text(label).font(.system(size: 10, weight: .semibold))
-                                        .foregroundStyle(Theme.gold)
-                                        .frame(width: 90, alignment: .leading)
-                                    Text(value).font(.system(size: 12, design: .monospaced))
-                                        .foregroundStyle(.white)
+                        VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(result.displayName)
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(.white)
+                                ForEach(rows(result), id: \.0) { label, value in
+                                    HStack(alignment: .top) {
+                                        Text(label).font(.system(size: 10, weight: .semibold))
+                                            .foregroundStyle(Theme.gold)
+                                            .frame(width: 90, alignment: .leading)
+                                        Text(value).font(.system(size: 12, design: .monospaced))
+                                            .foregroundStyle(.white)
+                                    }
                                 }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                            .background(Theme.raised)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+
+                            analysisCard(DLFunctions.evaluateDL(result))
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(Theme.raised)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                     }
                 }
                 Spacer(minLength: 0)
@@ -123,6 +127,46 @@ struct IDScanView: View {
                 .presentationBackground(Theme.base)
             }
         }
+    }
+
+    // DL ANALYSIS card — derived intelligence via the shared DLFunctions
+    // bridge (same logic as the desktop's evaluateDl).
+    @ViewBuilder
+    private func analysisCard(_ e: DLEvaluation) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("DL ANALYSIS")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Theme.gold)
+            let chips: [(String, Bool)] = {
+                var c: [(String, Bool)] = []
+                c.append((e.dlValid ? "DL# VALID" : "DL# FORMAT?", !e.dlValid))
+                if !e.jurisdictionName.isEmpty { c.append(("\(e.jurisdictionName) (\(e.country))", false)) }
+                if let age = e.age { c.append(("AGE \(age) · \(e.ageBracket)", false)) }
+                if e.eligibility["minor"] == true { c.append(("MINOR", true)) }
+                else if e.eligibility["under21"] == true { c.append(("UNDER 21", true)) }
+                else if e.eligibility["drinking"] == true { c.append(("21+", false)) }
+                c.append(("LICENSE \(e.expiry.uppercased())", e.expiry == "expired"))
+                for b in e.badges { c.append((b, b.hasPrefix("NOT"))) }
+                return c
+            }()
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(chips, id: \.0) { label, danger in
+                        Text(label)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(danger ? Color.red : Color.white)
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                            .background((danger ? Color.red : Color.white).opacity(0.12))
+                            .overlay(RoundedRectangle(cornerRadius: 2).stroke((danger ? Color.red : Color.gray).opacity(0.5), lineWidth: 1))
+                            .clipShape(RoundedRectangle(cornerRadius: 2))
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Theme.raised)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
     }
 
     private func rows(_ r: AamvaResult) -> [(String, String)] {
