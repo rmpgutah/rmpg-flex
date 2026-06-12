@@ -415,6 +415,14 @@ export default {
         })
         .catch((err) => console.error('[intel-pattern] cron failed:', err)),
     );
+    // Jail/booking roster scan (Wave 3a) — seeds the registry, pulls
+    // active sources, cross-hits bookings against known/flagged subjects.
+    ctx.waitUntil(
+      import('./utils/jailSources/runScan')
+        .then(({ runJailScan }) => runJailScan(env as any))
+        .then((s) => { const n = s.reduce((a, x) => a + x.ingested, 0); if (n) console.log(`[jail-scan] ingested ${n}`); })
+        .catch((err) => console.error('[jail-scan] cron failed:', err)),
+    );
     // Dispatch anomaly detection — populates anomaly_alerts for the
     // AnomalyAlertBanner. Independent of the warrant scan; its own
     // catch so a failure here can't abort the warrant scan or crash
