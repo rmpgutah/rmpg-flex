@@ -33,6 +33,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { runUtahSorPoll, importSorRows } from '../utils/utahSorPoller';
 import { lookupCourtRecords } from '../utils/courtRecordsLookup';
+import { lookupFbiWanted } from '../utils/fbiWantedLookup';
 
 const dlRecords = new Hono<Env>();
 
@@ -586,6 +587,18 @@ dlRecords.get('/court-lookup', async (c) => {
     return c.json(r);
   } catch {
     return c.json({ source: 'COURTLISTENER', records: [], cached: false });
+  }
+});
+
+// GET /fbi-lookup — FBI Wanted bulletins by name (official public API).
+dlRecords.get('/fbi-lookup', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const r = await lookupFbiWanted(getDb(c.env), c.req.query('last') || '', c.req.query('first') || '');
+    return c.json(r);
+  } catch {
+    return c.json({ source: 'FBI_WANTED', records: [], cached: false });
   }
 });
 

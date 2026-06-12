@@ -125,6 +125,8 @@ export default function DlSearchPage() {
   const [deepSweepLoading, setDeepSweepLoading] = useState(false);
   const [courtRecords, setCourtRecords] = useState<any[] | null>(null);
   const [courtLoading, setCourtLoading] = useState(false);
+  const [fbiRecords, setFbiRecords] = useState<any[] | null>(null);
+  const [fbiLoading, setFbiLoading] = useState(false);
   const [showLiveScanner, setShowLiveScanner] = useState(false);
   const [showScanHistory, setShowScanHistory] = useState(false);
   const [scanHistory, setScanHistory] = useState<any[] | null>(null);
@@ -243,6 +245,18 @@ export default function DlSearchPage() {
     setScanMatches(null);
     setDeepSweep(null);
     setCourtRecords(null);
+    setFbiRecords(null);
+
+    // FBI Wanted (official public API) — external, fired in parallel.
+    if (parsed.last_name && parsed.last_name.length >= 2) {
+      setFbiLoading(true);
+      const fq = new URLSearchParams({ last: parsed.last_name });
+      if (parsed.first_name) fq.set('first', parsed.first_name);
+      apiFetch<{ records: any[] }>(`/dl-records/fbi-lookup?${fq}`)
+        .then(d => setFbiRecords(Array.isArray(d?.records) ? d.records : []))
+        .catch(() => setFbiRecords([]))
+        .finally(() => setFbiLoading(false));
+    }
 
     // Open-source federal court records (CourtListener) — external API,
     // fired in parallel so it never blocks the D1 sweep.
@@ -1197,8 +1211,14 @@ export default function DlSearchPage() {
             </div>
             <div className="p-4 space-y-3">
               {/* ── Officer-safety + status alerts ── */}
-              {(scanMatches?.some((m: any) => m.active_warrants > 0) || scanAlerts.length > 0 || deepSweep?.sources.some((s: any) => s.danger) || (deepSweep as any)?.profile?.person) && (
+              {(scanMatches?.some((m: any) => m.active_warrants > 0) || scanAlerts.length > 0 || deepSweep?.sources.some((s: any) => s.danger) || (deepSweep as any)?.profile?.person || (fbiRecords && fbiRecords.length > 0)) && (
                 <div className="space-y-1">
+                  {fbiRecords?.filter((r: any) => r.is_danger).map((r: any, i: number) => (
+                    <div key={`fbi-${i}`} className="flex items-center gap-2 px-3 py-2 bg-red-900/40 border border-red-600/70 text-red-300 text-[11px] font-bold uppercase tracking-wide">
+                      <AlertTriangle size={14} className="flex-shrink-0 text-red-400" />
+                      ⚠ FBI WANTED — {r.title}{r.warning ? ` · ${r.warning}` : ''} (verify identity)
+                    </div>
+                  ))}
                   {(() => {
                     const p = (deepSweep as any)?.profile?.person;
                     if (!p) return null;
@@ -1403,6 +1423,37 @@ export default function DlSearchPage() {
                 );
               })()}
 
+              {/* ── FBI Wanted (official public API) ── */}
+              {(fbiLoading || (fbiRecords && fbiRecords.length > 0)) && (
+                <div className="border border-red-700/40 rounded-sm bg-[#0c0c0c]">
+                  <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-red-400">
+                    <Shield size={11} /> FBI Wanted
+                    {fbiLoading
+                      ? <Loader2 size={10} className="animate-spin" />
+                      : <span>{fbiRecords!.length} bulletin{fbiRecords!.length === 1 ? '' : 's'}</span>}
+                  </div>
+                  {fbiRecords && fbiRecords.length > 0 && (
+                    <div className="px-3 py-1 text-[8px] text-[#7a6a3a] bg-[#15120a] border-b border-[#1a1a1a]">
+                      ⚠ Name match against FBI bulletins — verify identity (DOB/photo) before acting.
+                    </div>
+                  )}
+                  {fbiRecords && fbiRecords.map((r: any, i: number) => (
+                    <div key={i} className="px-3 py-1.5 text-[10px] border-t border-[#101010] flex items-start gap-2 bg-red-900/10">
+                      {r.image && <img src={r.image} alt="FBI bulletin" className="w-10 h-12 object-cover border border-[#2e2e2e] bg-black flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-white font-bold">{r.title}</span>
+                          {r.warning && <span className="text-[7px] font-bold px-1 py-px bg-red-900/60 text-red-300 border border-red-600/70 uppercase">{r.warning}</span>}
+                        </div>
+                        <div className="text-[#8899aa] mt-0.5">{[r.subjects, r.sex, r.race, r.dob && `DOB ${r.dob}`].filter(Boolean).join(' · ')}</div>
+                        {r.caution && <div className="text-[#a89878] mt-0.5 leading-snug">{r.caution.slice(0, 180)}{r.caution.length > 180 ? '…' : ''}</div>}
+                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[#d4a017] hover:underline">FBI bulletin ↗</a>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* ── Open-source federal court records (CourtListener) ── */}
               {(courtLoading || (courtRecords && courtRecords.length > 0)) && (
                 <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
@@ -1593,7 +1644,7 @@ export default function DlSearchPage() {
                   try {
                     const { generateSafetySheet } = await import('../utils/dlSafetySheet');
                     const doc = generateSafetySheet({
-                      ocrResult, leFields, scanAlerts, scanMatches, deepSweep, courtRecords,
+                      ocrResult, leFields, scanAlerts, scanMatches, deepSweep, courtRecords, fbiRecords,
                       officerName: undefined,
                     });
                     doc.save(`safety-brief-${(ocrResult?.last_name || 'subject')}-${Date.now()}.pdf`);

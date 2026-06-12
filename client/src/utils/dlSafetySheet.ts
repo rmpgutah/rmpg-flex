@@ -20,6 +20,7 @@ export interface SafetySheetInput {
   scanMatches: any[] | null;
   deepSweep: { sources: any[]; profile?: any } | null;
   courtRecords: any[] | null;
+  fbiRecords?: any[] | null;
   officerName?: string;
 }
 
@@ -62,6 +63,7 @@ export function generateSafetySheet(input: SafetySheetInput): jsPDF {
     if (s.danger && s.key === 'bolos') dangers.push('ACTIVE BOLO');
   }
   for (const a of input.scanAlerts) if (a.level === 'danger') dangers.push(a.message);
+  for (const r of input.fbiRecords || []) if (r.is_danger) dangers.push(`FBI WANTED: ${r.title}${r.warning ? ` — ${r.warning}` : ''}`);
   const uniqDangers = [...new Set(dangers)];
 
   // ── Header band ──
@@ -207,6 +209,14 @@ export function generateSafetySheet(input: SafetySheetInput): jsPDF {
       for (const r of rows.slice(0, 8)) line(`– ${fmt(r)}`, 6);
       y += 4;
     }
+  }
+
+  // ── FBI Wanted ──
+  if (input.fbiRecords && input.fbiRecords.length) {
+    section('FBI Wanted (api.fbi.gov)');
+    line('Name match only — verify identity before relying on these.', 0, false);
+    for (const r of input.fbiRecords.slice(0, 6)) line(`– ${r.title}${r.warning ? ` [${r.warning}]` : ''}${r.subjects ? ` · ${r.subjects}` : ''}`, 6, !!r.is_danger);
+    y += 4;
   }
 
   // ── Federal court records ──
