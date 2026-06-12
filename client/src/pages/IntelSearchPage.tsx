@@ -4,7 +4,7 @@
 // hot flags (ACTIVE WARRANT / OFFICER SAFETY / GANG) and entity-
 // resolution cluster info. Phase 1 of the Palantir-grade records work.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -36,7 +36,8 @@ export function recordPath(hit: { type: string; id: number }): string {
 }
 
 export default function IntelSearchPage() {
-  const [q, setQ] = useState('');
+  const [searchParams] = useSearchParams();
+  const [q, setQ] = useState(searchParams.get('q') || '');
   const [results, setResults] = useState<IntelHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
