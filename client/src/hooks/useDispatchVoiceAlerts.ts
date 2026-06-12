@@ -206,6 +206,14 @@ export function useDispatchVoiceAlerts(options?: {
         // activation should alarm here, and only once per panic id — otherwise
         // the banner stack grows one "PANIC" per re-broadcast (and per ack).
         const action = data.action || msg.action;
+        // Escalation re-alerts the fleet (Spillman: an unanswered emergency
+        // gets louder) — everything else terminal/ack stays silent here.
+        if (action === 'panic_escalated') {
+          const level = data.panic?.escalation_level ?? data.escalation_level;
+          speak(`Panic alert escalated${level ? `, level ${level}` : ''}. Still unacknowledged.`, 'major');
+          onAlert?.({ id: nextAlertId(), severity: 'major', title: 'PANIC ESCALATED', message: `Level ${level ?? '?'} — unacknowledged`, timestamp: Date.now() });
+          return;
+        }
         if (action && action !== 'panic_activated') return;
         const panic = data.panic || data;
         const panicId = panic?.id ?? panic?.panic_id ?? data.panic_id;

@@ -6,28 +6,27 @@ import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
 import { useToast } from './ToastProvider';
 import { safeTimeStr } from '../utils/dateUtils';
+import { playTone } from '../utils/dispatchTones';
 
-// ─── Panic Alarm — loops the unified panicWarble tone ────────────
-// Plays the Motorola APX emergency warble (960/1500Hz, 3s) in a
-// loop for the specified duration. Uses the unified radioTones
-// system so all emergency sounds are consistent.
+// ─── Panic Alarm — continuous until acknowledged (Spillman) ──────
+// Authentic Spillman Flex: the console alarm sounds CONTINUOUSLY
+// until a dispatcher acknowledges — it never times out on its own.
+// Loops the user-remappable Emergency/Panic tone slot from the
+// unified dispatchTones system (default: APX emergency warble;
+// Settings can map it to the sampled panic_continuous asset).
 // ─────────────────────────────────────────────────────────────────
-/** Simple beep alarm as radioTones replacement */
-function playPanicAlarm(durationMs = 10000): { stop: () => void } {
+function playPanicAlarm(): { stop: () => void } {
   let stopped = false;
-  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-  const gain = ctx.createGain();
-  gain.connect(ctx.destination);
-  const osc = ctx.createOscillator();
-  osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(960, ctx.currentTime);
-  osc.frequency.setValueAtTime(1500, ctx.currentTime + 1.5);
-  osc.frequency.setValueAtTime(960, ctx.currentTime + 3);
-  osc.connect(gain);
-  osc.start();
-  const timer = setTimeout(() => { stopped = true; osc.stop(); gain.disconnect(); }, durationMs);
+  let current: { stop: () => void } | null = playTone('alarm');
+  // 3s cycle covers the longest mappable tone (panic_continuous, 2.4s)
+  // without overlapping copies.
+  const timer = setInterval(() => {
+    if (stopped) return;
+    current?.stop();
+    current = playTone('alarm');
+  }, 3000);
   return {
-    stop: () => { if (!stopped) { stopped = true; clearTimeout(timer); osc.stop(); gain.disconnect(); } },
+    stop: () => { if (!stopped) { stopped = true; clearInterval(timer); current?.stop(); } },
   };
 }
 
@@ -84,7 +83,9 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   const volumeUpPressTimesRef = useRef<number[]>([]);
   const volumeUpHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volumeUpHeldRef = useRef(false);
-  const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Panic id currently shown on this console — guards against AlertHubDO's
+  // 15s redelivery restarting the alarm/voice room for an alert already up.
+  const displayedPanicIdRef = useRef<number | string | null>(null);
   const sendingRef = useRef(false); // synchronous guard — React state is async and races
 
   const triggerHardwarePanic = useCallback(async () => {
@@ -214,7 +215,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       panicAudio.stopListening?.();
       setOwnPanicId(null);
       setOwnPanicTime(null);
-      if (autoDismissTimerRef.current) { clearTimeout(autoDismissTimerRef.current); autoDismissTimerRef.current = null; }
+      displayedPanicIdRef.current = null;
     };
 
     const unsub = subscribe('panic_alert', (msg: any) => {
@@ -265,30 +266,29 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
           // New alarm. Don't show your own panic back to yourself.
           const senderId = panic?.user_id ?? panic?.officer_id ?? env.user_id;
           if (senderId && user?.id && String(senderId) === String(user.id)) return;
+          // AlertHubDO re-delivers an unacked panic every 15s (and replays on
+          // reconnect). The overlay + continuous alarm are already running for
+          // this panic — don't restart the alarm or reset the voice room on a
+          // redelivery of the same id.
+          if (panicId != null && displayedPanicIdRef.current === panicId && alarmRef.current) break;
+          displayedPanicIdRef.current = panicId ?? null;
           // Normalize to the PanicAlert overlay shape (panic row + panic_id).
           setIncomingAlert({ ...panic, panic_id: panicId } as PanicAlert);
           // Set the sender's user ID so the "Respond" talk-back button works.
           if (senderId) panicAudio.setSenderUserId?.(Number(senderId));
           // Open the panic voice room to hear the officer's distress audio live.
           if (panicId != null) panicAudio.listen?.(Number(panicId));
-          // Audible alarm.
-          alarmRef.current = playPanicAlarm(8000);
-          // Auto-dismiss after 60s (tracked for cleanup).
-          if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
-          autoDismissTimerRef.current = setTimeout(() => {
-            setIncomingAlert(null);
-            alarmRef.current?.stop();
-            panicAudio.stopListening?.();
-          }, 60000);
+          // Audible alarm — Spillman: continuous until acknowledged, and the
+          // overlay NEVER auto-dismisses while unacknowledged. An officer
+          // emergency must not silently disappear from a console.
+          alarmRef.current?.stop();
+          alarmRef.current = playPanicAlarm();
           break;
         }
       }
     });
 
-    return () => {
-      unsub();
-      if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
-    };
+    return () => unsub();
   }, [subscribe, user?.id, panicAudio, addToast]);
 
   // Server-side acknowledge — sends POST to /dispatch/panic/:id/acknowledge
@@ -338,6 +338,29 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     } catch (err) {
       console.error('Failed to mark false alarm:', err);
       addToast('Failed to mark false alarm', 'error', 5000);
+    }
+  }, [incomingAlert?.panic_id, addToast]);
+
+  // Code 4 — resolve (supervisor+). Spillman: after acknowledging, the
+  // dispatcher explicitly clears the emergency once the officer is code 4;
+  // this is the normal terminal transition (false-alarm is the exception
+  // path). Clears the alert row + the unit's EMERGENCY overlay fleet-wide.
+  const resolveCode4 = useCallback(async () => {
+    const panicId = incomingAlert?.panic_id;
+    if (!panicId) return;
+    const notes = window.prompt('Code 4 — resolution notes:');
+    if (notes === null) return; // user cancelled prompt
+    try {
+      await apiFetch(`/dispatch/panic/${panicId}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ notes: notes || 'Code 4 — emergency resolved' }),
+      });
+      setIncomingAlert(null);
+      alarmRef.current?.stop();
+      alarmRef.current = null;
+    } catch (err) {
+      console.error('Failed to resolve panic:', err);
+      addToast('Failed to resolve panic', 'error', 5000);
     }
   }, [incomingAlert?.panic_id, addToast]);
 
@@ -631,6 +654,17 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                     ACKNOWLEDGE
                   </button>
                 </div>
+                {/* Code 4 / resolve — supervisor+ only (Spillman: dispatcher
+                    clears the emergency when the officer is code 4) */}
+                {isSupervisor && incomingAlert.panic_id && (
+                  <button type="button"
+                    onClick={resolveCode4}
+                    className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
+                    style={{ background: '#1a1a1a', border: '1px solid #2d4a1a', color: '#5a9e3a' }}
+                  >
+                    Code 4 — Resolve
+                  </button>
+                )}
                 {/* False alarm — supervisor+ only */}
                 {isSupervisor && incomingAlert.panic_id && (
                   <button type="button"
