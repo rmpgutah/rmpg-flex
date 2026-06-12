@@ -60,6 +60,13 @@ struct IDScanView: View {
                         .background(recordCheck.hasPrefix("⚠") ? Theme.red : Theme.raised)
                 }
                 if result != nil {
+                    Button("CREATE & LINK PERSON + PROPERTY") {
+                        Task { await createLinked() }
+                    }
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(maxWidth: .infinity).padding(.vertical, 7)
+                    .background(Theme.gold).foregroundStyle(.black)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                     Button("CREATE FI CARD FROM SCAN") { showFi = true }
                         .font(.system(size: 11, weight: .semibold))
                         .frame(maxWidth: .infinity).padding(.vertical, 7)
@@ -163,6 +170,34 @@ struct IDScanView: View {
             relayStatus = "✗ Relay failed: \(error.localizedDescription)"
         }
         await recordChecks(parsed, client: client)
+    }
+
+    /// One-shot Person + Property create/link from the scan (same endpoint
+    /// the desktop DL Search uses; dedupes server-side).
+    @MainActor
+    private func createLinked() async {
+        guard let result else { return }
+        var client = AppConfig.apiClient()
+        if client.jwt == nil,
+           let u = KeychainStore.load(key: "rmpgUser"),
+           let p = KeychainStore.load(key: "rmpgPass"),
+           let t = try? await client.login(username: u, password: p) {
+            KeychainStore.save(t, key: "rmpgJWT"); client.jwt = t
+        }
+        do {
+            let res = try await client.requestJSON("POST", "api/records/from-dl-scan",
+                                                   body: ["scan": result.fields]) as? [String: Any]
+            var bits: [String] = []
+            if let p = res?["person"] as? [String: Any], let id = p["id"] {
+                bits.append("Person #\(id) \((res?["person_created"] as? Bool) == true ? "created" : "linked")")
+            }
+            if let pr = res?["property"] as? [String: Any], let id = pr["id"] {
+                bits.append("Property #\(id) \((res?["property_created"] as? Bool) == true ? "created" : "linked")")
+            }
+            relayStatus = "✓ " + (bits.isEmpty ? "No records created" : bits.joined(separator: " · "))
+        } catch {
+            relayStatus = "✗ Create & link failed: \(error.localizedDescription)"
+        }
     }
 
     /// Officer-safety auto-check: warrants + local person history the moment
