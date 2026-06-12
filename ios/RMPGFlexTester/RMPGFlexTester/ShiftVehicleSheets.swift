@@ -96,14 +96,16 @@ struct ShiftStartSheet: View {
             let assignedVehicle = vehicleId
                 ?? (((res as? [String: Any])?["vehicle"] as? [String: Any])?["id"] as? Int)
             if let vid = assignedVehicle {
-                var checklist = items.map { ["item": $0.id, "result": $0.pass ? "pass" : "fail", "note": $0.note] }
-                checklist.append(["item": "Fuel level at start", "result": fuelLevel == "E" ? "fail" : "pass",
-                                  "note": "\(fuelLevel) tank"])
+                var checklist = items.map { ["category": "PRE-TRIP", "item": $0.id,
+                                             "status": $0.pass ? "pass" : "fail", "notes": $0.note] }
+                checklist.append(["category": "PRE-TRIP", "item": "Fuel level at start",
+                                  "status": fuelLevel == "E" ? "fail" : "pass", "notes": "\(fuelLevel) tank"])
                 for (i, url) in photoUrls.enumerated() {
-                    checklist.append(["item": "Photo \(i + 1)", "result": "pass", "note": url])
+                    checklist.append(["category": "PHOTOS", "item": "Photo \(i + 1)", "status": "pass", "notes": url])
                 }
                 var insp: [String: Any] = [
                     "inspection_date": ISO8601DateFormatter().string(from: Date()),
+                    "inspector_name": KeychainStore.load(key: "rmpgUser") ?? "field-app",
                     "inspection_type": "pre_trip",
                     "overall_result": failed.isEmpty ? "pass" : "fail",
                     "items": checklist,
@@ -199,12 +201,16 @@ struct ShiftEndSheet: View {
             let hasIssues = newDamage || fuelLow || !issues.isEmpty
             if let vid = vehicleId {
                 var checklist: [[String: String]] = []
-                checklist.append(["item": "Fuel level at end", "result": fuelLow ? "fail" : "pass",
-                                  "note": "\(fuelLevel) tank" + (fuelLow ? " — refuel needed" : "")])
-                checklist.append(["item": "New damage", "result": newDamage ? "fail" : "pass", "note": damageNote])
-                if !issues.isEmpty { checklist.append(["item": "Mechanical", "result": "fail", "note": issues]) }
+                checklist.append(["category": "POST-TRIP", "item": "Fuel level at end",
+                                  "status": fuelLow ? "fail" : "pass",
+                                  "notes": "\(fuelLevel) tank" + (fuelLow ? " — refuel needed" : "")])
+                checklist.append(["category": "POST-TRIP", "item": "New damage",
+                                  "status": newDamage ? "fail" : "pass", "notes": damageNote])
+                if !issues.isEmpty {
+                    checklist.append(["category": "POST-TRIP", "item": "Mechanical", "status": "fail", "notes": issues])
+                }
                 for (i, url) in photoUrls.enumerated() {
-                    checklist.append(["item": "Photo \(i + 1)", "result": "pass", "note": url])
+                    checklist.append(["category": "PHOTOS", "item": "Photo \(i + 1)", "status": "pass", "notes": url])
                 }
                 if boughtFuel {
                     _ = try? await FuelLogger.log(client: client, vehicleId: vid, gallons: fuelGallons,
@@ -212,6 +218,7 @@ struct ShiftEndSheet: View {
                 }
                 var insp: [String: Any] = [
                     "inspection_date": ISO8601DateFormatter().string(from: Date()),
+                    "inspector_name": KeychainStore.load(key: "rmpgUser") ?? "field-app",
                     "inspection_type": "post_trip",
                     "overall_result": hasIssues ? "fail" : "pass",
                     "items": checklist,
