@@ -333,6 +333,15 @@ export default {
           .then((n) => { if (n) console.log(`[watchlist] ${n} alert(s) raised`); })
           .catch((err) => console.error('[watchlist] sweep failed:', err)),
       );
+      // Intel cross-hit coverage sweep — screens persons/vehicles
+      // created in the last 2 minutes regardless of entry path; critical
+      // hits raise anomaly_alerts (dispatch banner). Cheap when idle.
+      ctx.waitUntil(
+        import('./utils/intelScreen')
+          .then(({ sweepNewEntities }) => sweepNewEntities(env.DB))
+          .then((n) => { if (n) console.log(`[intel-screen] ${n} alert(s) raised`); })
+          .catch((err) => console.error('[intel-screen] sweep failed:', err)),
+      );
       // Email poll — throttled internally by ms_email_last_sync vs
       // ms_email_poll_interval. No-op when not configured.
       ctx.waitUntil(
@@ -385,6 +394,14 @@ export default {
           console.log(`[intel-index] synced ${JSON.stringify(counts)}, ${suggestions} resolution suggestions`);
         })
         .catch((err) => console.error('[intel-index] cron failed:', err)),
+    );
+    // Narrative entity extraction — mines recent call/incident text for
+    // known persons/plates/phones and queues link suggestions for /intel.
+    ctx.waitUntil(
+      import('./utils/intelExtract')
+        .then(({ runExtraction }) => runExtraction(env.DB, 6))
+        .then((n) => { if (n) console.log(`[intel-extract] ${n} suggestion(s) queued`); })
+        .catch((err) => console.error('[intel-extract] cron failed:', err)),
     );
     // Dispatch anomaly detection — populates anomaly_alerts for the
     // AnomalyAlertBanner. Independent of the warrant scan; its own
