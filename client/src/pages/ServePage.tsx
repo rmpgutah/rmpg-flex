@@ -9,8 +9,9 @@ import RichTextArea from '../components/RichTextArea';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
-  Search as SearchIcon, AlertTriangle, FileWarning,
+  Search as SearchIcon, AlertTriangle, FileWarning, Users,
 } from 'lucide-react';
+import AssignTab from './serve/AssignTab';
 import { apiFetch } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
@@ -37,7 +38,7 @@ import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
-const TABS = ['Queue', 'Route', 'Map', 'Stats'] as const;
+const TABS = ['Queue', 'Route', 'Map', 'Stats', 'Assign'] as const;
 type Tab = typeof TABS[number];
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'served' | 'failed';
 
@@ -863,8 +864,8 @@ export default function ServePage() {
 
       {/* ─── Tab Bar ───────────────────────────────────────────────── */}
       <div className="flex items-center border-b border-[#2b2b2b] bg-[#0c0c0c]" role="tablist" aria-label="Process Server views">
-        {TABS.map(tab => {
-          const Icon = tab === 'Queue' ? List : tab === 'Route' ? Route : tab === 'Map' ? MapIcon : BarChart3;
+        {TABS.filter(tab => tab !== 'Assign' || ['admin','manager','supervisor'].includes(user?.role ?? '')).map(tab => {
+          const Icon = tab === 'Queue' ? List : tab === 'Route' ? Route : tab === 'Map' ? MapIcon : tab === 'Assign' ? Users : BarChart3;
           return (
             <button type="button"
               key={tab}
@@ -1352,6 +1353,8 @@ export default function ServePage() {
             )}
           </div>
         )}
+
+        {activeTab === 'Assign' && ['admin','manager','supervisor'].includes(user?.role ?? '') && <AssignTab />}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════ */}
