@@ -141,6 +141,14 @@ struct WorkflowRenderer: View {
             try await finalize(c, id: id)
         }
         if let err {
+            // Dead zone → queue the report (and photos) for automatic replay.
+            if OfflineSyncLogic.shouldQueue(err) {
+                queueOffline()
+                readiness = []
+                status = "⚠ Offline — \(def.title) queued; sends when back online"
+                try? await Task.sleep(for: .seconds(1)); dismiss()
+                return
+            }
             let mapped = WorkflowValidation.serverErrors(from: RMPGAPIClient.apiBody(err) ?? [:])
             if !mapped.isEmpty { readiness = mapped; status = "⚠ \(mapped.count) to fix before submit" }
             else { status = "✗ \(err.localizedDescription)" }
@@ -149,6 +157,28 @@ struct WorkflowRenderer: View {
             status = "✓ " + def.success.message.replacingOccurrences(of: "{\(def.success.numberKey)}", with: number)
             try? await Task.sleep(for: .seconds(1)); dismiss()
         }
+    }
+
+    // Queue the primary write + any photos when offline. Single-POST workflows
+    // replay as one create; lifecycle (incident) replays the create only — it
+    // lands as a draft to finalize on reconnect. Photos stage to disk and link
+    // by call_id/coords (incident_id is unknown until the draft replays).
+    @MainActor private func queueOffline() {
+        let body = WorkflowBody.json(values)
+        switch def.submit {
+        case .single(let post):
+            OfflineSync.shared.enqueue(method: "POST", path: post, body: body, label: def.title)
+        case .lifecycle(let create, _, _):
+            OfflineSync.shared.enqueue(method: "POST", path: create, body: body, label: "\(def.title) (draft)")
+        }
+        var fields = WorkflowBody.multipartFields(values.filter { ["latitude", "longitude"].contains($0.key) })
+        if case .number(let n)? = values["call_id"] { fields["call_id"] = "\(Int(n))" }
+        for img in pendingPhotos {
+            if let jpeg = img.jpegData(compressionQuality: 0.8) {
+                OfflinePhotoQueue.enqueue(jpeg: jpeg, fields: fields, label: "\(def.title) photo")
+            }
+        }
+        OfflineSync.shared.refreshCount()
     }
 
     private func postOrCreate(_ c: RMPGAPIClient) async throws -> (Int?, String?) {
