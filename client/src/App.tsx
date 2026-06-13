@@ -126,6 +126,7 @@ const WatchlistSection = lazyRetry(() => import('./pages/intel/WatchlistSection'
 const AlertsSection = lazyRetry(() => import('./pages/intel/AlertsSection'));
 const ReviewQueues = lazyRetry(() => import('./pages/intel/ReviewQueues'));
 const IntelComingSoon = lazyRetry(() => import('./pages/intel/IntelComingSoon'));
+const BoloBoard = lazyRetry(() => import('./pages/intel/BoloBoard'));
 const PlateLogPage = lazyRetry(() => import('./pages/PlateLogPage'));
 const QuickCapturePage = lazyRetry(() => import('./pages/QuickCapturePage'));
 const JailRecordsPage = lazyRetry(() => import('./pages/JailRecordsPage'));
@@ -478,7 +479,7 @@ function AppRoutes() {
               <Route path="search" element={<RouteErrorBoundary><IntelSearchPage /></RouteErrorBoundary>} />
               <Route path="connections" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
               <Route path="watchlist" element={<RouteErrorBoundary><WatchlistSection /></RouteErrorBoundary>} />
-              <Route path="bolos" element={<RouteErrorBoundary><IntelComingSoon title="BOLO Board" phase="Phase · BOLO" /></RouteErrorBoundary>} />
+              <Route path="bolos" element={<RouteErrorBoundary><BoloBoard /></RouteErrorBoundary>} />
               <Route path="alerts" element={<RouteErrorBoundary><AlertsSection /></RouteErrorBoundary>} />
               <Route path="jail" element={<RouteErrorBoundary><JailRecordsPage /></RouteErrorBoundary>} />
               <Route path="plate-log" element={<RouteErrorBoundary><PlateLogPage /></RouteErrorBoundary>} />
