@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { BoloCreate } from '../useBolos';
 
-const INPUT = 'w-full bg-[#0b0b0b] border border-[#2e2e2e] rounded-[2px] px-2 py-[6px] text-[12px] text-gray-200 focus:border-[#d4a017] outline-none';
+const INPUT = 'w-full bg-[#0b0b0b] border border-[#2a2a2a] rounded-[2px] px-2 py-[6px] text-[12px] text-gray-200 focus:border-[#d4a017] outline-none';
 const LABEL = 'font-mono text-[8px] tracking-widest text-[#888] uppercase';
 
 export default function BoloCreateModal({ onClose, onCreate }: {
