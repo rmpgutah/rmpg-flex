@@ -64,6 +64,39 @@ struct CloudStatusView: View {
             do { out.append((section, .success(try await client.list(section)))) }
             catch { out.append((section, .failure(error))) }
         }
+        // Org-wide fallback: for scope-gated sections the device token can't read
+        // (workers/kv/pages), use the RMPG backend /api/cloudflare/resources, which
+        // runs the SERVER cf_api_token (set in web Admin → Cloudflare). D1 + R2
+        // keep their richer direct-token data. No-op until a server token is set.
+        let gated: Set<CloudflareClient.Section> = [.workers, .kv, .pages]
+        let anyGatedFailed = out.contains { sec, res in
+            gated.contains(sec) && { if case .failure = res { return true } else { return false } }()
+        }
+        if anyGatedFailed, let backend = await backendResources() {
+            out = out.map { sec, res in
+                if gated.contains(sec), case .failure = res, let items = backend[sec], !items.isEmpty {
+                    return (sec, .success(items))
+                }
+                return (sec, res)
+            }
+        }
         sections = out
+    }
+
+    // Pull workers/kv/pages from the RMPG backend (server CF token) as a fallback.
+    private func backendResources() async -> [CloudflareClient.Section: [CFResource]]? {
+        let api = AppConfig.apiClient()
+        guard api.jwt != nil,
+              let obj = try? await api.requestJSON("GET", "api/cloudflare/resources") as? [String: Any],
+              (obj["configured"] as? Bool) == true else { return nil }
+        func rows(_ key: String) -> [[String: Any]] { obj[key] as? [[String: Any]] ?? [] }
+        var map: [CloudflareClient.Section: [CFResource]] = [:]
+        map[.workers] = rows("workers").map { CFResource(id: $0["id"] as? String ?? "?",
+            title: $0["id"] as? String ?? "?", subtitle: "via server token") }
+        map[.kv] = rows("kv").map { CFResource(id: $0["id"] as? String ?? "?",
+            title: $0["title"] as? String ?? "(untitled)", subtitle: "via server token") }
+        map[.pages] = rows("pages").map { CFResource(id: $0["name"] as? String ?? "?",
+            title: $0["name"] as? String ?? "?", subtitle: ($0["domain"] as? String ?? "") + " · via server token") }
+        return map
     }
 }
