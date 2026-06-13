@@ -126,6 +126,7 @@ const WatchlistSection = lazyRetry(() => import('./pages/intel/WatchlistSection'
 const AlertsSection = lazyRetry(() => import('./pages/intel/AlertsSection'));
 const ReviewQueues = lazyRetry(() => import('./pages/intel/ReviewQueues'));
 const IntelComingSoon = lazyRetry(() => import('./pages/intel/IntelComingSoon'));
+const IntelSearch = lazyRetry(() => import('./pages/intel/IntelSearch'));
 const PlateLogPage = lazyRetry(() => import('./pages/PlateLogPage'));
 const QuickCapturePage = lazyRetry(() => import('./pages/QuickCapturePage'));
 const JailRecordsPage = lazyRetry(() => import('./pages/JailRecordsPage'));
@@ -475,7 +476,7 @@ function AppRoutes() {
               {/* Each child is individually error-bounded so a single bad surface
                   fails in the center pane only — the rail + context panel survive. */}
               <Route index element={<RouteErrorBoundary><IntelDashboard /></RouteErrorBoundary>} />
-              <Route path="search" element={<RouteErrorBoundary><IntelSearchPage /></RouteErrorBoundary>} />
+              <Route path="search" element={<RouteErrorBoundary><IntelSearch /></RouteErrorBoundary>} />
               <Route path="connections" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
               <Route path="watchlist" element={<RouteErrorBoundary><WatchlistSection /></RouteErrorBoundary>} />
               <Route path="bolos" element={<RouteErrorBoundary><IntelComingSoon title="BOLO Board" phase="Phase · BOLO" /></RouteErrorBoundary>} />
