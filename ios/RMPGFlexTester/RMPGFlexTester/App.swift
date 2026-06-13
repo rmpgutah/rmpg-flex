@@ -66,6 +66,9 @@ struct SystemHubView: View {
 
     private var entries: [Entry] {
         [
+            Entry(id: "dar", title: "Daily Activity Report",
+                  subtitle: "Auto-compiled shift report · review + sign",
+                  icon: "doc.text.below.ecg.fill", destination: AnyView(DailyActivityReportView())),
             Entry(id: "myid", title: "My Officer ID",
                   subtitle: "Your digital badge + live verification QR",
                   icon: "person.text.rectangle.fill", destination: AnyView(WalletIDView())),
