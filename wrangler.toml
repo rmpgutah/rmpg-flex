@@ -148,6 +148,18 @@ new_sqlite_classes = ["AlertHubDO"]
 [ai]
 binding = "AI"
 
+# ─── Observability (Workers Logs) ──────────────────────────
+# Persists this worker's console.log/error output to Workers Logs
+# (7-day retention, queryable in the dashboard). Without this, the
+# scheduled-sweep + route handler logs (e.g. the DL-scan / properties
+# 500s) are only visible via live `wrangler tail` and vanish after.
+# head_sampling_rate = 1 → log 100% of requests; fine at single-agency
+# volume (well inside the 20M logs/day included tier). Lower it toward
+# 0.1 only if log spend ever becomes a concern.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 # Environment variables
 [vars]
 NODE_ENV = "production"
