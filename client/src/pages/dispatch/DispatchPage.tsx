@@ -5233,7 +5233,7 @@ export default function DispatchPage() {
                     {(selectedCall.client_id || editData.client_id) && (() => {
                       const cid = String(editData.client_id || selectedCall.client_id);
                       const cli = clientsList.find((c) => String(c.id) === cid);
-                      const contractId = editData.contract_id || (selectedCall as any).contract_id;
+                      const contractId = editData.contract_id || selectedCall.contract_id;
                       const billing = editData.pso_billing_code || selectedCall.pso_billing_code;
                       const auth = editData.pso_authorization || selectedCall.pso_authorization;
                       return (
