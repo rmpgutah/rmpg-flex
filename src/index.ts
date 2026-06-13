@@ -347,6 +347,15 @@ export default {
           .then((n) => { if (n) console.log(`[intel-screen] ${n} alert(s) raised`); })
           .catch((err) => console.error('[intel-screen] sweep failed:', err)),
       );
+      // Intel retention sweep — flags disseminated products past their
+      // 28 CFR review_date as due_review (deduped anomaly_alert). Cheap
+      // when nothing is due; naturally idempotent.
+      ctx.waitUntil(
+        import('./utils/intelRetention')
+          .then(({ sweepRetention }) => sweepRetention(env.DB))
+          .then((n) => { if (n) console.log(`[intel-retention] ${n} flagged for review`); })
+          .catch((err) => console.error('[intel-retention] sweep failed:', err)),
+      );
       // Email poll — throttled internally by ms_email_last_sync vs
       // ms_email_poll_interval. No-op when not configured.
       ctx.waitUntil(
