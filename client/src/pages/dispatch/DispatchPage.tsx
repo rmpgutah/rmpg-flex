@@ -95,6 +95,7 @@ import {
   humanizePriority, formatDispositionCode, getStatusTooltip, formatPhoneDisplay,
   formatAddressDisplay, timeAgo, humanizeStatus,
 } from '../../utils/statusLabels';
+import { autofillFromClient, applyFillBlanks, type ClientRecord } from '../../utils/clientAutofill';
 
 // Label maps for human-readable display of stored values
 const SERVICE_TYPE_LABELS: Record<string, string> = {
@@ -2017,6 +2018,18 @@ export default function DispatchPage() {
   const updateEditField = useCallback((field: string, value: any) => {
     setEditData((prev) => ({ ...prev, [field]: value }));
   }, []);
+
+  const handleClientChange = useCallback(async (clientId: string) => {
+    updateEditField('client_id', clientId);
+    if (!clientId) return;
+    try {
+      const full = await apiFetch<ClientRecord>(`/clients/${clientId}`);
+      const patch = autofillFromClient(full);
+      setEditData((prev: any) => applyFillBlanks(prev, patch));
+    } catch (err) {
+      console.error('Client autofill failed (non-fatal):', err);
+    }
+  }, [updateEditField]);
 
   // ═══════════════════════════════════════════════════════════════
   // NEW DISPATCH FEATURES
@@ -4255,7 +4268,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="field-label">Client:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => updateEditField('client_id', e.target.value)}>
+                            <select className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => handleClientChange(e.target.value)}>
                               <option value="">— No Client —</option>
                               {clientsList.map((c) => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
