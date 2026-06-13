@@ -45,7 +45,7 @@ describe('adaCountyAdapter', () => {
     const stub = buildStub(adaHtml);
     vi.stubGlobal('fetch', stub);
 
-    const hits = await adaCountyAdapter.fetchForPerson(person, env);
+    const hits = await adaCountyAdapter.fetchForPerson!(person, env);
 
     expect(hits.length).toBeGreaterThan(0);
     expect(hits.every((h) => h.source_key === 'ada-county-id')).toBe(true);
@@ -61,7 +61,7 @@ describe('adaCountyAdapter', () => {
   it('threads the GET Set-Cookie into the POST Cookie header', async () => {
     const stub = buildStub(adaHtml);
     vi.stubGlobal('fetch', stub);
-    await adaCountyAdapter.fetchForPerson(person, env);
+    await adaCountyAdapter.fetchForPerson!(person, env);
     const postInit = stub.mock.calls[1][1] as RequestInit;
     const cookie = new Headers(postInit.headers).get('cookie');
     expect(cookie).toContain('ASP.NET_SessionId=abc');
@@ -69,12 +69,12 @@ describe('adaCountyAdapter', () => {
 
   it('throws on a non-OK POST status (circuit breaker engages)', async () => {
     vi.stubGlobal('fetch', buildStub('forbidden', 403));
-    await expect(adaCountyAdapter.fetchForPerson(person, env)).rejects.toThrow();
+    await expect(adaCountyAdapter.fetchForPerson!(person, env)).rejects.toThrow();
   });
 
   it('returns [] on an empty / no-results POST body', async () => {
     vi.stubGlobal('fetch', buildStub('<html><body>No results</body></html>'));
-    const hits = await adaCountyAdapter.fetchForPerson(person, env);
+    const hits = await adaCountyAdapter.fetchForPerson!(person, env);
     expect(hits).toEqual([]);
   });
 });
@@ -91,7 +91,7 @@ describe('natronaAdapter', () => {
     const stub = buildStub(natronaHtml);
     vi.stubGlobal('fetch', stub);
 
-    const hits = await natronaAdapter.fetchForPerson(person, env);
+    const hits = await natronaAdapter.fetchForPerson!(person, env);
 
     expect(hits.length).toBeGreaterThan(0);
     expect(hits.every((h) => h.source_key === 'natrona-county-wy')).toBe(true);
@@ -106,7 +106,7 @@ describe('natronaAdapter', () => {
   it('threads the GET Set-Cookie into the POST Cookie header', async () => {
     const stub = buildStub(natronaHtml);
     vi.stubGlobal('fetch', stub);
-    await natronaAdapter.fetchForPerson(person, env);
+    await natronaAdapter.fetchForPerson!(person, env);
     const postInit = stub.mock.calls[1][1] as RequestInit;
     const cookie = new Headers(postInit.headers).get('cookie');
     expect(cookie).toContain('ASP.NET_SessionId=abc');
@@ -114,12 +114,12 @@ describe('natronaAdapter', () => {
 
   it('throws on a non-OK POST status (circuit breaker engages)', async () => {
     vi.stubGlobal('fetch', buildStub('server error', 500));
-    await expect(natronaAdapter.fetchForPerson(person, env)).rejects.toThrow();
+    await expect(natronaAdapter.fetchForPerson!(person, env)).rejects.toThrow();
   });
 
   it('returns [] on an empty / no-results POST body', async () => {
     vi.stubGlobal('fetch', buildStub('<html><body>Found 0 Warrants</body></html>'));
-    const hits = await natronaAdapter.fetchForPerson(person, env);
+    const hits = await natronaAdapter.fetchForPerson!(person, env);
     expect(hits).toEqual([]);
   });
 });

@@ -8,6 +8,7 @@ import {
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
   Upload, Building2, ShieldAlert, Megaphone, GraduationCap, CheckCircle,
   DollarSign, Shield, Share2, Swords, Brain, Heart, Bell, Pill, Award, UserPlus,
+  Globe,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -55,6 +56,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     label: 'Enforcement',
     items: [
       { path: '/warrants', icon: AlertTriangle, label: 'Warrant Search' },
+      { path: '/national-warrants', icon: Globe, label: 'National Warrants' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
       { path: '/law-book', icon: Scale, label: 'Law Book' },
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },

@@ -35,6 +35,7 @@ function meta(key: string): SourceMeta {
 function adapterReturning(key: string, hits: RawWarrantHit[]): WarrantSourceAdapter {
   return {
     meta: meta(key),
+    mode: 'per-person',
     async fetchForPerson() {
       return hits;
     },
@@ -98,6 +99,7 @@ describe('runAllSourceScans (orchestrator smoke)', () => {
     const { db, calls } = recordingDb([]);
     const boom: WarrantSourceAdapter = {
       meta: meta('ada-county-id'),
+      mode: 'per-person',
       async fetchForPerson() {
         throw new Error('upstream 500');
       },

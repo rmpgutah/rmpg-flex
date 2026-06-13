@@ -17,6 +17,7 @@ export const POPOUT_PAGES: Record<string, { title: string; width: number; height
   '/reports':        { title: 'Reports',             width: 1100, height: 850 },
   '/mdt':            { title: 'MDT',                 width: 1000, height: 800 },
   '/warrants':       { title: 'Warrant Search',      width: 1140, height: 840 },
+  '/national-warrants': { title: 'National Warrant Search', width: 1180, height: 860 },
   '/citations':      { title: 'Citations',           width: 1000, height: 800 },
   '/law-book':       { title: 'Law Book',            width: 1100, height: 820 },
   '/body-cameras':   { title: 'Body Cameras',        width: 1000, height: 800 },
