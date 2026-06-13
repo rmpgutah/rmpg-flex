@@ -15,6 +15,7 @@ export default function LinkageOptionsEditor() {
   const [cat, setCat] = useState('person_role');
   const [newValue, setNewValue] = useState('');
   const [newLabel, setNewLabel] = useState('');
+  const [error, setError] = useState('');
 
   const load = useCallback(() => {
     apiFetch<Row[]>('/admin/link-options').then((r) => setRows(Array.isArray(r) ? r : [])).catch(() => setRows([]));
@@ -22,17 +23,37 @@ export default function LinkageOptionsEditor() {
   useEffect(() => { load(); }, [load]);
 
   const patch = async (id: number, body: Partial<Row>) => {
-    await apiFetch(`/admin/link-options/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
-    load();
+    try {
+      await apiFetch(`/admin/link-options/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+      setError('');
+      load();
+    } catch (err) {
+      console.error('patch link-option failed', err);
+      setError('Failed to update option');
+    }
   };
   const remove = async (id: number) => {
-    await apiFetch(`/admin/link-options/${id}`, { method: 'DELETE' });
-    load();
+    try {
+      await apiFetch(`/admin/link-options/${id}`, { method: 'DELETE' });
+      setError('');
+      load();
+    } catch (err) {
+      console.error('remove link-option failed', err);
+      setError('Failed to remove option');
+    }
   };
   const add = async () => {
     if (!newValue.trim() || !newLabel.trim()) return;
-    await apiFetch('/admin/link-options', { method: 'POST', body: JSON.stringify({ category: cat, value: newValue.trim().toLowerCase().replace(/\s+/g, '_'), label: newLabel.trim() }) });
-    setNewValue(''); setNewLabel(''); load();
+    const slug = newValue.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    if (!slug) { setError('Enter a valid value'); return; }
+    try {
+      await apiFetch('/admin/link-options', { method: 'POST', body: JSON.stringify({ category: cat, value: slug, label: newLabel.trim() }) });
+      setError('');
+      setNewValue(''); setNewLabel(''); load();
+    } catch (err) {
+      console.error('add link-option failed', err);
+      setError('Failed to add option');
+    }
   };
 
   const catRows = rows.filter((r) => r.category === cat).sort((a, b) => a.sort_order - b.sort_order);
@@ -44,6 +65,7 @@ export default function LinkageOptionsEditor() {
           <button key={c.key} onClick={() => setCat(c.key)} className={`px-2 py-1 text-[10px] uppercase font-bold border rounded-sm ${cat === c.key ? 'bg-brand-900/40 text-brand-300 border-brand-600/40' : 'text-rmpg-400 border-rmpg-600'}`}>{c.label}</button>
         ))}
       </div>
+      {error && <p className="text-[10px] text-red-400">{error}</p>}
       <table className="w-full text-xs">
         <thead><tr className="text-brand-gold-500 text-[9px] uppercase"><th className="text-left py-[3px]">Label</th><th className="text-left">Value</th><th>Sort</th><th>Active</th><th></th></tr></thead>
         <tbody>
@@ -53,7 +75,7 @@ export default function LinkageOptionsEditor() {
               <td className="text-rmpg-500 font-mono text-[10px]">{r.value}{r.is_default ? '' : ' *'}</td>
               <td className="text-center"><input type="number" className="input-dark text-xs w-14" defaultValue={r.sort_order} onBlur={(e) => Number(e.target.value) !== r.sort_order && patch(r.id, { sort_order: Number(e.target.value) })} /></td>
               <td className="text-center"><input type="checkbox" checked={!!r.is_active} onChange={(e) => patch(r.id, { is_active: e.target.checked ? 1 : 0 })} /></td>
-              <td className="text-center"><button onClick={() => remove(r.id)} className="text-red-500 hover:text-red-300" title={r.is_default ? 'Hide' : 'Delete'}>&times;</button></td>
+              <td className="text-center"><button onClick={() => remove(r.id)} className="text-red-500 hover:text-red-300" title={r.is_default ? 'Hide' : 'Delete'} aria-label={r.is_default ? 'Hide option' : 'Delete option'}>&times;</button></td>
             </tr>
           ))}
         </tbody>
