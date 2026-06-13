@@ -18,6 +18,8 @@ struct SubjectRecordsView: View {
     @State private var calls: [[String: Any]] = []
     @State private var citations: [[String: Any]] = []
     @State private var mdtStatus: String?
+    @State private var watching = false
+    @State private var watchWorking = false
 
     private var activeWarrants: Int {
         summary["active_warrants"] ?? warrants.filter { ($0["status"] as? String) == "active" }.count
@@ -110,6 +112,15 @@ struct SubjectRecordsView: View {
                         Label("MDT", systemImage: "car.fill").font(.system(size: 12, weight: .semibold))
                     }.foregroundStyle(Theme.gold)
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { Task { await toggleWatch() } } label: {
+                        Label(watching ? "Watching" : "Watch",
+                              systemImage: watching ? "binoculars.fill" : "binoculars")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(watching ? Theme.orange : Theme.neutral)
+                    .disabled(watchWorking)
+                }
                 ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
             }
             .task { await load() }
@@ -160,7 +171,8 @@ struct SubjectRecordsView: View {
         async let historyReq = try? client.requestJSON("GET", "api/records/persons/\(personId)/system-history")
         async let screenReq = try? client.requestJSON("POST", "api/intel/screen",
                                                       body: ["entity_type": "person", "entity_id": personId])
-        let (history, screen) = await (historyReq, screenReq)
+        async let watchReq = try? client.requestJSON("GET", "api/intel/watchlist")
+        let (history, screen, watch) = await (historyReq, screenReq, watchReq)
         if let h = history as? [String: Any] {
             warrants = h["warrants"] as? [[String: Any]] ?? []
             incidents = h["incidents"] as? [[String: Any]] ?? []
@@ -171,6 +183,10 @@ struct SubjectRecordsView: View {
             error = "Records history unavailable"
         }
         hits = (screen as? [String: Any])?["hits"] as? [[String: Any]] ?? []
+        let watchRows = (watch as? [[String: Any]]) ?? ((watch as? [String: Any])?["results"] as? [[String: Any]]) ?? []
+        watching = watchRows.contains {
+            ($0["entity_type"] as? String) == "person" && AlertsFeed.intValue($0["entity_id"]) == personId
+        }
         loading = false
         if hasCaution { Haptics.error() }   // tactile officer-safety alert on a flagged subject
     }
@@ -179,5 +195,27 @@ struct SubjectRecordsView: View {
         let ok = await MDTLink.shared.send(type: "person",
                                            payload: ["name": displayName, "person_id": personId])
         mdtStatus = ok ? "✓ Sent subject to vehicle MDT" : "✗ MDT send failed"
+    }
+
+    // Watch/unwatch this subject. The per-minute intel cron drops a HIGH-priority
+    // notification (→ the Live Alerts feed) whenever new activity links to a
+    // watched person.
+    @MainActor private func toggleWatch() async {
+        guard let client = await ShiftNet.client(), client.jwt != nil else {
+            mdtStatus = "✗ Not logged in"; return
+        }
+        watchWorking = true; defer { watchWorking = false }
+        do {
+            if watching {
+                _ = try await client.requestJSON("DELETE", "api/intel/watchlist/person/\(personId)")
+                watching = false; mdtStatus = "✓ Removed from watchlist"
+            } else {
+                _ = try await client.requestJSON("POST", "api/intel/watchlist",
+                                                 body: ["entity_type": "person", "entity_id": personId,
+                                                        "reason": "Flagged from field dossier"])
+                watching = true; mdtStatus = "✓ Watching — alerts on new activity"
+                Haptics.success()
+            }
+        } catch { mdtStatus = "✗ \(error.localizedDescription)" }
     }
 }
