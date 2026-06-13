@@ -216,7 +216,12 @@ export async function runFullListLeg(
     let cleared = 0;
     try {
       const hits = await adapter.fetchAll({ DB: db });
-      for (const hit of hits) {
+      const MAX_FULL_LIST_HITS = 5000;  // safety net: keep one source from exhausting the cron D1 budget
+      const toStore = hits.length > MAX_FULL_LIST_HITS ? hits.slice(0, MAX_FULL_LIST_HITS) : hits;
+      if (hits.length > MAX_FULL_LIST_HITS) {
+        console.warn(`[warrantSources] ${adapter.meta.key} returned ${hits.length} hits; capping to ${MAX_FULL_LIST_HITS} this run (batched ingest needed for full coverage).`);
+      }
+      for (const hit of toStore) {
         try {
           await upsertScrapedWarrant(db, hit, null);
           found++;

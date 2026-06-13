@@ -21,9 +21,10 @@ ALTER TABLE scraped_warrants ADD COLUMN kind TEXT DEFAULT 'criminal';
 
 INSERT OR IGNORE INTO national_warrant_sources
   (source_key, family, display_name, state, jurisdiction, base_url, resource_id, field_map, mode, format, kind, enabled, priority) VALUES
+  -- Baton Rouge (~113K rows) disabled in PR1: per-hit upsert would blow the cron budget. Re-enable after batched-ingest follow-up.
   ('socrata-brla-citycourt', 'socrata', 'Baton Rouge City Court Warrants', 'LA', 'Baton Rouge', 'data.brla.gov', '3j5u-jyar',
      '{"name":"name","dob":"dob","charge":"type","case_no":"fileno","issued":"doa","state":"state","city":"add3","race":"race","sex":"sex"}',
-     'full-list', 'socrata', 'criminal', 1, 2),
+     'full-list', 'socrata', 'criminal', 0, 2),
   ('socrata-norfolk-pd', 'socrata', 'Norfolk VA Police Active Warrants', 'VA', 'Norfolk', 'data.norfolk.gov', 'cab7-wvn5',
      '{"first":"first","last":"last","dob":"dob","charge":"wa_chrg","issued":"issudate","sex":"sex","race":"race"}',
      'full-list', 'socrata', 'criminal', 1, 2),
