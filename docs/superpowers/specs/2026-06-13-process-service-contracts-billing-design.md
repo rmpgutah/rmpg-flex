@@ -31,8 +31,10 @@ All surfaced as new tabs inside **Patrol Management** ([PatrolPage.tsx](../../..
 - Officer assignment console (routes + ad-hoc serve-job assignment).
 - Patrol exceptions → dispatch CFS auto-creation.
 - Live patrol/serve status on the dispatch board and map.
-- External billing sync (QuickBooks / ServeManager) — `serve.ts` already notes
-  `create-invoice-item (QuickBooks / ServeManager billing)` as a deferred feature;
+- External accounting sync — **Phase 3 integrates with Business Accounting Pro**, the
+  accounting software for **Rocky Mountain Protective Group, LLC** (see §11). `serve.ts`
+  already notes `create-invoice-item (QuickBooks / ServeManager billing)` as an older
+  deferred-integration placeholder; the confirmed target is now Business Accounting Pro.
   Phase 1 produces native invoices only.
 
 ---
@@ -345,4 +347,9 @@ Sequenced so each is independently verifiable; each can be its own PR.
   + **ad-hoc** loose jobs, per the brainstorming decision), in-app tour/serve-run, overdue
   nudges.
 - **Phase 3 — Integration assist:** exceptions → dispatch CFS, patrol/serve status on the
-  dispatch board + map, external billing sync (QuickBooks / ServeManager).
+  dispatch board + map, and **external accounting integration with Business Accounting Pro
+  software for Rocky Mountain Protective Group, LLC** — push approved charges / generated
+  invoices (and likely clients, contracts, and payments) to Business Accounting Pro so the
+  serve→invoice chain reconciles with the company's books of record. The Phase 1 native
+  `invoices` + `serve_charges` are the source rows that feed this sync; design the sync as
+  an outbound adapter (idempotent, status-tracked) when Phase 3 is brainstormed.
