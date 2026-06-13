@@ -21,6 +21,7 @@ struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
+                    HStack(spacing: 6) { OfflineStatusPill(); MDTStatusPill(); Spacer() }
                     greeting
                     statRow
                     quickActions
@@ -32,6 +33,7 @@ struct DashboardView: View {
             .background(Theme.base)
             .navigationTitle("HOME")
             .navigationBarTitleDisplayMode(.inline)
+            .refreshable { await refresh() }
             .task {
                 await refresh(); loading = false
                 while !Task.isCancelled {
@@ -83,17 +85,14 @@ struct DashboardView: View {
     private var quickActions: some View {
         VStack(spacing: 8) {
             SectionHeader(title: "Quick Actions")
-            HStack(spacing: 8) {
-                tile("My ID", "person.text.rectangle.fill") { WalletIDView() }
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                tile("Workflows", "square.stack.3d.up.fill") { WorkflowHubView() }
                 tile("Calls", "list.bullet.rectangle.fill") { CallsQueueView() }
-            }
-            HStack(spacing: 8) {
                 tile("Alerts", "bell.badge.fill", badge: unread) { NotificationsView() }
                 tile("Scan ID", "qrcode.viewfinder") { IDScanView() }
-            }
-            HStack(spacing: 8) {
                 tile("Lookup", "magnifyingglass") { PersonSearchView() }
                 tile("Units Map", "map.fill") { UnitsMapView() }
+                tile("My ID", "person.text.rectangle.fill") { WalletIDView() }
             }
         }
     }
@@ -187,6 +186,7 @@ struct DashboardView: View {
 
     @MainActor
     private func panic() async {
+        Haptics.error()
         AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
         await authed { c in
             try await c.requestJSON("POST", "api/dispatch/panic", body: ["trigger_method": "ios_dashboard"])
