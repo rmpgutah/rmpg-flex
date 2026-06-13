@@ -20,7 +20,7 @@ import {
   extractFromImage,
   extractTextFromPdf,
 } from '../utils/serveIntakeExtract';
-import { extractVision } from '../utils/visionExtract';
+import { extractVision, extractVisionWorkersAI } from '../utils/visionExtract';
 import type { OcrProfileSelector } from '../utils/ocrProfiles';
 import { getContainer } from '@cloudflare/containers';
 import { getAnthropicKey, getClaudeModel, callClaude } from '../utils/anthropic';
@@ -69,6 +69,33 @@ ocr.get('/claude-health', async (c) => {
   }
 });
 
+// POST /api/ocr/accept-llama-license — one-time Meta-Llama Community License
+// acceptance for the Workers-AI vision/extract models. Cloudflare gates first use
+// behind submitting the prompt "agree" (error 5016); running it through the AI
+// binding records acceptance account-wide so the Workers-AI OCR fallback works
+// (independent of the Anthropic-credit-gated Claude path). Admin/manager only.
+ocr.post('/accept-llama-license', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const models = [
+    '@cf/meta/llama-3.2-11b-vision-instruct',     // image OCR (extractFromImage)
+    '@cf/meta/llama-3.3-70b-instruct-fp8-fast',   // text extraction (extractFromText)
+  ];
+  const results: Record<string, string> = {};
+  for (const m of models) {
+    try {
+      await c.env.AI.run(m as any, { prompt: 'agree' } as any);
+      results[m] = 'accepted';
+    } catch (e) {
+      results[m] = e instanceof Error ? e.message : String(e);
+    }
+  }
+  const ok = Object.values(results).every((v) => v === 'accepted');
+  return c.json({ ok, results });
+});
+
 ocr.post('/scan-document', async (c) => {
   const user = c.get('user') as { id: number; role: string } | undefined;
   if (!user || !INTAKE_ROLES.includes(user.role)) {
@@ -96,14 +123,26 @@ ocr.post('/scan-document', async (c) => {
       const raw = String(form.get('docType') || 'auto');
       const sel = (['id_card', 'license_plate', 'serve_document', 'auto'].includes(raw)
         ? raw : 'auto') as OcrProfileSelector;
-      const vision = await withTimeout(
+      // 1) Claude vision (best). 2) profile-aware Workers-AI vision (free, works for
+      // all profiles). 3) legacy serve-doc Workers-AI extractor (last resort).
+      let r = await withTimeout(
         extractVision(c.env, bytes, file.type, sel), AI_TIMEOUT_MS, 'Claude OCR timed out',
       ).catch(() => null);
-      const r = vision ?? await withTimeout(extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
+      let engine = 'claude-vision';
+      if (!r) {
+        r = await withTimeout(
+          extractVisionWorkersAI(c.env, bytes, file.type, sel), AI_TIMEOUT_MS, 'Workers AI OCR timed out',
+        ).catch(() => null);
+        engine = 'workers-ai-vision';
+      }
+      if (!r) {
+        r = await withTimeout(extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
+        engine = 'workers-ai-vision';
+      }
       return c.json({
         success: r.success, documentType: r.documentType, confidence: r.confidence,
         fields: r.fields, rawText: r.rawText, allDates: r.allDates,
-        ocrUsed: true, ocrEngine: vision ? 'claude-vision' : 'workers-ai-vision',
+        ocrUsed: true, ocrEngine: engine,
         profile: sel, model: r.model, extractionMs: r.ms, error: r.error,
       });
     }

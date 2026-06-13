@@ -41,6 +41,8 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import {
   extractFromText,
   extractFromImage,
+  extractFromImageClaude,
+  extractFromTextClaude,
   extractTextFromPdf,
   fieldsToQueueRow,
   normalizeFields,
@@ -118,6 +120,26 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ]);
 }
 
+// Claude-first OCR with Workers-AI fallback. Claude (extractFrom*Claude) uses the
+// SAME rich serve-doc prompt + parser, so the result shape is identical and the
+// merge/commit code is unchanged. Returns null from the Claude leg (no key / no
+// credits / error) → we transparently fall back to the free Workers-AI path.
+// extraction.model carries 'claude:…' vs the Llama id so callers can label engine.
+async function ocrImage(env: Env['Bindings'], bytes: Uint8Array, mime: string): Promise<ExtractionResult> {
+  const claude = await withTimeout(
+    extractFromImageClaude(env, bytes, mime), AI_TIMEOUT_MS, 'Claude OCR timed out',
+  ).catch(() => null);
+  return claude ?? withTimeout(extractFromImage(env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
+}
+async function ocrText(env: Env['Bindings'], text: string): Promise<ExtractionResult> {
+  const claude = await withTimeout(
+    extractFromTextClaude(env, text), AI_TIMEOUT_MS, 'Claude text timed out',
+  ).catch(() => null);
+  return claude ?? withTimeout(
+    extractFromText(env.AI, text, env.SERVE_INTAKE_LORA), AI_TIMEOUT_MS, 'Text extraction timed out',
+  );
+}
+
 async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | null): Promise<string> {
   const ts = Date.now();
   const safeName = (file.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
@@ -172,10 +194,8 @@ async function scanDocumentHandler(c: any): Promise<Response> {
   try {
     if (isImage(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      extraction = await withTimeout(
-        extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out',
-      );
-      ocrEngine = 'workers-ai-vision';
+      extraction = await ocrImage(c.env, bytes, file.type);
+      ocrEngine = extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       let text = clientText;
@@ -214,10 +234,7 @@ async function scanDocumentHandler(c: any): Promise<Response> {
         }, 422);
       }
 
-      extraction = await withTimeout(
-        extractFromText(c.env.AI, text, c.env.SERVE_INTAKE_LORA),
-        AI_TIMEOUT_MS, 'Text extraction timed out',
-      );
+      extraction = await ocrText(c.env, text);
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
     }
@@ -342,11 +359,11 @@ si.post('/upload', async (c) => {
 
       // Images: Vision does OCR + extraction in one timeout-bounded pass.
       if (isImage(file.type)) {
-        const ex = await withTimeout(
-          extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out',
-        ).catch((e) => emptyExtraction('workers-ai-vision', e instanceof Error ? e.message : String(e)));
+        const ex = await ocrImage(c.env, bytes, file.type)
+          .catch((e) => emptyExtraction('workers-ai-vision', e instanceof Error ? e.message : String(e)));
+        const engine = ex.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
         for (const d of ex.allDates) allDates.add(d);
-        return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: 'workers-ai-vision', r2Key, ex };
+        return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: engine, r2Key, ex };
       }
 
       // PDFs: acquire text, then extract fields from THIS doc alone.
@@ -371,10 +388,8 @@ si.post('/upload', async (c) => {
           }
         }
         const ex = text.trim().length >= 20
-          ? await withTimeout(
-              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP), c.env.SERVE_INTAKE_LORA),
-              AI_TIMEOUT_MS, 'Field extraction timed out',
-            ).catch((e) => emptyExtraction(EXTRACT_MODEL, e instanceof Error ? e.message : String(e)))
+          ? await ocrText(c.env, text.slice(0, PER_DOC_CAP))
+              .catch((e) => emptyExtraction(EXTRACT_MODEL, e instanceof Error ? e.message : String(e)))
           : emptyExtraction(EXTRACT_MODEL, 'Insufficient text to extract');
         ex.rawText = text;
         for (const d of ex.allDates) allDates.add(d);
@@ -697,7 +712,7 @@ si.post('/intake', async (c) => {
   if (docs.length === 0) return c.json({ error: 'No documents in request' }, 400);
 
   const combined = docs.map((d) => `--- ${d.type || 'document'} ---\n${d.text || ''}`).join('\n\n');
-  const extraction = await extractFromText(c.env.AI, combined, c.env.SERVE_INTAKE_LORA);
+  const extraction = await ocrText(c.env, combined);
   // Same deterministic normalization the /upload path applies, so the
   // legacy single-call route produces equally clean field shapes.
   const normalized = normalizeFields(extraction.fields);
@@ -793,6 +808,101 @@ si.get('/documents/:docId/file', async (c) => {
       'Cache-Control': 'private, max-age=300',
     },
   });
+});
+
+// ── Recovery: re-extract failed/unmatched intake documents ──────────────────
+// Re-runs OCR on a STORED document through the (now Claude-first) engine and, when
+// a recipient identity is recovered and the doc isn't already linked, commits it to
+// a real serve job — turning a previously-failed upload into a queue entry without
+// re-uploading. Image docs re-extract from R2 bytes; PDFs/text from stored raw_text
+// (scanned PDFs with no stored text must be re-uploaded as images — container OCR
+// is disabled in prod).
+async function reprocessDocument(
+  c: any, doc: any, userId: number,
+): Promise<{ success: boolean; documentType: string; confidence: number; model: string; committedQueueId: number | null; note?: string }> {
+  const db = getDb(c.env);
+  let extraction: ExtractionResult | null = null;
+  if (isImage(doc.file_type) && doc.r2_key) {
+    const obj = await c.env.UPLOADS.get(doc.r2_key);
+    if (obj) extraction = await ocrImage(c.env, new Uint8Array(await obj.arrayBuffer()), doc.file_type).catch(() => null);
+  } else if ((doc.raw_text || '').trim().length >= 20) {
+    extraction = await ocrText(c.env, doc.raw_text).catch(() => null);
+  }
+  if (!extraction) {
+    return { success: false, documentType: doc.doc_type || 'other', confidence: 0, model: '',
+      committedQueueId: null, note: 'No image or stored text to re-extract (scanned PDF — re-upload as images)' };
+  }
+  const normalized = normalizeFields(extraction.fields);
+  const queueRow = fieldsToQueueRow(normalized);
+  await execute(db,
+    `UPDATE serve_intake_documents SET fields_json=?, confidence=?, extraction_model=?, doc_type=?,
+       status=?, error_message=NULL, updated_at=datetime('now') WHERE id=?`,
+    JSON.stringify(extraction.fields), extraction.confidence, extraction.model, extraction.documentType,
+    extraction.success ? 'extracted' : 'failed', doc.id);
+  let committedQueueId: number | null = null;
+  const hasIdentity = !!(normalized.recipient_last_name?.value || normalized.recipient_business_name?.value);
+  if (!doc.serve_queue_id && extraction.success && hasIdentity) {
+    const commit = await commitIntake(db, {
+      env: c.env, fields: normalized, queueRow, userId,
+      documentSummary: (normalized.documents_to_serve?.value || doc.doc_type || '').trim(),
+      docCount: 1,
+    });
+    if (commit.serve_queue_id) {
+      committedQueueId = commit.serve_queue_id;
+      await execute(db, `UPDATE serve_intake_documents SET serve_queue_id=?, status='extracted' WHERE id=?`, committedQueueId, doc.id);
+      await emitAlert(c.env, 'dispatch_update', { action: 'call_created' }).catch(() => {});
+    }
+  }
+  return {
+    success: extraction.success, documentType: extraction.documentType, confidence: extraction.confidence,
+    model: extraction.model, committedQueueId,
+    note: !hasIdentity && extraction.success ? 'Extracted but no recipient identity — needs manual entry' : undefined,
+  };
+}
+
+// GET /review-queue — docs that never became a serve job (unlinked), failed, or
+// extracted at low confidence. The operator's "needs attention" list.
+si.get('/review-queue', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !INTAKE_ROLES.includes(user.role)) return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  const rows = await query(getDb(c.env),
+    `SELECT id, file_name, file_type, doc_type, confidence, status, serve_queue_id,
+            extraction_model, error_message, created_at,
+            CASE WHEN serve_queue_id IS NULL THEN 1 ELSE 0 END AS unlinked,
+            substr(raw_text, 1, 180) AS raw_preview
+       FROM serve_intake_documents
+      WHERE serve_queue_id IS NULL OR status = 'failed' OR confidence < 0.4
+      ORDER BY created_at DESC LIMIT 200`);
+  return c.json({ documents: rows });
+});
+
+// POST /documents/:docId/reprocess — re-extract one doc; auto-commit if recovered.
+si.post('/documents/:docId/reprocess', async (c) => {
+  const user = c.get('user') as { id: number; role: string } | undefined;
+  if (!user || !INTAKE_ROLES.includes(user.role)) return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  const docId = parseInt(c.req.param('docId'), 10);
+  const doc = await queryFirst<any>(getDb(c.env), 'SELECT * FROM serve_intake_documents WHERE id = ?', docId);
+  if (!doc) return c.json({ error: 'Document not found' }, 404);
+  const r = await reprocessDocument(c, doc, user.id);
+  return c.json({ document_id: docId, ...r, committed: r.committedQueueId ? { serve_queue_id: r.committedQueueId } : null });
+});
+
+// POST /reprocess-failed?limit=10 — batch recovery (admin/manager).
+si.post('/reprocess-failed', async (c) => {
+  const user = c.get('user') as { id: number; role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  const limit = Math.min(25, Math.max(1, parseInt(c.req.query('limit') || '10', 10)));
+  const docs = await query<any>(getDb(c.env),
+    `SELECT * FROM serve_intake_documents
+      WHERE serve_queue_id IS NULL AND (status = 'failed' OR confidence < 0.4)
+        AND (file_type LIKE 'image/%' OR length(raw_text) >= 20)
+      ORDER BY created_at DESC LIMIT ?`, limit);
+  const results: any[] = [];
+  for (const doc of docs) {
+    try { results.push({ document_id: doc.id, file_name: doc.file_name, ...(await reprocessDocument(c, doc, user.id)) }); }
+    catch (e) { results.push({ document_id: doc.id, file_name: doc.file_name, success: false, error: e instanceof Error ? e.message : String(e) }); }
+  }
+  return c.json({ processed: results.length, recovered: results.filter((r) => r.committedQueueId).length, results });
 });
 
 // ── GET /stats ──────────────────────────────────────────────
@@ -1015,6 +1125,14 @@ si.post('/:id/attempts', async (c) => {
     `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
     nextNum, newStatus, id,
   );
+
+  // Completion → auto-compute the serve charge (pending_review) so it shows up in
+  // billing without a manual step. Mirrors serve.ts; best-effort — generateServeCharges
+  // swallows its own errors and never breaks the attempt write.
+  if (newStatus === 'served') {
+    const { generateServeCharges } = await import('../utils/serveChargeStore');
+    await generateServeCharges(db, id).catch(() => null);
+  }
 
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum, queue_status: newStatus });
 });

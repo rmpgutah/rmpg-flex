@@ -26,6 +26,29 @@ export function mergeTimeline(sources: TimelineEvent[][]): TimelineEvent[] {
   });
 }
 
+// ── Screening hits ───────────────────────────────────────────────────────────
+
+export interface ScreeningHitRow {
+  id: number;
+  source_key: string;
+  display_name: string;
+  summary: string | null;
+  reviewed_at: string | null;
+}
+
+// Map confirmed screening_hits rows (already filtered to status='confirmed' AND
+// is_active=1 by the caller) to TimelineEvent entries. Pure — no DB access.
+export function screeningHitsToTimeline(hits: ScreeningHitRow[]): TimelineEvent[] {
+  return hits.map((h) => ({
+    kind: 'screening_hit',
+    id: h.id,
+    date: h.reviewed_at ?? null,
+    title: `Screening match: ${h.source_key}`,
+    subtitle: h.summary ?? '',
+    status: 'confirmed',
+  }));
+}
+
 export interface CoOccurrence { person_id: number; name: string; kind: string }
 export interface Associate { person_id: number; name: string; shared_events: number; kinds: string[] }
 

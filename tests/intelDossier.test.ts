@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeTimeline, rankAssociates, type TimelineEvent } from '../src/utils/intelDossier';
+import { mergeTimeline, rankAssociates, screeningHitsToTimeline, type TimelineEvent } from '../src/utils/intelDossier';
 
 describe('mergeTimeline', () => {
   it('merges and sorts date-desc, tolerating null dates (sorted last)', () => {
@@ -10,6 +10,44 @@ describe('mergeTimeline', () => {
     ];
     const merged = mergeTimeline([a, b]);
     expect(merged.map((e) => e.id)).toEqual([2, 1, 3]);
+  });
+});
+
+describe('screeningHitsToTimeline', () => {
+  it('maps confirmed screening hits to timeline events with kind=screening_hit', () => {
+    const hits = [
+      { id: 10, source_key: 'sex_offender_registry', display_name: 'Sex Offender Registry', summary: 'Match on DOB + name', reviewed_at: '2026-05-01T12:00:00Z' },
+      { id: 11, source_key: 'ncic_wanted', display_name: 'NCIC Wanted', summary: 'Active warrant match', reviewed_at: '2026-04-15T08:30:00Z' },
+    ];
+    const events = screeningHitsToTimeline(hits);
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({
+      kind: 'screening_hit',
+      id: 10,
+      date: '2026-05-01T12:00:00Z',
+      title: 'Screening match: sex_offender_registry',
+      subtitle: 'Match on DOB + name',
+      status: 'confirmed',
+    });
+    expect(events[1]).toMatchObject({
+      kind: 'screening_hit',
+      id: 11,
+      date: '2026-04-15T08:30:00Z',
+      title: 'Screening match: ncic_wanted',
+      subtitle: 'Active warrant match',
+      status: 'confirmed',
+    });
+  });
+
+  it('returns an empty array for an empty hit list', () => {
+    expect(screeningHitsToTimeline([])).toEqual([]);
+  });
+
+  it('handles null reviewed_at gracefully (date sorts last)', () => {
+    const hits = [{ id: 20, source_key: 'dhs_terror', display_name: 'DHS', summary: 'Hit', reviewed_at: null }];
+    const events = screeningHitsToTimeline(hits);
+    expect(events[0].date).toBeNull();
+    expect(events[0].kind).toBe('screening_hit');
   });
 });
 

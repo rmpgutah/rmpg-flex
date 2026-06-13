@@ -691,7 +691,7 @@ const ALLOWED_THIRD_PARTY_KEYS = new Set<string>([
   'mapbox_api_key', 'mapbox_access_token', 'mapbox_username', 'mapbox_style_url',
   'ncic_api_key', 'utah_dps_api_key', 'utah_courts_api_key', 'fbi_wanted_api_key',
   'dea_api_key', 'usms_api_key', 'atf_api_key', 'interpol_api_key',
-  'nsopw_api_key', 'ofac_api_key',
+  'nsopw_api_key', 'ofac_api_key', 'screening_ofac_csl_api_key',
   'openweathermap_api_key', 'nominatim_api_key', 'opencage_api_key',
   'ipinfo_api_key', 'virustotal_api_key', 'abuseipdb_api_key', 'shodan_api_key',
   'have_i_been_pwned_key', 'censys_api_key', 'hunter_io_api_key', 'numverify_api_key',

@@ -13,6 +13,7 @@ import {
 } from './ocrProfiles';
 
 const MAX_VISION_BYTES = 4 * 1024 * 1024; // mirror the serve-intake vision cap
+const WORKERS_VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 
 export async function extractVision(
   env: { DB: D1Database },
@@ -35,6 +36,35 @@ export async function extractVision(
     });
     const parsed = tryParseModelJson({ response: text });
     return normalizeVision(parsed, sel, `claude:${model}`, Date.now() - started);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Profile-aware OCR on the FREE Workers-AI vision model (llama-3.2-11b-vision).
+ * Same profile prompts/normalizer as the Claude path, so id_card / license_plate /
+ * serve_document all work without an Anthropic balance — lower accuracy than Claude,
+ * but functional. Used as the fallback when extractVision (Claude) returns null.
+ * Requires the Meta-Llama license to be accepted (POST /api/ocr/accept-llama-license).
+ */
+export async function extractVisionWorkersAI(
+  env: { AI: Ai },
+  imageBytes: Uint8Array,
+  mediaType: string,
+  sel: OcrProfileSelector,
+): Promise<ExtractionResult | null> {
+  if (imageBytes.byteLength === 0 || imageBytes.byteLength > MAX_VISION_BYTES) return null;
+  const started = Date.now();
+  try {
+    const out: any = await env.AI.run(WORKERS_VISION_MODEL as any, {
+      image: Array.from(imageBytes),
+      prompt: `${visionSystemPrompt()}\n\n${buildVisionUserPrompt(sel)}`,
+      max_tokens: 2048,
+      temperature: 0.1,
+    } as any);
+    const parsed = tryParseModelJson(out);
+    return normalizeVision(parsed, sel, `workers-ai:${WORKERS_VISION_MODEL}`, Date.now() - started);
   } catch {
     return null;
   }
