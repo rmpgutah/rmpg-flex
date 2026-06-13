@@ -72,6 +72,7 @@ import {
   announceDirectedNote, announceLocalAction, announceSpeedAdvisory,
 } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
+import { computeListLines, tokenizeInline } from '../../utils/noteFormatting';
 import { useDistrictOptions, normalizeSectorId } from '../../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../../hooks/useAddressAutofill';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
@@ -1704,33 +1705,43 @@ export default function DispatchPage() {
     setEditingTimestamp(null);
   }, [selectedCall, isAdminOrManager, addToast]);
 
-  // Parse simple markdown markers into React elements for display
+  // Render one line's inline marks (**bold** *italic* __underline__ ~~strike~~).
+  // Plain runs are returned as strings (no key needed); styled runs become keyed spans.
+  const renderInline = useCallback((text: string, keyBase: string) =>
+    tokenizeInline(text).map((t, i) => {
+      const cls = [
+        t.bold && 'font-bold',
+        t.italic && 'italic',
+        t.underline && 'underline',
+        t.strike && 'line-through',
+      ].filter(Boolean).join(' ');
+      return cls
+        ? <span key={`${keyBase}-${i}`} className={cls}>{t.text}</span>
+        : t.text;
+    }), []);
+
+  // Render note text: inline marks for single-line notes; a block of indented
+  // rows (bullets / outline numbers) when the note contains list lines.
   const renderFormattedText = useCallback((text: string) => {
     if (!text) return text;
-    // Pattern: **bold**, *italic*, __underline__ (greedy shortest match)
-    const parts: React.ReactNode[] = [];
-    let keyIdx = 0;
-    const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__)/g;
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(text.slice(lastIndex, match.index));
-      }
-      if (match[2]) {
-        parts.push(<span key={keyIdx++} className="font-bold">{match[2]}</span>);
-      } else if (match[3]) {
-        parts.push(<span key={keyIdx++} className="italic">{match[3]}</span>);
-      } else if (match[4]) {
-        parts.push(<span key={keyIdx++} className="underline">{match[4]}</span>);
-      }
-      lastIndex = match.index + match[0].length;
-    }
-    if (lastIndex < text.length) {
-      parts.push(text.slice(lastIndex));
-    }
-    return parts.length > 0 ? parts : text;
-  }, []);
+    const lines = computeListLines(text);
+    const hasList = lines.some((l) => l.kind !== 'plain');
+    if (!hasList) return renderInline(text, 'inl');
+    return (
+      <span className="block">
+        {lines.map((l, idx) => (
+          <span key={idx} className="flex items-start" style={{ paddingLeft: `${l.depth * 1.1}em` }}>
+            {l.kind !== 'plain' && (
+              <span className="inline-block shrink-0 text-[#9ca3af] mr-1" style={{ minWidth: '1.4em' }}>
+                {l.kind === 'ordered' ? `${l.marker}.` : '•'}
+              </span>
+            )}
+            <span className="flex-1 min-w-0">{renderInline(l.content, `l${idx}`)}</span>
+          </span>
+        ))}
+      </span>
+    );
+  }, [renderInline]);
 
   // Wrap selected text in the note textarea with formatting markers
   const wrapNoteSelection = useCallback((marker: string) => {
