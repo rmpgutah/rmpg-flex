@@ -26,6 +26,7 @@ import { formatDate, formatDateTime, parseTimestamp } from '../utils/dateUtils';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 import WarrantBadge from '../components/WarrantBadge';
 import { formatAddressDisplay } from '../utils/statusLabels';
+import { formatLabel } from '../utils/formatters';
 
 const CONTACT_REASONS: { value: FIContactReason; label: string }[] = [
   { value: 'suspicious_activity', label: 'Suspicious Activity' },
@@ -543,7 +544,7 @@ export default function FieldInterviewsPage() {
                 <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Section / Zone / Beat</span><div className="text-white">{[(selectedFi as any).section_id, (selectedFi as any).zone_id, (selectedFi as any).beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
               )}
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Reason</span><div className="text-white mt-0.5 capitalize">{selectedFi.contact_reason.replace(/_/g, ' ')}</div></div>
-              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Type</span><div className="text-white mt-0.5 capitalize">{selectedFi.contact_type}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Type</span><div className="text-white mt-0.5">{formatLabel(selectedFi.contact_type)}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Action Taken</span><div className="text-white mt-0.5 capitalize">{selectedFi.action_taken}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Officer</span><div className="text-white mt-0.5">{selectedFi.officer_name || selectedFi.officer_display_name || '—'}</div></div>
               {selectedFi.vehicle_plate && <div><span className="text-rmpg-500 text-[10px] uppercase">Vehicle</span><div className="text-white">{selectedFi.vehicle_plate} {selectedFi.vehicle_description}</div></div>}

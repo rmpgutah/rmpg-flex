@@ -16,6 +16,7 @@ import {
   AreaChart, Area, Cell,
 } from 'recharts';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { humanizePriority } from '../utils/statusLabels';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -386,7 +387,7 @@ export default function CrimeAnalysisPage() {
                       <div key={idx} className="px-2 py-2 panel-beveled space-y-1">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold uppercase" style={{ color: labelColor }}>
-                            {metric.priority}
+                            {humanizePriority(metric.priority)}
                           </span>
                           <div className="flex items-center gap-3">
                             <span className="text-[9px] text-rmpg-400">Avg: <span className="text-white font-bold">{metric.avg_minutes} min</span></span>

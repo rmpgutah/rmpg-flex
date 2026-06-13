@@ -11,6 +11,7 @@ import {
   AreaChart, Area, PieChart, Pie,
 } from 'recharts';
 import type { DashboardStats, ActivityLogEntry, BOLO } from '../types';
+import { humanizePriority } from '../utils/statusLabels';
 import StatsCard from '../components/StatsCard';
 import ActivityFeed from '../components/ActivityFeed';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -943,7 +944,7 @@ export default function DashboardPage() {
           <div className="space-y-2" role="list" aria-label="Active BOLO entries">
           {bolos.map((bolo) => (
             <div key={bolo.id} className="flex items-start gap-3 p-2 rounded-sm hover:bg-red-900/20 transition-colors duration-150" role="listitem">
-              <span className="badge badge-p2 flex-shrink-0 mt-0.5">{bolo.priority}</span>
+              <span className="badge badge-p2 flex-shrink-0 mt-0.5">{humanizePriority(bolo.priority)}</span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-red-300 truncate">{bolo.title}</p>
                 <p className="text-xs text-rmpg-300 mt-0.5 truncate">{bolo.vehicle_description || bolo.subject_description}</p>
