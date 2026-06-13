@@ -1,0 +1,119 @@
+// Right docked panel. Renders whatever is selected in IntelContext, flipping
+// between a compact Dossier Peek and an embedded Mini Graph. Collapsible.
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { apiFetch } from '../../hooks/useApi';
+import ConnectionsGraphPanel from '../../components/ConnectionsGraphPanel';
+import { useIntelContext } from './IntelContext';
+
+const SENTINELS = new Set(['', 'none', 'n/a', 'na', 'null', '0', 'unknown']);
+const real = (v: unknown) => v != null && !SENTINELS.has(String(v).trim().toLowerCase());
+
+interface DossierLite {
+  person: { id: number; first_name?: string; middle_name?: string; last_name?: string };
+  flags?: string[];
+  escalation?: { recent: number; baseline: number; ratio: number; trend: string } | null;
+  timeline?: Array<{ kind: string; label?: string; description?: string; date?: string }>;
+  associates?: Array<{ person_id?: number; id?: number; label?: string; name?: string; shared?: number; count?: number }>;
+  watched?: boolean;
+}
+
+export default function IntelContextPanel() {
+  const { selected, panelMode, setPanelMode, panelCollapsed, togglePanel } = useIntelContext();
+  const [dossier, setDossier] = useState<DossierLite | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selected || selected.type !== 'person' || panelMode !== 'dossier') { setDossier(null); return; }
+    setLoading(true); setDossier(null);
+    apiFetch<DossierLite>(`/intel/dossier/person/${selected.id}`)
+      .then(setDossier).catch(() => setDossier(null)).finally(() => setLoading(false));
+  }, [selected, panelMode]);
+
+  if (panelCollapsed) {
+    return (
+      <aside className="w-[24px] bg-[#050505] border-l border-[#232323] flex items-start justify-center pt-2">
+        <button aria-label="Expand context panel" onClick={togglePanel} className="text-[#888] text-[12px]">⟩</button>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="w-[264px] bg-[#050505] border-l border-[#232323] flex flex-col">
+      <div className="flex items-center px-[11px] py-[8px] border-b border-[#1f1f1f]">
+        <span className="font-mono text-[9px] tracking-widest text-[#888] uppercase">◈ Context</span>
+        {selected && (
+          <div className="ml-2 flex gap-1">
+            <button onClick={() => setPanelMode('dossier')}
+              className={`text-[8px] font-mono px-[5px] py-[1px] rounded-[2px] border ${panelMode === 'dossier' ? 'border-[#d4a017] text-[#d4a017]' : 'border-[#2a2a2a] text-[#777]'}`}>DOSSIER</button>
+            <button onClick={() => setPanelMode('graph')}
+              className={`text-[8px] font-mono px-[5px] py-[1px] rounded-[2px] border ${panelMode === 'graph' ? 'border-[#d4a017] text-[#d4a017]' : 'border-[#2a2a2a] text-[#777]'}`}>GRAPH</button>
+          </div>
+        )}
+        <button aria-label="Collapse context panel" onClick={togglePanel} className="ml-auto text-[#555] text-[12px]">⟨</button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-[11px] py-[12px]">
+        {!selected && <div className="text-[10px] text-[#555]">Select an entity from any list to peek its dossier.</div>}
+
+        {selected && panelMode === 'graph' && (
+          <ConnectionsGraphPanel personId={selected.id} personName={selected.label} />
+        )}
+
+        {selected && panelMode === 'dossier' && (
+          <>
+            {loading && <div className="text-[10px] text-[#777]">Loading dossier…</div>}
+            {dossier && (() => {
+              const p = dossier.person;
+              const name = [p.first_name, p.middle_name, p.last_name].filter(real).join(' ') || selected.label;
+              return (
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-[13px] text-white font-bold">{name}</div>
+                    <div className="flex gap-1 flex-wrap mt-[6px]">
+                      {(dossier.flags || []).map((f) => (
+                        <span key={f} className="font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] bg-[#3a0d0a] text-[#ff6b5e]">{f}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {dossier.escalation && (
+                    <div className="border border-[#5a3a10] bg-[#0a0603] rounded-[2px] px-[10px] py-[8px]">
+                      <div className="text-[8px] text-[#d4a017] uppercase tracking-wider">Escalation Index</div>
+                      <div className="font-mono text-[16px] text-[#f0c050] font-bold">
+                        {Number(dossier.escalation.ratio || 0).toFixed(1)}
+                        <span className="text-[9px] text-[#a07a20] ml-1">{dossier.escalation.trend}</span>
+                      </div>
+                      <div className="text-[9px] text-[#777]">{dossier.escalation.recent} recent vs {dossier.escalation.baseline} baseline</div>
+                    </div>
+                  )}
+
+                  {(dossier.timeline || []).length > 0 && (
+                    <div>
+                      <div className="font-mono text-[8px] tracking-widest text-[#555] uppercase mb-[6px]">Recent Timeline</div>
+                      {(dossier.timeline || []).slice(0, 5).map((t, i) => (
+                        <div key={i} className="flex gap-[7px] py-[3px]">
+                          <span className="w-[6px] h-[6px] rounded-full bg-[#d4a017] mt-[3px] shrink-0" />
+                          <div>
+                            <div className="text-[10px] text-[#bbb]"><b className="text-[#e8e8e8]">{t.kind}</b> {t.label || t.description || ''}</div>
+                            <div className="font-mono text-[8px] text-[#555]">{t.date || ''}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex gap-[6px] pt-1">
+                    <Link to={`/intel/person/${p.id}`} className="flex-1 text-center font-mono text-[8px] tracking-wide text-[#d4a017] border border-[#3a3a3a] rounded-[2px] py-[6px] uppercase">Full Dossier</Link>
+                    <button onClick={() => setPanelMode('graph')} className="flex-1 text-center font-mono text-[8px] tracking-wide text-[#d4a017] border border-[#3a3a3a] rounded-[2px] py-[6px] uppercase">Graph</button>
+                  </div>
+                </div>
+              );
+            })()}
+            {!loading && !dossier && <div className="text-[10px] text-[#555]">No dossier for this entity.</div>}
+          </>
+        )}
+      </div>
+    </aside>
+  );
+}

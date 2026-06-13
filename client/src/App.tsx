@@ -120,6 +120,12 @@ const IntelReportsPage = lazyRetry(() => import('./pages/intel/IntelReportsPage'
 const IntelReportDetailPage = lazyRetry(() => import('./pages/intel/IntelReportDetailPage'));
 const IntelSourcesPage = lazyRetry(() => import('./pages/intel/IntelSourcesPage'));
 const PersonDossierPage = lazyRetry(() => import('./pages/PersonDossierPage'));
+const IntelPortalLayout = lazyRetry(() => import('./pages/intel/IntelPortalLayout'));
+const IntelDashboard = lazyRetry(() => import('./pages/intel/IntelDashboard'));
+const WatchlistSection = lazyRetry(() => import('./pages/intel/WatchlistSection'));
+const AlertsSection = lazyRetry(() => import('./pages/intel/AlertsSection'));
+const ReviewQueues = lazyRetry(() => import('./pages/intel/ReviewQueues'));
+const IntelComingSoon = lazyRetry(() => import('./pages/intel/IntelComingSoon'));
 const PlateLogPage = lazyRetry(() => import('./pages/PlateLogPage'));
 const QuickCapturePage = lazyRetry(() => import('./pages/QuickCapturePage'));
 const JailRecordsPage = lazyRetry(() => import('./pages/JailRecordsPage'));
@@ -465,16 +471,28 @@ function AppRoutes() {
             <Route path="/cases" element={<RouteErrorBoundary><CaseManagementPage /></RouteErrorBoundary>} />
             <Route path="/crime-analysis" element={<RouteErrorBoundary><CrimeAnalysisPage /></RouteErrorBoundary>} />
             <Route path="/connections" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
-            <Route path="/intel" element={<RouteErrorBoundary><IntelSearchPage /></RouteErrorBoundary>} />
-            <Route path="/intel/person/:id" element={<RouteErrorBoundary><PersonDossierPage /></RouteErrorBoundary>} />
-            <Route path="/intel/plate-log" element={<RouteErrorBoundary><PlateLogPage /></RouteErrorBoundary>} />
-            <Route path="/intel/quick-capture" element={<RouteErrorBoundary><QuickCapturePage /></RouteErrorBoundary>} />
-            <Route path="/intel/jail" element={<RouteErrorBoundary><JailRecordsPage /></RouteErrorBoundary>} />
-            <Route path="/intel/record" element={<RouteErrorBoundary><InteractionRecorderPage /></RouteErrorBoundary>} />
-            <Route path="/intel/reports" element={<RouteErrorBoundary><IntelReportsPage /></RouteErrorBoundary>} />
-            <Route path="/intel/reports/:id" element={<RouteErrorBoundary><IntelReportDetailPage /></RouteErrorBoundary>} />
-            <Route path="/intel/sources" element={<RouteErrorBoundary><IntelSourcesPage /></RouteErrorBoundary>} />
-            <Route path="/intel/workbench" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
+            <Route path="/intel" element={<RouteErrorBoundary><IntelPortalLayout /></RouteErrorBoundary>}>
+              {/* Each child is individually error-bounded so a single bad surface
+                  fails in the center pane only — the rail + context panel survive. */}
+              <Route index element={<RouteErrorBoundary><IntelDashboard /></RouteErrorBoundary>} />
+              <Route path="search" element={<RouteErrorBoundary><IntelSearchPage /></RouteErrorBoundary>} />
+              <Route path="connections" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
+              <Route path="watchlist" element={<RouteErrorBoundary><WatchlistSection /></RouteErrorBoundary>} />
+              <Route path="bolos" element={<RouteErrorBoundary><IntelComingSoon title="BOLO Board" phase="Phase · BOLO" /></RouteErrorBoundary>} />
+              <Route path="alerts" element={<RouteErrorBoundary><AlertsSection /></RouteErrorBoundary>} />
+              <Route path="jail" element={<RouteErrorBoundary><JailRecordsPage /></RouteErrorBoundary>} />
+              <Route path="plate-log" element={<RouteErrorBoundary><PlateLogPage /></RouteErrorBoundary>} />
+              <Route path="queues" element={<RouteErrorBoundary><ReviewQueues /></RouteErrorBoundary>} />
+              <Route path="map" element={<RouteErrorBoundary><IntelComingSoon title="Map / Geospatial Intel" phase="Phase · Map" /></RouteErrorBoundary>} />
+              <Route path="ai" element={<RouteErrorBoundary><IntelComingSoon title="AI Analyst" phase="Phase · AI (offline-gated)" /></RouteErrorBoundary>} />
+              <Route path="reports" element={<RouteErrorBoundary><IntelReportsPage /></RouteErrorBoundary>} />
+              <Route path="reports/:id" element={<RouteErrorBoundary><IntelReportDetailPage /></RouteErrorBoundary>} />
+              <Route path="sources" element={<RouteErrorBoundary><IntelSourcesPage /></RouteErrorBoundary>} />
+              <Route path="quick-capture" element={<RouteErrorBoundary><QuickCapturePage /></RouteErrorBoundary>} />
+              <Route path="record" element={<RouteErrorBoundary><InteractionRecorderPage /></RouteErrorBoundary>} />
+              <Route path="person/:id" element={<RouteErrorBoundary><PersonDossierPage /></RouteErrorBoundary>} />
+              <Route path="workbench" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
+            </Route>
             <Route path="/code-enforcement" element={<RouteErrorBoundary><CodeEnforcementPage /></RouteErrorBoundary>} />
             <Route path="/court" element={<RouteErrorBoundary><CourtTrackerPage /></RouteErrorBoundary>} />
             <Route path="/dar" element={<RouteErrorBoundary><DailyActivityReportsPage /></RouteErrorBoundary>} />
