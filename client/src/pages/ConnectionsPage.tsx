@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { Network, Loader2, Eye, Pencil, Route } from 'lucide-react';
 import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, Simulation } from 'd3-force';
 import { zoom, zoomIdentity, ZoomBehavior } from 'd3-zoom';
@@ -66,6 +67,8 @@ const NODE_RADIUS: Record<string, number> = {
   arrest: 18, field_interview: 14, trespass_order: 16, serve_job: 16,
   call: 20, report: 14, intel_report: 20,
 };
+
+const TIMELINE_KIND_COLOR: Record<string, string> = { intel: '#e879f9', incident: '#f59e0b', call: '#22d3ee', citation: '#fbbf24', warrant: '#dc2626', arrest: '#ef4444', field_interview: '#64748b', trespass_order: '#a855f7', case: '#d4a017', evidence: '#ef4444' };
 
 const VIEW_W = 1000;
 const VIEW_H = 600;
@@ -675,9 +678,12 @@ export default function ConnectionsPage() {
                       <>
                         <circle cx={n.x} cy={n.y} r={rr + 3} fill="none" stroke={ring} strokeWidth={2.5} />
                         {n.metadata?.grade ? (
-                          <text x={n.x} y={(n.y ?? 0) + 4} textAnchor="middle" fontSize={11} fontWeight={700} fill="#0a0a0a">
-                            {String(n.metadata.grade)}
-                          </text>
+                          <>
+                            <rect x={(n.x ?? 0) - 12} y={(n.y ?? 0) - rr - 16} width={24} height={13} rx={2} fill="#e879f9" />
+                            <text x={n.x} y={(n.y ?? 0) - rr - 6} textAnchor="middle" fontSize={10} fontWeight={700} fill="#0a0a0a">
+                              {String(n.metadata.grade)}
+                            </text>
+                          </>
                         ) : null}
                       </>
                     );
@@ -817,8 +823,7 @@ export default function ConnectionsPage() {
                   <div style={{ color: '#aaa' }}>
                     Grade {String(selectedNode.metadata?.grade || '—')} · Threat {String(selectedNode.metadata?.threat_level || '—')} · Handling {String(selectedNode.metadata?.handling_code || '—')}
                   </div>
-                  <a href={`/intel/reports/${selectedNode.entityId}`}
-                     style={{ color: '#e879f9' }}>Open intelligence product →</a>
+                  <Link to={`/intel/reports/${selectedNode.entityId}`} style={{ color: '#e879f9' }}>Open intelligence product →</Link>
                 </div>
               )}
             </div>
@@ -870,17 +875,16 @@ export default function ConnectionsPage() {
         </div>
       )}
       {timelineOpen && (
-        <div style={{ width: 320, background: '#0a0a0a', borderLeft: '1px solid #232323', overflowY: 'auto', padding: 8 }}>
+        <div style={{ width: 320, background: '#0a0a0a', borderLeft: '1px solid #232323', overflowY: 'auto', padding: 8, flexShrink: 0, maxHeight: '100%' }}>
           <div className="text-[9px] font-semibold mb-2" style={{ color: '#e879f9' }}>TIMELINE — {nodes.length} NODES</div>
           {timelineError && <div style={{ color: '#ef4444', fontSize: 11 }}>{timelineError}</div>}
           {timelineLoading && <div style={{ color: '#555', fontSize: 11 }}>Loading…</div>}
           {!timelineLoading && timeline.length === 0 && <div style={{ color: '#555', fontSize: 11 }}>No dated events.</div>}
           {timeline.map((ev, i) => {
-            const KIND_COLOR: Record<string, string> = { intel: '#e879f9', incident: '#f59e0b', call: '#22d3ee', citation: '#fbbf24', warrant: '#dc2626', arrest: '#ef4444', field_interview: '#64748b', trespass_order: '#a855f7', case: '#d4a017', evidence: '#ef4444' };
             return (
               <div key={`${ev.kind}-${ev.id}-${i}`} className="py-[3px]" style={{ borderTop: '1px solid #1a1a1a' }}>
                 <div className="flex items-center gap-2 text-[10px]">
-                  <span style={{ color: KIND_COLOR[ev.kind] || '#888', fontWeight: 700 }}>{ev.kind.toUpperCase()}</span>
+                  <span style={{ color: TIMELINE_KIND_COLOR[ev.kind] || '#888', fontWeight: 700 }}>{ev.kind.toUpperCase()}</span>
                   <span style={{ color: '#666' }}>{ev.date ? ev.date.slice(0, 10) : '—'}</span>
                 </div>
                 <div className="text-[11px]" style={{ color: '#ddd' }}>{ev.title}</div>
