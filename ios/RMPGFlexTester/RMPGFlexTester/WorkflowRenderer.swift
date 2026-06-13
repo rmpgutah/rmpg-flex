@@ -19,20 +19,18 @@ struct WorkflowRenderer: View {
     private var isReview: Bool { step >= def.steps.count }   // step == count → review
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    stepPills
-                    if isReview { reviewStep } else { fieldStep(def.steps[step]) }
-                    if let status { StatusLine(text: status) }
-                }.padding(12)
-            }
-            .background(Theme.base)
-            .navigationTitle(def.title.uppercased())
-            .navigationBarTitleDisplayMode(.inline)
-            .safeAreaInset(edge: .bottom) { primaryBar }
-            .onAppear { values.merge(prefill) { _, new in new }; applyDefaults() }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                stepPills
+                if isReview { reviewStep } else { fieldStep(def.steps[step]) }
+                if let status { StatusLine(text: status) }
+            }.padding(12)
         }
+        .background(Theme.base)
+        .navigationTitle(def.title.uppercased())
+        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) { primaryBar }
+        .onAppear { values.merge(prefill) { _, new in new }; applyDefaults() }
     }
 
     private var stepPills: some View {
