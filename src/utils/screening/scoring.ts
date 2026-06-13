@@ -13,7 +13,7 @@ export function normalizeName(s: string | null | undefined): string {
 
 export function ageFromDob(dob: string | null | undefined, nowYear: number): number | null {
   if (!dob) return null;
-  const m = /(\d{4})/.exec(dob);
+  const m = /\b(\d{4})\b/.exec(dob);
   if (!m) return null;
   const birthYear = parseInt(m[1], 10);
   if (!Number.isFinite(birthYear) || birthYear < 1900 || birthYear > nowYear) return null;
@@ -41,16 +41,19 @@ export function scoreNameMatch(input: NameScoreInput, threshold = 0.8): MatchRes
     if (pf === cf) { score += 0.25; matched.push('forename'); }
     else if (pf[0] === cf[0]) { score += 0.1; matched.push('forename-initial'); }
   }
+  // Adapters set candAgeMin === candAgeMax to a single derived birth-year age,
+  // so this is a ±1 window around that point. A genuine [min,max] range is also
+  // supported. Do NOT use a single bound to mean an open-ended inequality.
   if (input.personAge != null && (input.candAgeMin != null || input.candAgeMax != null)) {
     const lo = (input.candAgeMin ?? input.candAgeMax)! - 1;
     const hi = (input.candAgeMax ?? input.candAgeMin)! + 1;
     if (input.personAge >= lo && input.personAge <= hi) { score += 0.15; matched.push('age'); }
   }
   if (input.personNationality) {
-    const pn = normalizeName(input.personNationality);
-    if (pn && input.candNationalities.some((n) => { const x = normalizeName(n); return x === pn || x.includes(pn) || pn.includes(x); })) {
-      score += 0.1; matched.push('nationality');
-    }
+    const pnTokens = new Set(normalizeName(input.personNationality).split(' ').filter(Boolean));
+    const natHit = input.candNationalities.some((n) =>
+      normalizeName(n).split(' ').filter(Boolean).some((t) => pnTokens.has(t)));
+    if (pnTokens.size && natHit) { score += 0.1; matched.push('nationality'); }
   }
   score = Math.min(score, 1);
   return { score, matchedFields: matched, isConfident: score >= threshold };

@@ -50,6 +50,19 @@ describe('scoreNameMatch', () => {
     expect(scoreNameMatch(input, 0.9).isConfident).toBe(false);
     expect(scoreNameMatch(input, 0.8).isConfident).toBe(true);
   });
+  it('does NOT award nationality for substring-only matches (US vs RUSSIA)', () => {
+    const r = scoreNameMatch({ ...base, personNationality: 'US', candNationalities: ['RUSSIA'] }, 0.8);
+    expect(r.matchedFields).not.toContain('nationality');
+  });
+  it('awards nationality only on an exact token match (US vs US)', () => {
+    const r = scoreNameMatch({ ...base, personNationality: 'US', candNationalities: ['US'] }, 0.8);
+    expect(r.matchedFields).toContain('nationality');
+  });
+  it('omits forename fields when person has no forename', () => {
+    const r = scoreNameMatch({ ...base, personForename: '', candForename: 'Ivan' }, 0.8);
+    expect(r.matchedFields).not.toContain('forename');
+    expect(r.matchedFields).not.toContain('forename-initial');
+  });
 });
 
 describe('scoreSanctionMatch', () => {
@@ -60,6 +73,12 @@ describe('scoreSanctionMatch', () => {
   });
   it('not confident when surname token is absent', () => {
     const r = scoreSanctionMatch('Petrov', 'Ivan', 'Smith, John', 0.8);
+    expect(r.isConfident).toBe(false);
+  });
+  it('surname-only sanction match scores 0.7 and is not confident at 0.8', () => {
+    const r = scoreSanctionMatch('Petrov', 'Ivan', 'PETROV, Boris', 0.8);
+    expect(r.matchedFields).toEqual(['surname']);
+    expect(r.score).toBeCloseTo(0.7);
     expect(r.isConfident).toBe(false);
   });
 });
