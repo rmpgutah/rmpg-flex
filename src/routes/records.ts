@@ -862,7 +862,12 @@ records.get('/vehicles/search', async (c) => {
 });
 
 // GET /records/vehicles/:id — fetch a single vehicle by ID.
-records.get('/vehicles/:id', async (c) => {
+// :id is constrained to digits so it does NOT shadow the specific GET routes
+// registered AFTER it (/vehicles/export, /vehicles/plate-lookup,
+// /vehicles/bolo-check) — without the {[0-9]+} guard, Hono matched those as
+// :id="plate-lookup" and the real handlers 404'd (broke the iOS plate run +
+// any web caller). Vehicle ids are integer PKs.
+records.get('/vehicles/:id{[0-9]+}', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
