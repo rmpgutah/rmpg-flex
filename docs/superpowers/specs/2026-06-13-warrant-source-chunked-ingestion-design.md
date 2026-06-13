@@ -203,11 +203,19 @@ of the (now-bounded) full-list leg and the Utah leg changes.
 
 CREATE TABLE IF NOT EXISTS national_warrant_source_progress ( ... );  -- as above
 
--- Dedup before the UNIQUE index (idempotent; keeps the highest id per key).
+-- NULL-safe dedup before the UNIQUE index (warrant_id is nullable; a NULL in a
+-- NOT IN subquery would poison the predicate, so exclude NULL-keyed rows).
 DELETE FROM scraped_warrants
- WHERE id NOT IN (SELECT MAX(id) FROM scraped_warrants GROUP BY source_key, warrant_id);
+ WHERE source_key IS NOT NULL AND warrant_id IS NOT NULL
+   AND id NOT IN (
+     SELECT MAX(id) FROM scraped_warrants
+      WHERE source_key IS NOT NULL AND warrant_id IS NOT NULL
+      GROUP BY source_key, warrant_id
+   );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_scraped_warrants_source_wid
+-- Reuse the name 0067/baseline already created for this exact tuple, so this is a
+-- no-op on live (and a safety-net if 0067 silently never landed there).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scraped_warrants_src_wid
   ON scraped_warrants(source_key, warrant_id);
 
 -- Re-enable Baton Rouge now that chunking makes its ~113K roster budget-safe.

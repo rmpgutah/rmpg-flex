@@ -52,12 +52,22 @@ CREATE TABLE IF NOT EXISTS national_warrant_source_progress (
   updated_at         TEXT DEFAULT (datetime('now'))
 );
 
--- Dedup before the UNIQUE index so creation can't fail on pre-existing dups
--- (idempotent: keeps the highest id per (source_key, warrant_id)).
+-- A UNIQUE index on (source_key, warrant_id) already exists from 0067 /
+-- baseline (idx_scraped_warrants_src_wid). We keep a defensive IF NOT EXISTS
+-- under the SAME name so it's a true no-op on live but still a safety-net on any
+-- D1 where 0067 silently never landed (deploy migration step is continue-on-error).
+-- Dedup FIRST so the index can't fail on pre-existing dups. NULL-safe: warrant_id
+-- is nullable, and a NULL anywhere in a NOT IN subquery poisons the whole predicate
+-- (deletes nothing), so we exclude NULL-keyed rows from both sides.
 DELETE FROM scraped_warrants
- WHERE id NOT IN (SELECT MAX(id) FROM scraped_warrants GROUP BY source_key, warrant_id);
+ WHERE source_key IS NOT NULL AND warrant_id IS NOT NULL
+   AND id NOT IN (
+     SELECT MAX(id) FROM scraped_warrants
+      WHERE source_key IS NOT NULL AND warrant_id IS NOT NULL
+      GROUP BY source_key, warrant_id
+   );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_scraped_warrants_source_wid
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scraped_warrants_src_wid
   ON scraped_warrants(source_key, warrant_id);
 
 -- Re-enable Baton Rouge (disabled inline in 0107 for the per-hit budget reason).
@@ -869,7 +879,7 @@ Expected: `MAX_FULL_LIST_HITS` appears ONLY in the `fetchAll` one-shot branch of
 ```
 1. Apply 0110 to live D1 785de7ae (deploy migration step is continue-on-error):
    - CREATE TABLE national_warrant_source_progress
-   - dedup DELETE + CREATE UNIQUE INDEX idx_scraped_warrants_source_wid
+   - NULL-safe dedup DELETE + CREATE UNIQUE INDEX idx_scraped_warrants_src_wid (no-op on live where 0067/baseline already created it)
    - UPDATE national_warrant_sources SET enabled=1 WHERE source_key='socrata-brla-citycourt'
    Verify: pragma_table_info('national_warrant_source_progress') and the unique index exist.
 2. Confirm true count: https://gis2.arlingtontx.gov/.../MapServer/9/query?where=1=1&returnCountOnly=true&f=json  → 148503
