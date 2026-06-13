@@ -29,6 +29,8 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { escapeLike, codedLike } from '../utils/searchText';
+import { mergeTimeline } from '../utils/intelDossier';
+import { parseNodeRefs, buildTimelineEvent } from '../utils/connectionsTimeline';
 
 const connections = new Hono<Env>();
 
@@ -700,6 +702,46 @@ connections.get('/search', operational, async (c) => {
   } catch (err: any) { console.error('[Connections] intel search error:', err?.message); }
 
   return c.json(results);
+});
+
+// GET /timeline?nodes=person:1,incident:5,intel_report:3 — merged chronology of a node set
+const TIMELINE_QUERY: Record<string, string> = {
+  incident: 'id, incident_number, incident_type, occurred_date, created_at, location_address, status',
+  call: 'id, call_number, incident_type, created_at, location_address, status',
+  citation: 'id, citation_number, violation_description, violation_date, status',
+  warrant: 'id, warrant_number, charge_description, issued_date, status',
+  arrest: 'id, full_name, charges, booking_date, status',
+  field_interview: 'id, fi_number, contact_reason, created_at, status',
+  trespass_order: 'id, order_number, location, effective_date, status',
+  case: 'id, case_number, title, case_type, created_at, status',
+  evidence: 'id, evidence_number, description, created_at, status',
+  intel_report: 'id, report_number, title, disseminated_at, source_reliability, info_credibility, threat_level',
+};
+const TIMELINE_TABLE: Record<string, string> = {
+  incident: 'incidents', call: 'calls_for_service', citation: 'citations', warrant: 'warrants',
+  arrest: 'arrest_records', field_interview: 'field_interviews', trespass_order: 'trespass_orders',
+  case: 'cases', evidence: 'evidence', intel_report: 'intel_reports',
+};
+
+connections.get('/timeline', operational, async (c) => {
+  const refs = parseNodeRefs(c.req.query('nodes') || '');
+  const byType = new Map<string, number[]>();
+  for (const r of refs) {
+    if (!TIMELINE_QUERY[r.type]) continue; // skip undated types (person/vehicle/property/...)
+    byType.set(r.type, [...(byType.get(r.type) || []), r.id]);
+  }
+  const db = getDb(c.env);
+  const sources: any[][] = [];
+  for (const [type, ids] of byType) {
+    try {
+      const ph = ids.map(() => '?').join(',');
+      const extra = type === 'intel_report' ? "AND status = 'disseminated'" : '';
+      const rows = await query<any>(db,
+        `SELECT ${TIMELINE_QUERY[type]} FROM ${TIMELINE_TABLE[type]} WHERE id IN (${ph}) ${extra}`, ...ids);
+      sources.push(rows.map((row) => buildTimelineEvent(type, row)).filter(Boolean));
+    } catch (err: any) { console.error(`[Connections] timeline ${type} error:`, err?.message); }
+  }
+  return c.json(mergeTimeline(sources as any));
 });
 
 // ─── INVESTIGATIONS CRUD ────────────────────────────────────
