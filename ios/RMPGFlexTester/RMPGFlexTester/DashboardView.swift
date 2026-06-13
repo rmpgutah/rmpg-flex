@@ -91,6 +91,7 @@ struct DashboardView: View {
                 tile("Alerts", "bell.badge.fill", badge: unread) { NotificationsView() }
                 tile("Scan ID", "qrcode.viewfinder") { IDScanView() }
             }
+            tile("Person Lookup", "magnifyingglass") { PersonSearchView() }
         }
     }
 
