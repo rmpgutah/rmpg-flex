@@ -133,6 +133,13 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
             <div className="text-[10px] text-rmpg-500">Reports, memos, forms — full word processor with templates</div>
           </div>
         </button>
+        <button type="button" onClick={() => navigate('/docs')} className={cardCls}>
+          <FileText className="w-5 h-5 text-[#d4a017] flex-shrink-0 mt-0.5" />
+          <div>
+            <div className="text-xs text-white font-semibold group-hover:text-[#d4a017]">Documents Library</div>
+            <div className="text-[10px] text-rmpg-500">Authored narratives & reports — formatted, versioned, attachable to calls</div>
+          </div>
+        </button>
       </div>
       {recents.length > 0 && (
         <div className="mt-2 flex items-center gap-1.5 flex-wrap text-[10px]">

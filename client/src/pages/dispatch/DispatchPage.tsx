@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from 
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
-  CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronDown, Link,
+  CheckCircle, XCircle, AlertTriangle, Loader2, FileText, FileSignature, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
   Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash,
 } from 'lucide-react';
@@ -72,8 +72,9 @@ import {
   announceDirectedNote, announceLocalAction, announceSpeedAdvisory,
 } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
-import { computeListLines, tokenizeInline } from '../../utils/noteFormatting';
+import { renderFormattedText } from '../../utils/renderFormatted';
 import NoteComposer from './components/NoteComposer';
+import CallDocumentsPanel from './components/CallDocumentsPanel';
 import { useDistrictOptions, normalizeSectorId } from '../../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../../hooks/useAddressAutofill';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
@@ -341,7 +342,7 @@ export default function DispatchPage() {
   const [callWarnings, setCallWarnings] = useState<WarningTag[]>([]);
   // NCIC Query Panel
   const [showNcicPanel, setShowNcicPanel] = useState(false);
-  const [detailTab, setDetailTab] = useState<'info' | 'persons' | 'timeline' | 'notes' | 'flags' | 'attachments' | 'audit'>('info');
+  const [detailTab, setDetailTab] = useState<'info' | 'persons' | 'timeline' | 'notes' | 'documents' | 'flags' | 'attachments' | 'audit'>('info');
   const [auditTrail, setAuditTrail] = useState<any[]>([]);
   const [auditTrailLoading, setAuditTrailLoading] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; call: CallForService } | null>(null);
@@ -1709,44 +1710,6 @@ export default function DispatchPage() {
     }
     setEditingTimestamp(null);
   }, [selectedCall, isAdminOrManager, addToast]);
-
-  // Render one line's inline marks (**bold** *italic* __underline__ ~~strike~~).
-  // Plain runs are returned as strings (no key needed); styled runs become keyed spans.
-  const renderInline = useCallback((text: string, keyBase: string) =>
-    tokenizeInline(text).map((t, i) => {
-      const cls = [
-        t.bold && 'font-bold',
-        t.italic && 'italic',
-        t.underline && 'underline',
-        t.strike && 'line-through',
-      ].filter(Boolean).join(' ');
-      return cls
-        ? <span key={`${keyBase}-${i}`} className={cls}>{t.text}</span>
-        : t.text;
-    }), []);
-
-  // Render note text: inline marks for single-line notes; a block of indented
-  // rows (bullets / outline numbers) when the note contains list lines.
-  const renderFormattedText = useCallback((text: string) => {
-    if (!text) return text;
-    const lines = computeListLines(text);
-    const hasList = lines.some((l) => l.kind !== 'plain');
-    if (!hasList) return renderInline(text, 'inl');
-    return (
-      <span className="block">
-        {lines.map((l, idx) => (
-          <span key={idx} className="flex items-start" style={{ paddingLeft: `${l.depth * 1.1}em` }}>
-            {l.kind !== 'plain' && (
-              <span className="inline-block shrink-0 text-[#9ca3af] mr-1" style={{ minWidth: '1.4em' }}>
-                {l.kind === 'ordered' ? `${l.marker}.` : '•'}
-              </span>
-            )}
-            <span className="flex-1 min-w-0">{renderInline(l.content, `l${idx}`)}</span>
-          </span>
-        ))}
-      </span>
-    );
-  }, [renderInline]);
 
   // ── Inline Editing ────────────────────────────────────────
   // Refetch the full call fresh from /dispatch/calls/:id before populating
@@ -4029,13 +3992,14 @@ export default function DispatchPage() {
 
               {/* Detail Tabs */}
               <div className="flex border-b border-[#2b2b2b] flex-shrink-0" style={{ background: '#050505' }}>
-                {(['info', 'persons', 'timeline', 'notes', 'attachments', 'flags', 'audit'] as const).map(tab => {
-                  const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
+                {(['info', 'persons', 'timeline', 'notes', 'documents', 'attachments', 'flags', 'audit'] as const).map(tab => {
+                  const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', documents: 'Documents', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
                   const icons: Record<string, React.ReactNode> = {
                     info: <FileText style={{ width: 9, height: 9 }} />,
                     persons: <User style={{ width: 9, height: 9 }} />,
                     timeline: <Clock style={{ width: 9, height: 9 }} />,
                     notes: <MessageSquare style={{ width: 9, height: 9 }} />,
+                    documents: <FileSignature style={{ width: 9, height: 9 }} />,
                     attachments: <FileText style={{ width: 9, height: 9 }} />,
                     flags: <Shield style={{ width: 9, height: 9 }} />,
                     audit: <Shield style={{ width: 9, height: 9 }} />,
@@ -5819,6 +5783,11 @@ export default function DispatchPage() {
                       ))}
                     </div>
                   </div>
+                )}
+
+                {/* ── DOCUMENTS TAB ─── */}
+                {detailTab === 'documents' && selectedCall.id && (
+                  <CallDocumentsPanel callId={Number(selectedCall.id)} />
                 )}
 
                 {/* ── ATTACHMENTS TAB ─── */}

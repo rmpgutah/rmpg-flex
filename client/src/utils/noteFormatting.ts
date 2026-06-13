@@ -1,6 +1,6 @@
 // Single source of truth for the lightweight markdown-marker grammar used by
 // dispatch notes across THREE consumers: the editor (NoteComposer), the browser
-// renderer (DispatchPage.renderFormattedText), and the PDF renderer
+// renderer (utils/renderFormatted.tsx -> renderFormattedText), and the PDF renderer
 // (pdfGenerator.addFormattedText). Pure + dependency-free so it is unit-testable
 // and cannot drift between consumers.
 
