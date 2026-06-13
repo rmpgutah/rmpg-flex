@@ -7,6 +7,8 @@ struct RMPGFlexTesterApp: App {
             TabView {
                 FieldOpsView()
                     .tabItem { Label("Field Ops", systemImage: "shield.lefthalf.filled") }
+                DutyRosterView()
+                    .tabItem { Label("Roster", systemImage: "person.3.fill") }
                 IDScanView()
                     .tabItem { Label("ID Scan", systemImage: "person.text.rectangle") }
                 FieldToolkitView()
