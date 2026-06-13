@@ -1877,6 +1877,11 @@ export default {
         return env.API.fetch(request);
       }
     }
+    // Cutover instrumentation (Phase 0, docs/superpowers/plans/2026-06-12-
+    // worker-cutover.md): every request that still reaches the legacy worker
+    // is logged so Workers Logs can produce the migration inventory. Remove
+    // after Phase 5 retirement.
+    console.log(`[legacy-fallthrough] ${method} ${pathname}`);
     return env.LEGACY.fetch(request);
   },
 };
