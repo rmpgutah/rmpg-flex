@@ -40,8 +40,12 @@ const PRIMARY = new RegExp(
 /** Secondary line: WARRANT#  Issued(dashes)  Offense…  (no R/S, no DOB). */
 const SECONDARY = new RegExp(`^(${WARRANT_NO})\\s+(\\d{1,2}-\\d{1,2}-\\d{4})\\s+(.*)$`);
 const DOCKET = /^Docket No:\s*(.+)$/i;
-/** Page header / banner / column-header / dashed-rule lines to drop. */
-const BOILERPLATE = /^(?:-{10,}|\d{1,2}\/\d{1,2}\/\d{4}\b.*WRNTLST|Active Warrants$|From \d.*to \d|Name\.{2,}.*Warrant|Page \d+( of \d+)?$)/i;
+/** A full-line dashed rule. Appears BOTH as a person-block separator AND as
+ *  decoration around the per-page column header — the `inHeader` flag below tells
+ *  them apart so a page break can't orphan a warrant's trailing "Docket No:" line. */
+const DASHES = /^-{10,}$/;
+/** Page-header / banner / column-header text lines (NOT the dashes). */
+const HEADER_TEXT = /^(?:\d{1,2}\/\d{1,2}\/\d{4}\b.*WRNTLST|Active Warrants$|From \d.*to \d|Name\.{2,}.*Warrant|Page \d+( of \d+)?$)/i;
 
 /** Normalise an INCODE issued date ("M-D-YYYY", dashes) to ISO. */
 function parseIssued(raw: string): string | null {
@@ -101,6 +105,7 @@ export function parseIncodePdf(text: string, sourceKey: string, state: string): 
   const seen = new Set<string>();
   let person: Person | null = null;     // identity for the current block
   let lastIdx = -1;                     // index in `hits` of the most recent emit (for the Docket No line)
+  let inHeader = false;                 // true while inside a per-page header region (its dashes are decoration)
 
   const emit = (warrantNo: string, issuedRaw: string, offenseRaw: string, p: Person) => {
     if (!p.full_name) { lastIdx = -1; return; }
@@ -126,7 +131,17 @@ export function parseIncodePdf(text: string, sourceKey: string, state: string): 
 
   for (const line of lines) {
     if (!line) continue;
-    if (BOILERPLATE.test(line)) { person = null; lastIdx = -1; continue; } // dashed rule ends a block
+
+    // Per-page header text (page banner / column header). Marks us "in a header
+    // region" so the decoration dashes around the column header are not mistaken
+    // for a person-block boundary. Does NOT reset lastIdx — a warrant's trailing
+    // "Docket No:" can legitimately spill onto the next page after this header.
+    if (HEADER_TEXT.test(line)) { inHeader = true; continue; }
+    if (DASHES.test(line)) {
+      if (!inHeader) { person = null; lastIdx = -1; } // genuine end-of-person-block rule
+      continue;                                       // else: header-region decoration — ignore
+    }
+    inHeader = false; // any content line closes the header region
 
     const docket = DOCKET.exec(line);
     if (docket) {

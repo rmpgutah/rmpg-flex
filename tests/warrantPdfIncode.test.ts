@@ -60,6 +60,15 @@ describe('parseIncodePdf — Beaumont TX (INCODE WRNTLST)', () => {
     expect(new Set(abbots.map(h => h.warrant_id)).size).toBe(4); // distinct warrants
   });
 
+  it('attaches a Docket No that spills past a page break to the right warrant', () => {
+    const hits = parseIncodePdf(text, 'pdf-incode-beaumont-tx', 'TX');
+    // ABRAHAM, LAKEISHA's 2nd warrant (SPEEDING 90) is the last entry on page 1;
+    // its "Docket No: E200483832" lands on page 2, after the page header + decoration dashes.
+    const speeding90 = hits.find(h => h.last_name === 'Abraham' && /SPEEDING 90/.test(h.charge_description ?? ''));
+    expect(speeding90).toBeDefined();
+    expect(speeding90?.case_number).toBe('E200483832'); // not dropped by the page-break reset
+  });
+
   it('does not leak the WRNTLST page header into a charge or name', () => {
     const hits = parseIncodePdf(text, 'pdf-incode-beaumont-tx', 'TX');
     for (const h of hits) {
