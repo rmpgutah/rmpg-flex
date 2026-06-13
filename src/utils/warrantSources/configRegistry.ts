@@ -7,15 +7,17 @@ import { fetchPdfText } from './pdfText';
 import { parseZuercherPdf } from './parse/pdfZuercher';
 import { parseTxMuniPdf } from './parse/pdfTxMuni';
 import { parseNewtonPdf } from './parse/pdfNewton';
+import { parseIncodePdf } from './parse/pdfIncode';
 
 type PdfParser = (text: string, sourceKey: string, state: string) => RawWarrantHit[];
 /** PDF layout families: each maps to a parser + whether it needs line-preserving
  *  text (mergePages:false). Zuercher reconstructs from the flat stream; the all-caps
- *  TX-muni / column-major Newton layouts need row newlines. */
+ *  TX-muni / column-major Newton / multi-line INCODE layouts need row newlines. */
 const PDF_FAMILIES: Record<string, { parse: PdfParser; lines: boolean }> = {
   'pdf-zuercher': { parse: parseZuercherPdf, lines: false },
   'pdf-txmuni': { parse: parseTxMuniPdf, lines: true },
   'pdf-newton': { parse: parseNewtonPdf, lines: true },
+  'pdf-incode': { parse: parseIncodePdf, lines: true },
 };
 
 interface SourceRow {

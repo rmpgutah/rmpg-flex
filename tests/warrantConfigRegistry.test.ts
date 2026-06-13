@@ -25,9 +25,10 @@ describe('configRegistry — PDF families', () => {
       { ...baseRow, source_key: 'pdf-zuercher-x', family: 'pdf-zuercher', format: 'pdf', base_url: 'https://example.test/z.pdf' },
       { ...baseRow, source_key: 'pdf-txmuni-x', family: 'pdf-txmuni', format: 'pdf', base_url: 'https://example.test/t.pdf' },
       { ...baseRow, source_key: 'pdf-newton-x', family: 'pdf-newton', format: 'pdf', base_url: 'https://example.test/n.pdf' },
+      { ...baseRow, source_key: 'pdf-incode-x', family: 'pdf-incode', format: 'pdf', base_url: 'https://example.test/i.pdf' },
     ];
     const adapters = await getConfigAdapters(fakeDb(rows));
-    expect(adapters.length).toBe(3);
+    expect(adapters.length).toBe(4);
     for (const a of adapters) {
       expect(a.mode).toBe('full-list');
       expect(typeof a.fetchAll).toBe('function');
