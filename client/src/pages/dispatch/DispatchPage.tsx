@@ -72,6 +72,8 @@ import {
   announceDirectedNote, announceLocalAction, announceSpeedAdvisory,
 } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
+import { computeListLines, tokenizeInline } from '../../utils/noteFormatting';
+import NoteComposer from './components/NoteComposer';
 import { useDistrictOptions, normalizeSectorId } from '../../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../../hooks/useAddressAutofill';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
@@ -90,8 +92,9 @@ import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import {
   humanizePriority, formatDispositionCode, getStatusTooltip, formatPhoneDisplay,
-  formatAddressDisplay, timeAgo, humanizeStatus,
+  formatAddressDisplay, timeAgo, humanizeStatus, humanizeType,
 } from '../../utils/statusLabels';
+import { coded } from '../../utils/searchText';
 
 // Label maps for human-readable display of stored values
 const SERVICE_TYPE_LABELS: Record<string, string> = {
@@ -257,6 +260,10 @@ function formatDocumentType(val: string | undefined | null): string {
 export default function DispatchPage() {
   const { user } = useAuth();
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
+  // A note is editable by its author (server-stamped author_username) or any admin/manager.
+  const canEditNote = useCallback((note: { author_username?: string | null }) =>
+    isAdminOrManager || (!!note.author_username && note.author_username === user?.username),
+  [isAdminOrManager, user?.username]);
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const unitModalTitleId = useId();
   const navigate = useNavigate();
@@ -315,7 +322,6 @@ export default function DispatchPage() {
   const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [signalFilter, setSignalFilter] = useState<'signaled' | 'unsignaled' | null>(null);
-  const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
@@ -1296,7 +1302,7 @@ export default function DispatchPage() {
     return (
       (call.call_number || '').toLowerCase().includes(q) ||
       (call.location || '').toLowerCase().includes(q) ||
-      (call.incident_type || '').toLowerCase().includes(q) ||
+      coded(call.incident_type, humanizeType).includes(q) ||
       (call.description || '').toLowerCase().includes(q) ||
       (call.caller_name || '').toLowerCase().includes(q) ||
       // Geography: let dispatchers filter the queue to a district by typing a
@@ -1704,61 +1710,43 @@ export default function DispatchPage() {
     setEditingTimestamp(null);
   }, [selectedCall, isAdminOrManager, addToast]);
 
-  // Parse simple markdown markers into React elements for display
+  // Render one line's inline marks (**bold** *italic* __underline__ ~~strike~~).
+  // Plain runs are returned as strings (no key needed); styled runs become keyed spans.
+  const renderInline = useCallback((text: string, keyBase: string) =>
+    tokenizeInline(text).map((t, i) => {
+      const cls = [
+        t.bold && 'font-bold',
+        t.italic && 'italic',
+        t.underline && 'underline',
+        t.strike && 'line-through',
+      ].filter(Boolean).join(' ');
+      return cls
+        ? <span key={`${keyBase}-${i}`} className={cls}>{t.text}</span>
+        : t.text;
+    }), []);
+
+  // Render note text: inline marks for single-line notes; a block of indented
+  // rows (bullets / outline numbers) when the note contains list lines.
   const renderFormattedText = useCallback((text: string) => {
     if (!text) return text;
-    // Pattern: **bold**, *italic*, __underline__ (greedy shortest match)
-    const parts: React.ReactNode[] = [];
-    let keyIdx = 0;
-    const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__)/g;
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(text.slice(lastIndex, match.index));
-      }
-      if (match[2]) {
-        parts.push(<span key={keyIdx++} className="font-bold">{match[2]}</span>);
-      } else if (match[3]) {
-        parts.push(<span key={keyIdx++} className="italic">{match[3]}</span>);
-      } else if (match[4]) {
-        parts.push(<span key={keyIdx++} className="underline">{match[4]}</span>);
-      }
-      lastIndex = match.index + match[0].length;
-    }
-    if (lastIndex < text.length) {
-      parts.push(text.slice(lastIndex));
-    }
-    return parts.length > 0 ? parts : text;
-  }, []);
-
-  // Wrap selected text in the note textarea with formatting markers
-  const wrapNoteSelection = useCallback((marker: string) => {
-    const el = noteTextareaRef.current;
-    if (!el) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const text = newNote;
-    const selected = text.slice(start, end);
-    if (selected) {
-      const wrapped = `${marker}${selected}${marker}`;
-      const updated = text.slice(0, start) + wrapped + text.slice(end);
-      setNewNote(updated);
-      // Restore cursor after marker
-      requestAnimationFrame(() => {
-        el.focus();
-        el.setSelectionRange(start + marker.length, end + marker.length);
-      });
-    } else {
-      // No selection — insert markers at cursor and place cursor between them
-      const updated = text.slice(0, start) + `${marker}${marker}` + text.slice(start);
-      setNewNote(updated);
-      requestAnimationFrame(() => {
-        el.focus();
-        el.setSelectionRange(start + marker.length, start + marker.length);
-      });
-    }
-  }, [newNote]);
+    const lines = computeListLines(text);
+    const hasList = lines.some((l) => l.kind !== 'plain');
+    if (!hasList) return renderInline(text, 'inl');
+    return (
+      <span className="block">
+        {lines.map((l, idx) => (
+          <span key={idx} className="flex items-start" style={{ paddingLeft: `${l.depth * 1.1}em` }}>
+            {l.kind !== 'plain' && (
+              <span className="inline-block shrink-0 text-[#9ca3af] mr-1" style={{ minWidth: '1.4em' }}>
+                {l.kind === 'ordered' ? `${l.marker}.` : '•'}
+              </span>
+            )}
+            <span className="flex-1 min-w-0">{renderInline(l.content, `l${idx}`)}</span>
+          </span>
+        ))}
+      </span>
+    );
+  }, [renderInline]);
 
   // ── Inline Editing ────────────────────────────────────────
   // Refetch the full call fresh from /dispatch/calls/:id before populating
@@ -2661,7 +2649,7 @@ export default function DispatchPage() {
                             <span className="font-bold">{note.author || 'System'}</span>
                             <span className="font-mono">{formatTime(note.timestamp)}</span>
                           </div>
-                          <div className="text-rmpg-200 mt-0.5">{note.text}</div>
+                          <div className="text-rmpg-200 mt-0.5">{renderFormattedText(note.text || '')}</div>
                         </div>
                       ))}
                     </div>
@@ -5736,7 +5724,12 @@ export default function DispatchPage() {
                         <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
                         {editingNoteId === note.id ? (
                           <div className="flex-1 min-w-0 flex flex-col gap-1">
-                            <textarea className="input-dark text-xs w-full" rows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} autoFocus />
+                            <NoteComposer
+                              value={editingNoteText}
+                              onChange={setEditingNoteText}
+                              onSubmit={() => handleEditNote(note.id, editingNoteText)}
+                              autoFocus
+                            />
                             <div className="flex gap-1">
                               <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px] px-2 py-0.5" onClick={() => handleEditNote(note.id, editingNoteText)}>Save</button>
                               <button type="button" className="toolbar-btn text-[9px] px-2 py-0.5" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>Cancel</button>
@@ -5745,10 +5738,14 @@ export default function DispatchPage() {
                         ) : (
                           <>
                             <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
-                            {isAdminOrManager && (
+                            {(canEditNote(note) || isAdminOrManager) && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
-                                <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
-                                <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                                {canEditNote(note) && (
+                                  <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                )}
+                                {isAdminOrManager && (
+                                  <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                                )}
                               </div>
                             )}
                           </>
@@ -5758,31 +5755,13 @@ export default function DispatchPage() {
                     )}
                   </div>
                   <div className="flex-shrink-0">
-                    {/* Formatting toolbar */}
-                    <div className="flex items-center gap-1 mb-1.5">
-                      <button type="button" title="Bold (Ctrl+B)" className="w-6 h-5 flex items-center justify-center text-[10px] font-black text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('**')}>B</button>
-                      <button type="button" title="Italic (Ctrl+I)" className="w-6 h-5 flex items-center justify-center text-[10px] italic font-semibold text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('*')}>I</button>
-                      <button type="button" title="Underline (Ctrl+U)" className="w-6 h-5 flex items-center justify-center text-[10px] underline text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('__')}>U</button>
-                      <span className="text-[8px] text-[#545454] ml-2 font-mono select-none">Shift+Enter to submit</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <textarea
-                        ref={noteTextareaRef}
-                        className="input-dark flex-1 text-xs resize-none"
-                        rows={2}
-                        placeholder="Add note..."
-                        maxLength={2000}
-                        spellCheck={true}
-                        value={newNote}
-                        onChange={(e) => setNewNote(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); handleAddNote(); }
-                          if (e.key === 'b' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); wrapNoteSelection('**'); }
-                          if (e.key === 'i' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); wrapNoteSelection('*'); }
-                          if (e.key === 'u' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); wrapNoteSelection('__'); }
-                        }}
-                      />
-                      <button type="button" onClick={handleAddNote} className="toolbar-btn toolbar-btn-primary self-end" disabled={!newNote.trim()}>
+                    <NoteComposer
+                      value={newNote}
+                      onChange={setNewNote}
+                      onSubmit={handleAddNote}
+                    />
+                    <div className="flex justify-end mt-1">
+                      <button type="button" onClick={handleAddNote} className="toolbar-btn toolbar-btn-primary" disabled={!newNote.trim()}>
                         Add
                       </button>
                     </div>

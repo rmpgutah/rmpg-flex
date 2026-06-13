@@ -240,10 +240,12 @@ export type CallSource =
 export interface CallNote {
   id: string;
   author: string;
+  author_username?: string | null; // server-stamped JWT username; keys note-edit ownership
   text: string;
   timestamp: string;
   edited_at?: string | null;
   edited_by?: string | null;
+  broadcast?: boolean;
 }
 
 export interface CallForService {
@@ -460,6 +462,10 @@ export interface Unit {
   emergency_active?: number | boolean | null;
   emergency_call_id?: number | string | null;
   emergency_since?: string | null;
+  /** On-foot (walking) detection — orthogonal to status. 1/true while the
+   *  officer is detected out of the vehicle (CoreMotion). */
+  on_foot?: number | boolean | null;
+  on_foot_since?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -2017,7 +2023,8 @@ export type WSMessageType =
   | 'security:updated'
   // Speed tracking
   | 'speed:alert'
-  | 'geofence:alert';
+  | 'geofence:alert'
+  | 'officer_on_foot_overdue';
 
 export interface WSMessage {
   type: WSMessageType;

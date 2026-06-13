@@ -347,14 +347,13 @@ export default {
           .then((n) => { if (n) console.log(`[intel-screen] ${n} alert(s) raised`); })
           .catch((err) => console.error('[intel-screen] sweep failed:', err)),
       );
-      // Intel retention sweep — flags disseminated products past their
-      // 28 CFR review_date as due_review (deduped anomaly_alert). Cheap
-      // when nothing is due; naturally idempotent.
+      // Officer-safety: on-foot overdue sweep — alerts dispatch when a
+      // unit has been on foot past the threshold. Cheap when none are.
       ctx.waitUntil(
-        import('./utils/intelRetention')
-          .then(({ sweepRetention }) => sweepRetention(env.DB))
-          .then((n) => { if (n) console.log(`[intel-retention] ${n} flagged for review`); })
-          .catch((err) => console.error('[intel-retention] sweep failed:', err)),
+        import('./utils/onFootSweep')
+          .then(({ sweepOnFootOverdue }) => sweepOnFootOverdue(env.DB, env))
+          .then((n) => { if (n) console.log(`[on-foot] ${n} overdue alert(s)`); })
+          .catch((err) => console.error('[on-foot] sweep failed:', err)),
       );
       // Email poll — throttled internally by ms_email_last_sync vs
       // ms_email_poll_interval. No-op when not configured.

@@ -124,7 +124,7 @@ export function buildDirectionArrow(
 
 // ── HTML Marker Content Builders ──────────────────────────────
 
-export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gpsSource?: string, heading?: number | null, speed?: number | null): HTMLElement {
+export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gpsSource?: string, heading?: number | null, speed?: number | null, onFoot?: boolean): HTMLElement {
   const color = UNIT_STATUS_COLORS[status];
   const label = UNIT_STATUS_LABELS[status];
 
@@ -180,6 +180,17 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
   srcBadge.style.cssText = _gpsSource === 'clearpathgps' ? 'position:absolute;bottom:-7px;right:-2px;font-size:6px;font-weight:900;font-family:monospace;color:#d4a017;text-shadow:0 0 4px #d4a01780;letter-spacing:0.5px;' : 'display:none;';
   srcBadge.textContent = _gpsSource === 'clearpathgps' ? 'C' : '';
   tag.appendChild(srcBadge);
+
+  // On-foot indicator — gold FOOT mini-badge (same pattern as the
+  // ClearPathGPS 'C' badge). Heading arrow stays: direction is still
+  // meaningful while walking.
+  if (onFoot) {
+    const footBadge = document.createElement('span');
+    footBadge.setAttribute('data-unit-foot', '');
+    footBadge.style.cssText = 'position:absolute;top:-12px;left:-2px;font-size:6px;font-weight:900;font-family:monospace;color:#d4a017;text-shadow:0 0 4px #d4a01780;letter-spacing:0.5px;';
+    footBadge.textContent = 'FOOT';
+    tag.appendChild(footBadge);
+  }
 
   const caret = document.createElement('div');
   caret.style.cssText =

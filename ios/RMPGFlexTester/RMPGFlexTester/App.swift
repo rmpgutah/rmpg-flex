@@ -43,6 +43,9 @@ struct SystemHubView: View {
 
     private var entries: [Entry] {
         [
+            Entry(id: "myid", title: "My Officer ID",
+                  subtitle: "Your digital badge + live verification QR",
+                  icon: "person.text.rectangle.fill", destination: AnyView(WalletIDView())),
             Entry(id: "settings", title: "Settings",
                   subtitle: "RMPG login · Cloudflare keys · Verifier token",
                   icon: "gearshape", destination: AnyView(SettingsView())),

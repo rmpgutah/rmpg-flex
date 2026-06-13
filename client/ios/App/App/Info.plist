@@ -64,6 +64,10 @@
 	<key>NSCameraUsageDescription</key>
 	<string>RMPG Flex uses the camera for evidence documentation.</string>
 
+	<!-- Motion activity: on-foot detection for officer safety and dispatch awareness -->
+	<key>NSMotionUsageDescription</key>
+	<string>Motion activity is used to detect when an officer is on foot for dispatch awareness and officer safety.</string>
+
 	<!-- Background modes: GPS tracking + radio audio -->
 	<key>UIBackgroundModes</key>
 	<array>

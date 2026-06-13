@@ -388,8 +388,20 @@ export default function DlSearchPage() {
               subject_name: `${parsed.last_name || ''}, ${parsed.first_name || ''}`.replace(/^, |, $/g, ''),
               dob: parsed.date_of_birth || '',
               person_id: personId ?? null,
+              // Full subject record so the system-of-record link in dl_records
+              // captures every scanned field, not just name/class/expiry.
               first_name: parsed.first_name, last_name: parsed.last_name,
-              dl_class: (parsed as any).dl_class, dl_expiry: (parsed as any).dl_expiry,
+              middle_name: (parsed as any).middle_name || '', suffix: (parsed as any).suffix || '',
+              gender: (parsed as any).gender || '', height: (parsed as any).height || '',
+              weight: (parsed as any).weight || '',
+              eye_color: (parsed as any).eye_color || '', hair_color: (parsed as any).hair_color || '',
+              dl_class: (parsed as any).dl_class || '', dl_expiry: (parsed as any).dl_expiry || '',
+              dl_issue_date: (parsed as any).dl_issue_date || '',
+              dl_restrictions: (parsed as any).dl_restrictions || '',
+              dl_endorsements: (parsed as any).dl_endorsements || '',
+              address: (parsed as any).address || '', city: (parsed as any).city || '',
+              state: (parsed as any).state || '', zip: (parsed as any).zip || '',
+              raw_record: JSON.stringify(parsed),
               findings: {
                 sweep_total: sweep.total,
                 sources: (sweep.sources || []).map((s: any) => ({ key: s.key, count: s.rows.length, danger: !!s.danger })),
@@ -523,7 +535,7 @@ export default function DlSearchPage() {
   // scanner, recent-scan replay, and phone-relay receipt.
   const processBarcodeText = useCallback(async (rawText: string, opts?: { silent?: boolean; skipRelay?: boolean }): Promise<boolean> => {
     try {
-      const { parseAamva, looksLikeAamva, describeAamva, assessAamva, formatLawEnforcement, formatLeBlock } = await import('../utils/aamvaParser');
+      const { parseAamva, looksLikeAamva, describeAamva, assessAamva, formatLawEnforcement, formatLeBlock, describeRestrictions, describeEndorsements, describeClass } = await import('../utils/aamvaParser');
       if (!looksLikeAamva(rawText)) return false;
       const parsed = parseAamva(rawText);
       setScanReadout(describeAamva(parsed));
@@ -554,11 +566,13 @@ export default function DlSearchPage() {
           zip: parsed.zip,
           dl_number: parsed.dl_number,
           dl_state: parsed.dl_state,
-          dl_class: parsed.dl_class,
+          // Coded DL fields → plain English for the stored record + preview
+          // (raw codes are still preserved in raw_record on the server).
+          dl_class: describeClass(parsed.dl_class),
           dl_expiry: parsed.dl_expiry,
           dl_issue_date: parsed.dl_issue_date,
-          dl_restrictions: parsed.dl_restrictions,
-          dl_endorsements: parsed.dl_endorsements,
+          dl_restrictions: describeRestrictions(parsed.dl_restrictions),
+          dl_endorsements: describeEndorsements(parsed.dl_endorsements),
           country: parsed.country,
           document_discriminator: parsed.document_discriminator,
           real_id: parsed.is_real_id === null ? '' : parsed.is_real_id ? 'YES' : 'NO',
@@ -571,8 +585,11 @@ export default function DlSearchPage() {
       setOcrResult(resultObj);
       setShowOcrPreview(true);
       if (!opts?.silent) addToast('PDF417 barcode read — all DMV-encoded fields extracted', 'success');
-      // Pull any existing record for this subject (async — modal shows progress)
-      lookupExistingRecords(parsed);
+      // Pull any existing record for this subject (async — modal shows progress).
+      // Pass the normalised record (plain-English coded fields, full field set)
+      // so the system-of-record scan-log persists the same shape the phone-relay
+      // fallback does — one canonical scan payload, not the raw AAMVA result.
+      lookupExistingRecords(resultObj);
       // Phone as scanning device: mirror the scan to the desktop session
       if (isMobile && !opts?.skipRelay) pushScanToDesktop({ ...resultObj, aamva_raw: rawText });
       rememberScan({

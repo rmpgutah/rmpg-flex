@@ -11,6 +11,8 @@ import FloatingSaveBar from '../../../components/FloatingSaveBar';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { formatEnumValue } from '../../../utils/formatters';
+import { coded } from '../../../utils/searchText';
 interface Grievance {
   id: number;
   officer_id: number;
@@ -143,7 +145,7 @@ export default function GrievancesTab() {
   const filtered = grievances.filter(g => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return g.subject.toLowerCase().includes(q) || g.officer_name.toLowerCase().includes(q) || g.description.toLowerCase().includes(q) || g.type.toLowerCase().includes(q);
+    return g.subject.toLowerCase().includes(q) || g.officer_name.toLowerCase().includes(q) || g.description.toLowerCase().includes(q) || coded(g.type, formatEnumValue).includes(q);
   });
 
   return (

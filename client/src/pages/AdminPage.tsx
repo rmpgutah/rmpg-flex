@@ -16,6 +16,7 @@ import {
   Shield,
   GraduationCap,
   DatabaseZap,
+  CreditCard,
   Navigation,
   Fingerprint,
   Search,
@@ -41,6 +42,7 @@ import type { User, Client, UserRole } from '../types';
 // Tab components
 import AdminSettingsTab from './admin/AdminSettingsTab';
 import AdminUsersTab from './admin/AdminUsersTab';
+import AdminWalletIdTab from './admin/AdminWalletIdTab';
 import AdminClientsTab from './admin/AdminClientsTab';
 import AdminSystemTab from './admin/AdminSystemTab';
 import AdminAuditTab from './admin/AdminAuditTab';
@@ -228,7 +230,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -645,6 +647,7 @@ export default function AdminPage() {
         { id: 'users', label: 'Users', icon: Users },
         { id: 'clients', label: 'Clients', icon: Building2 },
         { id: 'departments', label: 'Departments', icon: Network },
+        { id: 'wallet_ids', label: 'Officer IDs', icon: CreditCard },
         { id: 'sessions', label: 'Sessions', icon: Shield },
         // 'security' (Security Policy) consolidated into System Config → Security Policy sub-tab (2026-06-02)
       ],
@@ -990,6 +993,10 @@ export default function AdminPage() {
             error={error}
             setError={setError}
           />
+        )}
+
+        {activeTab === 'wallet_ids' && (
+          <AdminWalletIdTab LoadingSpinner={LoadingSpinner} />
         )}
 
         {activeTab === 'sessions' && (
