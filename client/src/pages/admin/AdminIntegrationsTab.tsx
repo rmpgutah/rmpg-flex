@@ -3,6 +3,7 @@ import {
   Plus, Trash2, Copy, CheckCircle2, XCircle, Key, AlertTriangle,
   Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
   Shield, Database, Bell, Unlock, Cloud, Cpu, MapPin, Navigation, Server, Hash,
+  ExternalLink,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
@@ -170,6 +171,90 @@ const DATA_SERVICE_KEYS: ApiKeyConfig[] = [
   { key: 'towerdata_api_key', label: 'TowerData', desc: 'Email intelligence — identity verification, email-to-name resolution for OSINT' },
 ];
 
+// Where to obtain each key — the provider's API-key / credentials page (or the
+// official portal for gov/LE sources that have no self-serve key). Rendered as a
+// "Get key ↗" link beside each input so admins don't have to hunt for the source.
+const SOURCE_URLS: Record<string, string> = {
+  // Mapbox
+  mapbox_username: 'https://account.mapbox.com/',
+  mapbox_style_url: 'https://studio.mapbox.com/',
+  mapbox_access_token: 'https://account.mapbox.com/access-tokens/',
+  // AI / ML
+  openai_api_key: 'https://platform.openai.com/api-keys',
+  anthropic_api_key: 'https://console.anthropic.com/settings/keys',
+  replicate_api_key: 'https://replicate.com/account/api-tokens',
+  huggingface_api_key: 'https://huggingface.co/settings/tokens',
+  deepgram_api_key: 'https://console.deepgram.com/',
+  assemblyai_api_key: 'https://www.assemblyai.com/app/account',
+  roboflow_api_key: 'https://app.roboflow.com/settings/api',
+  // Cloud storage
+  aws_access_key_id: 'https://console.aws.amazon.com/iam/home#/security_credentials',
+  aws_secret_access_key: 'https://console.aws.amazon.com/iam/home#/security_credentials',
+  aws_s3_bucket: 'https://console.aws.amazon.com/s3/',
+  backblaze_key_id: 'https://secure.backblaze.com/app_keys.htm',
+  backblaze_app_key: 'https://secure.backblaze.com/app_keys.htm',
+  cloudflare_api_key: 'https://dash.cloudflare.com/profile/api-tokens',
+  wasabi_access_key: 'https://console.wasabisys.com/',
+  // Third-party data / RapidAPI
+  lead_gen_rapidapi_key: 'https://rapidapi.com/developer/apps',
+  dl_ocr_rapidapi_key: 'https://rapidapi.com/developer/apps',
+  plate_recognizer_api_key: 'https://app.platerecognizer.com/',
+  carjam_api_key: 'https://www.vinaudit.com/api',
+  spokeo_api_key: 'https://www.spokeo.com/',
+  microbilt_client_id: 'https://developer.microbilt.com/',
+  microbilt_client_secret: 'https://developer.microbilt.com/',
+  clearpath_gps_api_key: 'https://www.clearpathgps.com/',
+  // Law enforcement / gov (portals — no self-serve key)
+  ncic_api_key: 'https://www.fbi.gov/services/cjis/ncic',
+  utah_dps_api_key: 'https://bci.utah.gov/',
+  utah_courts_api_key: 'https://legacy.utcourts.gov/xchange/',
+  fbi_wanted_api_key: 'https://api.fbi.gov/',
+  dea_api_key: 'https://www.deadiversion.usdoj.gov/arcos/',
+  usms_api_key: 'https://www.usmarshals.gov/',
+  atf_api_key: 'https://www.atf.gov/firearms/etrace-internet',
+  interpol_api_key: 'https://interpol.api.bund.dev/',
+  nsopw_api_key: 'https://www.nsopw.gov/',
+  ofac_api_key: 'https://sanctionssearch.ofac.treas.gov/',
+  // GPS webhooks (admin-chosen shared secret — link to the integration docs)
+  owntracks_webhook_token: 'https://owntracks.org/booklet/features/http/',
+  traccar_webhook_token: 'https://www.traccar.org/forward/',
+  // Free / open APIs
+  openweathermap_api_key: 'https://home.openweathermap.org/api_keys',
+  openmeteo_api_key: 'https://open-meteo.com/',
+  nominatim_api_key: 'https://operations.osmfoundation.org/policies/nominatim/',
+  opencage_api_key: 'https://opencagedata.com/dashboard',
+  ipinfo_api_key: 'https://ipinfo.io/account/token',
+  here_api_key: 'https://developer.here.com/',
+  what3words_api_key: 'https://developer.what3words.com/public-api',
+  nhtsa_api_key: 'https://vpic.nhtsa.dot.gov/api/',
+  fcc_api_key: 'https://www.fcc.gov/reports-research/developers',
+  // Notifications
+  twilio_api_key: 'https://console.twilio.com/us1/account/keys-credentials/api-keys',
+  twilio_account_sid: 'https://console.twilio.com/',
+  sendgrid_api_key: 'https://app.sendgrid.com/settings/api_keys',
+  slack_webhook_url: 'https://api.slack.com/messaging/webhooks',
+  discord_webhook_url: 'https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks',
+  telegram_bot_token: 'https://t.me/botfather',
+  pushover_api_key: 'https://pushover.net/apps/build',
+  ntfy_topic_key: 'https://docs.ntfy.sh/',
+  // Data services / OSINT
+  numverify_api_key: 'https://numverify.com/dashboard',
+  hunter_io_api_key: 'https://hunter.io/api-keys',
+  clearbit_api_key: 'https://dashboard.clearbit.com/api',
+  pipl_api_key: 'https://pipl.com/api',
+  towerdata_api_key: 'https://www.towerdata.com/',
+  abstract_api_key: 'https://app.abstractapi.com/',
+  abuseipdb_api_key: 'https://www.abuseipdb.com/account/api',
+  censys_api_key: 'https://search.censys.io/account/api',
+  emailrep_api_key: 'https://emailrep.io/key',
+  have_i_been_pwned_key: 'https://haveibeenpwned.com/API/Key',
+  shodan_api_key: 'https://account.shodan.io/',
+  urlscan_api_key: 'https://urlscan.io/user/profile/',
+  virustotal_api_key: 'https://www.virustotal.com/gui/my-apikey',
+  whoisxml_api_key: 'https://user.whoisxmlapi.com/products',
+  plaid_api_key: 'https://dashboard.plaid.com/developers/keys',
+};
+
 function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: React.ReactNode; keys: ApiKeyConfig[] }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
@@ -243,6 +328,17 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
               <div>
                 <div className="text-xs font-semibold text-rmpg-300">{label}</div>
                 <div className="text-[10px] text-rmpg-600">{desc}</div>
+                {SOURCE_URLS[key] && (
+                  <a
+                    href={SOURCE_URLS[key]}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 mt-1 text-[10px] text-brand-400 hover:text-brand-300 hover:underline"
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    Get key / API source
+                  </a>
+                )}
               </div>
               {configured[key] ? (
                 <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-sm bg-green-900/30 text-green-400 border border-green-700/40">
