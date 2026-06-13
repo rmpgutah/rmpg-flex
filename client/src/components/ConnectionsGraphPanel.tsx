@@ -144,7 +144,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
           type: n.type,
           label: (n.label || '').toUpperCase(),
           rawLabel: n.label || '',
-          subLabel: n.metadata?.status || n.metadata?.incident_type || '',
+          subLabel: n.metadata?.grade || n.metadata?.status || n.metadata?.incident_type || '',
           x: isSeed ? centerX : centerX + Math.cos(i) * 140 + Math.random() * 20,
           y: isSeed ? centerY : centerY + Math.sin(i) * 140 + Math.random() * 20,
           vx: 0, vy: 0,

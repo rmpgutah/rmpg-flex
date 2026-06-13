@@ -100,7 +100,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
       { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
       { path: '/reports/custom', icon: Database, label: 'Report Builder' },
-      { path: '/forensics', icon: Network, label: 'Connections', adminOnly: true },
+      { path: '/connections', icon: Network, label: 'Connections', adminOnly: true },
     ],
   },
   {

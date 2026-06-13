@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Network, Loader2, Eye, Pencil, Route } from 'lucide-react';
 import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, Simulation } from 'd3-force';
 import { zoom, zoomIdentity, ZoomBehavior } from 'd3-zoom';
@@ -79,6 +79,7 @@ export default function ConnectionsPage() {
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
+  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -118,6 +119,16 @@ export default function ConnectionsPage() {
   const [timeline, setTimeline] = useState<Array<{ kind: string; id: number; date: string | null; title: string; subtitle: string; status: string }>>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState('');
+
+  // Pre-seed graph from URL params on mount (e.g. /connections?type=person&id=42)
+  useEffect(() => {
+    const t = searchParams.get('type');
+    const idNum = Number(searchParams.get('id'));
+    if (t && Number.isInteger(idNum) && idNum > 0) {
+      setSeed({ type: t, id: idNum, label: `${t} #${idNum}` });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -240,15 +251,18 @@ export default function ConnectionsPage() {
     return () => { svg.on('.zoom', null); };
   }, [nodes.length]);
 
+  // Stable string signature of node membership — only changes when nodes are added/removed,
+  // not on every d3 tick (which calls setNodes(prev => [...prev]) and replaces the array ref).
+  const nodeKeySig = nodes.map(n => `${n.type}:${n.entityId}`).join(',');
+
   useEffect(() => {
-    if (!timelineOpen || nodes.length === 0) { setTimeline([]); return; }
-    const param = nodes.map(n => `${n.type}:${n.entityId}`).join(',');
+    if (!timelineOpen || nodeKeySig === '') { setTimeline([]); return; }
     setTimelineLoading(true); setTimelineError('');
-    apiFetch<any[]>(`/connections/timeline?nodes=${encodeURIComponent(param)}`)
+    apiFetch<any[]>(`/connections/timeline?nodes=${encodeURIComponent(nodeKeySig)}`)
       .then(r => setTimeline(Array.isArray(r) ? r : []))
       .catch(() => setTimelineError('Failed to load timeline.'))
       .finally(() => setTimelineLoading(false));
-  }, [timelineOpen, nodes]);
+  }, [timelineOpen, nodeKeySig]);
 
   function resetView() {
     if (!svgRef.current || !zoomRef.current) return;

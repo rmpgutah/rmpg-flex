@@ -139,7 +139,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/statute-analytics', icon: Scale, label: 'Statute Analytics' },
       { path: '/reports/custom', icon: BarChart3, label: 'Report Builder' },
       { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
-      { path: '/forensics', icon: Search, label: 'Forensics' },
+      { path: '/connections', icon: Search, label: 'Connections' },
       { path: '/iped', icon: Microscope, label: 'IPED Forensics' },
       { path: '/crm', icon: Contact, label: 'Overwatch' },
       { path: '/security-dashboard', icon: Shield, label: 'Security Dashboard' },
@@ -177,7 +177,7 @@ const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/patrol', '/shift-plans', '/statute-analytics',
   '/reports/custom', '/crime-analysis', '/dar', '/hr',
   '/body-cameras', '/dash-cameras', '/dl-search', '/skip-tracer',
-  '/arrest-records', '/forensic-lab', '/forensics', '/training-docs',
+  '/arrest-records', '/forensic-lab', '/connections', '/training-docs',
 ]);
 
 // ─── Component ───────────────────────────────────────────────
