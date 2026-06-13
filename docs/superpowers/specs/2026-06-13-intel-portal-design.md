@@ -253,59 +253,40 @@ No new backend for the panel — it composes endpoints that already exist.
 
 ---
 
-## 7. BOLO Board (net-new)
+## 7. BOLO Board (mostly already built — UI adoption)
+
+> **⚠ Corrected 2026-06-13 against live D1:** BOLO is **NOT net-new.** The build
+> already exists server-side — this section was rewritten after schema verification.
 
 Be-On-the-LookOut alerts for persons / vehicles / plates with priority + expiry.
 
-### Data — `bolos` table (migration 0106)
+### What already exists (verified on live D1 `785de7ae` + codebase grep)
 
-```sql
-CREATE TABLE IF NOT EXISTS bolos (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  bolo_type    TEXT NOT NULL,                 -- 'person' | 'vehicle' | 'plate' | 'other'
-  subject_label TEXT NOT NULL,                -- denormalized display (e.g. "HALE, Vincent" / "UT 8XQ-220")
-  person_id    INTEGER,                       -- optional FK-ish link
-  vehicle_id   INTEGER,
-  plate        TEXT,
-  priority     TEXT NOT NULL DEFAULT 'medium',-- 'critical' | 'high' | 'medium' | 'low'
-  title        TEXT NOT NULL,
-  details      TEXT,                           -- narrative (Phase-1 grammar reuse optional)
-  status       TEXT NOT NULL DEFAULT 'active', -- 'active' | 'expired' | 'cancelled' | 'resolved'
-  issued_by    INTEGER NOT NULL,
-  issued_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  expires_at   TEXT,                           -- null = until cancelled
-  resolved_by  INTEGER, resolved_at TEXT, resolution_note TEXT,
-  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_bolos_status ON bolos(status, priority);
-CREATE INDEX IF NOT EXISTS idx_bolos_person ON bolos(person_id);
-```
+- **`bolos` table** — live schema: `id, bolo_number, type, title, description,
+  subject_description, vehicle_description, photo_url, status, priority, issued_by,
+  expires_at, created_at, auto_expire_hours, expired_at`. **No new migration needed.**
+- **`bolosRouter`** — a full CRUD + lifecycle router, registered at **`/api/comms/bolos`**
+  and **`/api/dispatch/bolos`** (list / create / update / delete + `active` / `check` /
+  `stats` / `archive` / `expire-check`). Already auth-gated.
+- **`BoloAlertBanner.tsx`** — the app-wide officer banner already exists.
+  **`BolosCard.tsx`** — a mobile BOLO card already exists.
 
-### Endpoints (under `/api/intel/bolos`)
+### What Plan 3 actually builds (UI-only adoption)
 
-| Method | Path | Role | Purpose |
-|--------|------|------|---------|
-| GET | `/bolos` | operational | list (filter by status/priority/type) |
-| GET | `/bolos/active` | operational | active + non-expired (for banner + dashboard) |
-| POST | `/bolos` | operational | create |
-| PUT | `/bolos/:id` | operational (own) / supervisor+ (any) | edit |
-| POST | `/bolos/:id/resolve` | operational | mark resolved w/ note |
-| DELETE | `/bolos/:id` | supervisor+ | cancel |
-
-A cron (or the existing pattern sweep) flips `active`→`expired` past `expires_at`.
-
-### UI + integration
-
-- `BoloBoard.tsx` — card grid by priority; create/edit modal; resolve flow.
-- **Dashboard:** active BOLOs feed the Active Alerts widget (kind `'bolo'`) and the
-  rail badge.
-- **App-wide officer banner:** a small, dismissible banner component (mirrors the
-  existing Announcements officer banner pattern) shows count of active **critical/high**
-  BOLOs; reuses the established banner mechanism rather than inventing a new one.
+- **`BoloBoard.tsx`** — the portal **Board UI** (card grid by priority, create/edit
+  modal, resolve flow) consuming the **existing** `bolosRouter` API. Replaces the
+  `/intel/bolos` Coming-Soon placeholder from the Foundation.
+- Confirm/reuse `BoloAlertBanner` rather than building a new banner.
+- **Dashboard wiring (already partly done):** the Foundation's `/api/intel/overview`
+  already counts active BOLOs (`bolos.active` / `high_priority`) and feeds the rail
+  badge; Plan 3 also surfaces active BOLOs in the Active Alerts widget (kind `'bolo'`).
+- **No new table, no new endpoints** unless a gap is found in `bolosRouter`. The
+  endpoint table previously listed here is superseded by the existing router.
 
 > **Decision point reserved for you:** BOLO **priority → banner/notification behavior**
 > (which priorities page everyone vs. just appear on the board, default expiry per
-> priority). 5–10 lines in the create handler; pure policy, your call.
+> priority). This likely already exists in `bolosRouter`/`auto_expire_hours` — verify
+> and adjust rather than rebuild.
 
 ---
 
@@ -378,17 +359,20 @@ All new tables; **no ALTER on `calls_for_service` / `persons`**. Next free prefi
 `0106`. Idempotent DDL (`CREATE TABLE IF NOT EXISTS`).
 
 ```
-migrations/0106_intel_portal.sql
-  - bolos                (see §7)
+migrations/0106_intel_portal.sql   (Plan 2 — Supercharged Search)
   - intel_saved_searches (id, user_id, name, query_json, created_at)  UNIQUE(user_id, name)
   - intel_search_history (id, user_id, query_text, query_json, executed_at)  -- capped per-user in code
-  - (indexes for each: by user_id; bolos by status/priority/person)
+  - (indexes: by user_id)
 ```
+
+`bolos` is **NOT** in this migration — the table already exists on live (see §7).
+**The Foundation phase adds NO new tables** (the overview endpoint reads existing
+tables only). The first new migration lands with Plan 2 (saved searches + history).
 
 Per the repo's hard-won migration rule: after merge, **also apply 0106 DDL directly to
 live D1 `785de7ae`** via the Cloudflare D1 API and verify with
-`pragma_table_info('bolos')` etc. — the deploy migration step is `continue-on-error`
-and has historically not reached live silently.
+`pragma_table_info('intel_saved_searches')` etc. — the deploy migration step is
+`continue-on-error` and has historically not reached live silently.
 
 The Worker boot reconciler / route code must tolerate the tables being briefly absent
 (LIKE-fallback pattern, as `/search` already does for `intel_index`).
