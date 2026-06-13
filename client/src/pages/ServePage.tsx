@@ -890,7 +890,7 @@ export default function ServePage() {
         {activeTab === 'Queue' && (
           <div className="h-full flex flex-col">
             {/* Filter buttons */}
-            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-[#2b2b2b] overflow-x-auto">
+            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-[#2b2b2b] overflow-x-auto tab-scroll">
               {STATUS_FILTERS.map(f => (
                 <button type="button"
                   key={f.value}

@@ -398,7 +398,7 @@ export default function ShiftPlansPage() {
                   </div>
                 </div>
 
-                <div className={`flex items-center gap-1 ${isMobile ? 'overflow-x-auto' : ''}`}>
+                <div className={`flex items-center gap-1 tab-scroll ${isMobile ? 'overflow-x-auto' : ''}`}>
                   {sp.activePlan.status === 'draft' && (
                     <button type="button"
                       onClick={() => sp.updatePlanStatus(sp.activePlan!.id, 'active')}

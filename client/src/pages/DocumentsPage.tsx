@@ -318,7 +318,7 @@ export default function DocumentsPage() {
       </PanelTitleBar>
 
       {/* Breadcrumb navigation */}
-      <div className="px-4 py-2 border-b border-rmpg-700 flex items-center gap-1 text-[11px] bg-surface-sunken overflow-x-auto">
+      <div className="px-4 py-2 border-b border-rmpg-700 flex items-center gap-1 text-[11px] bg-surface-sunken overflow-x-auto tab-scroll">
         <button type="button" onClick={() => navigateTo(null)} className="flex items-center gap-1 text-brand-400 hover:text-brand-300 font-medium">
           <Home className="w-3 h-3" /> Root
         </button>
