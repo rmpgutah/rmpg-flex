@@ -1782,4 +1782,111 @@ warrants.post('/ingest-utah', requireRole(...ROLES_CRUD_WRITE), async (c) => {
   }
 });
 
+// ============================================================
+// National warrant search + coverage routes
+// Backs client/src/pages/NationalWarrantSearchPage.tsx
+// ============================================================
+
+// GET /warrants/national-coverage — drives the NationalWarrantSearchPage coverage map.
+// Returns { sources, states_covered, active_warrants, state_status, state_sources, state_warrants }.
+// Falls back to safe zeros on any DB error (pre-migration / cold D1).
+warrants.get('/national-coverage', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const sources = await query<{ state: string | null; source_key: string }>(db,
+      "SELECT state, source_key FROM national_warrant_sources WHERE enabled = 1").catch(() => []);
+    // FBI (US) and Utah County (UT) are code-resident adapters — always counted.
+    const stateSources: Record<string, number> = { US: 1, UT: 1 };
+    for (const s of sources) {
+      const st = (s.state || 'US').toUpperCase();
+      stateSources[st] = (stateSources[st] ?? 0) + 1;
+    }
+    const counts = await query<{ state: string; n: number }>(db,
+      "SELECT COALESCE(state,'US') AS state, COUNT(*) n FROM scraped_warrants WHERE status='active' GROUP BY state").catch(() => []);
+    const stateWarrants: Record<string, number> = {};
+    let activeWarrants = 0;
+    for (const r of counts) {
+      const st = (r.state || 'US').toUpperCase();
+      stateWarrants[st] = (stateWarrants[st] ?? 0) + Number(r.n);
+      activeWarrants += Number(r.n);
+    }
+    const stateStatus: Record<string, 'active' | 'pending' | 'disabled'> = {};
+    for (const st of Object.keys(stateSources)) {
+      stateStatus[st] = (stateWarrants[st] ?? 0) > 0 ? 'active' : 'pending';
+    }
+    return c.json({
+      sources: Object.values(stateSources).reduce((a, b) => a + b, 0),
+      states_covered: Object.keys(stateSources).length,
+      active_warrants: activeWarrants,
+      state_status: stateStatus,
+      state_sources: stateSources,
+      state_warrants: stateWarrants,
+    });
+  } catch {
+    return c.json({ sources: 0, states_covered: 0, active_warrants: 0, state_status: {}, state_sources: {}, state_warrants: {} });
+  }
+});
+
+// POST /warrants/national-search — query the cached scraped_warrants across all sources.
+// Body: { last_name, first_name, dob, state, charge_keyword, warrant_type }
+// Returns { total, search_time_ms, by_state, local }.
+warrants.post('/national-search', requireRole(...READ_ROLES), async (c) => {
+  const startedAt = Date.now();
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const s = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  try {
+    const db = getDb(c.env);
+    const filters: string[] = ["status = 'active'"];
+    const params: unknown[] = [];
+    const last = s(body.last_name);
+    if (last) { filters.push("(last_name LIKE ? ESCAPE '\\' OR full_name LIKE ? ESCAPE '\\')"); params.push(`%${last}%`, `%${last}%`); }
+    const first = s(body.first_name);
+    if (first) { filters.push("(first_name LIKE ? ESCAPE '\\' OR full_name LIKE ? ESCAPE '\\')"); params.push(`%${first}%`, `%${first}%`); }
+    const dob = s(body.dob);
+    if (dob) { filters.push('date_of_birth = ?'); params.push(dob); }
+    const st = s(body.state);
+    if (st) { filters.push('UPPER(state) = ?'); params.push(st.toUpperCase()); }
+    const chg = s(body.charge_keyword);
+    if (chg) { filters.push("charge_description LIKE ? ESCAPE '\\'"); params.push(`%${chg}%`); }
+    const wt = s(body.warrant_type);
+    if (wt) { filters.push("warrant_type LIKE ? ESCAPE '\\'"); params.push(`%${wt}%`); }
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT source_key, full_name, first_name, last_name, date_of_birth, age, city, state,
+              charge_description, court_name, case_number, bail_amount, issue_date, warrant_type, photo_url, detail_url, kind
+         FROM scraped_warrants WHERE ${filters.join(' AND ')} ORDER BY last_seen_at DESC LIMIT 500`,
+      ...params);
+    const byState: Record<string, Record<string, unknown>[]> = {};
+    for (const r of rows) {
+      const k = String(r.state || 'US').toUpperCase();
+      (byState[k] ??= []).push(r);
+    }
+    return c.json({ total: rows.length, search_time_ms: Date.now() - startedAt, by_state: byState, local: [] });
+  } catch (err) {
+    console.error('[warrants/national-search]', err);
+    return c.json({ total: 0, search_time_ms: Date.now() - startedAt, by_state: {}, local: [], error: 'search failed' }, 500);
+  }
+});
+
+// GET /warrants/national/sources — registry + state for the NationalWarrantSearchPage sources panel.
+warrants.get('/national/sources', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const rows = await query<Record<string, unknown>>(getDb(c.env),
+      'SELECT source_key, family, display_name, state, kind, enabled FROM national_warrant_sources ORDER BY state, source_key');
+    return c.json({ data: rows });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// POST /warrants/national/scan — manual full scan across all national sources (fire-and-forget).
+// Same waitUntil pattern as /watch/scan — returns 202 immediately; poll /warrants/watch/runs.
+warrants.post('/national/scan', requireRole(...SCAN_ROLES), async (c) => {
+  c.executionCtx.waitUntil(
+    runAllSourceScans(getDb(c.env)).catch((err) => {
+      console.error('[warrants/national/scan]', err);
+    }),
+  );
+  return c.json({ success: true, started: true, message: 'National scan started; poll /warrants/watch/runs.' }, 202);
+});
+
 export default warrants;
