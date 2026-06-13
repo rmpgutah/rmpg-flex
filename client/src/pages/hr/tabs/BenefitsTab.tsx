@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { coded } from '../../../utils/searchText';
+import { formatEnumValue } from '../../../utils/formatters';
 import { Heart, Plus, Loader2, Search } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
@@ -86,7 +88,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
   const filteredBenefits = benefits.filter(b => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return b.officer_name?.toLowerCase().includes(q) || b.benefit_type.toLowerCase().includes(q) || b.plan_name?.toLowerCase().includes(q) || b.provider?.toLowerCase().includes(q);
+    return b.officer_name?.toLowerCase().includes(q) || coded(b.benefit_type, formatEnumValue).includes(q) || b.plan_name?.toLowerCase().includes(q) || b.provider?.toLowerCase().includes(q);
   });
 
   const grouped = filteredBenefits.reduce<Record<string, Benefit[]>>((acc, b) => {

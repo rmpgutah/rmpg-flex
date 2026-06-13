@@ -3,6 +3,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { normalizeDob } from '../utils/normalizeDob';
+import { codedLike } from '../utils/searchText';
 
 const records = new Hono<Env>();
 
@@ -1580,11 +1581,12 @@ records.get('/search', async (c) => {
     }
 
     if (type === 'incident') {
+      const itLike = codedLike('incident_type', q);
       const rows = await query<Record<string, unknown>>(db, `
         SELECT id, incident_number, incident_type, status, location_address, created_at FROM incidents
-        WHERE incident_number LIKE ? OR incident_type LIKE ? OR location_address LIKE ?
+        WHERE incident_number LIKE ? OR ${itLike.sql} OR location_address LIKE ?
         ORDER BY created_at DESC LIMIT 50
-      `, like, like, like);
+      `, like, ...itLike.binds, like);
       return c.json(rows.map((r) => ({
         ...r,
         label: [r.incident_number, r.incident_type].filter(Boolean).join(' — ') || `Incident #${r.id}`,
@@ -1592,11 +1594,12 @@ records.get('/search', async (c) => {
     }
 
     if (type === 'case') {
+      const ctLike = codedLike('case_type', q);
       const rows = await query<Record<string, unknown>>(db, `
         SELECT id, case_number, title, status, case_type, created_at FROM cases
-        WHERE case_number LIKE ? OR title LIKE ? OR case_type LIKE ?
+        WHERE case_number LIKE ? OR title LIKE ? OR ${ctLike.sql}
         ORDER BY created_at DESC LIMIT 50
-      `, like, like, like);
+      `, like, like, ...ctLike.binds);
       return c.json(rows.map((r) => ({
         ...r,
         label: [r.case_number, r.title].filter(Boolean).join(' — ') || `Case #${r.id}`,

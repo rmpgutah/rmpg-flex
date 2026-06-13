@@ -18,6 +18,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search, FileText } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { humanizeType } from '../utils/statusLabels';
+import { coded } from '../utils/searchText';
 
 export interface IncidentSummary {
   id: number;
@@ -68,7 +70,7 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
     return incidents
       .filter((i) =>
         i.incident_number?.toLowerCase().includes(q) ||
-        i.type?.toLowerCase().includes(q) ||
+        coded(i.type, humanizeType).includes(q) ||
         i.location?.toLowerCase().includes(q) ||
         (i.narrative_summary ?? '').toLowerCase().includes(q),
       )

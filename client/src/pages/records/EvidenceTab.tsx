@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { coded } from '../../utils/searchText';
+import { formatEnumValue } from '../../utils/formatters';
 import {
   Search,
   Package,
@@ -160,7 +162,7 @@ export function useEvidenceTab(props: EvidenceTabProps): EvidenceTabState {
     return (
       (ev.evidence_number || '').toLowerCase().includes(q) ||
       (ev.description || '').toLowerCase().includes(q) ||
-      (ev.evidence_type || '').toLowerCase().includes(q) ||
+      coded(ev.evidence_type, formatEnumValue).includes(q) ||
       (ev.serial_number || '').toLowerCase().includes(q) ||
       (ev.brand || '').toLowerCase().includes(q) ||
       (ev.storage_location || '').toLowerCase().includes(q) ||

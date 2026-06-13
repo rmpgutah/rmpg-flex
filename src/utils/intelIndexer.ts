@@ -20,7 +20,7 @@ interface IndexRow { type: string; id: number; label: string; body: string; iden
 const joinReal = (...vals: unknown[]) => vals.filter(isRealValue).map(String).join(' ');
 
 export const INTEL_TYPES = ['person', 'vehicle', 'property', 'case', 'incident', 'call',
-  'warrant', 'citation', 'field_interview', 'trespass_order', 'evidence'] as const;
+  'warrant', 'citation', 'field_interview', 'trespass_order', 'evidence', 'intel_report'] as const;
 
 async function rowsFor(db: D1Database, type: string): Promise<IndexRow[]> {
   switch (type) {
@@ -82,6 +82,14 @@ async function rowsFor(db: D1Database, type: string): Promise<IndexRow[]> {
       return (await query<any>(db, 'SELECT id, evidence_number, description, evidence_type, status FROM evidence')).map((r) => ({
         type, id: r.id, label: joinReal(r.evidence_number) || `Evidence #${r.id}`,
         body: joinReal(r.description, r.evidence_type, r.status), identifiers: joinReal(r.evidence_number),
+      }));
+    case 'intel_report':
+      return (await query<any>(db,
+        `SELECT id, report_number, title, sanitized_narrative FROM intel_reports WHERE status = 'disseminated'`)).map((r) => ({
+        type, id: r.id,
+        label: joinReal(r.report_number, r.title) || `Intel #${r.id}`,
+        body: joinReal(r.sanitized_narrative),
+        identifiers: joinReal(r.report_number),
       }));
     default: return [];
   }

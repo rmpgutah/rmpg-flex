@@ -9,6 +9,8 @@ import { TEMPLATES } from '../templates';
 import { listSavedTemplates, deleteTemplate, type SavedTemplate } from '../docActions';
 import type { DocumentTemplate, TemplateCategory } from '../types';
 import PanelTitleBar from '../../../components/PanelTitleBar';
+import { toDisplayLabel } from '../../../utils/formatters';
+import { coded } from '../../../utils/searchText';
 
 interface Props {
   onSelect: (template: DocumentTemplate, values: Record<string, string>) => void;
@@ -99,7 +101,7 @@ export default function TemplateChooser({ onSelect }: Props) {
     return pool.filter((t) => {
       if (t.name.toLowerCase().includes(needle)) return true;
       if (t.description.toLowerCase().includes(needle)) return true;
-      if (t.category.toLowerCase().includes(needle)) return true;
+      if (coded(t.category, (v) => toDisplayLabel(v ?? '')).includes(needle)) return true;
       if (t.tags?.some((tag) => tag.toLowerCase().includes(needle))) return true;
       if (t.statutes?.some((s) => s.toLowerCase().includes(needle))) return true;
       return false;

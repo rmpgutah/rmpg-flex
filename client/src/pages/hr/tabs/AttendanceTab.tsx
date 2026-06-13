@@ -6,6 +6,8 @@ import { useAuth } from '../../../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
+import { formatEnumValue } from '../../../utils/formatters';
+import { coded } from '../../../utils/searchText';
 
 interface AttendanceRecord {
   id: number;
@@ -188,7 +190,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
             if (selectedOfficer && r.officer_id !== selectedOfficer) return false;
             if (searchQuery) {
               const q = searchQuery.toLowerCase();
-              return r.officer_name.toLowerCase().includes(q) || r.reason?.toLowerCase().includes(q) || r.type.toLowerCase().includes(q);
+              return r.officer_name.toLowerCase().includes(q) || r.reason?.toLowerCase().includes(q) || coded(r.type, formatEnumValue).includes(q);
             }
             return true;
           }).map(r => (
