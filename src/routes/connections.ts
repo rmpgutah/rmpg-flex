@@ -618,7 +618,9 @@ connections.get('/search', operational, async (c) => {
   if (!q || q.trim().length < 2) return c.json([]);
 
   const db = getDb(c.env);
-  const term = `%${escapeLike(q.trim())}%`;
+  const raw = q.trim();
+  const term = `%${escapeLike(raw)}%`;
+  const incidentTypeMatch = codedLike('incident_type', raw);
   const results: Array<{ id: number; type: string; label: string }> = [];
 
   try {
@@ -642,15 +644,13 @@ connections.get('/search', operational, async (c) => {
   } catch (err: any) { console.error('[Connections] cases search error:', err?.message); }
 
   try {
-    const incType = codedLike('incident_type', q.trim());
-    for (const i of await query<any>(db, `SELECT id, incident_number, incident_type FROM incidents WHERE incident_number LIKE ? ESCAPE '\\' OR ${incType.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...incType.binds, term))
+    for (const i of await query<any>(db, `SELECT id, incident_number, incident_type FROM incidents WHERE incident_number LIKE ? ESCAPE '\\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
       results.push({ id: i.id, type: 'incident', label: `${i.incident_number || ''} ${i.incident_type}`.trim() });
   } catch (err: any) { console.error('[Connections] incidents search error:', err?.message); }
 
   // Calls for service — searchable so an analyst can seed a graph on a CFS.
   try {
-    const cfsType = codedLike('incident_type', q.trim());
-    for (const cf of await query<any>(db, `SELECT id, call_number, incident_type, status FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\\' OR ${cfsType.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...cfsType.binds, term))
+    for (const cf of await query<any>(db, `SELECT id, call_number, incident_type, status FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
       results.push({ id: cf.id, type: 'call', label: `${cf.call_number || `CFS-${cf.id}`} ${cf.incident_type || ''} (${(cf.status || '?').toUpperCase()})`.replace(/\s+/g, ' ').trim() });
   } catch (err: any) { console.error('[Connections] calls search error:', err?.message); }
 
