@@ -31,6 +31,7 @@ import { humanizeCaseType, humanizeSolvabilityFactor } from '../utils/statusLabe
 import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatActivity, type CaseActivityRow } from '../utils/caseActivity';
 import { CaseTasksTab, CaseMyTasksView } from '../components/CaseTasks';
+import { CaseDashboardView, SlaBadge } from '../components/CaseDashboard';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
@@ -392,6 +393,8 @@ export default function CaseManagementPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
+  const [filterOverdue, setFilterOverdue] = useState(false);
+  const [filterMine, setFilterMine] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -440,13 +443,15 @@ export default function CaseManagementPage() {
         ...(filterStatus ? { status: filterStatus } : {}),
         ...(filterType ? { case_type: filterType } : {}),
         ...(filterPriority ? { priority: filterPriority } : {}),
+        ...(filterOverdue ? { overdue: 'true' } : {}),
+        ...(filterMine && user?.id ? { lead_investigator_id: String(user.id) } : {}),
       });
       const res = await apiFetch<{ data: Case[]; pagination: any }>(`/cases?${params}`);
       setCases(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
     } catch (err: any) { setFetchError(err?.message || 'Failed to load data'); } finally { setLoading(false); }
-  }, [page, searchQuery, filterStatus, filterType, filterPriority]);
+  }, [page, searchQuery, filterStatus, filterType, filterPriority, filterOverdue, filterMine, user?.id]);
 
   const fetchStats = useCallback(async () => {
     try { const res = await apiFetch<{ data: any }>('/cases/stats'); setStats(res.data); } catch (e) { console.warn('[Cases] fetch stats failed:', e); }
@@ -667,9 +672,9 @@ export default function CaseManagementPage() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* ── View toggle (Cases / My Tasks) ── */}
+      {/* ── View toggle (Cases / My Tasks / Dashboard) ── */}
       <div className="flex items-center gap-1 px-2 py-1 border-b border-rmpg-700 bg-surface-sunken shrink-0">
-        {([['cases', 'Cases'], ['mytasks', 'My Tasks']] as const).map(([v, label]) => (
+        {([['cases', 'Cases'], ['mytasks', 'My Tasks'], ['dashboard', 'Dashboard']] as const).map(([v, label]) => (
           <button key={v} type="button" onClick={() => setViewMode(v)}
             className={`px-3 py-1 text-[10px] font-mono uppercase tracking-wider border transition-colors ${viewMode === v ? 'bg-brand-900/40 border-brand-600/50 text-brand-300' : 'border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
             {label}
@@ -679,6 +684,8 @@ export default function CaseManagementPage() {
 
       {viewMode === 'mytasks' ? (
         <CaseMyTasksView onOpenCase={(cid) => { setViewMode('cases'); openCaseById(cid); }} />
+      ) : viewMode === 'dashboard' ? (
+        <CaseDashboardView stats={stats} onShowOverdue={() => { setViewMode('cases'); setFilterMine(false); setFilterStatus(''); setFilterOverdue(true); setPage(1); }} />
       ) : (
       <div className={`flex-1 min-h-0 flex ${isMobile ? 'flex-col' : ''}`}>
       {/* ── Left: Case List ── */}
@@ -741,6 +748,14 @@ export default function CaseManagementPage() {
             <option value="">All Types</option>
             {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
+          <button type="button" onClick={() => { setFilterMine(m => !m); setPage(1); }} aria-pressed={filterMine}
+            className={`text-[10px] px-2 py-1 border transition-colors ${filterMine ? 'bg-brand-900/40 border-brand-600/50 text-brand-300' : 'border-rmpg-700 text-rmpg-500 hover:text-rmpg-300'}`}>
+            Mine
+          </button>
+          <button type="button" onClick={() => { setFilterOverdue(o => !o); setPage(1); }} aria-pressed={filterOverdue}
+            className={`text-[10px] px-2 py-1 border transition-colors ${filterOverdue ? 'bg-red-900/30 border-red-700/50 text-red-400' : 'border-rmpg-700 text-rmpg-500 hover:text-rmpg-300'}`}>
+            Overdue
+          </button>
         </div>
 
         {/* Case List */}
@@ -764,11 +779,14 @@ export default function CaseManagementPage() {
                   selected?.id === c.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'
                 }`}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-mono font-bold text-white">{c.case_number}</span>
-                  <span className={`text-[9px] px-1.5 py-0.5 border ${getStatusColor(c.status)}`}>
-                    {c.status.replace(/_/g, ' ').toUpperCase()}
-                  </span>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <SlaBadge caseRow={c} />
+                    <span className={`text-[9px] px-1.5 py-0.5 border ${getStatusColor(c.status)}`}>
+                      {c.status.replace(/_/g, ' ').toUpperCase()}
+                    </span>
+                  </div>
                 </div>
                 <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{c.title}</div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
@@ -800,6 +818,7 @@ export default function CaseManagementPage() {
         {selected ? (
           <>
             <PanelTitleBar title={`${selected.case_number} — ${selected.title}`} icon={Briefcase}>
+              <SlaBadge caseRow={selected} />
             </PanelTitleBar>
 
             {/* Tabs */}

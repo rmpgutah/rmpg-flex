@@ -131,6 +131,41 @@ cases.get('/stats', async (c) => {
     const last30 = (await queryFirst<{ count: number }>(
       db, `SELECT COUNT(*) as count FROM cases WHERE opened_date >= date('now', '-30 days')`,
     ))?.count ?? 0;
+
+    // ── v2: clearance, SLA/overdue, aging, by-investigator, avg solvability ──
+    const closed = (await queryFirst<{ count: number }>(
+      db, `SELECT COUNT(*) as count FROM cases WHERE status LIKE 'closed%'`,
+    ))?.count ?? 0;
+    // Overdue: past explicit due_date, or elapsed opened_date + sla_hours
+    // (mirrors the client computeSlaStatus). Still-open, non-archived only.
+    const OVERDUE_SQL = `status NOT LIKE 'closed%' AND archived_at IS NULL AND (
+        (due_date IS NOT NULL AND date(due_date) < date('now')) OR
+        (due_date IS NULL AND sla_hours IS NOT NULL AND sla_hours > 0
+          AND datetime(opened_date, '+' || sla_hours || ' hours') < datetime('now')))`;
+    const overdue = (await queryFirst<{ count: number }>(
+      db, `SELECT COUNT(*) as count FROM cases WHERE ${OVERDUE_SQL}`,
+    ))?.count ?? 0;
+    const aging = await queryFirst<Record<string, number>>(
+      db,
+      `SELECT
+         SUM(CASE WHEN julianday('now') - julianday(opened_date) <= 7 THEN 1 ELSE 0 END) AS d0_7,
+         SUM(CASE WHEN julianday('now') - julianday(opened_date) > 7  AND julianday('now') - julianday(opened_date) <= 30 THEN 1 ELSE 0 END) AS d8_30,
+         SUM(CASE WHEN julianday('now') - julianday(opened_date) > 30 AND julianday('now') - julianday(opened_date) <= 90 THEN 1 ELSE 0 END) AS d31_90,
+         SUM(CASE WHEN julianday('now') - julianday(opened_date) > 90 THEN 1 ELSE 0 END) AS d90p
+       FROM cases WHERE status NOT LIKE 'closed%' AND archived_at IS NULL`,
+    );
+    const byInvestigator = await query<Record<string, unknown>>(
+      db,
+      `SELECT COALESCE(u.full_name, 'Unassigned') AS investigator, COUNT(*) AS count
+       FROM cases c LEFT JOIN users u ON c.lead_investigator_id = u.id
+       WHERE c.archived_at IS NULL AND c.status NOT LIKE 'closed%'
+       GROUP BY c.lead_investigator_id ORDER BY count DESC LIMIT 12`,
+    );
+    const avgSolv = (await queryFirst<{ avg: number | null }>(
+      db, `SELECT AVG(solvability_score) as avg FROM cases
+           WHERE solvability_score IS NOT NULL AND solvability_score > 0 AND archived_at IS NULL`,
+    ))?.avg;
+
     // CaseManagementPage reads res.data.by_status.{open,active,...} (an object
     // map) and res.data.avg_solvability. Provide the map + a {data} wrapper
     // while keeping the arrays + top-level keys for any other consumer.
@@ -139,10 +174,16 @@ cases.get('/stats', async (c) => {
     const byPriorityMap: Record<string, number> = {};
     for (const r of byPriority) byPriorityMap[String((r as any).priority)] = Number((r as any).count) || 0;
     const payload = {
-      total, open,
+      total, open, closed, overdue,
+      clearance_rate: total > 0 ? Math.round((closed / total) * 100) : 0,
       by_status: byStatusMap, by_priority: byPriorityMap,
       byStatus, byPriority, last7, last30,
-      avg_solvability: null as number | null, // no solvability score column yet
+      aging: {
+        d0_7: Number(aging?.d0_7) || 0, d8_30: Number(aging?.d8_30) || 0,
+        d31_90: Number(aging?.d31_90) || 0, d90p: Number(aging?.d90p) || 0,
+      },
+      by_investigator: byInvestigator,
+      avg_solvability: avgSolv != null ? Math.round(avgSolv) : 0,
     };
     return c.json({ data: payload, ...payload });
   } catch (err) {
@@ -172,6 +213,16 @@ cases.get('/', async (c) => {
       conditions.push('(c.case_number LIKE ? OR c.title LIKE ? OR c.summary LIKE ?)');
       const s = `%${search}%`;
       params.push(s, s, s);
+    }
+    // SLA attention queue — past due_date or elapsed sla_hours (mirrors the
+    // /stats overdue tally and the client computeSlaStatus).
+    if (q('overdue') === 'true') {
+      conditions.push(`c.status NOT LIKE 'closed%'`);
+      conditions.push(`(
+        (c.due_date IS NOT NULL AND date(c.due_date) < date('now')) OR
+        (c.due_date IS NULL AND c.sla_hours IS NOT NULL AND c.sla_hours > 0
+          AND datetime(c.opened_date, '+' || c.sla_hours || ' hours') < datetime('now'))
+      )`);
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
