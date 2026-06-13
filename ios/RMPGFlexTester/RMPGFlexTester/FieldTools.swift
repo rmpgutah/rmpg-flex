@@ -38,6 +38,7 @@ enum ToolAction {
     case distanceTo
     case markPoint
     case unitConvert
+    case scratchpad
 }
 
 struct FieldTool: Identifiable {
@@ -192,6 +193,8 @@ enum FieldToolRegistry {
                   action: .timer(label: "MEAL BREAK", seconds: 1800)),
         FieldTool(id: "ut_tow", title: "Tow ETA Timer (45m)", category: "TIMERS & UTILITIES",
                   action: .timer(label: "TOW ETA", seconds: 2700)),
+        FieldTool(id: "ut_scratch", title: "Call Scratchpad", category: "TIMERS & UTILITIES",
+                  action: .scratchpad),
         FieldTool(id: "ut_fi", title: "New FI Card", category: "TIMERS & UTILITIES",
                   action: .fieldInterview),
         FieldTool(id: "ut_sync", title: "Sync Offline Queue", category: "TIMERS & UTILITIES",

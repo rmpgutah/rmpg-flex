@@ -22,6 +22,7 @@ struct FieldToolkitView: View {
     @State private var showFuelSheet = false
     @State private var queueCount = OfflineQueue.count
     @State private var markedPoint: CLLocation?
+    @State private var showScratchpad = false
 
     private var filtered: [FieldTool] {
         guard !search.isEmpty else { return FieldToolRegistry.tools }
@@ -98,6 +99,9 @@ struct FieldToolkitView: View {
                 .presentationBackground(Theme.base)
             }
             .sheet(isPresented: $showPhotoSheet) { FieldPhotoSheet() }
+            .sheet(isPresented: $showScratchpad) {
+                ScratchpadView().presentationBackground(Theme.base)
+            }
             .sheet(isPresented: $showBoloSheet) { BoloComposer() }
             .sheet(isPresented: $showFuelSheet) { FuelPurchaseSheet().presentationBackground(Theme.base) }
             .sheet(item: $timerTool) { tool in
@@ -160,6 +164,29 @@ struct FieldToolkitView: View {
             .background(Theme.base)
             .navigationTitle(resultTitle)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // Route any result (skid table, sun times, measurement,
+                // lookup row) into the call scratchpad → attaches to the
+                // active call's notes from there.
+                Button("+ PAD") {
+                    var block = resultTitle
+                    if let resultText { block += "\n" + resultText }
+                    for row in resultRows.prefix(3) {
+                        let line = row.keys.sorted()
+                            .compactMap { k -> String? in
+                                let v = "\(row[k] ?? "")"
+                                return v.isEmpty || v == "<null>" ? nil : "\(k)=\(v)"
+                            }
+                            .joined(separator: " ")
+                        if !line.isEmpty { block += "\n" + line }
+                    }
+                    ScratchpadStore.append(block)
+                    showResult = false
+                    toast = "✓ Added to scratchpad"
+                }
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.gold)
+            }
         }
         .presentationBackground(Theme.base)
     }
@@ -180,6 +207,8 @@ struct FieldToolkitView: View {
         case .phonetic, .skidSpeed, .distanceTo, .unitConvert:
             inputText = ""
             askingInput = tool
+        case .scratchpad:
+            showScratchpad = true
         case .sunTimes:
             runSunTimes()
         case .markPoint:
@@ -399,8 +428,13 @@ struct FieldToolkitView: View {
             case .addCallNote:
                 guard let callId = await myCallId(client) else { toast = "✗ No active call on your unit"; return }
                 guard let input, !input.isEmpty else { return }
+                // PUT replaces the notes column — append to existing notes
+                // so prior dispatcher/officer notes survive.
+                let call = try? await client.requestJSON("GET", "api/dispatch/calls/\(callId)")
+                let existing = ((call as? [String: Any])?["notes"] as? String)
+                    ?? (((call as? [String: Any])?["call"] as? [String: Any])?["notes"] as? String) ?? ""
                 try await client.requestJSON("PUT", "api/dispatch/calls/\(callId)",
-                                             body: ["notes": input])
+                                             body: ["notes": (existing.isEmpty ? "" : existing + "\n") + input])
                 toast = "✓ Note added to call"
             case .pingLocation:
                 guard let loc = LocationManager.shared.last else { toast = "✗ No GPS fix"; return }
