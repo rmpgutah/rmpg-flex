@@ -43,6 +43,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { generateServeCharges } from '../utils/serveChargeStore';
 import { geocodeAddress } from './geocode';
 
 const sv = new Hono<Env>();
@@ -305,14 +306,14 @@ sv.post('/', async (c) => {
        recipient_state, recipient_zip, recipient_lat, recipient_lng, property_id,
        document_type, case_number, court_name, jurisdiction,
        client_name, attorney_name, priority, time_window, deadline,
-       max_attempts, service_instructions, notes, status
-     ) VALUES (?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?)`,
+       max_attempts, service_instructions, notes, status, contract_id
+     ) VALUES (?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?,?)`,
     body.call_id ?? null, body.sm_job_id ?? null, body.officer_id ?? null, body.serve_date ?? null,
     body.recipient_name ?? null, body.recipient_person_id ?? null, body.recipient_address ?? null, body.recipient_address_2 ?? null, body.recipient_city ?? null,
     body.recipient_state ?? null, body.recipient_zip ?? null, lat, lng, body.property_id ?? null,
     body.document_type ?? null, body.case_number ?? null, body.court_name ?? null, body.jurisdiction ?? null,
     body.client_name ?? null, body.attorney_name ?? null, priority, body.time_window ?? null, body.deadline ?? null,
-    body.max_attempts ?? 3, body.service_instructions ?? null, body.notes ?? null, status,
+    body.max_attempts ?? 3, body.service_instructions ?? null, body.notes ?? null, status, body.contract_id ?? null,
   );
   return c.json({ success: true, id: r.meta.last_row_id }, 201);
 });
@@ -352,7 +353,7 @@ sv.put('/:id', async (c) => {
     'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng', 'property_id',
     'document_type', 'case_number', 'court_name', 'jurisdiction',
     'client_name', 'attorney_name', 'priority', 'time_window', 'deadline',
-    'max_attempts', 'service_instructions', 'notes', 'status', 'sort_order',
+    'max_attempts', 'service_instructions', 'notes', 'status', 'sort_order', 'contract_id',
   ];
   const sets: string[] = [];
   const args: any[] = [];
@@ -426,6 +427,11 @@ async function logAttempt(c: any, defaultResult: string) {
     `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
     nextNum, newStatus, id,
   );
+  // Best-effort: bill on completion (served or non-est/failed). Must never
+  // break the serve write, so failures are swallowed by generateServeCharges.
+  if (newStatus === 'served' || newStatus === 'failed') {
+    await generateServeCharges(db, id);
+  }
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum, queue_status: newStatus });
 }
 
@@ -469,6 +475,7 @@ sv.post('/:id/substitute-service', async (c) => {
     `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now','localtime') WHERE id = ?`,
     nextNum, id,
   );
+  await generateServeCharges(db, id);
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum });
 });
 
