@@ -138,6 +138,7 @@ import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import stubs from './routes/stubs';
+import dar from './routes/dar';
 import codeEnforcement from './routes/codeEnforcement';
 import weather from './routes/weather';
 // Dispatch domain
@@ -533,7 +534,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // Code enforcement graduated from stubs to a real D1-backed router
   // (code_violations + vehicle_tows tables) — 2026-06-09 404 sweep.
   { prefix: '/api/code-enforcement', router: codeEnforcement, auth: 'required' },
-  { prefix: '/api/dar', router: stubs, auth: 'required' },
+  { prefix: '/api/dar', router: dar, auth: 'required' },
   { prefix: '/api/diagnostics', router: stubs, auth: 'public' },
   { prefix: '/api/firecrawl-tools', router: stubs, auth: 'required' },
   { prefix: '/api/mobile', router: stubs, auth: 'public' },
