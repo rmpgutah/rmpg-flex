@@ -14,6 +14,7 @@ struct DashboardView: View {
     @State private var loading = true
     @State private var status: String?
     @State private var confirmPanic = false
+    @State private var showCommand = false
 
     private var officerName: String { JWTClaims.current()?.name ?? "Officer" }
 
@@ -22,6 +23,7 @@ struct DashboardView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     HStack(spacing: 6) { OfflineStatusPill(); MDTStatusPill(); Spacer() }
+                    commandBar
                     greeting
                     statRow
                     quickActions
@@ -47,7 +49,26 @@ struct DashboardView: View {
             } message: {
                 Text("This creates a Priority-1 OFFICER ASSIST call on the dispatch board.")
             }
+            .sheet(isPresented: $showCommand) { CommandSearchView() }
         }
+    }
+
+    // Command Center front door — taps open the universal search + quick-command
+    // launcher (CommandSearchView). Styled as an inert search field so it reads
+    // as "search anything from here".
+    private var commandBar: some View {
+        Button { showCommand = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").font(.system(size: 14)).foregroundStyle(Theme.gold)
+                Text("Search anyone · plate · call · warrant…")
+                    .font(.system(size: 12)).foregroundStyle(Theme.neutral)
+                Spacer()
+                Image(systemName: "command").font(.system(size: 12)).foregroundStyle(Theme.neutral)
+            }
+            .padding(10).background(Theme.raised).clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.border, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private var greeting: some View {
