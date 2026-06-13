@@ -304,7 +304,13 @@ sv.post('/assignments/assign', async (c) => {
   const b = await c.req.json<any>();
   const jobIds: number[] = Array.isArray(b.job_ids) ? b.job_ids.map((x: any) => parseInt(x, 10)).filter((n: number) => !isNaN(n)) : [];
   if (!jobIds.length) return c.json({ error: 'job_ids required' }, 400);
-  const officerId = b.officer_id == null ? null : parseInt(b.officer_id, 10);
+  let officerId: number | null = null;
+  if (b.officer_id != null) {
+    officerId = parseInt(b.officer_id, 10);
+    if (isNaN(officerId)) return c.json({ error: 'invalid officer_id' }, 400);
+    const ok = await queryFirst<any>(db, "SELECT id FROM users WHERE id = ? AND role IN ('officer','supervisor','manager','admin')", officerId);
+    if (!ok) return c.json({ error: 'officer_id is not an assignable user' }, 400);
+  }
   const user = c.get('user') as { id: number } | undefined;
 
   const assigned: number[] = [];
