@@ -3,7 +3,7 @@
 //   <CaseMyTasksView>  — cross-case "assigned to me", with case links
 // Both talk to /api/cases/:id/tasks and /api/cases/tasks/mine.
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Loader2, Trash2, Check, RotateCcw, Clock, ExternalLink } from 'lucide-react';
+import { Plus, Loader2, Trash2, Check, RotateCcw, Clock, ExternalLink, ListChecks } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from './PanelTitleBar';
 import IconButton from './IconButton';
@@ -106,6 +106,13 @@ export function CaseTasksTab({ caseId, users, onChanged }: { caseId: number; use
     try { await apiFetch(`/cases/${caseId}/tasks/${t.id}`, { method: 'DELETE' }); refresh(); addToast('Task removed', 'success'); }
     catch (e: any) { addToast(e.message || 'Delete failed', 'error'); }
   };
+  const applyTemplate = async () => {
+    try {
+      const r = await apiFetch<{ added: number }>(`/cases/${caseId}/tasks/apply-template`, { method: 'POST' });
+      addToast(r?.added ? `${r.added} standard task${r.added === 1 ? '' : 's'} added` : 'Standard tasks already present', 'success');
+      refresh();
+    } catch (e: any) { addToast(e.message || 'Failed to apply template', 'error'); }
+  };
 
   const open = tasks.filter((t) => t.status !== 'done' && t.status !== 'canceled');
   const closed = tasks.filter((t) => t.status === 'done' || t.status === 'canceled');
@@ -114,9 +121,14 @@ export function CaseTasksTab({ caseId, users, onChanged }: { caseId: number; use
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="text-[10px] font-mono text-rmpg-500 uppercase">Tasks &amp; Leads ({open.length} open)</div>
-        <button type="button" onClick={() => setShowForm((s) => !s)} className="toolbar-btn text-[10px]">
-          <Plus style={{ width: 10, height: 10 }} /> Add task
-        </button>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={applyTemplate} className="toolbar-btn text-[10px]" title="Add this case type's standard investigative tasks">
+            <ListChecks style={{ width: 10, height: 10 }} /> Template
+          </button>
+          <button type="button" onClick={() => setShowForm((s) => !s)} className="toolbar-btn text-[10px]">
+            <Plus style={{ width: 10, height: 10 }} /> Add task
+          </button>
+        </div>
       </div>
 
       {showForm && (

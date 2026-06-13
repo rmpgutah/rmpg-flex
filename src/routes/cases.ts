@@ -26,6 +26,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { isValidTaskStatus, isValidTaskPriority, completedAtFor } from '../utils/caseTasks';
 import { evaluateCompleteness } from '../utils/caseCompleteness';
+import { pickTemplate } from '../utils/caseTaskTemplates';
 
 const cases = new Hono<Env>();
 
@@ -1056,6 +1057,39 @@ cases.post('/:id/tasks', async (c) => {
     return c.json({ data: task }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to create task', code: 'TASK_CREATE_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+// POST /:id/tasks/apply-template — seed the case-type's standard leads
+// (skips titles already present, so it's safe to re-apply).
+cases.post('/:id/tasks/apply-template', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const row = await queryFirst<{ case_type: string | null }>(db, 'SELECT case_type FROM cases WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
+
+    const existing = await query<{ title: string }>(db, 'SELECT title FROM case_tasks WHERE case_id = ?', id);
+    const have = new Set(existing.map((t) => t.title.trim().toLowerCase()));
+    const userId = c.get('userId') as number | undefined;
+    let added = 0;
+    for (const item of pickTemplate(row.case_type)) {
+      if (have.has(item.title.trim().toLowerCase())) continue;
+      await execute(
+        db,
+        `INSERT INTO case_tasks (case_id, title, status, priority, created_by, updated_at)
+         VALUES (?, ?, 'open', ?, ?, datetime('now','localtime'))`,
+        id, item.title, item.priority, userId ?? null,
+      );
+      added++;
+    }
+    if (added > 0) await logCaseActivity(c, id, 'task.created', { template: true, added });
+    return c.json({ success: true, added });
+  } catch (err) {
+    return c.json({ error: 'Failed to apply task template', code: 'TASK_TEMPLATE_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
 

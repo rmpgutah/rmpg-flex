@@ -488,5 +488,14 @@ export default {
         .then((n) => { if (n) console.log(`[serve-nudge] ${n} nudge(s) raised`); })
         .catch((err) => console.error('[serve-nudge] sweep failed:', err)),
     );
+    // Case-task due-date nudges — overdue/due-soon active tasks notify the
+    // assignee + supervisors. Deduped per task via the notifications table
+    // (≤ 1 nudge / 20h), so safe on the per-minute cron.
+    ctx.waitUntil(
+      import('./utils/caseTaskNudges')
+        .then(({ sweepCaseTaskNudges }) => sweepCaseTaskNudges(env.DB, env))
+        .then((n) => { if (n) console.log(`[case-task-nudge] ${n} nudge(s) raised`); })
+        .catch((err) => console.error('[case-task-nudge] sweep failed:', err)),
+    );
   },
 };
