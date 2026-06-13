@@ -230,16 +230,18 @@ export async function runFullListLeg(
           err instanceof Error ? err.message : String(err),
         );
       }
-      // Clear-sweep: mark rows of this source that were NOT seen since
-      // runStartedAt as 'cleared' (same datetime-normalisation pattern as the
-      // per-person leg's clear sweep in markScrapedCleared).
-      cleared = await markScrapedCleared(db, adapter.meta.key, runStartedAt).catch((err) => {
-        console.warn(
-          `[warrantSources.runScan.fullList] ${adapter.meta.key} clear sweep failed:`,
-          err instanceof Error ? err.message : String(err),
-        );
-        return 0;
-      });
+      // Clear-sweep ONLY on a clean, non-empty ingest. A failed or empty fetch must NOT
+      // wipe a source's active warrants (a transient fetch hiccup would otherwise mark
+      // real warrants 'cleared' — the worst false-negative for a warrant system).
+      if (errors === 0 && found > 0) {
+        cleared = await markScrapedCleared(db, adapter.meta.key, runStartedAt).catch((err) => {
+          console.warn(
+            `[warrantSources.runScan.fullList] ${adapter.meta.key} clear sweep failed:`,
+            err instanceof Error ? err.message : String(err),
+          );
+          return 0;
+        });
+      }
     } catch (err) {
       // fetchAll itself threw — count as a single adapter-level error.
       errors++;

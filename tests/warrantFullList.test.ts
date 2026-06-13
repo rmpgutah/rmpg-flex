@@ -33,6 +33,13 @@ describe('runFullListLeg', () => {
     // The batched path uses db.batch() rather than per-hit prepare().run()
     expect(calls.some(c => c.sql === 'batch-stmt')).toBe(true);
   });
+  it('does NOT clear-sweep when a source returns zero hits (no wipe on empty/transient)', async () => {
+    const { DB, calls } = fakeDb();
+    const empty: WarrantSourceAdapter = { meta: { key: 'empty', display_name: 'E', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { return []; } };
+    const summary = await runFullListLeg(DB, [empty]);
+    expect(summary[0].found).toBe(0);
+    expect(calls.some((c) => /cleared/i.test(c.sql))).toBe(false);
+  });
   it('isolates a throwing adapter (one bad source does not abort others)', async () => {
     const { DB } = fakeDb();
     const bad: WarrantSourceAdapter = { meta: { key: 'bad', display_name: 'B', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { throw new Error('boom'); } };
