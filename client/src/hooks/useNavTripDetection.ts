@@ -27,7 +27,20 @@ function loadState(): NavTripDetectionState | null {
 }
 
 function saveState(state: NavTripDetectionState) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch { /* quota */ }
+  try {
+    // Do NOT persist raw GPS coordinates to localStorage (sensitive location data
+    // at rest — CWE-312). The anchor/buffer/window positions are transient working
+    // memory for the detector and re-seed from the next live fix on reload (see the
+    // `!loginPosition` re-anchor branch in the detection effect); only the
+    // non-location bookkeeping (trip ids, timestamps, flags) needs to survive.
+    const persisted: NavTripDetectionState = {
+      ...state,
+      loginPosition: null,
+      bufferPosition: null,
+      windowStartPosition: null,
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(persisted));
+  } catch { /* quota */ }
 }
 
 function clearState() {
