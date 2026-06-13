@@ -66,6 +66,10 @@ describe('codeCandidates', () => {
     const c = codeCandidates('returned for revision');
     expect(c).toContain('returned');
   });
+
+  it('reverse-maps "administrative" to the admin case_type code', () => {
+    expect(codeCandidates('administrative')).toContain('admin');
+  });
 });
 
 describe('escapeLike', () => {

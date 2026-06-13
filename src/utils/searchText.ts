@@ -57,6 +57,8 @@ const LABEL_TO_CODE: Record<string, string[]> = {
   // Incident status codes whose display label has trailing qualifier words
   'submitted for review': ['submitted'],
   'returned for revision': ['returned'],
+  // CASE_TYPE_LABELS: admin → 'Administrative' (snake_case = 'administrative' ≠ 'admin')
+  'administrative':       ['admin'],
 };
 
 /**

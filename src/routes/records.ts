@@ -1594,11 +1594,12 @@ records.get('/search', async (c) => {
     }
 
     if (type === 'case') {
+      const ctLike = codedLike('case_type', q);
       const rows = await query<Record<string, unknown>>(db, `
         SELECT id, case_number, title, status, case_type, created_at FROM cases
-        WHERE case_number LIKE ? OR title LIKE ? OR case_type LIKE ?
+        WHERE case_number LIKE ? OR title LIKE ? OR ${ctLike.sql}
         ORDER BY created_at DESC LIMIT 50
-      `, like, like, like);
+      `, like, like, ...ctLike.binds);
       return c.json(rows.map((r) => ({
         ...r,
         label: [r.case_number, r.title].filter(Boolean).join(' — ') || `Case #${r.id}`,
