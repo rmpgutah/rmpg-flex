@@ -22,12 +22,20 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
     priority: ((row.priority as 1 | 2 | 3 | 4) || 3), family: row.family, category: (row.kind as WarrantCategory),
   };
   if (row.family === 'socrata') {
-    return { meta, mode: 'full-list', async fetchAll(_env: { DB: D1Database } & Record<string, unknown>): Promise<RawWarrantHit[]> {
+    return { meta, mode: 'full-list', async fetchAll(): Promise<RawWarrantHit[]> {
       try {
-        const url = `https://${row.base_url}/resource/${row.resource_id}.json?$limit=50000`;
-        const res = await fetch(url, { headers: { Accept: 'application/json' } });
-        if (!res.ok) return [];
-        return parseSocrata((await res.json()) as Record<string, unknown>[], map, row.source_key);
+        const out: RawWarrantHit[] = [];
+        const PAGE = 50000;
+        for (let offset = 0; offset < 1_000_000; offset += PAGE) {
+          // $order=:id gives a stable sort so $offset paging doesn't skip/repeat rows.
+          const url = `https://${row.base_url}/resource/${row.resource_id}.json?$limit=${PAGE}&$offset=${offset}&$order=:id`;
+          const res = await fetch(url, { headers: { Accept: 'application/json' } });
+          if (!res.ok) break;
+          const rows = (await res.json()) as Record<string, unknown>[];
+          out.push(...parseSocrata(rows, map, row.source_key));
+          if (rows.length < PAGE) break;  // last page
+        }
+        return out;
       } catch { return []; }
     } };
   }
