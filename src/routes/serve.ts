@@ -43,6 +43,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { generateServeCharges } from '../utils/serveChargeStore';
 import { geocodeAddress } from './geocode';
 
 const sv = new Hono<Env>();
@@ -426,6 +427,11 @@ async function logAttempt(c: any, defaultResult: string) {
     `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
     nextNum, newStatus, id,
   );
+  // Best-effort: bill on completion (served or non-est/failed). Must never
+  // break the serve write, so failures are swallowed by generateServeCharges.
+  if (newStatus === 'served' || newStatus === 'failed') {
+    await generateServeCharges(db, id);
+  }
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum, queue_status: newStatus });
 }
 
@@ -469,6 +475,7 @@ sv.post('/:id/substitute-service', async (c) => {
     `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now','localtime') WHERE id = ?`,
     nextNum, id,
   );
+  await generateServeCharges(db, id);
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum });
 });
 
