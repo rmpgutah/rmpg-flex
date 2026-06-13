@@ -29,6 +29,7 @@ import { AlertHubDO } from './durable-objects/AlertHubDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
 import { runAllSourceScans } from './utils/warrantSources/runScan';
 import { runUtahSorPoll } from './utils/utahSorPoller';
+import { runScreeningScans } from './utils/screening/runScreeningScans';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
 import { syncAllVehicleGpsMileage } from './routes/fleet';
@@ -395,6 +396,11 @@ export default {
       runUtahSorPoll(env.DB)
         .then((r) => { if (r.configured) console.log(`[sor] seen=${r.seen} upserted=${r.upserted}${r.error ? ` err=${r.error}` : ''}`); })
         .catch((err) => console.error('[sor] poll failed:', err)),
+    );
+    // Person-screening framework (INTERPOL / OFAC / Utah SOR). Watch-listed
+    // persons only; OFAC dataset is bulk-refreshed inside the orchestrator.
+    ctx.waitUntil(
+      runScreeningScans(env).catch((err) => console.error('[screening] scan failed:', err)),
     );
     // Intel Search index sync + person-resolution pass (migration 0098).
     // Full re-sync is cheap at the current dataset size; failures are
