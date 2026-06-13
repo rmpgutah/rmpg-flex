@@ -65,6 +65,7 @@ import ai from './routes/ai';
 import alerts from './routes/notifications';
 import assets from './routes/assets';
 import billing from './routes/billing';
+import serveBilling from './routes/serveBilling';
 import invoices from './routes/invoices';
 import useOfForce from './routes/useOfForce';
 import notificationsInbox from './routes/notificationsInbox';
@@ -391,6 +392,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/audit', router: audit, auth: 'required' },
   { prefix: '/api/billing', router: billing, auth: 'required',
     note: 'Financial/billing module: contracts, invoices, line items, payments, expenses' },
+  { prefix: '/api/billing', router: serveBilling, auth: 'required',
+    note: 'Process-service contracts billing: pricing rate card, PS contract terms, serve charges, invoice-from-charges' },
   { prefix: '/api/invoices', router: invoices, auth: 'required',
     note: 'InvoicesPage summary tile (/stats) over the invoices table. Full CRUD lives under /api/billing/invoices.' },
   { prefix: '/api/use-of-force', router: useOfForce, auth: 'required',
