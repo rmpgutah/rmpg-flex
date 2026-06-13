@@ -16,10 +16,13 @@ import type { WarrantSourceAdapter } from './types';
 import { utahApiAdapter } from './adapters/utahApi';
 import { adaCountyAdapter } from './adapters/adaCounty';
 import { natronaAdapter } from './adapters/natrona';
+import { fbiAdapter } from './adapters/fbi';
+import { utahCountyAdapter } from './adapters/utahCounty';
+import { getConfigAdapters } from './configRegistry';
 import { query } from '../db';
 
 /** All known source adapters (code-resident). */
-export const ADAPTERS: WarrantSourceAdapter[] = [utahApiAdapter, adaCountyAdapter, natronaAdapter];
+export const ADAPTERS: WarrantSourceAdapter[] = [utahApiAdapter, adaCountyAdapter, natronaAdapter, fbiAdapter, utahCountyAdapter];
 
 /**
  * Adapters that have a warrant_scraper_config row (i.e. enabled for scanning).
@@ -44,4 +47,18 @@ export async function getEnabledAdapters(db: D1Database): Promise<WarrantSourceA
     );
     return ADAPTERS;
   }
+}
+
+/**
+ * Full enabled set = configured code adapters (getEnabledAdapters) + the
+ * always-on federal/home code adapters (fbi, utah-county) + config-row adapters
+ * (national_warrant_sources). Deduped by meta.key.
+ */
+export async function getAllEnabledAdapters(db: D1Database): Promise<WarrantSourceAdapter[]> {
+  const code = await getEnabledAdapters(db);
+  const config = await getConfigAdapters(db);
+  const always = ADAPTERS.filter((a) => a.meta.family === 'fbi' || a.meta.family === 'utah-county');
+  const byKey = new Map<string, WarrantSourceAdapter>();
+  for (const a of [...code, ...always, ...config]) byKey.set(a.meta.key, a);
+  return [...byKey.values()];
 }
