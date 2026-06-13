@@ -567,6 +567,37 @@ intel.post('/jail/ingest', supervisorPlus, async (c) => {
   return c.json({ success: true, ...result, parsed: parsed.length });
 });
 
+intel.post('/jail/ingest-bookings', supervisorPlus, async (c) => {
+  const db = getDb(c.env);
+  const b = await c.req.json().catch(() => ({} as any));
+  const sourceKey = String(b?.source_key || '').trim();
+  const bookings = Array.isArray(b?.bookings) ? b.bookings : null;
+  if (!sourceKey) return c.json({ error: 'source_key required' }, 400);
+  if (!bookings) return c.json({ error: 'bookings array required' }, 400);
+  if (bookings.length > 500) return c.json({ error: 'max 500 bookings per call' }, 400);
+  const normalized = bookings.map((r: any) => ({
+    source_key: sourceKey,
+    booking_id: String(r?.booking_id || ''),
+    full_name: r?.full_name ?? null,
+    first_name: r?.first_name ?? null,
+    last_name: r?.last_name ?? null,
+    dob: r?.dob ?? null,
+    booking_date: r?.booking_date ?? null,
+    charges: r?.charges ?? null,
+    county: r?.county ?? null,
+    mugshot_url: r?.mugshot_url ?? null,
+    detail_url: r?.detail_url ?? null,
+  }));
+  const result = await ingestBookings(db, normalized as any, 'roster_scrape');
+  // Best-effort source health stamp so the registry reflects runner activity.
+  try {
+    await execute(db,
+      `UPDATE jail_roster_sources SET last_run_at = datetime('now'), last_status = ?, row_count = row_count + ?, updated_at = datetime('now') WHERE source_key = ?`,
+      `runner ok (${result.ingested})`, result.ingested, sourceKey);
+  } catch (err: any) { console.error('[jail/ingest-bookings] status update failed:', err?.message); }
+  return c.json({ success: true, ...result, received: bookings.length });
+});
+
 intel.get('/jail/bookings', operational, async (c) => {
   const db = getDb(c.env);
   const q = (c.req.query('q') || '').trim();

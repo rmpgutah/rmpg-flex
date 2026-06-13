@@ -15,6 +15,29 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
   return null;
 }
 
+// ── Sentinel clients for parentless property rows ──────────────
+// properties.client_id is NOT NULL and FKs to clients(id), but some rows
+// have no natural parent client: a DL-scan address (the address printed on
+// a license) and an unaffiliated business/intel record. Mirror the
+// serve-intake sentinel pattern (utils/serveIntakeRecords.ts): create one
+// named client the first time it's needed and reuse it forever, so the FK
+// target always exists and these rows stay filterable by sentinel name.
+async function ensureSentinelClient(db: D1Database, name: string, notes: string): Promise<number> {
+  const found = await queryFirst<{ id: number }>(
+    db, 'SELECT id FROM clients WHERE name = ? LIMIT 1', name);
+  if (found) return found.id;
+  const result = await execute(db,
+    `INSERT INTO clients (name, contact_name, status, notes) VALUES (?, 'system', 'active', ?)`,
+    name, notes);
+  return Number(result.meta.last_row_id);
+}
+const ensureScanSentinelClient = (db: D1Database) =>
+  ensureSentinelClient(db, 'Field Intelligence — Scanned',
+    'Auto-created for scan/field-imported property rows (DL scanner). Do not delete — used as the default client_id for those rows.');
+const ensureBusinessSentinelClient = (db: D1Database) =>
+  ensureSentinelClient(db, 'Business Records — Unaffiliated',
+    'Auto-created for business/intel records with no parent client. Do not delete — used as the default client_id for those rows.');
+
 // GET /records/properties
 records.get('/properties', async (c) => {
   try {
@@ -313,11 +336,14 @@ records.post('/from-dl-scan', async (c) => {
       property = await queryFirst<Record<string, unknown>>(db,
         'SELECT * FROM properties WHERE lower(address) = lower(?) LIMIT 1', address);
       if (!property) {
+        // properties.client_id is NOT NULL + FK → clients(id); DL-scan
+        // addresses have no parent client, so attach the scan sentinel.
+        const sentinelClientId = await ensureScanSentinelClient(db);
         const result = await execute(db, `
-          INSERT INTO properties (name, address, city, state, zip, property_type,
+          INSERT INTO properties (client_id, name, address, city, state, zip, property_type,
             occupancy_status, owner_name, notes, is_active, created_at)
-          VALUES (?,?,?,?,?,?,?,?,?, 1, datetime('now'))`,
-          address, address, str(scan.city), str(scan.state), str(scan.zip),
+          VALUES (?,?,?,?,?,?,?,?,?,?, 1, datetime('now'))`,
+          sentinelClientId, address, address, str(scan.city), str(scan.state), str(scan.zip),
           'residential', 'occupied', `${first} ${last}`,
           `Created from DL scan — listed address of ${first} ${last}`);
         property = await queryFirst<Record<string, unknown>>(db,
@@ -1087,7 +1113,11 @@ records.post('/businesses', async (c) => {
          owner_name, owner_phone, contact_name, contact_phone, contact_email,
          industry, employee_count, annual_revenue, status, is_active, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      body.client_id || null, body.name, body.address || '', body.city || null, body.state || null, body.zip || null,
+      // client_id is NOT NULL + FK → clients(id); a business with no parent
+      // client gets the unaffiliated-business sentinel instead of null (which
+      // 500'd with a NOT NULL constraint failure — same bug class as DL-scan).
+      body.client_id || (await ensureBusinessSentinelClient(db)),
+      body.name, body.address || '', body.city || null, body.state || null, body.zip || null,
       body.business_type, body.latitude || null, body.longitude || null, body.phone || null, body.email || null, body.notes || null,
       body.dba_name || null, body.ein || null, body.license_number || null, body.website || null,
       body.owner_name || null, body.owner_phone || null, body.contact_name || null, body.contact_phone || null, body.contact_email || null,
