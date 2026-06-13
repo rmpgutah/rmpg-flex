@@ -9,6 +9,8 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { loadPricing, loadTerms } from '../utils/serveChargeStore';
+import { computeServeCharges, type ServeJobFacts } from '../utils/serveCharges';
 
 const psb = new Hono<Env>();
 
@@ -33,6 +35,32 @@ psb.get('/ps-pricing/items', async (c) => {
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM ps_pricing_items ORDER BY sort_order, id');
   return c.json({ data: rows });
+});
+
+// GET /cost-estimate?contract_id=&priority=&attempts=&skip_trace=&mileage=&wait_hours=
+// Quote the fee for a serve BEFORE it's worked — same pure pricing engine the
+// post-completion charge uses, so the estimate matches the eventual bill. Used at
+// intake to show the client what a job will cost under their contract.
+psb.get('/cost-estimate', async (c) => {
+  const db = getDb(c.env);
+  const num = (q: string | undefined): number | null => {
+    if (q == null || q === '') return null; const n = Number(q); return Number.isFinite(n) ? n : null;
+  };
+  const contractId = num(c.req.query('contract_id'));
+  const facts: ServeJobFacts = {
+    serve_queue_id: 0,
+    priority: c.req.query('priority') || 'normal',
+    attempt_count: Math.max(1, Math.round(num(c.req.query('attempts')) ?? 1)),
+    has_skip_trace: c.req.query('skip_trace') === '1' || c.req.query('skip_trace') === 'true',
+    mileage: num(c.req.query('mileage')),
+    wait_hours: num(c.req.query('wait_hours')),
+  };
+  const [pricing, terms] = await Promise.all([loadPricing(db), loadTerms(db, contractId)]);
+  const computed = computeServeCharges(facts, terms, pricing);
+  return c.json({
+    contract_id: contractId, priority: facts.priority, attempts: facts.attempt_count,
+    subtotal: computed.subtotal, lines: computed.lines,
+  });
 });
 
 psb.post('/ps-pricing/items', async (c) => {
