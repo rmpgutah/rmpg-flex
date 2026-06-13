@@ -245,7 +245,7 @@ export async function runAllSourceScans(
     for (let i = 0; i < persons.length; i++) {
       const person = persons[i];
       try {
-        const hits = await adapter.fetchForPerson(person, { DB: db });
+        const hits = await adapter.fetchForPerson!(person, { DB: db });
         for (const h of hits) {
           await upsertScrapedWarrant(db, h, person.id);
           summary.found++;

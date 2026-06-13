@@ -24,12 +24,25 @@ export interface RawWarrantHit {
   detail_url?: string | null;
 }
 
-export type SourceKind = 'api' | 'html' | 'browser' | 'portal';
+export type SourceKind = 'api' | 'html' | 'browser' | 'portal' | 'json' | 'socrata' | 'arcgis' | 'pdf' | 'p2c-legacy' | 'p2c-cloud';
+export type SourceMode = 'full-list' | 'per-person';
+export type WarrantCategory = 'criminal' | 'civil' | 'wanted';
 
-export interface SourceMeta { key: string; display_name: string; state: string; county: string | null; source_url: string; kind: SourceKind; priority: 1 | 2 | 3 | 4; }
+export interface SourceMeta {
+  key: string;
+  display_name: string;
+  state: string;
+  county: string | null;
+  source_url: string;
+  kind: SourceKind;
+  priority: 1 | 2 | 3 | 4;
+  family?: string;
+  category?: WarrantCategory;
+}
 
 export interface WarrantSourceAdapter {
   meta: SourceMeta;
-  /** Query the source for ONE local person. Pure of persistence — returns raw hits or throws on transport error. Phase-2 browser/portal kinds may throw 'unsupported transport'. */
-  fetchForPerson(person: PersonRow, env: { DB: D1Database } & Record<string, unknown>): Promise<RawWarrantHit[]>;
+  mode: SourceMode;
+  fetchAll?(env: { DB: D1Database } & Record<string, unknown>): Promise<RawWarrantHit[]>;
+  fetchForPerson?(person: PersonRow, env: { DB: D1Database } & Record<string, unknown>): Promise<RawWarrantHit[]>;
 }
