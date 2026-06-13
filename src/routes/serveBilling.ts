@@ -246,4 +246,62 @@ psb.post('/serve-charges/:id/recompute', async (c) => {
   return c.json({ success: newId !== null });
 });
 
+async function nextInvoiceNumber(db: ReturnType<typeof getDb>): Promise<string> {
+  const yy = String(new Date().getFullYear()).slice(-2);
+  const prefix = `INV-${yy}-`;
+  const last = await queryFirst<{ invoice_number: string }>(db, 'SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1', `${prefix}%`);
+  let n = 1;
+  const m = last?.invoice_number?.match(/^INV-\d{2}-(\d+)$/);
+  if (m) n = parseInt(m[1], 10) + 1;
+  return `${prefix}${String(n).padStart(4, '0')}`;
+}
+
+psb.post('/invoices/from-serve-charges', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const db = getDb(c.env);
+  const b = await c.req.json<any>();
+  const { from, to } = b;
+  if (!from || !to) return c.json({ error: 'from and to dates required' }, 400);
+
+  const conds = ["sc.status = 'approved'", 'date(sc.computed_at) >= date(?)', 'date(sc.computed_at) <= date(?)'];
+  const params: unknown[] = [from, to];
+  if (b.contract_id) { conds.push('sc.contract_id = ?'); params.push(b.contract_id); }
+  if (b.client_id) { conds.push('cc.client_id = ?'); params.push(b.client_id); }
+  const charges = await query<any>(db,
+    `SELECT sc.id, sc.contract_id, cc.client_id
+       FROM serve_charges sc LEFT JOIN client_contracts cc ON sc.contract_id = cc.id
+      WHERE ${conds.join(' AND ')}`, ...params);
+  if (charges.length === 0) return c.json({ data: null, message: 'No approved charges in range' });
+
+  const clientId = charges.find((x) => x.client_id)?.client_id ?? null;
+  const contractId = b.contract_id ?? charges.find((x) => x.contract_id)?.contract_id ?? null;
+
+  const invNumber = await nextInvoiceNumber(db);
+  const invIns = await execute(db,
+    `INSERT INTO invoices (invoice_number, client_id, contract_id, issue_date, subtotal, tax_rate, tax_amount, total_amount)
+     VALUES (?, ?, ?, date('now'), 0, 0, 0, 0)`,
+    invNumber, clientId, contractId);
+  const invoiceId = Number(invIns.meta.last_row_id);
+
+  let subtotal = 0;
+  for (const ch of charges) {
+    const lines = await query<any>(db, 'SELECT * FROM serve_charge_lines WHERE serve_charge_id = ?', ch.id);
+    for (const l of lines) {
+      subtotal += Number(l.line_total) || 0;
+      await execute(db,
+        `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        invoiceId, l.description, l.quantity, l.unit_price, l.line_total, l.taxable ? 1 : 0);
+    }
+    await execute(db, `UPDATE serve_charges SET status = 'invoiced', invoice_id = ? WHERE id = ?`, invoiceId, ch.id);
+  }
+  subtotal = Math.round(subtotal * 100) / 100;
+  await execute(db, `UPDATE invoices SET subtotal = ?, total_amount = ? WHERE id = ?`, subtotal, subtotal, invoiceId);
+
+  const user = c.get('user') as { id: number } | undefined;
+  await logAudit(db, user?.id ?? null, 'invoice', 'serve_charge', invoiceId, { invoice_number: invNumber, charge_ids: charges.map((x) => x.id) });
+  return c.json({ data: { invoice_id: invoiceId, invoice_number: invNumber, charge_count: charges.length, subtotal } }, 201);
+});
+
 export default psb;
