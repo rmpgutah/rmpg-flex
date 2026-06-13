@@ -7,7 +7,7 @@ import Combine
 final class OfflineSync: ObservableObject {
     static let shared = OfflineSync()
 
-    @Published private(set) var queueCount = OfflineQueue.count
+    @Published private(set) var queueCount = OfflineQueue.count + OfflinePhotoQueue.count
     @Published var lastResult: String?
 
     private var cancellables = Set<AnyCancellable>()
@@ -25,15 +25,19 @@ final class OfflineSync: ObservableObject {
         queueCount = OfflineQueue.count
     }
 
-    func refreshCount() { queueCount = OfflineQueue.count }
+    func refreshCount() { queueCount = OfflineQueue.count + OfflinePhotoQueue.count }
 
-    /// Replay anything queued. Safe to call repeatedly.
+    /// Replay anything queued — JSON writes then staged photos. Safe to call repeatedly.
     func flush() async {
-        guard OfflineQueue.count > 0, let client = await authedClient() else { refreshCount(); return }
-        let (sent, rejected) = await OfflineQueue.flush(using: client)
+        guard (OfflineQueue.count + OfflinePhotoQueue.count) > 0,
+              let client = await authedClient() else { refreshCount(); return }
+        let r1 = await OfflineQueue.flush(using: client)
+        let r2 = await OfflinePhotoQueue.flush(using: client)
         refreshCount()
-        if !sent.isEmpty || !rejected.isEmpty {
-            lastResult = OfflineSyncLogic.summary(sent: sent.count, rejected: rejected.count)
+        let sent = r1.sent.count + r2.sent.count
+        let rejected = r1.rejected.count + r2.rejected.count
+        if sent > 0 || rejected > 0 {
+            lastResult = OfflineSyncLogic.summary(sent: sent, rejected: rejected)
         }
     }
 }
