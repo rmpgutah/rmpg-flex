@@ -1126,6 +1126,14 @@ si.post('/:id/attempts', async (c) => {
     nextNum, newStatus, id,
   );
 
+  // Completion → auto-compute the serve charge (pending_review) so it shows up in
+  // billing without a manual step. Mirrors serve.ts; best-effort — generateServeCharges
+  // swallows its own errors and never breaks the attempt write.
+  if (newStatus === 'served') {
+    const { generateServeCharges } = await import('../utils/serveChargeStore');
+    await generateServeCharges(db, id).catch(() => null);
+  }
+
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum, queue_status: newStatus });
 });
 

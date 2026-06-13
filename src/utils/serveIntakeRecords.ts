@@ -834,6 +834,24 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       queueRow.plaintiff, queueRow.defendant, queueRow.court_date, parsedData,
     );
     queueId = Number(ins.meta.last_row_id);
+
+    // Auto-link the billing contract by client name (best-effort) so serve
+    // charges compute against the right rate card + per-contract overrides
+    // without a manager assigning it by hand. Active client → its newest active
+    // contract. A miss just leaves contract_id null (base rate card applies).
+    if (queueId && queueRow.client_name) {
+      try {
+        const cli = await queryFirst<{ id: number }>(
+          db, "SELECT id FROM clients WHERE LOWER(name) = LOWER(?) AND status = 'active' LIMIT 1",
+          queueRow.client_name.trim());
+        if (cli?.id) {
+          const con = await queryFirst<{ id: number }>(
+            db, "SELECT id FROM client_contracts WHERE client_id = ? AND status = 'active' ORDER BY start_date DESC LIMIT 1",
+            cli.id);
+          if (con?.id) await execute(db, 'UPDATE serve_queue SET contract_id = ? WHERE id = ?', con.id, queueId);
+        }
+      } catch { /* best-effort — billing never blocks intake */ }
+    }
   }
 
   // ── 6. Junction-table links ──────────────────────────────
