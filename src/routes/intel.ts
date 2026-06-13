@@ -23,6 +23,7 @@ import { computeEscalation, personActivityEvents } from '../utils/intelPatterns'
 import { parseRosterText, ingestBookings } from '../utils/jailIngest';
 import { runJailScan } from '../utils/jailSources/runScan';
 import { chunkKey, parseSeq } from '../utils/intelRecording';
+import { intelReports, intelSources } from './intel/development';
 
 const intel = new Hono<Env>();
 
@@ -849,5 +850,8 @@ intel.delete('/resolution/canonical/:personId', supervisorPlus, async (c) => {
   await execute(db, 'DELETE FROM person_canonical WHERE person_id = ?', Number(c.req.param('personId')));
   return c.json({ success: true });
 });
+
+intel.route('/reports', intelReports);
+intel.route('/sources', intelSources);
 
 export default intel;
