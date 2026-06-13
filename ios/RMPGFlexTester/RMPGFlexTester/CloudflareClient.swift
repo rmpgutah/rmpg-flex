@@ -39,7 +39,38 @@ struct CloudflareClient {
         if status == 403 {
             throw D1Error.api("token lacks \(section.rawValue.lowercased()) scope")
         }
-        return try Self.parseList(data, section: section)
+        let resources = try Self.parseList(data, section: section)
+        // The D1 LIST endpoint returns num_tables=0 for every database (it isn't
+        // computed there) — only the per-database GET has the real count. Enrich
+        // each D1 row with its detail so they don't all read "0 tables".
+        if section == .d1 {
+            var enriched: [CFResource] = []
+            for r in resources {
+                if let d = try? await d1Detail(r.id) {
+                    let bytes = (d["file_size"] as? NSNumber)?.doubleValue ?? 0
+                    let size = String(format: "%.1f MB", bytes / 1_048_576)
+                    let tables = (d["num_tables"] as? NSNumber)?.stringValue ?? "?"
+                    enriched.append(CFResource(id: r.id, title: r.title,
+                        subtitle: "\(size) · \(tables) tables · \(r.id.prefix(8))…"))
+                } else {
+                    enriched.append(r) // detail failed — keep the list row
+                }
+            }
+            return enriched
+        }
+        return resources
+    }
+
+    // Per-database detail (GET /d1/database/:uuid) — the authoritative
+    // num_tables + file_size the list endpoint omits.
+    private func d1Detail(_ uuid: String) async throws -> [String: Any] {
+        var req = URLRequest(url: URL(string:
+            "https://api.cloudflare.com/client/v4/accounts/\(accountId)/d1/database/\(uuid)")!)
+        req.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await URLSession.shared.data(for: req)
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let result = root["result"] as? [String: Any] else { throw D1Error.malformed }
+        return result
     }
 
     static func parseList(_ data: Data, section: Section) throws -> [CFResource] {
