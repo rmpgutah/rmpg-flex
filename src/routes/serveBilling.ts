@@ -93,9 +93,6 @@ psb.delete('/ps-pricing/items/:id', async (c) => {
   return c.json({ success: true });
 });
 
-// Suppress unused variable warning for REVIEW (reserved for future charge-review endpoints)
-void REVIEW;
-
 // ── Per-contract process-service terms ─────────────────────
 psb.get('/contracts/:id/ps-terms', async (c) => {
   const db = getDb(c.env);
@@ -147,6 +144,106 @@ psb.get('/contracts/:id/audit', async (c) => {
       WHERE a.entity_type = 'ps_contract' AND a.entity_id = ?
       ORDER BY a.id DESC LIMIT 100`, id);
   return c.json({ data: rows });
+});
+
+// ── Serve charges review queue ─────────────────────────────
+psb.get('/serve-charges', async (c) => {
+  const db = getDb(c.env);
+  const status = c.req.query('status') ?? 'pending_review';
+  const charges = await query<any>(db,
+    `SELECT sc.*, q.defendant_name, q.case_number, q.recipient_name, cl.name AS client_name
+       FROM serve_charges sc
+       JOIN serve_queue q ON sc.serve_queue_id = q.id
+       LEFT JOIN client_contracts cc ON sc.contract_id = cc.id
+       LEFT JOIN clients cl ON cc.client_id = cl.id
+      WHERE sc.status = ?
+      ORDER BY sc.computed_at DESC LIMIT 500`, status);
+  for (const ch of charges) {
+    ch.lines = await query(db, 'SELECT * FROM serve_charge_lines WHERE serve_charge_id = ? ORDER BY id', ch.id);
+  }
+  return c.json({ data: charges });
+});
+
+psb.put('/serve-charges/:id', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const db = getDb(c.env);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const current = await queryFirst<any>(db, 'SELECT status FROM serve_charges WHERE id = ?', id);
+  if (!current) return c.json({ error: 'Not found' }, 404);
+  if (current.status === 'invoiced') return c.json({ error: 'Charge already invoiced — locked' }, 409);
+  const b = await c.req.json<any>();
+  const user = c.get('user') as { id: number } | undefined;
+  const before = await queryFirst<any>(db, 'SELECT * FROM serve_charges WHERE id = ?', id);
+
+  if (Array.isArray(b.lines)) {
+    await execute(db, 'DELETE FROM serve_charge_lines WHERE serve_charge_id = ?', id);
+    let subtotal = 0;
+    for (const l of b.lines) {
+      const lineTotal = Math.round((Number(l.quantity) || 0) * (Number(l.unit_price) || 0) * 100) / 100;
+      subtotal += lineTotal;
+      await execute(db,
+        `INSERT INTO serve_charge_lines (serve_charge_id, pricing_code, description, quantity, unit_price, line_total, taxable)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        id, l.pricing_code ?? null, l.description ?? '', Number(l.quantity) || 0, Number(l.unit_price) || 0, lineTotal, l.taxable ? 1 : 0);
+    }
+    await execute(db, `UPDATE serve_charges SET subtotal = ? WHERE id = ?`, Math.round(subtotal * 100) / 100, id);
+  }
+  if (b.contract_id !== undefined) {
+    await execute(db, 'UPDATE serve_charges SET contract_id = ? WHERE id = ?', b.contract_id ?? null, id);
+  }
+  if (b.notes !== undefined) {
+    await execute(db, 'UPDATE serve_charges SET notes = ? WHERE id = ?', b.notes ?? null, id);
+  }
+  await logAudit(db, user?.id ?? null, 'update', 'serve_charge', id, { before, after: b });
+  const after = await queryFirst(db, 'SELECT * FROM serve_charges WHERE id = ?', id);
+  return c.json({ data: after });
+});
+
+psb.post('/serve-charges/:id/approve', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const db = getDb(c.env);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const cur = await queryFirst<any>(db, 'SELECT status FROM serve_charges WHERE id = ?', id);
+  if (!cur) return c.json({ error: 'Not found' }, 404);
+  if (cur.status === 'invoiced') return c.json({ error: 'Already invoiced' }, 409);
+  const user = c.get('user') as { id: number } | undefined;
+  await execute(db, `UPDATE serve_charges SET status = 'approved', reviewed_by = ?, reviewed_at = datetime('now','localtime') WHERE id = ?`, user?.id ?? null, id);
+  await logAudit(db, user?.id ?? null, 'approve', 'serve_charge', id, {});
+  return c.json({ success: true });
+});
+
+psb.post('/serve-charges/:id/void', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const db = getDb(c.env);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const cur = await queryFirst<any>(db, 'SELECT status FROM serve_charges WHERE id = ?', id);
+  if (!cur) return c.json({ error: 'Not found' }, 404);
+  if (cur.status === 'invoiced') return c.json({ error: 'Already invoiced' }, 409);
+  const b = await c.req.json<any>().catch(() => ({}));
+  const user = c.get('user') as { id: number } | undefined;
+  await execute(db, `UPDATE serve_charges SET status = 'void', notes = ? WHERE id = ?`, b.notes ?? null, id);
+  await logAudit(db, user?.id ?? null, 'void', 'serve_charge', id, { notes: b.notes ?? null });
+  return c.json({ success: true });
+});
+
+psb.post('/serve-charges/:id/recompute', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const db = getDb(c.env);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const charge = await queryFirst<any>(db, 'SELECT serve_queue_id, status FROM serve_charges WHERE id = ?', id);
+  if (!charge) return c.json({ error: 'Not found' }, 404);
+  if (charge.status === 'invoiced') return c.json({ error: 'Already invoiced' }, 409);
+  const { generateServeCharges } = await import('../utils/serveChargeStore');
+  const newId = await generateServeCharges(db, charge.serve_queue_id);
+  return c.json({ success: newId !== null });
 });
 
 export default psb;
