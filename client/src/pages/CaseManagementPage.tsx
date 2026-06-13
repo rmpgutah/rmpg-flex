@@ -11,7 +11,7 @@ import RichTextArea from '../components/RichTextArea';
 import {
   Briefcase, Search, Plus, User, X, Save, Loader2, AlertTriangle, Target,
   MessageSquare, ArrowRight, CheckCircle, FolderOpen, ShieldCheck, RotateCcw, Send,
-  Link, Eye, Trash2, Unlink,
+  Link, Eye, Trash2, Unlink, FileText,
 } from 'lucide-react';
 import type { Case, CaseNote, CaseFull, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -29,6 +29,11 @@ import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { humanizeCaseType, humanizeSolvabilityFactor } from '../utils/statusLabels';
 import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
+import { formatActivity, type CaseActivityRow } from '../utils/caseActivity';
+import { CaseTasksTab, CaseMyTasksView } from '../components/CaseTasks';
+import { CaseDashboardView, SlaBadge } from '../components/CaseDashboard';
+import { CaseRelatedSection } from '../components/CaseRelated';
+import { downloadCaseReport } from '../utils/caseReportGenerator';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
@@ -77,7 +82,7 @@ const EMPTY_FORM = {
   summary: '', lead_investigator_id: '',
 };
 
-type DetailTab = 'overview' | 'calls' | 'incidents' | 'persons' | 'vehicles' | 'properties' | 'evidence' | 'warrants' | 'citations' | 'timeline' | 'notes' | 'solvability';
+type DetailTab = 'overview' | 'calls' | 'incidents' | 'persons' | 'vehicles' | 'properties' | 'evidence' | 'warrants' | 'citations' | 'tasks' | 'timeline' | 'notes' | 'solvability';
 
 const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -89,6 +94,7 @@ const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'evidence', label: 'Evidence', countKey: 'evidence' },
   { id: 'warrants', label: 'Warrants', countKey: 'warrants' },
   { id: 'citations', label: 'Citations', countKey: 'citations' },
+  { id: 'tasks', label: 'Tasks' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'notes', label: 'Notes', countKey: 'notes' },
   { id: 'solvability', label: 'Solvability' },
@@ -375,6 +381,8 @@ export default function CaseManagementPage() {
 
   const [cases, setCases] = useState<Case[]>([]);
   const [selected, setSelected] = useState<Case | null>(null);
+  // Top-level view: case list/detail, cross-case My Tasks, or Dashboard (v2)
+  const [viewMode, setViewMode] = useState<'cases' | 'mytasks' | 'dashboard'>('cases');
   const [notes, setNotes] = useState<CaseNote[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
@@ -387,6 +395,8 @@ export default function CaseManagementPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
+  const [filterOverdue, setFilterOverdue] = useState(false);
+  const [filterMine, setFilterMine] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -403,6 +413,8 @@ export default function CaseManagementPage() {
 
   // Full case data for entity tabs
   const [caseFull, setCaseFull] = useState<CaseFull | null>(null);
+  // Audit/activity trail (v2 Phase 1) — newest first
+  const [caseActivity, setCaseActivity] = useState<CaseActivityRow[]>([]);
 
   // Solvability
   const [solvFactors, setSolvFactors] = useState<Record<string, boolean>>({});
@@ -433,13 +445,15 @@ export default function CaseManagementPage() {
         ...(filterStatus ? { status: filterStatus } : {}),
         ...(filterType ? { case_type: filterType } : {}),
         ...(filterPriority ? { priority: filterPriority } : {}),
+        ...(filterOverdue ? { overdue: 'true' } : {}),
+        ...(filterMine && user?.id ? { lead_investigator_id: String(user.id) } : {}),
       });
       const res = await apiFetch<{ data: Case[]; pagination: any }>(`/cases?${params}`);
       setCases(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
     } catch (err: any) { setFetchError(err?.message || 'Failed to load data'); } finally { setLoading(false); }
-  }, [page, searchQuery, filterStatus, filterType, filterPriority]);
+  }, [page, searchQuery, filterStatus, filterType, filterPriority, filterOverdue, filterMine, user?.id]);
 
   const fetchStats = useCallback(async () => {
     try { const res = await apiFetch<{ data: any }>('/cases/stats'); setStats(res.data); } catch (e) { console.warn('[Cases] fetch stats failed:', e); }
@@ -449,12 +463,46 @@ export default function CaseManagementPage() {
     try { const res = await apiFetch<{ data: CaseNote[] }>(`/cases/${caseId}/notes`); setNotes(res.data || []); } catch (e) { console.warn('[Cases] fetch notes failed:', e); }
   }, []);
 
+  // Refreshes both the full-case aggregate and its audit trail, so every
+  // existing onRefresh (link/unlink, etc.) keeps the Timeline tab current.
   const fetchFullCase = useCallback(async (caseId: number) => {
     try {
       const data = await apiFetch<any>(`/cases/${caseId}/full`);
       setCaseFull(data);
     } catch { /* silent */ }
+    try {
+      const r = await apiFetch<{ data: CaseActivityRow[] }>(`/cases/${caseId}/activity`);
+      setCaseActivity(Array.isArray(r) ? r : (r?.data || []));
+    } catch { setCaseActivity([]); }
   }, []);
+
+  // Open a case by id (e.g. from the My Tasks view) — fetch + select it.
+  const openCaseById = useCallback(async (caseId: number) => {
+    try {
+      const r = await apiFetch<{ data: Case }>(`/cases/${caseId}`);
+      if (r?.data) setSelected(r.data);
+    } catch { /* silent */ }
+  }, []);
+
+  // Full case-report PDF — pulls linked records from caseFull, the audit
+  // trail from caseActivity, and fetches tasks fresh at click time.
+  const handleExportPdf = async () => {
+    if (!selected) return;
+    const cf = caseFull as any;
+    let tasks: any[] = [];
+    try {
+      const r = await apiFetch<{ data: any[] }>(`/cases/${selected.id}/tasks`);
+      tasks = Array.isArray(r) ? r : (r?.data || []);
+    } catch { /* tasks optional in the report */ }
+    downloadCaseReport({
+      caseRow: cf || selected,
+      calls: cf?.calls, incidents: cf?.incidents, persons: cf?.persons,
+      vehicles: cf?.vehicles, properties: cf?.properties, evidence: cf?.evidence,
+      warrants: cf?.warrants, citations: cf?.citations, notes: cf?.notes,
+      related: cf?.related, tasks, activity: caseActivity,
+    });
+    addToast('Case report generated', 'success');
+  };
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
@@ -503,6 +551,7 @@ export default function CaseManagementPage() {
       await apiFetch(`/cases/${selected.id}/notes`, { method: 'POST', body: JSON.stringify({ content: newNote }) });
       setNewNote('');
       fetchNotes(selected.id);
+      fetchFullCase(selected.id);
       addToast('Note added', 'success');
     } catch (err: any) { addToast(err.message, 'error'); }
     finally { setNoteSubmitting(false); }
@@ -644,7 +693,23 @@ export default function CaseManagementPage() {
   }, []);
 
   return (
-    <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
+    <div className="h-full flex flex-col">
+      {/* ── View toggle (Cases / My Tasks / Dashboard) ── */}
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-rmpg-700 bg-surface-sunken shrink-0">
+        {([['cases', 'Cases'], ['mytasks', 'My Tasks'], ['dashboard', 'Dashboard']] as const).map(([v, label]) => (
+          <button key={v} type="button" onClick={() => setViewMode(v)}
+            className={`px-3 py-1 text-[10px] font-mono uppercase tracking-wider border transition-colors ${viewMode === v ? 'bg-brand-900/40 border-brand-600/50 text-brand-300' : 'border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {viewMode === 'mytasks' ? (
+        <CaseMyTasksView onOpenCase={(cid) => { setViewMode('cases'); openCaseById(cid); }} />
+      ) : viewMode === 'dashboard' ? (
+        <CaseDashboardView stats={stats} onShowOverdue={() => { setViewMode('cases'); setFilterMine(false); setFilterStatus(''); setFilterOverdue(true); setPage(1); }} />
+      ) : (
+      <div className={`flex-1 min-h-0 flex ${isMobile ? 'flex-col' : ''}`}>
       {/* ── Left: Case List ── */}
       <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Case Management" icon={Briefcase}>
@@ -705,6 +770,14 @@ export default function CaseManagementPage() {
             <option value="">All Types</option>
             {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
+          <button type="button" onClick={() => { setFilterMine(m => !m); setPage(1); }} aria-pressed={filterMine}
+            className={`text-[10px] px-2 py-1 border transition-colors ${filterMine ? 'bg-brand-900/40 border-brand-600/50 text-brand-300' : 'border-rmpg-700 text-rmpg-500 hover:text-rmpg-300'}`}>
+            Mine
+          </button>
+          <button type="button" onClick={() => { setFilterOverdue(o => !o); setPage(1); }} aria-pressed={filterOverdue}
+            className={`text-[10px] px-2 py-1 border transition-colors ${filterOverdue ? 'bg-red-900/30 border-red-700/50 text-red-400' : 'border-rmpg-700 text-rmpg-500 hover:text-rmpg-300'}`}>
+            Overdue
+          </button>
         </div>
 
         {/* Case List */}
@@ -728,11 +801,14 @@ export default function CaseManagementPage() {
                   selected?.id === c.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'
                 }`}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-mono font-bold text-white">{c.case_number}</span>
-                  <span className={`text-[9px] px-1.5 py-0.5 border ${getStatusColor(c.status)}`}>
-                    {c.status.replace(/_/g, ' ').toUpperCase()}
-                  </span>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <SlaBadge caseRow={c} />
+                    <span className={`text-[9px] px-1.5 py-0.5 border ${getStatusColor(c.status)}`}>
+                      {c.status.replace(/_/g, ' ').toUpperCase()}
+                    </span>
+                  </div>
                 </div>
                 <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{c.title}</div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
@@ -764,6 +840,10 @@ export default function CaseManagementPage() {
         {selected ? (
           <>
             <PanelTitleBar title={`${selected.case_number} — ${selected.title}`} icon={Briefcase}>
+              <SlaBadge caseRow={selected} />
+              <button type="button" onClick={handleExportPdf} className="toolbar-btn text-[10px] print:hidden" title="Export full case report (PDF)">
+                <FileText style={{ width: 11, height: 11 }} /> PDF
+              </button>
             </PanelTitleBar>
 
             {/* Tabs */}
@@ -819,6 +899,13 @@ export default function CaseManagementPage() {
                       })}
                     </div>
                   )}
+
+                  {/* Related cases (v2 Phase 4) */}
+                  <CaseRelatedSection
+                    caseId={selected.id}
+                    related={(caseFull as any)?.related || []}
+                    onChanged={() => fetchFullCase(selected.id)}
+                  />
 
                   {/* Status change */}
                   <div className="panel-beveled p-3">
@@ -1087,17 +1174,31 @@ export default function CaseManagementPage() {
               )}
 
               {/* ── Timeline Tab ── */}
+              {detailTab === 'tasks' && (
+                <CaseTasksTab caseId={selected.id} users={users} onChanged={() => fetchFullCase(selected.id)} />
+              )}
+
               {detailTab === 'timeline' && (
                 <div className="space-y-3">
                   <div className="text-[10px] font-mono text-rmpg-500 uppercase">Case Timeline</div>
-                  {(caseFull?.notes || []).length === 0 && (caseFull?.calls || []).length === 0 && (caseFull?.incidents || []).length === 0 ? (
+                  {caseActivity.length === 0 && (caseFull?.notes || []).length === 0 && (caseFull?.calls || []).length === 0 && (caseFull?.incidents || []).length === 0 ? (
                     <div className="text-center py-6 text-rmpg-500 text-xs">No timeline events</div>
                   ) : (
                     <div className="relative pl-4 border-l border-rmpg-700 space-y-3">
                       {[
-                        ...(caseFull?.calls || []).map((c: any) => ({ date: c.created_at, type: 'Call', label: `CFS ${c.case_number || '#' + c.id} — ${c.call_type || 'Unknown'}`, color: '#888888' })),
+                        // Audit trail — the authoritative who/what/when. Skip
+                        // note.added here; notes render below with full content.
+                        ...caseActivity
+                          .filter((a) => a.action !== 'note.added')
+                          .map((a) => {
+                            const f = formatActivity(a.action, a.detail);
+                            return { date: a.created_at, type: a.actor_name || 'System', label: f.label, color: f.color };
+                          }),
+                        // Notes (with content)
+                        ...(caseFull?.notes || []).map((n: any) => ({ date: n.created_at, type: 'Note', label: (n.content || '').substring(0, 100) || 'Note', color: '#8b5cf6' })),
+                        // Linked-record occurrence context
+                        ...(caseFull?.calls || []).map((c: any) => ({ date: c.created_at, type: 'Call', label: `CFS ${c.call_number || c.case_number || '#' + c.id} — ${c.incident_type || c.call_type || 'Unknown'}`, color: '#888888' })),
                         ...(caseFull?.incidents || []).map((i: any) => ({ date: i.created_at, type: 'Incident', label: `${i.incident_number || '#' + i.id} — ${i.incident_type || 'Unknown'}`, color: '#f59e0b' })),
-                        ...(caseFull?.notes || []).map((n: any) => ({ date: n.created_at, type: 'Note', label: n.content?.substring(0, 80) || 'Note', color: '#8b5cf6' })),
                       ]
                         .sort((a, b) => (b.date ? parseTimestamp(b.date).getTime() : 0) - (a.date ? parseTimestamp(a.date).getTime() : 0))
                         .map((event, idx) => (
@@ -1205,6 +1306,8 @@ export default function CaseManagementPage() {
           </div>
         )}
       </div>
+      </div>
+      )}
 
       {/* ── Return Case Modal ── */}
       {showReturnModal && (

@@ -21,8 +21,10 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { isValidTaskStatus, isValidTaskPriority, completedAtFor } from '../utils/caseTasks';
 
 const cases = new Hono<Env>();
 
@@ -84,6 +86,31 @@ function autoPriority(caseType: string): string {
   return 'normal';
 }
 
+// ── Activity logging — best-effort audit trail (v2 Phase 1) ──
+// Records a case mutation into case_activity. Deliberately swallows its
+// own errors: an audit-log failure (e.g. table drift) must never break
+// the operation it was recording. `action` is a stable machine key
+// (formatActivity on the client maps it to a label/icon); `detail` is an
+// action-specific JSON blob.
+async function logCaseActivity(
+  c: Context<Env>,
+  caseId: number,
+  action: string,
+  detail?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id?: number; full_name?: string; username?: string } | undefined;
+    const actorId = (c.get('userId') as number | undefined) ?? user?.id ?? null;
+    const actorName = user?.full_name || user?.username || null;
+    await execute(
+      db,
+      `INSERT INTO case_activity (case_id, action, actor_id, actor_name, detail) VALUES (?, ?, ?, ?, ?)`,
+      caseId, action, actorId, actorName, detail ? JSON.stringify(detail) : null,
+    );
+  } catch { /* non-fatal — never block the mutation on an audit write */ }
+}
+
 // ── GET /stats — must come before GET /:id ─────────────────
 cases.get('/stats', async (c) => {
   try {
@@ -104,6 +131,41 @@ cases.get('/stats', async (c) => {
     const last30 = (await queryFirst<{ count: number }>(
       db, `SELECT COUNT(*) as count FROM cases WHERE opened_date >= date('now', '-30 days')`,
     ))?.count ?? 0;
+
+    // ── v2: clearance, SLA/overdue, aging, by-investigator, avg solvability ──
+    const closed = (await queryFirst<{ count: number }>(
+      db, `SELECT COUNT(*) as count FROM cases WHERE status LIKE 'closed%'`,
+    ))?.count ?? 0;
+    // Overdue: past explicit due_date, or elapsed opened_date + sla_hours
+    // (mirrors the client computeSlaStatus). Still-open, non-archived only.
+    const OVERDUE_SQL = `status NOT LIKE 'closed%' AND archived_at IS NULL AND (
+        (due_date IS NOT NULL AND date(due_date) < date('now')) OR
+        (due_date IS NULL AND sla_hours IS NOT NULL AND sla_hours > 0
+          AND datetime(opened_date, '+' || sla_hours || ' hours') < datetime('now')))`;
+    const overdue = (await queryFirst<{ count: number }>(
+      db, `SELECT COUNT(*) as count FROM cases WHERE ${OVERDUE_SQL}`,
+    ))?.count ?? 0;
+    const aging = await queryFirst<Record<string, number>>(
+      db,
+      `SELECT
+         SUM(CASE WHEN julianday('now') - julianday(opened_date) <= 7 THEN 1 ELSE 0 END) AS d0_7,
+         SUM(CASE WHEN julianday('now') - julianday(opened_date) > 7  AND julianday('now') - julianday(opened_date) <= 30 THEN 1 ELSE 0 END) AS d8_30,
+         SUM(CASE WHEN julianday('now') - julianday(opened_date) > 30 AND julianday('now') - julianday(opened_date) <= 90 THEN 1 ELSE 0 END) AS d31_90,
+         SUM(CASE WHEN julianday('now') - julianday(opened_date) > 90 THEN 1 ELSE 0 END) AS d90p
+       FROM cases WHERE status NOT LIKE 'closed%' AND archived_at IS NULL`,
+    );
+    const byInvestigator = await query<Record<string, unknown>>(
+      db,
+      `SELECT COALESCE(u.full_name, 'Unassigned') AS investigator, COUNT(*) AS count
+       FROM cases c LEFT JOIN users u ON c.lead_investigator_id = u.id
+       WHERE c.archived_at IS NULL AND c.status NOT LIKE 'closed%'
+       GROUP BY c.lead_investigator_id ORDER BY count DESC LIMIT 12`,
+    );
+    const avgSolv = (await queryFirst<{ avg: number | null }>(
+      db, `SELECT AVG(solvability_score) as avg FROM cases
+           WHERE solvability_score IS NOT NULL AND solvability_score > 0 AND archived_at IS NULL`,
+    ))?.avg;
+
     // CaseManagementPage reads res.data.by_status.{open,active,...} (an object
     // map) and res.data.avg_solvability. Provide the map + a {data} wrapper
     // while keeping the arrays + top-level keys for any other consumer.
@@ -112,10 +174,16 @@ cases.get('/stats', async (c) => {
     const byPriorityMap: Record<string, number> = {};
     for (const r of byPriority) byPriorityMap[String((r as any).priority)] = Number((r as any).count) || 0;
     const payload = {
-      total, open,
+      total, open, closed, overdue,
+      clearance_rate: total > 0 ? Math.round((closed / total) * 100) : 0,
       by_status: byStatusMap, by_priority: byPriorityMap,
       byStatus, byPriority, last7, last30,
-      avg_solvability: null as number | null, // no solvability score column yet
+      aging: {
+        d0_7: Number(aging?.d0_7) || 0, d8_30: Number(aging?.d8_30) || 0,
+        d31_90: Number(aging?.d31_90) || 0, d90p: Number(aging?.d90p) || 0,
+      },
+      by_investigator: byInvestigator,
+      avg_solvability: avgSolv != null ? Math.round(avgSolv) : 0,
     };
     return c.json({ data: payload, ...payload });
   } catch (err) {
@@ -145,6 +213,16 @@ cases.get('/', async (c) => {
       conditions.push('(c.case_number LIKE ? OR c.title LIKE ? OR c.summary LIKE ?)');
       const s = `%${search}%`;
       params.push(s, s, s);
+    }
+    // SLA attention queue — past due_date or elapsed sla_hours (mirrors the
+    // /stats overdue tally and the client computeSlaStatus).
+    if (q('overdue') === 'true') {
+      conditions.push(`c.status NOT LIKE 'closed%'`);
+      conditions.push(`(
+        (c.due_date IS NOT NULL AND date(c.due_date) < date('now')) OR
+        (c.due_date IS NULL AND c.sla_hours IS NOT NULL AND c.sla_hours > 0
+          AND datetime(c.opened_date, '+' || c.sla_hours || ' hours') < datetime('now'))
+      )`);
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
@@ -240,6 +318,7 @@ cases.post('/', async (c) => {
       } catch { /* table may not exist yet — non-fatal */ }
     }
 
+    await logCaseActivity(c, newId, 'case.created', { case_number: caseNumber, title: b.title.trim() });
     return c.json({ data: { id: newId, case_number: caseNumber } }, 201);
   } catch (err) {
     return c.json({
@@ -335,6 +414,7 @@ cases.put('/:id', async (c) => {
     }
 
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM cases WHERE id = ?', id);
+    await logCaseActivity(c, id, 'case.updated', { fields: Object.keys(b).filter((k) => UPDATABLE.has(k)) });
     return c.json({ data: updated });
   } catch (err) {
     return c.json({ error: 'Failed to update case', code: 'UPDATE_ERROR' }, 500);
@@ -356,6 +436,7 @@ cases.put('/:id/submit-review', async (c) => {
       return c.json({ error: `Cannot submit case in status: ${existing.status}`, code: 'INVALID_STATUS_TRANSITION' }, 400);
     }
     await execute(db, `UPDATE cases SET status = 'under_review', updated_at = datetime('now') WHERE id = ?`, id);
+    await logCaseActivity(c, id, 'review.submitted', { from: existing.status, to: 'under_review' });
     return c.json({ data: { id, status: 'under_review' } });
   } catch (err) {
     return c.json({ error: 'Failed to submit case for review', code: 'SUBMIT_REVIEW_ERROR' }, 500);
@@ -376,6 +457,7 @@ cases.put('/:id/approve', async (c) => {
       return c.json({ error: `Cannot approve case in status: ${existing.status}`, code: 'INVALID_STATUS_TRANSITION' }, 400);
     }
     await execute(db, `UPDATE cases SET status = 'approved', updated_at = datetime('now') WHERE id = ?`, id);
+    await logCaseActivity(c, id, 'review.approved', { from: 'under_review', to: 'approved' });
     return c.json({ data: { id, status: 'approved' } });
   } catch (err) {
     return c.json({ error: 'Failed to approve case', code: 'APPROVE_ERROR' }, 500);
@@ -405,6 +487,7 @@ cases.put('/:id/status', async (c) => {
 
     const result = await execute(db, `UPDATE cases SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     if (result.meta.changes === 0) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
+    await logCaseActivity(c, id, 'status.changed', { to: status, ...(disposition ? { disposition } : {}) });
     return c.json({ data: { id, status, disposition } });
   } catch (err) {
     return c.json({ error: 'Failed to update case status', code: 'STATUS_UPDATE_ERROR' }, 500);
@@ -422,6 +505,7 @@ cases.post('/:id/archive', async (c) => {
       db, `UPDATE cases SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`, id,
     );
     if (result.meta.changes === 0) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
+    await logCaseActivity(c, id, 'case.archived');
     return c.json({ data: { id, archived: true } });
   } catch (err) {
     return c.json({ error: 'Failed to archive case', code: 'ARCHIVE_ERROR' }, 500);
@@ -501,6 +585,7 @@ cases.post('/:id/notes', async (c) => {
     const note = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM case_notes WHERE id = ?', Number(result.meta.last_row_id),
     );
+    await logCaseActivity(c, id, 'note.added', { note_type: note_type ?? 'general' });
     return c.json({ data: note }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to add note', code: 'NOTE_POST_ERROR' }, 500);
@@ -562,6 +647,7 @@ cases.post('/:id/calculate-solvability', async (c) => {
       // into its checkbox state (CaseManagementPage line ~477).
       score, JSON.stringify(factors), id,
     );
+    await logCaseActivity(c, id, 'solvability.calculated', { score });
     return c.json({ data: { id, score, breakdown } });
   } catch (err) {
     return c.json({ error: 'Failed to calculate solvability', code: 'SOLVABILITY_ERROR' }, 500);
@@ -625,6 +711,27 @@ cases.get('/:id/solvability', async (c) => {
   }
 });
 
+// ── GET /:id/activity — audit / activity trail (v2 Phase 1) ──
+cases.get('/:id/activity', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const limit = Math.min(parseInt(c.req.query('limit') || '200', 10) || 200, 500);
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT id, action, actor_id, actor_name, detail, created_at
+       FROM case_activity WHERE case_id = ?
+       ORDER BY datetime(created_at) DESC, id DESC
+       LIMIT ?`,
+      id, limit,
+    );
+    return c.json({ data: rows });
+  } catch (err) {
+    return c.json({ error: 'Failed to get case activity', code: 'ACTIVITY_GET_ERROR' }, 500);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // PERSONS JUNCTION — case_person_links
 // ═══════════════════════════════════════════════════════════════
@@ -677,6 +784,7 @@ cases.post('/:id/persons', async (c) => {
        WHERE cpl.case_id = ? AND cpl.person_id = ?`,
       id, person_id,
     );
+    if (result.meta.changes > 0) await logCaseActivity(c, id, 'link.added', { entity: 'persons', entity_id: person_id });
     return c.json({ data: link }, result.meta.changes > 0 ? 201 : 200);
   } catch (err) {
     return c.json({ error: 'Failed to attach person', code: 'PERSON_POST_ERROR' }, 500);
@@ -720,6 +828,7 @@ cases.delete('/:id/persons/:personEntryId', async (c) => {
       result = await execute(db, 'DELETE FROM case_person_links WHERE id = ? AND case_id = ?', ref, caseId);
     }
     if (result.meta.changes === 0) return c.json({ error: 'Link not found', code: 'NOT_FOUND' }, 404);
+    await logCaseActivity(c, caseId, 'link.removed', { entity: 'persons', entity_id: ref });
     return c.json({ success: true });
   } catch (err) {
     return c.json({ error: 'Failed to remove person link', code: 'PERSON_DELETE_ERROR' }, 500);
@@ -791,6 +900,7 @@ for (const [type, cfg] of Object.entries(CASE_JUNCTIONS)) {
         `INSERT OR IGNORE INTO ${cfg.table} (case_id, ${cfg.fk}, added_by) VALUES (?, ?, ?)`,
         caseId, entityId, userId ?? null,
       );
+      if (res.meta.changes > 0) await logCaseActivity(c, caseId, 'link.added', { entity: type, entity_id: entityId });
       return c.json({ success: true, linked: res.meta.changes > 0 }, res.meta.changes > 0 ? 201 : 200);
     } catch (err) {
       return c.json({ error: 'Failed to link record', code: 'LINK_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
@@ -812,12 +922,266 @@ for (const [type, cfg] of Object.entries(CASE_JUNCTIONS)) {
         res = await execute(db, `DELETE FROM ${cfg.table} WHERE case_id = ? AND id = ?`, caseId, entityId);
       }
       if (res.meta.changes === 0) return c.json({ error: 'Link not found', code: 'NOT_FOUND' }, 404);
+      await logCaseActivity(c, caseId, 'link.removed', { entity: type, entity_id: entityId });
       return c.json({ success: true });
     } catch (err) {
       return c.json({ error: 'Failed to unlink record', code: 'UNLINK_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
     }
   });
 }
+
+// ═══════════════════════════════════════════════════════════════
+// INVESTIGATIVE TASKS / LEADS — case_tasks (v2 Phase 2)
+// ═══════════════════════════════════════════════════════════════
+
+// GET /tasks/mine — cross-case tasks assigned to the current user.
+// Static first segment 'tasks' does not collide with /:id/tasks (2nd
+// segment differs) or /:id (arity differs); Hono prioritises static.
+cases.get('/tasks/mine', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    if (!userId) return c.json({ data: [] });
+    const status = c.req.query('status');
+    const overdue = c.req.query('overdue') === 'true';
+    const where: string[] = ['t.assignee_id = ?'];
+    const params: unknown[] = [userId];
+    if (status && isValidTaskStatus(status)) { where.push('t.status = ?'); params.push(status); }
+    else { where.push("t.status NOT IN ('done','canceled')"); } // default: active only
+    if (overdue) {
+      where.push("t.due_date IS NOT NULL AND date(t.due_date) < date('now') AND t.status NOT IN ('done','canceled')");
+    }
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT t.*, c.case_number, c.title AS case_title, c.status AS case_status
+       FROM case_tasks t JOIN cases c ON t.case_id = c.id
+       WHERE ${where.join(' AND ')}
+       ORDER BY (t.due_date IS NULL) ASC, date(t.due_date) ASC, t.created_at DESC`,
+      ...params,
+    );
+    return c.json({ data: rows });
+  } catch (err) {
+    return c.json({ error: 'Failed to get assigned tasks', code: 'TASKS_MINE_ERROR' }, 500);
+  }
+});
+
+// GET /:id/tasks — all tasks for a case (active first, then by priority/due)
+cases.get('/:id/tasks', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT * FROM case_tasks WHERE case_id = ?
+       ORDER BY (status IN ('done','canceled')) ASC,
+                CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END ASC,
+                (due_date IS NULL) ASC, date(due_date) ASC, created_at DESC`,
+      id,
+    );
+    return c.json({ data: rows });
+  } catch (err) {
+    return c.json({ error: 'Failed to get case tasks', code: 'TASKS_GET_ERROR' }, 500);
+  }
+});
+
+// POST /:id/tasks — create a task/lead
+cases.post('/:id/tasks', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const exists = await queryFirst<{ id: number }>(db, 'SELECT id FROM cases WHERE id = ?', id);
+    if (!exists) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
+
+    const b = await c.req.json<{ title?: string; description?: string; priority?: string; assignee_id?: number; due_date?: string }>()
+      .catch(() => ({} as Record<string, never>));
+    const title = String(b.title || '').trim();
+    if (!title) return c.json({ error: 'Title is required', code: 'TASK_TITLE_REQUIRED' }, 400);
+    const priority = isValidTaskPriority(b.priority) ? b.priority : 'normal';
+
+    let assigneeName: string | null = null;
+    if (b.assignee_id) {
+      const u = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', b.assignee_id);
+      assigneeName = u?.full_name ?? null;
+    }
+    const userId = c.get('userId') as number | undefined;
+    const res = await execute(
+      db,
+      `INSERT INTO case_tasks (case_id, title, description, status, priority, assignee_id, assignee_name, due_date, created_by, updated_at)
+       VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, datetime('now','localtime'))`,
+      id, title, b.description ?? null, priority, b.assignee_id ?? null, assigneeName, b.due_date ?? null, userId ?? null,
+    );
+    const taskId = Number(res.meta.last_row_id);
+    await logCaseActivity(c, id, 'task.created', { task_id: taskId, title });
+    const task = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM case_tasks WHERE id = ?', taskId);
+    return c.json({ data: task }, 201);
+  } catch (err) {
+    return c.json({ error: 'Failed to create task', code: 'TASK_CREATE_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+// PUT /:id/tasks/:taskId — update fields / status
+cases.put('/:id/tasks/:taskId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    const taskId = parseInt(c.req.param('taskId'), 10);
+    if (isNaN(id) || isNaN(taskId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const existing = await queryFirst<{ id: number; status: string; completed_at: string | null; title: string }>(
+      db, 'SELECT id, status, completed_at, title FROM case_tasks WHERE id = ? AND case_id = ?', taskId, id,
+    );
+    if (!existing) return c.json({ error: 'Task not found', code: 'NOT_FOUND' }, 404);
+
+    const b = await c.req.json<Record<string, any>>().catch(() => ({} as Record<string, any>));
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    if (typeof b.title === 'string' && b.title.trim()) { sets.push('title = ?'); vals.push(b.title.trim()); }
+    if ('description' in b) { sets.push('description = ?'); vals.push(b.description ?? null); }
+    if (isValidTaskPriority(b.priority)) { sets.push('priority = ?'); vals.push(b.priority); }
+    if ('due_date' in b) { sets.push('due_date = ?'); vals.push(b.due_date ?? null); }
+    if ('assignee_id' in b) {
+      let assigneeName: string | null = null;
+      if (b.assignee_id) {
+        const u = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', b.assignee_id);
+        assigneeName = u?.full_name ?? null;
+      }
+      sets.push('assignee_id = ?', 'assignee_name = ?');
+      vals.push(b.assignee_id ?? null, assigneeName);
+    }
+    const statusChanged = isValidTaskStatus(b.status) && b.status !== existing.status;
+    if (isValidTaskStatus(b.status)) {
+      sets.push('status = ?'); vals.push(b.status);
+      sets.push('completed_at = ?'); vals.push(completedAtFor(b.status, new Date().toISOString(), existing.completed_at));
+    }
+    if (sets.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
+    sets.push(`updated_at = datetime('now','localtime')`);
+    vals.push(taskId, id);
+    await execute(db, `UPDATE case_tasks SET ${sets.join(', ')} WHERE id = ? AND case_id = ?`, ...vals);
+
+    const action = statusChanged && b.status === 'done' ? 'task.completed' : 'task.updated';
+    await logCaseActivity(c, id, action, { task_id: taskId, title: existing.title });
+    const task = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM case_tasks WHERE id = ?', taskId);
+    return c.json({ data: task });
+  } catch (err) {
+    return c.json({ error: 'Failed to update task', code: 'TASK_UPDATE_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+// DELETE /:id/tasks/:taskId
+cases.delete('/:id/tasks/:taskId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    const taskId = parseInt(c.req.param('taskId'), 10);
+    if (isNaN(id) || isNaN(taskId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const existing = await queryFirst<{ title: string }>(db, 'SELECT title FROM case_tasks WHERE id = ? AND case_id = ?', taskId, id);
+    const res = await execute(db, 'DELETE FROM case_tasks WHERE id = ? AND case_id = ?', taskId, id);
+    if (res.meta.changes === 0) return c.json({ error: 'Task not found', code: 'NOT_FOUND' }, 404);
+    await logCaseActivity(c, id, 'task.deleted', { task_id: taskId, title: existing?.title });
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete task', code: 'TASK_DELETE_ERROR' }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// CASE-TO-CASE LINKS — case_links (v2 Phase 4)
+// ═══════════════════════════════════════════════════════════════
+// One row per link; the relationship is visible from either side via the
+// UNION in GET and the bidirectional match in DELETE.
+
+cases.get('/:id/related', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const rows = await query<Record<string, unknown>>(
+      db,
+      // Explicit aliases: SQLite rejects ORDER BY on an unaliased column in a
+      // compound (UNION) select.
+      `SELECT cl.id AS link_id, cl.link_type, cl.created_at AS linked_at,
+              rc.id AS id, rc.case_number, rc.title, rc.status, rc.priority
+       FROM case_links cl JOIN cases rc ON rc.id = cl.related_case_id
+       WHERE cl.case_id = ?
+       UNION
+       SELECT cl.id AS link_id, cl.link_type, cl.created_at AS linked_at,
+              rc.id AS id, rc.case_number, rc.title, rc.status, rc.priority
+       FROM case_links cl JOIN cases rc ON rc.id = cl.case_id
+       WHERE cl.related_case_id = ?
+       ORDER BY linked_at DESC`,
+      id, id,
+    );
+    return c.json({ data: rows });
+  } catch (err) {
+    return c.json({ error: 'Failed to get related cases', code: 'RELATED_GET_ERROR' }, 500);
+  }
+});
+
+cases.post('/:id/related', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const { related_case_id, link_type } = await c.req.json<{ related_case_id?: number; link_type?: string }>()
+      .catch(() => ({} as Record<string, never>));
+    const relId = Number(related_case_id);
+    if (!Number.isFinite(relId) || relId <= 0) return c.json({ error: 'related_case_id required', code: 'RELATED_ID_REQUIRED' }, 400);
+    if (relId === id) return c.json({ error: 'A case cannot be linked to itself', code: 'SELF_LINK' }, 400);
+
+    const rel = await queryFirst<{ id: number; case_number: string }>(db, 'SELECT id, case_number FROM cases WHERE id = ?', relId);
+    if (!rel) return c.json({ error: 'Related case not found', code: 'RELATED_NOT_FOUND' }, 404);
+
+    // Reject if already linked in either direction.
+    const dup = await queryFirst<{ id: number }>(
+      db,
+      `SELECT id FROM case_links WHERE (case_id = ? AND related_case_id = ?) OR (case_id = ? AND related_case_id = ?)`,
+      id, relId, relId, id,
+    );
+    if (dup) return c.json({ data: { id: dup.id }, linked: false });
+
+    const type = ['related', 'series', 'parent', 'child'].includes(String(link_type)) ? String(link_type) : 'related';
+    const userId = c.get('userId') as number | undefined;
+    const res = await execute(
+      db,
+      `INSERT INTO case_links (case_id, related_case_id, link_type, created_by) VALUES (?, ?, ?, ?)`,
+      id, relId, type, userId ?? null,
+    );
+    await logCaseActivity(c, id, 'case.linked', { related_case_id: relId, related_case_number: rel.case_number, link_type: type });
+    return c.json({ data: { id: Number(res.meta.last_row_id) }, linked: true }, 201);
+  } catch (err) {
+    return c.json({ error: 'Failed to link case', code: 'CASE_LINK_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+cases.delete('/:id/related/:relatedId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    const relId = parseInt(c.req.param('relatedId'), 10);
+    if (isNaN(id) || isNaN(relId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const res = await execute(
+      db,
+      `DELETE FROM case_links WHERE (case_id = ? AND related_case_id = ?) OR (case_id = ? AND related_case_id = ?)`,
+      id, relId, relId, id,
+    );
+    if (res.meta.changes === 0) return c.json({ error: 'Link not found', code: 'NOT_FOUND' }, 404);
+    await logCaseActivity(c, id, 'case.unlinked', { related_case_id: relId });
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to unlink case', code: 'CASE_UNLINK_ERROR' }, 500);
+  }
+});
 
 // ── GET /export/csv — supervisor+ only ──────────────────────
 cases.get('/export/csv', async (c) => {
@@ -1006,17 +1370,25 @@ cases.get('/:id/full', async (c) => {
        ORDER BY cn.is_pinned DESC, cn.created_at DESC`,
       id,
     );
+    const related = await safeQuery<Record<string, unknown>>(
+      `SELECT cl.link_type, rc.id, rc.case_number, rc.title, rc.status
+       FROM case_links cl JOIN cases rc ON rc.id = cl.related_case_id WHERE cl.case_id = ?
+       UNION
+       SELECT cl.link_type, rc.id, rc.case_number, rc.title, rc.status
+       FROM case_links cl JOIN cases rc ON rc.id = cl.case_id WHERE cl.related_case_id = ?`,
+      id, id,
+    );
 
     return c.json({
       ...caseRow,
       calls, incidents, persons, vehicles, properties,
-      evidence, warrants, citations, notes,
+      evidence, warrants, citations, notes, related,
       counts: {
         calls: calls.length, incidents: incidents.length,
         persons: persons.length, vehicles: vehicles.length,
         properties: properties.length, evidence: evidence.length,
         warrants: warrants.length, citations: citations.length,
-        notes: notes.length,
+        notes: notes.length, related: related.length,
       },
     });
   } catch (err) {
