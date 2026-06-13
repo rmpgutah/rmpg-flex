@@ -25,6 +25,7 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { isValidTaskStatus, isValidTaskPriority, completedAtFor } from '../utils/caseTasks';
+import { evaluateCompleteness } from '../utils/caseCompleteness';
 
 const cases = new Hono<Env>();
 
@@ -708,6 +709,41 @@ cases.get('/:id/solvability', async (c) => {
     return c.json({ score, rating, factors, evidence_count, witness_count, suspect_identified });
   } catch (err) {
     return c.json({ error: 'Failed to analyze solvability', code: 'SOLVABILITY_GET_ERROR' }, 500);
+  }
+});
+
+// ── GET /:id/completeness — investigative readiness (v3 Phase 1) ──
+cases.get('/:id/completeness', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const row = await queryFirst<{ case_type: string | null; lead_investigator_id: number | null; narrative: string | null; summary: string | null; solvability_score: number | null }>(
+      db, 'SELECT case_type, lead_investigator_id, narrative, summary, solvability_score FROM cases WHERE id = ?', id,
+    );
+    if (!row) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
+    const tally = async (sql: string): Promise<number> => {
+      try { return (await queryFirst<{ n: number }>(db, sql, id))?.n ?? 0; } catch { return 0; }
+    };
+    const persons = await tally('SELECT COUNT(*) n FROM case_person_links WHERE case_id = ?');
+    const evidence = await tally('SELECT COUNT(*) n FROM case_evidence WHERE case_id = ?');
+    const vehicles = await tally('SELECT COUNT(*) n FROM case_vehicles WHERE case_id = ?');
+    const incidents = await tally('SELECT COUNT(*) n FROM case_incidents WHERE case_id = ?');
+    const calls = await tally('SELECT COUNT(*) n FROM case_calls WHERE case_id = ?');
+    const tasks_total = await tally('SELECT COUNT(*) n FROM case_tasks WHERE case_id = ?');
+    const tasks_open = await tally("SELECT COUNT(*) n FROM case_tasks WHERE case_id = ? AND status NOT IN ('done','canceled')");
+    const suspectLinks = await tally(
+      `SELECT COUNT(*) n FROM case_person_links WHERE case_id = ?
+         AND lower(COALESCE(relationship,'')) IN ('suspect','arrestee','offender','defendant')`,
+    );
+    const result = evaluateCompleteness(row.case_type, {
+      lead_investigator_id: row.lead_investigator_id, narrative: row.narrative, summary: row.summary,
+      solvability_score: row.solvability_score, persons, evidence, vehicles, incidents, calls,
+      tasks_total, tasks_open, suspect_identified: suspectLinks > 0,
+    });
+    return c.json(result);
+  } catch (err) {
+    return c.json({ error: 'Failed to evaluate completeness', code: 'COMPLETENESS_ERROR' }, 500);
   }
 });
 

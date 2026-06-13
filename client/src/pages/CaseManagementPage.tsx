@@ -33,6 +33,7 @@ import { formatActivity, type CaseActivityRow } from '../utils/caseActivity';
 import { CaseTasksTab, CaseMyTasksView } from '../components/CaseTasks';
 import { CaseDashboardView, SlaBadge } from '../components/CaseDashboard';
 import { CaseRelatedSection } from '../components/CaseRelated';
+import { CaseReadinessCard, fetchCaseCompleteness } from '../components/CaseReadiness';
 import { downloadCaseReport } from '../utils/caseReportGenerator';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
@@ -559,6 +560,14 @@ export default function CaseManagementPage() {
 
   const handleStatusChange = async (newStatus: string) => {
     if (!selected) return;
+    // Advisory readiness gate on close — warn, never block (per design).
+    if (newStatus.startsWith('closed')) {
+      const comp = await fetchCaseCompleteness(selected.id);
+      if (comp && comp.percent < 100 &&
+        !window.confirm(`This case is ${comp.percent}% complete.${comp.missing.length ? `\nMissing: ${comp.missing.join(', ')}.` : ''}\n\nClose it anyway?`)) {
+        return;
+      }
+    }
     setStatusChanging(true);
     try {
       await apiFetch(`/cases/${selected.id}/status`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) });
@@ -588,6 +597,11 @@ export default function CaseManagementPage() {
   // ── Review workflow handlers ──
   const handleSubmitForReview = async () => {
     if (!selected) return;
+    const comp = await fetchCaseCompleteness(selected.id);
+    if (comp && comp.percent < 100 &&
+      !window.confirm(`This case is ${comp.percent}% complete.${comp.missing.length ? `\nMissing: ${comp.missing.join(', ')}.` : ''}\n\nSubmit for review anyway?`)) {
+      return;
+    }
     setReviewSubmitting(true);
     try {
       await apiFetch(`/cases/${selected.id}/submit-review`, { method: 'PUT' });
@@ -899,6 +913,9 @@ export default function CaseManagementPage() {
                       })}
                     </div>
                   )}
+
+                  {/* Case readiness / completeness (v3 Phase 1) */}
+                  <CaseReadinessCard caseId={selected.id} refreshKey={caseFull} />
 
                   {/* Related cases (v2 Phase 4) */}
                   <CaseRelatedSection
