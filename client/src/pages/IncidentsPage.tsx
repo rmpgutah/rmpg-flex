@@ -70,7 +70,21 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import WarrantBadge from '../components/WarrantBadge';
 import NarrativeAssist from '../components/dispatch/NarrativeAssist';
 import { humanizePriority, getStatusTooltip, formatAddressDisplay, humanizeType, humanizeDisposition } from '../utils/statusLabels';
+import { coded } from '../utils/searchText';
 import ZsbBadge from '../components/ZsbBadge';
+
+export function incidentMatchesSearch(
+  inc: { incident_number: string; title: string; location: string; officer_name: string; type: string },
+  q: string,
+): boolean {
+  return (
+    inc.incident_number.toLowerCase().includes(q) ||
+    inc.title.toLowerCase().includes(q) ||
+    inc.location.toLowerCase().includes(q) ||
+    inc.officer_name.toLowerCase().includes(q) ||
+    coded(inc.type, humanizeType).includes(q)
+  );
+}
 
 // ============================================================
 // Backend -> Frontend mapping
@@ -837,13 +851,7 @@ export default function IncidentsPage() {
       if (uofFilter && !UOF_TYPES.includes(inc.type)) return false;
       if (!searchQuery) return true;
       const q = searchQuery.toLowerCase();
-      return (
-        inc.incident_number.toLowerCase().includes(q) ||
-        inc.title.toLowerCase().includes(q) ||
-        inc.location.toLowerCase().includes(q) ||
-        inc.officer_name.toLowerCase().includes(q) ||
-        inc.type.toLowerCase().includes(q)
-      );
+      return incidentMatchesSearch(inc as any, q);
     })
     .sort((a, b) => {
       const aVal = a[sortKey] ?? '';

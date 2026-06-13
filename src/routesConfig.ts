@@ -65,6 +65,7 @@ import ai from './routes/ai';
 import alerts from './routes/notifications';
 import assets from './routes/assets';
 import billing from './routes/billing';
+import serveBilling from './routes/serveBilling';
 import invoices from './routes/invoices';
 import useOfForce from './routes/useOfForce';
 import notificationsInbox from './routes/notificationsInbox';
@@ -103,6 +104,7 @@ import crisisResponse from './routes/crisisResponse';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import documentFolders from './routes/documents/folders';
+import documentsLibrary from './routes/documents/library';
 import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
 import tts from './routes/tts';
@@ -394,6 +396,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/audit', router: audit, auth: 'required' },
   { prefix: '/api/billing', router: billing, auth: 'required',
     note: 'Financial/billing module: contracts, invoices, line items, payments, expenses' },
+  { prefix: '/api/billing', router: serveBilling, auth: 'required',
+    note: 'Process-service contracts billing: pricing rate card, PS contract terms, serve charges, invoice-from-charges' },
   { prefix: '/api/invoices', router: invoices, auth: 'required',
     note: 'InvoicesPage summary tile (/stats) over the invoices table. Full CRUD lives under /api/billing/invoices.' },
   { prefix: '/api/use-of-force', router: useOfForce, auth: 'required',
@@ -418,6 +422,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Training management: courses, enrollments, certifications, firearms qualifications' },
 
   // ── Documents ──────────────────────────────────────────────
+  { prefix: '/api/docs', router: documentsLibrary, auth: 'required',
+    note: 'Authored documents (Phase 2): rich-body, revisions, finalize-lock, call/incident links. Distinct from /api/documents (file folders).' },
   { prefix: '/api/documents', router: documentFolders, auth: 'required' },
   { prefix: '/api/pdf-tools', router: pdfTools, auth: 'required' },
   { prefix: '/api/document-intake', router: documentIntake, auth: 'required' },

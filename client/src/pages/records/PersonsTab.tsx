@@ -50,6 +50,7 @@ import type { PersonFormData } from '../../components/PersonFormModal';
 import WarrantBadge from '../../components/WarrantBadge';
 import AISearchButton from '../../components/AISearchButton';
 import { humanizeGender, humanizeRace, formatPhoneDisplay, formatAddressDisplay, humanizeFlag } from '../../utils/statusLabels';
+import { coded } from '../../utils/searchText';
 import { hasValue } from '../../utils/sentinel';
 
 // ── DB Mapper ──────────────────────────────────────
@@ -502,7 +503,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
       p.dl_number?.toLowerCase().includes(q) ||
       p.ssn_last4?.includes(q) ||
       p.phone?.includes(q) ||
-      p.flags.some((f) => (typeof f === 'object' ? f.type : f).toLowerCase().includes(q))
+      p.flags.some((f) => coded((typeof f === 'object' ? f.type : f), (v) => humanizeFlag(v ?? '')).includes(q))
     );
   });
 

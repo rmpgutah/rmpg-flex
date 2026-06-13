@@ -81,8 +81,13 @@ gps.post('/', async (c) => {
       'SELECT has_take_home FROM users WHERE id = ?', userId);
     const isTakeHome = userRow?.has_take_home === 1;
 
-    const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null; on_foot: number | null }>(db,
-      'SELECT id, call_sign, status, gps_source, vehicle_id, current_call_id, on_foot FROM units WHERE officer_id = ? LIMIT 1', userId);
+    // NOTE: keep this critical-path SELECT to columns guaranteed present on
+    // every deployed DB. on_foot (migration 0102) is OPTIONAL and only used by
+    // best-effort on-foot detection below — reading it here would let a single
+    // unlanded migration 500 the entire GPS write path (breadcrumbs, unit
+    // position, trips). It is read separately, guarded, inside that block.
+    const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null }>(db,
+      'SELECT id, call_sign, status, gps_source, vehicle_id, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId);
 
     if (!unit && !isTakeHome) return c.json({ error: 'No assigned unit' }, 400);
 
@@ -123,12 +128,17 @@ gps.post('/', async (c) => {
     // best-effort — never blocks the breadcrumb write.
     if (unitId && unit && lastPt && points.some((p) => p.activity)) {
       try {
+        // Read the optional on_foot state here (not in the critical SELECT) so
+        // a missing migration-0102 column degrades on-foot detection instead of
+        // failing the whole GPS write. Guarded by this block's catch.
+        const prevRow = await queryFirst<{ on_foot: number | null }>(db,
+          'SELECT on_foot FROM units WHERE id = ? LIMIT 1', unitId);
         const { runOnFootTransition } = await import('../../utils/onFootDetection');
         const t = await runOnFootTransition(db, {
           unitId,
           officerId: userId,
           callSign,
-          prevOnFoot: unit.on_foot === 1,
+          prevOnFoot: prevRow?.on_foot === 1,
           lastLat: lastPt.latitude,
           lastLng: lastPt.longitude,
           source: lastPt.source ?? null,

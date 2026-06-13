@@ -28,6 +28,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
+import { escapeLike, codedLike } from '../utils/searchText';
 
 const connections = new Hono<Env>();
 
@@ -66,11 +67,6 @@ const VALID_TYPES = [
 ];
 
 // ── Helpers ──────────────────────────────────────────────────
-
-// Escape LIKE wildcards so a search for "50%" doesn't match everything.
-function escapeLike(s: string): string {
-  return s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-}
 
 // Best-effort audit row. MUST NOT throw — a failed audit write can never
 // be allowed to fail the user's request.
@@ -622,7 +618,9 @@ connections.get('/search', operational, async (c) => {
   if (!q || q.trim().length < 2) return c.json([]);
 
   const db = getDb(c.env);
-  const term = `%${escapeLike(q.trim())}%`;
+  const raw = q.trim();
+  const term = `%${escapeLike(raw)}%`;
+  const incidentTypeMatch = codedLike('incident_type', raw);
   const results: Array<{ id: number; type: string; label: string }> = [];
 
   try {
@@ -646,13 +644,13 @@ connections.get('/search', operational, async (c) => {
   } catch (err: any) { console.error('[Connections] cases search error:', err?.message); }
 
   try {
-    for (const i of await query<any>(db, `SELECT id, incident_number, incident_type FROM incidents WHERE incident_number LIKE ? ESCAPE '\\' OR incident_type LIKE ? ESCAPE '\\' OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term))
+    for (const i of await query<any>(db, `SELECT id, incident_number, incident_type FROM incidents WHERE incident_number LIKE ? ESCAPE '\\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
       results.push({ id: i.id, type: 'incident', label: `${i.incident_number || ''} ${i.incident_type}`.trim() });
   } catch (err: any) { console.error('[Connections] incidents search error:', err?.message); }
 
   // Calls for service — searchable so an analyst can seed a graph on a CFS.
   try {
-    for (const cf of await query<any>(db, `SELECT id, call_number, incident_type, status FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\\' OR incident_type LIKE ? ESCAPE '\\' OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term))
+    for (const cf of await query<any>(db, `SELECT id, call_number, incident_type, status FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
       results.push({ id: cf.id, type: 'call', label: `${cf.call_number || `CFS-${cf.id}`} ${cf.incident_type || ''} (${(cf.status || '?').toUpperCase()})`.replace(/\s+/g, ' ').trim() });
   } catch (err: any) { console.error('[Connections] calls search error:', err?.message); }
 

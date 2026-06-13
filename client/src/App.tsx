@@ -117,6 +117,9 @@ const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
 const IntelSearchPage = lazyRetry(() => import('./pages/IntelSearchPage'));
+const IntelReportsPage = lazyRetry(() => import('./pages/intel/IntelReportsPage'));
+const IntelReportDetailPage = lazyRetry(() => import('./pages/intel/IntelReportDetailPage'));
+const IntelSourcesPage = lazyRetry(() => import('./pages/intel/IntelSourcesPage'));
 const PersonDossierPage = lazyRetry(() => import('./pages/PersonDossierPage'));
 const PlateLogPage = lazyRetry(() => import('./pages/PlateLogPage'));
 const QuickCapturePage = lazyRetry(() => import('./pages/QuickCapturePage'));
@@ -164,6 +167,7 @@ const DocumentIntakePage = lazyRetry(() => import('./pages/DocumentIntakePage'))
 const DocumentsPage = lazyRetry(() => import('./pages/DocumentsPage'));
 const PdfEditorPage = lazyRetry(() => import('./pages/pdf-editor'));
 const DocumentWriterPage = lazyRetry(() => import('./pages/document-writer'));
+const DocsLibraryPage = lazyRetry(() => import('./pages/docs/DocsLibraryPage'));
 const ForgotPasswordPage = lazyRetry(() => import('./pages/ForgotPasswordPage'));
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
@@ -466,6 +470,9 @@ function AppRoutes() {
             <Route path="/intel/quick-capture" element={<RouteErrorBoundary><QuickCapturePage /></RouteErrorBoundary>} />
             <Route path="/intel/jail" element={<RouteErrorBoundary><JailRecordsPage /></RouteErrorBoundary>} />
             <Route path="/intel/record" element={<RouteErrorBoundary><InteractionRecorderPage /></RouteErrorBoundary>} />
+            <Route path="/intel/reports" element={<RouteErrorBoundary><IntelReportsPage /></RouteErrorBoundary>} />
+            <Route path="/intel/reports/:id" element={<RouteErrorBoundary><IntelReportDetailPage /></RouteErrorBoundary>} />
+            <Route path="/intel/sources" element={<RouteErrorBoundary><IntelSourcesPage /></RouteErrorBoundary>} />
             <Route path="/code-enforcement" element={<RouteErrorBoundary><CodeEnforcementPage /></RouteErrorBoundary>} />
             <Route path="/court" element={<RouteErrorBoundary><CourtTrackerPage /></RouteErrorBoundary>} />
             <Route path="/dar" element={<RouteErrorBoundary><DailyActivityReportsPage /></RouteErrorBoundary>} />
@@ -507,6 +514,7 @@ function AppRoutes() {
             <Route path="/documents" element={<RouteErrorBoundary><DocumentsPage /></RouteErrorBoundary>} />
             <Route path="/pdf-editor" element={<RouteErrorBoundary><PdfEditorPage /></RouteErrorBoundary>} />
             <Route path="/document-writer" element={<RouteErrorBoundary><DocumentWriterPage /></RouteErrorBoundary>} />
+            <Route path="/docs" element={<RouteErrorBoundary><DocsLibraryPage /></RouteErrorBoundary>} />
             <Route path="/recon-connect" element={<RouteErrorBoundary><ReconConnectPage /></RouteErrorBoundary>} />
             <Route path="/jail" element={<RouteErrorBoundary><JailPage /></RouteErrorBoundary>} />
             <Route path="/affairs" element={<RouteErrorBoundary><AffairsPage /></RouteErrorBoundary>} />
