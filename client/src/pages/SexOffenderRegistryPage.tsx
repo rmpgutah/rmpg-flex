@@ -422,7 +422,7 @@ export default function SexOffenderRegistryPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-white text-xs font-bold truncate">
-                        {r.last_name.toUpperCase()}, {r.first_name}
+                        {(r.last_name || 'UNKNOWN').toUpperCase()}{r.first_name ? `, ${r.first_name}` : ''}
                       </span>
                       {/* Tier Badge */}
                       <span
@@ -518,7 +518,7 @@ export default function SexOffenderRegistryPage() {
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-white font-bold text-base truncate">
-              {selected.last_name.toUpperCase()}, {selected.first_name} {selected.middle_name || ''}
+              {(selected.last_name || 'UNKNOWN').toUpperCase()}{selected.first_name ? `, ${selected.first_name}` : ''} {selected.middle_name || ''}
             </h2>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {/* Tier badge */}
