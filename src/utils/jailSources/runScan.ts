@@ -7,11 +7,13 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { query, execute } from '../db';
 import { ingestBookings } from '../jailIngest';
 import { seedJailSources } from './seed';
-import { udcAdapter } from './adapters/udc';
 import { vinelinkAdapter } from './adapters/vinelink';
+import { udcCredentialedAdapter } from './adapters/credentialed';
 import type { JailSourceAdapter } from './types';
 
-const ADAPTERS: JailSourceAdapter[] = [udcAdapter, vinelinkAdapter];
+// UDC now runs as a credentialed adapter (live the moment an authorized feed
+// URL/token lands in system_config); vinelink stays as a degrade-to-[] portal.
+const ADAPTERS: JailSourceAdapter[] = [udcCredentialedAdapter, vinelinkAdapter];
 
 export interface JailScanSummary { source_key: string; fetched: number; ingested: number; matched: number; alerts: number; status: string }
 
