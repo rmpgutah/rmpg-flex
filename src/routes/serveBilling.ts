@@ -96,4 +96,57 @@ psb.delete('/ps-pricing/items/:id', async (c) => {
 // Suppress unused variable warning for REVIEW (reserved for future charge-review endpoints)
 void REVIEW;
 
+// ── Per-contract process-service terms ─────────────────────
+psb.get('/contracts/:id/ps-terms', async (c) => {
+  const db = getDb(c.env);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const row = await queryFirst(db, 'SELECT * FROM ps_contract_terms WHERE contract_id = ?', id);
+  // 404-safe: return defaults so the UI can render an empty form.
+  return c.json({ data: row ?? { contract_id: id, billing_trigger: 'on_completion', sla_days: null, retainer_amount: null, doc_types_json: null, rate_overrides_json: null, notes: null } });
+});
+
+psb.put('/contracts/:id/ps-terms', async (c) => {
+  const denied = requireRole(c, ...MANAGE);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const db = getDb(c.env);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const b = await c.req.json<any>();
+  const user = c.get('user') as { id: number } | undefined;
+  const before = await queryFirst<any>(db, 'SELECT * FROM ps_contract_terms WHERE contract_id = ?', id);
+  const overridesJson = b.rate_overrides_json
+    ? (typeof b.rate_overrides_json === 'string' ? b.rate_overrides_json : JSON.stringify(b.rate_overrides_json))
+    : (b.rate_overrides ? JSON.stringify(b.rate_overrides) : null);
+  const docTypesJson = b.doc_types_json
+    ? (typeof b.doc_types_json === 'string' ? b.doc_types_json : JSON.stringify(b.doc_types_json))
+    : (b.doc_types ? JSON.stringify(b.doc_types) : null);
+  await execute(db,
+    `INSERT INTO ps_contract_terms (contract_id, billing_trigger, sla_days, retainer_amount, doc_types_json, rate_overrides_json, notes, updated_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(contract_id) DO UPDATE SET
+       billing_trigger = excluded.billing_trigger, sla_days = excluded.sla_days,
+       retainer_amount = excluded.retainer_amount, doc_types_json = excluded.doc_types_json,
+       rate_overrides_json = excluded.rate_overrides_json, notes = excluded.notes,
+       updated_at = datetime('now','localtime'), updated_by = excluded.updated_by`,
+    id, b.billing_trigger ?? 'on_completion', b.sla_days ?? null, b.retainer_amount ?? null,
+    docTypesJson, overridesJson, b.notes ?? null, user?.id ?? null);
+  await logAudit(db, user?.id ?? null, before ? 'update' : 'create', 'ps_contract', id, { before, after: b });
+  const after = await queryFirst(db, 'SELECT * FROM ps_contract_terms WHERE contract_id = ?', id);
+  return c.json({ data: after });
+});
+
+// ── Audit history for a contract (from activity_log) ───────
+psb.get('/contracts/:id/audit', async (c) => {
+  const db = getDb(c.env);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const rows = await query(db,
+    `SELECT a.id, a.action, a.entity_type, a.details, a.created_at, u.full_name AS user_name
+       FROM activity_log a LEFT JOIN users u ON a.user_id = u.id
+      WHERE a.entity_type = 'ps_contract' AND a.entity_id = ?
+      ORDER BY a.id DESC LIMIT 100`, id);
+  return c.json({ data: rows });
+});
+
 export default psb;
