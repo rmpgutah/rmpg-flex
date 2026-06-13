@@ -178,10 +178,10 @@ struct ShiftEndSheet: View {
     @State private var needsOverride = false
     @State private var overrideReason = ""
     @State private var odometer = ""
-    @State private var issues = ""
     @State private var fuelLevel = "1/2"
-    @State private var newDamage = false
-    @State private var damageNote = ""
+    @State private var lines = VehicleInspection.freshLines()
+    @State private var notes = ""
+    @State private var oosAck = false
     @State private var photoUrls: [String] = []
     @State private var boughtFuel = false
     @State private var fuelGallons = ""
@@ -190,27 +190,34 @@ struct ShiftEndSheet: View {
     @State private var error: String?
 
     private var vehicleId: Int? { (dutyState["vehicle"] as? [String: Any])?["id"] as? Int }
+    private var defects: [InspectionLine] { VehicleInspection.defects(lines) }
+    private var isOOS: Bool { VehicleInspection.isOutOfService(lines) }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("ODOMETER") {
+                Section("ODOMETER & FUEL") {
                     TextField("Ending odometer (blank = GPS-derived)", text: $odometer)
                         .keyboardType(.numberPad)
-                }
-                Section("POST-TRIP") {
                     FuelLevelPicker(level: $fuelLevel)
-                    Toggle("New damage found", isOn: $newDamage).tint(Theme.red)
-                    if newDamage { TextField("Describe damage", text: $damageNote) }
-                    TextField("Mechanical issues this shift (blank = none)", text: $issues, axis: .vertical)
-                        .lineLimit(2...4)
+                }
+                VehicleInspectionForm(lines: $lines)
+                Section("PHOTOS & NOTES") {
                     InspectionPhotoStrip(context: "post-trip", photoUrls: $photoUrls)
+                    TextField("Mechanical / general notes", text: $notes, axis: .vertical).lineLimit(2...4)
                 }
                 Section("FUEL PURCHASE THIS SHIFT") {
                     Toggle("I bought fuel", isOn: $boughtFuel).tint(Theme.gold)
                     if boughtFuel {
                         TextField("Gallons", text: $fuelGallons).keyboardType(.decimalPad)
                         TextField("Total cost ($)", text: $fuelCost).keyboardType(.decimalPad)
+                    }
+                }
+                if isOOS {
+                    Section("⚠ VEHICLE OUT OF SERVICE") {
+                        Text("A critical defect was found on the post-trip — this vehicle will be marked OUT OF SERVICE for the next shift and a maintenance request opened.")
+                            .font(.system(size: 11)).foregroundStyle(Theme.red)
+                        Toggle("I acknowledge — vehicle is out of service", isOn: $oosAck).tint(Theme.red)
                     }
                 }
                 if needsOverride {
@@ -221,8 +228,9 @@ struct ShiftEndSheet: View {
                     }
                 }
                 Section {
-                    Button(submitting ? "ENDING…" : "END SHIFT") { Task { await submit() } }
-                        .fontWeight(.bold).disabled(submitting || (needsOverride && overrideReason.isEmpty))
+                    Button(submitting ? "ENDING…" : (isOOS ? "LOG OOS & END SHIFT" : "END SHIFT")) { Task { await submit() } }
+                        .fontWeight(.bold)
+                        .disabled(submitting || (needsOverride && overrideReason.isEmpty) || (isOOS && !oosAck))
                     if let error { Text(error).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.red) }
                 }
             }
@@ -244,19 +252,14 @@ struct ShiftEndSheet: View {
         do {
             try await client.requestJSON("POST", "api/dispatch/duty/end", body: body)
             let fuelLow = fuelLevel == "E" || fuelLevel == "1/4"
-            let hasIssues = newDamage || fuelLow || !issues.isEmpty
+            let hasIssues = !defects.isEmpty || fuelLow
             if let vid = vehicleId {
-                var checklist: [[String: String]] = []
-                checklist.append(["category": "POST-TRIP", "item": "Fuel level at end",
-                                  "status": fuelLow ? "fail" : "pass",
+                var checklist = VehicleInspection.payload(lines)
+                checklist.append(["category": "Fuel", "item": "Fuel level at end",
+                                  "status": fuelLow ? "defect" : "pass", "severity": "",
                                   "notes": "\(fuelLevel) tank" + (fuelLow ? " — refuel needed" : "")])
-                checklist.append(["category": "POST-TRIP", "item": "New damage",
-                                  "status": newDamage ? "fail" : "pass", "notes": damageNote])
-                if !issues.isEmpty {
-                    checklist.append(["category": "POST-TRIP", "item": "Mechanical", "status": "fail", "notes": issues])
-                }
                 for (i, url) in photoUrls.enumerated() {
-                    checklist.append(["category": "PHOTOS", "item": "Photo \(i + 1)", "status": "pass", "notes": url])
+                    checklist.append(["category": "Photos", "item": "Photo \(i + 1)", "status": "pass", "severity": "", "notes": url])
                 }
                 if boughtFuel {
                     _ = try? await FuelLogger.log(client: client, vehicleId: vid, gallons: fuelGallons,
@@ -266,24 +269,32 @@ struct ShiftEndSheet: View {
                     "inspection_date": ISO8601DateFormatter().string(from: Date()),
                     "inspector_name": KeychainStore.load(key: "rmpgUser") ?? "field-app",
                     "inspection_type": "post_trip",
-                    "overall_result": hasIssues ? "fail" : "pass",
+                    "overall_result": VehicleInspection.overallResult(lines),
+                    "out_of_service": isOOS,
                     "items": checklist,
-                    "notes": issues,
+                    "notes": notes,
                 ]
                 if let mi = Int(odometer) { insp["mileage"] = mi }
                 _ = try? await client.requestJSON("POST", "api/fleet/\(vid)/inspections", body: insp)
-                if newDamage || !issues.isEmpty {
+                if !defects.isEmpty {
                     _ = try? await client.requestJSON("POST", "api/fleet/\(vid)/maintenance", body: [
-                        "type": "repair_needed",
+                        "type": isOOS ? "out_of_service" : "repair_needed",
                         "performed_at": ISO8601DateFormatter().string(from: Date()),
-                        "description": "POST-TRIP: " + [newDamage ? "DAMAGE: \(damageNote)" : "", issues].filter { !$0.isEmpty }.joined(separator: "; "),
+                        "description": (isOOS ? "POST-TRIP OOS — " : "POST-TRIP DEFECTS: ")
+                            + defects.map { "\($0.label) [\($0.severity.rawValue)] — \($0.note)" }.joined(separator: "; "),
                         "mileage_at_service": Int(odometer) ?? 0,
                         "notes": "Reported from iOS field app at shift end",
                     ])
                 }
+                if isOOS {
+                    _ = await MDTLink.shared.send(type: "vehicle_oos",
+                        payload: ["vehicle_id": vid, "defects": defects.map(\.label).joined(separator: ", "), "phase": "post_trip"])
+                }
             }
-            onDone(hasIssues ? "✓ Off duty — post-trip logged, issues reported to fleet"
-                             : "✓ Off duty — post-trip clean, books closed")
+            onDone(hasIssues
+                   ? (isOOS ? "✓ Off duty — VEHICLE OUT OF SERVICE for next shift, fleet + MDT notified"
+                            : "✓ Off duty — post-trip logged, issues reported to fleet")
+                   : "✓ Off duty — post-trip clean, books closed")
             dismiss()
         } catch {
             switch RMPGAPIClient.apiCode(error) {
