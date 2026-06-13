@@ -331,6 +331,29 @@ gps.post('/', async (c) => {
   }
 });
 
+// GET /dispatch/gps/on-foot-segments?unit_id=&officer_id=&limit=
+// Recent on-foot segments for after-action review. ended_at IS NULL
+// means the segment is still open (officer currently on foot).
+gps.get('/on-foot-segments', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const unitId = c.req.query('unit_id');
+    const officerId = c.req.query('officer_id');
+    const limit = Math.min(Number(c.req.query('limit')) || 25, 200);
+    let sql = `SELECT id, officer_id, unit_id, call_sign, started_at, ended_at,
+                      start_lat, start_lng, end_lat, end_lng, duration_s, distance_m, peak_activity
+               FROM foot_segments WHERE 1=1`;
+    const params: unknown[] = [];
+    if (unitId) { sql += ' AND unit_id = ?'; params.push(unitId); }
+    if (officerId) { sql += ' AND officer_id = ?'; params.push(officerId); }
+    sql += ' ORDER BY started_at DESC LIMIT ?'; params.push(limit);
+    const rows = await query<Record<string, unknown>>(db, sql, ...params);
+    return c.json({ data: rows, count: rows.length });
+  } catch {
+    return c.json({ data: [], count: 0, error: 'Failed to list foot segments' }, 500);
+  }
+});
+
 // GET /dispatch/gps/current - Latest position per unit
 gps.get('/current', async (c) => {
   try {
