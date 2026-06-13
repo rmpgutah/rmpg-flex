@@ -92,8 +92,9 @@ import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import {
   humanizePriority, formatDispositionCode, getStatusTooltip, formatPhoneDisplay,
-  formatAddressDisplay, timeAgo, humanizeStatus,
+  formatAddressDisplay, timeAgo, humanizeStatus, humanizeType,
 } from '../../utils/statusLabels';
+import { coded } from '../../utils/searchText';
 
 // Label maps for human-readable display of stored values
 const SERVICE_TYPE_LABELS: Record<string, string> = {
@@ -1301,7 +1302,7 @@ export default function DispatchPage() {
     return (
       (call.call_number || '').toLowerCase().includes(q) ||
       (call.location || '').toLowerCase().includes(q) ||
-      (call.incident_type || '').toLowerCase().includes(q) ||
+      coded(call.incident_type, humanizeType).includes(q) ||
       (call.description || '').toLowerCase().includes(q) ||
       (call.caller_name || '').toLowerCase().includes(q) ||
       // Geography: let dispatchers filter the queue to a district by typing a
