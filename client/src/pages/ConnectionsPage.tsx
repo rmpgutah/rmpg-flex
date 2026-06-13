@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Network, Loader2, Eye, Pencil, Route } from 'lucide-react';
 import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, Simulation } from 'd3-force';
 import { zoom, zoomIdentity, ZoomBehavior } from 'd3-zoom';
@@ -57,14 +58,17 @@ const NODE_COLORS: Record<string, string> = {
   serve_job: '#14b8a6',
   call: '#22d3ee',
   report: '#ec4899',
+  intel_report: '#e879f9',
 };
 
 const NODE_RADIUS: Record<string, number> = {
   person: 28, vehicle: 18, property: 18, evidence: 16,
   case: 18, incident: 20, warrant: 18, citation: 16,
   arrest: 18, field_interview: 14, trespass_order: 16, serve_job: 16,
-  call: 20, report: 14,
+  call: 20, report: 14, intel_report: 20,
 };
+
+const TIMELINE_KIND_COLOR: Record<string, string> = { intel: '#e879f9', incident: '#f59e0b', call: '#22d3ee', citation: '#fbbf24', warrant: '#dc2626', arrest: '#ef4444', field_interview: '#64748b', trespass_order: '#a855f7', case: '#d4a017', evidence: '#ef4444' };
 
 const VIEW_W = 1000;
 const VIEW_H = 600;
@@ -75,6 +79,7 @@ export default function ConnectionsPage() {
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
+  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -110,6 +115,20 @@ export default function ConnectionsPage() {
   const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [transform, setTransform] = useState('translate(0,0) scale(1)');
   const [zoomScale, setZoomScale] = useState(1);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [timeline, setTimeline] = useState<Array<{ kind: string; id: number; date: string | null; title: string; subtitle: string; status: string }>>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState('');
+
+  // Pre-seed graph from URL params on mount (e.g. /connections?type=person&id=42)
+  useEffect(() => {
+    const t = searchParams.get('type');
+    const idNum = Number(searchParams.get('id'));
+    if (t && Number.isInteger(idNum) && idNum > 0) {
+      setSeed({ type: t, id: idNum, label: `${t} #${idNum}` });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -231,6 +250,19 @@ export default function ConnectionsPage() {
     zoomRef.current = z;
     return () => { svg.on('.zoom', null); };
   }, [nodes.length]);
+
+  // Stable string signature of node membership — only changes when nodes are added/removed,
+  // not on every d3 tick (which calls setNodes(prev => [...prev]) and replaces the array ref).
+  const nodeKeySig = nodes.map(n => `${n.type}:${n.entityId}`).join(',');
+
+  useEffect(() => {
+    if (!timelineOpen || nodeKeySig === '') { setTimeline([]); return; }
+    setTimelineLoading(true); setTimelineError('');
+    apiFetch<any[]>(`/connections/timeline?nodes=${encodeURIComponent(nodeKeySig)}`)
+      .then(r => setTimeline(Array.isArray(r) ? r : []))
+      .catch(() => setTimelineError('Failed to load timeline.'))
+      .finally(() => setTimelineLoading(false));
+  }, [timelineOpen, nodeKeySig]);
 
   function resetView() {
     if (!svgRef.current || !zoomRef.current) return;
@@ -418,6 +450,8 @@ export default function ConnectionsPage() {
     m.copyId(n.entityId),
   ];
 
+  const selectedNode = nodes.find(n => n.id === selectedNodeId) ?? null;
+
   return (
     <div className="p-4 space-y-4 h-full flex flex-col">
       <PanelTitleBar title="CONNECTIONS ANALYST" icon={Network} />
@@ -555,6 +589,15 @@ export default function ConnectionsPage() {
           </div>
           <button
             type="button"
+            onClick={() => setTimelineOpen(o => !o)}
+            disabled={nodes.length === 0}
+            style={{ background: timelineOpen ? '#e879f9' : '#0b0b0b', color: timelineOpen ? '#000' : '#888', borderRadius: 2, padding: '4px 10px', fontSize: 11, fontWeight: 600 }}
+            aria-label="Toggle timeline"
+          >
+            TIMELINE
+          </button>
+          <button
+            type="button"
             onClick={() => { setSeed(null); setAnnotations({}); }}
             className="text-xs text-gray-400 hover:text-[#d4a017]"
             aria-label="Clear seed"
@@ -641,6 +684,24 @@ export default function ConnectionsPage() {
                     cx={n.x} cy={n.y} r={r}
                     fill="#0a0a0a" stroke={inPath ? '#22c55e' : color} strokeWidth={inPath ? 3 : 2}
                   />
+                  {n.type === 'intel_report' && (() => {
+                    const THREAT_RING: Record<string, string> = { critical: '#ef4444', high: '#f59e0b', medium: '#d4a017', low: '#64748b' };
+                    const ring = THREAT_RING[(n.metadata?.threat_level as string) || 'low'] || '#64748b';
+                    const rr = (NODE_RADIUS[n.type] || 20);
+                    return (
+                      <>
+                        <circle cx={n.x} cy={n.y} r={rr + 3} fill="none" stroke={ring} strokeWidth={2.5} />
+                        {n.metadata?.grade ? (
+                          <>
+                            <rect x={(n.x ?? 0) - 12} y={(n.y ?? 0) - rr - 16} width={24} height={13} rx={2} fill="#e879f9" />
+                            <text x={n.x} y={(n.y ?? 0) - rr - 6} textAnchor="middle" fontSize={10} fontWeight={700} fill="#0a0a0a">
+                              {String(n.metadata.grade)}
+                            </text>
+                          </>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                   <text
                     x={n.x} y={n.y - 1} textAnchor="middle" dominantBaseline="middle"
                     fontSize={r > 20 ? 11 : 9} fill={color} fontFamily="monospace" fontWeight="bold"
@@ -740,10 +801,11 @@ export default function ConnectionsPage() {
           )}
           {selectedNodeId && !pathFrom && (
             <div
-              className="absolute bottom-2 left-2 bg-surface-raised border border-[#222222] px-2 py-1 flex items-center gap-2 text-xs text-gray-300 z-20 max-w-md"
+              className="absolute bottom-2 left-2 bg-surface-raised border border-[#222222] px-2 py-1 text-xs text-gray-300 z-20 max-w-md"
               style={{ borderRadius: 2 }}
             >
-              <span>Selected: {nodes.find(n => n.id === selectedNodeId)?.label}</span>
+              <div className="flex items-center gap-2 flex-wrap">
+              <span>Selected: {selectedNode?.label}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -768,6 +830,15 @@ export default function ConnectionsPage() {
                 <span className="text-gray-400 italic border-l border-[#222222] pl-2 ml-1">
                   {annotations[selectedNodeId]}
                 </span>
+              )}
+              </div>
+              {selectedNode?.type === 'intel_report' && (
+                <div className="mt-2 space-y-1 text-[11px]">
+                  <div style={{ color: '#aaa' }}>
+                    Grade {String(selectedNode.metadata?.grade || '—')} · Threat {String(selectedNode.metadata?.threat_level || '—')} · Handling {String(selectedNode.metadata?.handling_code || '—')}
+                  </div>
+                  <Link to={`/intel/reports/${selectedNode.entityId}`} style={{ color: '#e879f9' }}>Open intelligence product →</Link>
+                </div>
               )}
             </div>
           )}
@@ -815,6 +886,26 @@ export default function ConnectionsPage() {
               <span className="uppercase">{t}</span>
             </label>
           ))}
+        </div>
+      )}
+      {timelineOpen && (
+        <div style={{ width: 320, background: '#0a0a0a', borderLeft: '1px solid #232323', overflowY: 'auto', padding: 8, flexShrink: 0, maxHeight: '100%' }}>
+          <div className="text-[9px] font-semibold mb-2" style={{ color: '#e879f9' }}>TIMELINE — {nodes.length} NODES</div>
+          {timelineError && <div style={{ color: '#ef4444', fontSize: 11 }}>{timelineError}</div>}
+          {timelineLoading && <div style={{ color: '#555', fontSize: 11 }}>Loading…</div>}
+          {!timelineLoading && timeline.length === 0 && <div style={{ color: '#555', fontSize: 11 }}>No dated events.</div>}
+          {timeline.map((ev, i) => {
+            return (
+              <div key={`${ev.kind}-${ev.id}-${i}`} className="py-[3px]" style={{ borderTop: '1px solid #1a1a1a' }}>
+                <div className="flex items-center gap-2 text-[10px]">
+                  <span style={{ color: TIMELINE_KIND_COLOR[ev.kind] || '#888', fontWeight: 700 }}>{ev.kind.toUpperCase()}</span>
+                  <span style={{ color: '#666' }}>{ev.date ? ev.date.slice(0, 10) : '—'}</span>
+                </div>
+                <div className="text-[11px]" style={{ color: '#ddd' }}>{ev.title}</div>
+                {ev.subtitle && <div className="text-[10px]" style={{ color: '#777' }}>{ev.subtitle}</div>}
+              </div>
+            );
+          })}
         </div>
       )}
       </div>

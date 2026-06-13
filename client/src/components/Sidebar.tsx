@@ -100,7 +100,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
       { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
       { path: '/reports/custom', icon: Database, label: 'Report Builder' },
-      { path: '/forensics', icon: Network, label: 'Connections', adminOnly: true },
+      { path: '/connections', icon: Network, label: 'Connections', adminOnly: true },
     ],
   },
   {
@@ -109,6 +109,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { path: '/intel/reports', icon: FileText, label: 'Intel Products' },
       { path: '/intel/sources', icon: Network, label: 'Source Registry' },
+      { path: '/intel/workbench', icon: Share2, label: 'Intel Workbench' },
     ],
   },
   {

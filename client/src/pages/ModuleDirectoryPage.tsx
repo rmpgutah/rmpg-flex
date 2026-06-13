@@ -72,7 +72,7 @@ const NAV_CATEGORIES: NavCategory[] = [
       { path: '/microbilt', label: 'MicroBilt', icon: Search, description: 'MicroBilt skip tracing and background data services' },
       { path: '/evidence', label: 'Evidence / Property', icon: Package, description: 'Evidence and property management with chain-of-custody tracking' },
       { path: '/forensic-lab', label: 'Forensic Lab', icon: Microscope, description: 'Forensic analysis tracking, exhibit management, and lab workflow' },
-      { path: '/forensics', label: 'Connections Analysis', icon: Network, description: 'Link analysis and connection mapping between persons, vehicles, and incidents' },
+      { path: '/connections', label: 'Connections Analysis', icon: Network, description: 'Link analysis and connection mapping between persons, vehicles, and incidents' },
       { path: '/cases', label: 'Case Management', icon: Briefcase, badgeKey: 'openCases', description: 'Full case management with evidence, suspect/witness tracking, and cross-referencing' },
       { path: '/arrest-records', label: 'Arrest Records', icon: UserX, description: 'Arrest record management and processing' },
       { path: '/court-records', label: 'Court Records', icon: Gavel, description: 'Court records and case disposition tracking' },
