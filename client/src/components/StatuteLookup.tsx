@@ -209,7 +209,7 @@ export default function StatuteLookup({
         <div className="absolute z-50 top-full left-0 right-0 border-x border-t border-rmpg-600 bg-surface-base">
           {/* State filter row */}
           {showStateFilter && !stateFilter && (
-            <div className="flex border-b border-rmpg-700/50 overflow-x-auto">
+            <div className="flex border-b border-rmpg-700/50 overflow-x-auto tab-scroll">
               {STATE_CODES.map((st) => (
                 <button
                   key={st}

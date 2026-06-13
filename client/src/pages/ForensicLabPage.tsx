@@ -813,7 +813,7 @@ export default function ForensicLabPage() {
         </div>
 
         {/* Progress Pipeline */}
-        <div className="px-3 py-2 border-b border-rmpg-700 bg-surface-sunken/50 overflow-x-auto">
+        <div className="px-3 py-2 border-b border-rmpg-700 bg-surface-sunken/50 overflow-x-auto tab-scroll">
           <div className="flex items-center gap-1 min-w-max">
             {STATUS_PIPELINE.map((s, i) => {
               const cfg = getStatusConfig(s);

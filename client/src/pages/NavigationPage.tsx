@@ -1916,7 +1916,7 @@ export default function NavigationPage() {
       {/* Header bar — on mobile the long tool row scrolls horizontally instead
           of squashing, so every control stays a real tap target in-vehicle. */}
       <div
-        className={`absolute top-0 inset-x-0 flex items-center gap-2 px-3 py-2 backdrop-blur-md border-b border-rmpg-800 z-20 ${isMobile ? 'overflow-x-auto whitespace-nowrap [&>*]:shrink-0' : ''}`}
+        className={`absolute top-0 inset-x-0 flex items-center gap-2 px-3 py-2 backdrop-blur-md border-b border-rmpg-800 z-20 tab-scroll ${isMobile ? 'overflow-x-auto whitespace-nowrap [&>*]:shrink-0' : ''}`}
         style={{ background: 'linear-gradient(180deg, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.78) 100%)', paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
       >
         <div className="absolute bottom-0 inset-x-0 h-px pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(212,160,23,0.4) 30%, #d4a017 50%, rgba(212,160,23,0.4) 70%, transparent 95%)' }} />
@@ -2347,7 +2347,7 @@ export default function NavigationPage() {
             : 'linear-gradient(180deg, rgba(10,10,10,0.80) 0%, rgba(8,8,8,0.96) 60%)' }}
         >
           {/* ── #45/#46/#47/#62/#63/#40/#61/#70/#30 — HUD control bar ── */}
-          <div className="flex items-center gap-2 px-3 py-1 border-b border-rmpg-800/70 overflow-x-auto">
+          <div className="flex items-center gap-2 px-3 py-1 border-b border-rmpg-800/70 overflow-x-auto tab-scroll">
             <HudCollapseToggle collapsed={footerCollapsed} onToggle={() => setFooterCollapsed((v) => !v)} />
             <HudMapControls
               followActive={followActive} onRecenter={recenterMap}
@@ -2378,7 +2378,7 @@ export default function NavigationPage() {
           <div className="px-3 pt-1.5 pb-1 border-b border-rmpg-800/70">
             <HeadingTape heading={dir} />
           </div>
-          <div className={`flex items-stretch px-2 py-2 ${isMobile ? 'overflow-x-auto' : ''}`}>
+          <div className={`flex items-stretch px-2 py-2 tab-scroll ${isMobile ? 'overflow-x-auto' : ''}`}>
             {/* Bay 1 — ring speed gauge (#29/#33/#48/#51/#52/#57/#59/#65/#69) */}
             <div className="flex flex-col items-center justify-center px-1">
               <HudSpeedGauge

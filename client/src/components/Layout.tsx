@@ -1363,7 +1363,7 @@ export default function Layout() {
       {/* Square buttons: icon above label, F-key badge, dropdown for children */}
       {/* ============================================================ */}
       <div
-        className="hidden lg:flex items-center gap-0 px-1 select-none overflow-x-auto overflow-y-hidden scrollbar-dark"
+        className="hidden lg:flex items-center gap-0 px-1 select-none overflow-x-auto overflow-y-hidden scrollbar-dark tab-scroll"
         role="toolbar"
         aria-label="Module navigation"
         style={{

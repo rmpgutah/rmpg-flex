@@ -4746,6 +4746,13 @@ textarea {
   ::-webkit-scrollbar { display: none; }
   .scrollbar-dark::-webkit-scrollbar { display: block; width: 4px; }
   .scrollbar-dark::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+  /* Keep the thin tab-strip bar visible on iOS too (see rule 5b). */
+  [role="tablist"]::-webkit-scrollbar,
+  .tab-bar::-webkit-scrollbar,
+  .tab-scroll::-webkit-scrollbar { display: block; width: 5px; height: 5px; }
+  [role="tablist"]::-webkit-scrollbar-thumb,
+  .tab-bar::-webkit-scrollbar-thumb,
+  .tab-scroll::-webkit-scrollbar-thumb { background: #2e2e2e; border-radius: 2px; }
 }
 
 /* 22. Fix iOS status bar text color in standalone */
@@ -5212,6 +5219,51 @@ html, body {
 }
 ::-webkit-scrollbar-corner {
   background: var(--surface-sunken);
+}
+
+/* --- 5b. TAB-STRIP SCROLLBARS — thin, always-visible, sleek ----------
+   Horizontal tab / section / filter strips (the ones with overflow-x)
+   get a discreet 5px bar so MOUSE users have a grabbable affordance.
+   macOS renders overlay scrollbars that auto-hide when idle; defining a
+   custom ::-webkit-scrollbar with a visible-at-rest thumb forces a
+   persistent (classic) bar in Chrome — the app's primary browser.
+   Scoped to tab strips ONLY via three hooks:
+     • [role="tablist"]  — auto-covers strips already marked up as tablists
+     • .tab-bar          — the existing tab-strip class
+     • .tab-scroll       — opt-in utility added to the remaining bare strips
+   Class-level specificity (0,1,1) intentionally beats the global bare
+   ::-webkit-scrollbar (0,0,1) — including the iOS @supports display:none —
+   so these stay visible everywhere, and overrides .scrollbar-dark (6px)
+   where both classes sit on the same element. Vertical content panels,
+   lists, tables and modals are untouched. */
+[role="tablist"],
+.tab-bar,
+.tab-scroll {
+  scrollbar-width: thin;                      /* Firefox */
+  scrollbar-color: #2e2e2e transparent;        /* rest thumb / track — matches .scrollbar-dark */
+}
+[role="tablist"]::-webkit-scrollbar,
+.tab-bar::-webkit-scrollbar,
+.tab-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+[role="tablist"]::-webkit-scrollbar-track,
+.tab-bar::-webkit-scrollbar-track,
+.tab-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+[role="tablist"]::-webkit-scrollbar-thumb,
+.tab-bar::-webkit-scrollbar-thumb,
+.tab-scroll::-webkit-scrollbar-thumb {
+  background: #2e2e2e;                         /* discreet at rest (border-strong tone) */
+  border-radius: 2px;                          /* matches the 2px sharp-corner token */
+  min-width: 28px;                             /* keep the thumb grabbable on wide strips */
+}
+[role="tablist"]::-webkit-scrollbar-thumb:hover,
+.tab-bar::-webkit-scrollbar-thumb:hover,
+.tab-scroll::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3a;                          /* subtle brighten on hover */
 }
 
 /* --- 6. TABLE / GRID CONSISTENCY ---
