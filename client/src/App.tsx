@@ -5,6 +5,7 @@ import { WebSocketProvider } from './context/WebSocketContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
 import { NavTripProvider } from './context/NavTripContext';
 import { ToastProvider } from './components/ToastProvider';
+import MDTBridge from './components/MDTBridge';
 import { ContextMenuProvider } from './context/ContextMenuContext';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
@@ -591,6 +592,7 @@ export default function App() {
               <ContextMenuProvider>
                 <ErrorBoundary>
                   <WebUpdateBanner />
+                  <MDTBridge />
                   <AndroidUpdateChecker />
                   <AppRoutes />
                 </ErrorBoundary>
