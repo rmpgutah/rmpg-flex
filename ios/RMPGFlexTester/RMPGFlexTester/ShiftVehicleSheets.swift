@@ -9,20 +9,6 @@ import SwiftUI
 //           request when a defect is flagged)
 // ============================================================
 
-private let PRE_TRIP_ITEMS = [
-    "Exterior body / damage", "Tires & wheels", "Lights & signals",
-    "Windshield & wipers", "Horn & siren", "Emergency equipment",
-    "Interior clean / no contraband", "Fluid leaks under vehicle",
-    "Brakes feel", "Fuel level adequate", "Radio / MDT working",
-    "First aid & fire extinguisher",
-]
-
-struct ChecklistItem: Identifiable {
-    let id: String
-    var pass = true
-    var note = ""
-}
-
 struct ShiftStartSheet: View {
     let dutyState: [String: Any]
     /// Set when a dispatch-tier user starts the shift FOR another officer
@@ -33,7 +19,7 @@ struct ShiftStartSheet: View {
 
     @State private var vehicleId: Int?
     @State private var odometer = ""
-    @State private var items = PRE_TRIP_ITEMS.map { ChecklistItem(id: $0) }
+    @State private var lines = VehicleInspection.freshLines()
     @State private var notes = ""
     @State private var fuelLevel = "F"
     @State private var photoUrls: [String] = []
@@ -44,9 +30,12 @@ struct ShiftStartSheet: View {
     @State private var pushedVehicles: [[String: Any]]?
     @State private var needsOverride = false
     @State private var overrideReason = ""
+    // Out-of-service gating: a critical defect requires explicit acknowledgment.
+    @State private var oosAck = false
 
     private var vehicles: [[String: Any]] { pushedVehicles ?? (dutyState["available_vehicles"] as? [[String: Any]] ?? []) }
-    private var failed: [ChecklistItem] { items.filter { !$0.pass } }
+    private var defects: [InspectionLine] { VehicleInspection.defects(lines) }
+    private var isOOS: Bool { VehicleInspection.isOutOfService(lines) }
 
     var body: some View {
         NavigationStack {
@@ -64,18 +53,17 @@ struct ShiftStartSheet: View {
                         .keyboardType(.numberPad)
                     FuelLevelPicker(level: $fuelLevel)
                 }
-                Section("PRE-TRIP INSPECTION") {
+                VehicleInspectionForm(lines: $lines)
+                Section("PHOTOS & NOTES") {
                     InspectionPhotoStrip(context: "pre-trip", photoUrls: $photoUrls)
-                    ForEach($items) { $item in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Toggle(item.id, isOn: $item.pass).tint(Theme.gold)
-                            if !item.pass {
-                                TextField("Describe the defect", text: $item.note)
-                                    .font(.system(size: 12))
-                            }
-                        }
-                    }
                     TextField("General notes", text: $notes)
+                }
+                if isOOS {
+                    Section("⚠ VEHICLE OUT OF SERVICE") {
+                        Text("A critical defect was flagged — this vehicle will be marked OUT OF SERVICE and a maintenance request opened. Do not operate it; notify your supervisor and obtain another vehicle.")
+                            .font(.system(size: 11)).foregroundStyle(Theme.red)
+                        Toggle("I acknowledge — vehicle is out of service", isOn: $oosAck).tint(Theme.red)
+                    }
                 }
                 if needsOverride {
                     Section("MANAGER OVERRIDE") {
@@ -85,8 +73,9 @@ struct ShiftStartSheet: View {
                     }
                 }
                 Section {
-                    Button(submitting ? "STARTING…" : "GO ON DUTY") { Task { await submit() } }
-                        .fontWeight(.bold).disabled(submitting || (needsOverride && overrideReason.isEmpty))
+                    Button(submitting ? "STARTING…" : (isOOS ? "LOG OOS & GO ON DUTY" : "GO ON DUTY")) { Task { await submit() } }
+                        .fontWeight(.bold)
+                        .disabled(submitting || (needsOverride && overrideReason.isEmpty) || (isOOS && !oosAck))
                     if let error { Text(error).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.red) }
                 }
             }
@@ -113,38 +102,50 @@ struct ShiftStartSheet: View {
             let assignedVehicle = vehicleId
                 ?? (((res as? [String: Any])?["vehicle"] as? [String: Any])?["id"] as? Int)
             if let vid = assignedVehicle {
-                var checklist = items.map { ["category": "PRE-TRIP", "item": $0.id,
-                                             "status": $0.pass ? "pass" : "fail", "notes": $0.note] }
-                checklist.append(["category": "PRE-TRIP", "item": "Fuel level at start",
-                                  "status": fuelLevel == "E" ? "fail" : "pass", "notes": "\(fuelLevel) tank"])
+                var checklist = VehicleInspection.payload(lines)
+                checklist.append(["category": "Fuel", "item": "Fuel level at start",
+                                  "status": fuelLevel == "E" ? "defect" : "pass", "severity": "",
+                                  "notes": "\(fuelLevel) tank"])
                 for (i, url) in photoUrls.enumerated() {
-                    checklist.append(["category": "PHOTOS", "item": "Photo \(i + 1)", "status": "pass", "notes": url])
+                    checklist.append(["category": "Photos", "item": "Photo \(i + 1)", "status": "pass", "severity": "", "notes": url])
                 }
                 var insp: [String: Any] = [
                     "inspection_date": ISO8601DateFormatter().string(from: Date()),
                     "inspector_name": KeychainStore.load(key: "rmpgUser") ?? "field-app",
                     "inspection_type": "pre_trip",
-                    "overall_result": failed.isEmpty ? "pass" : "fail",
+                    "overall_result": VehicleInspection.overallResult(lines),
+                    "out_of_service": isOOS,
                     "items": checklist,
                     "notes": notes,
                 ]
                 if let mi = Int(odometer) { insp["mileage"] = mi }
+                // The server derives OOS from the checklist and flags the vehicle
+                // out_of_service automatically (see fleet.ts).
                 _ = try? await client.requestJSON("POST", "api/fleet/\(vid)/inspections", body: insp)
-                // A failed pre-trip item also opens a maintenance request so the
-                // fleet manager sees it without reading every inspection.
-                if !failed.isEmpty {
+                // Any defect opens a maintenance request so the fleet manager sees
+                // it without reading every inspection.
+                if !defects.isEmpty {
                     _ = try? await client.requestJSON("POST", "api/fleet/\(vid)/maintenance", body: [
-                        "type": "repair_needed",
+                        "type": isOOS ? "out_of_service" : "repair_needed",
                         "performed_at": ISO8601DateFormatter().string(from: Date()),
-                        "description": "PRE-TRIP DEFECTS: " + failed.map { "\($0.id) — \($0.note)" }.joined(separator: "; "),
+                        "description": (isOOS ? "OOS — " : "PRE-TRIP DEFECTS: ")
+                            + defects.map { "\($0.label) [\($0.status == .defect ? $0.severity.rawValue : "")] — \($0.note)" }.joined(separator: "; "),
                         "mileage_at_service": Int(odometer) ?? 0,
                         "notes": "Reported from iOS field app at shift start",
                     ])
                 }
+                // OOS → push the vehicle terminal + dispatch so the board reflects
+                // it immediately, not just the fleet record.
+                if isOOS {
+                    _ = await MDTLink.shared.send(type: "vehicle_oos",
+                        payload: ["vehicle_id": vid, "defects": defects.map(\.label).joined(separator: ", ")])
+                }
             }
-            onDone(failed.isEmpty
+            onDone(defects.isEmpty
                    ? "✓ On duty — pre-trip logged clean"
-                   : "✓ On duty — pre-trip logged with \(failed.count) defect(s), maintenance request opened")
+                   : isOOS
+                     ? "✓ On duty — VEHICLE OUT OF SERVICE, fleet + MDT notified"
+                     : "✓ On duty — pre-trip logged with \(defects.count) defect(s), maintenance request opened")
             dismiss()
         } catch {
             // Drive the Worker's 409 code contract instead of dead-ending.
