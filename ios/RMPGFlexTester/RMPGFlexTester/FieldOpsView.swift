@@ -33,6 +33,7 @@ struct FieldOpsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 10) {
+                    HStack { Spacer(); MDTStatusPill() }
                     dutyCard
                     if onShift { statusCard }
                     NavigationLink {
@@ -91,6 +92,10 @@ struct FieldOpsView: View {
                     }
                     if let myCall { callCard(myCall) }
                     panicButton
+                    Button { Task { await sendLocationToMDT() } } label: {
+                        Label("SEND LOCATION TO MDT", systemImage: "car.fill")
+                            .font(.system(size: 11, weight: .semibold)).frame(maxWidth: .infinity)
+                    }.buttonStyle(RaisedButtonStyle())
                     if let status { StatusLine(text: status) }
                     if let gpsPushedAt {
                         Text("GPS → dispatch map · last push \(gpsPushedAt.formatted(date: .omitted, time: .standard))")
@@ -370,6 +375,16 @@ struct FieldOpsView: View {
             ])
             gpsPushedAt = Date()
         }
+    }
+
+    @MainActor
+    private func sendLocationToMDT() async {
+        guard let loc = location.last else { status = "✗ No GPS fix yet"; return }
+        let ok = await MDTLink.shared.send(type: "location", payload: [
+            "latitude": loc.coordinate.latitude, "longitude": loc.coordinate.longitude,
+            "label": "Officer position",
+        ])
+        status = ok ? "✓ Location sent to your vehicle MDT" : "✗ MDT send failed"
     }
 
     @MainActor

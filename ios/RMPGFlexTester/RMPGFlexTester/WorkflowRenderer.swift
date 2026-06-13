@@ -88,7 +88,21 @@ struct WorkflowRenderer: View {
             if localReadiness().allSatisfy(\.satisfied) && readiness.isEmpty {
                 Text("Ready to submit").font(.system(size: 11)).foregroundStyle(Theme.neutral)
             }
+            Button { Task { await notifyMDT() } } label: {
+                Label("Notify vehicle MDT", systemImage: "car.fill")
+                    .font(.system(size: 11, weight: .semibold)).frame(maxWidth: .infinity)
+            }.buttonStyle(RaisedButtonStyle()).padding(.top, 4)
         }.themeCard()
+    }
+
+    // Push a lightweight summary of this report to the in-vehicle MDT so the
+    // terminal/dispatch sees what the officer is filing (situational awareness).
+    @MainActor private func notifyMDT() async {
+        var p: [String: Any] = ["workflow": def.id, "title": def.title]
+        if let nk = def.allFields.first(where: { $0.type == .dictatableNarrative })?.key,
+           case .string(let s)? = values[nk] { p["summary"] = String(s.prefix(200)) }
+        let ok = await MDTLink.shared.send(type: "draft", payload: p)
+        status = ok ? "✓ Sent to your vehicle MDT" : "✗ MDT send failed"
     }
 
     private func localReadiness() -> [ReadinessItem] {
