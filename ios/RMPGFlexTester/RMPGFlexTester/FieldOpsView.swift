@@ -212,6 +212,14 @@ struct FieldOpsView: View {
         return p
     }
 
+    // Geocoded coordinates the server attaches to a call (0/0 = not yet geocoded).
+    private func callCoords(_ call: [String: Any]) -> CLLocationCoordinate2D? {
+        let lat = (call["latitude"] as? Double) ?? (call["latitude"] as? NSNumber)?.doubleValue
+        let lng = (call["longitude"] as? Double) ?? (call["longitude"] as? NSNumber)?.doubleValue
+        if let lat, let lng, lat != 0, lng != 0 { return CLLocationCoordinate2D(latitude: lat, longitude: lng) }
+        return nil
+    }
+
     private func callCard(_ call: [String: Any]) -> some View {
         // GET /calls/:id spreads the row, so the column is incident_type
         // (call_type kept as a fallback for any aliased payload).
@@ -255,6 +263,17 @@ struct FieldOpsView: View {
                     .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.gold, lineWidth: 1))
             }
             .padding(.top, 4)
+            if let coords = callCoords(call) {
+                NavigationLink {
+                    CallNavView(dest: coords, label: (call["location_address"] as? String) ?? (call["address"] as? String) ?? "Call")
+                } label: {
+                    Label("NAVIGATE", systemImage: "location.north.line.fill")
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(.black)
+                        .frame(maxWidth: .infinity).padding(.vertical, 8)
+                        .background(Theme.gold).clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                }
+                .padding(.top, 4)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10).background(Theme.raised)
