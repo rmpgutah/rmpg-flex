@@ -167,6 +167,8 @@ export interface BusinessInput {
   phone?: string | null;
   contact_name?: string | null;
   contact_phone?: string | null;
+  business_type?: string | null;
+  notes?: string | null;
 }
 
 export async function findOrCreateBusiness(db: D1Database, b: BusinessInput): Promise<RecordRef> {
@@ -186,9 +188,10 @@ export async function findOrCreateBusiness(db: D1Database, b: BusinessInput): Pr
   const ins = await execute(
     db,
     `INSERT INTO businesses (name, address, city, state, zip, phone, contact_name, contact_phone, business_type, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'process_service_recipient', 'Auto-created via serve intake')`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     name, b.address || null, b.city || null, b.state || null, b.zip || null,
     b.phone || null, b.contact_name || null, b.contact_phone || null,
+    b.business_type ?? 'process_service_recipient', b.notes ?? 'Auto-created via serve intake',
   );
   return { id: Number(ins.meta.last_row_id), created: true };
 }

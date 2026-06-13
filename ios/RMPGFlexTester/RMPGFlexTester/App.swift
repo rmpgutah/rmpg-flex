@@ -2,27 +2,21 @@ import SwiftUI
 
 @main
 struct RMPGFlexTesterApp: App {
+    @StateObject private var session = AuthSession()
     init() { Theme.configureAppearance() }
 
     var body: some Scene {
         WindowGroup {
-            TabView {
-                // Officer-facing surfaces get the tab slots; dev/system
-                // consoles live in the SYSTEM hub. 5 tabs max — a 6th makes
-                // iOS swallow the rest into an unthemeable stock "More" list.
-                FieldOpsView()
-                    .tabItem { Label("Field Ops", systemImage: "shield.lefthalf.filled") }
-                DutyRosterView()
-                    .tabItem { Label("Roster", systemImage: "person.3.fill") }
-                IDScanView()
-                    .tabItem { Label("ID Scan", systemImage: "person.text.rectangle") }
-                FieldToolkitView()
-                    .tabItem { Label("Toolkit", systemImage: "square.grid.3x3.fill") }
-                RecorderView()
-                    .tabItem { Label("Recorder", systemImage: "mic.fill") }
-                SystemHubView()
-                    .tabItem { Label("System", systemImage: "gearshape.2.fill") }
+            Group {
+                // Auth gate: the app opens to the branded LoginView (Face ID /
+                // password) and only reveals the field surfaces once signed in.
+                if session.isAuthenticated {
+                    MainTabView()
+                } else {
+                    LoginView()
+                }
             }
+            .environmentObject(session)
             .tint(Theme.gold)
             .preferredColorScheme(.dark)
             .background(Theme.base)
@@ -30,9 +24,37 @@ struct RMPGFlexTesterApp: App {
     }
 }
 
+// The signed-in app shell.
+struct MainTabView: View {
+    var body: some View {
+        TabView {
+            // Home dashboard is the post-login landing — at-a-glance status +
+            // quick actions. Officer-facing surfaces fill the remaining slots;
+            // dev/system consoles live in the SYSTEM hub (which iOS folds into
+            // its "More" list once tabs exceed 5).
+            DashboardView()
+                .tabItem { Label("Home", systemImage: "house.fill") }
+            FieldOpsView()
+                .tabItem { Label("Field Ops", systemImage: "shield.lefthalf.filled") }
+            DutyRosterView()
+                .tabItem { Label("Roster", systemImage: "person.3.fill") }
+            IDScanView()
+                .tabItem { Label("ID Scan", systemImage: "person.text.rectangle") }
+            FieldToolkitView()
+                .tabItem { Label("Toolkit", systemImage: "square.grid.3x3.fill") }
+            RecorderView()
+                .tabItem { Label("Recorder", systemImage: "mic.fill") }
+            SystemHubView()
+                .tabItem { Label("System", systemImage: "gearshape.2.fill") }
+        }
+        .tint(Theme.gold)
+    }
+}
+
 // Themed hub for the non-patrol surfaces (D1 console, Cloudflare browser,
 // smoke tests, data viewer, settings) — replaces iOS's stock "More" screen.
 struct SystemHubView: View {
+    @EnvironmentObject var session: AuthSession
     private struct Entry: Identifiable {
         let id: String
         let title: String
@@ -43,6 +65,9 @@ struct SystemHubView: View {
 
     private var entries: [Entry] {
         [
+            Entry(id: "myid", title: "My Officer ID",
+                  subtitle: "Your digital badge + live verification QR",
+                  icon: "person.text.rectangle.fill", destination: AnyView(WalletIDView())),
             Entry(id: "settings", title: "Settings",
                   subtitle: "RMPG login · Cloudflare keys · Verifier token",
                   icon: "gearshape", destination: AnyView(SettingsView())),
@@ -92,6 +117,22 @@ struct SystemHubView: View {
                             .themeCard()
                         }
                     }
+
+                    // Session controls — Lock keeps credentials (Face ID re-entry);
+                    // Sign out wipes them.
+                    VStack(spacing: 6) {
+                        Button { session.lock() } label: {
+                            Label("Lock", systemImage: "lock.fill")
+                        }.buttonStyle(RaisedButtonStyle())
+                        Button(role: .destructive) { session.signOut() } label: {
+                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                                .frame(maxWidth: .infinity)
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundStyle(Theme.red)
+                        .padding(.vertical, 8)
+                    }
+                    .padding(.top, 14)
 
                     Text("RMPG FLEX FIELD · \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev") · api.rmpgutah.us")
                         .font(.system(size: 9, design: .monospaced))

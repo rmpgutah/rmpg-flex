@@ -19,6 +19,7 @@ import BoloAlertBanner from './BoloAlertBanner';
 import RunCardPreview, { type RunCard } from './RunCardPreview';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../hooks/useAddressAutofill';
+import { useLinkOptions } from '../hooks/useLinkOptions';
 import { parseLocationParts } from '../utils/parseLocationParts';
 import { apiFetch } from '../hooks/useApi';
 import Dropdown from './ui/Dropdown';
@@ -74,19 +75,6 @@ export const PROCESS_SERVICE_DOC_TYPES: { value: string; label: string }[] = [
   { value: 'order', label: 'Court Order' },
   { value: 'notice', label: 'Notice' },
   { value: 'petition', label: 'Petition' },
-  { value: 'other', label: 'Other' },
-];
-
-const CALLER_RELATIONSHIPS = [
-  { value: '', label: '-- Select --' },
-  { value: 'employee', label: 'Employee' },
-  { value: 'victim', label: 'Victim' },
-  { value: 'witness', label: 'Witness' },
-  { value: 'complainant', label: 'Complainant' },
-  { value: 'management', label: 'Management' },
-  { value: 'alarm_company', label: 'Alarm Company' },
-  { value: 'officer', label: 'Officer' },
-  { value: 'anonymous', label: 'Anonymous' },
   { value: 'other', label: 'Other' },
 ];
 
@@ -187,6 +175,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const dialogRef = useRef<HTMLDivElement>(null);
   const { resolve: resolveAddress, resolveFromText } = useAddressAutofill();
   const { sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel, getArea } = useDistrictOptions();
+  const { options } = useLinkOptions();
 
   // Person/vehicle record search for linking
   const [personSearchResults, setPersonSearchResults] = useState<any[]>([]);
@@ -755,8 +744,9 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                   value={formData.caller_relationship}
                   onChange={(e) => update('caller_relationship', e.target.value)}
                 >
-                  {CALLER_RELATIONSHIPS.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
+                  <option value="">-- Select --</option>
+                  {options.caller_relationship.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
               </div>

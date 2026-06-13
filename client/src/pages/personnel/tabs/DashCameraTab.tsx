@@ -17,6 +17,8 @@ import RmpgLogo from '../../../components/RmpgLogo';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
+import { coded } from '../../../utils/searchText';
+import { formatEnumValue } from '../../../utils/formatters';
 
 // ── Filters ──────────────────────────────────────────────────
 
@@ -100,7 +102,7 @@ export default function DashCameraTab({
         e.officer_name?.toLowerCase().includes(q) ||
         e.device_name?.toLowerCase().includes(q) ||
         e.address?.toLowerCase().includes(q) ||
-        e.event_type.toLowerCase().includes(q)
+        coded(e.event_type, formatEnumValue).includes(q)
       );
     }
     return list;

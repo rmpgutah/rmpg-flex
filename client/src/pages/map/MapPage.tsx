@@ -101,6 +101,8 @@ import { roadLegendRows, propertyLegendRows } from './utils/landTypes';
 import { useMapPredictions } from './hooks/useMapPredictions';
 import { useMapIntelLayers } from './hooks/useMapIntelLayers';
 import { useMapClustering } from './hooks/useMapClustering';
+import { humanizeType } from '../../utils/statusLabels';
+import { coded } from '../../utils/searchText';
 import { useMapDragDispatch } from './hooks/useMapDragDispatch';
 import { useMapPatrolCheckpoints } from './hooks/useMapPatrolCheckpoints';
 import { useMapResponseRadius } from './hooks/useMapResponseRadius';
@@ -3213,7 +3215,7 @@ export default function MapPage() {
   const filteredCalls = useMemo(() => calls.filter(c => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return (c.call_number || '').toLowerCase().includes(q) || (c.incident_type || '').toLowerCase().includes(q) || (c.location_address || '').toLowerCase().includes(q);
+    return (c.call_number || '').toLowerCase().includes(q) || coded(c.incident_type, humanizeType).includes(q) || (c.location_address || '').toLowerCase().includes(q);
   }), [calls, searchQuery]);
 
   // Quick call status change from map sidebar

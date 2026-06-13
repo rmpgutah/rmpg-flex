@@ -3,7 +3,7 @@ import { Car, Search, Loader2, PlusCircle } from 'lucide-react';
 import FormModal from './FormModal';
 import VehicleFormModal, { type VehicleFormData } from './VehicleFormModal';
 import { apiFetch } from '../hooks/useApi';
-import type { VehicleRole } from '../types';
+import { useLinkOptions } from '../hooks/useLinkOptions';
 
 import RichTextArea from './RichTextArea';
 interface LinkVehicleModalProps {
@@ -26,21 +26,13 @@ interface VehicleResult {
   owner_last_name?: string;
 }
 
-const VEHICLE_ROLES: { value: VehicleRole; label: string }[] = [
-  { value: 'suspect_vehicle', label: 'Suspect Vehicle' },
-  { value: 'victim_vehicle', label: 'Victim Vehicle' },
-  { value: 'witness_vehicle', label: 'Witness Vehicle' },
-  { value: 'involved', label: 'Involved' },
-  { value: 'evidence', label: 'Evidence' },
-  { value: 'other', label: 'Other' },
-];
-
 export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked }: LinkVehicleModalProps) {
+  const { options } = useLinkOptions();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<VehicleResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleResult | null>(null);
-  const [role, setRole] = useState<VehicleRole>('involved');
+  const [role, setRole] = useState<string>('involved');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -245,8 +237,8 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
       {/* Role */}
       <div>
         <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
-        <select id="ff-linkvehiclemodal-1" className="select-dark" value={role} onChange={(e) => setRole(e.target.value as VehicleRole)}>
-          {VEHICLE_ROLES.map((r) => (
+        <select id="ff-linkvehiclemodal-1" className="select-dark" value={role} onChange={(e) => setRole(e.target.value)}>
+          {options.vehicle_role.map((r) => (
             <option key={r.value} value={r.value}>{r.label}</option>
           ))}
         </select>

@@ -32,7 +32,7 @@ export function recordPath(hit: { type: string; id: number }): string {
     case 'vehicle': return `/records?tab=vehicles&id=${hit.id}`;
     case 'warrant': return `/warrants?id=${hit.id}`;
     case 'case': return `/cases?id=${hit.id}`;
-    default: return `/forensics?type=${hit.type}&id=${hit.id}`;
+    default: return `/connections?type=${hit.type}&id=${hit.id}`;
   }
 }
 

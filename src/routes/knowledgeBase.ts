@@ -15,6 +15,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query } from '../utils/db';
+import { codedLike } from '../utils/searchText';
 
 const kb = new Hono<Env>();
 
@@ -63,10 +64,11 @@ kb.get('/search', async (c) => {
 
   const sources: Array<Promise<KbResult[]>> = [
     source('calls', async () => {
+      const itLikeCall = codedLike('incident_type', q);
       const rows = await query<Row>(db,
         `SELECT id, call_number, incident_type, status, location_address FROM calls_for_service
-         WHERE call_number LIKE ? OR incident_type LIKE ? OR location_address LIKE ?
-         ORDER BY id DESC LIMIT ${PER}`, like, like, like);
+         WHERE call_number LIKE ? OR ${itLikeCall.sql} OR location_address LIKE ?
+         ORDER BY id DESC LIMIT ${PER}`, like, ...itLikeCall.binds, like);
       return rows.map((r) => ({
         type: 'call', recordId: Number(r.id),
         label: clean(r.call_number) || `Call #${r.id}`,
@@ -128,10 +130,11 @@ kb.get('/search', async (c) => {
       }));
     }),
     source('incidents', async () => {
+      const itLikeInc = codedLike('incident_type', q);
       const rows = await query<Row>(db,
         `SELECT id, incident_number, incident_type, status, location_address FROM incidents
-         WHERE incident_number LIKE ? OR incident_type LIKE ? OR location_address LIKE ?
-         ORDER BY id DESC LIMIT ${PER}`, like, like, like);
+         WHERE incident_number LIKE ? OR ${itLikeInc.sql} OR location_address LIKE ?
+         ORDER BY id DESC LIMIT ${PER}`, like, ...itLikeInc.binds, like);
       return rows.map((r) => ({
         type: 'incident', recordId: Number(r.id),
         label: clean(r.incident_number) || `Incident #${r.id}`,

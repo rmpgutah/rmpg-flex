@@ -756,7 +756,7 @@ export default function ForensicLabPage() {
   // \u2500\u2500 Right-click context menu for forensic case list rows \u2500\u2500
   const buildCaseMenu = (c: ForensicCase): ContextMenuItem[] => [
     m.action('Open case', () => fetchCaseDetail(c.id), { icon: <Eye size={12} /> }),
-    m.action('View connections', () => navigate(`/forensics?type=case&id=${c.id}`), { icon: <Network size={12} /> }),
+    m.action('View connections', () => navigate(`/connections?type=case&id=${c.id}`), { icon: <Network size={12} /> }),
     m.separator(),
     m.copy('Copy lab case number', c.lab_case_number),
     m.copyId(c.id),
@@ -885,7 +885,7 @@ export default function ForensicLabPage() {
                 <button type="button" onClick={openEditModal} className="toolbar-btn text-[10px]">
                   <Edit3 size={10} /> Edit Details
                 </button>
-                <button type="button" onClick={() => navigate(`/forensics?type=case&id=${selectedCase.id}`)} className="toolbar-btn text-[10px]">
+                <button type="button" onClick={() => navigate(`/connections?type=case&id=${selectedCase.id}`)} className="toolbar-btn text-[10px]">
                   <Network size={10} /> View Connections
                 </button>
               </div>
@@ -1911,7 +1911,7 @@ export default function ForensicLabPage() {
         <div className="flex items-center gap-1.5 ml-auto">
           <ExportButton exportUrl="/api/forensic-lab/export/csv" exportFilename="forensic-cases.csv" />
           <button type="button"
-            onClick={() => navigate('/forensics')}
+            onClick={() => navigate('/connections')}
             className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-400 bg-purple-900/20 hover:bg-purple-900/40 border border-purple-700/40 rounded-sm transition-colors"
             title="Connection Analysis Graph"
           >

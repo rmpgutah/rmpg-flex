@@ -3,7 +3,7 @@ import { UserPlus, Search, Loader2, AlertTriangle, PlusCircle } from 'lucide-rea
 import FormModal from './FormModal';
 import PersonFormModal, { type PersonFormData } from './PersonFormModal';
 import { apiFetch } from '../hooks/useApi';
-import type { PersonRole } from '../types';
+import { useLinkOptions } from '../hooks/useLinkOptions';
 
 import RichTextArea from './RichTextArea';
 interface LinkPersonModalProps {
@@ -28,21 +28,13 @@ interface WarrantCheckResult {
   warrants: { id: number; warrant_number: string; warrant_type: string; charge_description?: string }[];
 }
 
-const PERSON_ROLES: { value: PersonRole; label: string }[] = [
-  { value: 'suspect', label: 'Suspect' },
-  { value: 'victim', label: 'Victim' },
-  { value: 'witness', label: 'Witness' },
-  { value: 'reporting_party', label: 'Reporting Party' },
-  { value: 'involved', label: 'Involved' },
-  { value: 'other', label: 'Other' },
-];
-
 export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked }: LinkPersonModalProps) {
+  const { options } = useLinkOptions();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PersonResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPerson, setSelectedPerson] = useState<PersonResult | null>(null);
-  const [role, setRole] = useState<PersonRole>('involved');
+  const [role, setRole] = useState<string>('involved');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -293,8 +285,8 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
       {/* Role */}
       <div>
         <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
-        <select id="ff-linkpersonmodal-1" className="select-dark" value={role} onChange={(e) => setRole(e.target.value as PersonRole)}>
-          {PERSON_ROLES.map((r) => (
+        <select id="ff-linkpersonmodal-1" className="select-dark" value={role} onChange={(e) => setRole(e.target.value)}>
+          {options.person_role.map((r) => (
             <option key={r.value} value={r.value}>{r.label}</option>
           ))}
         </select>

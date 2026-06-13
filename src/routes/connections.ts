@@ -28,6 +28,9 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
+import { escapeLike, codedLike } from '../utils/searchText';
+import { mergeTimeline } from '../utils/intelDossier';
+import { parseNodeRefs, buildTimelineEvent } from '../utils/connectionsTimeline';
 
 const connections = new Hono<Env>();
 
@@ -62,15 +65,10 @@ const OPERATIONAL_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatc
 const VALID_TYPES = [
   'person', 'vehicle', 'property', 'evidence', 'case', 'incident',
   'warrant', 'citation', 'arrest', 'field_interview', 'trespass_order',
-  'serve_job', 'call', 'report',
+  'serve_job', 'call', 'report', 'intel_report',
 ];
 
 // ── Helpers ──────────────────────────────────────────────────
-
-// Escape LIKE wildcards so a search for "50%" doesn't match everything.
-function escapeLike(s: string): string {
-  return s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-}
 
 // Best-effort audit row. MUST NOT throw — a failed audit write can never
 // be allowed to fail the user's request.
@@ -167,6 +165,17 @@ async function loadNode(
       case 'report': {
         const r = await queryFirst<any>(db, 'SELECT report_number, incident_id, report_type, author_id, created_at FROM supplemental_reports WHERE id = ?', id);
         return { label: r ? `${r.report_number || `SR-${id}`} (${r.report_type || 'supplemental'})` : `Report #${id}`, metadata: r || {} };
+      }
+      case 'intel_report': {
+        const r = await queryFirst<any>(db,
+          `SELECT report_number, title, source_reliability, info_credibility, handling_code, threat_level
+           FROM intel_reports WHERE id = ? AND status = 'disseminated'`, id);
+        if (!r) return { label: `Intel #${id}`, metadata: {} };
+        const grade = (r.source_reliability && r.info_credibility) ? `${r.source_reliability}${r.info_credibility}` : '';
+        return {
+          label: `${r.report_number || `INT-${id}`} — ${r.title || ''}`.trim(),
+          metadata: { grade, threat_level: r.threat_level || 'low', handling_code: r.handling_code || '', intel: true },
+        };
       }
       default:
         return { label: `${type} #${id}`, metadata: {} };
@@ -423,10 +432,33 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
         if (s?.call_id) add('call', s.call_id, 'serve_from_call', 'serve_queue');
         break;
       }
+
+      case 'intel_report': {
+        // Only a disseminated product exposes its links (parity with loadNode's
+        // status gate) — a draft report's edges must not surface in the graph.
+        const dissem = await queryFirst<any>(db,
+          "SELECT 1 AS ok FROM intel_reports WHERE id = ? AND status = 'disseminated'", id);
+        if (dissem) {
+          for (const r of await query<any>(db,
+            `SELECT entity_type, entity_id, role FROM intel_report_links WHERE report_id = ? LIMIT 200`, id))
+            add(r.entity_type, r.entity_id, r.role || 'mentioned', 'intel_report_links');
+        }
+        break;
+      }
     }
   } catch (err: any) {
     console.error(`[Connections] junction query error (${type}#${id}):`, err?.message);
   }
+
+  // 3. Disseminated intel products that name this entity (any node type).
+  try {
+    for (const r of await query<any>(db,
+      `SELECT l.report_id, l.role FROM intel_report_links l
+       JOIN intel_reports rp ON rp.id = l.report_id
+       WHERE l.entity_type = ? AND l.entity_id = ? AND rp.status = 'disseminated'
+       LIMIT 200`, type, id))
+      add('intel_report', r.report_id, r.role || 'intel_subject', 'intel_report_links');
+  } catch (err: any) { console.error('[Connections] intel link edges error:', err?.message); }
 
   return results;
 }
@@ -622,7 +654,9 @@ connections.get('/search', operational, async (c) => {
   if (!q || q.trim().length < 2) return c.json([]);
 
   const db = getDb(c.env);
-  const term = `%${escapeLike(q.trim())}%`;
+  const raw = q.trim();
+  const term = `%${escapeLike(raw)}%`;
+  const incidentTypeMatch = codedLike('incident_type', raw);
   const results: Array<{ id: number; type: string; label: string }> = [];
 
   try {
@@ -646,13 +680,13 @@ connections.get('/search', operational, async (c) => {
   } catch (err: any) { console.error('[Connections] cases search error:', err?.message); }
 
   try {
-    for (const i of await query<any>(db, `SELECT id, incident_number, incident_type FROM incidents WHERE incident_number LIKE ? ESCAPE '\\' OR incident_type LIKE ? ESCAPE '\\' OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term))
+    for (const i of await query<any>(db, `SELECT id, incident_number, incident_type FROM incidents WHERE incident_number LIKE ? ESCAPE '\\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
       results.push({ id: i.id, type: 'incident', label: `${i.incident_number || ''} ${i.incident_type}`.trim() });
   } catch (err: any) { console.error('[Connections] incidents search error:', err?.message); }
 
   // Calls for service — searchable so an analyst can seed a graph on a CFS.
   try {
-    for (const cf of await query<any>(db, `SELECT id, call_number, incident_type, status FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\\' OR incident_type LIKE ? ESCAPE '\\' OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term))
+    for (const cf of await query<any>(db, `SELECT id, call_number, incident_type, status FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
       results.push({ id: cf.id, type: 'call', label: `${cf.call_number || `CFS-${cf.id}`} ${cf.incident_type || ''} (${(cf.status || '?').toUpperCase()})`.replace(/\s+/g, ' ').trim() });
   } catch (err: any) { console.error('[Connections] calls search error:', err?.message); }
 
@@ -666,7 +700,54 @@ connections.get('/search', operational, async (c) => {
       results.push({ id: e.id, type: 'evidence', label: `${e.evidence_number || ''} ${e.description || ''}`.trim() });
   } catch (err: any) { console.error('[Connections] evidence search error:', err?.message); }
 
+  try {
+    for (const r of await query<any>(db,
+      `SELECT id, report_number, title FROM intel_reports
+       WHERE status = 'disseminated' AND (report_number LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\') LIMIT 8`, term, term))
+      results.push({ id: r.id, type: 'intel_report', label: `${r.report_number || `INT-${r.id}`} — ${r.title || ''}`.trim() });
+  } catch (err: any) { console.error('[Connections] intel search error:', err?.message); }
+
   return c.json(results);
+});
+
+// GET /timeline?nodes=person:1,incident:5,intel_report:3 — merged chronology of a node set
+const TIMELINE_QUERY: Record<string, string> = {
+  incident: 'id, incident_number, incident_type, occurred_date, created_at, location_address, status',
+  call: 'id, call_number, incident_type, created_at, location_address, status',
+  citation: 'id, citation_number, violation_description, violation_date, status',
+  warrant: 'id, warrant_number, charge_description, issued_date, status',
+  arrest: 'id, full_name, charges, booking_date, status',
+  field_interview: 'id, fi_number, contact_reason, created_at, status',
+  trespass_order: 'id, order_number, location, effective_date, status',
+  case: 'id, case_number, title, case_type, created_at, status',
+  evidence: 'id, evidence_number, description, created_at, status',
+  intel_report: 'id, report_number, title, disseminated_at, source_reliability, info_credibility, threat_level',
+};
+const TIMELINE_TABLE: Record<string, string> = {
+  incident: 'incidents', call: 'calls_for_service', citation: 'citations', warrant: 'warrants',
+  arrest: 'arrest_records', field_interview: 'field_interviews', trespass_order: 'trespass_orders',
+  case: 'cases', evidence: 'evidence', intel_report: 'intel_reports',
+};
+
+connections.get('/timeline', operational, async (c) => {
+  const refs = parseNodeRefs(c.req.query('nodes') || '');
+  const byType = new Map<string, number[]>();
+  for (const r of refs) {
+    if (!TIMELINE_QUERY[r.type]) continue; // skip undated types (person/vehicle/property/...)
+    byType.set(r.type, [...(byType.get(r.type) || []), r.id]);
+  }
+  const db = getDb(c.env);
+  const sources: any[][] = [];
+  for (const [type, ids] of byType) {
+    try {
+      const ph = ids.map(() => '?').join(',');
+      const extra = type === 'intel_report' ? "AND status = 'disseminated'" : '';
+      const rows = await query<any>(db,
+        `SELECT ${TIMELINE_QUERY[type]} FROM ${TIMELINE_TABLE[type]} WHERE id IN (${ph}) ${extra}`, ...ids);
+      sources.push(rows.map((row) => buildTimelineEvent(type, row)).filter(Boolean));
+    } catch (err: any) { console.error(`[Connections] timeline ${type} error:`, err?.message); }
+  }
+  return c.json(mergeTimeline(sources as any));
 });
 
 // ─── INVESTIGATIONS CRUD ────────────────────────────────────

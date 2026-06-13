@@ -14,6 +14,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { codedLike } from '../utils/searchText';
 
 const uof = new Hono<Env>();
 
@@ -51,10 +52,11 @@ uof.get('/', async (c) => {
     const params: unknown[] = [];
     if (q('status')) { where.push('u.status = ?'); params.push(q('status')); }
     if (q('search')) {
-      where.push(`(u.force_type LIKE ? OR u.narrative LIKE ? OR u.justification LIKE ?
+      const ftLike = codedLike('u.force_type', q('search')!.trim());
+      where.push(`(${ftLike.sql} OR u.narrative LIKE ? OR u.justification LIKE ?
                    OR off.full_name LIKE ? OR p.last_name LIKE ?)`);
       const pat = `%${q('search')}%`;
-      params.push(pat, pat, pat, pat, pat);
+      params.push(...ftLike.binds, pat, pat, pat, pat);
     }
     const whereSql = where.join(' AND ');
 

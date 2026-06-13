@@ -3,7 +3,7 @@
 Native iPhone field app + test console for the live RMPG Flex Cloudflare stack.
 
 **Shell**: 5 tabs — Field Ops, ID Scan, Toolkit, Recorder, and **System**
-(a themed hub hosting Settings / D1 Console / Data Viewer / Cloud / Smoke;
+(a themed hub hosting My Officer ID / Settings / D1 Console / Data Viewer / Cloud / Smoke;
 iOS's stock unthemeable "More" list is deliberately avoided). Pure-black
 Spillman theme is enforced app-wide via `Theme.configureAppearance()`
 (black tab + nav bars, gold accents) and shared components in `Theme.swift`

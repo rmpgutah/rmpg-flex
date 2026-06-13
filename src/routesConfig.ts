@@ -104,6 +104,7 @@ import crisisResponse from './routes/crisisResponse';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import documentFolders from './routes/documents/folders';
+import documentsLibrary from './routes/documents/library';
 import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
 import tts from './routes/tts';
@@ -151,6 +152,7 @@ import dispatchPanic from './routes/dispatch/panic';
 import email from './routes/email';
 import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
+import { linkOptions as linkOptionsRead, linkOptionsAdmin } from './routes/linkOptions';
 import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
 import runCards from './routes/runCards';
 import welfare from './routes/welfare';
@@ -234,6 +236,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Start/End Shift — clock-in/out + units.status + fleet assign in one atomic action' },
   { prefix: '/api/dispatch', router: dispatchCallLinks, auth: 'required',
     note: 'BEFORE dispatchCalls — handles /calls/:id/{persons,vehicles,property}' },
+  { prefix: '/api/dispatch', router: linkOptionsRead, auth: 'required' },
   { prefix: '/api/dispatch', router: dispatchPanic, auth: 'required' },
   { prefix: '/api/dispatch', router: dispatchAnomalies, auth: 'required' },
   { prefix: '/api/dispatch', router: dispatchPremiseHistory, auth: 'required' },
@@ -267,6 +270,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
+  { prefix: '/api/admin/link-options', router: linkOptionsAdmin, auth: 'required' },
   { prefix: '/api/email', router: emailRoute, auth: 'required',
     note: 'AdminEmailTab credential storage + status. /admin/* writes are role-gated (admin|manager).' },
   { prefix: '/api/email-oauth', router: emailOauthCallback, auth: 'public',
@@ -418,6 +422,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Training management: courses, enrollments, certifications, firearms qualifications' },
 
   // ── Documents ──────────────────────────────────────────────
+  { prefix: '/api/docs', router: documentsLibrary, auth: 'required',
+    note: 'Authored documents (Phase 2): rich-body, revisions, finalize-lock, call/incident links. Distinct from /api/documents (file folders).' },
   { prefix: '/api/documents', router: documentFolders, auth: 'required' },
   { prefix: '/api/pdf-tools', router: pdfTools, auth: 'required' },
   { prefix: '/api/document-intake', router: documentIntake, auth: 'required' },

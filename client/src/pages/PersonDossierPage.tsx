@@ -113,7 +113,7 @@ export default function PersonDossierPage() {
             <FileDown className="w-4 h-4" />
           </IconButton>
           <IconButton aria-label="Open in Connections graph" title="Connections graph"
-            onClick={() => navigate(`/forensics?type=person&id=${p.id}`)}>
+            onClick={() => navigate(`/connections?type=person&id=${p.id}`)}>
             <Network className="w-4 h-4" />
           </IconButton>
           <IconButton aria-label="Open person record" title="Open record"

@@ -1283,8 +1283,9 @@ export interface PatrolScan {
 
 // --- Incident Linking ---
 
-export type PersonRole = 'suspect' | 'victim' | 'witness' | 'reporting_party' | 'involved' | 'other';
-export type VehicleRole = 'suspect_vehicle' | 'victim_vehicle' | 'witness_vehicle' | 'involved' | 'evidence' | 'other';
+// Roles are admin-configurable (open-ended via link_options table) — widened to string.
+export type PersonRole = string;
+export type VehicleRole = string;
 
 export interface IncidentPerson {
   id: string;
@@ -3560,4 +3561,71 @@ export interface NavTripDetectionState {
   windowStartTime: number | null;
   windowStartPosition: { lat: number; lng: number } | null;
   windowMovementDetected: boolean;
+}
+
+// ── Document subsystem (Phase 2) ──────────────────────────────
+// NOTE: named DocRecord, not Document — `Document` is a DOM global.
+export interface DocLink {
+  id: number;
+  document_id: number;
+  target_type: 'call' | 'incident';
+  target_id: number;
+  linked_by: number | null;
+  linked_at: string;
+}
+
+export interface DocRevisionMeta {
+  id: number;
+  revision_number: number;
+  title: string;
+  saved_by: number | null;
+  saved_by_username: string | null;
+  saved_at: string;
+  change_note: string | null;
+}
+
+// Full revision row returned by GET /docs/:id/revisions/:rev (raw document_revisions row).
+export interface DocRevisionBody {
+  id: number;
+  document_id: number;
+  revision_number: number;
+  title: string;
+  body: string;
+  body_format: string;
+  saved_by: number | null;
+  saved_by_username: string | null;
+  saved_at: string;
+  change_note: string | null;
+}
+
+export interface DocRecord {
+  id: number;
+  title: string;
+  body: string;
+  body_format: string;
+  status: 'draft' | 'finalized';
+  owner_id: number | null;
+  owner_username: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string | null;
+  finalized_at: string | null;
+  finalized_by: string | null;
+  reopened_at: string | null;
+  reopened_by: string | null;
+  links?: DocLink[];
+}
+
+export interface DocListItem {
+  id: number;
+  title: string;
+  status: 'draft' | 'finalized';
+  body_format: string;
+  owner_id: number | null;
+  owner_username: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string | null;
+  finalized_at: string | null;
+  finalized_by: string | null;
 }
