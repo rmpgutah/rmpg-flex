@@ -21,6 +21,7 @@ import {
   Wrench,
   DollarSign,
   FileText,
+  ClipboardCheck,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -47,6 +48,7 @@ import FloatingSaveBar from '../components/FloatingSaveBar';
 import MileageAuditTab from './patrol/MileageAuditTab';
 import PricingTab from './patrol/PricingTab';
 import ContractsTab from './patrol/ContractsTab';
+import BillingReviewTab from './patrol/BillingReviewTab';
 
 // Add Mapbox type for TypeScript
 declare global {
@@ -709,6 +711,7 @@ const PatrolPage: React.FC = () => {
     { id: 'mileage' as const, label: 'Mileage Audit', icon: Wrench },
     { id: 'pricing' as const, label: 'Pricing', icon: DollarSign },
     { id: 'contracts' as const, label: 'Contracts', icon: FileText },
+    { id: 'billing' as const, label: 'Billing Review', icon: ClipboardCheck },
   ];
 
   return (
@@ -1442,6 +1445,9 @@ const PatrolPage: React.FC = () => {
 
           {/* Contracts Tab */}
           {activeTab === 'contracts' && <ContractsTab />}
+
+          {/* Billing Review Tab */}
+          {activeTab === 'billing' && <BillingReviewTab />}
         </>
       )}
 
