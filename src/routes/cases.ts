@@ -1091,6 +1091,98 @@ cases.delete('/:id/tasks/:taskId', async (c) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// CASE-TO-CASE LINKS — case_links (v2 Phase 4)
+// ═══════════════════════════════════════════════════════════════
+// One row per link; the relationship is visible from either side via the
+// UNION in GET and the bidirectional match in DELETE.
+
+cases.get('/:id/related', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const rows = await query<Record<string, unknown>>(
+      db,
+      // Explicit aliases: SQLite rejects ORDER BY on an unaliased column in a
+      // compound (UNION) select.
+      `SELECT cl.id AS link_id, cl.link_type, cl.created_at AS linked_at,
+              rc.id AS id, rc.case_number, rc.title, rc.status, rc.priority
+       FROM case_links cl JOIN cases rc ON rc.id = cl.related_case_id
+       WHERE cl.case_id = ?
+       UNION
+       SELECT cl.id AS link_id, cl.link_type, cl.created_at AS linked_at,
+              rc.id AS id, rc.case_number, rc.title, rc.status, rc.priority
+       FROM case_links cl JOIN cases rc ON rc.id = cl.case_id
+       WHERE cl.related_case_id = ?
+       ORDER BY linked_at DESC`,
+      id, id,
+    );
+    return c.json({ data: rows });
+  } catch (err) {
+    return c.json({ error: 'Failed to get related cases', code: 'RELATED_GET_ERROR' }, 500);
+  }
+});
+
+cases.post('/:id/related', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const { related_case_id, link_type } = await c.req.json<{ related_case_id?: number; link_type?: string }>()
+      .catch(() => ({} as Record<string, never>));
+    const relId = Number(related_case_id);
+    if (!Number.isFinite(relId) || relId <= 0) return c.json({ error: 'related_case_id required', code: 'RELATED_ID_REQUIRED' }, 400);
+    if (relId === id) return c.json({ error: 'A case cannot be linked to itself', code: 'SELF_LINK' }, 400);
+
+    const rel = await queryFirst<{ id: number; case_number: string }>(db, 'SELECT id, case_number FROM cases WHERE id = ?', relId);
+    if (!rel) return c.json({ error: 'Related case not found', code: 'RELATED_NOT_FOUND' }, 404);
+
+    // Reject if already linked in either direction.
+    const dup = await queryFirst<{ id: number }>(
+      db,
+      `SELECT id FROM case_links WHERE (case_id = ? AND related_case_id = ?) OR (case_id = ? AND related_case_id = ?)`,
+      id, relId, relId, id,
+    );
+    if (dup) return c.json({ data: { id: dup.id }, linked: false });
+
+    const type = ['related', 'series', 'parent', 'child'].includes(String(link_type)) ? String(link_type) : 'related';
+    const userId = c.get('userId') as number | undefined;
+    const res = await execute(
+      db,
+      `INSERT INTO case_links (case_id, related_case_id, link_type, created_by) VALUES (?, ?, ?, ?)`,
+      id, relId, type, userId ?? null,
+    );
+    await logCaseActivity(c, id, 'case.linked', { related_case_id: relId, related_case_number: rel.case_number, link_type: type });
+    return c.json({ data: { id: Number(res.meta.last_row_id) }, linked: true }, 201);
+  } catch (err) {
+    return c.json({ error: 'Failed to link case', code: 'CASE_LINK_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+cases.delete('/:id/related/:relatedId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    const relId = parseInt(c.req.param('relatedId'), 10);
+    if (isNaN(id) || isNaN(relId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const res = await execute(
+      db,
+      `DELETE FROM case_links WHERE (case_id = ? AND related_case_id = ?) OR (case_id = ? AND related_case_id = ?)`,
+      id, relId, relId, id,
+    );
+    if (res.meta.changes === 0) return c.json({ error: 'Link not found', code: 'NOT_FOUND' }, 404);
+    await logCaseActivity(c, id, 'case.unlinked', { related_case_id: relId });
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to unlink case', code: 'CASE_UNLINK_ERROR' }, 500);
+  }
+});
+
 // ── GET /export/csv — supervisor+ only ──────────────────────
 cases.get('/export/csv', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
@@ -1278,17 +1370,25 @@ cases.get('/:id/full', async (c) => {
        ORDER BY cn.is_pinned DESC, cn.created_at DESC`,
       id,
     );
+    const related = await safeQuery<Record<string, unknown>>(
+      `SELECT cl.link_type, rc.id, rc.case_number, rc.title, rc.status
+       FROM case_links cl JOIN cases rc ON rc.id = cl.related_case_id WHERE cl.case_id = ?
+       UNION
+       SELECT cl.link_type, rc.id, rc.case_number, rc.title, rc.status
+       FROM case_links cl JOIN cases rc ON rc.id = cl.case_id WHERE cl.related_case_id = ?`,
+      id, id,
+    );
 
     return c.json({
       ...caseRow,
       calls, incidents, persons, vehicles, properties,
-      evidence, warrants, citations, notes,
+      evidence, warrants, citations, notes, related,
       counts: {
         calls: calls.length, incidents: incidents.length,
         persons: persons.length, vehicles: vehicles.length,
         properties: properties.length, evidence: evidence.length,
         warrants: warrants.length, citations: citations.length,
-        notes: notes.length,
+        notes: notes.length, related: related.length,
       },
     });
   } catch (err) {

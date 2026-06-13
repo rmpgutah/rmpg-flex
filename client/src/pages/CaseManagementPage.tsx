@@ -11,7 +11,7 @@ import RichTextArea from '../components/RichTextArea';
 import {
   Briefcase, Search, Plus, User, X, Save, Loader2, AlertTriangle, Target,
   MessageSquare, ArrowRight, CheckCircle, FolderOpen, ShieldCheck, RotateCcw, Send,
-  Link, Eye, Trash2, Unlink,
+  Link, Eye, Trash2, Unlink, FileText,
 } from 'lucide-react';
 import type { Case, CaseNote, CaseFull, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -32,6 +32,8 @@ import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatActivity, type CaseActivityRow } from '../utils/caseActivity';
 import { CaseTasksTab, CaseMyTasksView } from '../components/CaseTasks';
 import { CaseDashboardView, SlaBadge } from '../components/CaseDashboard';
+import { CaseRelatedSection } from '../components/CaseRelated';
+import { downloadCaseReport } from '../utils/caseReportGenerator';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
@@ -482,6 +484,26 @@ export default function CaseManagementPage() {
     } catch { /* silent */ }
   }, []);
 
+  // Full case-report PDF — pulls linked records from caseFull, the audit
+  // trail from caseActivity, and fetches tasks fresh at click time.
+  const handleExportPdf = async () => {
+    if (!selected) return;
+    const cf = caseFull as any;
+    let tasks: any[] = [];
+    try {
+      const r = await apiFetch<{ data: any[] }>(`/cases/${selected.id}/tasks`);
+      tasks = Array.isArray(r) ? r : (r?.data || []);
+    } catch { /* tasks optional in the report */ }
+    downloadCaseReport({
+      caseRow: cf || selected,
+      calls: cf?.calls, incidents: cf?.incidents, persons: cf?.persons,
+      vehicles: cf?.vehicles, properties: cf?.properties, evidence: cf?.evidence,
+      warrants: cf?.warrants, citations: cf?.citations, notes: cf?.notes,
+      related: cf?.related, tasks, activity: caseActivity,
+    });
+    addToast('Case report generated', 'success');
+  };
+
   useEffect(() => { fetchCases(); }, [fetchCases]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => {
@@ -819,6 +841,9 @@ export default function CaseManagementPage() {
           <>
             <PanelTitleBar title={`${selected.case_number} — ${selected.title}`} icon={Briefcase}>
               <SlaBadge caseRow={selected} />
+              <button type="button" onClick={handleExportPdf} className="toolbar-btn text-[10px] print:hidden" title="Export full case report (PDF)">
+                <FileText style={{ width: 11, height: 11 }} /> PDF
+              </button>
             </PanelTitleBar>
 
             {/* Tabs */}
@@ -874,6 +899,13 @@ export default function CaseManagementPage() {
                       })}
                     </div>
                   )}
+
+                  {/* Related cases (v2 Phase 4) */}
+                  <CaseRelatedSection
+                    caseId={selected.id}
+                    related={(caseFull as any)?.related || []}
+                    onChanged={() => fetchFullCase(selected.id)}
+                  />
 
                   {/* Status change */}
                   <div className="panel-beveled p-3">
