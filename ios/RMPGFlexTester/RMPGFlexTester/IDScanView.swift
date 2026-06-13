@@ -87,6 +87,12 @@ struct IDScanView: View {
                     .buttonStyle(GoldButtonStyle())
                     Button("CREATE FI CARD FROM SCAN") { showFi = true }
                         .buttonStyle(RaisedButtonStyle())
+                    NavigationLink {
+                        WorkflowRenderer(def: WorkflowRegistry.citation, prefill: scanCitationPrefill(result))
+                    } label: {
+                        Text("CITE / WARN THIS SUBJECT").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(RaisedButtonStyle())
                 }
 
                 if let result {
@@ -207,6 +213,17 @@ struct IDScanView: View {
         knownPersonId = nil
         scanning = false
         Task { await relay(parsed) }
+    }
+
+    /// Prefill a citation from a license/MRZ scan (name, DOB, DL number).
+    private func scanCitationPrefill(_ r: AamvaResult?) -> [String: FieldValue] {
+        guard let f = r?.fields else { return [:] }
+        var p: [String: FieldValue] = [:]
+        let name = [f["last_name"] ?? "", f["first_name"] ?? ""].filter { !$0.isEmpty }.joined(separator: ", ")
+        if !name.isEmpty { p["person_name"] = .string(name) }
+        if let dob = f["date_of_birth"], !dob.isEmpty { p["person_dob"] = .string(dob) }
+        if let dl = f["dl_number"], !dl.isEmpty { p["person_dl"] = .string(dl) }
+        return p
     }
 
     /// RECORDS integration: resolve the scan to an existing person so the

@@ -71,6 +71,24 @@ struct FieldOpsView: View {
                         }
                         .themeCard()
                     }
+                    NavigationLink {
+                        WorkflowHubView()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "square.stack.3d.up.fill")
+                                .foregroundStyle(Theme.gold).frame(width: 24)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("WORKFLOWS")
+                                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                                Text("Reports · citations · patrol · more")
+                                    .font(.system(size: 10)).foregroundStyle(Theme.neutral)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.neutral)
+                        }
+                        .themeCard()
+                    }
                     if let myCall { callCard(myCall) }
                     panicButton
                     if let status { StatusLine(text: status) }
@@ -180,6 +198,15 @@ struct FieldOpsView: View {
         }
     }
 
+    // Seed an incident report from the assigned call (call_id + location + type).
+    private func callPrefill(_ call: [String: Any]) -> [String: FieldValue] {
+        var p: [String: FieldValue] = [:]
+        if let id = call["id"] as? Int { p["call_id"] = .number(Double(id)) }
+        if let addr = (call["location_address"] as? String) ?? (call["address"] as? String) { p["location_address"] = .string(addr) }
+        if let t = (call["incident_type"] as? String) ?? (call["call_type"] as? String) { p["incident_type"] = .string(t) }
+        return p
+    }
+
     private func callCard(_ call: [String: Any]) -> some View {
         // GET /calls/:id spreads the row, so the column is incident_type
         // (call_type kept as a fallback for any aliased payload).
@@ -214,6 +241,15 @@ struct FieldOpsView: View {
                     .padding(.horizontal, 6).padding(.vertical, 4)
                     .background(Theme.red)
             }
+            NavigationLink {
+                WorkflowRenderer(def: WorkflowRegistry.incident, prefill: callPrefill(call))
+            } label: {
+                Text("WRITE REPORT ON THIS CALL")
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.gold)
+                    .frame(maxWidth: .infinity).padding(.vertical, 8)
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.gold, lineWidth: 1))
+            }
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10).background(Theme.raised)
