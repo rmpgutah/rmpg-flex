@@ -28,6 +28,7 @@ export interface MapUnit {
   battery_level?: number | null;   // 0-100 from mobile device
   dispatched_at?: string | null;   // timestamp when dispatched to current call
   onscene_at?: string | null;      // timestamp when arrived on scene
+  on_foot?: number | boolean | null; // 1/true when officer is on foot (CoreMotion)
 }
 
 export interface ActiveCall {
