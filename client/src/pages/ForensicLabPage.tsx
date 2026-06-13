@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
+import { humanizeCaseType } from '../utils/statusLabels';
 import {
   Microscope, Plus, Search, Filter, ChevronRight, FileText, Clock, AlertTriangle,
   CheckCircle, XCircle, Loader2, Eye, ArrowRight, Beaker, Hash, Link2, Activity,
@@ -1508,7 +1509,7 @@ export default function ForensicLabPage() {
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">By Case Type</div>
                       {turnaroundData.by_type.map((t: any) => (
                         <div key={t.case_type} className="panel-beveled p-2 mb-1 flex items-center justify-between">
-                          <span className="text-xs text-rmpg-200">{t.case_type}</span>
+                          <span className="text-xs text-rmpg-200">{humanizeCaseType(t.case_type)}</span>
                           <span className="text-xs font-mono text-brand-400">{t.avg_days}d avg ({t.cases_completed} cases)</span>
                         </div>
                       ))}

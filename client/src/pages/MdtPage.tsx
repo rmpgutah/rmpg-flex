@@ -845,7 +845,7 @@ export default function MdtPage() {
                           className="text-[8px] font-black px-1 rounded-sm"
                           style={{ background: prioColor(call.priority), color: '#fff' }}
                         >
-                          {call.priority}
+                          {humanizePriority(call.priority)}
                         </span>
                       </div>
                       <button type="button"
@@ -917,7 +917,7 @@ export default function MdtPage() {
                       className="text-[8px] font-black px-1 py-px rounded-sm"
                       style={{ background: prioColor(selectedCall.priority), color: '#fff' }}
                     >
-                      {selectedCall.priority}
+                      {humanizePriority(selectedCall.priority)}
                     </span>
                   </div>
                   <div className="text-[11px] text-white font-semibold mt-0.5">
