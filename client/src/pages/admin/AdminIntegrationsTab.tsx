@@ -117,7 +117,8 @@ const LAW_ENFORCEMENT_KEYS: ApiKeyConfig[] = [
   { key: 'dea_api_key', label: 'DEA ARCOS / Diversion', desc: 'Drug Enforcement Administration — controlled substance tracking, diversion reports' },
   { key: 'usms_api_key', label: 'US Marshals Service', desc: 'Federal fugitive warrants, sex offender registry, witness protection coordination' },
   { key: 'atf_api_key', label: 'ATF eTrace / FFL', desc: 'Firearms tracing, Federal Firearms Licensee lookups, explosives permits' },
-  { key: 'interpol_api_key', label: 'INTERPOL Red Notice', desc: 'Free — international wanted persons, stolen documents, stolen vehicles' },
+  { key: 'interpol_api_key', label: 'INTERPOL Notices', desc: 'Public API — no key needed; INTERPOL screening source is built-in' },
+  { key: 'screening_ofac_csl_api_key', label: 'OFAC / CSL (optional)', desc: 'Free ITA developer key — enables live fuzzy sanctions search; bulk-ingest works without it' },
   { key: 'nsopw_api_key', label: 'NSOPW (Sex Offender)', desc: 'Free — National Sex Offender Public Website search API' },
   { key: 'ofac_api_key', label: 'OFAC / SDN List', desc: 'Free — Treasury sanctions list, specially designated nationals for financial investigations' },
 ];
@@ -213,6 +214,7 @@ const SOURCE_URLS: Record<string, string> = {
   usms_api_key: 'https://www.usmarshals.gov/',
   atf_api_key: 'https://www.atf.gov/firearms/etrace-internet',
   interpol_api_key: 'https://interpol.api.bund.dev/',
+  screening_ofac_csl_api_key: 'https://developer.trade.gov/',
   nsopw_api_key: 'https://www.nsopw.gov/',
   ofac_api_key: 'https://sanctionssearch.ofac.treas.gov/',
   // GPS webhooks (admin-chosen shared secret — link to the integration docs)
