@@ -927,6 +927,26 @@ export default function MdtPage() {
 
                 {/* Action buttons */}
                 <div className="flex items-center gap-1">
+                  <button type="button"
+                    title="Send this call to your phone (MDT link)"
+                    onClick={async () => {
+                      const cc = selectedCall as any;
+                      try {
+                        await apiFetch('/mdt/send', { method: 'POST', body: JSON.stringify({
+                          to: 'phone', type: 'call', payload: {
+                            call_id: cc.id, call_number: cc.call_number,
+                            address: cc.location_address ?? cc.address ?? '',
+                            latitude: cc.latitude, longitude: cc.longitude,
+                            incident_type: cc.incident_type,
+                          },
+                        }) });
+                        addToast('Call sent to your phone', 'success');
+                      } catch { addToast('Failed to send to phone', 'error'); }
+                    }}
+                    className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-gray-900/50 text-[#d4a017] border border-[#d4a017]/40 hover:bg-gray-800/50 transition-colors"
+                  >
+                    <Send style={{ width: 10, height: 10 }} /> To phone
+                  </button>
                   {selectedCall.status === 'dispatched' && (
                     <button type="button"
                       onClick={() => handleCallStatus(selectedCall.id, 'enroute')}
