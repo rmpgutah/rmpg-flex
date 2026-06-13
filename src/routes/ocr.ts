@@ -20,7 +20,7 @@ import {
   extractFromImage,
   extractTextFromPdf,
 } from '../utils/serveIntakeExtract';
-import { extractVision } from '../utils/visionExtract';
+import { extractVision, extractVisionWorkersAI } from '../utils/visionExtract';
 import type { OcrProfileSelector } from '../utils/ocrProfiles';
 import { getContainer } from '@cloudflare/containers';
 import { getAnthropicKey, getClaudeModel, callClaude } from '../utils/anthropic';
@@ -123,14 +123,26 @@ ocr.post('/scan-document', async (c) => {
       const raw = String(form.get('docType') || 'auto');
       const sel = (['id_card', 'license_plate', 'serve_document', 'auto'].includes(raw)
         ? raw : 'auto') as OcrProfileSelector;
-      const vision = await withTimeout(
+      // 1) Claude vision (best). 2) profile-aware Workers-AI vision (free, works for
+      // all profiles). 3) legacy serve-doc Workers-AI extractor (last resort).
+      let r = await withTimeout(
         extractVision(c.env, bytes, file.type, sel), AI_TIMEOUT_MS, 'Claude OCR timed out',
       ).catch(() => null);
-      const r = vision ?? await withTimeout(extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
+      let engine = 'claude-vision';
+      if (!r) {
+        r = await withTimeout(
+          extractVisionWorkersAI(c.env, bytes, file.type, sel), AI_TIMEOUT_MS, 'Workers AI OCR timed out',
+        ).catch(() => null);
+        engine = 'workers-ai-vision';
+      }
+      if (!r) {
+        r = await withTimeout(extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
+        engine = 'workers-ai-vision';
+      }
       return c.json({
         success: r.success, documentType: r.documentType, confidence: r.confidence,
         fields: r.fields, rawText: r.rawText, allDates: r.allDates,
-        ocrUsed: true, ocrEngine: vision ? 'claude-vision' : 'workers-ai-vision',
+        ocrUsed: true, ocrEngine: engine,
         profile: sel, model: r.model, extractionMs: r.ms, error: r.error,
       });
     }
