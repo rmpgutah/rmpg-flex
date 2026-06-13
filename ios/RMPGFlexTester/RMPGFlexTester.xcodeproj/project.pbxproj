@@ -233,6 +233,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan driver license barcodes to relay identity data to your MDT desktop session.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Unlock RMPG Flex with Face ID.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record interaction audio for evidence; continues with the screen locked while a recording is active.";
 				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Send your unit position to the dispatch map and attach coordinates to panic alerts.";
@@ -261,6 +262,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan driver license barcodes to relay identity data to your MDT desktop session.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Unlock RMPG Flex with Face ID.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record interaction audio for evidence; continues with the screen locked while a recording is active.";
 				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Send your unit position to the dispatch map and attach coordinates to panic alerts.";
