@@ -43,16 +43,10 @@ struct PlateCheckSection: View {
             }
             if !lines.isEmpty, !scanFields.isEmpty {
                 Button("LINK VEHICLE TO SUBJECT") { Task { await link() } }
-                    .font(.system(size: 11, weight: .semibold))
-                    .frame(maxWidth: .infinity).padding(.vertical, 6)
-                    .background(Theme.raised).foregroundStyle(Theme.gold)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                    .buttonStyle(RaisedButtonStyle())
                     .disabled(busy)
             }
-            if let linkStatus {
-                Text(linkStatus).font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(linkStatus.hasPrefix("✓") ? Theme.gold : Theme.red)
-            }
+            if let linkStatus { StatusLine(text: linkStatus) }
         }
         .padding(8).background(Theme.raised)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))

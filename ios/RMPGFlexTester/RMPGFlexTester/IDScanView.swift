@@ -54,10 +54,7 @@ struct IDScanView: View {
                     }
                 } else {
                     Button("SCAN ANOTHER") { result = nil; alerts = []; relayStatus = nil; scanning = true }
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 8)
-                        .background(Theme.gold).foregroundStyle(.black)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                        .buttonStyle(GoldButtonStyle())
                 }
 
                 ForEach(alerts, id: \.self) { alert in
@@ -68,12 +65,7 @@ struct IDScanView: View {
                         .background(Theme.orange)
                 }
 
-                if let relayStatus {
-                    Text(relayStatus)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(relayStatus.hasPrefix("✓") ? Theme.gold : Theme.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                if let relayStatus { StatusLine(text: relayStatus) }
                 if let loginStatus {
                     Text(loginStatus).font(.system(size: 10)).foregroundStyle(Theme.neutral)
                 }
@@ -86,24 +78,15 @@ struct IDScanView: View {
                 }
                 if let knownPersonId {
                     Button("📂 VIEW SUBJECT RECORDS (#\(knownPersonId))") { showRecords = true }
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 7)
-                        .background(Theme.raised).foregroundStyle(Theme.gold)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                        .buttonStyle(RaisedButtonStyle())
                 }
                 if result != nil {
                     Button("CREATE & LINK PERSON + PROPERTY") {
                         Task { await createLinked() }
                     }
-                    .font(.system(size: 11, weight: .semibold))
-                    .frame(maxWidth: .infinity).padding(.vertical, 7)
-                    .background(Theme.gold).foregroundStyle(.black)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                    .buttonStyle(GoldButtonStyle())
                     Button("CREATE FI CARD FROM SCAN") { showFi = true }
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 7)
-                        .background(Theme.raised).foregroundStyle(Theme.gold)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                        .buttonStyle(RaisedButtonStyle())
                 }
 
                 if let result {
@@ -180,12 +163,7 @@ struct IDScanView: View {
             .foregroundStyle(WirelessIDVerifier.isSupported ? .black : Theme.neutral)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
             .disabled(wireless.busy)
-            if let s = wireless.status {
-                Text(s)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(s.hasPrefix("✓") ? Theme.gold : s.hasPrefix("✗") ? Theme.red : Theme.neutral)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            if let s = wireless.status { StatusLine(text: s) }
             if !WirelessIDVerifier.isSupported {
                 Text("Needs iOS 17+, the Verifier API capability on this bundle id, and a reader token in Settings.")
                     .font(.system(size: 10))
