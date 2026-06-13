@@ -78,7 +78,6 @@ export const PROCESS_SERVICE_DOC_TYPES: { value: string; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-
 const DEFAULT_FORM_DATA = {
   incident_type: 'suspicious_activity' as IncidentType,
   priority: 'P3' as CallPriority,
