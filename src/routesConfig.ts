@@ -150,7 +150,7 @@ import dispatchPanic from './routes/dispatch/panic';
 import email from './routes/email';
 import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
-import { linkOptions as linkOptionsRead } from './routes/linkOptions';
+import { linkOptions as linkOptionsRead, linkOptionsAdmin } from './routes/linkOptions';
 import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
 import runCards from './routes/runCards';
 import welfare from './routes/welfare';
@@ -268,6 +268,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
+  { prefix: '/api/admin/link-options', router: linkOptionsAdmin, auth: 'required' },
   { prefix: '/api/email', router: emailRoute, auth: 'required',
     note: 'AdminEmailTab credential storage + status. /admin/* writes are role-gated (admin|manager).' },
   { prefix: '/api/email-oauth', router: emailOauthCallback, auth: 'public',
