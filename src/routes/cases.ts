@@ -24,6 +24,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { isValidTaskStatus, isValidTaskPriority, completedAtFor } from '../utils/caseTasks';
 
 const cases = new Hono<Env>();
 
@@ -877,6 +878,167 @@ for (const [type, cfg] of Object.entries(CASE_JUNCTIONS)) {
     }
   });
 }
+
+// ═══════════════════════════════════════════════════════════════
+// INVESTIGATIVE TASKS / LEADS — case_tasks (v2 Phase 2)
+// ═══════════════════════════════════════════════════════════════
+
+// GET /tasks/mine — cross-case tasks assigned to the current user.
+// Static first segment 'tasks' does not collide with /:id/tasks (2nd
+// segment differs) or /:id (arity differs); Hono prioritises static.
+cases.get('/tasks/mine', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    if (!userId) return c.json({ data: [] });
+    const status = c.req.query('status');
+    const overdue = c.req.query('overdue') === 'true';
+    const where: string[] = ['t.assignee_id = ?'];
+    const params: unknown[] = [userId];
+    if (status && isValidTaskStatus(status)) { where.push('t.status = ?'); params.push(status); }
+    else { where.push("t.status NOT IN ('done','canceled')"); } // default: active only
+    if (overdue) {
+      where.push("t.due_date IS NOT NULL AND date(t.due_date) < date('now') AND t.status NOT IN ('done','canceled')");
+    }
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT t.*, c.case_number, c.title AS case_title, c.status AS case_status
+       FROM case_tasks t JOIN cases c ON t.case_id = c.id
+       WHERE ${where.join(' AND ')}
+       ORDER BY (t.due_date IS NULL) ASC, date(t.due_date) ASC, t.created_at DESC`,
+      ...params,
+    );
+    return c.json({ data: rows });
+  } catch (err) {
+    return c.json({ error: 'Failed to get assigned tasks', code: 'TASKS_MINE_ERROR' }, 500);
+  }
+});
+
+// GET /:id/tasks — all tasks for a case (active first, then by priority/due)
+cases.get('/:id/tasks', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT * FROM case_tasks WHERE case_id = ?
+       ORDER BY (status IN ('done','canceled')) ASC,
+                CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END ASC,
+                (due_date IS NULL) ASC, date(due_date) ASC, created_at DESC`,
+      id,
+    );
+    return c.json({ data: rows });
+  } catch (err) {
+    return c.json({ error: 'Failed to get case tasks', code: 'TASKS_GET_ERROR' }, 500);
+  }
+});
+
+// POST /:id/tasks — create a task/lead
+cases.post('/:id/tasks', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const exists = await queryFirst<{ id: number }>(db, 'SELECT id FROM cases WHERE id = ?', id);
+    if (!exists) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
+
+    const b = await c.req.json<{ title?: string; description?: string; priority?: string; assignee_id?: number; due_date?: string }>()
+      .catch(() => ({} as Record<string, never>));
+    const title = String(b.title || '').trim();
+    if (!title) return c.json({ error: 'Title is required', code: 'TASK_TITLE_REQUIRED' }, 400);
+    const priority = isValidTaskPriority(b.priority) ? b.priority : 'normal';
+
+    let assigneeName: string | null = null;
+    if (b.assignee_id) {
+      const u = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', b.assignee_id);
+      assigneeName = u?.full_name ?? null;
+    }
+    const userId = c.get('userId') as number | undefined;
+    const res = await execute(
+      db,
+      `INSERT INTO case_tasks (case_id, title, description, status, priority, assignee_id, assignee_name, due_date, created_by, updated_at)
+       VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, datetime('now','localtime'))`,
+      id, title, b.description ?? null, priority, b.assignee_id ?? null, assigneeName, b.due_date ?? null, userId ?? null,
+    );
+    const taskId = Number(res.meta.last_row_id);
+    await logCaseActivity(c, id, 'task.created', { task_id: taskId, title });
+    const task = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM case_tasks WHERE id = ?', taskId);
+    return c.json({ data: task }, 201);
+  } catch (err) {
+    return c.json({ error: 'Failed to create task', code: 'TASK_CREATE_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+// PUT /:id/tasks/:taskId — update fields / status
+cases.put('/:id/tasks/:taskId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    const taskId = parseInt(c.req.param('taskId'), 10);
+    if (isNaN(id) || isNaN(taskId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const existing = await queryFirst<{ id: number; status: string; completed_at: string | null; title: string }>(
+      db, 'SELECT id, status, completed_at, title FROM case_tasks WHERE id = ? AND case_id = ?', taskId, id,
+    );
+    if (!existing) return c.json({ error: 'Task not found', code: 'NOT_FOUND' }, 404);
+
+    const b = await c.req.json<Record<string, any>>().catch(() => ({} as Record<string, any>));
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    if (typeof b.title === 'string' && b.title.trim()) { sets.push('title = ?'); vals.push(b.title.trim()); }
+    if ('description' in b) { sets.push('description = ?'); vals.push(b.description ?? null); }
+    if (isValidTaskPriority(b.priority)) { sets.push('priority = ?'); vals.push(b.priority); }
+    if ('due_date' in b) { sets.push('due_date = ?'); vals.push(b.due_date ?? null); }
+    if ('assignee_id' in b) {
+      let assigneeName: string | null = null;
+      if (b.assignee_id) {
+        const u = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', b.assignee_id);
+        assigneeName = u?.full_name ?? null;
+      }
+      sets.push('assignee_id = ?', 'assignee_name = ?');
+      vals.push(b.assignee_id ?? null, assigneeName);
+    }
+    const statusChanged = isValidTaskStatus(b.status) && b.status !== existing.status;
+    if (isValidTaskStatus(b.status)) {
+      sets.push('status = ?'); vals.push(b.status);
+      sets.push('completed_at = ?'); vals.push(completedAtFor(b.status, new Date().toISOString(), existing.completed_at));
+    }
+    if (sets.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
+    sets.push(`updated_at = datetime('now','localtime')`);
+    vals.push(taskId, id);
+    await execute(db, `UPDATE case_tasks SET ${sets.join(', ')} WHERE id = ? AND case_id = ?`, ...vals);
+
+    const action = statusChanged && b.status === 'done' ? 'task.completed' : 'task.updated';
+    await logCaseActivity(c, id, action, { task_id: taskId, title: existing.title });
+    const task = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM case_tasks WHERE id = ?', taskId);
+    return c.json({ data: task });
+  } catch (err) {
+    return c.json({ error: 'Failed to update task', code: 'TASK_UPDATE_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+// DELETE /:id/tasks/:taskId
+cases.delete('/:id/tasks/:taskId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    const taskId = parseInt(c.req.param('taskId'), 10);
+    if (isNaN(id) || isNaN(taskId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const existing = await queryFirst<{ title: string }>(db, 'SELECT title FROM case_tasks WHERE id = ? AND case_id = ?', taskId, id);
+    const res = await execute(db, 'DELETE FROM case_tasks WHERE id = ? AND case_id = ?', taskId, id);
+    if (res.meta.changes === 0) return c.json({ error: 'Task not found', code: 'NOT_FOUND' }, 404);
+    await logCaseActivity(c, id, 'task.deleted', { task_id: taskId, title: existing?.title });
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete task', code: 'TASK_DELETE_ERROR' }, 500);
+  }
+});
 
 // ── GET /export/csv — supervisor+ only ──────────────────────
 cases.get('/export/csv', async (c) => {

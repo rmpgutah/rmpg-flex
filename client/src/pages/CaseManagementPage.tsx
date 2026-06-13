@@ -30,6 +30,7 @@ import { useAuth } from '../context/AuthContext';
 import { humanizeCaseType, humanizeSolvabilityFactor } from '../utils/statusLabels';
 import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatActivity, type CaseActivityRow } from '../utils/caseActivity';
+import { CaseTasksTab, CaseMyTasksView } from '../components/CaseTasks';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
@@ -78,7 +79,7 @@ const EMPTY_FORM = {
   summary: '', lead_investigator_id: '',
 };
 
-type DetailTab = 'overview' | 'calls' | 'incidents' | 'persons' | 'vehicles' | 'properties' | 'evidence' | 'warrants' | 'citations' | 'timeline' | 'notes' | 'solvability';
+type DetailTab = 'overview' | 'calls' | 'incidents' | 'persons' | 'vehicles' | 'properties' | 'evidence' | 'warrants' | 'citations' | 'tasks' | 'timeline' | 'notes' | 'solvability';
 
 const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -90,6 +91,7 @@ const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'evidence', label: 'Evidence', countKey: 'evidence' },
   { id: 'warrants', label: 'Warrants', countKey: 'warrants' },
   { id: 'citations', label: 'Citations', countKey: 'citations' },
+  { id: 'tasks', label: 'Tasks' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'notes', label: 'Notes', countKey: 'notes' },
   { id: 'solvability', label: 'Solvability' },
@@ -376,6 +378,8 @@ export default function CaseManagementPage() {
 
   const [cases, setCases] = useState<Case[]>([]);
   const [selected, setSelected] = useState<Case | null>(null);
+  // Top-level view: case list/detail, cross-case My Tasks, or Dashboard (v2)
+  const [viewMode, setViewMode] = useState<'cases' | 'mytasks' | 'dashboard'>('cases');
   const [notes, setNotes] = useState<CaseNote[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
@@ -463,6 +467,14 @@ export default function CaseManagementPage() {
       const r = await apiFetch<{ data: CaseActivityRow[] }>(`/cases/${caseId}/activity`);
       setCaseActivity(Array.isArray(r) ? r : (r?.data || []));
     } catch { setCaseActivity([]); }
+  }, []);
+
+  // Open a case by id (e.g. from the My Tasks view) — fetch + select it.
+  const openCaseById = useCallback(async (caseId: number) => {
+    try {
+      const r = await apiFetch<{ data: Case }>(`/cases/${caseId}`);
+      if (r?.data) setSelected(r.data);
+    } catch { /* silent */ }
   }, []);
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
@@ -654,7 +666,21 @@ export default function CaseManagementPage() {
   }, []);
 
   return (
-    <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
+    <div className="h-full flex flex-col">
+      {/* ── View toggle (Cases / My Tasks) ── */}
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-rmpg-700 bg-surface-sunken shrink-0">
+        {([['cases', 'Cases'], ['mytasks', 'My Tasks']] as const).map(([v, label]) => (
+          <button key={v} type="button" onClick={() => setViewMode(v)}
+            className={`px-3 py-1 text-[10px] font-mono uppercase tracking-wider border transition-colors ${viewMode === v ? 'bg-brand-900/40 border-brand-600/50 text-brand-300' : 'border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {viewMode === 'mytasks' ? (
+        <CaseMyTasksView onOpenCase={(cid) => { setViewMode('cases'); openCaseById(cid); }} />
+      ) : (
+      <div className={`flex-1 min-h-0 flex ${isMobile ? 'flex-col' : ''}`}>
       {/* ── Left: Case List ── */}
       <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Case Management" icon={Briefcase}>
@@ -1097,6 +1123,10 @@ export default function CaseManagementPage() {
               )}
 
               {/* ── Timeline Tab ── */}
+              {detailTab === 'tasks' && (
+                <CaseTasksTab caseId={selected.id} users={users} onChanged={() => fetchFullCase(selected.id)} />
+              )}
+
               {detailTab === 'timeline' && (
                 <div className="space-y-3">
                   <div className="text-[10px] font-mono text-rmpg-500 uppercase">Case Timeline</div>
@@ -1225,6 +1255,8 @@ export default function CaseManagementPage() {
           </div>
         )}
       </div>
+      </div>
+      )}
 
       {/* ── Return Case Modal ── */}
       {showReturnModal && (
