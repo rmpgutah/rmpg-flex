@@ -5230,6 +5230,22 @@ export default function DispatchPage() {
                         </button>
                       )}
                     </div>
+                    {(selectedCall.client_id || editData.client_id) && (() => {
+                      const cid = String(editData.client_id || selectedCall.client_id);
+                      const cli = clientsList.find((c) => String(c.id) === cid);
+                      const contractId = editData.contract_id || (selectedCall as any).contract_id;
+                      const billing = editData.pso_billing_code || selectedCall.pso_billing_code;
+                      const auth = editData.pso_authorization || selectedCall.pso_authorization;
+                      return (
+                        <div className="mb-2 inline-flex flex-wrap items-center gap-2 px-2 py-1 bg-brand-900/20 border border-brand-700/40 rounded-sm text-[10px]">
+                          <span className="text-brand-gold-500 uppercase font-black text-[8px] tracking-wide">Client</span>
+                          <span className="text-white font-semibold">{cli?.name || `#${cid}`}</span>
+                          {contractId && <span className="text-rmpg-300">Contract: {contractId}</span>}
+                          {billing && <span className="text-rmpg-300">Billing: {billing}</span>}
+                          {auth && <span className="text-rmpg-300">Auth: {auth}</span>}
+                        </div>
+                      );
+                    })()}
                     {isEditing ? (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
