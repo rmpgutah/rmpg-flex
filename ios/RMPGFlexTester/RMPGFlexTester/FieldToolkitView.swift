@@ -621,7 +621,10 @@ struct FieldToolkitView: View {
             case .createCall(let type, let priority, let desc):
                 var body: [String: Any] = [
                     "incident_type": type, "priority": priority,
-                    "description": desc, "source": "ios-field-app",
+                    // 'patrol' = officer self-initiated. calls_for_service.source
+                    // has a CHECK constraint (phone/radio/.../patrol/.../other);
+                    // 'ios-field-app' violated it → SQLITE_CONSTRAINT_CHECK.
+                    "description": desc, "source": "patrol",
                 ]
                 if let loc = LocationManager.shared.last {
                     body["latitude"] = loc.coordinate.latitude
@@ -693,7 +696,7 @@ struct FieldToolkitView: View {
         switch tool.action {
         case .createCall(let type, let priority, let desc):
             var body: [String: Any] = ["incident_type": type, "priority": priority,
-                                       "description": desc, "source": "ios-field-app-offline"]
+                                       "description": desc, "source": "patrol"]
             if let loc = LocationManager.shared.last {
                 body["latitude"] = loc.coordinate.latitude
                 body["longitude"] = loc.coordinate.longitude
