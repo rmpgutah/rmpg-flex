@@ -28,9 +28,12 @@ struct RMPGFlexTesterApp: App {
 struct MainTabView: View {
     var body: some View {
         TabView {
-            // Officer-facing surfaces get the tab slots; dev/system
-            // consoles live in the SYSTEM hub. 5 tabs max — a 6th makes
-            // iOS swallow the rest into an unthemeable stock "More" list.
+            // Home dashboard is the post-login landing — at-a-glance status +
+            // quick actions. Officer-facing surfaces fill the remaining slots;
+            // dev/system consoles live in the SYSTEM hub (which iOS folds into
+            // its "More" list once tabs exceed 5).
+            DashboardView()
+                .tabItem { Label("Home", systemImage: "house.fill") }
             FieldOpsView()
                 .tabItem { Label("Field Ops", systemImage: "shield.lefthalf.filled") }
             DutyRosterView()
