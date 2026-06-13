@@ -57,13 +57,14 @@ const NODE_COLORS: Record<string, string> = {
   serve_job: '#14b8a6',
   call: '#22d3ee',
   report: '#ec4899',
+  intel_report: '#e879f9',
 };
 
 const NODE_RADIUS: Record<string, number> = {
   person: 28, vehicle: 18, property: 18, evidence: 16,
   case: 18, incident: 20, warrant: 18, citation: 16,
   arrest: 18, field_interview: 14, trespass_order: 16, serve_job: 16,
-  call: 20, report: 14,
+  call: 20, report: 14, intel_report: 20,
 };
 
 const VIEW_W = 1000;
@@ -418,6 +419,8 @@ export default function ConnectionsPage() {
     m.copyId(n.entityId),
   ];
 
+  const selectedNode = nodes.find(n => n.id === selectedNodeId) ?? null;
+
   return (
     <div className="p-4 space-y-4 h-full flex flex-col">
       <PanelTitleBar title="CONNECTIONS ANALYST" icon={Network} />
@@ -641,6 +644,21 @@ export default function ConnectionsPage() {
                     cx={n.x} cy={n.y} r={r}
                     fill="#0a0a0a" stroke={inPath ? '#22c55e' : color} strokeWidth={inPath ? 3 : 2}
                   />
+                  {n.type === 'intel_report' && (() => {
+                    const THREAT_RING: Record<string, string> = { critical: '#ef4444', high: '#f59e0b', medium: '#d4a017', low: '#64748b' };
+                    const ring = THREAT_RING[(n.metadata?.threat_level as string) || 'low'] || '#64748b';
+                    const rr = (NODE_RADIUS[n.type] || 20);
+                    return (
+                      <>
+                        <circle cx={n.x} cy={n.y} r={rr + 3} fill="none" stroke={ring} strokeWidth={2.5} />
+                        {n.metadata?.grade ? (
+                          <text x={n.x} y={(n.y ?? 0) + 4} textAnchor="middle" fontSize={11} fontWeight={700} fill="#0a0a0a">
+                            {String(n.metadata.grade)}
+                          </text>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                   <text
                     x={n.x} y={n.y - 1} textAnchor="middle" dominantBaseline="middle"
                     fontSize={r > 20 ? 11 : 9} fill={color} fontFamily="monospace" fontWeight="bold"
@@ -740,10 +758,11 @@ export default function ConnectionsPage() {
           )}
           {selectedNodeId && !pathFrom && (
             <div
-              className="absolute bottom-2 left-2 bg-surface-raised border border-[#222222] px-2 py-1 flex items-center gap-2 text-xs text-gray-300 z-20 max-w-md"
+              className="absolute bottom-2 left-2 bg-surface-raised border border-[#222222] px-2 py-1 text-xs text-gray-300 z-20 max-w-md"
               style={{ borderRadius: 2 }}
             >
-              <span>Selected: {nodes.find(n => n.id === selectedNodeId)?.label}</span>
+              <div className="flex items-center gap-2 flex-wrap">
+              <span>Selected: {selectedNode?.label}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -768,6 +787,16 @@ export default function ConnectionsPage() {
                 <span className="text-gray-400 italic border-l border-[#222222] pl-2 ml-1">
                   {annotations[selectedNodeId]}
                 </span>
+              )}
+              </div>
+              {selectedNode?.type === 'intel_report' && (
+                <div className="mt-2 space-y-1 text-[11px]">
+                  <div style={{ color: '#aaa' }}>
+                    Grade {String(selectedNode.metadata?.grade || '—')} · Threat {String(selectedNode.metadata?.threat_level || '—')} · Handling {String(selectedNode.metadata?.handling_code || '—')}
+                  </div>
+                  <a href={`/intel/reports/${selectedNode.entityId}`}
+                     style={{ color: '#e879f9' }}>Open intelligence product →</a>
+                </div>
               )}
             </div>
           )}
