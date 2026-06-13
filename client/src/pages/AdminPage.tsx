@@ -231,7 +231,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 

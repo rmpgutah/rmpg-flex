@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import { callPosture } from '../../utils/callThreat';
+import { applyFillBlanks, autofillFromClient, type ClientRecord } from '../../utils/clientAutofill';
 import { BADGE_TONES } from '../../components/records/recordVisuals';
 import CallCard from '../../components/CallCard';
 import ZsbBadge from '../../components/ZsbBadge';
