@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import UIKit
+import CryptoKit
 
 // Advanced evidence camera: live AVFoundation preview with a torch toggle, a live
 // preview of the metadata stamp that will be burned in, multi-shot capture, and a
@@ -78,6 +79,14 @@ struct EvidenceCameraView: View {
     @StateObject private var cam = CameraModel()
     @State private var shots: [UIImage] = []
     @State private var stamp = BurnFields(timestamp: "")
+    @State private var classification: EvidenceClassification = .leSensitive
+    @State private var seq = 0
+    @State private var logStatus: String?
+    @State private var showLog = false
+
+    /// Short, stable per-device id for the burn + manifest.
+    private static let deviceId = String((UIDevice.current.identifierForVendor?.uuidString ?? "UNKNWN")
+        .replacingOccurrences(of: "-", with: "").prefix(4)).uppercased()
 
     var body: some View {
         ZStack {
@@ -93,13 +102,41 @@ struct EvidenceCameraView: View {
                     .padding(8).background(.black.opacity(0.45))
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                     Spacer()
-                    Button { cam.toggleTorch() } label: {
-                        Image(systemName: cam.torchOn ? "bolt.fill" : "bolt.slash.fill")
-                            .font(.system(size: 20)).foregroundStyle(cam.torchOn ? Theme.gold : .white)
-                            .padding(12).background(.black.opacity(0.45)).clipShape(Circle())
+                    VStack(spacing: 8) {
+                        Button { cam.toggleTorch() } label: {
+                            Image(systemName: cam.torchOn ? "bolt.fill" : "bolt.slash.fill")
+                                .font(.system(size: 20)).foregroundStyle(cam.torchOn ? Theme.gold : .white)
+                                .padding(12).background(.black.opacity(0.45)).clipShape(Circle())
+                        }
+                        Button { showLog = true } label: {
+                            Image(systemName: "list.bullet.rectangle.portrait")
+                                .font(.system(size: 18)).foregroundStyle(.white)
+                                .padding(12).background(.black.opacity(0.45)).clipShape(Circle())
+                        }
                     }
                 }
                 .padding()
+
+                // Classification selector — sets the top banner + manifest class.
+                Menu {
+                    ForEach(EvidenceClassification.allCases, id: \.self) { c in
+                        Button(c.short) { classification = c; rebuildStamp() }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock.shield.fill")
+                        Text(classification.rawValue).font(.system(size: 11, weight: .bold))
+                        Image(systemName: "chevron.down").font(.system(size: 9))
+                    }
+                    .foregroundStyle(.black).padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(Theme.gold).clipShape(Capsule())
+                }
+
+                if let logStatus {
+                    Text(logStatus).font(.system(size: 10, design: .monospaced)).foregroundStyle(.white)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(.black.opacity(0.5)).clipShape(Capsule())
+                }
 
                 Spacer()
 
@@ -132,11 +169,55 @@ struct EvidenceCameraView: View {
                 .padding()
             }
         }
+        .sheet(isPresented: $showLog) { EvidenceLogView() }
         .onAppear {
-            stamp = BurnFields.current(caseRef: caseRef)
-            cam.onPhoto = { raw in shots.append(PhotoBurn.burn(raw, fields: BurnFields.current(caseRef: caseRef))) }
+            rebuildStamp()
+            cam.onPhoto = { raw in handleCapture(raw) }
             cam.configure()
         }
         .onDisappear { cam.stop() }
+    }
+
+    /// Refresh the on-screen preview stamp (classification + next sequence).
+    private func rebuildStamp() {
+        var f = BurnFields.current(caseRef: caseRef)
+        f.classification = classification.rawValue
+        f.sequence = EvidenceManifest.sequenceLabel(seq + 1)
+        f.deviceId = Self.deviceId
+        stamp = f
+    }
+
+    /// Secure capture: hash the original frame, burn the fingerprint + metadata
+    /// in, and file the chain-of-custody manifest (D1 + MDT) — best-effort, so a
+    /// failed upload never loses the photo.
+    private func handleCapture(_ raw: UIImage) {
+        let data = raw.jpegData(compressionQuality: 0.9) ?? Data()
+        let hex = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        seq += 1
+        let loc = LocationManager.shared.last
+        var f = BurnFields.current(caseRef: caseRef)
+        f.classification = classification.rawValue
+        f.sequence = EvidenceManifest.sequenceLabel(seq)
+        f.sha256 = EvidenceManifest.shortHash(hex)
+        f.deviceId = Self.deviceId
+        shots.append(PhotoBurn.burn(raw, fields: f))
+        rebuildStamp()
+
+        let manifest = EvidenceManifest(
+            sha256: hex, classification: classification, sequence: seq,
+            officer: JWTClaims.current()?.name ?? "", caseRef: caseRef,
+            lat: loc?.coordinate.latitude, lng: loc?.coordinate.longitude,
+            capturedAt: ISO8601DateFormatter().string(from: Date()), deviceId: Self.deviceId)
+        Task { await fileManifest(manifest) }
+    }
+
+    @MainActor
+    private func fileManifest(_ m: EvidenceManifest) async {
+        let err = await authedRetrying { c in
+            _ = try await c.requestJSON("POST", "api/evidence", body: m.body())
+        }
+        logStatus = err == nil ? "✓ Logged \(m.summary)" : "⚠ Saved · manifest will sync"
+        _ = await MDTLink.shared.send(type: "evidence", payload: m.body())
+        Haptics.tap()
     }
 }
