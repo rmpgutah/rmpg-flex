@@ -16,7 +16,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { sniffIdentifiers, toFtsQuery, isRealValue } from '../utils/intelMatch';
 import { rebuildIntelIndex, computeResolutionSuggestions, INTEL_TYPES } from '../utils/intelIndexer';
-import { mergeTimeline, rankAssociates, type TimelineEvent, type CoOccurrence } from '../utils/intelDossier';
+import { mergeTimeline, rankAssociates, screeningHitsToTimeline, type TimelineEvent, type CoOccurrence } from '../utils/intelDossier';
 import { screenPerson, screenVehicle } from '../utils/intelScreen';
 import { runExtraction } from '../utils/intelExtract';
 import { computeEscalation, personActivityEvents } from '../utils/intelPatterns';
@@ -731,6 +731,14 @@ intel.get('/dossier/person/:id', operational, async (c) => {
       title: `Booking ${r.county ? `(${r.county})` : ''}`.trim(),
       subtitle: isRealValue(r.charges) ? String(r.charges) : '', status: r.status || '' }));
   });
+  await section('screening_hits', async () =>
+    screeningHitsToTimeline(
+      await query<any>(db,
+        `SELECT id, source_key, display_name, summary, reviewed_at
+         FROM screening_hits
+         WHERE person_id = ? AND status = 'confirmed' AND is_active = 1
+         ORDER BY reviewed_at DESC`, id)
+        .catch(() => [])));
   const timeline = mergeTimeline(sources);
 
   // Associates — co-occurrence on the same calls/incidents.
