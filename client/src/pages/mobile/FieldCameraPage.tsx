@@ -18,13 +18,25 @@
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Camera, Loader2, MapPin, RefreshCw, X, Check } from 'lucide-react';
-import { apiFetch } from '../../hooks/useApi';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Camera, Loader2, MapPin, RefreshCw, X, Check, ScanLine, Car, AlertTriangle } from 'lucide-react';
+import { apiPostForm, authedImageUrl } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/ToastProvider';
 
 type GpsFix = { lat: number; lng: number; accuracy: number } | null;
+
+interface ScanHit { kind?: string; severity: string; detail: string }
+interface ScanVehicle {
+  plate: string | null; make: string | null; model: string | null; color: string | null;
+  year: number | null; vehicle_type: string | null; confidence: number | null;
+  vehicle_record_id: number | null; vehicle_record_created: boolean; hits: ScanHit[];
+}
+interface AlprScanResult {
+  success: boolean; call_id: number | null; field_photo_id: number | null;
+  vehicle_count: number; vehicles: ScanVehicle[]; hits: ScanHit[];
+  image_url: string | null; annotated_image_url: string | null;
+}
 
 // Draw the data overlay + watermark onto a canvas that already holds
 // the photo. Exported for unit testing the band layout math.
@@ -83,8 +95,17 @@ function fmtStamp(d: Date): string {
 
 export default function FieldCameraPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { addToast } = useToast();
+
+  // Call context — when launched from a call (?call_id=…), photos auto-attach
+  // to that call and ALPR links/creates vehicle records against it.
+  const callId = searchParams.get('call_id');
+  const incidentId = searchParams.get('incident_id');
+  // ALPR "scan vehicles" mode: default on when scoped to a call, or via ?alpr=1.
+  const [alprMode, setAlprMode] = useState(!!callId || searchParams.get('alpr') === '1');
+  const [scan, setScan] = useState<AlprScanResult | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -221,18 +242,39 @@ export default function FieldCameraPage() {
     if (!blob || uploading) return;
     setUploading(true);
     try {
+      // 'photo' is the field name both /field-photos and /alpr/capture accept.
       const form = new FormData();
       form.append('photo', blob, 'field-photo.jpg');
       if (gps) { form.append('lat', String(gps.lat)); form.append('lng', String(gps.lng)); }
-      await apiFetch('/field-photos', { method: 'POST', body: form });
-      addToast('Photo saved', 'success');
-      discard();
+      if (callId) form.append('call_id', callId);
+      if (incidentId) form.append('incident_id', incidentId);
+
+      if (alprMode) {
+        // Attaches to the call AND extracts every vehicle → creates/links records.
+        form.append('capture_reason', 'on_scene_alpr');
+        const r = await apiPostForm<AlprScanResult>('/alpr/capture', form);
+        setScan(r);
+        const created = r.vehicles.filter((v) => v.vehicle_record_created).length;
+        addToast(
+          r.vehicle_count
+            ? `ALPR: ${r.vehicle_count} vehicle(s), ${created} new record(s)`
+            : 'ALPR: no readable plate — photo saved to call',
+          r.hits.some((h) => h.severity === 'critical') ? 'error' : 'success',
+        );
+        // keep the preview + result on screen so the officer can review hits
+      } else {
+        await apiPostForm('/field-photos', form);
+        addToast(callId ? 'Photo saved to call' : 'Photo saved', 'success');
+        discard();
+      }
     } catch (err: any) {
       addToast(err?.message || 'Upload failed — photo kept on screen', 'error');
     } finally {
       setUploading(false);
     }
-  }, [gps, uploading, discard, addToast]);
+  }, [gps, uploading, discard, addToast, alprMode, callId, incidentId]);
+
+  const clearScan = useCallback(() => { setScan(null); discard(); }, [discard]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
@@ -257,8 +299,73 @@ export default function FieldCameraPage() {
         </button>
       </div>
 
+      {/* ── Mode bar — ALPR toggle + call context ── */}
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[#050505] border-b border-[#141414]">
+        <button
+          type="button"
+          onClick={() => setAlprMode((m) => !m)}
+          className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border ${
+            alprMode ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#333] text-[#888]'
+          }`}
+          aria-pressed={alprMode}
+        >
+          <ScanLine className="w-3.5 h-3.5" /> Scan vehicles {alprMode ? 'ON' : 'OFF'}
+        </button>
+        {callId && (
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[#888]">
+            Call #{callId}
+          </span>
+        )}
+      </div>
+
       {/* ── Viewfinder / preview ── */}
       <div className="relative flex-1 overflow-hidden">
+        {/* ALPR scan result overlay */}
+        {scan && (
+          <div className="absolute inset-0 z-10 bg-black/92 overflow-y-auto p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#d4a017] flex items-center gap-1">
+                <Car className="w-4 h-4" /> {scan.vehicle_count} vehicle(s)
+                {callId ? ` · linked to call #${callId}` : ''}
+              </span>
+              <button type="button" onClick={clearScan} className="text-[#888] p-1" aria-label="Done">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {scan.hits.filter((h) => h.severity === 'critical').map((h) => (
+              <div key={h.detail} className="flex items-start gap-1.5 bg-red-950 border border-red-600 text-red-300 text-xs font-semibold px-2 py-1.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-px" /> {h.detail}
+              </div>
+            ))}
+            {scan.vehicle_count === 0 && (
+              <div className="text-[11px] text-[#888] px-1 py-2">
+                No readable plate found. The photo was still saved to the call.
+              </div>
+            )}
+            {scan.vehicles.map((v, i) => (
+              <div key={v.vehicle_record_id ?? i} className="border border-[#222] bg-[#0b0b0b] p-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-lg tracking-[0.15em] text-white font-semibold">{v.plate || '—'}</span>
+                  <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 border border-[#333] text-[#888]">
+                    {v.vehicle_record_created ? 'NEW RECORD' : 'LINKED'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-[#888] mt-0.5">
+                  {[v.color, v.year, v.make, v.model].filter(Boolean).join(' ') || v.vehicle_type || '—'}
+                  {v.confidence != null ? ` · ${Math.round(v.confidence * 100)}%` : ''}
+                </div>
+                {v.hits.filter((h) => h.severity === 'critical').map((h) => (
+                  <div key={h.detail} className="text-[11px] text-red-400 font-semibold mt-1">⚠ {h.detail}</div>
+                ))}
+              </div>
+            ))}
+            <button
+              type="button" onClick={clearScan}
+              className="w-full py-2 text-xs font-bold uppercase tracking-wider border border-[#d4a017] text-[#d4a017] mt-1">
+              Done
+            </button>
+          </div>
+        )}
         {preview ? (
           <img src={preview} alt="Captured photo preview" className="absolute inset-0 w-full h-full object-contain bg-black" />
         ) : (
@@ -309,14 +416,17 @@ export default function FieldCameraPage() {
             <button
               type="button"
               onClick={upload}
-              disabled={uploading}
-              className="flex flex-col items-center gap-1 text-green-400 disabled:opacity-40"
-              aria-label="Save photo"
+              disabled={uploading || !!scan}
+              className={`flex flex-col items-center gap-1 disabled:opacity-40 ${alprMode ? 'text-[#d4a017]' : 'text-green-400'}`}
+              aria-label={alprMode ? 'Scan vehicles' : 'Save photo'}
             >
-              <span className="w-16 h-16 border-2 border-green-700/60 bg-[#141414] flex items-center justify-center">
-                {uploading ? <Loader2 className="w-7 h-7 animate-spin" /> : <Check className="w-7 h-7" />}
+              <span className={`w-16 h-16 border-2 bg-[#141414] flex items-center justify-center ${alprMode ? 'border-[#d4a017]/60' : 'border-green-700/60'}`}>
+                {uploading ? <Loader2 className="w-7 h-7 animate-spin" />
+                  : alprMode ? <ScanLine className="w-7 h-7" /> : <Check className="w-7 h-7" />}
               </span>
-              <span className="text-[10px] uppercase font-bold tracking-wider">{uploading ? 'Saving…' : 'Save'}</span>
+              <span className="text-[10px] uppercase font-bold tracking-wider">
+                {uploading ? (alprMode ? 'Scanning…' : 'Saving…') : (alprMode ? 'Scan' : 'Save')}
+              </span>
             </button>
           </div>
         ) : (

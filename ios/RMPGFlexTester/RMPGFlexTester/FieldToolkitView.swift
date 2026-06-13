@@ -18,6 +18,7 @@ struct FieldToolkitView: View {
     @State private var toast: String?
     @State private var showFiSheet = false
     @State private var showPhotoSheet = false
+    @State private var showAlprSheet = false
     @State private var showBoloSheet = false
     @State private var showFuelSheet = false
     @State private var queueCount = OfflineQueue.count
@@ -119,6 +120,7 @@ struct FieldToolkitView: View {
                 .presentationBackground(Theme.base)
             }
             .sheet(isPresented: $showPhotoSheet) { FieldPhotoSheet() }
+            .sheet(isPresented: $showAlprSheet) { AlprScanSheet().presentationBackground(Theme.base) }
             .sheet(isPresented: $showScratchpad) {
                 ScratchpadView().presentationBackground(Theme.base)
             }
@@ -353,6 +355,8 @@ struct FieldToolkitView: View {
             showFiSheet = true
         case .fieldPhoto:
             showPhotoSheet = true
+        case .alprScan:
+            showAlprSheet = true
         case .newBolo:
             showBoloSheet = true
         case .fuelPurchase:

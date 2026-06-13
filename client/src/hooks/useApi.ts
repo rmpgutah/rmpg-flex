@@ -417,6 +417,38 @@ export async function apiFetchBlob(endpoint: string): Promise<Blob> {
   return res.blob();
 }
 
+/**
+ * POST a multipart FormData payload with auth + transparent token refresh.
+ * Unlike apiFetch, this does NOT set Content-Type — the browser sets the
+ * `multipart/form-data; boundary=…` header itself (forcing application/json
+ * would break server-side multipart parsing). Use for image/file uploads to
+ * an arbitrary endpoint (e.g. /alpr/capture).
+ */
+export async function apiPostForm<T>(endpoint: string, formData: FormData): Promise<T> {
+  const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
+  const token = localStorage.getItem('rmpg_token');
+  const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  let res = await fetchWithRetry(url, { method: 'POST', headers, body: formData });
+  if (res.status === 401) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      headers['Authorization'] = `Bearer ${newToken}`;
+      res = await fetchWithRetry(url, { method: 'POST', headers, body: formData });
+    }
+    if (res.status === 401) throw new Error('Session expired. Please log in again.');
+  }
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    const err = new Error(errData.error || errData.message || `Upload failed with status ${res.status}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  chimeForApiSuccess('POST', url);
+  return res.json();
+}
+
 // Upload files via FormData (multipart)
 export async function apiUploadFiles(
   files: File[],

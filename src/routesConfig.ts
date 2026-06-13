@@ -96,6 +96,7 @@ import arrests from './routes/arrests';
 import cases from './routes/cases';
 import accreditation from './routes/accreditation';
 import alarms from './routes/alarms';
+import alpr from './routes/alpr';
 import citations from './routes/citations';
 import clients from './routes/clients';
 import cloudflare from './routes/cloudflare';
@@ -139,6 +140,7 @@ import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import stubs from './routes/stubs';
 import dar from './routes/dar';
+import evidence from './routes/evidence';
 import codeEnforcement from './routes/codeEnforcement';
 import weather from './routes/weather';
 // Dispatch domain
@@ -394,6 +396,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Accreditation & compliance: standard tracking, proof of compliance, assessor coordination' },
   { prefix: '/api/alerts', router: alerts, auth: 'required',
     note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
+  { prefix: '/api/alpr', router: alpr, auth: 'required',
+    note: 'ALPR Vehicle Details Capture (Roboflow workflow) → intel plate log; needs ROBOFLOW_API_KEY secret' },
   { prefix: '/api/arrests', router: arrests, auth: 'required',
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
   { prefix: '/api/assets', router: assets, auth: 'required',
@@ -535,6 +539,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // (code_violations + vehicle_tows tables) — 2026-06-09 404 sweep.
   { prefix: '/api/code-enforcement', router: codeEnforcement, auth: 'required' },
   { prefix: '/api/dar', router: dar, auth: 'required' },
+  { prefix: '/api/evidence', router: evidence, auth: 'required' },
   { prefix: '/api/diagnostics', router: stubs, auth: 'public' },
   { prefix: '/api/firecrawl-tools', router: stubs, auth: 'required' },
   { prefix: '/api/mobile', router: stubs, auth: 'public' },
