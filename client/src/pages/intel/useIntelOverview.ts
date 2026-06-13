@@ -1,7 +1,9 @@
-// Polls /api/intel/overview every 20s. Pauses while the tab is hidden so a
-// backgrounded command center doesn't hammer the Worker. (WebSocket is dead
-// on the rewrite — polling is the live-data transport for now.)
-import { useEffect, useRef, useState, useCallback } from 'react';
+// Shared poller for /api/intel/overview. EVERY consumer (rail, dashboard, any
+// section) subscribes to ONE module-level interval and ONE in-flight request,
+// so the command center makes a single overview call per 20s no matter how many
+// surfaces read it. Pauses while the tab is hidden. (WebSocket is dead on the
+// rewrite — polling is the live-data transport; sharing it keeps cost to 1/20s.)
+import { useEffect, useState } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 
 export interface IntelOverview {
@@ -17,25 +19,48 @@ export interface IntelOverview {
 
 const POLL_MS = 20_000;
 
-export function useIntelOverview() {
-  const [data, setData] = useState<IntelOverview | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+// ── Module-level shared state ────────────────────────────────
+let cache: IntelOverview | null = null;
+let cacheError: string | null = null;
+const subscribers = new Set<() => void>();
+let intervalId: ReturnType<typeof setInterval> | undefined;
 
-  const load = useCallback(() => {
-    apiFetch<IntelOverview>('/intel/overview')
-      .then((d) => { setData(d); setError(null); })
-      .catch((e) => setError(e?.message || 'overview failed'));
-  }, []);
+function notify() { subscribers.forEach((fn) => fn()); }
 
-  useEffect(() => {
+function load() {
+  apiFetch<IntelOverview>('/intel/overview')
+    .then((d) => { cache = d; cacheError = null; notify(); })
+    .catch((e) => { cacheError = e?.message || 'overview failed'; notify(); });
+}
+
+function ensureInterval() { if (intervalId === undefined) intervalId = setInterval(load, POLL_MS); }
+function clearTimer() { if (intervalId !== undefined) { clearInterval(intervalId); intervalId = undefined; } }
+
+function onVisibility() {
+  if (document.visibilityState === 'visible') { load(); ensureInterval(); }
+  else clearTimer();
+}
+
+function subscribe(fn: () => void): () => void {
+  subscribers.add(fn);
+  if (subscribers.size === 1) {
+    // First consumer starts the shared poll.
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
     load();
-    const start = () => { clearInterval(timer.current); timer.current = setInterval(load, POLL_MS); };
-    const onVis = () => { if (document.visibilityState === 'visible') { load(); start(); } else clearInterval(timer.current); };
-    start();
-    document.addEventListener('visibilitychange', onVis);
-    return () => { clearInterval(timer.current); document.removeEventListener('visibilitychange', onVis); };
-  }, [load]);
+    ensureInterval();
+  }
+  return () => {
+    subscribers.delete(fn);
+    if (subscribers.size === 0) {
+      // Last consumer left — tear the shared poll down so it doesn't leak.
+      clearTimer();
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility);
+    }
+  };
+}
 
-  return { data, error, reload: load };
+export function useIntelOverview() {
+  const [, force] = useState(0);
+  useEffect(() => subscribe(() => force((n) => n + 1)), []);
+  return { data: cache, error: cacheError, reload: load };
 }
