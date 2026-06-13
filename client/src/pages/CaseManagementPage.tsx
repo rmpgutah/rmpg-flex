@@ -617,17 +617,20 @@ export default function CaseManagementPage() {
   };
 
   const handleStatusChange = async (newStatus: string) => {
-    if (!selected) return;
-    // Advisory readiness gate on close — warn, never block (per design).
-    if (newStatus.startsWith('closed')) {
-      const comp = await fetchCaseCompleteness(selected.id);
-      if (comp && comp.percent < 100 &&
-        !window.confirm(`This case is ${comp.percent}% complete.${comp.missing.length ? `\nMissing: ${comp.missing.join(', ')}.` : ''}\n\nClose it anyway?`)) {
-        return;
-      }
-    }
+    if (!selected || statusChanging) return;
+    // Set the in-flight flag BEFORE the async readiness gate so the buttons
+    // disable immediately — otherwise a double-click during the gate's network
+    // round-trip / confirm dialog fires two concurrent status writes.
     setStatusChanging(true);
     try {
+      // Advisory readiness gate on close — warn, never block (per design).
+      if (newStatus.startsWith('closed')) {
+        const comp = await fetchCaseCompleteness(selected.id);
+        if (comp && comp.percent < 100 &&
+          !window.confirm(`This case is ${comp.percent}% complete.${comp.missing.length ? `\nMissing: ${comp.missing.join(', ')}.` : ''}\n\nClose it anyway?`)) {
+          return; // finally resets statusChanging
+        }
+      }
       await apiFetch(`/cases/${selected.id}/status`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) });
       addToast(`Case status → ${newStatus.replace(/_/g, ' ')}`, 'success');
       const updated = await apiFetch<{ data: Case }>(`/cases/${selected.id}`);
@@ -654,14 +657,14 @@ export default function CaseManagementPage() {
 
   // ── Review workflow handlers ──
   const handleSubmitForReview = async () => {
-    if (!selected) return;
-    const comp = await fetchCaseCompleteness(selected.id);
-    if (comp && comp.percent < 100 &&
-      !window.confirm(`This case is ${comp.percent}% complete.${comp.missing.length ? `\nMissing: ${comp.missing.join(', ')}.` : ''}\n\nSubmit for review anyway?`)) {
-      return;
-    }
+    if (!selected || reviewSubmitting) return;
     setReviewSubmitting(true);
     try {
+      const comp = await fetchCaseCompleteness(selected.id);
+      if (comp && comp.percent < 100 &&
+        !window.confirm(`This case is ${comp.percent}% complete.${comp.missing.length ? `\nMissing: ${comp.missing.join(', ')}.` : ''}\n\nSubmit for review anyway?`)) {
+        return; // finally resets reviewSubmitting
+      }
       await apiFetch(`/cases/${selected.id}/submit-review`, { method: 'PUT' });
       addToast('Case submitted for supervisor review', 'success');
       const updated = await apiFetch<{ data: Case }>(`/cases/${selected.id}`);
@@ -851,8 +854,8 @@ export default function CaseManagementPage() {
             Overdue
           </button>
           {savedViews.length > 0 && (
-            <select aria-label="Saved views" defaultValue=""
-              onChange={e => { const vv = savedViews.find(x => x.name === e.target.value); if (vv) applyView(vv); e.currentTarget.value = ''; }}
+            <select aria-label="Saved views" value=""
+              onChange={e => { const vv = savedViews.find(x => x.name === e.target.value); if (vv) applyView(vv); }}
               className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
               <option value="">Views…</option>
               {savedViews.map(vv => <option key={vv.name} value={vv.name}>{vv.name}</option>)}
@@ -866,14 +869,16 @@ export default function CaseManagementPage() {
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-1 flex-wrap px-2 py-1.5 border-b border-rmpg-700 bg-brand-900/20">
             <span className="text-[10px] font-bold text-brand-300">{selectedIds.size} selected</span>
-            <select aria-label="Bulk set status" defaultValue=""
-              onChange={e => { if (e.target.value) { handleBulk('status', e.target.value); e.currentTarget.value = ''; } }}
+            {/* Controlled value="" resets to the placeholder on every render
+                (incl. the bulk-error path), unlike an uncontrolled defaultValue. */}
+            <select aria-label="Bulk set status" value=""
+              onChange={e => { if (e.target.value) handleBulk('status', e.target.value); }}
               className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-0.5 outline-none">
               <option value="">Set status…</option>
               {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
-            <select aria-label="Bulk assign" defaultValue=""
-              onChange={e => { if (e.target.value) { handleBulk('assign', e.target.value); e.currentTarget.value = ''; } }}
+            <select aria-label="Bulk assign" value=""
+              onChange={e => { if (e.target.value) handleBulk('assign', e.target.value); }}
               className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-0.5 outline-none">
               <option value="">Assign to…</option>
               {users.map(u => <option key={u.id} value={String(u.id)}>{u.full_name}</option>)}

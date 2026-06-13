@@ -1,6 +1,6 @@
 // Case-task due-date nudge sweep (v3 Phase 2). Mirrors serveNudgeSweep:
-// runs on the per-minute cron but dedups via the notifications table so an
-// assignee/supervisor is reminded at most once per ~20h per task.
+// runs on the 4-hourly cron ("0 */4 * * *") and dedups via the notifications
+// table so each recipient is reminded at most once per ~20h per task.
 import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
 
@@ -51,15 +51,6 @@ export async function sweepCaseTaskNudges(db: Bindings['DB'], _env: Bindings): P
     const urgency = classifyTaskDue(t.due_date, now);
     if (!urgency) continue;
 
-    // Dedup: skip if this task was already nudged in the last 20h.
-    const recent = await queryFirst<{ one: number }>(
-      db,
-      `SELECT 1 AS one FROM notifications
-       WHERE entity_type = 'case_task' AND entity_id = ? AND created_at > datetime('now','-20 hours') LIMIT 1`,
-      t.id,
-    ).catch(() => null);
-    if (recent) continue;
-
     const recipients = new Set<number>();
     if (t.assignee_id != null) recipients.add(t.assignee_id);
     for (const s of supervisors) recipients.add(s.id);
@@ -69,6 +60,16 @@ export async function sweepCaseTaskNudges(db: Bindings['DB'], _env: Bindings): P
     const message = `Case ${t.case_number ?? `#${t.case_id}`}: "${t.title}" is ${urgency === 'overdue' ? 'overdue' : `due ${t.due_date}`}.`;
 
     for (const uid of recipients) {
+      // Per-recipient dedup: at most one nudge per task per user per 20h. Done
+      // per-recipient (not per-task) so a transient insert failure for one
+      // recipient never blocks the others from being notified next sweep.
+      const recent = await queryFirst<{ one: number }>(
+        db,
+        `SELECT 1 AS one FROM notifications
+         WHERE entity_type = 'case_task' AND entity_id = ? AND user_id = ? AND created_at > datetime('now','-20 hours') LIMIT 1`,
+        t.id, uid,
+      ).catch(() => null);
+      if (recent) continue;
       try {
         await execute(
           db,
