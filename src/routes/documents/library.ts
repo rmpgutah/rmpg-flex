@@ -213,7 +213,8 @@ lib.post('/:id/finalize', async (c) => {
     await logActivity(c, 'FINALIZE', id, {});
   }
   const updated = await queryFirst(db, 'SELECT * FROM documents WHERE id = ?', id);
-  return c.json({ success: true, data: updated });
+  const links = await linksFor(c, id);
+  return c.json({ success: true, data: { ...(updated as object), links } });
 });
 
 lib.post('/:id/reopen', async (c) => {
@@ -231,7 +232,8 @@ lib.post('/:id/reopen', async (c) => {
     await logActivity(c, 'REOPEN', id, {});
   }
   const updated = await queryFirst(db, 'SELECT * FROM documents WHERE id = ?', id);
-  return c.json({ success: true, data: updated });
+  const links = await linksFor(c, id);
+  return c.json({ success: true, data: { ...(updated as object), links } });
 });
 
 // ── Links ─────────────────────────────────────────────────────
