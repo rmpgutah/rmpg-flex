@@ -825,6 +825,12 @@ const API_ROUTES: RouteRule[] = [
   // ROLLBACK: delete this rule, push to main (deploy.yml redeploys ≤3 min).
   { kind: 'prefix', value: '/api/auth' },
 
+  // ── Officer Wallet ID (new in rewrite, 2026-06-12) ──
+  // Digital badge / QR-verifiable officer ID — only the rewrite has these
+  // handlers (src/routes/wallet.ts); legacy 404s. Route the whole prefix to
+  // env.API.
+  { kind: 'prefix', value: '/api/wallet' },
+
   // ── Crime layers (new in rewrite) ──
   // /api/crime/slc (cached SLCPD public-crime proxy) + /api/crime/local (our
   // own recent CFS). Only the rewrite has these handlers; legacy 404s.

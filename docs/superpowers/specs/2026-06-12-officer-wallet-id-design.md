@@ -20,14 +20,14 @@ current standing in the field.
 | QR security | **Option A — rotating signed token** (short-lived HMAC; screenshot stops verifying after expiry) |
 | Issuance | **Lazy auto-issue** on first `GET /api/wallet/me`; admin revoke/reinstate |
 
-## Data model — migration `0103_officer_credentials.sql`
+## Data model — migration `0103_wallet_credentials.sql`
 
 The `users` table already holds all *displayed* badge fields (`full_name`, `badge_number`, `rank`,
 `department`, `avatar_url`/`profile_image`, `status`, `employee_id`, `hire_date`). The new table owns
 only credential lifecycle:
 
 ```sql
-CREATE TABLE IF NOT EXISTS officer_credentials (
+CREATE TABLE IF NOT EXISTS wallet_credentials (
   wallet_id   TEXT PRIMARY KEY,        -- opaque unguessable id (uuid v4)
   user_id     INTEGER NOT NULL UNIQUE, -- one credential per officer (FK users.id)
   status      TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'revoked'
@@ -35,10 +35,10 @@ CREATE TABLE IF NOT EXISTS officer_credentials (
   revoked_at  TEXT,
   revoked_by  INTEGER
 );
-CREATE INDEX IF NOT EXISTS idx_officer_credentials_user ON officer_credentials(user_id);
+CREATE INDEX IF NOT EXISTS idx_wallet_credentials_user ON wallet_credentials(user_id);
 ```
 
-**Effective validity = `officer_credentials.status='active'` AND live `users.status='active'`.**
+**Effective validity = `wallet_credentials.status='active'` AND live `users.status='active'`.**
 Deactivating an officer auto-invalidates the badge — no separate revoke needed. Idempotent DDL;
 applied to live `785de7ae` directly after merge per CLAUDE.md D1 rule.
 
