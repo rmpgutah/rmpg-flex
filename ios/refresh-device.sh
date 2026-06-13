@@ -37,7 +37,7 @@ cat > "$APP/Info.plist" <<EOF
 <key>CFBundleIdentifier</key><string>$BID</string>
 <key>CFBundleName</key><string>RMPGFlexTester</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.1</string>
+<key>CFBundleShortVersionString</key><string>1.2</string>
 <key>CFBundleVersion</key><string>$(date +%s)</string>
 <key>UILaunchScreen</key><dict/>
 <key>UIDeviceFamily</key><array><integer>1</integer></array>

@@ -154,6 +154,7 @@ struct WorkflowRenderer: View {
             else { status = "✗ \(err.localizedDescription)" }
         } else {
             readiness = []
+            Haptics.success()
             status = "✓ " + def.success.message.replacingOccurrences(of: "{\(def.success.numberKey)}", with: number)
             try? await Task.sleep(for: .seconds(1)); dismiss()
         }

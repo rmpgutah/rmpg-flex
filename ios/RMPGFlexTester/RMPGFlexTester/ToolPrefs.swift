@@ -60,6 +60,11 @@ enum Haptics {
     static func error() {
         UINotificationFeedbackGenerator().notificationOccurred(.error)
     }
+    /// Strongest pattern — reserved for PANIC: error notification + a heavy thud.
+    static func panic() {
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+    }
     /// Route a status string to the right feedback by its ✓/✗/⚠/⏳ prefix.
     static func forStatus(_ s: String) {
         if s.hasPrefix("✓") { success() }

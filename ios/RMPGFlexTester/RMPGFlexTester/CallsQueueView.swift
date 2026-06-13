@@ -42,6 +42,7 @@ struct CallsQueueView: View {
         .background(Theme.base)
         .navigationTitle("CALLS QUEUE")
         .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await refresh() }
         .task {
             await load()
             while !Task.isCancelled {

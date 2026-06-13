@@ -30,6 +30,7 @@ struct MDTInboxView: View {
         .background(Theme.base)
         .navigationTitle("MDT INBOX")
         .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await link.pollOnce() }
         .onAppear { link.markRead() }
     }
 
@@ -38,11 +39,10 @@ struct MDTInboxView: View {
             Text(MDTInbox.label(for: msg.type).uppercased())
                 .font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.gold)
             Text(summary(msg)).font(.system(size: 12)).foregroundStyle(.white)
-            if (msg.type == "location" || msg.type == "nav"),
-               let lat = coord(msg, "lat") ?? coord(msg, "latitude"),
+            if let lat = coord(msg, "lat") ?? coord(msg, "latitude"),
                let lng = coord(msg, "lng") ?? coord(msg, "longitude") {
                 Button { openMaps(lat, lng) } label: {
-                    Label("Open in Maps", systemImage: "map.fill")
+                    Label("Navigate — Open in Maps", systemImage: "location.north.line.fill")
                         .font(.system(size: 11, weight: .semibold)).frame(maxWidth: .infinity)
                 }.buttonStyle(RaisedButtonStyle())
             }
