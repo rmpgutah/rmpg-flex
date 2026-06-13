@@ -36,6 +36,19 @@ describe('configRegistry — PDF families', () => {
     }
   });
 
+  it('builds full-list adapters for the text (XML/CSV) families', async () => {
+    const rows = [
+      { ...baseRow, source_key: 'xml-bonner-felony-id', family: 'xml-bonner', format: 'xml', base_url: 'https://example.test/w.xml' },
+      { ...baseRow, source_key: 'csv-zuercher-teton-wy', family: 'csv-zuercher', format: 'csv', base_url: 'https://example.test/w.csv' },
+    ];
+    const adapters = await getConfigAdapters(fakeDb(rows));
+    expect(adapters.length).toBe(2);
+    for (const a of adapters) {
+      expect(a.mode).toBe('full-list');
+      expect(typeof a.fetchAll).toBe('function');
+    }
+  });
+
   it('skips unknown families (returns no adapter)', async () => {
     const rows = [{ ...baseRow, source_key: 'mystery', family: 'mystery-family', format: 'pdf', base_url: 'https://x.test/a.pdf' }];
     const adapters = await getConfigAdapters(fakeDb(rows));
