@@ -29,6 +29,7 @@ enum ToolAction {
     case fieldInterview
     case syncQueue
     case fieldPhoto
+    case alprScan
     case newBolo
     case fuelPurchase
     // FIELD CALC — pure on-device computation (FieldCalc.swift)
@@ -256,6 +257,8 @@ enum FieldToolRegistry {
                   action: .syncQueue),
         FieldTool(id: "ut_photo", title: "Evidence Photo", category: "TIMERS & UTILITIES",
                   action: .fieldPhoto),
+        FieldTool(id: "ut_alpr", title: "Scan Vehicles (ALPR)", category: "TIMERS & UTILITIES",
+                  action: .alprScan),
         FieldTool(id: "ut_bolo", title: "Issue BOLO", category: "TIMERS & UTILITIES",
                   action: .newBolo),
         FieldTool(id: "ut_fuel", title: "Log Fuel Purchase", category: "TIMERS & UTILITIES",
