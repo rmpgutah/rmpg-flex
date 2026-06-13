@@ -231,14 +231,14 @@ struct FieldToolkitView: View {
                     }
                     ForEach(Array(resultRows.enumerated()), id: \.offset) { _, row in
                         VStack(alignment: .leading, spacing: 2) {
-                            ForEach(row.keys.sorted(), id: \.self) { key in
-                                let value = "\(row[key] ?? "")"
-                                if !value.isEmpty && value != "<null>" {
+                            ForEach(displayKeys(row), id: \.self) { key in
+                                let value = FieldFormat.value(key, row[key] ?? nil)
+                                if value != "—" {
                                     HStack(alignment: .top) {
-                                        Text(key).font(.system(size: 9, weight: .semibold))
+                                        Text(FieldFormat.label(key)).font(.system(size: 9, weight: .semibold))
                                             .foregroundStyle(Theme.gold)
-                                            .frame(width: 110, alignment: .leading)
-                                        Text(value).font(.system(size: 11, design: .monospaced))
+                                            .frame(width: 120, alignment: .leading)
+                                        Text(value).font(.system(size: 11))
                                             .foregroundStyle(.white)
                                             .textSelection(.enabled)
                                     }
@@ -279,19 +279,40 @@ struct FieldToolkitView: View {
         .presentationBackground(Theme.base)
     }
 
+    // Keys hidden from officer-facing output: internal ids, audit columns,
+    // raw blobs, geocoding noise. Everything else renders with a plain label.
+    private static let hiddenKeys: Set<String> = [
+        "id", "org_id", "tenant_id", "created_by", "updated_by", "deleted_at",
+        "archived_at", "search_vector", "fts", "raw", "payload", "aamva_raw",
+        "mrz_raw", "embedding", "geom", "row_number", "rownum", "_rowid_",
+    ]
+    /// Meaningful keys, identity/most-relevant first, then the rest by label.
+    private func displayKeys(_ row: [String: Any]) -> [String] {
+        let priority = ["last_name", "first_name", "middle_name", "person_name", "full_name",
+                        "name", "dob", "date_of_birth", "sex", "race", "incident_type", "call_type",
+                        "call_number", "status", "priority", "warrant_number", "charge_description",
+                        "plate_number", "vin", "location_address", "address"]
+        let keys = row.keys.filter { k in
+            let kl = k.lowercased()
+            if Self.hiddenKeys.contains(kl) { return false }
+            if kl.hasSuffix("_id") && kl != "case_id" { return false }  // FK noise
+            return FieldFormat.value(k, row[k] ?? nil) != "—"
+        }
+        let inPriority = priority.filter { keys.contains($0) }
+        let rest = keys.filter { !priority.contains($0) }.sorted { FieldFormat.label($0) < FieldFormat.label($1) }
+        return inPriority + rest
+    }
+
     /// Flatten the current result (text + rows) to a plain-text block for
-    /// copy / share / scratchpad.
+    /// copy / share / scratchpad — humanized labels + decoded values.
     private func resultPlainText() -> String {
         var block = resultTitle
         if let resultText { block += "\n" + resultText }
         for row in resultRows.prefix(25) {
-            let line = row.keys.sorted()
-                .compactMap { k -> String? in
-                    let v = "\(row[k] ?? "")"
-                    return v.isEmpty || v == "<null>" ? nil : "\(k)=\(v)"
-                }
-                .joined(separator: " ")
-            if !line.isEmpty { block += "\n" + line }
+            let line = displayKeys(row)
+                .map { k in "\(FieldFormat.label(k)): \(FieldFormat.value(k, row[k] ?? nil))" }
+                .joined(separator: "\n")
+            if !line.isEmpty { block += "\n\n" + line }
         }
         return block
     }

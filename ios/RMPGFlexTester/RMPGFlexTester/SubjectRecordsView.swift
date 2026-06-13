@@ -50,24 +50,24 @@ struct SubjectRecordsView: View {
                     }
 
                     section("WARRANTS", warrants) { w in
-                        line(primary: "\(w["warrant_number"] ?? "—")  \(w["status"] ?? "")",
+                        line(primary: "\(w["warrant_number"] ?? "—")  ·  \(FieldFormat.value("status", w["status"]))",
                              secondary: w["description"] as? String ?? "",
                              hot: (w["status"] as? String) == "active")
                     }
                     section("RECENT INCIDENTS", incidents) { i in
-                        line(primary: "\(i["incident_number"] ?? "—")  \(i["incident_type"] ?? "")",
-                             secondary: [i["created_at"] as? String, i["location_address"] as? String]
+                        line(primary: "\(i["incident_number"] ?? "—")  ·  \(FieldFormat.value("incident_type", i["incident_type"]))",
+                             secondary: [FieldFormat.prettyDate("\(i["created_at"] ?? "")"), i["location_address"] as? String]
                                 .compactMap { $0 }.joined(separator: " · "),
                              hot: false)
                     }
                     section("RECENT CAD CALLS", calls) { c in
-                        line(primary: "\(c["call_number"] ?? "—")  \(c["incident_type"] ?? "")",
-                             secondary: [c["created_at"] as? String, c["location_address"] as? String]
+                        line(primary: "\(c["call_number"] ?? "—")  ·  \(FieldFormat.value("incident_type", c["incident_type"]))",
+                             secondary: [FieldFormat.prettyDate("\(c["created_at"] ?? "")"), c["location_address"] as? String]
                                 .compactMap { $0 }.joined(separator: " · "),
                              hot: false)
                     }
                     section("CITATIONS", citations) { c in
-                        line(primary: "\(c["citation_number"] ?? "—")  \(c["status"] ?? "")",
+                        line(primary: "\(c["citation_number"] ?? "—")  ·  \(FieldFormat.value("status", c["status"]))",
                              secondary: c["violation_description"] as? String ?? "",
                              hot: false)
                     }

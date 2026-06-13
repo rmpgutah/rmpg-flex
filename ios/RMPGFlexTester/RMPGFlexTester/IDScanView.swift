@@ -182,7 +182,7 @@ struct IDScanView: View {
                      "gender", "height", "weight", "eye_color", "hair_color",
                      "address", "city", "state", "zip", "mrz_checks"]
         return order.compactMap { key in
-            r.fields[key].map { (key.replacingOccurrences(of: "_", with: " ").uppercased(), $0) }
+            r.fields[key].map { (FieldFormat.label(key), FieldFormat.value(key, $0)) }
         }
     }
 
