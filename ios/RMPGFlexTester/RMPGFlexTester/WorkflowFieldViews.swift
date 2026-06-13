@@ -196,7 +196,9 @@ struct PhotoStrip: View {
                 }
             }
         }
-        .sheet(isPresented: $showCamera) { CameraPicker { pendingPhotos.append($0) }.ignoresSafeArea() }
+        .fullScreenCover(isPresented: $showCamera) {
+            EvidenceCameraView { imgs in pendingPhotos.append(contentsOf: imgs) }
+        }
     }
 }
 
