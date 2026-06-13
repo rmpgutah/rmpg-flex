@@ -91,7 +91,10 @@ struct DashboardView: View {
                 tile("Alerts", "bell.badge.fill", badge: unread) { NotificationsView() }
                 tile("Scan ID", "qrcode.viewfinder") { IDScanView() }
             }
-            tile("Person Lookup", "magnifyingglass") { PersonSearchView() }
+            HStack(spacing: 8) {
+                tile("Lookup", "magnifyingglass") { PersonSearchView() }
+                tile("Units Map", "map.fill") { UnitsMapView() }
+            }
         }
     }
 
