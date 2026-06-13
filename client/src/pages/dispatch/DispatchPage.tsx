@@ -2022,10 +2022,14 @@ export default function DispatchPage() {
   const handleClientChange = useCallback(async (clientId: string) => {
     updateEditField('client_id', clientId);
     if (!clientId) return;
+    const selectedId = clientId; // capture to detect a newer selection
     try {
       const full = await apiFetch<ClientRecord>(`/clients/${clientId}`);
-      const patch = autofillFromClient(full);
-      setEditData((prev: any) => applyFillBlanks(prev, patch));
+      setEditData((prev) => {
+        // A newer client was selected while this fetch was in flight — discard.
+        if (prev.client_id !== selectedId) return prev;
+        return applyFillBlanks(prev, autofillFromClient(full));
+      });
     } catch (err) {
       console.error('Client autofill failed (non-fatal):', err);
     }
