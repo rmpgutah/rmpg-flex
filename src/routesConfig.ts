@@ -150,6 +150,7 @@ import dispatchPanic from './routes/dispatch/panic';
 import email from './routes/email';
 import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
+import { linkOptions as linkOptionsRead } from './routes/linkOptions';
 import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
 import runCards from './routes/runCards';
 import welfare from './routes/welfare';
@@ -233,6 +234,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Start/End Shift — clock-in/out + units.status + fleet assign in one atomic action' },
   { prefix: '/api/dispatch', router: dispatchCallLinks, auth: 'required',
     note: 'BEFORE dispatchCalls — handles /calls/:id/{persons,vehicles,property}' },
+  { prefix: '/api/dispatch', router: linkOptionsRead, auth: 'required' },
   { prefix: '/api/dispatch', router: dispatchPanic, auth: 'required' },
   { prefix: '/api/dispatch', router: dispatchAnomalies, auth: 'required' },
   { prefix: '/api/dispatch', router: dispatchPremiseHistory, auth: 'required' },
