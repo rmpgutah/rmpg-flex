@@ -1,6 +1,6 @@
 // client/src/utils/__tests__/searchText.test.ts
 import { describe, it, expect } from 'vitest';
-import { coded } from '../searchText';
+import { coded, matchesQuery, humanizeField, codedByKey } from '../searchText';
 import { humanizeType, humanizePriority } from '../statusLabels';
 
 describe('coded', () => {
@@ -26,5 +26,35 @@ describe('coded', () => {
   });
   it('works with no humanizer (raw only, lowercased)', () => {
     expect(coded('SomeValue')).toBe('somevalue');
+  });
+});
+
+describe('matchesQuery', () => {
+  it('requires every whitespace-separated term to appear (new-site convenience)', () => {
+    expect(matchesQuery('traffic stop', coded('traffic_stop', humanizeType))).toBe(true);
+    expect(matchesQuery('stop bogus', coded('traffic_stop', humanizeType))).toBe(false);
+  });
+  it('empty query matches everything', () => {
+    expect(matchesQuery('', 'anything')).toBe(true);
+  });
+  it('skips null/empty parts', () => {
+    expect(matchesQuery('john', 'John Smith', null, undefined, '')).toBe(true);
+  });
+});
+
+describe('humanizeField / codedByKey', () => {
+  it('dispatches known keys to the right humanizer', () => {
+    expect(humanizeField('incident_type', 'traffic_stop').toLowerCase()).toBe('traffic stop');
+    // humanizePriority('P1') → 'P1 — Emergency'; lowercased contains 'emergency'
+    expect(humanizeField('priority', 'P1').toLowerCase()).toContain('emergency');
+  });
+  it('falls back to generic Title-Case for unknown keys', () => {
+    // formatEnumValue('foo_bar') → 'FOO BAR'; lowercased → 'foo bar'
+    expect(humanizeField('some_other_key', 'foo_bar').toLowerCase()).toBe('foo bar');
+  });
+  it('codedByKey produces raw + humanized', () => {
+    const h = codedByKey('incident_type', 'traffic_stop');
+    expect(h).toContain('traffic_stop');
+    expect(h).toContain('traffic stop');
   });
 });
