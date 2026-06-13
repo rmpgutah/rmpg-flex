@@ -35,6 +35,24 @@ struct FieldOpsView: View {
                 VStack(spacing: 10) {
                     dutyCard
                     if onShift { statusCard }
+                    NavigationLink {
+                        CallsQueueView()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "list.bullet.rectangle.fill")
+                                .foregroundStyle(Theme.gold).frame(width: 24)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("CALLS QUEUE")
+                                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                                Text("Active calls · self-assign · status")
+                                    .font(.system(size: 10)).foregroundStyle(Theme.neutral)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.neutral)
+                        }
+                        .themeCard()
+                    }
                     if let myCall { callCard(myCall) }
                     panicButton
                     if let status { StatusLine(text: status) }
