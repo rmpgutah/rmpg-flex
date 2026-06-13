@@ -175,7 +175,7 @@ Use `<IconButton aria-label="...">` from `client/src/components/IconButton.tsx`.
 ### Design tokens (Spillman / Motorola pure-black)
 - Surfaces: `#0a0a0a` base, `#141414` raised, `#050505` sunken, `#000000` deep
 - Brand gold: `#d4a017`. Neutral gray: `#888888`. **Zero blue anywhere.**
-- Borders: `#222222` default, `#1a1a1a` subtle, `#2e2e2e` strong
+- Borders: `#232323` default, `#121212` subtle, `#3a3a3a` strong (`strong` was bumped from the old steel-blue `#2e2e2e` to `#3a3a3a` in the 2026-04-08 pure-black redesign for visibility on the `#000` base — `:root` in `client/src/index.css` is the source of truth)
 - Radius: **2 px everywhere** — never `rounded-lg`. Global Tailwind override at the end of `client/src/index.css` enforces this with `!important`.
 - Tables: header `font-semibold` 9 px, `py-[3px]`; rows 11 px, `py-[2px]`. No pill badges.
 
