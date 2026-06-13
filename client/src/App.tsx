@@ -120,6 +120,12 @@ const IntelReportsPage = lazyRetry(() => import('./pages/intel/IntelReportsPage'
 const IntelReportDetailPage = lazyRetry(() => import('./pages/intel/IntelReportDetailPage'));
 const IntelSourcesPage = lazyRetry(() => import('./pages/intel/IntelSourcesPage'));
 const PersonDossierPage = lazyRetry(() => import('./pages/PersonDossierPage'));
+const IntelPortalLayout = lazyRetry(() => import('./pages/intel/IntelPortalLayout'));
+const IntelDashboard = lazyRetry(() => import('./pages/intel/IntelDashboard'));
+const WatchlistSection = lazyRetry(() => import('./pages/intel/WatchlistSection'));
+const AlertsSection = lazyRetry(() => import('./pages/intel/AlertsSection'));
+const ReviewQueues = lazyRetry(() => import('./pages/intel/ReviewQueues'));
+const IntelComingSoon = lazyRetry(() => import('./pages/intel/IntelComingSoon'));
 const PlateLogPage = lazyRetry(() => import('./pages/PlateLogPage'));
 const QuickCapturePage = lazyRetry(() => import('./pages/QuickCapturePage'));
 const JailRecordsPage = lazyRetry(() => import('./pages/JailRecordsPage'));
@@ -463,16 +469,26 @@ function AppRoutes() {
             <Route path="/cases" element={<RouteErrorBoundary><CaseManagementPage /></RouteErrorBoundary>} />
             <Route path="/crime-analysis" element={<RouteErrorBoundary><CrimeAnalysisPage /></RouteErrorBoundary>} />
             <Route path="/connections" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
-            <Route path="/intel" element={<RouteErrorBoundary><IntelSearchPage /></RouteErrorBoundary>} />
-            <Route path="/intel/person/:id" element={<RouteErrorBoundary><PersonDossierPage /></RouteErrorBoundary>} />
-            <Route path="/intel/plate-log" element={<RouteErrorBoundary><PlateLogPage /></RouteErrorBoundary>} />
-            <Route path="/intel/quick-capture" element={<RouteErrorBoundary><QuickCapturePage /></RouteErrorBoundary>} />
-            <Route path="/intel/jail" element={<RouteErrorBoundary><JailRecordsPage /></RouteErrorBoundary>} />
-            <Route path="/intel/record" element={<RouteErrorBoundary><InteractionRecorderPage /></RouteErrorBoundary>} />
-            <Route path="/intel/reports" element={<RouteErrorBoundary><IntelReportsPage /></RouteErrorBoundary>} />
-            <Route path="/intel/reports/:id" element={<RouteErrorBoundary><IntelReportDetailPage /></RouteErrorBoundary>} />
-            <Route path="/intel/sources" element={<RouteErrorBoundary><IntelSourcesPage /></RouteErrorBoundary>} />
-            <Route path="/intel/workbench" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
+            <Route path="/intel" element={<RouteErrorBoundary><IntelPortalLayout /></RouteErrorBoundary>}>
+              <Route index element={<IntelDashboard />} />
+              <Route path="search" element={<IntelSearchPage />} />
+              <Route path="connections" element={<ConnectionsPage />} />
+              <Route path="watchlist" element={<WatchlistSection />} />
+              <Route path="bolos" element={<IntelComingSoon title="BOLO Board" phase="Phase · BOLO" />} />
+              <Route path="alerts" element={<AlertsSection />} />
+              <Route path="jail" element={<JailRecordsPage />} />
+              <Route path="plate-log" element={<PlateLogPage />} />
+              <Route path="queues" element={<ReviewQueues />} />
+              <Route path="map" element={<IntelComingSoon title="Map / Geospatial Intel" phase="Phase · Map" />} />
+              <Route path="ai" element={<IntelComingSoon title="AI Analyst" phase="Phase · AI (offline-gated)" />} />
+              <Route path="reports" element={<IntelReportsPage />} />
+              <Route path="reports/:id" element={<IntelReportDetailPage />} />
+              <Route path="sources" element={<IntelSourcesPage />} />
+              <Route path="quick-capture" element={<QuickCapturePage />} />
+              <Route path="record" element={<InteractionRecorderPage />} />
+              <Route path="person/:id" element={<PersonDossierPage />} />
+              <Route path="workbench" element={<ConnectionsPage />} />
+            </Route>
             <Route path="/code-enforcement" element={<RouteErrorBoundary><CodeEnforcementPage /></RouteErrorBoundary>} />
             <Route path="/court" element={<RouteErrorBoundary><CourtTrackerPage /></RouteErrorBoundary>} />
             <Route path="/dar" element={<RouteErrorBoundary><DailyActivityReportsPage /></RouteErrorBoundary>} />
