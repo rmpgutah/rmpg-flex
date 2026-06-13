@@ -22,6 +22,7 @@ import {
   extractTextFromPdf,
 } from '../utils/serveIntakeExtract';
 import { getContainer } from '@cloudflare/containers';
+import { getAnthropicKey, getClaudeModel, callClaude } from '../utils/anthropic';
 
 const ocr = new Hono<Env>();
 
@@ -46,6 +47,26 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error(label)), ms)),
   ]);
 }
+
+// GET /api/ocr/claude-health — verify the configured Claude key + model can be
+// reached (text-only ping). Surfaces the real Anthropic error (401/404/400) so an
+// admin can tell "advanced OCR is live on Claude" from "key/model misconfigured,
+// silently falling back to Workers AI". Admin/manager only.
+ocr.get('/claude-health', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const key = await getAnthropicKey(c.env);
+  if (!key) return c.json({ configured: false, engine: 'workers-ai-vision' });
+  const model = await getClaudeModel(c.env);
+  try {
+    const reply = await callClaude(key, { text: 'Reply with the single word: OK', maxTokens: 16, model });
+    return c.json({ configured: true, ok: true, engine: 'claude-vision', model, reply: reply.trim().slice(0, 40) });
+  } catch (err) {
+    return c.json({ configured: true, ok: false, model, error: err instanceof Error ? err.message : String(err) });
+  }
+});
 
 ocr.post('/scan-document', async (c) => {
   const user = c.get('user') as { id: number; role: string } | undefined;

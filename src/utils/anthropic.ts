@@ -8,9 +8,12 @@ import { queryFirst } from './db';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const API_VERSION = '2023-06-01';
-// Default model for OCR/extraction — strong vision, reasonable cost. Overridable
-// via system_config 'anthropic_model'.
-export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-4-6';
+// Default model for OCR/extraction — latest, most capable, strong high-res vision.
+// Overridable via system_config 'anthropic_model' (e.g. 'claude-sonnet-4-6' to
+// trade some accuracy for cost). NOTE: opus-4-8 / 4.7 / fable-5 are adaptive-only
+// and reject temperature/top_p/top_k — callClaude sends no sampling params so the
+// model can be swapped freely without a 400.
+export const DEFAULT_CLAUDE_MODEL = 'claude-opus-4-8';
 
 interface AnthropicEnv { DB: D1Database; }
 
@@ -54,7 +57,6 @@ export interface ClaudeCallOpts {
   image?: ClaudeImage;
   model?: string;
   maxTokens?: number;
-  temperature?: number;
 }
 
 /**
@@ -79,9 +81,11 @@ export async function callClaude(apiKey: string, opts: ClaudeCallOpts): Promise<
       'content-type': 'application/json',
     },
     body: JSON.stringify({
+      // No temperature/top_p/top_k — adaptive-only models (opus-4-8/4.7, fable-5)
+      // 400 on them, and OCR extraction wants the model's deterministic default.
+      // thinking is omitted → runs without thinking (fast) on every model.
       model: opts.model || DEFAULT_CLAUDE_MODEL,
       max_tokens: opts.maxTokens ?? 2048,
-      temperature: opts.temperature ?? 0,
       ...(opts.system ? { system: opts.system } : {}),
       messages: [{ role: 'user', content }],
     }),

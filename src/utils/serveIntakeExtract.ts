@@ -517,7 +517,7 @@ export async function extractFromImageClaude(
       system: SYSTEM_PROMPT,
       text: `${buildUserPrompt('(image-only document — OCR the visible text, then extract)')}\n\nReturn ONLY the JSON object, no prose.`,
       image: { base64: bytesToBase64(imageBytes), mediaType },
-      model, maxTokens: 2048, temperature: 0,
+      model, maxTokens: 2048,
     });
     const parsed = tryParseModelJson({ response: text });
     const synthesized = Object.values<any>(parsed?.fields ?? {})
