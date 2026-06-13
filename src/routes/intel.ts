@@ -166,6 +166,39 @@ intel.get('/query', operational, async (c) => {
   return c.json(await runIntelQuery(getDb(c.env), p));
 });
 
+// Saved searches (per user).
+intel.get('/saved-searches', operational, async (c) => {
+  const uid = (c.var as any).user?.userId ?? (c.var as any).user?.id;
+  try {
+    return c.json(await query(getDb(c.env),
+      'SELECT id, name, query_text, created_at FROM intel_saved_searches WHERE user_id = ? ORDER BY created_at DESC', uid));
+  } catch { return c.json([]); }
+});
+intel.post('/saved-searches', operational, async (c) => {
+  const uid = (c.var as any).user?.userId ?? (c.var as any).user?.id;
+  const body = await c.req.json<{ name?: string; query_text?: string }>().catch(() => ({} as { name?: string; query_text?: string }));
+  if (!body.name || !body.query_text) return c.json({ error: 'name and query_text required' }, 400);
+  await execute(getDb(c.env),
+    `INSERT INTO intel_saved_searches (user_id, name, query_text) VALUES (?, ?, ?)
+       ON CONFLICT(user_id, name) DO UPDATE SET query_text = excluded.query_text`,
+    uid, body.name.slice(0, 80), body.query_text.slice(0, 500));
+  return c.json({ success: true });
+});
+intel.delete('/saved-searches/:id', operational, async (c) => {
+  const uid = (c.var as any).user?.userId ?? (c.var as any).user?.id;
+  await execute(getDb(c.env), 'DELETE FROM intel_saved_searches WHERE id = ? AND user_id = ?', c.req.param('id'), uid);
+  return c.json({ success: true });
+});
+// Recent history (distinct, latest 10).
+intel.get('/search-history', operational, async (c) => {
+  const uid = (c.var as any).user?.userId ?? (c.var as any).user?.id;
+  try {
+    return c.json(await query(getDb(c.env),
+      `SELECT query_text, MAX(executed_at) AS executed_at FROM intel_search_history
+        WHERE user_id = ? GROUP BY query_text ORDER BY executed_at DESC LIMIT 10`, uid));
+  } catch { return c.json([]); }
+});
+
 // GET /health — index freshness for diagnosis (migration-drift detector)
 intel.get('/health', operational, async (c) => {
   const db = getDb(c.env);
