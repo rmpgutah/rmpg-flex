@@ -14,6 +14,11 @@ on:
       - '.github/workflows/tofixed-guard-check.yml'
   workflow_dispatch:
 
+# Least-privilege GITHUB_TOKEN (CWE-275). Checkout + a single node guard script;
+# read-only is all it needs.
+permissions:
+  contents: read
+
 jobs:
   tofixed-guard:
     runs-on: ubuntu-latest
