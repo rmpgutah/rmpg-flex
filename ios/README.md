@@ -10,6 +10,21 @@ Native iPhone test console for the live RMPG Flex Cloudflare stack:
 - **Settings** — Cloudflare account ID + API token (D1 read/write scope) and
   RMPG credentials; everything stored in the iOS Keychain.
 
+## ID Scan modes
+
+- **LICENSE** — DL PDF417 barcode (AAMVA), as before.
+- **PASSPORT** — Vision OCR reads the MRZ (passport TD3 + ID-card TD1),
+  `MrzParser` validates ICAO 9303 check digits (failed integrity is surfaced
+  as an officer alert, the bad field is dropped). Same relay / warrant-check /
+  FI-card pipeline as license scans (`mrz_raw` instead of `aamva_raw`).
+- **WIRELESS** — Apple ID Verifier (ProximityReader, iOS 17+): subject taps
+  their iPhone/Watch Wallet ID to the phone; iOS displays verified name + age
+  in a system sheet (display request — identity data never enters the app).
+  Prerequisites: Apple Business Connect enrollment, the "Verifier API"
+  capability on the bundle id in Xcode, and a reader token (~48 h validity)
+  pasted into Settings. The button explains exactly which prerequisite is
+  missing until then.
+
 ## Install on your iPhone (no App Store)
 
 1. Open `RMPGFlexTester/RMPGFlexTester.xcodeproj` in Xcode.

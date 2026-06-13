@@ -5,6 +5,11 @@ import AudioToolbox
 // parsed identity relays through D1 to the officer's open desktop session
 // (DL Search page polls /dl-records/scan-relay/poll and auto-loads it).
 struct IDScanView: View {
+    enum ScanMode: String, CaseIterable {
+        case license = "LICENSE", passport = "PASSPORT", wireless = "WIRELESS"
+    }
+
+    @State private var scanMode: ScanMode = .license
     @State private var scanning = true
     @State private var result: AamvaResult?
     @State private var alerts: [String] = []
@@ -12,16 +17,34 @@ struct IDScanView: View {
     @State private var loginStatus: String?
     @State private var recordCheck: String?
     @State private var showFi = false
+    @StateObject private var wireless = WirelessIDVerifier()
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 8) {
-                if scanning {
+                Picker("Mode", selection: $scanMode) {
+                    ForEach(ScanMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: scanMode) { _, _ in
+                    result = nil; alerts = []; relayStatus = nil; recordCheck = nil; scanning = true
+                }
+
+                if scanMode == .wireless {
+                    wirelessSection
+                } else if scanning {
                     ZStack(alignment: .bottom) {
-                        ScannerCamera { code in handleCode(code) }
-                            .frame(maxHeight: 360)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                        Text("AIM AT LICENSE BARCODE (BACK OF CARD)")
+                        // .id forces a fresh camera pipeline when the mode flips
+                        // (metadata detector vs Vision OCR output).
+                        ScannerCamera(mode: scanMode == .passport ? .mrz : .barcode) { code in
+                            handleCode(code)
+                        }
+                        .id(scanMode)
+                        .frame(maxHeight: 360)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                        Text(scanMode == .passport
+                             ? "AIM AT THE TWO MRZ LINES (PASSPORT PHOTO PAGE)"
+                             : "AIM AT LICENSE BARCODE (BACK OF CARD)")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Theme.gold)
                             .padding(6)
@@ -125,21 +148,67 @@ struct IDScanView: View {
         }
     }
 
+    private var wirelessSection: some View {
+        VStack(spacing: 8) {
+            Text("Verify a Wallet-stored mobile ID (mDL / state ID): the subject holds their iPhone or Apple Watch to the top of this phone and approves sharing. iOS shows the verified name + age in a system sheet — identity data never enters this app.")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.neutral)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(wireless.busy ? "READING…" : "TAP TO VERIFY WALLET ID") {
+                Task { await wireless.verify() }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .frame(maxWidth: .infinity).padding(.vertical, 10)
+            .background(WirelessIDVerifier.isSupported ? Theme.gold : Theme.raised)
+            .foregroundStyle(WirelessIDVerifier.isSupported ? .black : Theme.neutral)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+            .disabled(wireless.busy)
+            if let s = wireless.status {
+                Text(s)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(s.hasPrefix("✓") ? Theme.gold : s.hasPrefix("✗") ? Theme.red : Theme.neutral)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if !WirelessIDVerifier.isSupported {
+                Text("Needs iOS 17+, the Verifier API capability on this bundle id, and a reader token in Settings.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.neutral)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(10)
+        .background(Theme.raised)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+    }
+
     private func rows(_ r: AamvaResult) -> [(String, String)] {
-        let order = ["dl_number", "dl_state", "dl_class", "date_of_birth", "dl_expiry",
+        let order = ["doc_type", "document_number", "dl_number", "dl_state", "dl_class",
+                     "issuing_country", "nationality", "date_of_birth", "dl_expiry",
                      "gender", "height", "weight", "eye_color", "hair_color",
-                     "address", "city", "state", "zip"]
+                     "address", "city", "state", "zip", "mrz_checks"]
         return order.compactMap { key in
             r.fields[key].map { (key.replacingOccurrences(of: "_", with: " ").uppercased(), $0) }
         }
     }
 
     private func handleCode(_ code: String) {
-        guard AamvaParser.looksLikeAamva(code) else { return }
+        let parsed: AamvaResult
+        let parsedAlerts: [String]
+        switch scanMode {
+        case .license:
+            guard AamvaParser.looksLikeAamva(code) else { return }
+            parsed = AamvaParser.parse(code)
+            parsedAlerts = AamvaParser.alerts(parsed)
+        case .passport:
+            guard let mrz = MrzParser.parse(code) else { return }
+            parsed = mrz
+            parsedAlerts = MrzParser.alerts(mrz)
+        case .wireless:
+            return
+        }
         AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
-        let parsed = AamvaParser.parse(code)
         result = parsed
-        alerts = AamvaParser.alerts(parsed)
+        alerts = parsedAlerts
         scanning = false
         Task { await relay(parsed) }
     }
@@ -161,7 +230,9 @@ struct IDScanView: View {
             return
         }
         var payload: [String: Any] = parsed.fields
-        payload["aamva_raw"] = parsed.raw
+        // The desktop re-parses aamva_raw with its richer parser; MRZ scans
+        // carry mrz_raw instead so it never tries to AAMVA-parse an MRZ.
+        payload[parsed.fields["doc_type"] != nil ? "mrz_raw" : "aamva_raw"] = parsed.raw
         payload["source"] = "ios-field-app"
         do {
             try await client.postJSON("api/dl-records/scan-relay", body: ["payload": payload])
