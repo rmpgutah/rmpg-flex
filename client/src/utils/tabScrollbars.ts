@@ -1,34 +1,46 @@
-// Custom always-visible scrollbar for horizontal tab / section / filter strips.
+// Custom always-visible scrollbars for horizontal tab/section strips AND the
+// vertical content panel.
 //
 // WHY: macOS Chrome renders OVERLAY scrollbars that auto-hide when idle and
 // ignore custom ::-webkit-scrollbar sizing for layout (verified in the live
 // app — a 14px custom bar consumed 0px, and -webkit-appearance:none didn't
 // change it). So a native-CSS bar can't stay visible at rest. This module
-// overlays our OWN thin bar, synced to each strip's scroll, that is always
+// overlays our OWN thin bar, synced to each scroll container, that is always
 // visible regardless of the OS "show scroll bars" setting.
 //
+// Two markers:
+//   .tab-scroll        → horizontal bar along the strip's bottom edge
+//   .content-scroll-y  → vertical bar along the panel's right edge (e.g. <main>)
+// The geometry is 1-D and axis-agnostic, so both axes reuse computeThumb /
+// scrollLeftFromThumb (unit-tested) — we just feed them the relevant axis's
+// scroll/size measurements.
+//
 // ARCHITECTURE: React owns the DOM inside its tree, so appending our nodes
-// INTO a strip risks React throwing on its next commit. Instead all bars live
+// INTO a panel risks React throwing on its next commit. Instead all bars live
 // in a single #tab-scrollbar-layer appended to <body> (outside React's root)
-// and are positioned OVER each strip via getBoundingClientRect(). React never
-// sees them; we never mutate React-managed subtrees.
+// and are positioned OVER each container via getBoundingClientRect(). React
+// never sees them; we never mutate React-managed subtrees.
 
 import {
   computeThumb,
   scrollLeftFromThumb,
 } from './tabScrollbarGeometry';
 
-const SELECTOR = '.tab-scroll';
+const SELECTOR_X = '.tab-scroll';
+const SELECTOR_Y = '.content-scroll-y';
 const LAYER_ID = 'tab-scrollbar-layer';
-const THUMB_MIN = 28; // px — keep the thumb grabbable on very wide strips
-const BAR_HEIGHT = 6; // px — thin + sleek, sits on the strip's bottom edge
+const THUMB_MIN = 28; // px — keep the thumb grabbable on very large containers
+const BAR = 6; // px — thin + sleek cross-axis thickness
+
+type Axis = 'x' | 'y';
 
 interface Controller {
-  strip: HTMLElement;
+  el: HTMLElement;
+  axis: Axis;
   track: HTMLElement;
   thumb: HTMLElement;
   ro: ResizeObserver;
-  onStripScroll: () => void;
+  onScroll: () => void;
   dragging: boolean;
 }
 
@@ -42,9 +54,7 @@ function ensureLayer(): HTMLElement {
   if (layer && document.body.contains(layer)) return layer;
   layer = document.createElement('div');
   layer.id = LAYER_ID;
-  // Visual-only layer; individual thumbs opt back into pointer events.
-  layer.style.cssText =
-    'position:fixed;inset:0;pointer-events:none;z-index:40;';
+  layer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:40;';
   document.body.appendChild(layer);
   return layer;
 }
@@ -59,19 +69,22 @@ function scheduleUpdate(): void {
 }
 
 function updateController(c: Controller): void {
-  const { strip, track, thumb } = c;
-  // Strip gone or hidden (display:none / inactive tab panel) → hide.
-  if (!strip.isConnected) {
+  const { el, track, thumb, axis } = c;
+  if (!el.isConnected) {
     track.style.display = 'none';
     return;
   }
-  const r = strip.getBoundingClientRect();
-  const offscreen = r.width === 0 || r.height === 0 || r.bottom <= 0 || r.top >= window.innerHeight;
+  const r = el.getBoundingClientRect();
+  const offscreen =
+    r.width === 0 || r.height === 0 ||
+    r.bottom <= 0 || r.top >= window.innerHeight ||
+    r.right <= 0 || r.left >= window.innerWidth;
+  // Feed computeThumb the active axis's measurements (1-D math, axis-agnostic).
   const metrics = computeThumb({
-    scrollLeft: strip.scrollLeft,
-    scrollWidth: strip.scrollWidth,
-    clientWidth: strip.clientWidth,
-    trackWidth: r.width,
+    scrollLeft: axis === 'x' ? el.scrollLeft : el.scrollTop,
+    scrollWidth: axis === 'x' ? el.scrollWidth : el.scrollHeight,
+    clientWidth: axis === 'x' ? el.clientWidth : el.clientHeight,
+    trackWidth: axis === 'x' ? r.width : r.height,
     minThumb: THUMB_MIN,
   });
   if (offscreen || !metrics.visible) {
@@ -79,48 +92,70 @@ function updateController(c: Controller): void {
     return;
   }
   track.style.display = 'block';
-  track.style.left = `${Math.round(r.left)}px`;
-  track.style.top = `${Math.round(r.bottom - BAR_HEIGHT)}px`;
-  track.style.width = `${Math.round(r.width)}px`;
-  thumb.style.width = `${metrics.thumbWidth}px`;
-  thumb.style.transform = `translateX(${metrics.thumbLeft}px)`;
+  if (axis === 'x') {
+    track.style.left = `${Math.round(r.left)}px`;
+    track.style.top = `${Math.round(r.bottom - BAR)}px`;
+    track.style.width = `${Math.round(r.width)}px`;
+    track.style.height = `${BAR}px`;
+    thumb.style.width = `${metrics.thumbWidth}px`;
+    thumb.style.height = `${BAR}px`;
+    thumb.style.transform = `translateX(${metrics.thumbLeft}px)`;
+  } else {
+    track.style.left = `${Math.round(r.right - BAR)}px`;
+    track.style.top = `${Math.round(r.top)}px`;
+    track.style.width = `${BAR}px`;
+    track.style.height = `${Math.round(r.height)}px`;
+    thumb.style.width = `${BAR}px`;
+    thumb.style.height = `${metrics.thumbWidth}px`; // main-axis length
+    thumb.style.transform = `translateY(${metrics.thumbLeft}px)`;
+  }
 }
 
-function attach(strip: HTMLElement): void {
-  if (controllers.has(strip)) return;
+function attach(el: HTMLElement, axis: Axis): void {
+  if (controllers.has(el)) return;
   const lyr = ensureLayer();
 
   const track = document.createElement('div');
-  track.className = 'tab-scrollbar-track';
+  track.className = `tab-scrollbar-track${axis === 'y' ? ' vertical' : ''}`;
   const thumb = document.createElement('div');
   thumb.className = 'tab-scrollbar-thumb';
   track.appendChild(thumb);
   lyr.appendChild(track);
 
   const c: Controller = {
-    strip,
+    el,
+    axis,
     track,
     thumb,
     dragging: false,
-    onStripScroll: () => updateController(c),
+    onScroll: () => updateController(c),
     ro: new ResizeObserver(() => updateController(c)),
   };
 
-  // --- thumb drag ---
-  let startX = 0;
-  let startThumbLeft = 0;
+  // --- thumb drag (axis-aware) ---
+  let startPointer = 0;
+  let startPos = 0;
+  const readThumbPos = (): number => {
+    const re = axis === 'x' ? /translateX\(([-0-9.]+)px\)/ : /translateY\(([-0-9.]+)px\)/;
+    const m = re.exec(thumb.style.transform);
+    return m ? parseFloat(m[1]) : 0;
+  };
   const onPointerMove = (e: PointerEvent) => {
     if (!c.dragging) return;
-    const trackWidth = strip.getBoundingClientRect().width;
-    const thumbWidth = thumb.offsetWidth;
-    const next = Math.max(0, Math.min(trackWidth - thumbWidth, startThumbLeft + (e.clientX - startX)));
-    strip.scrollLeft = scrollLeftFromThumb({
+    const r = el.getBoundingClientRect();
+    const trackLen = axis === 'x' ? r.width : r.height;
+    const thumbLen = axis === 'x' ? thumb.offsetWidth : thumb.offsetHeight;
+    const pointer = axis === 'x' ? e.clientX : e.clientY;
+    const next = Math.max(0, Math.min(trackLen - thumbLen, startPos + (pointer - startPointer)));
+    const scroll = scrollLeftFromThumb({
       thumbLeft: next,
-      trackWidth,
-      thumbWidth,
-      scrollWidth: strip.scrollWidth,
-      clientWidth: strip.clientWidth,
+      trackWidth: trackLen,
+      thumbWidth: thumbLen,
+      scrollWidth: axis === 'x' ? el.scrollWidth : el.scrollHeight,
+      clientWidth: axis === 'x' ? el.clientWidth : el.clientHeight,
     });
+    if (axis === 'x') el.scrollLeft = scroll;
+    else el.scrollTop = scroll;
     updateController(c);
   };
   const onPointerUp = (e: PointerEvent) => {
@@ -135,44 +170,45 @@ function attach(strip: HTMLElement): void {
     e.stopPropagation();
     c.dragging = true;
     thumb.classList.add('dragging');
-    startX = e.clientX;
-    // current thumb left from its transform
-    const m = /translateX\(([-0-9.]+)px\)/.exec(thumb.style.transform);
-    startThumbLeft = m ? parseFloat(m[1]) : 0;
+    startPointer = axis === 'x' ? e.clientX : e.clientY;
+    startPos = readThumbPos();
     try { thumb.setPointerCapture(e.pointerId); } catch { /* noop */ }
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
   };
   thumb.addEventListener('pointerdown', onPointerDown);
 
-  strip.addEventListener('scroll', c.onStripScroll, { passive: true });
-  c.ro.observe(strip);
-  if (strip.parentElement) c.ro.observe(strip.parentElement);
+  el.addEventListener('scroll', c.onScroll, { passive: true });
+  c.ro.observe(el);
+  if (el.parentElement) c.ro.observe(el.parentElement);
+  // For vertical, content height (scrollHeight) changes when the inner content
+  // grows — observe the content child so the thumb resizes on data/route loads.
+  if (axis === 'y' && el.firstElementChild) c.ro.observe(el.firstElementChild as Element);
 
-  controllers.set(strip, c);
+  controllers.set(el, c);
   updateController(c);
 }
 
-function detach(strip: HTMLElement): void {
-  const c = controllers.get(strip);
+function detach(el: HTMLElement): void {
+  const c = controllers.get(el);
   if (!c) return;
   c.ro.disconnect();
-  strip.removeEventListener('scroll', c.onStripScroll);
+  el.removeEventListener('scroll', c.onScroll);
   c.track.remove();
-  controllers.delete(strip);
+  controllers.delete(el);
 }
 
 function scan(): void {
-  document.querySelectorAll<HTMLElement>(SELECTOR).forEach(attach);
-  // Drop controllers whose strip left the DOM.
-  controllers.forEach((_c, strip) => {
-    if (!strip.isConnected) detach(strip);
+  document.querySelectorAll<HTMLElement>(SELECTOR_X).forEach((el) => attach(el, 'x'));
+  document.querySelectorAll<HTMLElement>(SELECTOR_Y).forEach((el) => attach(el, 'y'));
+  controllers.forEach((_c, el) => {
+    if (!el.isConnected) detach(el);
   });
 }
 
 /**
- * Initialise the custom tab-strip scrollbars once for the app lifetime.
- * Idempotent. Returns a teardown function (used in tests / hot-reload).
+ * Initialise the custom scrollbars once for the app lifetime. Idempotent.
+ * Returns a teardown function (used in tests / hot-reload).
  */
 export function initTabScrollbars(): () => void {
   if (typeof document === 'undefined') return () => {};
@@ -194,7 +230,6 @@ export function initTabScrollbars(): () => void {
   });
   mo.observe(document.body, { childList: true, subtree: true });
 
-  // Reposition on anything that can move/resize a strip on screen.
   window.addEventListener('scroll', scheduleUpdate, { passive: true, capture: true });
   window.addEventListener('resize', scheduleUpdate, { passive: true });
 
@@ -208,7 +243,7 @@ function stopTabScrollbars(): void {
   mo = null;
   window.removeEventListener('scroll', scheduleUpdate, { capture: true } as EventListenerOptions);
   window.removeEventListener('resize', scheduleUpdate);
-  controllers.forEach((_c, strip) => detach(strip));
+  controllers.forEach((_c, el) => detach(el));
   layer?.remove();
   layer = null;
 }
