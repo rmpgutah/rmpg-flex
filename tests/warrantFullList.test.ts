@@ -2,21 +2,36 @@ import { describe, it, expect } from 'vitest';
 import { runFullListLeg } from '../src/utils/warrantSources/runScan';
 import type { WarrantSourceAdapter } from '../src/utils/warrantSources/types';
 
+// Updated fake DB for the batched full-list leg:
+//   - prepare().bind().all() — used by bulkUpsertScrapedWarrants' preload SELECT
+//   - batch() — used by executeBatch inside bulkUpsertScrapedWarrants
+//   - prepare().bind().run() / prepare().run() — used by markScrapedCleared (UPDATE)
 function fakeDb() {
   const calls: { sql: string }[] = [];
-  const mk = (sql: string) => ({ first: async () => (/SELECT datetime/i.test(sql) ? { now: '2026-06-13 12:00:00' } : null), run: async () => { calls.push({ sql }); return { meta: {} }; }, all: async () => ({ results: [] }) });
-  const DB: any = { prepare(sql: string) { return { bind: () => mk(sql), ...mk(sql) }; } };
+  const mk = (sql: string) => ({
+    first: async () => (/SELECT datetime/i.test(sql) ? { now: '2026-06-13 12:00:00' } : null),
+    run: async () => { calls.push({ sql }); return { meta: {} }; },
+    all: async () => ({ results: [] }),
+  });
+  const DB: any = {
+    prepare(sql: string) { return { bind: (..._b: any[]) => mk(sql), ...mk(sql) }; },
+    batch: async (stmts: any[]) => {
+      for (const _ of stmts) calls.push({ sql: 'batch-stmt' });
+      return stmts.map(() => ({}));
+    },
+  };
   return { DB, calls };
 }
 
 describe('runFullListLeg', () => {
-  it('fetches each full-list adapter and upserts its hits', async () => {
+  it('fetches each full-list adapter and batch-upserts its hits', async () => {
     const { DB, calls } = fakeDb();
     const adapter: WarrantSourceAdapter = { meta: { key: 'x', display_name: 'X', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { return [{ source_key: 'x', warrant_id: 'w1', full_name: 'Doe, Jane' }]; } };
     const summary = await runFullListLeg(DB, [adapter]);
     expect(summary[0].source_key).toBe('x');
     expect(summary[0].found).toBe(1);
-    expect(calls.some(c => /INSERT INTO scraped_warrants/i.test(c.sql))).toBe(true);
+    // The batched path uses db.batch() rather than per-hit prepare().run()
+    expect(calls.some(c => c.sql === 'batch-stmt')).toBe(true);
   });
   it('isolates a throwing adapter (one bad source does not abort others)', async () => {
     const { DB } = fakeDb();

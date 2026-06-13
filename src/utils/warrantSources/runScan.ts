@@ -28,7 +28,7 @@ import {
   type WatchRunResult,
 } from '../utahWarrantPoller';
 import { getEnabledAdapters, getAllEnabledAdapters } from './registry';
-import { upsertScrapedWarrant, markScrapedCleared } from './store';
+import { upsertScrapedWarrant, bulkUpsertScrapedWarrants, markScrapedCleared } from './store';
 import { reconcileHits, type CanonicalHit } from './reconcile';
 import { normalizeCharge } from './chargeNormalize';
 import { jitterDelayMs } from './resilience';
@@ -216,22 +216,19 @@ export async function runFullListLeg(
     let cleared = 0;
     try {
       const hits = await adapter.fetchAll({ DB: db });
-      const MAX_FULL_LIST_HITS = 5000;  // safety net: keep one source from exhausting the cron D1 budget
+      const MAX_FULL_LIST_HITS = 200000;  // raised: batched ingest handles large rosters efficiently
       const toStore = hits.length > MAX_FULL_LIST_HITS ? hits.slice(0, MAX_FULL_LIST_HITS) : hits;
       if (hits.length > MAX_FULL_LIST_HITS) {
-        console.warn(`[warrantSources] ${adapter.meta.key} returned ${hits.length} hits; capping to ${MAX_FULL_LIST_HITS} this run (batched ingest needed for full coverage).`);
+        console.warn(`[warrantSources] ${adapter.meta.key} returned ${hits.length} hits; capping to ${MAX_FULL_LIST_HITS} this run.`);
       }
-      for (const hit of toStore) {
-        try {
-          await upsertScrapedWarrant(db, hit, null);
-          found++;
-        } catch (err) {
-          errors++;
-          console.warn(
-            `[warrantSources.runScan.fullList] ${adapter.meta.key} upsert failed:`,
-            err instanceof Error ? err.message : String(err),
-          );
-        }
+      try {
+        found = await bulkUpsertScrapedWarrants(db, adapter.meta.key, toStore);
+      } catch (err) {
+        errors++;
+        console.warn(
+          `[warrantSources.runScan.fullList] ${adapter.meta.key} bulk upsert failed:`,
+          err instanceof Error ? err.message : String(err),
+        );
       }
       // Clear-sweep: mark rows of this source that were NOT seen since
       // runStartedAt as 'cleared' (same datetime-normalisation pattern as the
