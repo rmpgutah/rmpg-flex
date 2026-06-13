@@ -30,7 +30,7 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
@@ -70,5 +70,11 @@
 		<string>location</string>
 		<string>audio</string>
 	</array>
+
+	<!-- Export compliance: the app uses only standard HTTPS/TLS (exempt
+	     encryption), so declare it here to skip the manual encryption
+	     question on every App Store Connect / TestFlight submission. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
