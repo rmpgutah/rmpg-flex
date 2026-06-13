@@ -158,7 +158,7 @@ intel.get('/query', operational, async (c) => {
   };
   // Best-effort history record (never blocks the response).
   try {
-    const userId = (c.var as any).user?.userId ?? (c.var as any).user?.id;
+    const userId = c.get('userId') as number;
     const raw = c.req.query('raw') || '';
     if (userId && raw.trim()) await c.env.DB.prepare(
       'INSERT INTO intel_search_history (user_id, query_text) VALUES (?, ?)').bind(userId, raw.slice(0, 500)).run();
@@ -168,14 +168,14 @@ intel.get('/query', operational, async (c) => {
 
 // Saved searches (per user).
 intel.get('/saved-searches', operational, async (c) => {
-  const uid = (c.var as any).user?.userId ?? (c.var as any).user?.id;
+  const uid = c.get('userId') as number;
   try {
     return c.json(await query(getDb(c.env),
       'SELECT id, name, query_text, created_at FROM intel_saved_searches WHERE user_id = ? ORDER BY created_at DESC', uid));
   } catch { return c.json([]); }
 });
 intel.post('/saved-searches', operational, async (c) => {
-  const uid = (c.var as any).user?.userId ?? (c.var as any).user?.id;
+  const uid = c.get('userId') as number;
   const body = await c.req.json<{ name?: string; query_text?: string }>().catch(() => ({} as { name?: string; query_text?: string }));
   if (!body.name || !body.query_text) return c.json({ error: 'name and query_text required' }, 400);
   await execute(getDb(c.env),
@@ -185,13 +185,13 @@ intel.post('/saved-searches', operational, async (c) => {
   return c.json({ success: true });
 });
 intel.delete('/saved-searches/:id', operational, async (c) => {
-  const uid = (c.var as any).user?.userId ?? (c.var as any).user?.id;
+  const uid = c.get('userId') as number;
   await execute(getDb(c.env), 'DELETE FROM intel_saved_searches WHERE id = ? AND user_id = ?', c.req.param('id'), uid);
   return c.json({ success: true });
 });
 // Recent history (distinct, latest 10).
 intel.get('/search-history', operational, async (c) => {
-  const uid = (c.var as any).user?.userId ?? (c.var as any).user?.id;
+  const uid = c.get('userId') as number;
   try {
     return c.json(await query(getDb(c.env),
       `SELECT query_text, MAX(executed_at) AS executed_at FROM intel_search_history

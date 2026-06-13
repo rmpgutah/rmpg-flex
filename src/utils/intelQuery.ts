@@ -93,6 +93,10 @@ export async function runIntelQuery(db: D1Database, p: QueryParams): Promise<{ r
   let results = [...hits.values()];
 
   if (p.type) results = results.filter((r) => r.type === p.type);
+  // since/until only narrow hits that CARRY a date (currently case hits via
+  // opened_date). Undated hits (persons/vehicles/FTS) pass through unfiltered —
+  // deliberate partial support given the schema (documented in Phase 2 spec §5;
+  // broaden by enriching hits with per-type dates in a later pass).
   if (p.since) results = results.filter((r) => !r.date || r.date >= p.since!);
   if (p.until) results = results.filter((r) => !r.date || r.date <= p.until!);
 
