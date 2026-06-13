@@ -272,36 +272,53 @@ psb.post('/invoices/from-serve-charges', async (c) => {
     `SELECT sc.id, sc.contract_id, cc.client_id
        FROM serve_charges sc LEFT JOIN client_contracts cc ON sc.contract_id = cc.id
       WHERE ${conds.join(' AND ')}`, ...params);
-  if (charges.length === 0) return c.json({ data: null, message: 'No approved charges in range' });
+  if (charges.length === 0) return c.json({ data: { invoices: [], skipped_no_contract: 0 }, message: 'No approved charges in range' });
 
-  const clientId = charges.find((x) => x.client_id)?.client_id ?? null;
-  const contractId = b.contract_id ?? charges.find((x) => x.contract_id)?.contract_id ?? null;
-
-  const invNumber = await nextInvoiceNumber(db);
-  const invIns = await execute(db,
-    `INSERT INTO invoices (invoice_number, client_id, contract_id, issue_date, subtotal, tax_rate, tax_amount, total_amount)
-     VALUES (?, ?, ?, date('now'), 0, 0, 0, 0)`,
-    invNumber, clientId, contractId);
-  const invoiceId = Number(invIns.meta.last_row_id);
-
-  let subtotal = 0;
+  // Group approved charges by contract so each invoice ties to exactly ONE
+  // contract/client. Charges with no contract cannot be billed — skip them
+  // (the UI blocks approving contract-less charges, but the API allows it).
+  const byContract = new Map<number, { client_id: number | null; ids: number[] }>();
+  let skippedNoContract = 0;
   for (const ch of charges) {
-    const lines = await query<any>(db, 'SELECT * FROM serve_charge_lines WHERE serve_charge_id = ?', ch.id);
-    for (const l of lines) {
-      subtotal += Number(l.line_total) || 0;
-      await execute(db,
-        `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        invoiceId, l.description, l.quantity, l.unit_price, l.line_total, l.taxable ? 1 : 0);
-    }
-    await execute(db, `UPDATE serve_charges SET status = 'invoiced', invoice_id = ? WHERE id = ?`, invoiceId, ch.id);
+    if (!ch.contract_id) { skippedNoContract++; continue; }
+    const g = byContract.get(ch.contract_id) ?? { client_id: (ch.client_id ?? null) as number | null, ids: [] as number[] };
+    g.ids.push(Number(ch.id));
+    byContract.set(ch.contract_id, g);
   }
-  subtotal = Math.round(subtotal * 100) / 100;
-  await execute(db, `UPDATE invoices SET subtotal = ?, total_amount = ? WHERE id = ?`, subtotal, subtotal, invoiceId);
+  if (byContract.size === 0) {
+    return c.json({ data: { invoices: [], skipped_no_contract: skippedNoContract }, message: 'No billable approved charges (none had a contract).' });
+  }
 
   const user = c.get('user') as { id: number } | undefined;
-  await logAudit(db, user?.id ?? null, 'invoice', 'serve_charge', invoiceId, { invoice_number: invNumber, charge_ids: charges.map((x) => x.id) });
-  return c.json({ data: { invoice_id: invoiceId, invoice_number: invNumber, charge_count: charges.length, subtotal } }, 201);
+  const invoices: Array<{ invoice_id: number; invoice_number: string; contract_id: number; client_id: number | null; charge_count: number; subtotal: number }> = [];
+
+  for (const [contractId, group] of byContract) {
+    const invNumber = await nextInvoiceNumber(db);
+    const invIns = await execute(db,
+      `INSERT INTO invoices (invoice_number, client_id, contract_id, issue_date, subtotal, tax_rate, tax_amount, total_amount)
+       VALUES (?, ?, ?, date('now'), 0, 0, 0, 0)`,
+      invNumber, group.client_id, contractId);
+    const invoiceId = Number(invIns.meta.last_row_id);
+
+    let subtotal = 0;
+    for (const chargeId of group.ids) {
+      const lines = await query<any>(db, 'SELECT * FROM serve_charge_lines WHERE serve_charge_id = ?', chargeId);
+      for (const l of lines) {
+        subtotal += Number(l.line_total) || 0;
+        await execute(db,
+          `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          invoiceId, l.description, l.quantity, l.unit_price, l.line_total, l.taxable ? 1 : 0);
+      }
+      await execute(db, `UPDATE serve_charges SET status = 'invoiced', invoice_id = ? WHERE id = ?`, invoiceId, chargeId);
+    }
+    subtotal = Math.round(subtotal * 100) / 100;
+    await execute(db, `UPDATE invoices SET subtotal = ?, total_amount = ? WHERE id = ?`, subtotal, subtotal, invoiceId);
+    await logAudit(db, user?.id ?? null, 'invoice', 'serve_charge', invoiceId, { invoice_number: invNumber, contract_id: contractId, charge_ids: group.ids });
+    invoices.push({ invoice_id: invoiceId, invoice_number: invNumber, contract_id: contractId, client_id: group.client_id, charge_count: group.ids.length, subtotal });
+  }
+
+  return c.json({ data: { invoices, skipped_no_contract: skippedNoContract } }, 201);
 });
 
 export default psb;

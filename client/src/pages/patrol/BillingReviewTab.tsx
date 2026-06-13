@@ -21,7 +21,14 @@ export default function BillingReviewTab() {
     const to = window.prompt('Invoice to date (YYYY-MM-DD)?') ?? '';
     if (!from || !to) return;
     const r = await generateInvoice({ from, to });
-    setMsg(r?.data ? `Created invoice ${r.data.invoice_number}` : 'No approved charges in range.');
+    const invs = r?.data?.invoices ?? [];
+    if (invs.length) {
+      const skipped = r?.data?.skipped_no_contract ?? 0;
+      setMsg(`Created ${invs.length} invoice(s): ${invs.map((i) => i.invoice_number).join(', ')}${skipped ? ` — ${skipped} charge(s) skipped (no contract)` : ''}`);
+      await load('pending_review');
+    } else {
+      setMsg('No billable approved charges in range.');
+    }
   };
 
   return (

@@ -42,7 +42,7 @@ export function useServeCharges() {
     await apiFetch(`/billing/serve-charges/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
   }, []);
   const generateInvoice = useCallback(async (payload: { contract_id?: number; client_id?: number; from: string; to: string }) => {
-    return apiFetch<{ data: { invoice_id: number; invoice_number: string } }>('/billing/invoices/from-serve-charges', { method: 'POST', body: JSON.stringify(payload) });
+    return apiFetch<{ data: { invoices: Array<{ invoice_id: number; invoice_number: string; contract_id: number; client_id: number | null; charge_count: number; subtotal: number }>; skipped_no_contract: number } }>('/billing/invoices/from-serve-charges', { method: 'POST', body: JSON.stringify(payload) });
   }, []);
   return { charges, loading, load, approve, voidCharge, saveLines, generateInvoice };
 }
