@@ -1,297 +1,351 @@
-# iOS Field Reports & Citations — Design
+# iOS Field Workflows Platform — Design
 
 **Date:** 2026-06-13
 **Status:** Approved (brainstorming complete)
 **App:** `ios/RMPGFlexTester` (native SwiftUI field-ops companion to the RMPG Flex CAD/RMS)
-**Sub-project:** A of a 4-part "iOS significant upgrades" program (see Roadmap below)
+**Sub-project:** A of a 4-part "iOS significant upgrades" program (B/C/D summarized in §15)
+
+> Supersedes the narrower "Field Reports & Citations" framing. Reports & citations are
+> now the first two of ~13 workflows delivered by a shared **declarative workflow engine**.
 
 ---
 
 ## 1. Context
 
-The iOS app (`RMPGFlexTester`) is a mature SwiftUI field-ops companion: 7 tabs, JWT'd
-access to `api.rmpgutah.us`, background duty/GPS, AAMVA/MRZ ID scanning, on-device
-field calculators, and a notifications inbox. It is signed with a **free Apple ID /
-personal team** (7-day sideload), which rules out APNs remote push, an Apple Watch
-companion, and data-sharing widgets — but leaves everything in this sub-project fully
-buildable.
+`RMPGFlexTester` is a mature SwiftUI field-ops companion: 7 tabs, JWT'd access to
+`api.rmpgutah.us`, background duty/GPS, AAMVA/MRZ ID scanning, on-device field
+calculators, a notifications inbox, person/plate lookup → dossier. It is signed with a
+**free Apple ID / personal team** (7-day sideload), which rules out APNs push, an Apple
+Watch companion, and data-sharing widgets — but everything in this sub-project is fully
+buildable on free provisioning.
 
-Today the phone can *read* records and *dispatch* itself, but it **cannot author the
-two documents officers produce most in the field**: incident reports and citations.
-Both already have complete server APIs; the gap is purely client-side.
+The phone can *read* records and *dispatch* itself, but it **cannot author the documents
+and actions an officer produces on patrol**. RMPG is a **private-security company**, so
+the daily core is not just police paperwork — it's **patrol tour checkpoint scans**,
+**trespass/property** handling, **welfare checks**, and **daily activity**. The server
+already exposes create endpoints for ~13 of these; the gap is purely client-side.
 
-### Roadmap (for context; only sub-project A is in scope here)
-- **A — Field Reports & Citations** ← this spec
-- B — Always-On Officer Safety (App Intents + local Live Activity)
-- C — Live & Resilient Dispatch (WebSocket feed + offline-first queue)
-- D — Navigate & Know (Mapbox turn-by-turn + units map + BOLO feed)
+Rather than hand-build 13 screens, we build **one declarative workflow engine** plus a
+**categorized workflow hub**. Adding a workflow becomes adding a *definition*.
 
 ---
 
 ## 2. Goal & non-goals
 
-**Goal:** Let an officer write, dictate, photo-document, and submit an **incident
-report** and a **citation** entirely from the phone, against the existing server APIs,
-with honest handling of the server's NIBRS validation gate.
+**Goal:** A field-workflows platform on the phone — a guided, dictation-capable,
+photo-attaching, offline-tolerant engine that renders a registry of workflow definitions
+against existing live APIs, shipping with ~13 workflows across reports, patrol/security,
+people/cases, and civil/admin.
 
-**Non-goals (banked for later):**
-- APNs / Apple Watch / Home Screen widgets (require paid Apple Developer Program).
-- Robust offline-first queue with replay (that is sub-project C; here we add only thin
-  local autosave as crash insurance — the server `draft` status is the real persistence).
-- Supervisor **approve/return** UI (stays desktop-side for v1; those are `REVIEW_ROLES`).
-- Server-side AI narrative cleanup (blocked on the Anthropic $0-credit issue noted in
-  project memory; dictation is 100% on-device Apple Speech, no Anthropic dependency).
-
----
-
-## 3. Server contracts being consumed (already live)
-
-### Incidents (`/api/incidents`, `officer` ∈ WRITE_ROLES)
-- `POST /` — body `{ incident_type, location_address, priority?, call_id?, narrative?,
-  latitude?, longitude? }`. Creates a **`draft`** with auto `incident_number`
-  (`YY-RMP-NNNNN`), auto-geocode, auto-geofence. Returns the created row (201).
-  Required: `incident_type`, `location_address`.
-- `PUT /:id` — edits a `draft`/`returned` incident. Editable:
-  `incident_type, priority, location_address, latitude, longitude, narrative`.
-- `PUT /:id/submit` — **NIBRS gate.** Requires non-empty `narrative`. On failure returns
-  **HTTP 422** `{ error, code: 'NIBRS_VALIDATION_FAILED', validation }`. On success
-  flips status to `submitted` and returns the row + `validation`. (`force=1` is admin-only;
-  the field app never forces.)
-- `GET /` and `GET /:id` — list/detail for "My Drafts / Returned".
-
-### Citations (`/api/citations`, `officer` ∈ allowed roles)
-- `POST /` — required `violation_description` (non-empty) and `violation_date`
-  (`YYYY-MM-DD`). `type` defaults to `traffic` (must be in server `VALID_TYPES`).
-  `fine_amount`, if present, must be a non-negative number. Large optional allow-list:
-  `person_{name,dob,dl,address,id}`, `vehicle_{plate,state,year,make,model,color,vin,description,id}`,
-  `statute_citation`, `offense_level`, `fine_amount`, `bond_amount`, `speed_recorded`,
-  `speed_limit`, `radar_type`, `is_warning`, `school_zone`, `construction_zone`,
-  `dui_related`, `accident_related`, `violation_time`, `location`, `latitude`, `longitude`,
-  `court_{date,time,room,name,address}`, `appearance_required`, `notes`, `call_id`,
-  `incident_id`. Returns `{ data, citation_number }` (201).
-
-### Field photos (`/api/field-photos`)
-- `POST /` — **multipart** `{ photo, lat?, lng?, call_id?, notes? }`, R2-backed,
-  table `field_photos`. **Server change required (see §6):** add `incident_id`.
+**Non-goals (deferred):**
+- APNs / Apple Watch / widgets (paid Apple Developer Program) — sub-project B.
+- Robust offline-first queue with replay — sub-project C (here: thin local autosave only).
+- **Trespass-notice POST and Daily-Activity-Report backends** — no live create endpoint
+  exists; these are a fast-follow with their own small spec (§15). The hub shows them as
+  "coming" tiles, never as broken submits.
+- Supervisor review actions (approve/return) — stay desktop-side for v1.
+- Server-AI narrative assist (Anthropic credits blocked); dictation is 100% on-device.
 
 ---
 
-## 4. Architecture — new iOS components (all in the main app target)
+## 3. The workflow engine (architecture)
 
-| File | Responsibility | Public interface |
+The heart of the platform. Four well-bounded units:
+
+### 3.1 `WorkflowDefinition` (data)
+```
+struct WorkflowDefinition {
+  let id: String                 // "incident", "citation", "patrol_scan", …
+  let title, icon: String        // SF Symbol
+  let category: WorkflowCategory // .reports | .patrol | .people | .civil
+  let roles: [String]            // visibility gate (e.g. ["admin","manager","supervisor","officer"])
+  let submit: SubmitSpec         // .single(post:) | .lifecycle(create:update:finalize:)
+  let encoding: BodyEncoding     // .json | .multipart
+  let steps: [WorkflowStep]
+  let prefill: [PrefillSource]   // .call | .scanSubject | .scanVehicle | .gps
+  let success: SuccessSpec       // numberKeyPath + message template ("Issued {citation_number}")
+}
+struct WorkflowStep { let title: String; let fields: [WorkflowField]; let custom: CustomStep? }
+struct WorkflowField {
+  let key: String                // request body key
+  let type: FieldType
+  let label: String
+  let required: Bool
+  let options: [FieldOption]?    // chips/segmented/picker
+  let defaultValue: FieldValue?
+}
+enum FieldType { case text, dictatableNarrative, chips, segmented, date, time,
+                 number, toggle, photo, scanSubject, scanVehicle, statuteSearch,
+                 signature, gpsLocation, picker }
+enum SubmitSpec { case single(post: String)
+                  case lifecycle(create: String, update: String, finalize: String) }
+```
+
+### 3.2 `WorkflowRenderer` (one SwiftUI view)
+Renders any definition as a stepped flow: progress pills, a single pinned gold primary
+action per step, autosave, prefill hydration, and submit. Responsibilities:
+- Map each `FieldType` → its field-type view (§4); collect `[String: FieldValue]`.
+- Encode the collected values → JSON or multipart body per `encoding`.
+- **`.single`**: POST at the final step. **`.lifecycle`**: POST a `draft` on first
+  meaningful input (capture id + number), PUT edits debounced, finalize on submit.
+- **Generic validation handling:** on a 4xx with a `{ validation: { errors } }` or
+  field-error body (read via `RMPGAPIClient.apiBody`), render a **readiness checklist**
+  and let the officer fix-or-save-draft. This is one code path for all 13 workflows.
+- 401 → reuse the shared re-login-on-401 helper (§11).
+
+### 3.3 `WorkflowRegistry` (the catalog)
+A static array of `WorkflowDefinition`s (§5). Pure data; unit-testable. Adding a workflow
+edits this array (+ a new field-type view only if a genuinely new input appears).
+
+### 3.4 `WorkflowHubView`
+Renders the registry grouped by `category`, gated by the signed-in role, with search,
+"Continue draft", and "On this call" context. The single entry surface.
+
+**Why this shape:** each unit answers "what does it do / how is it used / what it depends
+on" in isolation; the renderer is the only place that touches networking; definitions hold
+no logic. New workflows can't destabilize existing ones.
+
+---
+
+## 4. Field-type library (reusable SwiftUI views)
+
+One view per `FieldType`, each independently understandable + testable, all built from
+`Theme.swift` tokens:
+
+| View | FieldType | Notes |
 |---|---|---|
-| `Dictation.swift` | On-device speech-to-text. `SFSpeechRecognizer` + `AVAudioEngine`. Streams live partial transcripts; caller appends them into any field. | `final class Dictation: ObservableObject` — `@Published transcript: String`, `@Published isListening: Bool`, `@Published authorized: Bool`; `func requestAuth()`, `func start()`, `func stop()`. |
-| `MultipartUpload.swift` | One shared multipart-body builder + POST. Extracted from the duplicated logic in `FieldPhotoView` and `FuelAndPhotos`; both refactored onto it. | `static func upload(_ client: RMPGAPIClient, path: String, fields: [String:String], jpeg: Data, fileField: String, filename: String) async throws -> [String:Any]` |
-| `ReportsHubView.swift` | New entry surface. "My Drafts / Returned" list (`GET /api/incidents`), "New Incident Report", "New Citation", recent submitted. | SwiftUI `View` |
-| `IncidentReportView.swift` | The report workflow: create draft → structured fields + dictatable narrative → evidence photos → submit with NIBRS-422 handling. | SwiftUI `View`; optional `init(prefill: CallPrefill?)` |
-| `CitationWriterView.swift` | E-citation form → `POST /api/citations`. Pre-fills person/vehicle from a prior scan when handed one. | SwiftUI `View`; optional `init(prefill: ScanPrefill?)` |
+| `TextFieldRow` | `text` | single/multi-line plain |
+| `DictationBar` | `dictatableNarrative` | mic + waveform bound to `Dictation.transcript` (§9) |
+| `ChipRow` | `chips` | tappable suggestion chips (incident types, common violations) |
+| `SegmentedRow` | `segmented` | e.g. Warning ⇄ Citation |
+| `DateRow` / `TimeRow` | `date`/`time` | default = now; `YYYY-MM-DD` / `HH:MM` |
+| `NumberRow` | `number` | fine, speed, bond — non-negative validation |
+| `ToggleRow` | `toggle` | booleans (school_zone, dui_related, …) |
+| `PhotoStrip` | `photo` | camera capture → `MultipartUpload`, linked by `incident_id`/`call_id` |
+| `ScanSubjectCard` | `scanSubject` | confirm/prefill from a prior ID scan |
+| `ScanVehicleCard` | `scanVehicle` | confirm/prefill from a prior plate scan |
+| `StatuteSearchField` | `statuteSearch` | search `/api/statutes`, fill `statute_citation` |
+| `SignaturePad` | `signature` | on-device signature → base64 (reused for civil notices later) |
+| `GPSLocationField` | `gpsLocation` | address + auto-GPS lat/lng from `LocationManager` |
+| `PickerRow` | `picker` | enumerated options |
 
-**Integration points:**
-- New **Reports** entry in the app. Primary placement: a card on `FieldOpsView` and an
-  entry in the `SystemHubView` list (final tab placement decided in the plan — the tab
-  bar is already at 7 items, so Reports is reached via Field Ops + System rather than a
-  new root tab, to avoid iOS folding tabs into the unthemeable "More" list).
-- Contextual entry from the **assigned-call card** in `FieldOpsView`: a "Write report on
-  this call" action constructs a `CallPrefill` (`call_id`, `location_address`, `lat/lng`,
-  `incident_type` seeded from the call type) and pushes `IncidentReportView`.
-- Reuse existing: `RMPGAPIClient` (incl. `apiBody(error)` for the 422 payload),
-  `KeychainStore`, `LocationManager`, `Theme.swift` (`GoldButtonStyle`, `RaisedButtonStyle`,
-  `.themeCard()`, `SectionHeader`, `StatusLine`), and the camera capture from `FieldPhotoView`.
+Plus the shared **`MultipartUpload`** helper extracted from the duplicated bodies in
+`FieldPhotoView.swift:110` and `FuelAndPhotos.swift:19` (both refactored onto it — DRY
+cleanup).
 
 ---
 
-## 5. UX & workflow design
+## 5. Workflow catalog — first batch (~13, all live-backend)
 
-**Design stance: guided workflow over forms.** The app is used one-handed, in sunlight,
-sometimes gloved — so large tap targets, minimal typing, thumb-zone primary actions, and
-honest status take priority over field density.
+Each row is one `WorkflowDefinition`. `LC` = `.lifecycle`, `1` = single POST.
+
+### Field reports (`.reports`)
+| id | Title | Submit | Endpoint(s) | Key fields |
+|---|---|---|---|---|
+| `incident` | Incident report | LC | `POST /api/incidents` → `PUT /:id` → `PUT /:id/submit` | type(chips), location(gps), priority(seg), narrative(dictate), photos |
+| `citation` | Citation / warning | 1 | `POST /api/citations` | warning⇄citation(seg), subject(scan), vehicle(scan), violation_description(dictate), violation_date, statute(search), fine(number), notes |
+| `field_interview` | Field interview | 1 | `POST /api/field-interviews` | subject(scan), location(gps), reason(chips), narrative(dictate), photos |
+| `use_of_force` | Use of force | 1 | `POST /api/use-of-force` | subject(scan), force_type(chips), narrative(dictate), injuries(toggle), photos |
+| `incident_supplement` | Supplement (DV/pursuit) | 1 | `POST /api/incidents/:id/supplements/{dv,pursuit}` | reached from an incident; type(seg) + structured fields |
+
+### Patrol & security (`.patrol`)
+| id | Title | Submit | Endpoint(s) | Key fields |
+|---|---|---|---|---|
+| `patrol_scan` | Tour checkpoint scan | 1 | `POST /api/patrol/scan` | checkpoint(picker/QR), notes(dictate), gps, photo |
+| `property` | Property / evidence intake | 1 | `POST /api/properties` | type(chips), description(dictate), location(gps), photos |
+| `welfare` | Welfare check | 1 | `POST /api/dispatch/welfare/start` (+ `/activity`,`/ack`) | subject, location(gps), notes(dictate) |
+
+### People & cases (`.people`)
+| id | Title | Submit | Endpoint(s) | Key fields |
+|---|---|---|---|---|
+| `arrest` | Arrest / booking | LC+custom | `POST /api/arrests/manual` (+ `/:id/miranda`, `/:id/property`) | subject(scan), charges(chips), narrative(dictate); custom steps: Miranda ack, property list |
+| `case` | Case open + note | 1 | `POST /api/cases` (+ `/:id/notes`) | title, type(chips), summary(dictate) |
+| `task` | Task / follow-up | 1 | `POST /api/tasks` | title, priority(seg), due(date), notes(dictate) |
+
+### Civil / admin (`.civil`)
+| id | Title | Submit | Endpoint(s) | Key fields |
+|---|---|---|---|---|
+| `community` | Community tip / event | 1 | `POST /api/community/{tips,events}` | type(seg), location(gps), description(dictate), photos |
+| `code_enforcement` | Code violation / tow | 1 | `POST /api/code-enforcement/{violations,tows}` | type(seg), location(gps), description(dictate), vehicle(scan), photos |
+| `crisis_specialops` | Crisis / special-ops callout | 1 | `POST /api/crisis-response/incidents` or `/api/special-ops/callouts` | type(chips), location(gps), narrative(dictate) |
+
+**Exact field lists per workflow are finalized in the implementation plan** by reading
+each route's body allow-list (the contracts in §6); the table above is the agreed shape,
+not the final field set.
+
+### Roadmap (needs backend; shown as "coming" tiles, not built here)
+Trespass notice (`POST /api/trespass-orders` — only `/check` + list exist today), Daily
+Activity Report (no backend), BOLO create. Each is a fast-follow with its own small spec.
+
+---
+
+## 6. Server contracts consumed (verified live)
+
+- **Incidents** (`officer` ∈ WRITE_ROLES): `POST /` requires `incident_type` +
+  `location_address`, creates a `draft` with auto `incident_number` (`YY-RMP-NNNNN`),
+  geocode, geofence. `PUT /:id` edits draft/returned. `PUT /:id/submit` runs the **NIBRS
+  gate** — narrative required; on fail returns **HTTP 422** `{ code:'NIBRS_VALIDATION_FAILED',
+  validation }`.
+- **Citations** (`officer`+): `POST /` requires non-empty `violation_description` +
+  `violation_date` (`YYYY-MM-DD`); `fine_amount` ≥ 0; large optional allow-list
+  (person/vehicle/speed/court/etc.). Returns `{ data, citation_number }`.
+- **Patrol** (`officer`+): `POST /api/patrol/scan` logs a checkpoint scan (auto on-time/late).
+- **Use of force / properties / field-interviews / arrests / cases / tasks / community /
+  code-enforcement / crisis-response / special-ops / welfare** — all expose `POST` create
+  endpoints (verified by route scan 2026-06-13). The plan reads each body allow-list to
+  pin field keys.
+- **Field photos**: `POST /api/field-photos` multipart `{ photo, lat?, lng?, call_id?,
+  notes? }` → R2 + `field_photos`. **Server change in §7.**
+
+---
+
+## 7. Server change — generic evidence-photo linkage
+
+Add `incident_id` to `field_photos` so report/use-of-force/property evidence binds to the
+owning record (not only to a call). In `src/routes/fieldPhotos.ts`:
+1. Add `incident_id INTEGER` to the `CREATE TABLE IF NOT EXISTS` in `ensureTable()`.
+2. Best-effort `ALTER TABLE field_photos ADD COLUMN incident_id INTEGER` wrapped in
+   try/catch (D1 has no `IF NOT EXISTS` on ADD COLUMN; swallow re-apply error — same
+   boot-reconciler posture already in this file).
+3. Parse `incident_id` from the multipart form (same int-coercion as `call_id`).
+4. Include it in the `INSERT` columns/values and the `GET /` filter allow-list.
+
+**Live D1:** apply the `ALTER` directly to live `rmpg-flex` (`785de7ae-…`) post-merge and
+verify with `pragma_table_info('field_photos')` (migrations routinely fail to reach live
+silently). `field_photos` is ~11 cols — no 100-col-cap concern; code-bootstrapped, so a
+`migrations/` file is optional.
+
+This is the **only** server change in this sub-project.
+
+---
+
+## 8. UX & workflow design
+
+**Design stance: guided workflow over forms.** One-handed, sunlit, sometimes-gloved use →
+large tap targets, minimal typing, thumb-zone primary actions, honest status.
 
 ### Principles
-1. **Stepped, not sprawling.** Incident report flows `Type → Location → Narrative → Photos
-   → Review` with progress pills; citation is a short scrollable card-stack
-   (subject → vehicle → violation → issue) because it's a one-screen task.
-2. **Thumb-zone primary action.** A single gold primary button is pinned at the bottom of
-   every step; secondary/destructive actions are de-emphasized text.
-3. **One-tap common cases.** Incident-type chips and common-violation chips short-circuit
-   typing for the 80% case; a prominent Warning ⇄ Citation segmented toggle leads the
-   citation screen.
-4. **Dictation-first narrative.** A large mic sits at the center of the narrative step — the
-   report's heaviest field becomes its easiest, hands-busy input.
-5. **Always-saved.** A persistent "Saved" indicator (server `draft` + local autosave) so
-   work is never lost in a dead zone.
-6. **Honest readiness.** Green checks / amber fixes — never a silent failure.
-7. **Prefill is the glue.** "On this call" carries `call_id`/location/coords into a report;
-   an ID/plate scan carries subject + vehicle into a citation. The officer confirms, doesn't
-   retype.
+1. **Stepped, not sprawling** — multi-input workflows (incident, arrest) use steps +
+   progress pills; short ones (task, patrol scan) are a single card-stack.
+2. **Thumb-zone primary action** — one pinned gold button per step; secondary/destructive
+   actions are quiet text.
+3. **One-tap common cases** — chips for incident types, charges, violations, force types;
+   prominent segmented toggles (Warning⇄Citation, DV⇄Pursuit).
+4. **Dictation-first narrative** — a large mic at the center of every narrative field.
+5. **Always-saved** — persistent "Saved" indicator (server draft + local autosave).
+6. **Honest readiness** — green checks / amber fixes from the generic validation mapping;
+   never a silent failure.
+7. **Prefill is the glue** — "On this call" seeds `call_id`/location/coords; an ID/plate
+   scan seeds subject/vehicle. Confirm, don't retype.
 
-### Screen flow (4 key surfaces)
-1. **Reports hub** — an "On this call" contextual card, two large action tiles (Incident
-   report / Citation), and "Continue draft" rows with a readiness ring. Reached via a Field
-   Ops card + the System hub (no 8th root tab — iOS folds >5 tabs into the unthemeable "More"
-   list; final placement is a plan-time call).
-2. **Compose (narrative step)** — step pills, a live-transcript narrative card, a large gold
-   mic + waveform, inline evidence-photo thumbnails + an add tile, and a pinned "Next: review".
-3. **Review & submit** — a NIBRS-readiness checklist (present = green check, missing = amber +
-   a one-tap **Fix**) shown **before** submit; a report summary; a pinned "Submit report" with
-   a quieter "Save as draft".
-4. **Citation** — the Warning ⇄ Citation toggle, scan-prefilled subject + vehicle cards (with a
-   "Scanned" badge), a statute search + common-violation chips, and a pinned "Issue citation".
+### Screen flow
+- **Workflow hub** — search, "Continue draft", "On this call" context, then tiles grouped
+  by category (role-gated). Reached via a Field Ops card + a "Workflows" entry; whether it
+  earns a dedicated bottom tab (vs. living under Field Ops/System to avoid iOS's >5-tab
+  "More" fold) is a plan-time call.
+- **Renderer flow** — step pills → typed field views → pinned primary; review step shows
+  the readiness checklist before submit; success shows the assigned number.
+- **Citation / scan-driven flows** lead with the segmented toggle + scan-prefilled cards.
 
-### New reusable views (small, single-purpose)
-`StepPills`, `ReadinessRow` (check/alert + optional Fix action), `DictationBar` (mic +
-waveform bound to `Dictation.transcript`), `ChipRow` (tappable suggestion chips), and
-`PrefillCard` (subject/vehicle confirm card). These compose with existing `Theme.swift`
-tokens and `GoldButtonStyle`/`.themeCard()` — no new visual language.
+### Readiness model
+Computed client-side from each workflow's known required fields so it shows proactively;
+the server submit stays authoritative (a 4xx validation body remaps onto the same
+checklist). Client mirror is a hint, never a gate.
 
-### Readiness model (screen 3)
-The checklist is computed **client-side** from the same requirements the server's
-`validateIncidentForNibrs` enforces (type, location, non-empty narrative, offense/victim
-data), so it can be shown proactively. The server `submit` stays authoritative: a 422 maps
-its `validation.errors` onto the same checklist rows. The client mirror is a *hint*, never a
-gate.
-
-This UX layer adds **no contract changes** — it sits entirely on top of §3 and §7.
+This UX is the engine's render output — **no per-workflow UI code**, no contract changes.
 
 ---
 
-## 6. Server change — link evidence photos to incidents
+## 9. Voice dictation (on-device)
 
-Add `incident_id` to `field_photos` so a report's evidence binds to the report itself
-(not only to a call — a report is not always tied to a call).
+`Dictation.swift`: `SFSpeechRecognizer` (+ `AVAudioEngine`), `requiresOnDeviceRecognition`
+where supported (offline, private), default fallback otherwise. `@Published transcript`
+streams into any `dictatableNarrative` field via `DictationBar`. No Anthropic/network.
 
-In `src/routes/fieldPhotos.ts`:
-1. Add `incident_id INTEGER` to the `CREATE TABLE IF NOT EXISTS` in `ensureTable()`.
-2. In `ensureTable()`, add a best-effort `ALTER TABLE field_photos ADD COLUMN incident_id INTEGER`
-   wrapped in try/catch (D1 has no `IF NOT EXISTS` on ADD COLUMN; swallow the re-apply error —
-   same boot-reconciler posture already used in this file).
-3. Parse `incident_id` from the multipart form (same int-coercion as `call_id`).
-4. Include `incident_id` in the `INSERT` column list and value tuple.
-5. Add `incident_id` to the `GET /` filter allow-list (so the desktop/report can list a
-   report's photos).
-
-**Live D1:** apply the `ALTER TABLE field_photos ADD COLUMN incident_id INTEGER` directly
-to live `rmpg-flex` (`785de7ae-…`) via the Cloudflare D1 API after merge, and verify with
-`pragma_table_info('field_photos')` — per the project rule that migrations routinely fail
-to reach live silently. `field_photos` has ~11 columns; no 100-column-cap concern, no
-migration-file needed (the table is bootstrapped by `ensureTable`, not by `migrations/`).
-
-A migration file under `migrations/` is **optional** here (the table is code-bootstrapped);
-if added for record-keeping it must be idempotent and is not relied upon for live.
+**Info.plist** (project uses a generated plist → set via `INFOPLIST_KEY_*` build settings):
+- `NSMicrophoneUsageDescription` — "RMPG Flex uses the microphone to dictate report and
+  workflow narratives."
+- `NSSpeechRecognitionUsageDescription` — "RMPG Flex transcribes dictation on-device to
+  fill workflow narratives."
 
 ---
 
-## 7. Data flows
+## 10. Error handling & honesty
 
-### Incident report
-1. Open writer (blank, or with `CallPrefill`). On first meaningful input, **POST `/api/incidents`**
-   to create the server `draft` → capture `id` + `incident_number`. Show the assigned number.
-2. Field edits (type, location, priority, narrative) **PUT `/:id`** debounced (~1.5 s after
-   typing/dictation stops). Narrative also mirrored to a local autosave key
-   (`UserDefaults`/file, keyed by incident id) as crash insurance.
-3. **Attach evidence photos** → camera capture → `MultipartUpload.upload` to
-   `/api/field-photos` with `incident_id` (+ `call_id`, `lat/lng` when available).
-4. **Submit** → `PUT /:id/submit`.
-   - **201/200:** show success with `incident_number`; pop to Reports hub.
-   - **422 `NIBRS_VALIDATION_FAILED`:** parse `apiBody(error)["validation"]`; render
-     `validation.errors` as an actionable checklist with two choices: **Fix now** (stay) or
-     **Save as draft** (leave server-side draft to finish on desktop/later). Never a dead-end.
-   - **400 `INC_NARRATIVE_REQUIRED`:** focus the narrative field with a clear prompt.
-5. Connectivity loss at submit: the draft already exists server-side; tell the officer it's
-   saved as a draft to finish later (no data loss).
-
-### Citation
-1. Open writer (blank, or with `ScanPrefill` from a prior ID/plate scan → person/vehicle fields).
-2. Fill violation (`violation_description`, `violation_date` default = today, `type`,
-   `statute_citation`, speed/fine/court as applicable). Inline client validation mirrors the
-   server: non-empty description, `violation_date` matches `YYYY-MM-DD`, `fine_amount` ≥ 0.
-3. Optional dictation into `notes` / `violation_description`.
-4. **POST `/api/citations`** → on 201 show `citation_number`; offer "Attach photo" (reuses
-   `MultipartUpload` with `incident_id`/`call_id` when linked) and "New citation".
+- **Validation 4xx** (NIBRS 422 and any `{ validation }`/field-error body) → actionable
+  checklist with Fix-now / Save-draft. One engine path.
+- **401** → shared re-login-on-401 helper; retry once.
+- **Offline** → lifecycle drafts already exist server-side; single-POST workflows keep a
+  local autosave and tell the officer it's saved to retry — never a silent failure.
+- All branching reads the server `code`/`json` via `RMPGAPIClient.apiCode`/`apiBody`,
+  never string-matching messages.
 
 ---
 
-## 8. Voice dictation (on-device)
+## 11. Security & roles
 
-- `SFSpeechRecognizer(locale:)` + `AVAudioEngine` tap → `SFSpeechAudioBufferRecognitionRequest`
-  with `requiresOnDeviceRecognition = true` where supported (offline + private), falling back
-  to default recognition when on-device is unavailable for the locale.
-- Mic button in the narrative/notes toolbar. Live partial results stream into `@Published transcript`;
-  the view appends finalized segments to the field. Tap to stop; auto-stop on silence timeout.
-- **Info.plist keys** (the project uses a generated Info.plist, so set via `INFOPLIST_KEY_*`
-  build settings in `project.pbxproj`):
-  - `NSMicrophoneUsageDescription` — "RMPG Flex uses the microphone to dictate report and
-    citation narratives."
-  - `NSSpeechRecognitionUsageDescription` — "RMPG Flex transcribes your dictation on-device
-    to fill report narratives."
-- No Anthropic / network dependency; works in dead zones for supported locales.
+- All calls JWT-bearer'd. The hub hides workflows whose `roles` exclude the signed-in role
+  (e.g. use-of-force/arrest gating mirrors the server). The renderer never shows
+  supervisor-only review actions.
+- Factor the existing `client()` → `authed { }` re-login-on-401 pattern (from
+  `FieldOpsView`/`BackgroundDuty`) into a shared helper the engine uses.
+- Evidence photos stay Worker-streamed (private R2), unchanged.
 
 ---
 
-## 9. Error handling & honesty
+## 12. Offline & autosave
 
-- **NIBRS 422** surfaced as a concrete field checklist (from `validation.errors`), with
-  Fix-now / Save-as-draft — not "submit failed".
-- **401** reuses the existing re-login-on-401 pattern (`client()` → `authed { }` from
-  `FieldOpsView`/`BackgroundDuty`); factor that pattern so the new views share it rather
-  than re-implementing.
-- **Offline:** writes that can't reach the server keep the draft locally + server-draft
-  already created; surfaced as "saved as draft" rather than a silent failure.
-- All server-error `code` values are read via `RMPGAPIClient.apiCode`/`apiBody` and mapped
-  to human text (no string-matching of `error` messages).
+- **Lifecycle workflows:** the server `draft` is the persistence; a local autosave of the
+  in-progress narrative (keyed by record id) is crash insurance.
+- **Single-POST workflows:** the whole collected `[String:FieldValue]` is autosaved locally
+  (keyed by workflow id + a local uuid) until a successful POST clears it.
+- This is intentionally thin — the robust replay queue is sub-project C.
 
 ---
 
-## 10. Security & roles
+## 13. Testing & verification
 
-- All calls JWT-bearer'd. `officer`+ may create/edit/submit incidents and create citations.
-- The field app **never** renders approve/return (supervisor-only); v1 keeps review desktop-side.
-- Evidence photos remain Worker-streamed (private R2), unchanged.
-
----
-
-## 11. Testing & verification
-
-Following the README's documented workaround for this Mac's `xcodebuild` deadlock
-(SwiftPM `swift test` + `swiftc` compile; **no new Xcode target** is introduced, so this
-stays valid):
-
-- **Unit tests** (mirror `RMPGFlexTesterTests` style):
-  - `Dictation` state machine (idle→listening→stopped; auth-denied path).
-  - `MultipartUpload` body framing (boundary, field parts, file part headers).
-  - NIBRS-422 parsing → `validation.errors` extraction from an `NSError` userInfo `json`.
-  - Citation client validation (date regex, `fine_amount ≥ 0`, type fallback).
-- **Compile check:** `xcrun -sdk iphonesimulator swiftc` over the new files (as in README).
-- **Server:** `npm run typecheck` for the `fieldPhotos.ts` change.
-- **Live smoke (post-merge):** create a draft incident from the phone, submit, observe the
-  422-or-success path; upload an evidence photo and confirm the `incident_id` row via the D1
-  Console tab. Apply + verify the live-D1 `ALTER` per §6.
+Per the README's `xcodebuild`-deadlock workaround (`swift test` + `swiftc`; **no new Xcode
+target** is introduced, so this holds):
+- **Engine unit tests:** field-value → JSON/multipart encoding; `.lifecycle` vs `.single`
+  submit sequencing; generic validation-body → checklist mapping; required-field gating.
+- **Registry tests:** every definition's endpoint path is well-formed; referenced field
+  types exist; role lists non-empty.
+- **Field-type tests:** `Dictation` state machine; `MultipartUpload` body framing; citation
+  date/`fine ≥ 0` validation; `NumberRow` non-negative.
+- **Compile:** `xcrun -sdk iphonesimulator swiftc` over new files.
+- **Server:** `npm run typecheck` for `fieldPhotos.ts`.
+- **Live smoke (post-merge):** drive 3-4 representative workflows (incident submit w/ NIBRS
+  path, citation, patrol scan, a single-POST civil one); apply + verify the live-D1 `ALTER`.
 
 ---
 
-## 12. Acceptance criteria
+## 14. Acceptance criteria
 
-1. From the phone, an officer can create an incident draft, dictate/type a narrative, attach
-   ≥1 geo-stamped evidence photo linked by `incident_id`, and submit it.
-2. A NIBRS-incomplete submit shows the specific missing fields and offers Fix-now / Save-as-draft.
-3. From the phone, an officer can issue a citation (with client-side validation matching the
-   server) and receive a `citation_number`.
-4. Dictation runs on-device, prompts for mic + speech permission with clear strings, and
-   streams partial transcripts into the field.
-5. `FieldPhotoView` and `FuelAndPhotos` are refactored onto the shared `MultipartUpload`
-   helper with no behavior change.
-6. The incident flow is presented as discrete steps with a single pinned gold primary action
-   per step; the NIBRS-readiness checklist renders **before** submit; the citation screen leads
-   with a Warning ⇄ Citation toggle and offers common-violation chips. (§5)
-7. Prefill works end-to-end: "On this call" seeds `call_id`/location/coords into a report; an
-   ID/plate scan seeds subject + vehicle into a citation.
-8. New unit tests pass via `swift test`; `swiftc` compile is clean; server `typecheck` passes.
+1. A `WorkflowRenderer` drives any registry definition through a stepped flow with a single
+   pinned primary action, autosave, and prefill — no per-workflow UI code.
+2. The first-batch registry contains the ~13 live workflows across all four categories
+   (§5), each gated by role and grouped in the hub.
+3. Incident submit surfaces the NIBRS readiness checklist before submit and maps a 422 onto
+   it; the same mapping works for any other workflow returning a validation body.
+4. From the phone, an officer can: file an incident (dictated narrative + `incident_id`-linked
+   photos), issue a citation, log a patrol checkpoint scan, and complete ≥1 workflow per
+   remaining category.
+5. Dictation runs on-device with clear permission strings and streams partial transcripts.
+6. Prefill works: "On this call" seeds report context; an ID/plate scan seeds subject/vehicle.
+7. `FieldPhotoView` + `FuelAndPhotos` are refactored onto `MultipartUpload` (no behavior change).
+8. Engine + registry + field-type unit tests pass via `swift test`; `swiftc` clean; server
+   `typecheck` passes.
 9. `field_photos.incident_id` exists on live D1 (verified via `pragma_table_info`).
 
 ---
 
-## 13. Out of scope / explicitly deferred
+## 15. Out of scope / roadmap
 
-- Sub-projects B/C/D (push/Watch/widgets, offline queue, Mapbox nav, AI).
-- Supervisor approve/return on phone.
-- Server-AI narrative assist (Anthropic credits blocked).
-- Rich text / templated narratives (desktop Doc Writer territory).
+- **Fast-follow (own small specs):** Trespass-notice `POST` backend, Daily Activity Report
+  backend (could aggregate patrol scans + activity), BOLO create — then their hub tiles
+  activate.
+- **Sub-project B** — Always-On Officer Safety (App Intents + local Live Activity).
+- **Sub-project C** — Live & Resilient Dispatch (WebSocket feed + offline-first replay queue).
+- **Sub-project D** — Navigate & Know (Mapbox turn-by-turn + units map + BOLO feed).
+- Supervisor approve/return on phone; server-AI narrative assist (Anthropic credits).
