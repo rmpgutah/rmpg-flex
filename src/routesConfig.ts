@@ -80,6 +80,7 @@ import tasks from './routes/tasks';
 import training from './routes/training';
 import personnel from './routes/personnel';
 import presence from './routes/presence';
+import mdt from './routes/mdt';
 import records from './routes/records';
 import subjects from './routes/records/subjects';
 import properties from './routes/properties';
@@ -284,6 +285,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Voice dialogue agent (/dialogue) + dispatch read-aloud (/read-aloud) for the AI dispatcher.' },
   { prefix: '/api/personnel', router: personnel, auth: 'required' },
   { prefix: '/api/presence', router: presence, auth: 'required' },
+  { prefix: '/api/mdt', router: mdt, auth: 'required' },
   // /api/offline mounts further down in the alphabetical RMS section
   // (PR #638). Hono dispatches in registration order so a second mount
   // here would be dead. Cleanup of an earlier dup-mount that the
