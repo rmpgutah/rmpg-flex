@@ -6,6 +6,26 @@ import { ofacDataAgeHours, ingestOfac } from './ofacAdapter';
 
 const DEFAULT_MAX = 10;
 
+export interface SourceRunState {
+  enabled: number;
+  circuit_broken: number;
+  hours_since_run: number | null;
+}
+
+// Decide whether to run a source this cron tick.
+// - enabled=0 → never (deliberately disabled)
+// - circuit broken → skip during a cooldown window, then allow a half-open retry
+// - otherwise → run
+export function shouldRunSource(state: SourceRunState | null, cooldownHours = 3): boolean {
+  if (!state) return true;
+  if (state.enabled === 0) return false;
+  if (state.circuit_broken === 1) {
+    if (state.hours_since_run == null) return true;
+    return state.hours_since_run >= cooldownHours;
+  }
+  return true;
+}
+
 async function watchPopulation(env: Bindings, sourceKey: string): Promise<PersonRow[]> {
   const db = getDb(env);
   const rows = await query<PersonRow>(db, `
@@ -28,11 +48,12 @@ async function configInt(env: Bindings, key: string, fallback: number): Promise<
 }
 
 async function runOne(env: Bindings, adapter: ScreeningAdapter): Promise<void> {
+  if (!adapter.supportsWatch) return;            // Fix 3: cheap static check first
   const db = getDb(env);
-  const state = await queryFirst<{ enabled: number; circuit_broken: number }>(db,
-    'SELECT enabled, circuit_broken FROM screening_source_state WHERE source_key = ?', adapter.sourceKey).catch(() => null);
-  if (state && (state.enabled === 0 || state.circuit_broken === 1)) return;
-  if (!adapter.supportsWatch) return;
+  const state = await queryFirst<SourceRunState>(db,
+    `SELECT enabled, circuit_broken, (julianday('now') - julianday(last_run_at)) * 24 AS hours_since_run
+       FROM screening_source_state WHERE source_key = ?`, adapter.sourceKey).catch(() => null);
+  if (!shouldRunSource(state)) return;
 
   const run = await execute(db, 'INSERT INTO screening_scan_runs (source_key) VALUES (?)', adapter.sourceKey);
   const runId = run.meta.last_row_id;
@@ -50,7 +71,7 @@ async function runOne(env: Bindings, adapter: ScreeningAdapter): Promise<void> {
       for (const cand of candidates) {
         if (!cand.externalId) continue;
         const m = adapter.scoreMatch(person, cand);
-        if (!m.isConfident && m.score < threshold) continue;
+        if (m.score < threshold) continue;
         const existing = await queryFirst<{ id: number; status: string }>(db,
           'SELECT id, status FROM screening_hits WHERE source_key=? AND person_id=? AND external_id=?',
           adapter.sourceKey, person.id, cand.externalId);
@@ -66,7 +87,7 @@ async function runOne(env: Bindings, adapter: ScreeningAdapter): Promise<void> {
           newHits++;
         }
       }
-    } catch { errors++; }
+    } catch (err) { errors++; console.warn(`[screening] ${adapter.sourceKey} person ${person.id} error:`, err); }
   }
 
   await execute(db, "UPDATE screening_scan_runs SET finished_at=datetime('now'), persons_checked=?, new_hits=?, errors=? WHERE id=?",
@@ -84,7 +105,8 @@ export async function runScreeningScans(env: Bindings): Promise<void> {
     try { await runOne(env, adapter); }
     catch (err) {
       console.error(`[screening] ${adapter.sourceKey} scan failed:`, err);
-      await execute(getDb(env), "UPDATE screening_source_state SET last_error=?, circuit_broken=1 WHERE source_key=?", String(err), adapter.sourceKey).catch(() => {});
+      await execute(getDb(env), "UPDATE screening_source_state SET last_error=?, circuit_broken=1, last_run_at=datetime('now') WHERE source_key=?",
+        err instanceof Error ? (err.stack ?? err.message) : String(err), adapter.sourceKey).catch(() => {});
     }
   }
 }
