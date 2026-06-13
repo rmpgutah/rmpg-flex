@@ -22,7 +22,7 @@ const isSup = (c: any) =>
   ['admin', 'manager', 'supervisor'].includes(String((c.get('user') as { role?: string })?.role || ''));
 
 /** Strip the restricted body + source identity for unauthorized viewers. */
-function redact(r: any, sup: boolean, ownerId: number, viewerId: number): any {
+function redact(r: any, sup: boolean, viewerId: number): any {
   if (sup || r.submitted_by === viewerId) return r;
   const { raw_narrative, source_id, source_type, ...safe } = r;
   return { ...safe, source_id: null, source_type: null, raw_narrative: null, _redacted: true };
@@ -70,7 +70,7 @@ intelReports.get('/', operational, async (c) => {
                ORDER BY created_at DESC LIMIT 200`;
   const rows = await query<any>(db, sql, ...args);
   return c.json(rows.map((r) => ({
-    ...redact(r, sup, r.submitted_by, userId),
+    ...redact(r, sup, userId),
     grade_label: gradeLabel(r.source_reliability, r.info_credibility),
     confidence: confidenceScore(r.source_reliability, r.info_credibility),
   })));
@@ -92,19 +92,19 @@ intelReports.get('/:id', operational, async (c) => {
     ? await query<any>(db, 'SELECT * FROM intel_dissemination_log WHERE report_id = ? ORDER BY id DESC', id)
     : [];
   return c.json({
-    ...redact(r, sup, r.submitted_by, userId),
+    ...redact(r, sup, userId),
     grade_label: gradeLabel(r.source_reliability, r.info_credibility),
     confidence: confidenceScore(r.source_reliability, r.info_credibility),
     links, dissemination: dissem,
   });
 });
 
-async function audit(db: any, userId: number, action: string, id: number, details: unknown) {
+async function audit(db: any, userId: number, action: string, id: number, details: unknown, entityType = 'intel_report') {
   try {
     await execute(db,
       `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, ?, 'intel_report', ?, ?, datetime('now'))`,
-      userId, action, String(id), JSON.stringify(details));
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+      userId, action, entityType, String(id), JSON.stringify(details));
   } catch (e: any) { console.error('[intel-dev] audit failed:', e?.message); }
 }
 
@@ -302,6 +302,7 @@ intelSources.post('/', supervisorPlus, async (c) => {
     source_code, b.source_type, b.display_label || null, b.true_identity_person_id || null,
     b.handler_user_id || null, b.reliability_grade || null,
     b.restricted === false ? 0 : 1, b.notes_restricted || null, userId);
+  await audit(db, userId, 'source_create', Number(res.meta?.last_row_id) || 0, { source_code, source_type: b.source_type, restricted: b.restricted === false ? 0 : 1 }, 'intel_source');
   return c.json({ success: true, id: res.meta?.last_row_id, source_code });
 });
 
@@ -316,6 +317,7 @@ intelSources.get('/:id', operational, async (c) => {
 // PUT /api/intel/sources/:id
 intelSources.put('/:id', supervisorPlus, async (c) => {
   const db = getDb(c.env);
+  const userId = c.get('userId') as number;
   const id = Number(c.req.param('id'));
   const b = await c.req.json().catch(() => ({}));
   const allowed = ['display_label', 'handler_user_id', 'status', 'restricted', 'notes_restricted', 'reliability_grade'];
@@ -325,6 +327,7 @@ intelSources.put('/:id', supervisorPlus, async (c) => {
   sets.push("updated_at = datetime('now')");
   args.push(id);
   await execute(db, `UPDATE intel_sources SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  await audit(db, userId, 'source_update', id, { fields: Object.keys(b), restricted_changed: 'restricted' in b, status_changed: 'status' in b }, 'intel_source');
   return c.json({ success: true });
 });
 
@@ -340,5 +343,6 @@ intelSources.post('/:id/reliability', supervisorPlus, async (c) => {
      VALUES (?, ?, ?, ?, ?)`, id, s.reliability_grade || null, b.new_grade, b.reason || null, userId);
   await execute(db,
     "UPDATE intel_sources SET reliability_grade = ?, updated_at = datetime('now') WHERE id = ?", b.new_grade, id);
+  await audit(db, userId, 'source_reliability', id, { new_grade: b.new_grade }, 'intel_source');
   return c.json({ success: true });
 });
