@@ -13,7 +13,7 @@ const gps = new Hono<Env>();
 // Normalize a GPS point from either client format ({ lat, lng }) or
 // server-previous format ({ latitude, longitude }). Returns normalized
 // { latitude, longitude, ... } so the rest of the handler only sees one shape.
-function norm(pt: Record<string, unknown>): { latitude: number; longitude: number; accuracy?: number; heading?: number; speed?: number; timestamp?: string; source?: string } {
+function norm(pt: Record<string, unknown>): { latitude: number; longitude: number; accuracy?: number; heading?: number; speed?: number; timestamp?: string; source?: string; activity?: string; activity_confidence?: string } {
   const lat = Number(pt.lat ?? pt.latitude);
   const lng = Number(pt.lng ?? pt.longitude);
   return {
@@ -24,6 +24,8 @@ function norm(pt: Record<string, unknown>): { latitude: number; longitude: numbe
     speed: pt.speed != null ? Number(pt.speed) : undefined,
     timestamp: typeof pt.timestamp === 'string' ? pt.timestamp : undefined,
     source: typeof pt.source === 'string' ? pt.source : undefined,
+    activity: typeof pt.activity === 'string' ? pt.activity : undefined,
+    activity_confidence: typeof pt.activity_confidence === 'string' ? pt.activity_confidence : undefined,
   };
 }
 
@@ -79,8 +81,8 @@ gps.post('/', async (c) => {
       'SELECT has_take_home FROM users WHERE id = ?', userId);
     const isTakeHome = userRow?.has_take_home === 1;
 
-    const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null }>(db,
-      'SELECT id, call_sign, status, gps_source, vehicle_id, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId);
+    const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null; on_foot: number | null }>(db,
+      'SELECT id, call_sign, status, gps_source, vehicle_id, current_call_id, on_foot FROM units WHERE officer_id = ? LIMIT 1', userId);
 
     if (!unit && !isTakeHome) return c.json({ error: 'No assigned unit' }, 400);
 
@@ -99,9 +101,9 @@ gps.post('/', async (c) => {
 
     // Batch-insert breadcrumbs — single D1 round-trip instead of N.
     const stmts = points.map((pt) => ({
-      sql: `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, recorded_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      bindings: [unitId, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, callSign],
+      sql: `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, activity, activity_confidence, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      bindings: [unitId, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, callSign, pt.activity ?? null, pt.activity_confidence ?? null],
     }));
     const results = await executeBatch(db, stmts);
     const inserted = results.map((r) => Number(r.meta.last_row_id)).filter(Boolean);
@@ -114,6 +116,27 @@ gps.post('/', async (c) => {
         lastPt.latitude, lastPt.longitude,
         lastPt.heading ?? null, lastPt.speed ?? null,
         unitId);
+    }
+
+    // ── On-foot detection (CoreMotion activity) ──────────────
+    // Only runs when this batch carried activity data (native iOS apps);
+    // best-effort — never blocks the breadcrumb write.
+    if (unitId && unit && lastPt && points.some((p) => p.activity)) {
+      try {
+        const { runOnFootTransition } = await import('../../utils/onFootDetection');
+        const t = await runOnFootTransition(db, {
+          unitId,
+          officerId: userId,
+          callSign,
+          prevOnFoot: unit.on_foot === 1,
+          lastLat: lastPt.latitude,
+          lastLng: lastPt.longitude,
+          source: lastPt.source ?? null,
+        });
+        if (t) console.log(`[gps] unit ${callSign} on-foot transition: ${t}`);
+      } catch (err) {
+        console.error('[gps] on-foot detection failed (non-fatal)', err);
+      }
     }
 
     // ── GPS auto status transitions ───────────────────────────
