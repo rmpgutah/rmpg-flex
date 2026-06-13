@@ -361,7 +361,7 @@ function normalize(parsed: any, rawText: string, model: string, ms: number): Ext
   };
 }
 
-function tryParseModelJson(out: any): any {
+export function tryParseModelJson(out: any): any {
   // Workers AI returns either { response: string } or
   // { response: { … parsed JSON object … } } depending on whether
   // response_format coerced server-side. Handle both.

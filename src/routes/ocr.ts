@@ -18,9 +18,10 @@ import type { Env } from '../types';
 import {
   extractFromText,
   extractFromImage,
-  extractFromImageClaude,
   extractTextFromPdf,
 } from '../utils/serveIntakeExtract';
+import { extractVision } from '../utils/visionExtract';
+import type { OcrProfileSelector } from '../utils/ocrProfiles';
 import { getContainer } from '@cloudflare/containers';
 import { getAnthropicKey, getClaudeModel, callClaude } from '../utils/anthropic';
 
@@ -88,17 +89,22 @@ ocr.post('/scan-document', async (c) => {
   try {
     if (file.type.startsWith('image/')) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      // Advanced OCR: prefer Claude vision (anthropic_api_key) when configured;
-      // fall back to Workers-AI vision when the key is absent or Claude errors.
-      const claude = await withTimeout(
-        extractFromImageClaude(c.env, bytes, file.type), AI_TIMEOUT_MS, 'Claude OCR timed out',
+      // Dynamic profile-driven OCR: 'auto' lets Claude classify (ID card / plate /
+      // serve document) AND extract in one vision call; a concrete docType forces
+      // that profile. Falls back to Workers-AI serve-doc vision if Claude is
+      // unavailable (no key / no credits / error).
+      const raw = String(form.get('docType') || 'auto');
+      const sel = (['id_card', 'license_plate', 'serve_document', 'auto'].includes(raw)
+        ? raw : 'auto') as OcrProfileSelector;
+      const vision = await withTimeout(
+        extractVision(c.env, bytes, file.type, sel), AI_TIMEOUT_MS, 'Claude OCR timed out',
       ).catch(() => null);
-      const r = claude ?? await withTimeout(extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
+      const r = vision ?? await withTimeout(extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
       return c.json({
         success: r.success, documentType: r.documentType, confidence: r.confidence,
         fields: r.fields, rawText: r.rawText, allDates: r.allDates,
-        ocrUsed: true, ocrEngine: claude ? 'claude-vision' : 'workers-ai-vision',
-        model: r.model, extractionMs: r.ms, error: r.error,
+        ocrUsed: true, ocrEngine: vision ? 'claude-vision' : 'workers-ai-vision',
+        profile: sel, model: r.model, extractionMs: r.ms, error: r.error,
       });
     }
     if (file.type === 'application/pdf') {

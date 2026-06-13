@@ -355,10 +355,13 @@ export default function ServeIntakePage() {
     return out;
   }, []);
 
-  const ocrScanImage = useCallback(async (file: File): Promise<OcrScanResult | null> => {
+  const ocrScanImage = useCallback(async (file: File, docType: string = 'auto'): Promise<OcrScanResult | null> => {
     try {
       const formData = new FormData();
       formData.append('image', file);
+      // 'auto' → the server's Claude-vision engine classifies the image (ID card /
+      // license plate / serve document) AND extracts its fields in one call.
+      formData.append('docType', docType);
       const token = localStorage.getItem('rmpg_token');
       const resp = await fetch('/api/ocr/scan-document', {
         method: 'POST',
