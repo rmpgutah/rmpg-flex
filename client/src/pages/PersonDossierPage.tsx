@@ -10,6 +10,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { generateDossierPdf, type DossierData } from '../utils/dossierPdfGenerator';
+import { formatLabel } from '../utils/formatters';
 
 interface DossierResponse extends DossierData { watched?: boolean; escalation?: { recent: number; baseline: number; ratio: number; trend: string } | null }
 
@@ -190,7 +191,7 @@ export default function PersonDossierPage() {
                 {e.kind.replace(/_/g, ' ').toUpperCase()}
               </span>
               <span className="text-gray-200">{e.title}</span>
-              {e.status && <span className="text-[#888888] text-[9px]">({e.status})</span>}
+              {e.status && <span className="text-[#888888] text-[9px]">({formatLabel(e.status)})</span>}
               {e.subtitle && <span className="text-[#888888] truncate">{e.subtitle}</span>}
             </div>
           ))}

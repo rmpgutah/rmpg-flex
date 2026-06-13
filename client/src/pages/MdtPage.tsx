@@ -17,6 +17,7 @@ import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useWebSocket } from '../context/WebSocketContext';
 import { formatIncidentType } from '../utils/caseNumbers';
+import { humanizePriority } from '../utils/statusLabels';
 import { formatTimer, getStatusElapsed, isActiveStatus } from '../utils/dispatchTimers';
 import { mapDbCall } from './dispatch/utils/dispatchMappers';
 import StatusBadge from '../components/StatusBadge';
@@ -168,7 +169,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
                     className="text-[7px] font-black uppercase px-1 py-px mt-1 inline-block rounded-sm"
                     style={{ background: ps.color, color: '#000', letterSpacing: '0.05em' }}
                   >
-                    {msg.priority}
+                    {humanizePriority(msg.priority)}
                   </span>
                 )}
               </div>
