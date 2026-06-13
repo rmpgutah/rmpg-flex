@@ -17,6 +17,18 @@ struct SubjectRecordsView: View {
     @State private var incidents: [[String: Any]] = []
     @State private var calls: [[String: Any]] = []
     @State private var citations: [[String: Any]] = []
+    @State private var mdtStatus: String?
+
+    private var activeWarrants: Int {
+        summary["active_warrants"] ?? warrants.filter { ($0["status"] as? String) == "active" }.count
+    }
+    private var criticalHits: Int { hits.filter { ($0["severity"] as? String) == "critical" }.count }
+    private var hasCaution: Bool { activeWarrants > 0 || criticalHits > 0 }
+    private var cautionText: String {
+        [activeWarrants > 0 ? "\(activeWarrants) ACTIVE WARRANT\(activeWarrants > 1 ? "S" : "")" : nil,
+         criticalHits > 0 ? "\(criticalHits) CRITICAL ALERT\(criticalHits > 1 ? "S" : "")" : nil]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
 
     var body: some View {
         NavigationStack {
@@ -27,6 +39,20 @@ struct SubjectRecordsView: View {
                         Text("✗ \(error)").font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(Theme.red)
                     }
+
+                    // Consolidated officer-safety banner — the single thing to
+                    // read first at the car window.
+                    if hasCaution {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                            Text("OFFICER CAUTION — " + cautionText)
+                        }
+                        .font(.system(size: 13, weight: .heavy)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10).background(Theme.red)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                    }
+                    if let mdtStatus { StatusLine(text: mdtStatus) }
 
                     // Intel cross-hits first — highest signal.
                     ForEach(Array(hits.enumerated()), id: \.offset) { _, hit in
@@ -78,7 +104,14 @@ struct SubjectRecordsView: View {
             .background(Theme.base)
             .navigationTitle(displayName.isEmpty ? "SUBJECT RECORDS" : displayName.uppercased())
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { Button("Done") { dismiss() } }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { Task { await sendToMDT() } } label: {
+                        Label("MDT", systemImage: "car.fill").font(.system(size: 12, weight: .semibold))
+                    }.foregroundStyle(Theme.gold)
+                }
+                ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
+            }
             .task { await load() }
         }
     }
@@ -139,5 +172,12 @@ struct SubjectRecordsView: View {
         }
         hits = (screen as? [String: Any])?["hits"] as? [[String: Any]] ?? []
         loading = false
+        if hasCaution { Haptics.error() }   // tactile officer-safety alert on a flagged subject
+    }
+
+    @MainActor private func sendToMDT() async {
+        let ok = await MDTLink.shared.send(type: "person",
+                                           payload: ["name": displayName, "person_id": personId])
+        mdtStatus = ok ? "✓ Sent subject to vehicle MDT" : "✗ MDT send failed"
     }
 }
