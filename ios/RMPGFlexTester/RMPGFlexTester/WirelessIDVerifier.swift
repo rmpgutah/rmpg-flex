@@ -56,7 +56,7 @@ final class WirelessIDVerifier: ObservableObject {
             }
             status = "Hold the subject's iPhone/Watch to the top of this phone…"
             let request = MobileDriversLicenseDisplayRequest(
-                elements: [.name, .age],
+                elements: [.givenName, .familyName, .age],
                 options: .init()
             )
             _ = try await Self.session!.requestDocument(request)
