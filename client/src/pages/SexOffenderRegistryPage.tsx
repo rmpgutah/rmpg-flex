@@ -10,7 +10,7 @@ import RichTextArea from '../components/RichTextArea';
 import {
   Search, Loader2, Plus, ChevronLeft, ChevronRight, X, ShieldAlert, ShieldCheck,
   ShieldOff, MapPin, Briefcase, Car, FileText, Clock, User, CheckCircle, XCircle,
-  Edit2, Link2, Save, Upload, UserX, Hash, Fingerprint, Eye,
+  Edit2, Link2, Save, Upload, UserX, Hash, Fingerprint, Eye, RefreshCw,
 } from 'lucide-react';
 import type {
   SexOffenderRecord, SORAddress, SOROffense, SORVehicle, SORTier, SORStatus,
@@ -191,6 +191,22 @@ export default function SexOffenderRegistryPage() {
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useLiveSync('sex-offender-registry', () => { fetchRecords(); fetchStats(); });
+
+  // Supervisors+ : flag linked persons who have an active sex-offender alert,
+  // so the DL deep-sweep + person-flag screening fire on them too.
+  const canReconcile = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
+  const [reconciling, setReconciling] = useState(false);
+  const syncFlags = useCallback(async () => {
+    setReconciling(true);
+    try {
+      const r = await apiFetch<{ flagged: number }>('/sex-offender-registry/reconcile-flags', { method: 'POST' });
+      addToast(r.flagged > 0
+        ? `Flagged ${r.flagged} linked person(s) as registered`
+        : 'All linked persons already flagged', 'success');
+    } catch (err: any) {
+      addToast(err?.error || err?.message || 'Sync failed', 'error');
+    } finally { setReconciling(false); }
+  }, [addToast]);
 
   // ── Debounced search ──────────────────────────────────────
   const [searchInput, setSearchInput] = useState('');
@@ -824,6 +840,16 @@ export default function SexOffenderRegistryPage() {
           >
             <Upload size={12} /> Import
           </button>
+          {canReconcile && (
+            <button type="button"
+              onClick={syncFlags}
+              disabled={reconciling}
+              title="Flag linked persons who have an active sex-offender alert so screening fires on them"
+              className="toolbar-btn px-2.5 py-1 text-[11px] flex items-center gap-1.5 disabled:opacity-40"
+            >
+              <RefreshCw size={12} className={reconciling ? 'animate-spin' : ''} /> Sync Flags
+            </button>
+          )}
           <ExportButton exportUrl="/api/sex-offender-registry/export/csv" exportFilename="sex-offenders.csv" />
         </div>
       </PanelTitleBar>
