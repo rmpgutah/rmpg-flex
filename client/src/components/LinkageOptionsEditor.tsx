@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../hooks/useApi';
+import { invalidateLinkOptionsCache } from '../hooks/useLinkOptions';
 import { Plus } from 'lucide-react';
 
 interface Row { id: number; category: string; value: string; label: string; sort_order: number; is_active: number; is_default: number; }
@@ -26,6 +27,7 @@ export default function LinkageOptionsEditor() {
     try {
       await apiFetch(`/admin/link-options/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
       setError('');
+      invalidateLinkOptionsCache();
       load();
     } catch (err) {
       console.error('patch link-option failed', err);
@@ -36,6 +38,7 @@ export default function LinkageOptionsEditor() {
     try {
       await apiFetch(`/admin/link-options/${id}`, { method: 'DELETE' });
       setError('');
+      invalidateLinkOptionsCache();
       load();
     } catch (err) {
       console.error('remove link-option failed', err);
@@ -49,6 +52,7 @@ export default function LinkageOptionsEditor() {
     try {
       await apiFetch('/admin/link-options', { method: 'POST', body: JSON.stringify({ category: cat, value: slug, label: newLabel.trim() }) });
       setError('');
+      invalidateLinkOptionsCache();
       setNewValue(''); setNewLabel(''); load();
     } catch (err) {
       console.error('add link-option failed', err);

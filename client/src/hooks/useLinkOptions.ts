@@ -22,8 +22,11 @@ function defaultsAll(): MergedLinkOptions {
 let cache: MergedLinkOptions | null = null;
 let inflight: Promise<MergedLinkOptions> | null = null;
 
+/** Invalidate the shared cache so the next useLinkOptions() refetches (e.g. after admin edits). */
+export function invalidateLinkOptionsCache(): void { cache = null; inflight = null; }
+
 /** Test-only: clear the shared cache between cases. */
-export function __resetLinkOptionsCache(): void { cache = null; inflight = null; }
+export function __resetLinkOptionsCache(): void { invalidateLinkOptionsCache(); }
 
 async function load(): Promise<MergedLinkOptions> {
   if (cache) return cache;
