@@ -25,6 +25,23 @@ Native iPhone test console for the live RMPG Flex Cloudflare stack:
   pasted into Settings. The button explains exactly which prerequisite is
   missing until then.
 
+## RECORDS integrations (scan flow)
+
+After any license/passport scan:
+
+- **Subject auto-resolution** — the scan is matched against existing persons
+  (DL number, then exact name+DOB); a known subject lights up a
+  **VIEW SUBJECT RECORDS** button without creating anything.
+- **Subject dossier** — full RMS pull on one screen: intel cross-hit screen
+  (watchlist / jail bookings / warrants, critical hits bannered red and
+  pushed as dispatcher notifications), summary chips, plus the subject's
+  warrants, incidents, CAD calls, and citations from system-history.
+- **Run plate** — one tap fans out to registered-owner lookup, local
+  stolen-flag + active-BOLO check, and the intel vehicle screen; a CLEAR is
+  labeled honestly as local-records-only (never a live NCIC clear).
+  **LINK VEHICLE TO SUBJECT** creates/links the vehicle to the scanned
+  person through the same `from-dl-scan` endpoint the desktop uses.
+
 ## Install on your iPhone (no App Store)
 
 1. Open `RMPGFlexTester/RMPGFlexTester.xcodeproj` in Xcode.

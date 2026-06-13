@@ -17,6 +17,8 @@ struct IDScanView: View {
     @State private var loginStatus: String?
     @State private var recordCheck: String?
     @State private var showFi = false
+    @State private var knownPersonId: Int?
+    @State private var showRecords = false
     @StateObject private var wireless = WirelessIDVerifier()
 
     var body: some View {
@@ -82,6 +84,13 @@ struct IDScanView: View {
                         .frame(maxWidth: .infinity).padding(.vertical, 6)
                         .background(recordCheck.hasPrefix("⚠") ? Theme.red : Theme.raised)
                 }
+                if let knownPersonId {
+                    Button("📂 VIEW SUBJECT RECORDS (#\(knownPersonId))") { showRecords = true }
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 7)
+                        .background(Theme.raised).foregroundStyle(Theme.gold)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                }
                 if result != nil {
                     Button("CREATE & LINK PERSON + PROPERTY") {
                         Task { await createLinked() }
@@ -99,6 +108,7 @@ struct IDScanView: View {
 
                 if let result {
                     ScrollView {
+                        PlateCheckSection(scanFields: result.fields)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(result.displayName)
                                 .font(.system(size: 16, weight: .bold))
@@ -125,6 +135,13 @@ struct IDScanView: View {
             .background(Theme.base)
             .navigationTitle("ID SCAN → MDT")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showRecords) {
+                if let knownPersonId {
+                    SubjectRecordsView(personId: knownPersonId,
+                                       displayName: result?.displayName ?? "")
+                        .presentationBackground(Theme.base)
+                }
+            }
             .sheet(isPresented: $showFi) {
                 FieldInterviewForm(prefill: [
                     "name": result?.displayName ?? "",
@@ -209,8 +226,32 @@ struct IDScanView: View {
         AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
         result = parsed
         alerts = parsedAlerts
+        knownPersonId = nil
         scanning = false
         Task { await relay(parsed) }
+    }
+
+    /// RECORDS integration: resolve the scan to an existing person so the
+    /// dossier button lights up without creating anything. Match precedence:
+    /// exact DL number, then exact name+DOB — same keys from-dl-scan dedupes on.
+    @MainActor
+    private func resolvePerson(_ parsed: AamvaResult, client: RMPGAPIClient) async {
+        guard knownPersonId == nil, let last = parsed.fields["last_name"], !last.isEmpty else { return }
+        let q = last.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? last
+        guard let rows = (try? await client.requestJSON("GET", "api/records/persons/search?q=\(q)"))
+                as? [[String: Any]] else { return }
+        let dl = parsed.fields["dl_number"]
+        let first = parsed.fields["first_name"]?.lowercased()
+        let dob = parsed.fields["date_of_birth"]
+        let match = rows.first(where: { dl != nil && ($0["dl_number"] as? String) == dl })
+            ?? rows.first(where: { row in
+                guard let f = first, let d = dob else { return false }
+                return (row["first_name"] as? String)?.lowercased() == f
+                    && (row["dob"] as? String)?.hasPrefix(d) == true
+            })
+        if let id = match?["id"] as? Int ?? (match?["id"] as? Double).map(Int.init) {
+            knownPersonId = id
+        }
     }
 
     @MainActor
@@ -241,6 +282,7 @@ struct IDScanView: View {
             relayStatus = "✗ Relay failed: \(error.localizedDescription)"
         }
         await recordChecks(parsed, client: client)
+        await resolvePerson(parsed, client: client)
     }
 
     /// One-shot Person + Property create/link from the scan (same endpoint
@@ -261,6 +303,7 @@ struct IDScanView: View {
             var bits: [String] = []
             if let p = res?["person"] as? [String: Any], let id = p["id"] {
                 bits.append("Person #\(id) \((res?["person_created"] as? Bool) == true ? "created" : "linked")")
+                knownPersonId = (id as? Int) ?? (id as? Double).map(Int.init)
             }
             if let pr = res?["property"] as? [String: Any], let id = pr["id"] {
                 bits.append("Property #\(id) \((res?["property_created"] as? Bool) == true ? "created" : "linked")")

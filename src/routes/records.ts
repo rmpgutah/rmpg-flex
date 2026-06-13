@@ -256,6 +256,15 @@ records.post('/from-dl-scan', async (c) => {
     }
     let personCreated = false;
     if (!person) {
+      // Passport/ID-card scans (iOS MRZ) carry document_number instead of
+      // dl_number — persons is at the D1 column cap, so the doc number is
+      // recorded in notes rather than a new column. Name+DOB dedupe above
+      // still applies to those scans.
+      const docType = str(scan.doc_type);
+      const docNumber = str(scan.document_number);
+      const note = docType && docType !== 'license'
+        ? `Created from ${docType.replace('_', ' ')} scan${docNumber ? ` (doc# ${docNumber}${str(scan.issuing_country) ? `, ${str(scan.issuing_country)}` : ''})` : ''}`
+        : 'Created from DL scan';
       const result = await execute(db, `
         INSERT INTO persons (first_name, middle_name, last_name, dob, gender, height, weight,
           eye_color, hair_color, address, city, state, zip, dl_number, dl_state, flags, notes, created_at)
@@ -263,7 +272,7 @@ records.post('/from-dl-scan', async (c) => {
         first, str(scan.middle_name), last, dob, str(scan.gender), str(scan.height),
         str(scan.weight), str(scan.eye_color), str(scan.hair_color), str(scan.address),
         str(scan.city), str(scan.state), str(scan.zip), dlNumber, str(scan.dl_state),
-        JSON.stringify(['dl_scan_imported']), 'Created from DL scan');
+        JSON.stringify(['dl_scan_imported']), note);
       person = await queryFirst<Record<string, unknown>>(db,
         'SELECT * FROM persons WHERE id = ?', Number(result.meta.last_row_id));
       personCreated = true;
