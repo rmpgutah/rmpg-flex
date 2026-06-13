@@ -363,7 +363,7 @@ export default function DashcamAiPage(): React.ReactElement {
                   <td className="py-1 px-2 font-mono">{formatEnumValue(ev.event_type)}</td>
                   <td className="py-1 px-2">
                     <span className={`inline-block px-1.5 py-0.5 text-[10px] font-mono uppercase border ${SEVERITY_BADGE[ev.severity] ?? SEVERITY_BADGE.info}`}>
-                      {ev.severity}
+                      {formatEnumValue(ev.severity)}
                     </span>
                   </td>
                   <td className="py-1 px-2 font-mono text-rmpg-300">
@@ -411,7 +411,7 @@ export default function DashcamAiPage(): React.ReactElement {
             </div>
             <div className="p-3 space-y-2 text-[11px]">
               <DetailRow icon={Shield} label="Source"   value={selected.source} />
-              <DetailRow icon={AlertTriangle} label="Severity" value={selected.severity} />
+              <DetailRow icon={AlertTriangle} label="Severity" value={formatEnumValue(selected.severity)} />
               <DetailRow icon={MapPin} label="Unit" value={`${selected.call_sign ?? `unit-${selected.unit_id}`}${selected.officer_name ? ` / ${selected.officer_name}` : ''}`} />
               {selected.confidence != null && (
                 <DetailRow icon={Cpu} label="Confidence" value={`${(selected.confidence * 100).toFixed(1)}%`} />
