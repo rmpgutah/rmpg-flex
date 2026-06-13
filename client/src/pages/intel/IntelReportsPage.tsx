@@ -18,12 +18,13 @@ export default function IntelReportsPage() {
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
     apiFetch<ReportRow[]>(`/intel/reports${status ? `?status=${status}` : ''}`)
-      .then((r) => setRows(Array.isArray(r) ? r : []))
-      .catch(() => setRows([]))
+      .then((r) => { setRows(Array.isArray(r) ? r : []); setErr(''); })
+      .catch(() => { setRows([]); setErr('Failed to load reports.'); })
       .finally(() => setLoading(false));
   }, [status]);
   useEffect(load, [load]);
@@ -40,6 +41,7 @@ export default function IntelReportsPage() {
           + NEW REPORT
         </button>
       </div>
+      {err && <div style={{ color: '#ef4444', fontSize: 11 }}>{err}</div>}
 
       <div className="flex gap-1 flex-wrap text-[10px]">
         <button onClick={() => setStatus('')}

@@ -20,7 +20,7 @@ export default function IntelReportDetailPage() {
   const [r, setR] = useState<any>(null);
   const [draft, setDraft] = useState<any>({ title: '', raw_narrative: '', threat_level: 'low', source_type: 'officer_observation' });
   const [grade, setGrade] = useState<any>({ source_reliability: 'B', info_credibility: 2, handling_code: 'H1' });
-  const [analysis, setAnalysis] = useState<any>({ sanitized_narrative: '', assessment: '', criminal_predicate: '', threat_level: 'low' });
+  const [analysis, setAnalysis] = useState<any>({ sanitized_narrative: '', assessment: '', criminal_predicate: '' });
   const [msg, setMsg] = useState('');
 
   const load = useCallback(() => {
@@ -130,7 +130,7 @@ export default function IntelReportDetailPage() {
       )}
 
       {r.status === 'analyzed' && (
-        <button onClick={() => act('/disseminate', {})} style={btn('#22c55e')}>DISSEMINATE</button>
+        <button onClick={() => act('/disseminate', {})} style={btn('#d4a017')}>DISSEMINATE</button>
       )}
 
       {r.status === 'disseminated' && (

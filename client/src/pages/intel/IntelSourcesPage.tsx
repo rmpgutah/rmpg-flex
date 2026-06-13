@@ -14,7 +14,7 @@ export default function IntelSourcesPage() {
   const [msg, setMsg] = useState('');
 
   const load = useCallback(() => {
-    apiFetch<Source[]>('/intel/sources').then((r) => setRows(Array.isArray(r) ? r : [])).catch(() => setRows([]));
+    apiFetch<Source[]>('/intel/sources').then((r) => setRows(Array.isArray(r) ? r : [])).catch(() => { setRows([]); setMsg('Failed to load sources.'); });
   }, []);
   useEffect(load, [load]);
 
