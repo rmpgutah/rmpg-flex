@@ -1,7 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { ShieldAlert } from 'lucide-react';
+
+function parseFields(raw: string | null | undefined): string[] {
+  try { const v = JSON.parse(raw || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+}
 
 interface SourceInfo { sourceKey: string; label: string; kind: string; supportsSearch: boolean; }
 interface Candidate { sourceKey: string; externalId: string; displayName: string; summary: string; photoUrl?: string; country?: string; listType?: string; dob?: string | null; }
@@ -10,6 +15,8 @@ interface Hit { id: number; source_key: string; person_id: number | null; displa
 type Tab = 'search' | 'review' | 'watchlist' | 'sources';
 
 export default function ScreeningPage() {
+  const { user } = useAuth();
+  const canReview = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
   const [tab, setTab] = useState<Tab>('search');
   const [sources, setSources] = useState<SourceInfo[]>([]);
   const [source, setSource] = useState('interpol-red');
@@ -89,10 +96,14 @@ export default function ScreeningPage() {
             {hits.map((h) => (
               <tr key={h.id} className="border-t border-[#121212]">
                 <td className="py-[2px]">{h.display_name}</td><td>{h.source_key}</td>
-                <td>{Math.round(h.match_score * 100)}%</td><td>{(JSON.parse(h.matched_fields || '[]') as string[]).join(', ')}</td>
+                <td>{Math.round(h.match_score * 100)}%</td><td>{parseFields(h.matched_fields).join(', ')}</td>
                 <td className="text-right">
-                  <button onClick={() => reviewHit(h.id, 'confirm')} className="px-2 py-[2px] border border-[#d4a017] text-[#d4a017] mr-1">CONFIRM</button>
-                  <button onClick={() => reviewHit(h.id, 'dismiss')} className="px-2 py-[2px] border border-[#232323] text-[#888]">DISMISS</button>
+                  {canReview ? (
+                    <>
+                      <button onClick={() => reviewHit(h.id, 'confirm')} className="px-2 py-[2px] border border-[#d4a017] text-[#d4a017] mr-1">CONFIRM</button>
+                      <button onClick={() => reviewHit(h.id, 'dismiss')} className="px-2 py-[2px] border border-[#232323] text-[#888]">DISMISS</button>
+                    </>
+                  ) : <span className="text-[#888]">—</span>}
                 </td>
               </tr>
             ))}
