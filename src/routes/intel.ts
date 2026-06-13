@@ -24,6 +24,7 @@ import { parseRosterText, ingestBookings } from '../utils/jailIngest';
 import { runJailScan } from '../utils/jailSources/runScan';
 import { chunkKey, parseSeq } from '../utils/intelRecording';
 import { intelReports, intelSources } from './intel/development';
+import { buildOverview } from '../utils/intelOverview';
 
 const intel = new Hono<Env>();
 
@@ -152,6 +153,11 @@ intel.get('/health', operational, async (c) => {
   } catch (err: any) {
     return c.json({ index: [], error: err?.message, hint: 'migration 0098 may not have reached live D1' });
   }
+});
+
+// GET /overview — single-call dashboard aggregate (command-center landing).
+intel.get('/overview', operational, async (c) => {
+  return c.json(await buildOverview(getDb(c.env)));
 });
 
 // POST /reindex — full rebuild (admin only)
