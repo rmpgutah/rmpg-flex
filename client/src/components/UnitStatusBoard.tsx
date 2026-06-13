@@ -1,7 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Radio, MapPin, PlusCircle, Plus, Edit, Trash2, AlertTriangle, Activity, UserPlus, Eye, Pencil } from 'lucide-react';
 import type { Unit, UnitStatus } from '../types';
 import StatusBadge from './StatusBadge';
+import OnFootBadge from './OnFootBadge';
+import OnFootActivityModal from './OnFootActivityModal';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useUnitLocations } from '../hooks/useUnitLocations';
 import { useActiveTripsLive } from '../hooks/useActiveTripsLive';
@@ -14,6 +16,10 @@ import { useMenuActions } from '../utils/contextMenuActions';
 function isEmergency(unit: Unit): boolean {
   const e = unit.emergency_active;
   return e === 1 || e === true;
+}
+
+function isOnFoot(unit: Unit): boolean {
+  return unit.on_foot === 1 || unit.on_foot === true;
 }
 
 // Feature 2: GPS stale indicator thresholds
@@ -115,6 +121,8 @@ export default React.memo(function UnitStatusBoard({
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
 
+  const [footUnit, setFootUnit] = useState<Unit | null>(null);
+
   // All unit statuses, for the "Set status" submenu. Mirrors the UnitStatus union.
   const STATUSES: UnitStatus[] = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
   const prettyStatus = (s: UnitStatus) => s.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
@@ -193,11 +201,13 @@ export default React.memo(function UnitStatusBoard({
             <span className={STATUS_LED_CLASSES[unit.status]} aria-hidden="true" />
             <div className="min-w-0">
               <div className="text-xs font-bold text-white font-mono truncate">{unit.call_sign}</div>
+              {isOnFoot(unit) && <OnFootBadge since={unit.on_foot_since} onClick={() => setFootUnit(unit)} />}
               {/* 34: Italic unassigned label in compact mode */}
               <div className={`text-[10px] truncate ${unit.officer_name ? 'text-rmpg-300' : 'text-rmpg-500 italic'}`}>{unit.officer_name || 'Unassigned'}</div>
             </div>
           </div>
         ))}
+        {footUnit && <OnFootActivityModal unit={footUnit} onClose={() => setFootUnit(null)} />}
       </div>
     );
   }
@@ -245,6 +255,7 @@ export default React.memo(function UnitStatusBoard({
                       <AlertTriangle className="w-2.5 h-2.5" /> EMER
                     </span>
                   )}
+                  {isOnFoot(unit) && <OnFootBadge since={unit.on_foot_since} onClick={() => setFootUnit(unit)} />}
                   {/* Feature 2: GPS stale indicator */}
                   {(() => {
                     const gpsStatus = getGpsStaleStatus(unit);
@@ -391,6 +402,7 @@ export default React.memo(function UnitStatusBoard({
           )}
         </tbody>
       </table>
+      {footUnit && <OnFootActivityModal unit={footUnit} onClose={() => setFootUnit(null)} />}
     </div>
   );
 });
