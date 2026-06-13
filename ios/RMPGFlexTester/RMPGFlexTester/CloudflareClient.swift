@@ -28,6 +28,18 @@ struct CloudflareClient {
             case .pages: return "pages/projects"
             }
         }
+
+        // The exact Cloudflare token permission this section needs — shown in the
+        // UI when the call is denied, so a blocked row tells the user what to add.
+        var scopeHint: String {
+            switch self {
+            case .workers: return "Workers Scripts: Read"
+            case .d1: return "D1: Edit"
+            case .kv: return "Workers KV Storage: Read"
+            case .r2: return "Workers R2 Storage: Read"
+            case .pages: return "Pages: Read"
+            }
+        }
     }
 
     func list(_ section: Section) async throws -> [CFResource] {
@@ -36,10 +48,24 @@ struct CloudflareClient {
         req.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
         let (data, resp) = try await URLSession.shared.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        if status == 403 {
-            throw D1Error.api("token lacks \(section.rawValue.lowercased()) scope")
+        // A 401/403 — or the CF "Authentication error" some endpoints (KV) return
+        // in a success:false body — means the token is missing this section's
+        // permission. Surface the exact scope to add in Settings, not a cryptic
+        // "Authentication error". (D1 + R2 prove the token + paths are otherwise OK.)
+        if status == 401 || status == 403 {
+            throw D1Error.api("Add '\(section.scopeHint)' to your CF token (Settings)")
         }
-        let resources = try Self.parseList(data, section: section)
+        let resources: [CFResource]
+        do {
+            resources = try Self.parseList(data, section: section)
+        } catch let e as D1Error {
+            if case .api(let m) = e,
+               ["authentication", "permission", "scope", "unauthorized", "not authorized"]
+                 .contains(where: { m.lowercased().contains($0) }) {
+                throw D1Error.api("Add '\(section.scopeHint)' to your CF token (Settings)")
+            }
+            throw e
+        }
         // The D1 LIST endpoint returns num_tables=0 for every database (it isn't
         // computed there) — only the per-database GET has the real count. Enrich
         // each D1 row with its detail so they don't all read "0 tables".
