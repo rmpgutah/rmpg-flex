@@ -25,6 +25,21 @@ Native iPhone test console for the live RMPG Flex Cloudflare stack:
   pasted into Settings. The button explains exactly which prerequisite is
   missing until then.
 
+## FIELD CALC (toolkit)
+
+Pure on-device calculators — they work with zero coverage, no login:
+
+- **Phonetic Speller** — any plate/name → APCO ("Adam Boy Charles…") + NATO
+- **Skid Marks → Speed** — skid length in feet → minimum-speed table across
+  7 surface drag factors (S = √(30·d·f); labeled as minimum, court caveat)
+- **Sunrise / Sunset (here)** — civil dawn/dusk + sunrise/sunset at the
+  phone's GPS (UT 41-6a-1603 headlights note)
+- **Distance to Coordinates** — haversine distance + compass bearing from me
+- **Mark Point / Measure** — tap to mark Point A, walk, tap again for
+  distance/bearing with both fixes' accuracy (scene measurement)
+- **Unit Converter** — `180cm` / `75kg` / `100kmh` / `5'11` (passport MRZ
+  docs are metric)
+
 ## RECORDS integrations (scan flow)
 
 After any license/passport scan:

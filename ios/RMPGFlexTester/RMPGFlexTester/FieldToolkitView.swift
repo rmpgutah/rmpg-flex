@@ -21,6 +21,7 @@ struct FieldToolkitView: View {
     @State private var showBoloSheet = false
     @State private var showFuelSheet = false
     @State private var queueCount = OfflineQueue.count
+    @State private var markedPoint: CLLocation?
 
     private var filtered: [FieldTool] {
         guard !search.isEmpty else { return FieldToolRegistry.tools }
@@ -114,6 +115,10 @@ struct FieldToolkitView: View {
             return byNumber ? "Warrant number" : "Last name (or First Last)"
         }
         if case .addCallNote = tool?.action { return "Note text" }
+        if case .phonetic = tool?.action { return "Plate / name to spell" }
+        if case .skidSpeed = tool?.action { return "Skid length in feet" }
+        if case .distanceTo = tool?.action { return "lat, lon (e.g. 40.7608, -111.8910)" }
+        if case .unitConvert = tool?.action { return "e.g. 180cm · 75kg · 100kmh · 5'11" }
         return ""
     }
 
@@ -172,6 +177,13 @@ struct FieldToolkitView: View {
         case .addCallNote:
             inputText = ""
             askingInput = tool
+        case .phonetic, .skidSpeed, .distanceTo, .unitConvert:
+            inputText = ""
+            askingInput = tool
+        case .sunTimes:
+            runSunTimes()
+        case .markPoint:
+            runMarkPoint()
         case .timer:
             timerTool = tool
         case .reference(let text):
@@ -206,9 +218,117 @@ struct FieldToolkitView: View {
         }
     }
 
+    // ── FIELD CALC (pure on-device — FieldCalc.swift) ───────
+
+    private func runFieldCalc(_ tool: FieldTool, input: String) {
+        let trimmed = input.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        switch tool.action {
+        case .phonetic:
+            resultTitle = "PHONETIC: \(trimmed.uppercased())"
+            resultText = "APCO:  \(FieldCalc.phonetic(trimmed))\n\nNATO:  \(FieldCalc.phonetic(trimmed, alphabet: FieldCalc.nato))"
+            resultRows = []; showResult = true
+        case .skidSpeed:
+            guard let feet = Double(trimmed.replacingOccurrences(of: "ft", with: "")), feet > 0 else {
+                toast = "✗ Enter skid length in feet (e.g. 60)"; return
+            }
+            let lines = FieldCalc.dragFactors.map { sf in
+                sf.surface.padding(toLength: 14, withPad: " ", startingAt: 0)
+                    + String(format: " f=%.2f → %3.0f mph", sf.f,
+                             FieldCalc.skidSpeedMph(distanceFeet: feet, dragFactor: sf.f))
+            }
+            resultTitle = "SKID \(Int(feet)) FT → MIN SPEED"
+            resultText = lines.joined(separator: "\n") +
+                "\n\nS = √(30·d·f), level grade, full skid to stop.\nMINIMUM speed — actual was at or above this.\nFor court: measured drag factor + reconstructionist."
+            resultRows = []; showResult = true
+        case .distanceTo:
+            guard let (lat, lon) = FieldCalc.parseLatLon(trimmed) else {
+                toast = "✗ Format: lat, lon (e.g. 40.7608, -111.8910)"; return
+            }
+            guard let here = LocationManager.shared.last else {
+                LocationManager.shared.start(); toast = "✗ No GPS fix yet — try again"; return
+            }
+            let meters = FieldCalc.distanceMeters(lat1: here.coordinate.latitude, lon1: here.coordinate.longitude,
+                                                  lat2: lat, lon2: lon)
+            let bearing = FieldCalc.bearingDegrees(lat1: here.coordinate.latitude, lon1: here.coordinate.longitude,
+                                                   lat2: lat, lon2: lon)
+            resultTitle = "DISTANCE TO TARGET"
+            resultText = String(format: "%.0f m  (%.2f mi)\nBearing %.0f° %@\n\nFrom %.5f, %.5f\nTo   %.5f, %.5f",
+                                meters, meters / 1609.344, bearing, FieldCalc.compassPoint(bearing),
+                                here.coordinate.latitude, here.coordinate.longitude, lat, lon)
+            resultRows = []; showResult = true
+        case .unitConvert:
+            if let out = FieldCalc.convert(trimmed) {
+                resultTitle = "CONVERTED"
+                resultText = out; resultRows = []; showResult = true
+            } else {
+                toast = "✗ Try: 180cm · 75kg · 165lbs · 100kmh · 60mph · 5'11"
+            }
+        default: break
+        }
+    }
+
+    private func runSunTimes() {
+        guard let loc = LocationManager.shared.last else {
+            LocationManager.shared.start(); toast = "✗ No GPS fix yet — try again"; return
+        }
+        let lat = loc.coordinate.latitude, lon = loc.coordinate.longitude
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let doy = cal.ordinality(of: .day, in: .year, for: Date()) ?? 1
+        let utcMidnight = cal.startOfDay(for: Date())
+        let fmt = DateFormatter()
+        fmt.dateFormat = "HH:mm"
+        fmt.timeZone = .current
+        func line(_ label: String, _ minutes: Double?) -> String {
+            guard let m = minutes else { return "\(label): — (polar)" }
+            return "\(label): \(fmt.string(from: utcMidnight.addingTimeInterval(m * 60)))"
+        }
+        resultTitle = "SUN — \(String(format: "%.3f, %.3f", lat, lon))"
+        resultText = [
+            line("Civil dawn ", FieldCalc.sunTimeUTCMinutes(dayOfYear: doy, lat: lat, lon: lon, sunrise: true, zenith: 96)),
+            line("Sunrise    ", FieldCalc.sunTimeUTCMinutes(dayOfYear: doy, lat: lat, lon: lon, sunrise: true)),
+            line("Sunset     ", FieldCalc.sunTimeUTCMinutes(dayOfYear: doy, lat: lat, lon: lon, sunrise: false)),
+            line("Civil dusk ", FieldCalc.sunTimeUTCMinutes(dayOfYear: doy, lat: lat, lon: lon, sunrise: false, zenith: 96)),
+        ].joined(separator: "\n") +
+            "\n\nHeadlights required sunset→sunrise (UT 41-6a-1603);\ncivil twilight bounds 'hours of darkness'."
+        resultRows = []; showResult = true
+    }
+
+    private func runMarkPoint() {
+        guard let here = LocationManager.shared.last else {
+            LocationManager.shared.start(); toast = "✗ No GPS fix yet — try again"; return
+        }
+        if let a = markedPoint {
+            let meters = FieldCalc.distanceMeters(lat1: a.coordinate.latitude, lon1: a.coordinate.longitude,
+                                                  lat2: here.coordinate.latitude, lon2: here.coordinate.longitude)
+            let bearing = FieldCalc.bearingDegrees(lat1: a.coordinate.latitude, lon1: a.coordinate.longitude,
+                                                   lat2: here.coordinate.latitude, lon2: here.coordinate.longitude)
+            resultTitle = "POINT A → HERE"
+            resultText = String(format: "%.1f m  (%.1f ft)\nBearing %.0f° %@\n\nA: %.6f, %.6f (±%.0fm)\nB: %.6f, %.6f (±%.0fm)\n\nMarker cleared — tap again to set a new Point A.",
+                                meters, meters * 3.28084, bearing, FieldCalc.compassPoint(bearing),
+                                a.coordinate.latitude, a.coordinate.longitude, a.horizontalAccuracy,
+                                here.coordinate.latitude, here.coordinate.longitude, here.horizontalAccuracy)
+            resultRows = []; showResult = true
+            markedPoint = nil
+        } else {
+            markedPoint = here
+            toast = String(format: "✓ Point A marked (%.6f, %.6f) — walk to B and tap again",
+                           here.coordinate.latitude, here.coordinate.longitude)
+        }
+    }
+
     @MainActor
     private func execute(_ tool: FieldTool, input: String?) async {
         toast = nil
+        // FIELD CALC tools are pure on-device — no network, no login,
+        // they must work with zero coverage.
+        switch tool.action {
+        case .phonetic, .skidSpeed, .distanceTo, .unitConvert:
+            runFieldCalc(tool, input: input ?? "")
+            return
+        default: break
+        }
         var client = AppConfig.apiClient()
         if client.jwt == nil,
            let user = KeychainStore.load(key: "rmpgUser"),

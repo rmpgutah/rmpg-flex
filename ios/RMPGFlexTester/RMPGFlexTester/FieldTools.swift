@@ -31,6 +31,13 @@ enum ToolAction {
     case fieldPhoto
     case newBolo
     case fuelPurchase
+    // FIELD CALC — pure on-device computation (FieldCalc.swift)
+    case phonetic
+    case skidSpeed
+    case sunTimes
+    case distanceTo
+    case markPoint
+    case unitConvert
 }
 
 struct FieldTool: Identifiable {
@@ -43,11 +50,21 @@ struct FieldTool: Identifiable {
 enum FieldToolRegistry {
     static let categories = [
         "SELF-INITIATED", "LOOKUPS", "UNIT STATUS", "CLEAR CALL",
-        "TIMERS & UTILITIES", "LEGAL REFERENCE", "CODES & REFERENCE",
+        "TIMERS & UTILITIES", "FIELD CALC", "LEGAL REFERENCE", "CODES & REFERENCE",
     ]
 
     static let tools: [FieldTool] = selfInitiated + lookups + unitStatus
-        + clearCall + utilities + legalReference + codesReference
+        + clearCall + utilities + fieldCalc + legalReference + codesReference
+
+    // ── Field calculators (pure, on-device — work with zero coverage) ──
+    private static let fieldCalc: [FieldTool] = [
+        FieldTool(id: "fc_phonetic", title: "Phonetic Speller", category: "FIELD CALC", action: .phonetic),
+        FieldTool(id: "fc_skid", title: "Skid Marks → Speed", category: "FIELD CALC", action: .skidSpeed),
+        FieldTool(id: "fc_sun", title: "Sunrise / Sunset (here)", category: "FIELD CALC", action: .sunTimes),
+        FieldTool(id: "fc_dist", title: "Distance to Coordinates", category: "FIELD CALC", action: .distanceTo),
+        FieldTool(id: "fc_mark", title: "Mark Point / Measure", category: "FIELD CALC", action: .markPoint),
+        FieldTool(id: "fc_convert", title: "Unit Converter (cm/kg/mph)", category: "FIELD CALC", action: .unitConvert),
+    ]
 
     // ── 1. Self-initiated calls (created at my GPS, me assigned) ──
     private static let callTypes: [(String, String, String, String)] = [
