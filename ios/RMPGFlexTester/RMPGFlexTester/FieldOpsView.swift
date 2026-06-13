@@ -18,6 +18,7 @@ struct FieldOpsView: View {
     @State private var showStartSheet = false
     @State private var showEndSheet = false
     @State private var gpsPushedAt: Date?
+    @State private var lastAlertedCallId: Int?
 
     private var onShift: Bool { duty["on_shift"] as? Bool ?? false }
     private var unit: [String: Any]? { duty["unit"] as? [String: Any] }
@@ -36,11 +37,7 @@ struct FieldOpsView: View {
                     if onShift { statusCard }
                     if let myCall { callCard(myCall) }
                     panicButton
-                    if let status {
-                        Text(status).font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(status.hasPrefix("✓") ? Theme.gold : Theme.orange)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    if let status { StatusLine(text: status) }
                     if let gpsPushedAt {
                         Text("GPS → dispatch map · last push \(gpsPushedAt.formatted(date: .omitted, time: .standard))")
                             .font(.system(size: 9)).foregroundStyle(Theme.neutral)
@@ -129,20 +126,57 @@ struct FieldOpsView: View {
         }
     }
 
+    // Hazard flags carried on the call row (SQLite booleans = 1). Surfaced as
+    // a red officer-safety banner so the assigned call's known dangers are
+    // visible before the officer rolls up — same posture as the subject screen.
+    private static let hazardFlags: [(String, String)] = [
+        ("officer_safety_caution", "OFFICER SAFETY"), ("weapons_involved", "WEAPONS"),
+        ("felony_in_progress", "FELONY IN PROGRESS"), ("domestic_violence", "DV"),
+        ("injuries_reported", "INJURIES"), ("mental_health_crisis", "MENTAL HEALTH"),
+        ("drugs_involved", "DRUGS"), ("alcohol_involved", "ALCOHOL"),
+        ("juvenile_involved", "JUVENILE"),
+    ]
+    private func hazards(_ call: [String: Any]) -> [String] {
+        Self.hazardFlags.compactMap { key, label in
+            let v = call[key]
+            let on = (v as? Int ?? 0) != 0 || (v as? Bool ?? false) || (v as? String).map { $0 == "1" || $0 == "true" } ?? false
+            return on ? label : nil
+        }
+    }
+
     private func callCard(_ call: [String: Any]) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        // GET /calls/:id spreads the row, so the column is incident_type
+        // (call_type kept as a fallback for any aliased payload).
+        let type = (call["incident_type"] as? String) ?? (call["call_type"] as? String) ?? "CALL"
+        let priority = (call["priority"] as? String) ?? ((call["priority"] as? Int).map { "P\($0)" })
+        let flags = hazards(call)
+        return VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Text("ASSIGNED CALL").font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.gold)
+                if let priority, !priority.isEmpty {
+                    Text(priority.uppercased())
+                        .font(.system(size: 9, weight: .heavy))
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(priority.contains("1") ? Theme.red : priority.contains("2") ? Theme.orange : Theme.neutral)
+                        .foregroundStyle(.black)
+                }
                 Spacer()
                 Text(call["call_number"] as? String ?? "")
                     .font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.neutral)
             }
-            Text((call["call_type"] as? String ?? "CALL").uppercased())
+            Text(type.replacingOccurrences(of: "_", with: " ").uppercased())
                 .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
             Text(call["location_address"] as? String ?? call["address"] as? String ?? "")
                 .font(.system(size: 12, design: .monospaced)).foregroundStyle(.white)
             if let desc = call["description"] as? String, !desc.isEmpty {
                 Text(desc).font(.system(size: 11)).foregroundStyle(Theme.neutral).lineLimit(4)
+            }
+            if !flags.isEmpty {
+                Text("⚠ " + flags.joined(separator: " · "))
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(.black)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 6).padding(.vertical, 4)
+                    .background(Theme.red)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -206,8 +240,19 @@ struct FieldOpsView: View {
             if let unit = duty["unit"] as? [String: Any],
                let callId = unit["current_call_id"] as? Int {
                 myCall = try? await c.requestJSON("GET", "api/dispatch/calls/\(callId)") as? [String: Any]
+                // Alert once when a NEW call lands that carries hazards or is
+                // P1 — the officer shouldn't have to be watching the screen.
+                if callId != lastAlertedCallId, let call = myCall {
+                    let p1 = ((call["priority"] as? String)?.contains("1") ?? false)
+                        || ((call["priority"] as? Int) == 1)
+                    if p1 || !hazards(call).isEmpty {
+                        AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
+                    }
+                    lastAlertedCallId = callId
+                }
             } else {
                 myCall = nil
+                lastAlertedCallId = nil
             }
         }
     }
