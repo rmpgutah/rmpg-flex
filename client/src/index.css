@@ -5266,6 +5266,45 @@ html, body {
   background: #3a3a3a;                          /* subtle brighten on hover */
 }
 
+/* --- 5c. CUSTOM ALWAYS-VISIBLE TAB-STRIP SCROLLBAR -------------------
+   macOS Chrome uses OVERLAY scrollbars that auto-hide at rest and ignore the
+   native ::-webkit-scrollbar sizing in 5b (verified live: a 14px custom bar
+   consumed 0px). So .tab-scroll strips get a JS-driven overlay bar
+   (client/src/utils/tabScrollbars.ts) that is ALWAYS visible regardless of the
+   OS setting. We HIDE the native bar on .tab-scroll here to avoid a double bar.
+   Source order: these come after 5b (and after the iOS @supports block), so the
+   display:none / scrollbar-width:none win for .tab-scroll. [role=tablist] and
+   .tab-bar keep the native 5b styling as graceful fallback. */
+.tab-scroll {
+  scrollbar-width: none;                       /* Firefox: hide native (overlay replaces it) */
+}
+.tab-scroll::-webkit-scrollbar {
+  display: none;                               /* Chrome/Safari: hide native */
+}
+#tab-scrollbar-layer .tab-scrollbar-track {
+  position: fixed;
+  height: 6px;
+  pointer-events: none;                        /* clicks pass through to the tabs underneath */
+  display: none;                               /* JS shows it only when the strip overflows */
+}
+#tab-scrollbar-layer .tab-scrollbar-thumb {
+  height: 6px;
+  width: 0;
+  border-radius: 2px;                          /* matches the 2px sharp-corner token */
+  background: #2e2e2e;                         /* discreet at rest (border-strong tone) */
+  pointer-events: auto;                        /* the thumb IS grabbable */
+  cursor: grab;
+  transition: background 0.12s ease;
+  will-change: transform, width;
+}
+#tab-scrollbar-layer .tab-scrollbar-thumb:hover {
+  background: #3a3a3a;                         /* subtle brighten on hover */
+}
+#tab-scrollbar-layer .tab-scrollbar-thumb.dragging {
+  background: #4a4a4a;                         /* brighter while dragging */
+  cursor: grabbing;
+}
+
 /* --- 6. TABLE / GRID CONSISTENCY ---
    All tables get the CAD grid aesthetic. */
 table {

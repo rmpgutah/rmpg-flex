@@ -1489,7 +1489,7 @@ export default function WarrantsPage() {
       </PanelTitleBar>
 
       {/* ---- TAB BAR ---- */}
-      <div className={`tab-bar ${isMobile ? 'overflow-x-auto' : ''}`}>
+      <div className={`tab-bar tab-scroll ${isMobile ? 'overflow-x-auto' : ''}`}>
         {TABS.map((tab) => {
           if (tab.roleGated && !isGodMode && !isAdminOrManager) return null;
           const Icon = tab.icon;
