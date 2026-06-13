@@ -1008,7 +1008,21 @@ interface RuleRow {
   actions: string;
 }
 
+// Power-user rules may opt into raw-regex matching (cond.regex === true), which
+// compiles a user-authored pattern and runs it against email text. A regex built
+// from user input is a ReDoS / regex-injection vector (CWE-1333 / CWE-730): a
+// crafted pattern such as (a+)+$ run over attacker-influenced subject/sender text
+// can pin the Worker isolate's CPU. We bound BOTH sides of the match — the
+// pattern length and the haystack length — which keeps worst-case backtracking
+// well below a denial-of-service. Patterns over the cap are rejected (the rule
+// simply doesn't match) rather than compiled. Mirrors the original
+// emailRuleEngine limits that were dropped when this path was ported to the
+// Worker.
+const MAX_RULE_REGEX_LEN = 256;
+const MAX_RULE_INPUT_LEN = 1024;
+
 function safeRe(src: string): RegExp | null {
+  if (src.length > MAX_RULE_REGEX_LEN) return null;
   try { return new RegExp(src, 'i'); } catch { return null; }
 }
 
@@ -1019,13 +1033,13 @@ function matchRule(cond: RuleConditions, m: {
     const f = (m.from_address || '').toLowerCase();
     if (cond.regex) {
       const re = safeRe(cond.from);
-      if (!re || !re.test(m.from_address || '')) return false;
+      if (!re || !re.test((m.from_address || '').slice(0, MAX_RULE_INPUT_LEN))) return false;
     } else if (!f.includes(cond.from.toLowerCase())) return false;
   }
   if (cond.subject) {
     if (cond.regex) {
       const re = safeRe(cond.subject);
-      if (!re || !re.test(m.subject || '')) return false;
+      if (!re || !re.test((m.subject || '').slice(0, MAX_RULE_INPUT_LEN))) return false;
     } else {
       const s = (m.subject || '').toLowerCase();
       if (!s.includes(cond.subject.toLowerCase())) return false;

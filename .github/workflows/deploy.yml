@@ -9,6 +9,12 @@ concurrency:
   group: cf-deploy-${{ github.ref }}
   cancel-in-progress: false
 
+# Least-privilege GITHUB_TOKEN (CWE-275). Deploys run against Cloudflare using
+# CLOUDFLARE_* secrets, not the GITHUB_TOKEN — nothing here pushes commits,
+# creates releases, or comments, so read-only is sufficient.
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

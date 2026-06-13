@@ -7,6 +7,12 @@ on:
       - 'scripts/check-column-cap.js'
       - '.github/workflows/column-cap-check.yml'
 
+# Least-privilege GITHUB_TOKEN (CWE-275). Needs to read the repo (with history,
+# via fetch-depth: 0) to diff changed migrations against the PR base; it does not
+# comment on or modify the PR, so read-only is sufficient.
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
