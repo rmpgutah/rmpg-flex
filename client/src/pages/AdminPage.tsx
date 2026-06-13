@@ -751,7 +751,7 @@ export default function AdminPage() {
       {/* Mobile: horizontal scroll tabs */}
       {isMobile && (
         <div
-          className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5 scrollbar-dark"
+          className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5 scrollbar-dark tab-scroll"
           style={{ background: '#050505', borderBottom: '1px solid #181818' }}
           role="tablist"
           aria-label="Admin sections"
