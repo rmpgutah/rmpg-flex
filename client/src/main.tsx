@@ -16,6 +16,7 @@ import { setupNativeAppShell } from './utils/nativeAppShell';
 import { installUiTrapHotkey } from './utils/uiTrapDiagnostic';
 import { initUiClickSounds } from './utils/uiClickSounds';
 import { preloadSoundAssets } from './utils/soundAssets';
+import { initTabScrollbars } from './utils/tabScrollbars';
 
 bootstrapThemePreference();
 setupNativeAppShell();
@@ -36,6 +37,12 @@ preloadSoundAssets([
 // app freezes (clicks/typing dead). Installed at the document level
 // so it fires even if React/focus traps are stuck.
 installUiTrapHotkey();
+
+// Always-visible custom scrollbar for horizontal tab/section strips. macOS
+// Chrome auto-hides native (overlay) scrollbars, so this overlays our own
+// thin bar on every .tab-scroll strip. Uses a MutationObserver, so it catches
+// strips rendered later by React routes.
+initTabScrollbars();
 
 // Signals that the main entry bundle executed successfully.
 (window as any).__RMPG_BOOTSTRAPPED__ = true;

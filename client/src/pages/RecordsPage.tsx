@@ -438,7 +438,7 @@ export default function RecordsPage() {
       </PanelTitleBar>
 
       {/* Tab Row */}
-      <div className={`${isMobile ? 'px-2' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-1 ${isMobile ? 'overflow-x-auto' : ''}`} role="tablist" aria-label="Record type tabs">
+      <div className={`${isMobile ? 'px-2' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-1 tab-scroll ${isMobile ? 'overflow-x-auto' : ''}`} role="tablist" aria-label="Record type tabs">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
