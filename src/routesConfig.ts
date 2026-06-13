@@ -103,6 +103,7 @@ import crisisResponse from './routes/crisisResponse';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import documentFolders from './routes/documents/folders';
+import documentsLibrary from './routes/documents/library';
 import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
 import tts from './routes/tts';
@@ -415,6 +416,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Training management: courses, enrollments, certifications, firearms qualifications' },
 
   // ── Documents ──────────────────────────────────────────────
+  { prefix: '/api/docs', router: documentsLibrary, auth: 'required',
+    note: 'Authored documents (Phase 2): rich-body, revisions, finalize-lock, call/incident links. Distinct from /api/documents (file folders).' },
   { prefix: '/api/documents', router: documentFolders, auth: 'required' },
   { prefix: '/api/pdf-tools', router: pdfTools, auth: 'required' },
   { prefix: '/api/document-intake', router: documentIntake, auth: 'required' },
