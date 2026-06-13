@@ -259,6 +259,10 @@ function formatDocumentType(val: string | undefined | null): string {
 export default function DispatchPage() {
   const { user } = useAuth();
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
+  // A note is editable by its author (server-stamped author_username) or any admin/manager.
+  const canEditNote = useCallback((note: { author_username?: string | null }) =>
+    isAdminOrManager || (!!note.author_username && note.author_username === user?.username),
+  [isAdminOrManager, user?.username]);
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const unitModalTitleId = useId();
   const navigate = useNavigate();
@@ -5719,7 +5723,12 @@ export default function DispatchPage() {
                         <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
                         {editingNoteId === note.id ? (
                           <div className="flex-1 min-w-0 flex flex-col gap-1">
-                            <textarea className="input-dark text-xs w-full" rows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} autoFocus />
+                            <NoteComposer
+                              value={editingNoteText}
+                              onChange={setEditingNoteText}
+                              onSubmit={() => handleEditNote(note.id, editingNoteText)}
+                              autoFocus
+                            />
                             <div className="flex gap-1">
                               <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px] px-2 py-0.5" onClick={() => handleEditNote(note.id, editingNoteText)}>Save</button>
                               <button type="button" className="toolbar-btn text-[9px] px-2 py-0.5" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>Cancel</button>
@@ -5728,10 +5737,14 @@ export default function DispatchPage() {
                         ) : (
                           <>
                             <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
-                            {isAdminOrManager && (
+                            {(canEditNote(note) || isAdminOrManager) && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
-                                <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
-                                <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                                {canEditNote(note) && (
+                                  <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                )}
+                                {isAdminOrManager && (
+                                  <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                                )}
                               </div>
                             )}
                           </>
