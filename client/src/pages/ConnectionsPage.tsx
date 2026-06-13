@@ -111,6 +111,10 @@ export default function ConnectionsPage() {
   const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [transform, setTransform] = useState('translate(0,0) scale(1)');
   const [zoomScale, setZoomScale] = useState(1);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [timeline, setTimeline] = useState<Array<{ kind: string; id: number; date: string | null; title: string; subtitle: string; status: string }>>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState('');
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -232,6 +236,16 @@ export default function ConnectionsPage() {
     zoomRef.current = z;
     return () => { svg.on('.zoom', null); };
   }, [nodes.length]);
+
+  useEffect(() => {
+    if (!timelineOpen || nodes.length === 0) { setTimeline([]); return; }
+    const param = nodes.map(n => `${n.type}:${n.entityId}`).join(',');
+    setTimelineLoading(true); setTimelineError('');
+    apiFetch<any[]>(`/connections/timeline?nodes=${encodeURIComponent(param)}`)
+      .then(r => setTimeline(Array.isArray(r) ? r : []))
+      .catch(() => setTimelineError('Failed to load timeline.'))
+      .finally(() => setTimelineLoading(false));
+  }, [timelineOpen, nodes]);
 
   function resetView() {
     if (!svgRef.current || !zoomRef.current) return;
@@ -558,6 +572,15 @@ export default function ConnectionsPage() {
           </div>
           <button
             type="button"
+            onClick={() => setTimelineOpen(o => !o)}
+            disabled={nodes.length === 0}
+            style={{ background: timelineOpen ? '#e879f9' : '#0b0b0b', color: timelineOpen ? '#000' : '#888', borderRadius: 2, padding: '4px 10px', fontSize: 11, fontWeight: 600 }}
+            aria-label="Toggle timeline"
+          >
+            TIMELINE
+          </button>
+          <button
+            type="button"
             onClick={() => { setSeed(null); setAnnotations({}); }}
             className="text-xs text-gray-400 hover:text-[#d4a017]"
             aria-label="Clear seed"
@@ -844,6 +867,27 @@ export default function ConnectionsPage() {
               <span className="uppercase">{t}</span>
             </label>
           ))}
+        </div>
+      )}
+      {timelineOpen && (
+        <div style={{ width: 320, background: '#0a0a0a', borderLeft: '1px solid #232323', overflowY: 'auto', padding: 8 }}>
+          <div className="text-[9px] font-semibold mb-2" style={{ color: '#e879f9' }}>TIMELINE — {nodes.length} NODES</div>
+          {timelineError && <div style={{ color: '#ef4444', fontSize: 11 }}>{timelineError}</div>}
+          {timelineLoading && <div style={{ color: '#555', fontSize: 11 }}>Loading…</div>}
+          {!timelineLoading && timeline.length === 0 && <div style={{ color: '#555', fontSize: 11 }}>No dated events.</div>}
+          {timeline.map((ev, i) => {
+            const KIND_COLOR: Record<string, string> = { intel: '#e879f9', incident: '#f59e0b', call: '#22d3ee', citation: '#fbbf24', warrant: '#dc2626', arrest: '#ef4444', field_interview: '#64748b', trespass_order: '#a855f7', case: '#d4a017', evidence: '#ef4444' };
+            return (
+              <div key={`${ev.kind}-${ev.id}-${i}`} className="py-[3px]" style={{ borderTop: '1px solid #1a1a1a' }}>
+                <div className="flex items-center gap-2 text-[10px]">
+                  <span style={{ color: KIND_COLOR[ev.kind] || '#888', fontWeight: 700 }}>{ev.kind.toUpperCase()}</span>
+                  <span style={{ color: '#666' }}>{ev.date ? ev.date.slice(0, 10) : '—'}</span>
+                </div>
+                <div className="text-[11px]" style={{ color: '#ddd' }}>{ev.title}</div>
+                {ev.subtitle && <div className="text-[10px]" style={{ color: '#777' }}>{ev.subtitle}</div>}
+              </div>
+            );
+          })}
         </div>
       )}
       </div>
