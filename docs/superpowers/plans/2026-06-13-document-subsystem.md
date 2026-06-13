@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS document_revisions (
   change_note       TEXT,
   FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_doc_revisions_doc ON document_revisions(document_id, revision_number);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_revisions_doc ON document_revisions(document_id, revision_number);
 
 CREATE TABLE IF NOT EXISTS document_links (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
