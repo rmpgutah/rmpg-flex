@@ -73,6 +73,7 @@ import {
 } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
 import { computeListLines, tokenizeInline } from '../../utils/noteFormatting';
+import NoteComposer from './components/NoteComposer';
 import { useDistrictOptions, normalizeSectorId } from '../../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../../hooks/useAddressAutofill';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
@@ -316,7 +317,6 @@ export default function DispatchPage() {
   const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [signalFilter, setSignalFilter] = useState<'signaled' | 'unsignaled' | null>(null);
-  const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
@@ -1743,34 +1743,6 @@ export default function DispatchPage() {
     );
   }, [renderInline]);
 
-  // Wrap selected text in the note textarea with formatting markers
-  const wrapNoteSelection = useCallback((marker: string) => {
-    const el = noteTextareaRef.current;
-    if (!el) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const text = newNote;
-    const selected = text.slice(start, end);
-    if (selected) {
-      const wrapped = `${marker}${selected}${marker}`;
-      const updated = text.slice(0, start) + wrapped + text.slice(end);
-      setNewNote(updated);
-      // Restore cursor after marker
-      requestAnimationFrame(() => {
-        el.focus();
-        el.setSelectionRange(start + marker.length, end + marker.length);
-      });
-    } else {
-      // No selection — insert markers at cursor and place cursor between them
-      const updated = text.slice(0, start) + `${marker}${marker}` + text.slice(start);
-      setNewNote(updated);
-      requestAnimationFrame(() => {
-        el.focus();
-        el.setSelectionRange(start + marker.length, start + marker.length);
-      });
-    }
-  }, [newNote]);
-
   // ── Inline Editing ────────────────────────────────────────
   // Refetch the full call fresh from /dispatch/calls/:id before populating
   // the edit form. Guards against stale in-memory data from list-endpoint
@@ -2672,7 +2644,7 @@ export default function DispatchPage() {
                             <span className="font-bold">{note.author || 'System'}</span>
                             <span className="font-mono">{formatTime(note.timestamp)}</span>
                           </div>
-                          <div className="text-rmpg-200 mt-0.5">{note.text}</div>
+                          <div className="text-rmpg-200 mt-0.5">{renderFormattedText(note.text || '')}</div>
                         </div>
                       ))}
                     </div>
@@ -5769,31 +5741,13 @@ export default function DispatchPage() {
                     )}
                   </div>
                   <div className="flex-shrink-0">
-                    {/* Formatting toolbar */}
-                    <div className="flex items-center gap-1 mb-1.5">
-                      <button type="button" title="Bold (Ctrl+B)" className="w-6 h-5 flex items-center justify-center text-[10px] font-black text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('**')}>B</button>
-                      <button type="button" title="Italic (Ctrl+I)" className="w-6 h-5 flex items-center justify-center text-[10px] italic font-semibold text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('*')}>I</button>
-                      <button type="button" title="Underline (Ctrl+U)" className="w-6 h-5 flex items-center justify-center text-[10px] underline text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('__')}>U</button>
-                      <span className="text-[8px] text-[#545454] ml-2 font-mono select-none">Shift+Enter to submit</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <textarea
-                        ref={noteTextareaRef}
-                        className="input-dark flex-1 text-xs resize-none"
-                        rows={2}
-                        placeholder="Add note..."
-                        maxLength={2000}
-                        spellCheck={true}
-                        value={newNote}
-                        onChange={(e) => setNewNote(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); handleAddNote(); }
-                          if (e.key === 'b' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); wrapNoteSelection('**'); }
-                          if (e.key === 'i' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); wrapNoteSelection('*'); }
-                          if (e.key === 'u' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); wrapNoteSelection('__'); }
-                        }}
-                      />
-                      <button type="button" onClick={handleAddNote} className="toolbar-btn toolbar-btn-primary self-end" disabled={!newNote.trim()}>
+                    <NoteComposer
+                      value={newNote}
+                      onChange={setNewNote}
+                      onSubmit={handleAddNote}
+                    />
+                    <div className="flex justify-end mt-1">
+                      <button type="button" onClick={handleAddNote} className="toolbar-btn toolbar-btn-primary" disabled={!newNote.trim()}>
                         Add
                       </button>
                     </div>
