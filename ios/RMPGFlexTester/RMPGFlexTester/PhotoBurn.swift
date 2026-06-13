@@ -1,9 +1,11 @@
 import UIKit
 
 // Burns a court-ready metadata overlay into an evidence JPEG: a bottom data
-// banner (timestamp / officer / GPS / case) + an RMPG EVIDENCE watermark, with a
-// gold rule. The stored image IS the stamped exhibit — nothing to strip or
-// dispute (unlike EXIF). Mirrors the desktop field-camera burn.
+// banner (timestamp / officer / GPS / case / SHA-256 fingerprint) plus — when a
+// classification is set — a full-width gold CLASSIFICATION strip across the top
+// (the security-document convention). The stored image IS the stamped exhibit:
+// nothing to strip or dispute (unlike EXIF), and the burned-in hash ties it to
+// the chain-of-custody manifest filed to /api/evidence.
 enum PhotoBurn {
     static func burn(_ image: UIImage, fields: BurnFields) -> UIImage {
         let size = image.size
@@ -14,18 +16,20 @@ enum PhotoBurn {
         let renderer = UIGraphicsImageRenderer(size: size, format: format)
         return renderer.image { ctx in
             image.draw(at: .zero)
-            let lines = PhotoBurnLines.lines(fields)
             let fontSize = max(14, size.width * 0.022)
-            let font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold)
             let pad = fontSize * 0.6
             let lineH = fontSize * 1.35
-            let bannerH = lineH * CGFloat(lines.count) + pad * 2
 
+            // Bottom data banner — classification is hoisted to the top strip, so
+            // render the remaining lines here.
+            var bottomFields = fields; bottomFields.classification = ""
+            let lines = PhotoBurnLines.lines(bottomFields)
+            let font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold)
+            let bannerH = lineH * CGFloat(lines.count) + pad * 2
             UIColor(white: 0, alpha: 0.55).setFill()
             ctx.fill(CGRect(x: 0, y: size.height - bannerH, width: size.width, height: bannerH))
             gold.setFill()
             ctx.fill(CGRect(x: 0, y: size.height - bannerH, width: size.width, height: max(2, fontSize * 0.12)))
-
             let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: UIColor.white]
             var y = size.height - bannerH + pad
             for line in lines {
@@ -33,13 +37,25 @@ enum PhotoBurn {
                 y += lineH
             }
 
-            let wm = "RMPG EVIDENCE" as NSString
-            let wmAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: fontSize, weight: .heavy),
-                .foregroundColor: gold.withAlphaComponent(0.9),
-            ]
-            let wmSize = wm.size(withAttributes: wmAttrs)
-            wm.draw(at: CGPoint(x: size.width - wmSize.width - pad, y: pad), withAttributes: wmAttrs)
+            if !fields.classification.isEmpty {
+                // Full-width classification strip with right-aligned RMPG EVIDENCE.
+                let stripH = lineH + pad
+                gold.setFill(); ctx.fill(CGRect(x: 0, y: 0, width: size.width, height: stripH))
+                let cAttrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: fontSize, weight: .heavy), .foregroundColor: UIColor.black]
+                (fields.classification as NSString).draw(at: CGPoint(x: pad, y: pad * 0.6), withAttributes: cAttrs)
+                let wm = "RMPG EVIDENCE" as NSString
+                let wmSize = wm.size(withAttributes: cAttrs)
+                wm.draw(at: CGPoint(x: size.width - wmSize.width - pad, y: pad * 0.6), withAttributes: cAttrs)
+            } else {
+                // Unclassified capture — keep the original corner watermark.
+                let wm = "RMPG EVIDENCE" as NSString
+                let wmAttrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: fontSize, weight: .heavy),
+                    .foregroundColor: gold.withAlphaComponent(0.9)]
+                let wmSize = wm.size(withAttributes: wmAttrs)
+                wm.draw(at: CGPoint(x: size.width - wmSize.width - pad, y: pad), withAttributes: wmAttrs)
+            }
         }
     }
 
