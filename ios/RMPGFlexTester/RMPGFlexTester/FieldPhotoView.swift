@@ -73,9 +73,8 @@ struct FieldPhotoSheet: View {
             .background(Theme.base)
             .navigationTitle("FIELD PHOTO")
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showCamera) {
-                CameraPicker { image = $0 }
-                    .ignoresSafeArea()
+            .fullScreenCover(isPresented: $showCamera) {
+                EvidenceCameraView { imgs in if let first = imgs.first { image = first } }
             }
         }
     }
