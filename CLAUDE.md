@@ -118,9 +118,59 @@ npm run migrate:prod      # apply migrations to remote D1
 ## Security
 
 - **`JWT_SECRET`** is the only auth secret in the Worker today (set via `wrangler secret put JWT_SECRET`). The old VPS-era TOTP encryption tying secrets together is not yet ported.
+- **Integration secrets** (optional bindings, read only from `c.env`, never hard-coded): `IPED_API_KEY`, `ROBOFLOW_API_KEY` (ALPR — see below). Set with `wrangler secret put <NAME>`; for local dev put them in `.dev.vars` (gitignored). A route returns 503 when its key is unset rather than crashing.
 - **CORS** is enforced by the Hono `cors()` middleware in `src/index.ts`, reading the allow-list from `CORS_ORIGINS` (`https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:5173`).
 - **Auth middleware** is mounted per-path-prefix in `src/index.ts` (e.g. `app.use('/api/dispatch', authMiddleware)`). Public routes: `/api/health`, `/api/auth`, `/api/map-data`. Everything else requires a valid JWT.
 - **Roles** (from the VPS era, still in the DB): `admin`, `manager`, `supervisor`, `officer`, `dispatcher`, `contract_manager`, `client_viewer`, `human_resources`.
+
+## External integrations
+
+### ALPR Vehicle Details Capture (Roboflow)
+
+Sends a captured image to the Roboflow **serverless workflow** "ALPR Vehicle
+Details Capture" (`workspace=rmpg-utah`, `workflow=alpr-vehicle-details-capture-1781360579827`)
+and wires the result into the intel plate log.
+
+- **Client**: [`src/utils/roboflowAlpr.ts`](src/utils/roboflowAlpr.ts) — Worker-safe (no `node:*`).
+  `runAlprVehicleCapture()` = `fetch` + `AbortController` timeout + bounded retries/backoff + typed
+  errors (`RoboflowConfigError|TimeoutError|HttpError`). Parsing is **schema-agnostic**: the Roboflow
+  HTTP envelope (`{ outputs: [ {<name>:value} ] }`, 1 entry/image; images → base64) is stable, so
+  `parseAlprResponse()` classifies each output **by shape** (base64 image / detection set / scalar)
+  and maps scalars to a normalized `AlprCapture` via key heuristics. Pure helpers are unit-tested in
+  [`tests/roboflowAlpr.test.ts`](tests/roboflowAlpr.test.ts) (`npx vitest run tests/roboflowAlpr.test.ts`).
+- **Route**: [`src/routes/alpr.ts`](src/routes/alpr.ts) mounted at `/api/alpr` (`auth: 'required'`).
+  `POST /capture` (multipart `image`/`photo` + optional `call_id`/`incident_id` + declared params).
+  **On-scene flow**: with a `call_id`/`incident_id` the original lands under R2 `field-photos/` + a
+  `field_photos` row, so it **auto-attaches to that call's photo gallery**. Then for **every** vehicle
+  in the frame (`parseVehicles` → `enhanced_alpr_record.vehicles[]`) it **upserts a `vehicles_records`
+  row by plate (creates if new), links it to the call via `call_vehicles`** (`role='observed'`), logs a
+  `vehicle_sightings` row, and runs `screenVehicle()` (stolen/watchlist → critical-hit notification).
+  Capture-level row in `alpr_captures` carries `call_id`/`field_photo_id`/`vehicle_count`/
+  `vehicle_record_ids`. Also `GET /captures` (filter `?call_id=`), `/capture/:id`, `/image/*`, `/health`.
+  Defaults `disable_rmpgutah_api: true`; repeated `capture_id` is idempotent (offline-replay safe).
+- **Mobile UI**: [`FieldCameraPage`](client/src/pages/mobile/FieldCameraPage.tsx) (`/field-camera?call_id=…&alpr=1`)
+  has a "Scan vehicles" mode that posts the stamped photo to `/alpr/capture` with the call context and
+  shows the per-vehicle results + hits; [`ActiveCallsCard`](client/src/pages/mobile/cards/ActiveCallsCard.tsx)
+  has a per-call scan launch. Multipart uploads use the new `apiPostForm` helper in
+  [`useApi.ts`](client/src/hooks/useApi.ts) (NOT `apiFetch`, which forces `application/json` and breaks
+  multipart). [`PlateLogPage`](client/src/pages/PlateLogPage.tsx) keeps a standalone plate scanner.
+- **Config**: needs `ROBOFLOW_API_KEY` secret (from app.roboflow.com/settings/api). Unset → `/api/alpr`
+  returns 503. Optional `ROBOFLOW_API_URL` overrides the serverless base.
+- **Schema**: migrations `0108_alpr_captures.sql` (`alpr_captures`) + `0109_alpr_call_link.sql` (call/
+  multi-vehicle columns). The route reconciles the table + columns at runtime via `columnExists()` — but
+  still **apply 0108 + 0109 directly to live D1 `785de7ae`** after merge (deploy apply is
+  `continue-on-error`). Reuses existing `vehicles_records`, `call_vehicles`, `field_photos`, `vehicle_sightings`.
+- **Grounded 2026-06-13** via `workflows_get`: the workflow has **50 inputs + 73 outputs**. The parser
+  reads the real shapes — `license_plate_text` (GLM-OCR), the structured `vehicle_details` dict
+  (`make`/`model`/`color_primary`/`year_range`/`license_plate_state_or_region`/`vehicle_type`), plate
+  confidence from `enhanced_alpr_record.vehicles[].field_confidence.plate`, and top-level `risk_score`/
+  `review_*`/`watchlist_hit` scalars — with key-heuristic fallbacks. **Every workflow parameter is a
+  string-typed `WorkflowParameter`** (defaults `'true'`/`'0.75'`), so the route passes all params as
+  STRINGS (not JS booleans/numbers) — downstream blocks compare against the strings. `disable_rmpgutah_api`
+  defaults to `'true'` so the workflow doesn't POST back to us. (Note: a live `workflows_run` to capture
+  a real response overflows the MCP serializer — 73 outputs incl. base64 images — so the declared
+  `output_structure` is the authoritative shape; run it via the serverless REST endpoint with a key if a
+  literal sample is needed.)
 
 ## Code Patterns
 

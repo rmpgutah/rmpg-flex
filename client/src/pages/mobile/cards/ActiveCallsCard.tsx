@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Eye, Copy } from 'lucide-react';
+import { Eye, Copy, ScanLine } from 'lucide-react';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../../hooks/useApi';
@@ -131,6 +131,11 @@ export default function ActiveCallsCard() {
     if (call.call_number) navigate(`/dispatch?call=${call.call_number}`);
   };
 
+  // On-scene ALPR: open the field camera scoped to this call. Photos taken
+  // there auto-attach to the call and every vehicle is extracted → a record
+  // is created/linked to the call.
+  const scanForCall = (call: CallRow) => navigate(`/field-camera?call_id=${call.id}&alpr=1`);
+
   // Right-click menu for a call row. 'Open call' reuses handleRowClick;
   // copy items use the standalone clipboard helper (no toast).
   const buildCallMenu = (c: CallRow, addr: string): ContextMenuItem[] => {
@@ -143,6 +148,11 @@ export default function ActiveCallsCard() {
         onClick: () => handleRowClick(c),
       },
       separator(),
+      {
+        label: 'Scan vehicles (ALPR)',
+        icon: <ScanLine size={12} />,
+        onClick: () => scanForCall(c),
+      },
       {
         label: 'Copy call #',
         icon: <Copy size={12} />,
@@ -233,15 +243,15 @@ export default function ActiveCallsCard() {
             const dist = distanceFor(c);
             const isLast = i === visible.length - 1;
             return (
-              <li key={c.id}>
+              <li
+                key={c.id}
+                className={['flex items-center', isLast ? '' : 'border-b border-[#1a1a1a]'].join(' ')}
+              >
                 <button
                   type="button"
                   onClick={() => handleRowClick(c)}
                   onContextMenu={(e) => openMenu(e, buildCallMenu(c, addr))}
-                  className={[
-                    'w-full min-h-[44px] py-2 text-white text-xs flex items-center justify-between gap-2 text-left',
-                    isLast ? '' : 'border-b border-[#1a1a1a]',
-                  ].join(' ')}
+                  className="flex-1 min-w-0 min-h-[44px] py-2 text-white text-xs flex items-center justify-between gap-2 text-left"
                 >
                   <span className="flex-1 min-w-0 truncate">
                     <span className="font-mono text-[#d4a017]">{c.call_number || `#${c.id}`}</span>
@@ -251,6 +261,15 @@ export default function ActiveCallsCard() {
                   <span className="text-gray-400 text-[10px] font-mono shrink-0">
                     {dist ? `${dist} · ` : ''}{ageLabel(c.created_at)}
                   </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scanForCall(c)}
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center text-[#888] hover:text-[#d4a017] shrink-0"
+                  aria-label={`Scan vehicles on call ${c.call_number || c.id}`}
+                  title="Scan vehicles (ALPR)"
+                >
+                  <ScanLine className="w-4 h-4" />
                 </button>
               </li>
             );

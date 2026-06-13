@@ -53,6 +53,14 @@ export type Bindings = {
   // adapter trained on training/data (see training/README.md). Unset → stock
   // 70B, so the fine-tune is a safe, reversible opt-in via wrangler var/secret.
   SERVE_INTAKE_LORA?: string;
+  // Roboflow API key for the "ALPR Vehicle Details Capture" serverless
+  // workflow (src/routes/alpr.ts → src/utils/roboflowAlpr.ts). Set via
+  // `wrangler secret put ROBOFLOW_API_KEY`; unset → /api/alpr returns 503.
+  // Never hard-coded; read only from c.env.
+  ROBOFLOW_API_KEY?: string;
+  // Optional override of the Roboflow serverless base origin
+  // (default https://serverless.roboflow.com). For self-hosted inference.
+  ROBOFLOW_API_URL?: string;
 };
 
 export type Variables = {

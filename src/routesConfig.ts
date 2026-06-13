@@ -96,6 +96,7 @@ import arrests from './routes/arrests';
 import cases from './routes/cases';
 import accreditation from './routes/accreditation';
 import alarms from './routes/alarms';
+import alpr from './routes/alpr';
 import citations from './routes/citations';
 import clients from './routes/clients';
 import cloudflare from './routes/cloudflare';
@@ -395,6 +396,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Accreditation & compliance: standard tracking, proof of compliance, assessor coordination' },
   { prefix: '/api/alerts', router: alerts, auth: 'required',
     note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
+  { prefix: '/api/alpr', router: alpr, auth: 'required',
+    note: 'ALPR Vehicle Details Capture (Roboflow workflow) → intel plate log; needs ROBOFLOW_API_KEY secret' },
   { prefix: '/api/arrests', router: arrests, auth: 'required',
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
   { prefix: '/api/assets', router: assets, auth: 'required',
