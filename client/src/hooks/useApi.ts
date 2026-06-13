@@ -417,39 +417,84 @@ export async function apiFetchBlob(endpoint: string): Promise<Blob> {
   return res.blob();
 }
 
-// Upload files via FormData (multipart)
+// ─── Upload (multipart) with auto-retry for transient failures ────
+export interface UploadOptions {
+  /** Extra attempts after the first, on a *transient* failure (network/5xx). Default 0. */
+  retries?: number;
+  /** Base backoff in ms between attempts (doubled each retry). Default 1500. */
+  retryDelayMs?: number;
+  /** Per-attempt timeout. Defaults to DEFAULT_FETCH_TIMEOUT_MS. */
+  timeoutMs?: number;
+  /** Fired before each retry sleep — e.g. to surface "Retrying… (1/3)". */
+  onRetry?: (attempt: number, max: number) => void;
+}
+
+/**
+ * Decide whether a failed upload attempt is worth retrying.
+ *
+ * Field reality drives this: officers upload from cellular dead zones, so a
+ * dropped-at-the-edge transport failure (the `net::ERR_FAILED` / "Failed to
+ * fetch" that silently lost an ID photo on 2026-06-13) and 5xx server blips
+ * SHOULD retry. A 4xx is deterministic — a too-large file or rejected MIME
+ * type fails identically on every attempt, so retrying only delays the real
+ * error the user needs to see.
+ *
+ * This is the upload retry POLICY seam — change the stance here (e.g. bail on
+ * 413 immediately, or back off harder on 429) without touching the loop below.
+ */
+function isRetryableUploadError(err: Error): boolean {
+  const status = (err as { status?: number }).status;
+  if (typeof status === 'number') return status >= 500; // 5xx transient, 4xx deterministic
+  return true; // no status ⇒ network/transport throw (TypeError, TimeoutError) ⇒ retry
+}
+
 export async function apiUploadFiles(
   files: File[],
   entityType?: string,
   entityId?: string | number,
+  opts?: UploadOptions,
 ): Promise<any[]> {
   const token = localStorage.getItem('rmpg_token');
-  const formData = new FormData();
-
-  for (const file of files) {
-    formData.append('files', file);
-  }
-  if (entityType) formData.append('entity_type', entityType);
-  if (entityId) formData.append('entity_id', String(entityId));
+  const maxRetries = Math.max(0, opts?.retries ?? 0);
+  const baseDelay = opts?.retryDelayMs ?? 1500;
 
   const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Rebuild the body each attempt so every retry is a clean, independent
+    // multipart request (a consumed/aborted body never leaks into the next try).
+    const formData = new FormData();
+    for (const file of files) formData.append('files', file);
+    if (entityType) formData.append('entity_type', entityType);
+    if (entityId) formData.append('entity_id', String(entityId));
+
+    try {
+      const res = await fetchWithTimeout('/api/uploads', {
+        method: 'POST',
+        headers,
+        body: formData,
+        timeoutMs: opts?.timeoutMs,
+      });
+      if (res.ok) {
+        chimeForApiSuccess('POST', '/api/uploads');
+        return res.json();
+      }
+      const errData = await res.json().catch(() => ({}));
+      const err = new Error(
+        errData.error || errData.message || `Upload failed with status ${res.status}`,
+      ) as Error & { status?: number };
+      err.status = res.status;
+      throw err;
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      if (!isRetryableUploadError(lastErr) || attempt >= maxRetries) break;
+      opts?.onRetry?.(attempt + 1, maxRetries);
+      await new Promise((r) => setTimeout(r, baseDelay * Math.pow(2, attempt)));
+    }
   }
-
-  const res = await fetchWithRetry('/api/uploads', {
-    method: 'POST',
-    headers,
-    body: formData,
-  });
-
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || errData.message || `Upload failed with status ${res.status}`);
-  }
-
-  chimeForApiSuccess('POST', '/api/uploads');
-  return res.json();
+  throw lastErr ?? new Error('Upload failed');
 }
 
 // Upload files with per-file progress tracking via XHR

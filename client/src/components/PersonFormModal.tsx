@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UserCircle, Eye, EyeOff, Upload, X, CreditCard } from 'lucide-react';
+import { UserCircle, Eye, EyeOff, Upload, X, CreditCard, AlertTriangle } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
 import type { Person } from '../types';
@@ -251,7 +251,16 @@ export default function PersonFormModal({
   const [idImageFile, setIdImageFile] = useState<File | null>(null);
   const [idImagePreview, setIdImagePreview] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  // Warn-and-choose state for a failed ID-image upload (after auto-retry).
+  // Non-null uploadError means: hold the save, show the recovery panel.
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadRetryInfo, setUploadRetryInfo] = useState<{ attempt: number; max: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Drop any stale upload-failure prompt when the modal closes.
+  useEffect(() => {
+    if (!isOpen) { setUploadError(null); setUploadRetryInfo(null); }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -388,6 +397,7 @@ export default function PersonFormModal({
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) return;
+    setUploadError(null); // fresh file → clear any prior upload-failure prompt
     setIdImageFile(file);
     const reader = new FileReader();
     reader.onload = () => setIdImagePreview(reader.result as string);
@@ -398,37 +408,67 @@ export default function PersonFormModal({
     setIdImageFile(null);
     setIdImagePreview(null);
     setForm((prev) => ({ ...prev, id_image_url: '' }));
+    setUploadError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    let finalForm = { ...form };
-
-    // Compose height string from feet/inches dropdowns
+  // Pure: assemble the saveable record from current form state (height etc.).
+  const composeFinalForm = (): PersonFormData => {
+    const finalForm = { ...form };
     if (finalForm.height_feet != null && finalForm.height_feet !== '') {
       const ft = finalForm.height_feet;
       const inch = finalForm.height_inches || '0';
       finalForm.height = `${ft}'${inch.padStart(2, '0')}"`;
     }
-
-    // If there's a new image file, upload it first
-    if (idImageFile) {
-      setUploadingImage(true);
-      try {
-        const results = await apiUploadFiles([idImageFile], 'person_id_image');
-        if (results.length > 0) {
-          finalForm.id_image_url = `/api/uploads/${results[0].file_id}`;
-        }
-      } catch (err) {
-        console.error('ID image upload failed:', err);
-      } finally {
-        setUploadingImage(false);
-      }
-    }
-
-    onSubmit(finalForm);
+    return finalForm;
   };
+
+  // Upload the selected ID image (with auto-retry), THEN save. If the upload
+  // still fails after retries we STOP and surface a recoverable choice — we
+  // never silently save the record without the ID photo (the 2026-06-13 bug).
+  const uploadThenSubmit = async (finalForm: PersonFormData) => {
+    if (!idImageFile) { onSubmit(finalForm); return; }
+    setUploadingImage(true);
+    setUploadError(null);
+    let uploaded = false;
+    try {
+      const results = await apiUploadFiles([idImageFile], 'person_id_image', undefined, {
+        retries: 3,
+        onRetry: (attempt, max) => setUploadRetryInfo({ attempt, max }),
+      });
+      if (results.length > 0) {
+        finalForm.id_image_url = `/api/uploads/${results[0].file_id}`;
+      }
+      uploaded = true;
+    } catch (err) {
+      console.error('ID image upload failed:', err);
+      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingImage(false);
+      setUploadRetryInfo(null);
+    }
+    // Only save once the photo is attached. On failure we hold here and let the
+    // warn-and-choose panel drive the next step (retry / save-without / cancel).
+    if (uploaded) onSubmit(finalForm);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await uploadThenSubmit(composeFinalForm());
+  };
+
+  // Warn-and-choose recovery actions (shown when uploadError is set).
+  // Each recomposes from the *current* form so edits made while the prompt was
+  // up are preserved.
+  const retryImageUpload = () => { void uploadThenSubmit(composeFinalForm()); };
+  const saveWithoutImage = () => {
+    // Keep whatever id_image_url already existed (the prior saved image when
+    // editing, or empty for a new person) — just don't attach the file that
+    // wouldn't upload. The officer can re-edit later to add it.
+    setUploadError(null);
+    onSubmit(composeFinalForm());
+  };
+  const dismissUploadError = () => setUploadError(null);
 
   const sections = [
     { id: 'basic' as const, label: 'Basic Info' },
@@ -457,6 +497,51 @@ export default function PersonFormModal({
       {submitError && (
         <div className="px-3 py-2 -mt-2 mb-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">
           {submitError}
+        </div>
+      )}
+
+      {/* ID image upload failed (after auto-retry) — warn and let the user choose */}
+      {uploadError && (
+        <div className="px-3 py-2 -mt-2 mb-2 bg-amber-900/30 border border-amber-700 text-amber-300 text-xs space-y-2">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <div className="font-bold uppercase tracking-wider text-amber-200">ID image didn’t upload</div>
+              <div className="mt-0.5">
+                {uploadError} — the rest of the record is ready. Retry the upload, save without the
+                image for now, or cancel to stay on the form.
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pl-6">
+            <button
+              type="button"
+              onClick={retryImageUpload}
+              disabled={uploadingImage}
+              className="toolbar-btn text-amber-200 border-amber-600 hover:bg-amber-900/40 disabled:opacity-50"
+              style={{ padding: '3px 12px' }}
+            >
+              {uploadingImage ? 'Retrying…' : 'Retry upload'}
+            </button>
+            <button
+              type="button"
+              onClick={saveWithoutImage}
+              disabled={uploadingImage}
+              className="toolbar-btn disabled:opacity-50"
+              style={{ padding: '3px 12px' }}
+            >
+              Save without image
+            </button>
+            <button
+              type="button"
+              onClick={dismissUploadError}
+              disabled={uploadingImage}
+              className="toolbar-btn text-rmpg-400 disabled:opacity-50"
+              style={{ padding: '3px 12px' }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
@@ -849,7 +934,11 @@ export default function PersonFormModal({
                   <p className="text-[9px] text-green-400 mt-0.5">{idImageFile.name} ({(idImageFile.size / 1024).toFixed(0)} KB)</p>
                 )}
                 {uploadingImage && (
-                  <p className="text-[9px] text-amber-400 mt-0.5 animate-pulse">Uploading image...</p>
+                  <p className="text-[9px] text-amber-400 mt-0.5 animate-pulse">
+                    {uploadRetryInfo
+                      ? `Retrying upload… (${uploadRetryInfo.attempt}/${uploadRetryInfo.max})`
+                      : 'Uploading image…'}
+                  </p>
                 )}
                 {/* Fallback: manual URL entry */}
                 <div className="mt-2">
