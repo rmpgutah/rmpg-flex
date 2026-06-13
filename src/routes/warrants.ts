@@ -1828,31 +1828,42 @@ warrants.get('/national-coverage', requireRole(...READ_ROLES), async (c) => {
 });
 
 // POST /warrants/national-search — query the cached scraped_warrants across all sources.
-// Body: { last_name, first_name, dob, state, charge_keyword, warrant_type }
+// Body: { last_name, first_name, dob, state, charge_keyword, warrant_type, offense_level }
 // Returns { total, search_time_ms, by_state, local }.
+// Field names in the SELECT are aliased to match what NationalWarrantSearchPage reads:
+//   source_key→source, date_of_birth→dob, charge_description→charges,
+//   court_name→court, bail_amount→bond_amount, issue_date→issued_date.
+//   offense_level and status are included verbatim (page reads both).
 warrants.post('/national-search', requireRole(...READ_ROLES), async (c) => {
   const startedAt = Date.now();
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   const s = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  // Escape LIKE metacharacters so user input can't accidentally widen the match.
+  const likeContains = (v: string) => `%${v.replace(/[%_\\]/g, '\\$&')}%`;
   try {
     const db = getDb(c.env);
     const filters: string[] = ["status = 'active'"];
     const params: unknown[] = [];
     const last = s(body.last_name);
-    if (last) { filters.push("(last_name LIKE ? ESCAPE '\\' OR full_name LIKE ? ESCAPE '\\')"); params.push(`%${last}%`, `%${last}%`); }
+    if (last) { filters.push("(last_name LIKE ? ESCAPE '\\' OR full_name LIKE ? ESCAPE '\\')"); params.push(likeContains(last), likeContains(last)); }
     const first = s(body.first_name);
-    if (first) { filters.push("(first_name LIKE ? ESCAPE '\\' OR full_name LIKE ? ESCAPE '\\')"); params.push(`%${first}%`, `%${first}%`); }
+    if (first) { filters.push("(first_name LIKE ? ESCAPE '\\' OR full_name LIKE ? ESCAPE '\\')"); params.push(likeContains(first), likeContains(first)); }
     const dob = s(body.dob);
     if (dob) { filters.push('date_of_birth = ?'); params.push(dob); }
     const st = s(body.state);
     if (st) { filters.push('UPPER(state) = ?'); params.push(st.toUpperCase()); }
     const chg = s(body.charge_keyword);
-    if (chg) { filters.push("charge_description LIKE ? ESCAPE '\\'"); params.push(`%${chg}%`); }
+    if (chg) { filters.push("charge_description LIKE ? ESCAPE '\\'"); params.push(likeContains(chg)); }
     const wt = s(body.warrant_type);
-    if (wt) { filters.push("warrant_type LIKE ? ESCAPE '\\'"); params.push(`%${wt}%`); }
+    if (wt) { filters.push("warrant_type LIKE ? ESCAPE '\\'"); params.push(likeContains(wt)); }
+    const ol = s(body.offense_level);
+    if (ol) { filters.push("offense_level LIKE ? ESCAPE '\\'"); params.push(likeContains(ol)); }
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT source_key, full_name, first_name, last_name, date_of_birth, age, city, state,
-              charge_description, court_name, case_number, bail_amount, issue_date, warrant_type, photo_url, detail_url, kind
+      `SELECT source_key AS source, full_name, first_name, last_name,
+              date_of_birth AS dob, age, city, state,
+              charge_description AS charges, court_name AS court, case_number,
+              bail_amount AS bond_amount, issue_date AS issued_date,
+              warrant_type, offense_level, status, photo_url, detail_url, kind
          FROM scraped_warrants WHERE ${filters.join(' AND ')} ORDER BY last_seen_at DESC LIMIT 500`,
       ...params);
     const byState: Record<string, Record<string, unknown>[]> = {};
