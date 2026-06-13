@@ -12,4 +12,9 @@ describe('sanitizePdfText', () => {
   it('still decodes entities and uppercases in preserveMarkers mode', () => {
     expect(sanitizePdfText('a &amp; **b**', { preserveMarkers: true })).toBe('A & **B**');
   });
+  it('keeps leading indentation (list nesting depth) but collapses interior double-spaces', () => {
+    expect(sanitizePdfText('  1. x', { preserveMarkers: true })).toBe('  1. X');
+    expect(sanitizePdfText('    - deep', { preserveMarkers: true })).toBe('    - DEEP');
+    expect(sanitizePdfText('a   b', { preserveMarkers: true })).toBe('A B');
+  });
 });
