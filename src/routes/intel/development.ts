@@ -12,7 +12,7 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
 import {
   canTransition, nextReportNumber, computeReviewDate, gradeLabel, confidenceScore,
-  type IntelReport, type IntelStatus,
+  type IntelReport,
 } from '../../utils/intelDevelopment';
 
 const operational = requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher');
@@ -25,7 +25,7 @@ const isSup = (c: any) =>
 function redact(r: any, sup: boolean, ownerId: number, viewerId: number): any {
   if (sup || r.submitted_by === viewerId) return r;
   const { raw_narrative, source_id, source_type, ...safe } = r;
-  return { ...safe, raw_narrative: null, _redacted: true };
+  return { ...safe, source_id: null, source_type: null, raw_narrative: null, _redacted: true };
 }
 
 export const intelReports = new Hono<Env>();
@@ -119,8 +119,16 @@ intelReports.post('/:id/evaluate', supervisorPlus, async (c) => {
   const b = await c.req.json().catch(() => ({}));
   const r = await loadReport(db, id);
   if (!r) return c.json({ error: 'not found' }, 404);
+  const RELIABILITY_CODES = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const HANDLING_CODES = ['H1', 'H2', 'H3', 'H4', 'H5'];
+  if (!RELIABILITY_CODES.includes(String(b.source_reliability)))
+    return c.json({ error: 'source_reliability must be A–F' }, 400);
+  if (!(Number(b.info_credibility) >= 1 && Number(b.info_credibility) <= 6))
+    return c.json({ error: 'info_credibility must be 1–6' }, 400);
+  if (!HANDLING_CODES.includes(String(b.handling_code)))
+    return c.json({ error: 'handling_code must be H1–H5' }, 400);
   const merged = { ...r, source_reliability: b.source_reliability, info_credibility: b.info_credibility, handling_code: b.handling_code } as IntelReport;
-  const gate = canTransition(merged, 'graded', String((c.get('user') as any)?.role || ''));
+  const gate = canTransition(merged, 'graded', String((c.get('user') as { role?: string })?.role || ''));
   if (!gate.ok) return c.json({ error: gate.reason }, 422);
   await execute(db,
     `UPDATE intel_reports SET source_reliability=?, info_credibility=?, handling_code=?,
@@ -138,7 +146,7 @@ intelReports.post('/:id/analyze', supervisorPlus, async (c) => {
   const r = await loadReport(db, id);
   if (!r) return c.json({ error: 'not found' }, 404);
   const merged = { ...r, sanitized_narrative: b.sanitized_narrative, assessment: b.assessment, criminal_predicate: b.criminal_predicate } as IntelReport;
-  const gate = canTransition(merged, 'analyzed', String((c.get('user') as any)?.role || ''));
+  const gate = canTransition(merged, 'analyzed', String((c.get('user') as { role?: string })?.role || ''));
   if (!gate.ok) return c.json({ error: gate.reason }, 422);
   await execute(db,
     `UPDATE intel_reports SET sanitized_narrative=?, assessment=?, criminal_predicate=?,
@@ -156,7 +164,7 @@ intelReports.post('/:id/disseminate', supervisorPlus, async (c) => {
   const b = await c.req.json().catch(() => ({}));
   const r = await loadReport(db, id);
   if (!r) return c.json({ error: 'not found' }, 404);
-  const gate = canTransition(r, 'disseminated', String((c.get('user') as any)?.role || ''));
+  const gate = canTransition(r, 'disseminated', String((c.get('user') as { role?: string })?.role || ''));
   if (!gate.ok) return c.json({ error: gate.reason }, 422);
   const reviewDate = computeReviewDate(new Date().toISOString(), r.handling_code || 'H1');
   await execute(db,
@@ -198,7 +206,7 @@ intelReports.post('/:id/recall', supervisorPlus, async (c) => {
   const r = await loadReport(db, id);
   if (!r) return c.json({ error: 'not found' }, 404);
   const merged = { ...r, recalled_reason: b.reason } as IntelReport;
-  const gate = canTransition(merged, 'recalled', String((c.get('user') as any)?.role || ''));
+  const gate = canTransition(merged, 'recalled', String((c.get('user') as { role?: string })?.role || ''));
   if (!gate.ok) return c.json({ error: gate.reason }, 422);
   await execute(db,
     `UPDATE intel_reports SET status='recalled', recalled_reason=?, updated_at=datetime('now') WHERE id=?`,
@@ -216,7 +224,7 @@ intelReports.post('/:id/reject', supervisorPlus, async (c) => {
   const r = await loadReport(db, id);
   if (!r) return c.json({ error: 'not found' }, 404);
   const merged = { ...r, rejected_reason: b.reason } as IntelReport;
-  const gate = canTransition(merged, 'rejected', String((c.get('user') as any)?.role || ''));
+  const gate = canTransition(merged, 'rejected', String((c.get('user') as { role?: string })?.role || ''));
   if (!gate.ok) return c.json({ error: gate.reason }, 422);
   await execute(db,
     `UPDATE intel_reports SET status='rejected', rejected_reason=?, updated_at=datetime('now') WHERE id=?`,
