@@ -6,9 +6,10 @@ import {
   AlertTriangle, Plus, Search, Edit, Trash2, CheckCircle, XCircle, Clock,
   Loader2, Archive, RotateCcw, MapPin, User, Gavel, ChevronDown, X, Scale, Radar,
   PlayCircle, History, Globe, Shield, FileText, Activity, Zap, Printer, Download,
-  UserCheck, Eye, Pencil,
+  UserCheck, Eye, Pencil, ShieldAlert,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { ScreeningWorkspace } from './ScreeningPage';
 import IconButton from '../components/IconButton';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
@@ -344,12 +345,13 @@ const SEVERITY_COLORS: Record<string, string> = {
   civil: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
 };
 
-type TabId = 'dashboard' | 'warrants' | 'search-all' | 'watch' | 'sources' | 'scrapers';
+type TabId = 'dashboard' | 'warrants' | 'search-all' | 'screening' | 'watch' | 'sources' | 'scrapers';
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }>; roleGated?: boolean }[] = [
   { id: 'dashboard', label: 'DASHBOARD', icon: Activity },
   { id: 'warrants', label: 'WARRANTS', icon: Gavel },
   { id: 'search-all', label: 'SEARCH ALL', icon: Globe },
+  { id: 'screening', label: 'SCREENING', icon: ShieldAlert },
   { id: 'watch', label: 'WATCH LIST', icon: Radar },
   { id: 'sources', label: 'SOURCES', icon: Shield, roleGated: true },
   { id: 'scrapers', label: 'SCRAPERS', icon: Zap, roleGated: true },
@@ -1447,7 +1449,7 @@ export default function WarrantsPage() {
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface-deep">
       {/* ---- TITLE BAR ---- */}
-      <PanelTitleBar title="WARRANTS" icon={AlertTriangle}>
+      <PanelTitleBar title="WARRANT SEARCH" icon={AlertTriangle}>
         <RmpgLogo height={16} iconOnly />
         <span className="toolbar-separator" />
         {activeTab === 'warrants' && !showArchived && (
@@ -3603,6 +3605,17 @@ export default function WarrantsPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================
+          TAB: SCREENING — INTERPOL / OFAC / Utah SOR external screening
+         ================================================================ */}
+      {activeTab === 'screening' && (
+        <div className="flex-1 overflow-auto">
+          <div className="p-4">
+            <ScreeningWorkspace />
           </div>
         </div>
       )}
