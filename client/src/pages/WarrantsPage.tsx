@@ -2020,7 +2020,7 @@ export default function WarrantsPage() {
                         <span className="text-xs font-mono font-bold text-white">{w.warrant_number || '-'}</span>
                         <div className="flex items-center gap-1">
                           <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
-                            {w.type.toUpperCase()}
+                            {(w.type || 'WARRANT').toUpperCase()}
                           </span>
                           <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
                             {formatEnumValue(w.status)}
@@ -2133,7 +2133,7 @@ export default function WarrantsPage() {
                         <td>
                           <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
                             {(() => { const Icon = TYPE_ICONS[w.type] || TYPE_ICONS.other; return <Icon className="w-3 h-3" />; })()}
-                            {w.type.toUpperCase()}
+                            {(w.type || 'WARRANT').toUpperCase()}
                           </span>
                         </td>
                         <td className="text-xs text-rmpg-300 truncate max-w-[200px]">{chargesFromJson(w.charge_description)}</td>
@@ -2228,7 +2228,7 @@ export default function WarrantsPage() {
                       <h2 className="text-lg font-bold text-white font-mono">{selectedWarrant.warrant_number}</h2>
                       <div className="flex items-center gap-2 mt-1">
                         <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border ${TYPE_COLORS[selectedWarrant.type] || TYPE_COLORS.other}`}>
-                          {selectedWarrant.type.toUpperCase()} WARRANT
+                          {(selectedWarrant.type || 'WARRANT').toUpperCase()} WARRANT
                         </span>
                         <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[selectedWarrant.status] || ''}`}>
                           {formatEnumValue(selectedWarrant.status)}
@@ -3721,7 +3721,7 @@ export default function WarrantsPage() {
                               {formatEnumValue(w.status)}
                             </span>
                             <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
-                              {w.type.toUpperCase()}
+                              {(w.type || 'WARRANT').toUpperCase()}
                             </span>
                           </div>
                           <div className="text-xs text-rmpg-300">{chargesFromJson(w.charge_description)}</div>

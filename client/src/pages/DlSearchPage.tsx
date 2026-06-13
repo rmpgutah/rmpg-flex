@@ -185,6 +185,8 @@ export default function DlSearchPage() {
   const [sorUrl, setSorUrl] = useState('');
   const [sorKey, setSorKey] = useState('');
   const [clToken, setClToken] = useState('');
+  const [sorImportText, setSorImportText] = useState('');
+  const [sorImporting, setSorImporting] = useState(false);
 
   const loadSources = useCallback(() => {
     apiFetch<any>('/dl-records/sources-config')
@@ -213,6 +215,42 @@ export default function DlSearchPage() {
       loadSources();
     } catch (err: any) { addToast(err?.message || 'Poll failed', 'error'); }
   }, [addToast, loadSources]);
+
+  // Bulk-import offender rows the agency lawfully holds — JSON array or CSV
+  // (first row = headers). Backend /sor/import dedups on registry_id and
+  // tolerantly aliases field names, so loose column names still map.
+  const importSor = useCallback(async () => {
+    const text = sorImportText.trim();
+    if (!text) return;
+    let rows: any[] = [];
+    try {
+      if (text.startsWith('[') || text.startsWith('{')) {
+        const parsed = JSON.parse(text);
+        rows = Array.isArray(parsed) ? parsed : (parsed.rows ?? parsed.data ?? parsed.offenders ?? []);
+      } else {
+        // CSV → array of objects keyed by the header row.
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        const headers = lines[0].split(',').map(h => h.trim());
+        rows = lines.slice(1).map(line => {
+          const cells = line.split(',');
+          return Object.fromEntries(headers.map((h, i) => [h, (cells[i] ?? '').trim()]));
+        });
+      }
+    } catch {
+      addToast('Could not parse — paste a JSON array or CSV with a header row', 'error');
+      return;
+    }
+    if (!rows.length) { addToast('No rows found to import', 'warning'); return; }
+    setSorImporting(true);
+    try {
+      const r = await apiFetch<any>('/dl-records/sor/import', { method: 'POST', body: JSON.stringify({ rows }) });
+      addToast(`Imported ${r?.imported ?? 0} of ${rows.length} offender record(s)`, 'success');
+      setSorImportText('');
+      loadSources();
+    } catch (err: any) {
+      addToast(err?.message || 'Import failed', 'error');
+    } finally { setSorImporting(false); }
+  }, [sorImportText, addToast, loadSources]);
 
   const loadScanHistory = useCallback((mine: boolean) => {
     setScanHistoryLoading(true);
@@ -1127,6 +1165,25 @@ export default function DlSearchPage() {
                     <p className="text-[8px] text-[#556677]">Last poll: {sourcesCfg.sor_last_run.status} · {sourcesCfg.sor_last_run.records_upserted} upserted · {parseTimestamp(sourcesCfg.sor_last_run.ran_at).toLocaleString()}</p>
                   )}
                   <button type="button" onClick={runSorPoll} className="px-2.5 py-1 bg-[#141414] border border-[#2e2e2e] rounded-sm text-[9px] font-bold text-[#c0ccdd] hover:text-white">Run poll now</button>
+
+                  {/* Bulk import — for agencies with no live feed: paste the
+                      data you lawfully hold (BCI export, OffenderWatch dump). */}
+                  <div className="pt-2 mt-1 border-t border-[#1a1a1a] space-y-1.5">
+                    <label className="text-[8px] text-[#556677] uppercase font-mono">Bulk import (JSON array or CSV with header row)</label>
+                    <textarea
+                      className="input-dark text-[9px] w-full font-mono leading-snug"
+                      rows={4}
+                      placeholder='[{"last_name":"Doe","first_name":"John","date_of_birth":"1980-01-01","offense":"...","risk_level":"2"}]  — or CSV: last_name,first_name,dob,offense,...'
+                      value={sorImportText}
+                      onChange={e => setSorImportText(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      onClick={importSor}
+                      disabled={sorImporting || !sorImportText.trim()}
+                      className="px-2.5 py-1 bg-[#141414] border border-[#2e2e2e] rounded-sm text-[9px] font-bold text-[#c0ccdd] hover:text-white disabled:opacity-40"
+                    >{sorImporting ? 'Importing…' : 'Import records'}</button>
+                  </div>
                 </div>
               </div>
 

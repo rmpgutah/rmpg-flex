@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var cfToken = KeychainStore.load(key: "cfToken") ?? ""
     @State private var rmpgUser = KeychainStore.load(key: "rmpgUser") ?? ""
     @State private var rmpgPass = KeychainStore.load(key: "rmpgPass") ?? ""
+    @State private var verifierToken = KeychainStore.load(key: "verifierToken") ?? ""
     @State private var status: String?
     @State private var busy = false
 
@@ -28,6 +29,11 @@ struct SettingsView: View {
                     Button("Test login") { Task { await testLogin() } }
                         .disabled(busy)
                 }
+                Section("WIRELESS ID (APPLE VERIFIER API)") {
+                    SecureField("Reader token (valid ~48 h)", text: $verifierToken)
+                    Text("From Apple's verifier service after Business Connect enrollment; the bundle id also needs the Verifier API capability in Xcode.")
+                        .font(.system(size: 10)).foregroundStyle(Theme.neutral)
+                }
                 Section {
                     Button("Save all to Keychain") { save() }
                         .fontWeight(.semibold)
@@ -49,6 +55,7 @@ struct SettingsView: View {
         KeychainStore.save(cfToken.trimmingCharacters(in: .whitespaces), key: "cfToken")
         KeychainStore.save(rmpgUser.trimmingCharacters(in: .whitespaces), key: "rmpgUser")
         KeychainStore.save(rmpgPass, key: "rmpgPass")
+        KeychainStore.save(verifierToken.trimmingCharacters(in: .whitespacesAndNewlines), key: "verifierToken")
         status = "Saved."
     }
 

@@ -44,7 +44,10 @@ final class AudioRecorder: NSObject, ObservableObject {
 
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .defaultToSpeaker])
+            // allowBluetoothHFP is the current name for the old allowBluetooth
+            // (Hands-Free Profile route) — lets the officer record through a
+            // paired earpiece. Pure rename, back-deploys to the iOS 17 target.
+            try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothHFP, .defaultToSpeaker])
             try session.setActive(true)
 
             var body: [String: Any] = ["mime": RecordingChunking.mime]
