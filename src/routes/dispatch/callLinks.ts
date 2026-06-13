@@ -716,7 +716,8 @@ links.post('/calls/:id/businesses/quick-add', async (c) => {
   const ref = await findOrCreateBusiness(db, {
     name: body.name.trim(), address: body.address || null, city: body.city || null,
     state: body.state || null, zip: body.zip || null, phone: body.phone || null,
-  } as any);
+    business_type: 'other', notes: 'Added via dispatch call linkage',
+  });
   await execute(
     db,
     `INSERT OR IGNORE INTO call_businesses (call_id, business_id, role, added_by, created_at)
