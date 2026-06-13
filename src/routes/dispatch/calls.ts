@@ -11,7 +11,7 @@ import { geocodeAddress } from '../geocode';
 import { resolveDistrict } from '../../utils/districtResolver';
 import { parseUnitIds, canonicalUnitIdsJson } from './unitIds';
 import { setFleetOdometer, vehicleOdometerForUnit } from '../../utils/fleetOdometer';
-import { codedLike } from '../../utils/searchText';
+import { codedLike, escapeLike } from '../../utils/searchText';
 
 const calls = new Hono<Env>();
 
@@ -89,9 +89,10 @@ calls.get('/', async (c) => {
     if (startDate) { where += ' AND c.created_at >= ?'; params.push(startDate); }
     if (endDate) { where += ' AND c.created_at <= ?'; params.push(endDate); }
     if (search) {
-      const itLike = codedLike('c.incident_type', search.trim());
-      where += ` AND (c.call_number LIKE ? OR ${itLike.sql} OR c.location_address LIKE ? OR c.description LIKE ?)`;
-      const s = `%${search}%`; params.push(s, ...itLike.binds, s, s);
+      const raw = search.trim();
+      const itLike = codedLike('c.incident_type', raw);
+      where += ` AND (c.call_number LIKE ? ESCAPE '\\' OR ${itLike.sql} OR c.location_address LIKE ? ESCAPE '\\' OR c.description LIKE ? ESCAPE '\\')`;
+      const s = `%${escapeLike(raw)}%`; params.push(s, ...itLike.binds, s, s);
     }
     if (archived === 'true') where += " AND c.status = 'archived'";
     else if (archived !== 'all') where += " AND c.status != 'archived'";
