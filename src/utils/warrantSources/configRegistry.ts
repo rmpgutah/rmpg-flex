@@ -3,6 +3,20 @@ import type { WarrantSourceAdapter, RawWarrantHit, SourceKind, WarrantCategory }
 import { query } from '../db';
 import { parseSocrata, type FieldMap } from './parse/socrata';
 import { parseArcgis } from './parse/arcgis';
+import { fetchPdfText } from './pdfText';
+import { parseZuercherPdf } from './parse/pdfZuercher';
+import { parseTxMuniPdf } from './parse/pdfTxMuni';
+import { parseNewtonPdf } from './parse/pdfNewton';
+
+type PdfParser = (text: string, sourceKey: string, state: string) => RawWarrantHit[];
+/** PDF layout families: each maps to a parser + whether it needs line-preserving
+ *  text (mergePages:false). Zuercher reconstructs from the flat stream; the all-caps
+ *  TX-muni / column-major Newton layouts need row newlines. */
+const PDF_FAMILIES: Record<string, { parse: PdfParser; lines: boolean }> = {
+  'pdf-zuercher': { parse: parseZuercherPdf, lines: false },
+  'pdf-txmuni': { parse: parseTxMuniPdf, lines: true },
+  'pdf-newton': { parse: parseNewtonPdf, lines: true },
+};
 
 interface SourceRow {
   source_key: string; family: string; display_name: string; state: string | null;
@@ -53,6 +67,14 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
         }
         return out;
       } catch { return []; }
+    } };
+  }
+  const pdf = PDF_FAMILIES[row.family];
+  if (pdf) {
+    return { meta, mode: 'full-list', async fetchAll(): Promise<RawWarrantHit[]> {
+      const text = await fetchPdfText(row.base_url ?? '', { lines: pdf.lines });
+      if (!text) return [];  // URL 404'd / no text layer — degrade gracefully, don't throw
+      try { return pdf.parse(text, row.source_key, row.state ?? 'US'); } catch { return []; }
     } };
   }
   return null;
