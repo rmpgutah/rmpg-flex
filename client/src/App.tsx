@@ -103,7 +103,6 @@ const BodyCamerasPage = lazyRetry(() => import('./pages/BodyCamerasPage'));
 const DashCamerasPage = lazyRetry(() => import('./pages/DashCamerasPage'));
 const TrainingDocsPage = lazyRetry(() => import('./pages/TrainingDocsPage'));
 const TrainingPage = lazyRetry(() => import('./pages/TrainingPage'));
-const ForensicsPage = lazyRetry(() => import('./pages/ForensicsPage'));
 const ForensicLabPage = lazyRetry(() => import('./pages/ForensicLabPage'));
 const SkipTracerPage = lazyRetry(() => import('./pages/SkipTracerPage'));
 const SkipTracerV2Page = lazyRetry(() => import('./pages/skiptracer/SkipTracerV2Page'));
@@ -472,6 +471,7 @@ function AppRoutes() {
             <Route path="/intel/reports" element={<RouteErrorBoundary><IntelReportsPage /></RouteErrorBoundary>} />
             <Route path="/intel/reports/:id" element={<RouteErrorBoundary><IntelReportDetailPage /></RouteErrorBoundary>} />
             <Route path="/intel/sources" element={<RouteErrorBoundary><IntelSourcesPage /></RouteErrorBoundary>} />
+            <Route path="/intel/workbench" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
             <Route path="/code-enforcement" element={<RouteErrorBoundary><CodeEnforcementPage /></RouteErrorBoundary>} />
             <Route path="/court" element={<RouteErrorBoundary><CourtTrackerPage /></RouteErrorBoundary>} />
             <Route path="/dar" element={<RouteErrorBoundary><DailyActivityReportsPage /></RouteErrorBoundary>} />
@@ -482,7 +482,7 @@ function AppRoutes() {
             <Route path="/audit" element={<AdminRoute><RouteErrorBoundary><AuditLogPage /></RouteErrorBoundary></AdminRoute>} />
             <Route path="/training" element={<RouteErrorBoundary><TrainingPage /></RouteErrorBoundary>} />
             <Route path="/training-docs" element={<RouteErrorBoundary><TrainingDocsPage /></RouteErrorBoundary>} />
-            <Route path="/forensics" element={<RouteErrorBoundary><ForensicsPage /></RouteErrorBoundary>} />
+            <Route path="/forensics" element={<Navigate to="/connections" replace />} />
             <Route path="/forensic-lab" element={<RouteErrorBoundary><ForensicLabPage /></RouteErrorBoundary>} />
             <Route path="/skip-tracer" element={<RouteErrorBoundary><SkipTracerPage /></RouteErrorBoundary>} />
             <Route path="/microbilt" element={<RouteErrorBoundary><SkipTracerV2Page /></RouteErrorBoundary>} />

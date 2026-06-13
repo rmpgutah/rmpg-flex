@@ -109,6 +109,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { path: '/intel/reports', icon: FileText, label: 'Intel Products' },
       { path: '/intel/sources', icon: Network, label: 'Source Registry' },
+      { path: '/intel/workbench', icon: Share2, label: 'Intel Workbench' },
     ],
   },
   {
