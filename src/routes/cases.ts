@@ -5,15 +5,15 @@
 //
 // Migration: 0028_cases.sql (cases + case_notes + case_person_links).
 //
-// Scope (this PR — 18 endpoints):
-//   Core CRUD + workflow + notes + persons junction + export.
+// Scope:
+//   Core CRUD + workflow + notes + solvability (calc + live read) +
+//   export, plus the full entity-junction set the detail view links:
+//   persons (case_person_links) and calls/incidents/vehicles/properties/
+//   evidence/warrants/citations (case_<type> tables via the generic loop
+//   below). GET /:id/full aggregates every junction for the detail tabs.
 //
-// Deferred to follow-up PR (case-junctions):
-//   - GET/POST/DELETE × 6 junction tables (incidents, evidence,
-//     vehicles, properties, warrants, citations, calls) — 18 endpoints
-//   - GET /:id/timeline, /:id/evidence-summary, /:id/full,
-//     /:id/completeness — aggregations dependent on junctions
-//   - POST /migrate-json-to-junctions — admin one-time backfill
+// Junction reads/writes share a table: link-POST and GET /:id/full both
+// hit the same case_<type> table so an attached record shows immediately.
 //
 // Both legacy JSON columns AND junction tables stay populated for
 // backward-compat: writes to /:id mirror the cases.linked_persons
@@ -507,27 +507,28 @@ cases.post('/:id/notes', async (c) => {
   }
 });
 
-// ── POST /:id/calculate-solvability ─────────────────────────
-// Solvability scoring — sum of weighted factor contributions stored
-// as a JSON object on cases.solvability_factors, with the rolled-up
-// score on cases.solvability_score. Factor weights mirror legacy
-// (~ Spillman-derived heuristic — see SOLVABILITY_FACTORS map below).
+// ── Solvability scoring ─────────────────────────────────────
+// Manual-calculator factor weights. These keys + weights MUST stay in
+// lock-step with the client's SOLVABILITY_FACTORS array
+// (client/src/pages/CaseManagementPage.tsx) — the UI sends these exact
+// keys and renders a live preview using the same weights, so any drift
+// makes the stored score disagree with what the investigator saw.
+// Weights sum to 100 at full marks. Tune deliberately on both sides.
 const SOLVABILITY_FACTORS: Record<string, number> = {
-  has_witness: 20,
-  has_suspect_description: 15,
-  has_suspect_name: 25,
-  has_vehicle_info: 15,
-  has_physical_evidence: 20,
-  has_video: 25,
-  has_fingerprints: 30,
-  has_dna: 35,
-  victim_can_identify: 20,
-  suspect_in_custody: 50,
-  // Negative-impact factors deduct from the score
-  multi_jurisdiction: -10,
-  cold_case: -15,
+  witness_available: 15,
+  physical_evidence: 20,
+  suspect_named: 25,
+  suspect_described: 10,
+  suspect_vehicle: 10,
+  video_available: 10,
+  traceable_property: 5,
+  significant_modus: 5,
 };
 
+// ── POST /:id/calculate-solvability ─────────────────────────
+// Persists a manual solvability assessment. The flat factor map is stored
+// verbatim on cases.solvability_factors so the client can re-hydrate its
+// checkboxes; the rolled-up score lands on cases.solvability_score.
 cases.post('/:id/calculate-solvability', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
@@ -538,7 +539,12 @@ cases.post('/:id/calculate-solvability', async (c) => {
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM cases WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
 
-    const factors = await c.req.json<Record<string, boolean>>();
+    // The client posts { factors: { witness_available: true, ... } }; older
+    // callers posted the flat map directly — accept either shape.
+    const body = await c.req.json<Record<string, any>>().catch(() => ({} as Record<string, any>));
+    const factors: Record<string, boolean> =
+      body && typeof body.factors === 'object' && body.factors ? body.factors : body;
+
     let score = 0;
     const breakdown: Record<string, number> = {};
     for (const [key, weight] of Object.entries(SOLVABILITY_FACTORS)) {
@@ -547,17 +553,75 @@ cases.post('/:id/calculate-solvability', async (c) => {
         breakdown[key] = weight;
       }
     }
-    // Clamp 0..100
     score = Math.max(0, Math.min(100, score));
 
     await execute(
       db,
       `UPDATE cases SET solvability_score = ?, solvability_factors = ?, updated_at = datetime('now') WHERE id = ?`,
-      score, JSON.stringify({ factors, breakdown, calculated_at: new Date().toISOString() }), id,
+      // Store the FLAT factor map — the detail view reads it straight back
+      // into its checkbox state (CaseManagementPage line ~477).
+      score, JSON.stringify(factors), id,
     );
     return c.json({ data: { id, score, breakdown } });
   } catch (err) {
     return c.json({ error: 'Failed to calculate solvability', code: 'SOLVABILITY_ERROR' }, 500);
+  }
+});
+
+// ── GET /:id/solvability — live read-only analysis ──────────
+// Powers the "Server Analysis" card. Independent of the manual calculator:
+// it tallies the case's actual linked records and blends in any stored
+// (investigator-calculated) score, never dropping below the live floor so
+// freshly-attached evidence is always reflected.
+cases.get('/:id/solvability', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const caseRow = await queryFirst<{ id: number; solvability_score: number | null; solvability_factors: string | null }>(
+      db, 'SELECT id, solvability_score, solvability_factors FROM cases WHERE id = ?', id,
+    );
+    if (!caseRow) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
+
+    // Per-tally helper — a missing/drifted junction table yields 0, never 500.
+    const tally = async (sql: string): Promise<number> => {
+      try { return (await queryFirst<{ n: number }>(db, sql, id))?.n ?? 0; } catch { return 0; }
+    };
+    const evidence_count = await tally('SELECT COUNT(*) n FROM case_evidence WHERE case_id = ?');
+    const witness_count = await tally(
+      `SELECT COUNT(*) n FROM case_person_links WHERE case_id = ? AND lower(COALESCE(relationship,'')) LIKE '%witness%'`,
+    );
+    const suspectLinks = await tally(
+      `SELECT COUNT(*) n FROM case_person_links WHERE case_id = ?
+         AND lower(COALESCE(relationship,'')) IN ('suspect','arrestee','offender','defendant')`,
+    );
+    const vehicle_count = await tally('SELECT COUNT(*) n FROM case_vehicles WHERE case_id = ?');
+    const person_count = await tally('SELECT COUNT(*) n FROM case_person_links WHERE case_id = ?');
+
+    // Stored manual factors can also assert a suspect (named / in custody).
+    let storedFactors: Record<string, boolean> = {};
+    try { if (caseRow.solvability_factors) storedFactors = JSON.parse(caseRow.solvability_factors); } catch { /* ignore */ }
+    const suspect_identified = suspectLinks > 0 || !!storedFactors.suspect_named || !!storedFactors.suspect_in_custody;
+
+    // Live-derived estimate from real linked records.
+    const factors: string[] = [];
+    let derived = 0;
+    if (suspect_identified) { derived += 30; factors.push('Suspect identified'); }
+    if (evidence_count > 0) { derived += Math.min(evidence_count, 4) * 10; factors.push(`${evidence_count} evidence item${evidence_count === 1 ? '' : 's'} on file`); }
+    if (witness_count > 0) { derived += Math.min(witness_count, 3) * 8; factors.push(`${witness_count} witness${witness_count === 1 ? '' : 'es'} available`); }
+    if (vehicle_count > 0) { derived += 10; factors.push(`${vehicle_count} vehicle${vehicle_count === 1 ? '' : 's'} linked`); }
+    if (person_count > 0 && !suspect_identified) { derived += 5; factors.push(`${person_count} person${person_count === 1 ? '' : 's'} of interest`); }
+    derived = Math.max(0, Math.min(100, derived));
+
+    const stored = typeof caseRow.solvability_score === 'number' ? caseRow.solvability_score : 0;
+    if (stored > derived) factors.unshift('Investigator-calculated assessment');
+    const score = Math.max(derived, Math.min(100, stored));
+    if (factors.length === 0) factors.push('No solvability factors recorded yet');
+
+    const rating = score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low';
+    return c.json({ score, rating, factors, evidence_count, witness_count, suspect_identified });
+  } catch (err) {
+    return c.json({ error: 'Failed to analyze solvability', code: 'SOLVABILITY_GET_ERROR' }, 500);
   }
 });
 
@@ -642,22 +706,118 @@ cases.put('/:id/persons/:personEntryId', async (c) => {
 });
 
 cases.delete('/:id/persons/:personEntryId', async (c) => {
-  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer');
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const caseId = parseInt(c.req.param('id'), 10);
-    const linkId = parseInt(c.req.param('personEntryId'), 10);
-    if (isNaN(caseId) || isNaN(linkId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
-    const result = await execute(
-      db, 'DELETE FROM case_person_links WHERE id = ? AND case_id = ?', linkId, caseId,
-    );
+    const ref = parseInt(c.req.param('personEntryId'), 10);
+    if (isNaN(caseId) || isNaN(ref)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    // The detail view passes the person's id (from /full); accept the link
+    // PK as a fallback for any older caller.
+    let result = await execute(db, 'DELETE FROM case_person_links WHERE person_id = ? AND case_id = ?', ref, caseId);
+    if (result.meta.changes === 0) {
+      result = await execute(db, 'DELETE FROM case_person_links WHERE id = ? AND case_id = ?', ref, caseId);
+    }
     if (result.meta.changes === 0) return c.json({ error: 'Link not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
     return c.json({ error: 'Failed to remove person link', code: 'PERSON_DELETE_ERROR' }, 500);
   }
 });
+
+// ═══════════════════════════════════════════════════════════════
+// GENERIC ENTITY JUNCTIONS — link/unlink record types to a case
+// ═══════════════════════════════════════════════════════════════
+// The case-detail EntityLinkManager links 8 record types. Each maps to a
+// legacy case_<type> junction table that GET /:id/full ALREADY reads from,
+// so writes and reads stay on the same table and a linked record shows up
+// immediately. `persons` is intentionally absent: its dedicated handlers
+// above own case_person_links (which create/PUT also mirror) and a static
+// route out-prioritises these `:entityType` params in Hono's router.
+//
+// Table/column names below come from this hardcoded allow-list, never from
+// the request, so interpolating them into SQL is safe.
+const CASE_JUNCTIONS: Record<string, { table: string; fk: string; entity: string }> = {
+  calls:      { table: 'case_calls',      fk: 'call_id',     entity: 'calls_for_service' },
+  incidents:  { table: 'case_incidents',  fk: 'incident_id', entity: 'incidents' },
+  vehicles:   { table: 'case_vehicles',   fk: 'vehicle_id',  entity: 'vehicles_records' },
+  properties: { table: 'case_properties', fk: 'property_id', entity: 'properties' },
+  evidence:   { table: 'case_evidence',   fk: 'evidence_id', entity: 'evidence' },
+  warrants:   { table: 'case_warrants',   fk: 'warrant_id',  entity: 'warrants' },
+  citations:  { table: 'case_citations',  fk: 'citation_id', entity: 'citations' },
+};
+
+// The client posts { <singular>_id: N } (e.g. { evidence_id: 5 }). Accept the
+// canonical fk first, then any *_id, then a bare id/entity_id, for resilience.
+function extractEntityId(body: Record<string, unknown>, fk: string): number | null {
+  const toId = (v: unknown): number | null => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
+  if (body[fk] != null) { const n = toId(body[fk]); if (n) return n; }
+  for (const [k, v] of Object.entries(body)) {
+    if (k !== 'case_id' && k.endsWith('_id')) { const n = toId(v); if (n) return n; }
+  }
+  return toId(body.id) ?? toId(body.entity_id);
+}
+
+// Register an explicit static link/unlink pair per entity type. Using
+// concrete paths (`/:id/evidence`, `/:id/evidence/:entityId`) instead of a
+// `/:id/:entityType` param keeps every route static and unambiguous — no
+// reliance on router static-vs-param precedence against /:id/notes etc.
+for (const [type, cfg] of Object.entries(CASE_JUNCTIONS)) {
+  // POST /:id/<type> — attach a record to a case
+  cases.post(`/:id/${type}`, async (c) => {
+    const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    try {
+      const db = getDb(c.env);
+      const caseId = parseInt(c.req.param('id'), 10);
+      if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+      const exists = await queryFirst<{ id: number }>(db, 'SELECT id FROM cases WHERE id = ?', caseId);
+      if (!exists) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
+
+      const body = await c.req.json<Record<string, unknown>>().catch(() => ({}));
+      const entityId = extractEntityId(body, cfg.fk);
+      if (!entityId) return c.json({ error: `${cfg.fk} is required`, code: 'ENTITY_ID_REQUIRED' }, 400);
+
+      // Best-effort existence check — never block the link if the target table drifts.
+      try {
+        const target = await queryFirst<{ id: number }>(db, `SELECT id FROM ${cfg.entity} WHERE id = ?`, entityId);
+        if (!target) return c.json({ error: `${type.replace(/s$/, '')} not found`, code: 'ENTITY_NOT_FOUND' }, 404);
+      } catch { /* target table unavailable — allow the link */ }
+
+      const userId = c.get('userId') as number | undefined;
+      const res = await execute(
+        db,
+        `INSERT OR IGNORE INTO ${cfg.table} (case_id, ${cfg.fk}, added_by) VALUES (?, ?, ?)`,
+        caseId, entityId, userId ?? null,
+      );
+      return c.json({ success: true, linked: res.meta.changes > 0 }, res.meta.changes > 0 ? 201 : 200);
+    } catch (err) {
+      return c.json({ error: 'Failed to link record', code: 'LINK_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  });
+
+  // DELETE /:id/<type>/:entityId — detach a record from a case
+  cases.delete(`/:id/${type}/:entityId`, async (c) => {
+    const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    try {
+      const db = getDb(c.env);
+      const caseId = parseInt(c.req.param('id'), 10);
+      const entityId = parseInt(c.req.param('entityId'), 10);
+      if (isNaN(caseId) || isNaN(entityId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+      // The client unlinks by the entity's own id; tolerate the junction PK too.
+      let res = await execute(db, `DELETE FROM ${cfg.table} WHERE case_id = ? AND ${cfg.fk} = ?`, caseId, entityId);
+      if (res.meta.changes === 0) {
+        res = await execute(db, `DELETE FROM ${cfg.table} WHERE case_id = ? AND id = ?`, caseId, entityId);
+      }
+      if (res.meta.changes === 0) return c.json({ error: 'Link not found', code: 'NOT_FOUND' }, 404);
+      return c.json({ success: true });
+    } catch (err) {
+      return c.json({ error: 'Failed to unlink record', code: 'UNLINK_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  });
+}
 
 // ── GET /export/csv — supervisor+ only ──────────────────────
 cases.get('/export/csv', async (c) => {
@@ -784,12 +944,16 @@ cases.get('/:id/full', async (c) => {
        ORDER BY i.created_at DESC`,
       id,
     );
+    // Read from case_person_links — the table create/PUT/link-POST all
+    // write to. `id` is the person's id (the detail view unlinks by it);
+    // link_id keeps the junction PK; relationship surfaces as `role`.
     const persons = await safeQuery<Record<string, unknown>>(
-      `SELECT cp.*, p.first_name, p.last_name, p.dob AS date_of_birth, p.phone, p.address
-       FROM case_persons cp
-       LEFT JOIN persons p ON cp.person_id = p.id
-       WHERE cp.case_id = ?
-       ORDER BY cp.created_at DESC`,
+      `SELECT cpl.id AS link_id, cpl.relationship AS role,
+              p.id, p.first_name, p.last_name, p.dob AS date_of_birth, p.phone, p.address
+       FROM case_person_links cpl
+       JOIN persons p ON cpl.person_id = p.id
+       WHERE cpl.case_id = ?
+       ORDER BY cpl.created_at DESC`,
       id,
     );
     const vehicles = await safeQuery<Record<string, unknown>>(
