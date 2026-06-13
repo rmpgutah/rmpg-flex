@@ -40,7 +40,8 @@ export async function sweepOnFootOverdue(db: D1Database, env: SweepEnv): Promise
     SELECT u.id, u.call_sign, usr.full_name AS officer_name,
            u.on_foot_since, u.on_foot_alerted, u.latitude, u.longitude
     FROM units u LEFT JOIN users usr ON usr.id = u.officer_id
-    WHERE u.on_foot = 1 AND u.on_foot_alerted = 0`);
+    WHERE u.on_foot = 1 AND u.on_foot_alerted = 0
+      AND u.status NOT IN ('off_duty','out_of_service')`);
   const overdue = findOverdueOnFoot(rows, Date.now());
   for (const r of overdue) {
     const mins = Math.round((Date.now() - Date.parse(r.on_foot_since!.replace(' ', 'T') + 'Z')) / 60_000);

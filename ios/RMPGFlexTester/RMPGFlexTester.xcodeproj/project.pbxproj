@@ -234,6 +234,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan driver license barcodes to relay identity data to your MDT desktop session.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Send your unit position to the dispatch map and attach coordinates to panic alerts.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Motion activity is used to detect when an officer is on foot for dispatch awareness and officer safety.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -259,6 +260,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan driver license barcodes to relay identity data to your MDT desktop session.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Send your unit position to the dispatch map and attach coordinates to panic alerts.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Motion activity is used to detect when an officer is on foot for dispatch awareness and officer safety.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
