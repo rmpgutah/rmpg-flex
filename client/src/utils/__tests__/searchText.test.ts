@@ -27,6 +27,9 @@ describe('coded', () => {
   it('works with no humanizer (raw only, lowercased)', () => {
     expect(coded('SomeValue')).toBe('somevalue');
   });
+  it('dedups case-only differences (humanizer returns upper-cased raw)', () => {
+    expect(coded('foo', (v) => String(v).toUpperCase())).toBe('foo');
+  });
 });
 
 describe('matchesQuery', () => {
@@ -40,6 +43,9 @@ describe('matchesQuery', () => {
   it('skips null/empty parts', () => {
     expect(matchesQuery('john', 'John Smith', null, undefined, '')).toBe(true);
   });
+  it('matchesQuery coerces numeric parts', () => {
+    expect(matchesQuery('101', 'some text', 101)).toBe(true);
+  });
 });
 
 describe('humanizeField / codedByKey', () => {
@@ -49,7 +55,7 @@ describe('humanizeField / codedByKey', () => {
     expect(humanizeField('priority', 'P1').toLowerCase()).toContain('emergency');
   });
   it('falls back to generic Title-Case for unknown keys', () => {
-    // formatEnumValue('foo_bar') → 'FOO BAR'; lowercased → 'foo bar'
+    // toDisplayLabel('foo_bar') → 'Foo Bar'; lowercased → 'foo bar'
     expect(humanizeField('some_other_key', 'foo_bar').toLowerCase()).toBe('foo bar');
   });
   it('codedByKey produces raw + humanized', () => {

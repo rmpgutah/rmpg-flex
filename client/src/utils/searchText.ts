@@ -9,6 +9,16 @@
 // docs/superpowers/specs/2026-06-12-humanized-search-linkage-design.md
 // ============================================================
 
+import {
+  humanizeType,
+  humanizePriority,
+  humanizeDisposition,
+  humanizeGender,
+  humanizeRace,
+  humanizeCaseType,
+} from './statusLabels';
+import { toDisplayLabel } from './formatters';
+
 type Humanizer = (v: string | null | undefined) => string;
 
 /**
@@ -26,16 +36,6 @@ export function coded(raw: string | null | undefined, humanizer?: Humanizer): st
     human && human.toLowerCase() !== rawStr.toLowerCase() ? [rawStr, human] : [rawStr];
   return parts.join(' ').toLowerCase();
 }
-
-import {
-  humanizeType,
-  humanizePriority,
-  humanizeDisposition,
-  humanizeGender,
-  humanizeRace,
-  humanizeCaseType,
-} from './statusLabels';
-import { formatEnumValue } from './formatters';
 
 /**
  * Convenience for NEW filter sites only: every whitespace-separated term in
@@ -74,7 +74,7 @@ const FIELD_HUMANIZERS: Record<string, Humanizer> = {
 /** Humanize a coded value by its field key, with generic Title-Case fallback. */
 export function humanizeField(key: string, raw: string | null | undefined): string {
   const h = FIELD_HUMANIZERS[key];
-  return h ? h(raw) : formatEnumValue(raw);
+  return h ? h(raw) : toDisplayLabel(raw ?? '');
 }
 
 /** coded() driven by the field key's mapped humanizer (or generic fallback). */
