@@ -77,7 +77,7 @@ describe('escapeLike', () => {
     expect(escapeLike('C:\\path')).toBe('C:\\\\path');
   });
 
-  it('leaves plain strings untouched', () => {
+  it('escapes an underscore even in what looks like a plain identifier', () => {
     expect(escapeLike('traffic_stop')).toBe('traffic\\_stop');
   });
 

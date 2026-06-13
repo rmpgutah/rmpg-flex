@@ -42,6 +42,9 @@ export function escapeLike(s: string): string {
 // or snake_case of their display label, so the base raw+snake_case path covers
 // them without any reverse-map entry.
 
+// ⚠️  Hand-maintained mirror of client/src/utils/statusLabels.ts. If that file
+//     changes (new status code, label rename), update this map too — there is
+//     no build-time check; drift causes silent search misses, not errors.
 const LABEL_TO_CODE: Record<string, string[]> = {
   // Priority words (from PRIORITY_LABELS)
   emergency:              ['P1'],
@@ -75,7 +78,13 @@ export function codeCandidates(term: string): string[] {
  * Build ( col LIKE ? ESCAPE '\' OR col LIKE ? ... ) plus escaped, wildcard-
  * wrapped binds for a human query term. Use for CODED columns only
  * (incident_type, status, priority, category, disposition). For an empty
- * term returns a never-match clause so callers can splice unconditionally.
+ * term returns a never-match clause `{sql:'0', binds:[]}`. This is
+ * safe to OR-splice (`... OR 0` is a no-op-style no-match); in an AND context
+ * (`... AND 0`) it returns ZERO rows, so guard the caller or check binds.length
+ * before splicing an AND.
+ *
+ * `col` MUST be a hard-coded column name, never user input — it is interpolated
+ * directly into the SQL string (only the bind VALUES are parameterized).
  */
 export function codedLike(col: string, term: string): { sql: string; binds: string[] } {
   const cands = codeCandidates(term);
