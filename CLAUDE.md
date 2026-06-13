@@ -76,22 +76,23 @@ deploy/             VPS deploy scripts — likely dead, retained until confirmed
 
 **Verify after every deploy**:
 ```bash
-# ⚠️ A Cloudflare **managed challenge** now fronts both zones, so a plain
-# `curl -sf https://api.rmpgutah.us/api/health` returns HTTP 403 ("Just a
-# moment…") even when the API is perfectly healthy — the bot check needs JS
-# + cookies that curl can't solve. Confirmed 2026-05-29 (also reproduced live:
-# the SPA + /dispatch load fine in a real browser while curl gets 403).
-# The old curl checks are NOT a valid signal anymore.
+# ✅ As of 2026-06-12, `curl -sf https://api.rmpgutah.us/api/health` WORKS again
+# (returns HTTP 200 + JSON). A WAF custom rule in the http_request_firewall_custom
+# phase (zone rmpgutah.us = addedd9f3c798f85de2d3eea18ccef9a; ruleset
+# fb286265c2ad4f009c3fbcb7aac35e6c, rule 472b15f78f50420f871dd6c71e990ac7)
+# SKIPs the managed challenge for `http.request.uri.path eq "/api/health"`:
+curl -sf https://api.rmpgutah.us/api/health   # expect {"status":"ok",...}
 
-# Working verification options (pick one):
+# ⚠️ The skip rule is scoped to /api/health ONLY. Every OTHER path on both zones
+# is still behind a Cloudflare **managed challenge**, so a plain curl to any other
+# endpoint (or the SPA) returns HTTP 403 ("Just a moment…") even when healthy —
+# the bot check needs JS + cookies curl can't solve (confirmed 2026-05-29). For
+# anything besides /api/health, use one of:
 # 1. Browser: open https://rmpgutah.us/ and https://api.rmpgutah.us/api/health
 #    in a real browser (solves the challenge) and eyeball the JSON / SPA shell.
 # 2. DB-level health (bypasses the WAF entirely) via the Cloudflare API/D1:
 #    query the LIVE DB `rmpg-flex` (785de7ae-3e7a-4e01-93bb-d24ddd813f6b),
 #    e.g. `SELECT COUNT(*) FROM sqlite_master WHERE type='table'` (expect ~180).
-# 3. Scripted HTTP: add a WAF "Skip → Managed Challenge" custom rule for
-#    `http.request.uri.path eq "/api/health"` (and/or gate it on a secret
-#    header), then `curl -sf` works again in CI.
 ```
 
 **Service worker cache**: bump `CACHE_NAME` in `client/public/sw.js` on every client change so users don't get stale chunks. Incident 2026-05-24: SW v321 lived in prod for weeks while source moved to v563 because the old `deploy.yml` only ran the Worker step. The new pipeline deploys both — but the SW bump is still required for cache invalidation.
