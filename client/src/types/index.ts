@@ -1283,8 +1283,9 @@ export interface PatrolScan {
 
 // --- Incident Linking ---
 
-export type PersonRole = 'suspect' | 'victim' | 'witness' | 'reporting_party' | 'involved' | 'other';
-export type VehicleRole = 'suspect_vehicle' | 'victim_vehicle' | 'witness_vehicle' | 'involved' | 'evidence' | 'other';
+// Roles are admin-configurable (open-ended via link_options table) — widened to string.
+export type PersonRole = string;
+export type VehicleRole = string;
 
 export interface IncidentPerson {
   id: string;

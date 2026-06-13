@@ -77,6 +77,7 @@ import NoteComposer from './components/NoteComposer';
 import CallDocumentsPanel from './components/CallDocumentsPanel';
 import { useDistrictOptions, normalizeSectorId } from '../../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../../hooks/useAddressAutofill';
+import { useLinkOptions } from '../../hooks/useLinkOptions';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import QuickPsoModal from '../../components/QuickPsoModal';
 import {
@@ -360,12 +361,18 @@ export default function DispatchPage() {
   const [vehicleSearchResults, setVehicleSearchResults] = useState<any[]>([]);
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
+  const [showBusinessDropdown, setShowBusinessDropdown] = useState(false);
+  const [businessQuery, setBusinessQuery] = useState('');
+  const [businessSearchResults, setBusinessSearchResults] = useState<any[]>([]);
   const personSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vehicleSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const businessSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const personAbortRef = useRef<AbortController | null>(null);
   const vehicleAbortRef = useRef<AbortController | null>(null);
+  const businessAbortRef = useRef<AbortController | null>(null);
   const personDropdownRef = useRef<HTMLDivElement>(null);
   const vehicleDropdownRef = useRef<HTMLDivElement>(null);
+  const businessDropdownRef = useRef<HTMLDivElement>(null);
   const [showCreatePersonModal, setShowCreatePersonModal] = useState(false);
   const [showCreateVehicleModal, setShowCreateVehicleModal] = useState(false);
   const [isCreatingRecord, setIsCreatingRecord] = useState(false);
@@ -443,21 +450,24 @@ export default function DispatchPage() {
     return () => {
       if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
       if (vehicleSearchTimerRef.current) clearTimeout(vehicleSearchTimerRef.current);
+      if (businessSearchTimerRef.current) clearTimeout(businessSearchTimerRef.current);
       if (personAbortRef.current) personAbortRef.current.abort();
       if (vehicleAbortRef.current) vehicleAbortRef.current.abort();
+      if (businessAbortRef.current) businessAbortRef.current.abort();
     };
   }, []);
 
-  // Close person/vehicle dropdowns on outside click
+  // Close person/vehicle/business dropdowns on outside click
   useEffect(() => {
-    if (!showPersonDropdown && !showVehicleDropdown) return;
+    if (!showPersonDropdown && !showVehicleDropdown && !showBusinessDropdown) return;
     const handler = (e: MouseEvent) => {
       if (showPersonDropdown && personDropdownRef.current && !personDropdownRef.current.contains(e.target as Node)) setShowPersonDropdown(false);
       if (showVehicleDropdown && vehicleDropdownRef.current && !vehicleDropdownRef.current.contains(e.target as Node)) setShowVehicleDropdown(false);
+      if (showBusinessDropdown && businessDropdownRef.current && !businessDropdownRef.current.contains(e.target as Node)) setShowBusinessDropdown(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [showPersonDropdown, showVehicleDropdown]);
+  }, [showPersonDropdown, showVehicleDropdown, showBusinessDropdown]);
 
   const searchPersons = useCallback((query: string) => {
     if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
@@ -497,6 +507,9 @@ export default function DispatchPage() {
   const [callVehicles, setCallVehicles] = useState<any[]>([]);
   const [linkPersonRole, setLinkPersonRole] = useState('involved');
   const [linkVehicleRole, setLinkVehicleRole] = useState('involved');
+  const [callBusinesses, setCallBusinesses] = useState<any[]>([]);
+  const [linkBusinessRole, setLinkBusinessRole] = useState('involved');
+  const { options: linkOptions } = useLinkOptions();
 
   const fetchCallPersons = useCallback(async (callId: string | number) => {
     try {
@@ -557,6 +570,67 @@ export default function DispatchPage() {
       fetchCallVehicles(callId);
     }
   }, [addToast, fetchCallVehicles]);
+
+  const fetchCallBusinesses = useCallback(async (callId: string | number) => {
+    try {
+      const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/businesses`);
+      setCallBusinesses(Array.isArray(data) ? data : []);
+    } catch { setCallBusinesses([]); }
+  }, []);
+
+  const searchBusinesses = useCallback((query: string) => {
+    setBusinessQuery(query);
+    if (businessSearchTimerRef.current) clearTimeout(businessSearchTimerRef.current);
+    if (businessAbortRef.current) businessAbortRef.current.abort();
+    if (query.trim().length < 2) { setBusinessSearchResults([]); setShowBusinessDropdown(false); return; }
+    businessSearchTimerRef.current = setTimeout(async () => {
+      try {
+        const controller = new AbortController();
+        businessAbortRef.current = controller;
+        const results = await apiFetch<any[]>(`/dispatch/business-search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+        setBusinessSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
+        setShowBusinessDropdown(true);
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') setBusinessSearchResults([]);
+      }
+    }, 300);
+  }, []);
+
+  const linkBusinessToCall = useCallback(async (callId: string | number, businessId: string | number, role: string) => {
+    try {
+      await apiFetch(`/dispatch/calls/${callId}/businesses`, {
+        method: 'POST', body: JSON.stringify({ business_id: businessId, role }),
+      });
+      fetchCallBusinesses(callId);
+    } catch (err: any) {
+      console.error('Link business error:', err);
+      addToast(err?.message || 'Failed to link business', 'error');
+    }
+  }, [fetchCallBusinesses, addToast]);
+
+  const quickAddBusiness = useCallback(async (callId: string | number, name: string, role: string) => {
+    try {
+      await apiFetch(`/dispatch/calls/${callId}/businesses/quick-add`, {
+        method: 'POST', body: JSON.stringify({ name, role }),
+      });
+      fetchCallBusinesses(callId);
+      setBusinessQuery(''); setBusinessSearchResults([]); setShowBusinessDropdown(false);
+    } catch (err: any) {
+      console.error('Quick-add business error:', err);
+      addToast(err?.message || 'Failed to add business', 'error');
+    }
+  }, [fetchCallBusinesses, addToast]);
+
+  const unlinkBusinessFromCall = useCallback(async (callId: string | number, linkId: string | number) => {
+    try {
+      await apiFetch(`/dispatch/calls/${callId}/businesses/${linkId}`, { method: 'DELETE' });
+      setCallBusinesses(prev => prev.filter(b => b.id !== linkId));
+    } catch (err: any) {
+      console.error('Unlink business error:', err);
+      addToast(err?.message || 'Failed to unlink business', 'error');
+      fetchCallBusinesses(callId);
+    }
+  }, [addToast, fetchCallBusinesses]);
 
   // Create-from-dispatch: uses the fused /quick-add endpoints so the server
   // runs duplicate detection BEFORE creating a new persons / vehicles_records
@@ -664,11 +738,13 @@ export default function DispatchPage() {
     if (cid && cid !== ('undefined' as any) && cid !== ('null' as any) && cid !== '') {
       fetchCallPersons(cid);
       fetchCallVehicles(cid);
+      fetchCallBusinesses(cid);
     } else {
       setCallPersons([]);
       setCallVehicles([]);
+      setCallBusinesses([]);
     }
-  }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles]);
+  }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles, fetchCallBusinesses]);
 
   // Auto-save unsaved call edits on component unmount (SPA navigation).
   // Shares the body assembly with the click-Save path via buildCallEditBody
@@ -1905,6 +1981,22 @@ export default function DispatchPage() {
   const updateEditField = useCallback((field: string, value: any) => {
     setEditData((prev) => ({ ...prev, [field]: value }));
   }, []);
+
+  const handleClientChange = useCallback(async (clientId: string) => {
+    updateEditField('client_id', clientId);
+    if (!clientId) return;
+    const selectedId = clientId; // capture to detect a newer selection
+    try {
+      const full = await apiFetch<ClientRecord>(`/clients/${clientId}`);
+      setEditData((prev) => {
+        // A newer client was selected while this fetch was in flight — discard.
+        if (prev.client_id !== selectedId) return prev;
+        return applyFillBlanks(prev, autofillFromClient(full));
+      });
+    } catch (err) {
+      console.error('Client autofill failed (non-fatal):', err);
+    }
+  }, [updateEditField]);
 
   // ═══════════════════════════════════════════════════════════════
   // NEW DISPATCH FEATURES
@@ -4144,7 +4236,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="field-label">Client:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => updateEditField('client_id', e.target.value)}>
+                            <select className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => handleClientChange(e.target.value)}>
                               <option value="">— No Client —</option>
                               {clientsList.map((c) => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -4232,10 +4324,9 @@ export default function DispatchPage() {
                            />
                           <select className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
                             <option value="">-- Relationship --</option>
-                            <option value="employee">Employee</option><option value="victim">Victim</option>
-                            <option value="witness">Witness</option><option value="complainant">Complainant</option>
-                            <option value="management">Management</option><option value="alarm_company">Alarm Company</option>
-                            <option value="officer">Officer</option><option value="anonymous">Anonymous</option><option value="other">Other</option>
+                            {linkOptions.caller_relationship.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
                           </select>
                         </div>
                       ) : (
@@ -4733,12 +4824,9 @@ export default function DispatchPage() {
                           <div className="flex items-center gap-2 mb-1">
                             <label className="text-[9px] text-brand-gold-500">Linked Persons</label>
                             <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
-                              <option value="suspect">Suspect</option>
-                              <option value="victim">Victim</option>
-                              <option value="witness">Witness</option>
-                              <option value="reporting_party">Reporting Party</option>
-                              <option value="involved">Involved</option>
-                              <option value="other">Other</option>
+                              {linkOptions.person_role.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
                             </select>
                           </div>
                           {callPersons.length > 0 && (
@@ -4784,12 +4872,9 @@ export default function DispatchPage() {
                           <div className="flex items-center gap-2 mb-1">
                             <label className="text-[9px] text-brand-gold-500">Linked Vehicles</label>
                             <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkVehicleRole} onChange={(e) => setLinkVehicleRole(e.target.value)}>
-                              <option value="suspect_vehicle">Suspect Vehicle</option>
-                              <option value="victim_vehicle">Victim Vehicle</option>
-                              <option value="witness_vehicle">Witness Vehicle</option>
-                              <option value="involved">Involved</option>
-                              <option value="evidence">Evidence</option>
-                              <option value="other">Other</option>
+                              {linkOptions.vehicle_role.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
                             </select>
                           </div>
                           {callVehicles.length > 0 && (
@@ -4825,6 +4910,50 @@ export default function DispatchPage() {
                             {editData.vehicle_description?.length >= 2 && vehicleSearchResults.length === 0 && !showVehicleDropdown && (
                               <button type="button" onClick={() => setShowCreateVehicleModal(true)} className="mt-0.5 inline-flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-brand-400 bg-brand-900/30 border border-brand-700/40 hover:bg-brand-900/50 transition-colors">
                                 <PlusCircle className="w-3 h-3" /> Create New Vehicle
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {/* ── Linked Businesses ── */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <label className="text-[9px] text-brand-gold-500">Linked Businesses</label>
+                            <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkBusinessRole} onChange={(e) => setLinkBusinessRole(e.target.value)}>
+                              {linkOptions.business_role.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          {callBusinesses.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-1">
+                              {callBusinesses.map((cb: any) => (
+                                <span key={cb.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
+                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cb.role || '').replace(/_/g, ' ')}</span>
+                                  {cb.name}
+                                  {cb.business_type && <span className="text-rmpg-500">{cb.business_type}</span>}
+                                  <button type="button" onClick={() => unlinkBusinessFromCall(selectedCall.id, cb.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <div className="relative" ref={businessDropdownRef}>
+                            <input type="text" className="input-dark text-xs" placeholder="Search business records to link..." value={businessQuery} onChange={(e) => searchBusinesses(e.target.value)} onFocus={() => { if (businessSearchResults.length > 0) setShowBusinessDropdown(true); }} />
+                            {showBusinessDropdown && businessSearchResults.length > 0 && (
+                              <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
+                                {businessSearchResults.map((b: any) => (
+                                  <button type="button" key={b.id} className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
+                                    linkBusinessToCall(selectedCall.id, b.id, linkBusinessRole);
+                                    setBusinessQuery(''); setShowBusinessDropdown(false);
+                                  }}>
+                                    <span className="font-semibold text-white">{b.name}</span>
+                                    {b.address && <span className="text-rmpg-500 ml-1 text-[9px]">— {b.address}</span>}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {businessQuery.trim().length >= 2 && businessSearchResults.length === 0 && (
+                              <button type="button" onClick={() => quickAddBusiness(selectedCall.id, businessQuery.trim(), linkBusinessRole)} className="mt-0.5 inline-flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-brand-400 bg-brand-900/30 border border-brand-700/40 hover:bg-brand-900/50 transition-colors">
+                                <PlusCircle className="w-3 h-3" /> Add "{businessQuery.trim()}"
                               </button>
                             )}
                           </div>
@@ -5065,6 +5194,22 @@ export default function DispatchPage() {
                         </button>
                       )}
                     </div>
+                    {(selectedCall.client_id || editData.client_id) && (() => {
+                      const cid = String(editData.client_id || selectedCall.client_id);
+                      const cli = clientsList.find((c) => String(c.id) === cid);
+                      const contractId = editData.contract_id || selectedCall.contract_id;
+                      const billing = editData.pso_billing_code || selectedCall.pso_billing_code;
+                      const auth = editData.pso_authorization || selectedCall.pso_authorization;
+                      return (
+                        <div className="mb-2 inline-flex flex-wrap items-center gap-2 px-2 py-1 bg-brand-900/20 border border-brand-700/40 rounded-sm text-[10px]">
+                          <span className="text-brand-gold-500 uppercase font-black text-[8px] tracking-wide">Client</span>
+                          <span className="text-white font-semibold">{cli?.name || `#${cid}`}</span>
+                          {contractId && <span className="text-rmpg-300">Contract: {contractId}</span>}
+                          {billing && <span className="text-rmpg-300">Billing: {billing}</span>}
+                          {auth && <span className="text-rmpg-300">Auth: {auth}</span>}
+                        </div>
+                      );
+                    })()}
                     {isEditing ? (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
