@@ -45,6 +45,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { generateServeCharges } from '../utils/serveChargeStore';
 import { geocodeAddress } from './geocode';
+import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
 
 const sv = new Hono<Env>();
 
@@ -244,6 +245,83 @@ sv.get('/export/csv', async (c) => {
 // ─────────────────────────────────────────────────────────────
 // Core queue CRUD (overlaps with serveIntake — intentional)
 // ─────────────────────────────────────────────────────────────
+
+// ── Assignment console ─────────────────────────────────────
+async function loadNudgeSettings(db: ReturnType<typeof getDb>): Promise<AttentionSettings & { renotify_hours: number; notify_supervisor_email: number; digest_sender_user_id: number | null }> {
+  const row = await queryFirst<any>(db, 'SELECT * FROM serve_nudge_settings WHERE id = 1').catch(() => null);
+  return {
+    approaching_hours: row?.approaching_hours ?? 48,
+    diligence_gap_days: row?.diligence_gap_days ?? 3,
+    unassigned_window_hours: row?.unassigned_window_hours ?? 72,
+    renotify_hours: row?.renotify_hours ?? 24,
+    notify_supervisor_email: row?.notify_supervisor_email ?? 1,
+    digest_sender_user_id: row?.digest_sender_user_id ?? null,
+  };
+}
+
+async function loadOpenJobsWithAttempts(db: ReturnType<typeof getDb>) {
+  return query<any>(db,
+    `SELECT q.id, q.status, q.officer_id, q.deadline, q.priority, q.sort_order,
+            q.defendant_name, q.recipient_name, q.recipient_address, q.case_number,
+            (SELECT MAX(a.attempt_at) FROM serve_attempts a WHERE a.serve_queue_id = q.id) AS last_attempt_at
+       FROM serve_queue q
+      WHERE q.status NOT IN ('served','cancelled','failed')
+      ORDER BY q.deadline IS NULL, q.deadline ASC, q.sort_order ASC, q.id ASC
+      LIMIT 1000`);
+}
+
+sv.get('/assignments/board', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const now = new Date().toISOString();
+  const settings = await loadNudgeSettings(db);
+  const jobs = await loadOpenJobsWithAttempts(db);
+  const officers = await query<any>(db, "SELECT id, full_name FROM users WHERE role IN ('officer','supervisor','manager','admin') ORDER BY full_name LIMIT 200");
+
+  const byOfficer: Record<string, any[]> = {};
+  const unassigned: any[] = [];
+  const counts: Record<string, number> = {};
+  for (const j of jobs) {
+    const jobForAttn: ServeJobForAttention = { id: j.id, status: j.status, officer_id: j.officer_id, deadline: j.deadline, last_attempt_at: j.last_attempt_at };
+    j.attention = classifyServeJob(jobForAttn, now, settings);
+    if (j.officer_id == null) { unassigned.push(j); }
+    else { (byOfficer[j.officer_id] ??= []).push(j); counts[j.officer_id] = (counts[j.officer_id] ?? 0) + 1; }
+  }
+  return c.json({
+    officers: officers.map((o) => ({
+      id: o.id, name: o.full_name, count: counts[o.id] ?? 0,
+      attention: (byOfficer[o.id] ?? []).reduce((acc: any, j: any) => { for (const cnd of j.attention) acc[cnd] = (acc[cnd] ?? 0) + 1; return acc; }, {}),
+    })),
+    unassigned, byOfficer,
+  });
+});
+
+sv.post('/assignments/assign', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const b = await c.req.json<any>();
+  const jobIds: number[] = Array.isArray(b.job_ids) ? b.job_ids.map((x: any) => parseInt(x, 10)).filter((n: number) => !isNaN(n)) : [];
+  if (!jobIds.length) return c.json({ error: 'job_ids required' }, 400);
+  const officerId = b.officer_id == null ? null : parseInt(b.officer_id, 10);
+  const user = c.get('user') as { id: number } | undefined;
+
+  const assigned: number[] = [];
+  const skipped: number[] = [];
+  for (const id of jobIds) {
+    const job = await queryFirst<any>(db, 'SELECT id, status, officer_id FROM serve_queue WHERE id = ?', id);
+    if (!job) { skipped.push(id); continue; }
+    if (['served', 'cancelled', 'failed'].includes(job.status)) { skipped.push(id); continue; }
+    const newStatus = officerId == null ? 'pending' : (job.status === 'pending' ? 'assigned' : job.status);
+    await execute(db, "UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?", officerId, newStatus, id);
+    await execute(db,
+      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'assign', 'serve_assignment', ?, ?)`,
+      user?.id ?? null, id, JSON.stringify({ from_officer: job.officer_id, to_officer: officerId, reason: b.reason ?? null }));
+    assigned.push(id);
+  }
+  return c.json({ success: true, assigned, skipped });
+});
 
 sv.get('/', async (c) => {
   const denied = requireRole(c, ...READ);
