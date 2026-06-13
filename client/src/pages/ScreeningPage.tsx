@@ -1,8 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
-import PanelTitleBar from '../components/PanelTitleBar';
-import { ShieldAlert } from 'lucide-react';
 
 function parseFields(raw: string | null | undefined): string[] {
   try { const v = JSON.parse(raw || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
@@ -14,7 +12,7 @@ interface Hit { id: number; source_key: string; person_id: number | null; displa
 
 type Tab = 'search' | 'review' | 'watchlist' | 'sources';
 
-export default function ScreeningPage() {
+export function ScreeningWorkspace() {
   const { user } = useAuth();
   const canReview = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
   const [tab, setTab] = useState<Tab>('search');
@@ -50,8 +48,7 @@ export default function ScreeningPage() {
   };
 
   return (
-    <div className="p-4 space-y-4">
-      <PanelTitleBar title="PERSON SCREENING" icon={ShieldAlert} />
+    <div className="space-y-4">
       <div className="flex gap-2 text-[11px]">
         {(['search', 'review', 'watchlist', 'sources'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}

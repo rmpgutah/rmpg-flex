@@ -115,7 +115,6 @@ const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
-const IntelSearchPage = lazyRetry(() => import('./pages/IntelSearchPage'));
 const IntelReportsPage = lazyRetry(() => import('./pages/intel/IntelReportsPage'));
 const IntelReportDetailPage = lazyRetry(() => import('./pages/intel/IntelReportDetailPage'));
 const IntelSourcesPage = lazyRetry(() => import('./pages/intel/IntelSourcesPage'));
@@ -127,6 +126,7 @@ const AlertsSection = lazyRetry(() => import('./pages/intel/AlertsSection'));
 const ReviewQueues = lazyRetry(() => import('./pages/intel/ReviewQueues'));
 const IntelComingSoon = lazyRetry(() => import('./pages/intel/IntelComingSoon'));
 const BoloBoard = lazyRetry(() => import('./pages/intel/BoloBoard'));
+const IntelSearch = lazyRetry(() => import('./pages/intel/IntelSearch'));
 const PlateLogPage = lazyRetry(() => import('./pages/PlateLogPage'));
 const QuickCapturePage = lazyRetry(() => import('./pages/QuickCapturePage'));
 const JailRecordsPage = lazyRetry(() => import('./pages/JailRecordsPage'));
@@ -178,7 +178,6 @@ const ForgotPasswordPage = lazyRetry(() => import('./pages/ForgotPasswordPage'))
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
 const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
-const ScreeningPage = lazyRetry(() => import('./pages/ScreeningPage'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -455,7 +454,7 @@ function AppRoutes() {
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
             <Route path="/warrants" element={<RouteErrorBoundary><WarrantsPage /></RouteErrorBoundary>} />
-            <Route path="/screening" element={<RouteErrorBoundary><ScreeningPage /></RouteErrorBoundary>} />
+            <Route path="/screening" element={<Navigate to="/warrants" replace />} />
             <Route path="/citations" element={<RouteErrorBoundary><CitationsPage /></RouteErrorBoundary>} />
             <Route path="/law-book" element={<RouteErrorBoundary><LawBookPage /></RouteErrorBoundary>} />
             <Route path="/knowledge-base" element={<RouteErrorBoundary><KnowledgeBasePage /></RouteErrorBoundary>} />
@@ -476,7 +475,7 @@ function AppRoutes() {
               {/* Each child is individually error-bounded so a single bad surface
                   fails in the center pane only — the rail + context panel survive. */}
               <Route index element={<RouteErrorBoundary><IntelDashboard /></RouteErrorBoundary>} />
-              <Route path="search" element={<RouteErrorBoundary><IntelSearchPage /></RouteErrorBoundary>} />
+              <Route path="search" element={<RouteErrorBoundary><IntelSearch /></RouteErrorBoundary>} />
               <Route path="connections" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
               <Route path="watchlist" element={<RouteErrorBoundary><WatchlistSection /></RouteErrorBoundary>} />
               <Route path="bolos" element={<RouteErrorBoundary><BoloBoard /></RouteErrorBoundary>} />

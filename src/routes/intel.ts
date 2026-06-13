@@ -20,6 +20,7 @@ import { mergeTimeline, rankAssociates, screeningHitsToTimeline, type TimelineEv
 import { screenPerson, screenVehicle } from '../utils/intelScreen';
 import { runExtraction } from '../utils/intelExtract';
 import { computeEscalation, personActivityEvents } from '../utils/intelPatterns';
+import { runIntelQuery } from '../utils/intelQuery';
 import { parseRosterText, ingestBookings } from '../utils/jailIngest';
 import { runJailScan } from '../utils/jailSources/runScan';
 import { chunkKey, parseSeq } from '../utils/intelRecording';
@@ -143,6 +144,59 @@ intel.get('/search', operational, async (c) => {
   }
 
   return c.json({ query: q, results });
+});
+
+// GET /query — parser-driven advanced search (rich hits + facets). Sibling to
+// /search, which stays as-is for GlobalSearch.
+intel.get('/query', operational, async (c) => {
+  const p = {
+    q: c.req.query('q'), type: c.req.query('type'), name: c.req.query('name'), addr: c.req.query('addr'),
+    flag: c.req.query('flag'), plate: c.req.query('plate'), vin: c.req.query('vin'), dob: c.req.query('dob'),
+    phone: c.req.query('phone'), dl: c.req.query('dl'), case: c.req.query('case'),
+    since: c.req.query('since'), until: c.req.query('until'),
+    limit: parseInt(c.req.query('limit') || '50', 10) || 50,
+  };
+  // Best-effort history record (never blocks the response).
+  try {
+    const userId = c.get('userId') as number;
+    const raw = c.req.query('raw') || '';
+    if (userId && raw.trim()) await c.env.DB.prepare(
+      'INSERT INTO intel_search_history (user_id, query_text) VALUES (?, ?)').bind(userId, raw.slice(0, 500)).run();
+  } catch { /* history table may be briefly absent; ignore */ }
+  return c.json(await runIntelQuery(getDb(c.env), p));
+});
+
+// Saved searches (per user).
+intel.get('/saved-searches', operational, async (c) => {
+  const uid = c.get('userId') as number;
+  try {
+    return c.json(await query(getDb(c.env),
+      'SELECT id, name, query_text, created_at FROM intel_saved_searches WHERE user_id = ? ORDER BY created_at DESC', uid));
+  } catch { return c.json([]); }
+});
+intel.post('/saved-searches', operational, async (c) => {
+  const uid = c.get('userId') as number;
+  const body = await c.req.json<{ name?: string; query_text?: string }>().catch(() => ({} as { name?: string; query_text?: string }));
+  if (!body.name || !body.query_text) return c.json({ error: 'name and query_text required' }, 400);
+  await execute(getDb(c.env),
+    `INSERT INTO intel_saved_searches (user_id, name, query_text) VALUES (?, ?, ?)
+       ON CONFLICT(user_id, name) DO UPDATE SET query_text = excluded.query_text`,
+    uid, body.name.slice(0, 80), body.query_text.slice(0, 500));
+  return c.json({ success: true });
+});
+intel.delete('/saved-searches/:id', operational, async (c) => {
+  const uid = c.get('userId') as number;
+  await execute(getDb(c.env), 'DELETE FROM intel_saved_searches WHERE id = ? AND user_id = ?', c.req.param('id'), uid);
+  return c.json({ success: true });
+});
+// Recent history (distinct, latest 10).
+intel.get('/search-history', operational, async (c) => {
+  const uid = c.get('userId') as number;
+  try {
+    return c.json(await query(getDb(c.env),
+      `SELECT query_text, MAX(executed_at) AS executed_at FROM intel_search_history
+        WHERE user_id = ? GROUP BY query_text ORDER BY executed_at DESC LIMIT 10`, uid));
+  } catch { return c.json([]); }
 });
 
 // GET /health — index freshness for diagnosis (migration-drift detector)

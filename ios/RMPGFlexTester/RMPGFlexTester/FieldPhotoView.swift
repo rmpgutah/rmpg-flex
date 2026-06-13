@@ -93,7 +93,7 @@ struct FieldPhotoSheet: View {
            let t = try? await client.login(username: u, password: p) {
             KeychainStore.save(t, key: "rmpgJWT"); client.jwt = t
         }
-        guard let jwt = client.jwt else { status = "✗ Set RMPG credentials in Settings"; return }
+        guard client.jwt != nil else { status = "✗ Set RMPG credentials in Settings"; return }
 
         var fields: [String: String] = ["notes": notes]
         if let loc = LocationManager.shared.last {
@@ -106,30 +106,9 @@ struct FieldPhotoSheet: View {
             fields["call_id"] = "\(callId)"
         }
 
-        // Multipart body
-        let boundary = "rmpg-\(UUID().uuidString)"
-        var body = Data()
-        for (key, value) in fields where !value.isEmpty {
-            body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(key)\"\r\n\r\n\(value)\r\n".data(using: .utf8)!)
-        }
-        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"field.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-        body.append(jpeg)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-
-        var req = URLRequest(url: client.baseURL.appendingPathComponent("api/field-photos"))
-        req.httpMethod = "POST"
-        req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
-        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        req.httpBody = body
-
         do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            if (200..<300).contains(code) {
-                status = "✓ Photo uploaded\(fields["call_id"] != nil ? " + attached to call" : "") — visible on desktop"
-            } else {
-                status = "✗ HTTP \(code): \(String(data: data, encoding: .utf8)?.prefix(120) ?? "")"
-            }
+            _ = try await MultipartUpload.upload(client, path: "api/field-photos", fields: fields, jpeg: jpeg)
+            status = "✓ Photo uploaded\(fields["call_id"] != nil ? " + attached to call" : "") — visible on desktop"
         } catch {
             status = "✗ \(error.localizedDescription)"
         }

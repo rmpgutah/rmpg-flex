@@ -54,8 +54,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     id: 'enforce',
     label: 'Enforcement',
     items: [
-      { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
-      { path: '/screening', icon: ShieldAlert, label: 'Screening' },
+      { path: '/warrants', icon: AlertTriangle, label: 'Warrant Search' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
       { path: '/law-book', icon: Scale, label: 'Law Book' },
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
