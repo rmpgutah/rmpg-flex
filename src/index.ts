@@ -20,7 +20,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
-import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
+import { handleWebSocket } from './routes/ws';
 import { emitAlert } from './utils/alertHub';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { doCallbackToken, timingSafeEqual } from './utils/signedAccess';
@@ -142,7 +142,12 @@ app.use('/api/*', async (c, next) => {
     if (!module || LIVE_SYNC_SKIP.has(module)) return;
     // second segment is the entity type unless it's a numeric id
     const entity = segs[1] && !/^\d+$/.test(segs[1]) ? segs[1] : undefined;
-    broadcastAll('data_changed', { module, entity });
+    // Fan the cache-invalidation nudge to clients via the live AlertHubDO bus
+    // (both the /api/ws and /api/alerts-ws client sockets fan-in to the same
+    // subscribe() bus, and /api/alerts-ws is already served by this worker).
+    // The rewrite's old per-isolate broadcastAll() was dead. Phase 4 (cutover):
+    // revive cross-device live refresh without flipping /api/ws.
+    await emitAlert(c.env, 'data_changed', { module, entity });
   } catch { /* live-sync must never break a real response */ }
 });
 
