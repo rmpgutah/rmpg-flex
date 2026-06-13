@@ -10,7 +10,7 @@ export interface LinkOption {
   value: string;
   label: string;
   sort_order?: number;
-  is_active?: number; // 1 active, 0 hidden (DB rows only)
+  is_active?: number | null; // 1 active, 0/null hidden (DB rows only)
 }
 
 export const DEFAULT_LINK_OPTIONS: Record<LinkCategory, LinkOption[]> = {
@@ -88,7 +88,7 @@ export function mergeLinkOptions(category: LinkCategory, dbRows: LinkOption[]): 
   const byValue = new Map<string, LinkOption>();
   for (const d of DEFAULT_LINK_OPTIONS[category]) byValue.set(d.value, { ...d, is_active: 1 });
   for (const r of dbRows) {
-    if (r.is_active === 0) { byValue.delete(r.value); continue; }
+    if (r.is_active === 0 || r.is_active === null) { byValue.delete(r.value); continue; }
     const existing = byValue.get(r.value);
     byValue.set(r.value, {
       value: r.value,

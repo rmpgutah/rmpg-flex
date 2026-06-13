@@ -26,4 +26,10 @@ describe('mergeLinkOptions', () => {
     const merged = mergeLinkOptions('person_role', db);
     expect(merged.some((o) => o.value === 'other')).toBe(false);
   });
+
+  it('treats a null is_active (D1 NULL) as hidden', () => {
+    const db: LinkOption[] = [{ value: 'other', label: 'Other', sort_order: 170, is_active: null }];
+    const merged = mergeLinkOptions('person_role', db);
+    expect(merged.some((o) => o.value === 'other')).toBe(false);
+  });
 });
