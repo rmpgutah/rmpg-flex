@@ -72,7 +72,7 @@ with honest handling of the server's NIBRS validation gate.
 
 ### Field photos (`/api/field-photos`)
 - `POST /` — **multipart** `{ photo, lat?, lng?, call_id?, notes? }`, R2-backed,
-  table `field_photos`. **Server change required (see §5):** add `incident_id`.
+  table `field_photos`. **Server change required (see §6):** add `incident_id`.
 
 ---
 
@@ -100,7 +100,61 @@ with honest handling of the server's NIBRS validation gate.
 
 ---
 
-## 5. Server change — link evidence photos to incidents
+## 5. UX & workflow design
+
+**Design stance: guided workflow over forms.** The app is used one-handed, in sunlight,
+sometimes gloved — so large tap targets, minimal typing, thumb-zone primary actions, and
+honest status take priority over field density.
+
+### Principles
+1. **Stepped, not sprawling.** Incident report flows `Type → Location → Narrative → Photos
+   → Review` with progress pills; citation is a short scrollable card-stack
+   (subject → vehicle → violation → issue) because it's a one-screen task.
+2. **Thumb-zone primary action.** A single gold primary button is pinned at the bottom of
+   every step; secondary/destructive actions are de-emphasized text.
+3. **One-tap common cases.** Incident-type chips and common-violation chips short-circuit
+   typing for the 80% case; a prominent Warning ⇄ Citation segmented toggle leads the
+   citation screen.
+4. **Dictation-first narrative.** A large mic sits at the center of the narrative step — the
+   report's heaviest field becomes its easiest, hands-busy input.
+5. **Always-saved.** A persistent "Saved" indicator (server `draft` + local autosave) so
+   work is never lost in a dead zone.
+6. **Honest readiness.** Green checks / amber fixes — never a silent failure.
+7. **Prefill is the glue.** "On this call" carries `call_id`/location/coords into a report;
+   an ID/plate scan carries subject + vehicle into a citation. The officer confirms, doesn't
+   retype.
+
+### Screen flow (4 key surfaces)
+1. **Reports hub** — an "On this call" contextual card, two large action tiles (Incident
+   report / Citation), and "Continue draft" rows with a readiness ring. Reached via a Field
+   Ops card + the System hub (no 8th root tab — iOS folds >5 tabs into the unthemeable "More"
+   list; final placement is a plan-time call).
+2. **Compose (narrative step)** — step pills, a live-transcript narrative card, a large gold
+   mic + waveform, inline evidence-photo thumbnails + an add tile, and a pinned "Next: review".
+3. **Review & submit** — a NIBRS-readiness checklist (present = green check, missing = amber +
+   a one-tap **Fix**) shown **before** submit; a report summary; a pinned "Submit report" with
+   a quieter "Save as draft".
+4. **Citation** — the Warning ⇄ Citation toggle, scan-prefilled subject + vehicle cards (with a
+   "Scanned" badge), a statute search + common-violation chips, and a pinned "Issue citation".
+
+### New reusable views (small, single-purpose)
+`StepPills`, `ReadinessRow` (check/alert + optional Fix action), `DictationBar` (mic +
+waveform bound to `Dictation.transcript`), `ChipRow` (tappable suggestion chips), and
+`PrefillCard` (subject/vehicle confirm card). These compose with existing `Theme.swift`
+tokens and `GoldButtonStyle`/`.themeCard()` — no new visual language.
+
+### Readiness model (screen 3)
+The checklist is computed **client-side** from the same requirements the server's
+`validateIncidentForNibrs` enforces (type, location, non-empty narrative, offense/victim
+data), so it can be shown proactively. The server `submit` stays authoritative: a 422 maps
+its `validation.errors` onto the same checklist rows. The client mirror is a *hint*, never a
+gate.
+
+This UX layer adds **no contract changes** — it sits entirely on top of §3 and §7.
+
+---
+
+## 6. Server change — link evidence photos to incidents
 
 Add `incident_id` to `field_photos` so a report's evidence binds to the report itself
 (not only to a call — a report is not always tied to a call).
@@ -126,7 +180,7 @@ if added for record-keeping it must be idempotent and is not relied upon for liv
 
 ---
 
-## 6. Data flows
+## 7. Data flows
 
 ### Incident report
 1. Open writer (blank, or with `CallPrefill`). On first meaningful input, **POST `/api/incidents`**
@@ -156,7 +210,7 @@ if added for record-keeping it must be idempotent and is not relied upon for liv
 
 ---
 
-## 7. Voice dictation (on-device)
+## 8. Voice dictation (on-device)
 
 - `SFSpeechRecognizer(locale:)` + `AVAudioEngine` tap → `SFSpeechAudioBufferRecognitionRequest`
   with `requiresOnDeviceRecognition = true` where supported (offline + private), falling back
@@ -173,7 +227,7 @@ if added for record-keeping it must be idempotent and is not relied upon for liv
 
 ---
 
-## 8. Error handling & honesty
+## 9. Error handling & honesty
 
 - **NIBRS 422** surfaced as a concrete field checklist (from `validation.errors`), with
   Fix-now / Save-as-draft — not "submit failed".
@@ -187,7 +241,7 @@ if added for record-keeping it must be idempotent and is not relied upon for liv
 
 ---
 
-## 9. Security & roles
+## 10. Security & roles
 
 - All calls JWT-bearer'd. `officer`+ may create/edit/submit incidents and create citations.
 - The field app **never** renders approve/return (supervisor-only); v1 keeps review desktop-side.
@@ -195,7 +249,7 @@ if added for record-keeping it must be idempotent and is not relied upon for liv
 
 ---
 
-## 10. Testing & verification
+## 11. Testing & verification
 
 Following the README's documented workaround for this Mac's `xcodebuild` deadlock
 (SwiftPM `swift test` + `swiftc` compile; **no new Xcode target** is introduced, so this
@@ -210,11 +264,11 @@ stays valid):
 - **Server:** `npm run typecheck` for the `fieldPhotos.ts` change.
 - **Live smoke (post-merge):** create a draft incident from the phone, submit, observe the
   422-or-success path; upload an evidence photo and confirm the `incident_id` row via the D1
-  Console tab. Apply + verify the live-D1 `ALTER` per §5.
+  Console tab. Apply + verify the live-D1 `ALTER` per §6.
 
 ---
 
-## 11. Acceptance criteria
+## 12. Acceptance criteria
 
 1. From the phone, an officer can create an incident draft, dictate/type a narrative, attach
    ≥1 geo-stamped evidence photo linked by `incident_id`, and submit it.
@@ -225,12 +279,17 @@ stays valid):
    streams partial transcripts into the field.
 5. `FieldPhotoView` and `FuelAndPhotos` are refactored onto the shared `MultipartUpload`
    helper with no behavior change.
-6. New unit tests pass via `swift test`; `swiftc` compile is clean; server `typecheck` passes.
-7. `field_photos.incident_id` exists on live D1 (verified via `pragma_table_info`).
+6. The incident flow is presented as discrete steps with a single pinned gold primary action
+   per step; the NIBRS-readiness checklist renders **before** submit; the citation screen leads
+   with a Warning ⇄ Citation toggle and offers common-violation chips. (§5)
+7. Prefill works end-to-end: "On this call" seeds `call_id`/location/coords into a report; an
+   ID/plate scan seeds subject + vehicle into a citation.
+8. New unit tests pass via `swift test`; `swiftc` compile is clean; server `typecheck` passes.
+9. `field_photos.incident_id` exists on live D1 (verified via `pragma_table_info`).
 
 ---
 
-## 12. Out of scope / explicitly deferred
+## 13. Out of scope / explicitly deferred
 
 - Sub-projects B/C/D (push/Watch/widgets, offline queue, Mapbox nav, AI).
 - Supervisor approve/return on phone.
