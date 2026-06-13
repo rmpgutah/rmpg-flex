@@ -808,6 +808,29 @@ const STUBS: StubRule[] = [
 ];
 
 const API_ROUTES: RouteRule[] = [
+  // ── AUTH CUTOVER (Phase 2, 2026-06-12) ──
+  // Login/refresh/me/logout/password/profile now served by the rewrite
+  // (src/routes/auth.ts). Pre-flight (cutover-artifacts/, Task 2.1) confirmed
+  // FULL 43/43 route parity legacy↔rewrite, all newly-moved handlers (me,
+  // refresh, password-policy, session-timeout, profile) returning 200 live,
+  // and every touched users/sessions column present on live D1. The 2FA login
+  // flow (/login + /login/verify-2fa) and refresh were ALREADY on the rewrite
+  // and proven (Phase 1 token proof) — so this flip cannot cause a 2FA lockout.
+  // Issues dual-claim {userId, user_id} tokens verifiable by BOTH workers.
+  // The /api/auth/forgot-password STUB still wins (STUBS are checked first).
+  // /api/email-oauth/callback is a SEPARATE prefix — unaffected.
+  // The redundant specific /api/auth/* rules below are now covered by this
+  // prefix but harmless; they are intentionally LEFT so that deleting THIS one
+  // line restores the exact prior routing.
+  // ROLLBACK: delete this rule, push to main (deploy.yml redeploys ≤3 min).
+  { kind: 'prefix', value: '/api/auth' },
+
+  // ── Officer Wallet ID (new in rewrite, 2026-06-12) ──
+  // Digital badge / QR-verifiable officer ID — only the rewrite has these
+  // handlers (src/routes/wallet.ts); legacy 404s. Route the whole prefix to
+  // env.API.
+  { kind: 'prefix', value: '/api/wallet' },
+
   // ── Crime layers (new in rewrite) ──
   // /api/crime/slc (cached SLCPD public-crime proxy) + /api/crime/local (our
   // own recent CFS). Only the rewrite has these handlers; legacy 404s.
@@ -1877,6 +1900,11 @@ export default {
         return env.API.fetch(request);
       }
     }
+    // Cutover instrumentation (Phase 0, docs/superpowers/plans/2026-06-12-
+    // worker-cutover.md): every request that still reaches the legacy worker
+    // is logged so Workers Logs can produce the migration inventory. Remove
+    // after Phase 5 retirement.
+    console.log(`[legacy-fallthrough] ${method} ${pathname}`);
     return env.LEGACY.fetch(request);
   },
 };

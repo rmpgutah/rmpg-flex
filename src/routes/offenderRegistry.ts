@@ -31,6 +31,7 @@ const ALERT_SELECT = `
          a.alert_longitude AS location_lng,
          a.alert_address   AS location_address,
          TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) AS person_name,
+         p.first_name, p.last_name, p.middle_name,
          p.dob, p.is_sex_offender, p.gang_affiliation
   FROM offender_alerts a
   LEFT JOIN persons p ON p.id = a.person_id`;
@@ -132,6 +133,35 @@ offenderRegistry.put('/:id/clear', async (c) => {
   } catch (err) {
     console.error('PUT /offender-registry/:id/clear error:', err);
     return c.json({ error: 'Failed to clear alert', code: 'CLEAR_ERROR' }, 500);
+  }
+});
+
+// ── POST /reconcile-flags — sync persons.is_sex_offender ────
+// Keeps the two stores consistent: a person with an ACTIVE, unexpired
+// sex_offender alert should also carry persons.is_sex_offender so the
+// DL-scan deep sweep and the persons-flag screening branch fire on them.
+// One-way + idempotent: only sets the flag on, never clears it (a cleared
+// alert shouldn't silently un-flag a person who may be flagged elsewhere).
+offenderRegistry.post('/reconcile-flags', async (c) => {
+  try {
+    const user = c.get('user') as { id: number; role: string } | undefined;
+    if (!user || !['admin', 'manager', 'supervisor'].includes(user.role)) {
+      return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+    }
+    const db = getDb(c.env);
+    const result = await execute(db, `
+      UPDATE persons SET is_sex_offender = 1, updated_at = datetime('now')
+      WHERE COALESCE(is_sex_offender, 0) <> 1
+        AND id IN (
+          SELECT person_id FROM offender_alerts
+          WHERE alert_type = 'sex_offender' AND status = 'active'
+            AND (expiration_date IS NULL OR expiration_date = '' OR expiration_date >= date('now'))
+            AND person_id IS NOT NULL
+        )`);
+    return c.json({ success: true, flagged: result.meta.changes ?? 0 });
+  } catch (err) {
+    console.error('POST /offender-registry/reconcile-flags error:', err);
+    return c.json({ error: 'Failed to reconcile flags', code: 'RECONCILE_ERROR' }, 500);
   }
 });
 

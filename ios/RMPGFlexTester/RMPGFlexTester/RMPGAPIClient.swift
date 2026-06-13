@@ -60,11 +60,29 @@ struct RMPGAPIClient {
         let (data, resp) = try await URLSession.shared.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
+            // Attach the parsed JSON error body (when there is one) so callers
+            // can branch on the Worker's `code` contract (NEEDS_VEHICLE,
+            // MILEAGE_DECREASING, …) instead of string-matching the message.
             let text = String(data: data, encoding: .utf8) ?? ""
-            throw NSError(domain: "RMPG", code: status,
-                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(200))"])
+            var info: [String: Any] = [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(200))"]
+            if let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                info["json"] = body
+                if let msg = body["error"] as? String {
+                    info[NSLocalizedDescriptionKey] = msg
+                }
+            }
+            throw NSError(domain: "RMPG", code: status, userInfo: info)
         }
         return try JSONSerialization.jsonObject(with: data)
+    }
+
+    /// The Worker's machine-readable error `code` from a thrown request error.
+    static func apiCode(_ error: Error) -> String? {
+        ((error as NSError).userInfo["json"] as? [String: Any])?["code"] as? String
+    }
+    /// The full parsed JSON error body, when the server sent one.
+    static func apiBody(_ error: Error) -> [String: Any]? {
+        (error as NSError).userInfo["json"] as? [String: Any]
     }
 
     func postJSON(_ path: String, body: [String: Any]) async throws {
@@ -77,6 +95,40 @@ struct RMPGAPIClient {
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
             let text = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "RMPG", code: status,
+                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(150))"])
+        }
+    }
+
+    /// POST JSON and return the decoded object (for endpoints that reply
+    /// with data we need, e.g. a new recording id).
+    func postJSONReturning(_ path: String, body: [String: Any]) async throws -> Any {
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "RMPG", code: status,
+                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(150))"])
+        }
+        return try JSONSerialization.jsonObject(with: data)
+    }
+
+    /// Raw PUT of binary data (audio segment) with an explicit content-type.
+    func putData(_ path: String, data: Data, contentType: String) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = "PUT"
+        req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
+        req.httpBody = data
+        let (respData, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            let text = String(data: respData, encoding: .utf8) ?? ""
             throw NSError(domain: "RMPG", code: status,
                           userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(150))"])
         }

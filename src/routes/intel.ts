@@ -22,6 +22,7 @@ import { runExtraction } from '../utils/intelExtract';
 import { computeEscalation, personActivityEvents } from '../utils/intelPatterns';
 import { parseRosterText, ingestBookings } from '../utils/jailIngest';
 import { runJailScan } from '../utils/jailSources/runScan';
+import { chunkKey, parseSeq } from '../utils/intelRecording';
 
 const intel = new Hono<Env>();
 
@@ -441,6 +442,96 @@ intel.post('/quick-capture', operational, async (c) => {
   }
 
   return c.json({ success: true, person_id: personId, person_reused: personReused, vehicle_id: vehicleId, fi_id: fiId, hits });
+});
+
+// ─── Interaction audio recording (Wave 3b) ───────────────────
+// Chunked, crash-resilient recording. Audio chunks stream to R2
+// (UPLOADS bucket); D1 holds metadata only.
+
+intel.post('/recordings/start', operational, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const b = await c.req.json().catch(() => ({} as any));
+  // Client declares its container format (web MediaRecorder: audio/webm,
+  // iOS AVAudioRecorder: audio/mp4) — stored so chunks serve back playable.
+  const mime = typeof b?.mime === 'string' && /^audio\/[\w.+-]+$/.test(b.mime) ? b.mime : 'audio/webm';
+  try {
+    const r = await execute(db,
+      `INSERT INTO interaction_recordings (officer_id, location_text, lat, lng, linked_fi_id, linked_call_id, notes, mime, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'recording')`,
+      userId, b?.location || null,
+      Number.isFinite(Number(b?.lat)) ? Number(b.lat) : null,
+      Number.isFinite(Number(b?.lng)) ? Number(b.lng) : null,
+      Number(b?.linked_fi_id) || null, Number(b?.linked_call_id) || null, b?.notes || null, mime);
+    return c.json({ id: r.meta.last_row_id, mime });
+  } catch (err: any) {
+    return c.json({ error: err?.message, hint: 'migration 0102 may not have reached live D1' }, 500);
+  }
+});
+
+intel.put('/recordings/:id/chunk', operational, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const id = Number(c.req.param('id'));
+  const seq = parseSeq(c.req.query('seq'));
+  if (seq === null) return c.json({ error: 'valid seq query param required' }, 400);
+  const rec = await queryFirst<any>(db, 'SELECT officer_id, status, mime FROM interaction_recordings WHERE id = ?', id);
+  if (!rec || rec.officer_id !== userId) return c.json({ error: 'recording not found' }, 404);
+  const body = await c.req.arrayBuffer();
+  if (body.byteLength === 0) return c.json({ error: 'empty chunk' }, 400);
+  if (body.byteLength > 8 * 1024 * 1024) return c.json({ error: 'chunk too large' }, 413);
+  try {
+    await (c.env as any).UPLOADS.put(chunkKey(id, seq), body, { httpMetadata: { contentType: rec.mime || 'audio/webm' } });
+    await execute(db,
+      'UPDATE interaction_recordings SET chunk_count = MAX(chunk_count, ?) WHERE id = ?', seq + 1, id);
+    return c.json({ success: true, seq });
+  } catch (err: any) {
+    return c.json({ error: `chunk store failed: ${err?.message}` }, 500);
+  }
+});
+
+intel.post('/recordings/:id/stop', operational, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const id = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({} as any));
+  const rec = await queryFirst<any>(db, 'SELECT officer_id FROM interaction_recordings WHERE id = ?', id);
+  if (!rec || rec.officer_id !== userId) return c.json({ error: 'recording not found' }, 404);
+  await execute(db,
+    `UPDATE interaction_recordings SET status = 'complete', ended_at = datetime('now'), duration_sec = ? WHERE id = ?`,
+    Number(b?.duration_sec) || 0, id);
+  return c.json({ success: true });
+});
+
+intel.get('/recordings', operational, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const role = String((c.get('user') as { role?: string } | undefined)?.role || '');
+  const limit = Math.min(Number(c.req.query('limit')) || 25, 100);
+  try {
+    const rows = ['admin', 'manager', 'supervisor'].includes(role)
+      ? await query<any>(db, 'SELECT * FROM interaction_recordings ORDER BY created_at DESC LIMIT ?', limit)
+      : await query<any>(db, 'SELECT * FROM interaction_recordings WHERE officer_id = ? ORDER BY created_at DESC LIMIT ?', userId, limit);
+    return c.json(rows);
+  } catch (err: any) {
+    return c.json({ error: err?.message }, 500);
+  }
+});
+
+intel.get('/recordings/:id/chunk/:seq', operational, async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  const seq = parseSeq(c.req.param('seq'));
+  if (seq === null) return c.json({ error: 'invalid seq' }, 400);
+  try {
+    const obj = await (c.env as any).UPLOADS.get(chunkKey(id, seq));
+    if (!obj) return c.json({ error: 'chunk not found' }, 404);
+    const rec = await queryFirst<{ mime: string | null }>(db, 'SELECT mime FROM interaction_recordings WHERE id = ?', id).catch(() => null);
+    const mime = obj.httpMetadata?.contentType || rec?.mime || 'audio/webm';
+    return new Response(obj.body, { headers: { 'content-type': mime, 'cache-control': 'private, max-age=3600' } });
+  } catch (err: any) {
+    return c.json({ error: err?.message }, 500);
+  }
 });
 
 // ─── Jail / booking records (Wave 3a) ────────────────────────

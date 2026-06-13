@@ -293,7 +293,7 @@ export default function DashcamPage() {
                           {formatEnumValue(e.event_type)}
                         </td>
                         <td className={`px-3 py-1.5 ${SEVERITY_COLORS[e.severity] || 'text-text-muted'}`}>
-                          {e.severity}
+                          {formatEnumValue(e.severity)}
                         </td>
                         <td className="px-3 py-1.5 text-right text-text-muted">
                           {e.latitude ? `${e.latitude.toFixed(4)}, ${e.longitude.toFixed(4)}` : '—'}

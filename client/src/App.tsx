@@ -70,6 +70,8 @@ const PersonnelPage = lazyRetry(() => import('./pages/personnel'));
 const CommunicationsPage = lazyRetry(() => import('./pages/CommunicationsPage'));
 const ReportsPage = lazyRetry(() => import('./pages/ReportsPage'));
 const AdminPage = lazyRetry(() => import('./pages/AdminPage'));
+const MyIdPage = lazyRetry(() => import('./pages/wallet/MyIdPage'));
+const VerifyIdPage = lazyRetry(() => import('./pages/wallet/VerifyIdPage'));
 const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
 const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
 const FleetPage = lazyRetry(() => import('./pages/fleet'));
@@ -119,6 +121,7 @@ const PersonDossierPage = lazyRetry(() => import('./pages/PersonDossierPage'));
 const PlateLogPage = lazyRetry(() => import('./pages/PlateLogPage'));
 const QuickCapturePage = lazyRetry(() => import('./pages/QuickCapturePage'));
 const JailRecordsPage = lazyRetry(() => import('./pages/JailRecordsPage'));
+const InteractionRecorderPage = lazyRetry(() => import('./pages/InteractionRecorderPage'));
 const UseOfForcePage = lazyRetry(() => import('./pages/UseOfForcePage'));
 const SecurityDashboardPage = lazyRetry(() => import('./pages/SecurityDashboardPage'));
 const HelpPage = lazyRetry(() => import('./pages/HelpPage'));
@@ -431,6 +434,8 @@ function AppRoutes() {
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />
             <Route path="/personnel" element={<RouteErrorBoundary><PersonnelPage /></RouteErrorBoundary>} />
+            <Route path="/my-id" element={<RouteErrorBoundary><MyIdPage /></RouteErrorBoundary>} />
+            <Route path="/verify-id" element={<RouteErrorBoundary><VerifyIdPage /></RouteErrorBoundary>} />
             <Route path="/communications" element={<RouteErrorBoundary><CommunicationsPage /></RouteErrorBoundary>} />
             <Route path="/radio" element={<RouteErrorBoundary><RadioPage /></RouteErrorBoundary>} />
             <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
@@ -460,6 +465,7 @@ function AppRoutes() {
             <Route path="/intel/plate-log" element={<RouteErrorBoundary><PlateLogPage /></RouteErrorBoundary>} />
             <Route path="/intel/quick-capture" element={<RouteErrorBoundary><QuickCapturePage /></RouteErrorBoundary>} />
             <Route path="/intel/jail" element={<RouteErrorBoundary><JailRecordsPage /></RouteErrorBoundary>} />
+            <Route path="/intel/record" element={<RouteErrorBoundary><InteractionRecorderPage /></RouteErrorBoundary>} />
             <Route path="/code-enforcement" element={<RouteErrorBoundary><CodeEnforcementPage /></RouteErrorBoundary>} />
             <Route path="/court" element={<RouteErrorBoundary><CourtTrackerPage /></RouteErrorBoundary>} />
             <Route path="/dar" element={<RouteErrorBoundary><DailyActivityReportsPage /></RouteErrorBoundary>} />

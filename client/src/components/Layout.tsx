@@ -18,6 +18,7 @@ import {
   Search,
   Car,
   ClipboardPen,
+  Mic,
   AlertTriangle,
   FileWarning,
   Scale,
@@ -183,6 +184,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/intel/plate-log': 'Plate Log',
   '/intel/quick-capture': 'Quick Capture',
   '/intel/jail': 'Jail Records',
+  '/intel/record': 'Interaction Recorder',
   '/skip-tracer': 'Skip Tracer',
   '/arrest-records': 'Arrest Records',
   '/serve-intake': 'Service Intake',
@@ -266,6 +268,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/intel/plate-log', icon: Car, label: 'Plate Log' },
     { path: '/intel/quick-capture', icon: ClipboardPen, label: 'Quick Capture' },
     { path: '/intel/jail', icon: Building2, label: 'Jail Records' },
+    { path: '/intel/record', icon: Mic, label: 'Recorder' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
     { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
     { path: '/web-research', icon: Globe, label: 'Web Research' },
@@ -1360,7 +1363,7 @@ export default function Layout() {
       {/* Square buttons: icon above label, F-key badge, dropdown for children */}
       {/* ============================================================ */}
       <div
-        className="hidden lg:flex items-center gap-0 px-1 select-none overflow-x-auto overflow-y-hidden scrollbar-dark"
+        className="hidden lg:flex items-center gap-0 px-1 select-none overflow-x-auto overflow-y-hidden scrollbar-dark tab-scroll"
         role="toolbar"
         aria-label="Module navigation"
         style={{
@@ -1615,7 +1618,7 @@ export default function Layout() {
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main
           id="main-content"
-          className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark"
+          className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
           key={location.pathname}
           style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}
           // Persist scroll per-path so SW-update reloads (and any other full

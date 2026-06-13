@@ -12,6 +12,7 @@ import {
   Server, Shield,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { formatLabel } from '../utils/formatters';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 
@@ -645,7 +646,7 @@ export default function IpedPage() {
                 <FileText size={13} className="text-brand-blue" />
                 <span className="text-xs font-bold text-white">Job #{selectedJob.id} Detail</span>
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[10px] font-semibold ${STATUS_STYLES[selectedJob.status] || ''}`}>
-                  {selectedJob.status}
+                  {formatLabel(selectedJob.status)}
                 </span>
               </div>
               <button type="button"

@@ -173,6 +173,7 @@ import nav from './routes/nav';
 import offenderRegistry from './routes/offenderRegistry';
 import uploads from './routes/uploads';
 import companyDocuments from './routes/companyDocuments';
+import wallet from './routes/wallet';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -532,4 +533,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // callback (which Microsoft redirects to without a JWT) is reachable;
   // every other route inside the router applies authMiddleware itself.
   { prefix: '/api/email', router: email, auth: 'public' },
+
+  // Officer Wallet ID — digital badge / QR-verifiable ID. Auth required on every
+  // path (verify is RMPG-only); admin/manager gating is applied per-route inside.
+  { prefix: '/api/wallet', router: wallet, auth: 'required' },
 ];

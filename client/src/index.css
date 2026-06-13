@@ -4746,6 +4746,13 @@ textarea {
   ::-webkit-scrollbar { display: none; }
   .scrollbar-dark::-webkit-scrollbar { display: block; width: 4px; }
   .scrollbar-dark::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+  /* Keep the thin tab-strip bar visible on iOS too (see rule 5b). */
+  [role="tablist"]::-webkit-scrollbar,
+  .tab-bar::-webkit-scrollbar,
+  .tab-scroll::-webkit-scrollbar { display: block; width: 5px; height: 5px; }
+  [role="tablist"]::-webkit-scrollbar-thumb,
+  .tab-bar::-webkit-scrollbar-thumb,
+  .tab-scroll::-webkit-scrollbar-thumb { background: #2e2e2e; border-radius: 2px; }
 }
 
 /* 22. Fix iOS status bar text color in standalone */
@@ -5212,6 +5219,93 @@ html, body {
 }
 ::-webkit-scrollbar-corner {
   background: var(--surface-sunken);
+}
+
+/* --- 5b. TAB-STRIP SCROLLBARS — thin, always-visible, sleek ----------
+   Horizontal tab / section / filter strips (the ones with overflow-x)
+   get a discreet 5px bar so MOUSE users have a grabbable affordance.
+   macOS renders overlay scrollbars that auto-hide when idle; defining a
+   custom ::-webkit-scrollbar with a visible-at-rest thumb forces a
+   persistent (classic) bar in Chrome — the app's primary browser.
+   Scoped to tab strips ONLY via three hooks:
+     • [role="tablist"]  — auto-covers strips already marked up as tablists
+     • .tab-bar          — the existing tab-strip class
+     • .tab-scroll       — opt-in utility added to the remaining bare strips
+   Class-level specificity (0,1,1) intentionally beats the global bare
+   ::-webkit-scrollbar (0,0,1) — including the iOS @supports display:none —
+   so these stay visible everywhere, and overrides .scrollbar-dark (6px)
+   where both classes sit on the same element. Vertical content panels,
+   lists, tables and modals are untouched. */
+[role="tablist"],
+.tab-bar,
+.tab-scroll {
+  scrollbar-width: thin;                      /* Firefox */
+  scrollbar-color: #2e2e2e transparent;        /* rest thumb / track — matches .scrollbar-dark */
+}
+[role="tablist"]::-webkit-scrollbar,
+.tab-bar::-webkit-scrollbar,
+.tab-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+[role="tablist"]::-webkit-scrollbar-track,
+.tab-bar::-webkit-scrollbar-track,
+.tab-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+[role="tablist"]::-webkit-scrollbar-thumb,
+.tab-bar::-webkit-scrollbar-thumb,
+.tab-scroll::-webkit-scrollbar-thumb {
+  background: #2e2e2e;                         /* discreet at rest (border-strong tone) */
+  border-radius: 2px;                          /* matches the 2px sharp-corner token */
+  min-width: 28px;                             /* keep the thumb grabbable on wide strips */
+}
+[role="tablist"]::-webkit-scrollbar-thumb:hover,
+.tab-bar::-webkit-scrollbar-thumb:hover,
+.tab-scroll::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3a;                          /* subtle brighten on hover */
+}
+
+/* --- 5c. CUSTOM ALWAYS-VISIBLE SCROLLBARS (tab strips + content panel) ----
+   macOS Chrome uses OVERLAY scrollbars that auto-hide at rest and ignore the
+   native ::-webkit-scrollbar sizing in 5b (verified live: a 14px custom bar
+   consumed 0px). So we render a JS-driven overlay bar
+   (client/src/utils/tabScrollbars.ts) that is ALWAYS visible regardless of the
+   OS setting, on two markers:
+     .tab-scroll        — horizontal bar on overflowing tab / section strips
+     .content-scroll-y  — vertical bar on the main content panel (<main>)
+   We HIDE the native bar on both to avoid a double bar. Source order: these
+   come after 5b (and the iOS @supports block), so display:none /
+   scrollbar-width:none win. [role=tablist]/.tab-bar keep 5b as graceful
+   fallback. JS sets ALL track/thumb geometry inline (both axes), so there's no
+   fixed width/height here — only the shared visual styling. */
+.tab-scroll,
+.content-scroll-y {
+  scrollbar-width: none;                       /* Firefox: hide native (overlay replaces it) */
+}
+.tab-scroll::-webkit-scrollbar,
+.content-scroll-y::-webkit-scrollbar {
+  display: none;                               /* Chrome/Safari: hide native */
+}
+#tab-scrollbar-layer .tab-scrollbar-track {
+  position: fixed;
+  pointer-events: none;                        /* clicks pass through to the content underneath */
+  display: none;                               /* JS shows it only when the container overflows */
+}
+#tab-scrollbar-layer .tab-scrollbar-thumb {
+  border-radius: 2px;                          /* matches the 2px sharp-corner token */
+  background: #2e2e2e;                         /* discreet at rest (border-strong tone) */
+  pointer-events: auto;                        /* the thumb IS grabbable */
+  cursor: grab;
+  transition: background 0.12s ease;
+  will-change: transform, width, height;
+}
+#tab-scrollbar-layer .tab-scrollbar-thumb:hover {
+  background: #3a3a3a;                         /* subtle brighten on hover */
+}
+#tab-scrollbar-layer .tab-scrollbar-thumb.dragging {
+  background: #4a4a4a;                         /* brighter while dragging */
+  cursor: grabbing;
 }
 
 /* --- 6. TABLE / GRID CONSISTENCY ---

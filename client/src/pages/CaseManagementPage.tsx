@@ -767,7 +767,7 @@ export default function CaseManagementPage() {
             </PanelTitleBar>
 
             {/* Tabs */}
-            <div className="flex border-b border-rmpg-700 overflow-x-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+            <div className="flex border-b border-rmpg-700 overflow-x-auto tab-scroll">
               {DETAIL_TABS.map(tab => {
                 const count = tab.countKey && caseFull?.counts ? (caseFull.counts as any)[tab.countKey] : undefined;
                 return (

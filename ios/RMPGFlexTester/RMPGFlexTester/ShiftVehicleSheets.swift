@@ -25,6 +25,9 @@ struct ChecklistItem: Identifiable {
 
 struct ShiftStartSheet: View {
     let dutyState: [String: Any]
+    /// Set when a dispatch-tier user starts the shift FOR another officer
+    /// (sent as officer_id; the Worker gates it by ON_BEHALF_ROLES).
+    var onBehalfOfficerId: Int? = nil
     let onDone: (String) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -36,8 +39,13 @@ struct ShiftStartSheet: View {
     @State private var photoUrls: [String] = []
     @State private var submitting = false
     @State private var error: String?
+    // 409-contract state: server may push a fresh vehicle list (NEEDS_VEHICLE)
+    // or demand a manager override for a decreasing odometer reading.
+    @State private var pushedVehicles: [[String: Any]]?
+    @State private var needsOverride = false
+    @State private var overrideReason = ""
 
-    private var vehicles: [[String: Any]] { dutyState["available_vehicles"] as? [[String: Any]] ?? [] }
+    private var vehicles: [[String: Any]] { pushedVehicles ?? (dutyState["available_vehicles"] as? [[String: Any]] ?? []) }
     private var failed: [ChecklistItem] { items.filter { !$0.pass } }
 
     var body: some View {
@@ -69,9 +77,16 @@ struct ShiftStartSheet: View {
                     }
                     TextField("General notes", text: $notes)
                 }
+                if needsOverride {
+                    Section("MANAGER OVERRIDE") {
+                        Text("Reading is below the last recorded odometer — a reason is required to proceed.")
+                            .font(.system(size: 11)).foregroundStyle(Theme.red)
+                        TextField("Override reason", text: $overrideReason)
+                    }
+                }
                 Section {
                     Button(submitting ? "STARTING…" : "GO ON DUTY") { Task { await submit() } }
-                        .fontWeight(.bold).disabled(submitting)
+                        .fontWeight(.bold).disabled(submitting || (needsOverride && overrideReason.isEmpty))
                     if let error { Text(error).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.red) }
                 }
             }
@@ -90,6 +105,8 @@ struct ShiftStartSheet: View {
         var body: [String: Any] = [:]
         if let vehicleId { body["vehicle_id"] = vehicleId }
         if !odometer.isEmpty { body["starting_mileage"] = Int(odometer) ?? odometer }
+        if let onBehalfOfficerId { body["officer_id"] = onBehalfOfficerId }
+        if needsOverride, !overrideReason.isEmpty { body["override_reason"] = overrideReason }
         do {
             let res = try await client.requestJSON("POST", "api/dispatch/duty/start", body: body)
             // Vehicle id for the inspection: explicit pick, else what duty assigned.
@@ -130,16 +147,35 @@ struct ShiftStartSheet: View {
                    : "✓ On duty — pre-trip logged with \(failed.count) defect(s), maintenance request opened")
             dismiss()
         } catch {
-            self.error = error.localizedDescription
+            // Drive the Worker's 409 code contract instead of dead-ending.
+            switch RMPGAPIClient.apiCode(error) {
+            case "NEEDS_VEHICLE":
+                pushedVehicles = RMPGAPIClient.apiBody(error)?["available_vehicles"] as? [[String: Any]]
+                self.error = "Pick a vehicle from the list, then go on duty again."
+            case "NEEDS_MILEAGE":
+                self.error = "Enter the starting odometer reading."
+            case "MILEAGE_TOO_HIGH":
+                self.error = "That reading exceeds 999,999 — check for a stray digit."
+            case "MILEAGE_DECREASING":
+                needsOverride = true
+                let prev = RMPGAPIClient.apiBody(error)?["previous_mileage"] as? Int
+                self.error = "Reading is below the last recorded\(prev.map { " (\($0))" } ?? "") — enter an override reason."
+            default:
+                self.error = error.localizedDescription
+            }
         }
     }
 }
 
 struct ShiftEndSheet: View {
     let dutyState: [String: Any]
+    /// Set when a dispatch-tier user ends the shift FOR another officer.
+    var onBehalfOfficerId: Int? = nil
     let onDone: (String) -> Void
     @Environment(\.dismiss) private var dismiss
 
+    @State private var needsOverride = false
+    @State private var overrideReason = ""
     @State private var odometer = ""
     @State private var issues = ""
     @State private var fuelLevel = "1/2"
@@ -176,9 +212,16 @@ struct ShiftEndSheet: View {
                         TextField("Total cost ($)", text: $fuelCost).keyboardType(.decimalPad)
                     }
                 }
+                if needsOverride {
+                    Section("MANAGER OVERRIDE") {
+                        Text("Reading is below this shift's starting odometer — a reason is required.")
+                            .font(.system(size: 11)).foregroundStyle(Theme.red)
+                        TextField("Override reason", text: $overrideReason)
+                    }
+                }
                 Section {
                     Button(submitting ? "ENDING…" : "END SHIFT") { Task { await submit() } }
-                        .fontWeight(.bold).disabled(submitting)
+                        .fontWeight(.bold).disabled(submitting || (needsOverride && overrideReason.isEmpty))
                     if let error { Text(error).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.red) }
                 }
             }
@@ -195,6 +238,8 @@ struct ShiftEndSheet: View {
         guard let client = await ShiftNet.client() else { error = "Set credentials in Settings"; return }
         var body: [String: Any] = [:]
         if !odometer.isEmpty { body["ending_mileage"] = Int(odometer) ?? odometer }
+        if let onBehalfOfficerId { body["officer_id"] = onBehalfOfficerId }
+        if needsOverride, !overrideReason.isEmpty { body["override_reason"] = overrideReason }
         do {
             try await client.requestJSON("POST", "api/dispatch/duty/end", body: body)
             let fuelLow = fuelLevel == "E" || fuelLevel == "1/4"
@@ -240,7 +285,18 @@ struct ShiftEndSheet: View {
                              : "✓ Off duty — post-trip clean, books closed")
             dismiss()
         } catch {
-            self.error = error.localizedDescription
+            switch RMPGAPIClient.apiCode(error) {
+            case "NEEDS_MILEAGE":
+                self.error = "Enter the ending odometer reading."
+            case "MILEAGE_TOO_HIGH":
+                self.error = "That reading exceeds 999,999 — check for a stray digit."
+            case "MILEAGE_DECREASING":
+                needsOverride = true
+                let start = RMPGAPIClient.apiBody(error)?["starting_mileage"] as? Int
+                self.error = "Reading is below the shift's start\(start.map { " (\($0))" } ?? "") — enter an override reason."
+            default:
+                self.error = error.localizedDescription
+            }
         }
     }
 }

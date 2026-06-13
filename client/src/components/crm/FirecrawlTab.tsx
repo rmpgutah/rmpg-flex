@@ -11154,7 +11154,7 @@ export default function FirecrawlTab() {
 
         {/* Recent tools pills */}
         {recentTools.length > 0 && !activeTab && (
-          <div className="flex items-center gap-1 overflow-x-auto scrollbar-dark">
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-dark tab-scroll">
             <span className="text-[8px] font-bold text-rmpg-500 tracking-wider uppercase shrink-0 mr-0.5">RECENT</span>
             {recentTools.map(tid => {
               const tab = TABS.find(t => t.id === tid);
@@ -11174,7 +11174,7 @@ export default function FirecrawlTab() {
         )}
 
         {/* Category pills */}
-        <div className="flex items-center gap-1 overflow-x-auto scrollbar-dark">
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-dark tab-scroll">
           <button
             onClick={() => { setActiveCategory('all'); setToolSearch(''); }}
             className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-sm border transition-colors shrink-0 ${
@@ -11207,7 +11207,7 @@ export default function FirecrawlTab() {
       </div>
 
       {/* Tool buttons */}
-      <div className="border-b border-rmpg-600 bg-surface-sunken overflow-x-auto scrollbar-dark">
+      <div className="border-b border-rmpg-600 bg-surface-sunken overflow-x-auto scrollbar-dark tab-scroll">
         {groupedTabs ? (
           // Grouped by category
           <div className="px-3 py-1">

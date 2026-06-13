@@ -42,6 +42,25 @@ export async function screenPerson(db: D1Database, personId: number): Promise<Sc
         detail: `Active trespass ${t.order_number || ''}${isRealValue(t.location) ? ` — ${t.location}` : ''}`.trim() });
   } catch (err: any) { console.error('[screen] trespass failed:', err?.message); }
   try {
+    // Offender registry alerts the agency itself created. Only ACTIVE,
+    // unexpired alerts surface (a 'cleared' alert must not screen as a hit).
+    // severity danger→critical, warning/caution→warning; a sex_offender
+    // alert_type is tagged 'sor' so the UI badges it as registry, not a
+    // generic caution.
+    for (const a of await query<any>(db,
+      `SELECT alert_type, severity, description FROM offender_alerts
+       WHERE person_id = ? AND status = 'active'
+         AND (expiration_date IS NULL OR expiration_date = '' OR expiration_date >= date('now'))
+       ORDER BY CASE severity WHEN 'danger' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END LIMIT 5`, personId)) {
+      const sev = a.severity === 'danger' ? 'critical' : 'warning';
+      const isSor = String(a.alert_type) === 'sex_offender';
+      const label = isSor ? 'Registered sex offender (registry alert)'
+                          : `Offender alert${isRealValue(a.alert_type) ? ` (${String(a.alert_type).replace(/_/g, ' ')})` : ''}`;
+      hits.push({ kind: isSor ? 'sor' : 'caution', severity: sev,
+        detail: `${label}${isRealValue(a.description) ? ` — ${a.description}` : ''}`.trim() });
+    }
+  } catch (err: any) { console.error('[screen] offender_alerts failed:', err?.message); }
+  try {
     const p = await queryFirst<any>(db,
       `SELECT caution_flags, gang_affiliation, is_sex_offender, watchlist_match, flags FROM persons WHERE id = ?`, personId);
     if (p) {

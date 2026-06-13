@@ -26,11 +26,19 @@ struct FieldInterviewForm: View {
                 Button("SUBMIT FI CARD") {
                     var body: [String: Any] = [
                         "date": ISO8601DateFormatter().string(from: Date()),
-                        "subject_name": name,
                         "narrative": narrative,
-                        "description": narrative,
                     ]
-                    if !dob.isEmpty { body["date_of_birth"] = dob }
+                    // Backend FIELD_MAP only accepts subject_first_name /
+                    // subject_last_name / subject_dob — anything else is
+                    // silently dropped from the INSERT.
+                    let parts = name.split(separator: " ")
+                    if parts.count >= 2 {
+                        body["subject_first_name"] = parts.dropLast().joined(separator: " ")
+                        body["subject_last_name"] = String(parts.last!)
+                    } else if !name.isEmpty {
+                        body["subject_last_name"] = name
+                    }
+                    if !dob.isEmpty { body["subject_dob"] = dob }
                     if !location.isEmpty {
                         body["location"] = location
                     } else if let loc = LocationManager.shared.last {

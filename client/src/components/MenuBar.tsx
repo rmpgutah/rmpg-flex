@@ -746,6 +746,9 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Training', icon: GraduationCap, action: () => navigate('/training') },
           { type: 'action', label: 'Training Docs', icon: BookOpen, action: () => navigate('/training-docs') },
+          { type: 'separator' },
+          { type: 'action', label: 'My Officer ID', icon: CreditCard, action: () => navigate('/my-id') },
+          { type: 'action', label: 'Verify Officer ID', icon: QrCode, action: () => navigate('/verify-id') },
         ],
       },
       {

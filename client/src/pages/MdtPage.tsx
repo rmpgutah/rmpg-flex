@@ -17,6 +17,7 @@ import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useWebSocket } from '../context/WebSocketContext';
 import { formatIncidentType } from '../utils/caseNumbers';
+import { humanizePriority } from '../utils/statusLabels';
 import { formatTimer, getStatusElapsed, isActiveStatus } from '../utils/dispatchTimers';
 import { mapDbCall } from './dispatch/utils/dispatchMappers';
 import StatusBadge from '../components/StatusBadge';
@@ -168,7 +169,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
                     className="text-[7px] font-black uppercase px-1 py-px mt-1 inline-block rounded-sm"
                     style={{ background: ps.color, color: '#000', letterSpacing: '0.05em' }}
                   >
-                    {msg.priority}
+                    {humanizePriority(msg.priority)}
                   </span>
                 )}
               </div>
@@ -844,7 +845,7 @@ export default function MdtPage() {
                           className="text-[8px] font-black px-1 rounded-sm"
                           style={{ background: prioColor(call.priority), color: '#fff' }}
                         >
-                          {call.priority}
+                          {humanizePriority(call.priority)}
                         </span>
                       </div>
                       <button type="button"
@@ -916,7 +917,7 @@ export default function MdtPage() {
                       className="text-[8px] font-black px-1 py-px rounded-sm"
                       style={{ background: prioColor(selectedCall.priority), color: '#fff' }}
                     >
-                      {selectedCall.priority}
+                      {humanizePriority(selectedCall.priority)}
                     </span>
                   </div>
                   <div className="text-[11px] text-white font-semibold mt-0.5">

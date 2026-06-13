@@ -31,7 +31,7 @@ RMPG Flex is a **police CAD/RMS** (Computer-Aided Dispatch / Records Management 
 | Frontend | React 18 + TypeScript + Vite 6 + Tailwind (built to `client/dist/`, deployed to Cloudflare Pages project `rmpg-flex`) |
 | Maps | **Mapbox GL JS** (overrides the legacy "Google Maps only" rule, which was anti-fragmentation for the VPS — see `[[project-mapbox-decision]]` memory) |
 | Edge | Python edge runner for Flex Dashcam AI (`edge/`, Jetson target) — independent of the Worker |
-| Styling | Spillman Flex / Motorola Solutions pure-black theme — `#0a0a0a` base, `#d4a017` gold, zero blue |
+| Styling | Spillman Flex / Motorola Solutions pure-black theme — `#000000` base, `#d4a017` gold, zero blue |
 
 ## Repository Layout
 
@@ -76,22 +76,23 @@ deploy/             VPS deploy scripts — likely dead, retained until confirmed
 
 **Verify after every deploy**:
 ```bash
-# ⚠️ A Cloudflare **managed challenge** now fronts both zones, so a plain
-# `curl -sf https://api.rmpgutah.us/api/health` returns HTTP 403 ("Just a
-# moment…") even when the API is perfectly healthy — the bot check needs JS
-# + cookies that curl can't solve. Confirmed 2026-05-29 (also reproduced live:
-# the SPA + /dispatch load fine in a real browser while curl gets 403).
-# The old curl checks are NOT a valid signal anymore.
+# ✅ As of 2026-06-12, `curl -sf https://api.rmpgutah.us/api/health` WORKS again
+# (returns HTTP 200 + JSON). A WAF custom rule in the http_request_firewall_custom
+# phase (zone rmpgutah.us = addedd9f3c798f85de2d3eea18ccef9a; ruleset
+# fb286265c2ad4f009c3fbcb7aac35e6c, rule 472b15f78f50420f871dd6c71e990ac7)
+# SKIPs the managed challenge for `http.request.uri.path eq "/api/health"`:
+curl -sf https://api.rmpgutah.us/api/health   # expect {"status":"ok",...}
 
-# Working verification options (pick one):
+# ⚠️ The skip rule is scoped to /api/health ONLY. Every OTHER path on both zones
+# is still behind a Cloudflare **managed challenge**, so a plain curl to any other
+# endpoint (or the SPA) returns HTTP 403 ("Just a moment…") even when healthy —
+# the bot check needs JS + cookies curl can't solve (confirmed 2026-05-29). For
+# anything besides /api/health, use one of:
 # 1. Browser: open https://rmpgutah.us/ and https://api.rmpgutah.us/api/health
 #    in a real browser (solves the challenge) and eyeball the JSON / SPA shell.
 # 2. DB-level health (bypasses the WAF entirely) via the Cloudflare API/D1:
 #    query the LIVE DB `rmpg-flex` (785de7ae-3e7a-4e01-93bb-d24ddd813f6b),
 #    e.g. `SELECT COUNT(*) FROM sqlite_master WHERE type='table'` (expect ~180).
-# 3. Scripted HTTP: add a WAF "Skip → Managed Challenge" custom rule for
-#    `http.request.uri.path eq "/api/health"` (and/or gate it on a secret
-#    header), then `curl -sf` works again in CI.
 ```
 
 **Service worker cache**: bump `CACHE_NAME` in `client/public/sw.js` on every client change so users don't get stale chunks. Incident 2026-05-24: SW v321 lived in prod for weeks while source moved to v563 because the old `deploy.yml` only ran the Worker step. The new pipeline deploys both — but the SW bump is still required for cache invalidation.
@@ -160,7 +161,7 @@ export default function SomePage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="SECTION TITLE" icon={SomeIcon} />
-      {/* Surface tokens: bg-surface-base #0a0a0a, raised #141414, sunken #050505 */}
+      {/* Surface tokens: bg-surface-base #000000, raised #0b0b0b, sunken #000000 */}
     </div>
   );
 }
@@ -172,9 +173,9 @@ export default function SomePage() {
 Use `<IconButton aria-label="...">` from `client/src/components/IconButton.tsx`. The `aria-label` is a required TS prop — that's the only enforcement; no ESLint a11y plugin runs in `client/`.
 
 ### Design tokens (Spillman / Motorola pure-black)
-- Surfaces: `#0a0a0a` base, `#141414` raised, `#050505` sunken, `#000000` deep
+- Surfaces: `#000000` base, `#0b0b0b` raised, `#000000` sunken, `#000000` deep (base/sunken/deep are all true `#000` in the pure-black theme; `raised` `#0b0b0b` + `overlay` `#030303` are the only non-black surfaces. The old `#0a0a0a`/`#141414`/`#050505` scale was the retired steel-blue theme.)
 - Brand gold: `#d4a017`. Neutral gray: `#888888`. **Zero blue anywhere.**
-- Borders: `#222222` default, `#1a1a1a` subtle, `#2e2e2e` strong
+- Borders: `#232323` default, `#121212` subtle, `#3a3a3a` strong (`strong` was bumped from the old steel-blue `#2e2e2e` to `#3a3a3a` in the 2026-04-08 pure-black redesign for visibility on the `#000` base — `:root` in `client/src/index.css` is the source of truth)
 - Radius: **2 px everywhere** — never `rounded-lg`. Global Tailwind override at the end of `client/src/index.css` enforces this with `!important`.
 - Tables: header `font-semibold` 9 px, `py-[3px]`; rows 11 px, `py-[2px]`. No pill badges.
 

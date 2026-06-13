@@ -153,6 +153,72 @@ async function stateFor(db: any, officerId: number) {
   };
 }
 
+// Shape one roster row from the joined SELECT. Exported for the test suite —
+// the nesting contract (unit/vehicle/last_gps null vs object) is what the iOS
+// DutyRosterView decodes, so it's locked here rather than re-derived.
+export function _rosterRowForTest(r: Record<string, any>) {
+  return rosterRow(r);
+}
+function rosterRow(r: Record<string, any>) {
+  const onShift = r.entry_id != null;
+  const clockInMs = onShift ? new Date(r.clock_in).getTime() : NaN;
+  return {
+    officer_id: r.officer_id,
+    name: r.full_name ?? null,
+    role: r.role ?? null,
+    on_shift: onShift,
+    entry_id: r.entry_id ?? null,
+    clock_in: onShift ? r.clock_in : null,
+    hours_so_far: Number.isFinite(clockInMs)
+      ? Math.max(0, Math.round((Date.now() - clockInMs) / 36_000) / 100)
+      : null,
+    unit: r.unit_id != null
+      ? { id: r.unit_id, call_sign: r.call_sign ?? null, status: r.unit_status ?? null, current_call_id: r.current_call_id ?? null }
+      : null,
+    vehicle: r.veh_id != null
+      ? { id: r.veh_id, vehicle_number: r.veh_number ?? null, vehicle_name: r.veh_name ?? null }
+      : null,
+    last_gps: r.latitude != null && r.longitude != null
+      ? { lat: r.latitude, lng: r.longitude, at: r.gps_updated_at ?? null }
+      : null,
+  };
+}
+
+// GET /dispatch/duty/roster — every active officer's duty state in one call.
+// Dispatch-tier only: this is the supervision surface behind the iOS Duty
+// Roster screen (start/end on behalf + time corrections hang off these rows).
+duty.get('/roster', async (c) => {
+  try {
+    const role = (c.get('user') as { role?: string } | undefined)?.role;
+    if (!role || !ON_BEHALF_ROLES.has(role)) {
+      return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+    }
+    const db = getDb(c.env);
+    // One pass: active users × their open time entry × claimed unit (with the
+    // GPS mirror — no breadcrumb scan) × the unit's assigned fleet vehicle.
+    const rows = await query<Record<string, any>>(db, `
+      SELECT us.id AS officer_id, us.full_name, us.role,
+             te.id AS entry_id, te.clock_in,
+             un.id AS unit_id, un.call_sign, un.status AS unit_status,
+             un.current_call_id, un.latitude, un.longitude, un.gps_updated_at,
+             fv.id AS veh_id, fv.vehicle_number AS veh_number, fv.vehicle_name AS veh_name
+        FROM users us
+        LEFT JOIN time_entries te ON te.id = (
+          SELECT id FROM time_entries WHERE officer_id = us.id AND clock_out IS NULL
+           ORDER BY clock_in DESC LIMIT 1)
+        LEFT JOIN units un ON un.id = (
+          SELECT id FROM units WHERE officer_id = us.id
+           ORDER BY last_status_change DESC, id DESC LIMIT 1)
+        LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = un.id
+       WHERE COALESCE(us.status, 'active') NOT IN ('terminated', 'inactive')
+       ORDER BY (te.id IS NULL), us.full_name`);
+    return c.json({ officers: rows.map(rosterRow) });
+  } catch (err) {
+    console.error('GET /dispatch/duty/roster failed:', err);
+    return c.json({ error: 'Failed to load duty roster', detail: (err as Error)?.message }, 500);
+  }
+});
+
 // GET /dispatch/duty/me — current shift state + vehicle options for the picker.
 duty.get('/me', async (c) => {
   try {

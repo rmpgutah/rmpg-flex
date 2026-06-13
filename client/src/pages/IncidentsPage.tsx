@@ -69,7 +69,7 @@ import { formatDate, formatDateTime, safeDateTimeStr, safeTimeStr, parseTimestam
 import { useIsMobile } from '../hooks/useIsMobile';
 import WarrantBadge from '../components/WarrantBadge';
 import NarrativeAssist from '../components/dispatch/NarrativeAssist';
-import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
+import { humanizePriority, getStatusTooltip, formatAddressDisplay, humanizeType, humanizeDisposition } from '../utils/statusLabels';
 import ZsbBadge from '../components/ZsbBadge';
 
 // ============================================================
@@ -1447,7 +1447,7 @@ export default function IncidentsPage() {
                 {inc.call_number}
               </button>
               {inc.call_type && (
-                <span className="text-xs text-rmpg-300">{inc.call_type}</span>
+                <span className="text-xs text-rmpg-300">{humanizeType(inc.call_type)}</span>
               )}
               {inc.call_created_at && (
                 <span className="text-xs text-rmpg-400 font-mono">
@@ -1837,7 +1837,7 @@ export default function IncidentsPage() {
                       {offense.ucr_code && <span>UCR: {offense.ucr_code}</span>}
                       {offense.suspect_first && <span className="text-red-300">Suspect: {offense.suspect_first} {offense.suspect_last}</span>}
                       {offense.victim_first && <span className="text-gray-300">Victim: {offense.victim_first} {offense.victim_last}</span>}
-                      {offense.disposition && <span className="text-green-400">Disp: {offense.disposition}</span>}
+                      {offense.disposition && <span className="text-green-400">Disp: {humanizeDisposition(offense.disposition)}</span>}
                     </div>
                   </div>
                   {(isAdmin || isGodMode) && (

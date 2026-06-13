@@ -84,6 +84,29 @@ export async function decodePdf417Frame(imageData: ImageData): Promise<string | 
   }
 }
 
+/**
+ * Fast single-pass QR decode for live camera frames — used by the officer
+ * wallet-ID verify scanner (src/pages/wallet/VerifyIdPage.tsx). Reuses the same
+ * one-time zxing module init as the PDF417 path so the wasm is prepared once.
+ */
+export async function decodeQrFrame(imageData: ImageData): Promise<string | null> {
+  ensureModule();
+  try {
+    const results = await readBarcodes(imageData, {
+      formats: ['QRCode'],
+      tryHarder: false,
+      tryRotate: true,
+      tryInvert: true,
+      tryDownscale: true,
+      textMode: 'Plain',
+      maxNumberOfSymbols: 1,
+    });
+    return results[0]?.text || null;
+  } catch {
+    return null;
+  }
+}
+
 export interface Pdf417DecodeOutcome {
   text: string;
   passes: number; // how many attempts it took (diagnostics)
