@@ -33,7 +33,7 @@ struct FieldOpsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 10) {
-                    HStack { Spacer(); MDTStatusPill() }
+                    HStack(spacing: 6) { OfflineStatusPill(); Spacer(); MDTStatusPill() }
                     dutyCard
                     if onShift { statusCard }
                     NavigationLink {
@@ -353,11 +353,9 @@ struct FieldOpsView: View {
     private func setStatus(_ value: String) async {
         guard let id = unit?["id"] as? Int else { status = "✗ No unit assigned"; return }
         busyAction = true; defer { busyAction = false }
-        await authed { c in
-            try await c.requestJSON("PUT", "api/dispatch/units/\(id)/status", body: ["status": value])
-            status = "✓ Status → \(value.uppercased()) (live on dispatch board)"
-            await refresh()
-        }
+        status = await sendOrQueue(method: "PUT", path: "api/dispatch/units/\(id)/status",
+                                   body: ["status": value], label: "Status → \(value.uppercased())")
+        await refresh()
     }
 
     @MainActor
@@ -390,14 +388,13 @@ struct FieldOpsView: View {
     @MainActor
     private func panic() async {
         AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
-        await authed { c in
-            var body: [String: Any] = ["trigger_method": "ios_field_app"]
-            if let loc = location.last {
-                body["latitude"] = loc.coordinate.latitude
-                body["longitude"] = loc.coordinate.longitude
-            }
-            try await c.requestJSON("POST", "api/dispatch/panic", body: body)
-            status = "✓ PANIC SENT — P1 officer assist on the board"
+        var body: [String: Any] = ["trigger_method": "ios_field_app"]
+        if let loc = location.last {
+            body["latitude"] = loc.coordinate.latitude
+            body["longitude"] = loc.coordinate.longitude
         }
+        // Queue on a dead zone so a lost-signal panic still fires on reconnect.
+        let result = await sendOrQueue(method: "POST", path: "api/dispatch/panic", body: body, label: "PANIC")
+        status = result.hasPrefix("✓") ? "✓ PANIC SENT — P1 officer assist on the board" : result
     }
 }
