@@ -342,6 +342,14 @@ export default {
           .then((n) => { if (n) console.log(`[intel-screen] ${n} alert(s) raised`); })
           .catch((err) => console.error('[intel-screen] sweep failed:', err)),
       );
+      // Officer-safety: on-foot overdue sweep — alerts dispatch when a
+      // unit has been on foot past the threshold. Cheap when none are.
+      ctx.waitUntil(
+        import('./utils/onFootSweep')
+          .then(({ sweepOnFootOverdue }) => sweepOnFootOverdue(env.DB, env))
+          .then((n) => { if (n) console.log(`[on-foot] ${n} overdue alert(s)`); })
+          .catch((err) => console.error('[on-foot] sweep failed:', err)),
+      );
       // Email poll — throttled internally by ms_email_last_sync vs
       // ms_email_poll_interval. No-op when not configured.
       ctx.waitUntil(
