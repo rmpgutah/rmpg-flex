@@ -72,7 +72,7 @@ import {
   announceDirectedNote, announceLocalAction, announceSpeedAdvisory,
 } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
-import { computeListLines, tokenizeInline } from '../../utils/noteFormatting';
+import { renderFormattedText } from '../../utils/renderFormatted';
 import NoteComposer from './components/NoteComposer';
 import { useDistrictOptions, normalizeSectorId } from '../../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../../hooks/useAddressAutofill';
@@ -1709,44 +1709,6 @@ export default function DispatchPage() {
     }
     setEditingTimestamp(null);
   }, [selectedCall, isAdminOrManager, addToast]);
-
-  // Render one line's inline marks (**bold** *italic* __underline__ ~~strike~~).
-  // Plain runs are returned as strings (no key needed); styled runs become keyed spans.
-  const renderInline = useCallback((text: string, keyBase: string) =>
-    tokenizeInline(text).map((t, i) => {
-      const cls = [
-        t.bold && 'font-bold',
-        t.italic && 'italic',
-        t.underline && 'underline',
-        t.strike && 'line-through',
-      ].filter(Boolean).join(' ');
-      return cls
-        ? <span key={`${keyBase}-${i}`} className={cls}>{t.text}</span>
-        : t.text;
-    }), []);
-
-  // Render note text: inline marks for single-line notes; a block of indented
-  // rows (bullets / outline numbers) when the note contains list lines.
-  const renderFormattedText = useCallback((text: string) => {
-    if (!text) return text;
-    const lines = computeListLines(text);
-    const hasList = lines.some((l) => l.kind !== 'plain');
-    if (!hasList) return renderInline(text, 'inl');
-    return (
-      <span className="block">
-        {lines.map((l, idx) => (
-          <span key={idx} className="flex items-start" style={{ paddingLeft: `${l.depth * 1.1}em` }}>
-            {l.kind !== 'plain' && (
-              <span className="inline-block shrink-0 text-[#9ca3af] mr-1" style={{ minWidth: '1.4em' }}>
-                {l.kind === 'ordered' ? `${l.marker}.` : '•'}
-              </span>
-            )}
-            <span className="flex-1 min-w-0">{renderInline(l.content, `l${idx}`)}</span>
-          </span>
-        ))}
-      </span>
-    );
-  }, [renderInline]);
 
   // ── Inline Editing ────────────────────────────────────────
   // Refetch the full call fresh from /dispatch/calls/:id before populating
