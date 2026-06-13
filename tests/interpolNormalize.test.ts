@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeInterpolNotice } from '../src/utils/screening/interpolAdapter';
+import { normalizeInterpolNotice, interpolSubjectNames } from '../src/utils/screening/interpolAdapter';
 
 const RED = {
   entity_id: '2021/12345',
@@ -25,5 +25,21 @@ describe('normalizeInterpolNotice', () => {
     expect(c.externalId).toBe('x/1');
     expect(c.sourceKey).toBe('interpol-yellow');
     expect(c.nationalities).toEqual([]);
+  });
+});
+
+describe('interpolSubjectNames', () => {
+  it('uses structured raw_json forename/name (multi-word forename keeps surname intact)', () => {
+    const raw = JSON.stringify({ forename: 'JEAN MARIE', name: 'DUPONT' });
+    expect(interpolSubjectNames(raw, 'JEAN MARIE DUPONT')).toEqual({ first: 'JEAN MARIE', last: 'DUPONT' });
+  });
+  it('falls back to display_name split when raw_json is null', () => {
+    expect(interpolSubjectNames(null, 'Ivan Petrov')).toEqual({ first: 'Ivan', last: 'Petrov' });
+  });
+  it('handles a single-token display name', () => {
+    expect(interpolSubjectNames(null, 'UNKNOWN')).toEqual({ first: 'UNKNOWN', last: 'UNKNOWN' });
+  });
+  it('falls back gracefully on malformed raw_json', () => {
+    expect(interpolSubjectNames('{not json', 'Ivan Petrov')).toEqual({ first: 'Ivan', last: 'Petrov' });
   });
 });

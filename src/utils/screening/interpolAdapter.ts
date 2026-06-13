@@ -34,12 +34,34 @@ export function normalizeInterpolNotice(raw: unknown, type: InterpolType): Norma
   };
 }
 
+// Derive warrant subject names from a stored hit. Prefer the structured INTERPOL
+// fields in raw_json (forename + name); fall back to splitting display_name only
+// if raw_json is unusable. INTERPOL `name` is the surname, `forename` the given name.
+export function interpolSubjectNames(rawJson: string | null, displayName: string | null): { first: string; last: string } {
+  try {
+    if (rawJson) {
+      const r = JSON.parse(rawJson) as { forename?: string; name?: string };
+      if (r && (r.forename || r.name)) {
+        return { first: (r.forename ?? '').trim(), last: (r.name ?? '').trim() };
+      }
+    }
+  } catch { /* fall through */ }
+  const parts = (displayName ?? '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first: '', last: '' };
+  if (parts.length === 1) return { first: parts[0], last: parts[0] };
+  return { first: parts[0], last: parts.slice(1).join(' ') };
+}
+
 async function fetchNotices(type: InterpolType, qs: Record<string, string>): Promise<RawNotice[]> {
-  const params = new URLSearchParams({ resultPerPage: '20', ...qs });
-  const res = await fetch(`${BASE}/${type}?${params}`, { headers: { Accept: 'application/json' } });
-  if (!res.ok) return [];
-  const body = (await res.json()) as { _embedded?: { notices?: RawNotice[] } };
-  return body._embedded?.notices ?? [];
+  try {
+    const params = new URLSearchParams({ resultPerPage: '20', ...qs });
+    const res = await fetch(`${BASE}/${type}?${params}`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return [];
+    const body = (await res.json()) as { _embedded?: { notices?: RawNotice[] } };
+    return body._embedded?.notices ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export function interpolAdapter(type: InterpolType): ScreeningAdapter {
@@ -80,11 +102,12 @@ export function interpolAdapter(type: InterpolType): ScreeningAdapter {
 
     scoreMatch(person: PersonRow, candidate: NormalizedCandidate): MatchResult {
       const raw = candidate.raw as RawNotice;
-      const candAge = ageFromDob(candidate.dob, new Date().getUTCFullYear());
+      const nowYear = new Date().getUTCFullYear();
+      const candAge = ageFromDob(candidate.dob, nowYear);
       return scoreNameMatch({
         personSurname: person.last_name ?? '',
         personForename: person.first_name ?? '',
-        personAge: ageFromDob(person.dob, new Date().getUTCFullYear()),
+        personAge: ageFromDob(person.dob, nowYear),
         personNationality: person.nationality ?? person.citizenship ?? null,
         candSurname: raw?.name ?? '',
         candForename: raw?.forename ?? '',
@@ -95,9 +118,11 @@ export function interpolAdapter(type: InterpolType): ScreeningAdapter {
 
     async confirmHit(env: Bindings, hit: ScreeningHitRow): Promise<{ promotedRef: string }> {
       const db = getDb(env);
+      // Only Red Notices (internationally wanted) promote to a canonical warrant.
+      // Yellow (missing) and UN (sanctions) confirm via status only; surfaced on
+      // the dossier timeline by the confirm dispatcher, not as a warrant.
       if (type !== 'red') return { promotedRef: 'noted' };
-      const [first, ...rest] = (hit.display_name ?? '').split(' ');
-      const last = rest.join(' ') || first;
+      const { first, last } = interpolSubjectNames(hit.raw_json, hit.display_name);
       const warrantNumber = `INTERPOL-RED-${hit.external_id}`;
       const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE warrant_number = ?', warrantNumber);
       if (!existing) {
