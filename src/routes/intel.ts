@@ -794,11 +794,23 @@ intel.get('/dossier/person/:id', operational, async (c) => {
     watched = !!w;
   } catch (err: any) { console.error('[dossier] watch state failed:', err?.message); }
 
+  // Linked Intelligence — disseminated products that name this person.
+  let linkedIntel: any[] = [];
+  try {
+    linkedIntel = await query<any>(db,
+      `SELECT r.id, r.report_number, r.title, r.threat_level, r.source_reliability,
+              r.info_credibility, r.handling_code, r.disseminated_at, l.role
+       FROM intel_report_links l JOIN intel_reports r ON r.id = l.report_id
+       WHERE l.entity_type = 'person' AND l.entity_id = ? AND r.status = 'disseminated'
+       ORDER BY r.disseminated_at DESC`, id);
+  } catch (err: any) { console.error('[intel] linked intel failed:', err?.message); }
+
   return c.json({
     person, cluster, flags, timeline, associates, vehicles,
     addresses: addresses.slice(0, 10),
     watched,
     escalation,
+    linked_intel: linkedIntel,
   });
 });
 
