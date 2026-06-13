@@ -40,21 +40,29 @@ screening.get('/search', requireRole(...READ_ROLES), async (c) => {
       page: num(c.req.query('page')),
     });
     return c.json({ data: results });
-  } catch (err) { return c.json({ data: [], error: String(err) }); }
+  } catch (err) { console.error('[screening/search]', err); return c.json({ data: [], error: 'search failed' }, 500); }
 });
 
-// GET /api/screening/notice/:type/:id  (+ /images) — INTERPOL detail proxy
-screening.get('/notice/:type/:id', requireRole(...READ_ROLES), async (c) => {
-  const { type, id } = c.req.param();
+// GET /api/screening/notice/:type?id=  (+ /images) — INTERPOL detail proxy.
+// entity_id contains a literal '/' (e.g. "2021/12345"), so it's passed as a
+// query param, not a path segment. Sanitize to digits/slash to prevent path injection.
+// /images is registered FIRST so Hono doesn't swallow it with the bare /:type route.
+screening.get('/notice/:type/images', requireRole(...READ_ROLES), async (c) => {
+  const type = c.req.param('type') ?? '';
   if (!['red', 'yellow', 'un'].includes(type)) return c.json({ error: 'bad type' }, 400);
-  const res = await fetch(`https://ws-public.interpol.int/notices/v1/${type}/${encodeURIComponent(id)}`, { headers: { Accept: 'application/json' } });
-  if (!res.ok) return c.json({ error: 'not found' }, 404);
+  const safeId = (c.req.query('id') ?? '').replace(/[^0-9/]/g, '');
+  if (!safeId) return c.json({ _embedded: { images: [] } });
+  const res = await fetch(`https://ws-public.interpol.int/notices/v1/${type}/${safeId}/images`, { headers: { Accept: 'application/json' } });
+  if (!res.ok) return c.json({ _embedded: { images: [] } });
   return c.json(await res.json());
 });
-screening.get('/notice/:type/:id/images', requireRole(...READ_ROLES), async (c) => {
-  const { type, id } = c.req.param();
-  const res = await fetch(`https://ws-public.interpol.int/notices/v1/${type}/${encodeURIComponent(id)}/images`, { headers: { Accept: 'application/json' } });
-  if (!res.ok) return c.json({ _embedded: { images: [] } });
+screening.get('/notice/:type', requireRole(...READ_ROLES), async (c) => {
+  const type = c.req.param('type') ?? '';
+  if (!['red', 'yellow', 'un'].includes(type)) return c.json({ error: 'bad type' }, 400);
+  const safeId = (c.req.query('id') ?? '').replace(/[^0-9/]/g, '');
+  if (!safeId) return c.json({ error: 'id required' }, 400);
+  const res = await fetch(`https://ws-public.interpol.int/notices/v1/${type}/${safeId}`, { headers: { Accept: 'application/json' } });
+  if (!res.ok) return c.json({ error: 'not found' }, 404);
   return c.json(await res.json());
 });
 
@@ -79,7 +87,7 @@ screening.post('/hits/:id/confirm', requireRole(...SCAN_ROLES), async (c) => {
   try {
     const res = await confirmScreeningHit(c.env, id, user.id);
     return c.json({ success: true, status: res.status, promotedRef: res.promotedRef });
-  } catch (err) { return c.json({ success: false, error: String(err) }, 400); }
+  } catch (err) { console.error('[screening/confirm]', err); return c.json({ success: false, error: 'confirm failed' }, 400); }
 });
 
 // POST /api/screening/hits/:id/dismiss
@@ -89,7 +97,7 @@ screening.post('/hits/:id/dismiss', requireRole(...SCAN_ROLES), async (c) => {
   try {
     await dismissScreeningHit(c.env, id, user.id);
     return c.json({ success: true });
-  } catch (err) { return c.json({ success: false, error: String(err) }, 400); }
+  } catch (err) { console.error('[screening/dismiss]', err); return c.json({ success: false, error: 'dismiss failed' }, 400); }
 });
 
 // GET/POST/DELETE /api/screening/watchlist
@@ -107,14 +115,18 @@ screening.post('/watchlist', requireRole(...SCAN_ROLES), async (c) => {
   const body = await c.req.json<{ person_id?: number; source_scope?: string; reason?: string }>().catch(() => ({} as { person_id?: number; source_scope?: string; reason?: string }));
   const user = c.get('user') as { id: number };
   if (!body.person_id) return c.json({ success: false, error: 'person_id required' }, 400);
-  const r = await execute(getDb(c.env),
-    'INSERT INTO screening_watchlist (person_id, source_scope, reason, added_by) VALUES (?,?,?,?)',
-    body.person_id, body.source_scope ?? null, body.reason ?? null, user.id);
-  return c.json({ success: true, id: r.meta.last_row_id });
+  try {
+    const r = await execute(getDb(c.env),
+      'INSERT INTO screening_watchlist (person_id, source_scope, reason, added_by) VALUES (?,?,?,?)',
+      body.person_id, body.source_scope ?? null, body.reason ?? null, user.id);
+    return c.json({ success: true, id: r.meta.last_row_id });
+  } catch (err) { console.error('[screening/watchlist]', err); return c.json({ success: false, error: 'failed' }, 500); }
 });
 screening.delete('/watchlist/:id', requireRole(...SCAN_ROLES), async (c) => {
-  await execute(getDb(c.env), 'UPDATE screening_watchlist SET active = 0 WHERE id = ?', Number(c.req.param('id')));
-  return c.json({ success: true });
+  try {
+    await execute(getDb(c.env), 'UPDATE screening_watchlist SET active = 0 WHERE id = ?', Number(c.req.param('id')));
+    return c.json({ success: true });
+  } catch (err) { console.error('[screening/watchlist-del]', err); return c.json({ success: false, error: 'failed' }, 500); }
 });
 
 // POST /api/screening/scan — manual trigger (fire-and-forget)
