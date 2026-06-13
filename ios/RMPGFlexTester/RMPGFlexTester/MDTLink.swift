@@ -39,7 +39,9 @@ final class MDTLink: ObservableObject {
         online = parsed.online
         if !parsed.messages.isEmpty {
             inbox.insert(contentsOf: parsed.messages, at: 0)
+            if inbox.count > 100 { inbox = Array(inbox.prefix(100)) }   // cap unbounded shift-long growth
             unreadCount += parsed.messages.count
+            Haptics.tap()   // officer feels an inbound MDT message
         }
     }
 

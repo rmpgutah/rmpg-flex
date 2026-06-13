@@ -37,6 +37,7 @@ struct NotificationsView: View {
                     .disabled(working || unreadCount == 0)
             }
         }
+        .refreshable { await refresh() }
         .task {
             await load()
             while !Task.isCancelled {

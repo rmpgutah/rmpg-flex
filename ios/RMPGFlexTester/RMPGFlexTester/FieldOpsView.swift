@@ -343,6 +343,7 @@ struct FieldOpsView: View {
                         || ((call["priority"] as? Int) == 1)
                     if p1 || !hazards(call).isEmpty {
                         AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
+                        Haptics.warning()
                     }
                     lastAlertedCallId = callId
                 }
@@ -372,6 +373,7 @@ struct FieldOpsView: View {
     private func setStatus(_ value: String) async {
         guard let id = unit?["id"] as? Int else { status = "✗ No unit assigned"; return }
         busyAction = true; defer { busyAction = false }
+        Haptics.tap()
         status = await sendOrQueue(method: "PUT", path: "api/dispatch/units/\(id)/status",
                                    body: ["status": value], label: "Status → \(value.uppercased())")
         await refresh()
@@ -406,6 +408,7 @@ struct FieldOpsView: View {
 
     @MainActor
     private func panic() async {
+        Haptics.panic()
         AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
         var body: [String: Any] = ["trigger_method": "ios_field_app"]
         if let loc = location.last {

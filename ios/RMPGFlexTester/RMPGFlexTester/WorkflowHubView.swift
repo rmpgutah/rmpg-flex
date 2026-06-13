@@ -5,10 +5,13 @@ import SwiftUI
 // straight through to any workflow the officer opens.
 struct WorkflowHubView: View {
     var prefill: [String: FieldValue] = [:]
+    @State private var search = ""
     private var role: String { (JWTClaims.current()?.role ?? "officer").lowercased() }
 
     private var visible: [WorkflowDefinition] { WorkflowRegistry.all.filter { $0.roles.contains(role) } }
-    private func grouped(_ c: WorkflowCategory) -> [WorkflowDefinition] { visible.filter { $0.category == c } }
+    private func grouped(_ c: WorkflowCategory) -> [WorkflowDefinition] {
+        visible.filter { $0.category == c && WorkflowFilter.matches($0, query: search) }
+    }
 
     private let catTitles: [(WorkflowCategory, String)] = [
         (.reports, "FIELD REPORTS"), (.patrol, "PATROL & SECURITY"),
@@ -17,6 +20,7 @@ struct WorkflowHubView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                searchField
                 ForEach(catTitles, id: \.0) { cat, title in
                     let items = grouped(cat)
                     if !items.isEmpty {
@@ -33,6 +37,20 @@ struct WorkflowHubView: View {
         .background(Theme.base)
         .navigationTitle("WORKFLOWS")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(Theme.neutral)
+            TextField("Search workflows…", text: $search)
+                .font(.system(size: 13)).foregroundStyle(.white).autocorrectionDisabled()
+            if !search.isEmpty {
+                Button { search = "" } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.neutral)
+                }
+            }
+        }
+        .padding(8).background(Theme.raised).clipShape(RoundedRectangle(cornerRadius: Theme.radius))
     }
 
     private func tile(_ def: WorkflowDefinition) -> some View {
