@@ -66,6 +66,12 @@ struct SystemHubView: View {
 
     private var entries: [Entry] {
         [
+            Entry(id: "alerts", title: "Live Alerts",
+                  subtitle: "Calls · BOLOs · watchlist hits — one ranked feed",
+                  icon: "bell.badge.waveform.fill", destination: AnyView(AlertsFeedView())),
+            Entry(id: "watchlist", title: "Watchlist",
+                  subtitle: "Subjects you're watching · alerts on new activity",
+                  icon: "binoculars.fill", destination: AnyView(WatchlistView())),
             Entry(id: "dar", title: "Daily Activity Report",
                   subtitle: "Auto-compiled shift report · review + sign",
                   icon: "doc.text.below.ecg.fill", destination: AnyView(DailyActivityReportView())),
