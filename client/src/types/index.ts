@@ -240,10 +240,12 @@ export type CallSource =
 export interface CallNote {
   id: string;
   author: string;
+  author_username?: string | null; // server-stamped JWT username; keys note-edit ownership
   text: string;
   timestamp: string;
   edited_at?: string | null;
   edited_by?: string | null;
+  broadcast?: boolean;
 }
 
 export interface CallForService {

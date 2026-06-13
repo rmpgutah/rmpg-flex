@@ -1538,7 +1538,7 @@ callActions.post('/:id/broadcast-note', requireRole(...WRITE_ROLES), async (c) =
 
     const now = utcNow();
     const notes = safeJson<any[]>(call.notes, []);
-    notes.push({ id: `bn-${Date.now()}`, author: 'DISPATCH BROADCAST', text: message, timestamp: now, broadcast: true });
+    notes.push({ id: `bn-${Date.now()}`, author: 'DISPATCH BROADCAST', author_username: (c.get('user') as { username?: string } | undefined)?.username || null, text: message, timestamp: now, broadcast: true });
     await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
 
     const updated = await fetchCallRow(db, id);
@@ -1576,7 +1576,7 @@ callActions.post('/:id/notes', requireRole(...WRITE_ROLES), async (c) => {
     }
     const now = utcNow();
     const notes = safeJson<any[]>(call.notes, []);
-    notes.push({ id: `n-${Date.now()}`, author: String(body.author || 'Dispatch').slice(0, 120), text, timestamp: now });
+    notes.push({ id: `n-${Date.now()}`, author: String(body.author || 'Dispatch').slice(0, 120), author_username: (c.get('user') as { username?: string } | undefined)?.username || null, text, timestamp: now });
     await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
     const updated = await fetchCallRow(db, id);
     await emitAlert(c.env, 'dispatch_update',{ action: 'call_updated', call: updated });
@@ -1588,10 +1588,10 @@ callActions.post('/:id/notes', requireRole(...WRITE_ROLES), async (c) => {
 });
 
 // PUT /:id/notes/:noteId — edit a note inside the JSON notes array (admin/manager).
-callActions.put('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) => {
+callActions.put('/:id/notes/:noteId', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const user = c.get('user') as { username?: string } | undefined;
+    const user = c.get('user') as { username?: string; role?: string } | undefined;
     const id = parseInt(c.req.param('id') || '', 10);
     const noteId = c.req.param('noteId');
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
@@ -1606,6 +1606,15 @@ callActions.put('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) => 
     const notes = safeJson<any[]>(call.notes, []);
     const idx = notes.findIndex((n) => String(n.id) === String(noteId));
     if (idx === -1) return c.json({ error: 'Note not found', code: 'NOTE_NOT_FOUND' }, 404);
+
+    // Author-or-admin: a note's author may edit it (ownership keyed on the
+    // server-stamped author_username, not the spoofable display author);
+    // admins/managers may edit any. Legacy notes lack author_username -> admin-only.
+    const isAdmin = ADMIN_ROLES.includes(user?.role || '');
+    const isOwner = !!notes[idx].author_username && notes[idx].author_username === user?.username;
+    if (!isAdmin && !isOwner) {
+      return c.json({ error: 'You can only edit your own notes', code: 'NOTE_FORBIDDEN' }, 403);
+    }
 
     const now = utcNow();
     notes[idx] = { ...notes[idx], text, edited_at: now, edited_by: user?.username || 'admin' };

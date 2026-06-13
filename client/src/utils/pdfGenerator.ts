@@ -12,6 +12,7 @@ void _buildTime;
 
 import jsPDF from 'jspdf';
 import { toNum } from './sentinel';
+import { classifyLine, stripStrayMarkers } from './noteFormatting';
 import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType } from './caseNumbers';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import { loadSealBase64, loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
@@ -242,9 +243,9 @@ export function applyFieldNumber(label: string): string {
  * These fonts only support Latin-1 (ISO-8859-1). Unicode arrows, em-dashes, curly quotes,
  * etc. have zero width in font metrics, causing justification to spread text wildly.
  */
-export function sanitizePdfText(text: string): string {
+export function sanitizePdfText(text: string, opts: { preserveMarkers?: boolean } = {}): string {
   if (!text) return text;
-  return text
+  let s = text
     // HTML entity decode — narrative text occasionally arrives still
     // escaped from upstream rich-text editors / scrapers (e.g.
     // "BANKRUPTCY -&GT;" surfacing as literal "&GT;" in serve-intake
@@ -277,15 +278,24 @@ export function sanitizePdfText(text: string): string {
     // word characters (e.g. "*urgent*" or "*Note:") — bare standalone
     // asterisks (e.g. "list bullet *") are kept since stripping them
     // would mangle real bullet content.
-    .replace(/\*\*/g, '')
-    .replace(/__/g, '')
+    ;
+  // Marker stripping is the serve-intake "unmatched marker" safety net. It is
+  // destructive to matched pairs, so skip it when the caller will render markup
+  // downstream (addFormattedText); stray markers are removed per plain-segment
+  // via stripStrayMarkers instead.
+  if (!opts.preserveMarkers) {
+    s = s
+      .replace(/\*\*/g, '')
+      .replace(/__/g, '')
     // Paired single-underscore italic markers around a parenthetical —
     // "_(AUTO-GENERATED)_" rendered literally on PS-201 notes (caught
     // 2026-06-11). Paired-only so real underscores in case numbers /
     // filenames (CASE_123, REPORT_FINAL.PDF) are never touched.
     .replace(/_\((.*?)\)_/g, '($1)')
     .replace(/\*(?=\w)/g, '')
-    .replace(/(?<=\w)\*/g, '')
+    .replace(/(?<=\w)\*/g, '');
+  }
+  s = s
     // Render-side patch for known concatenated-word artifacts in stored
     // case-narrative text (legacy generator bug from before the source
     // was fixed; existing dispatch_messages rows have the bad text
@@ -340,10 +350,11 @@ export function sanitizePdfText(text: string): string {
     .replace(/[\uD800-\uDFFF]+ ?/g, '')
     .replace(/ ?[\uD800-\uDFFF]+/g, '')
     .replace(/[^\x00-\xFF]/g, '') // Drop remaining non-Latin-1 chars ('?' placeholders read as data errors)
-    .replace(/[ \t]{2,}/g, ' ')   // collapse double spaces left by stripped pictographs
+    .replace(/(?<=\S)[ \t]{2,}/g, ' ')   // collapse INTERIOR double spaces only; keep leading indentation (drives list nesting depth)
     .toUpperCase();              // Police-form convention: ALL CAPS (applied
                                  // globally as the single sanitization chokepoint
                                  // so every render path emits uppercase text).
+  return s;
 }
 
 /**
@@ -1688,11 +1699,14 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
  */
 export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
   if (!rawText) return y;
-  const text = sanitizePdfText(rawText);
+  const text = sanitizePdfText(rawText, { preserveMarkers: true });
   const lineH = getPdfTextLineHeight(fontSize, true);
   const paragraphGap = SPACING.MD;
-  // Reduce maxWidth by 2mm safety margin to prevent right-edge clipping when printed
-  const safeMaxWidth = maxWidth - 2;
+  const safeMaxWidth = maxWidth - 2; // 2mm safety margin against right-edge clipping
+  const INDENT_MM = 5;   // horizontal indent per nesting level
+  const GUTTER_MM = 5;   // minimum space reserved for the bullet/number marker
+  const BULLET_R = 0.5;  // filled-circle bullet radius (mm)
+
   // Custom word-based line wrapper — jsPDF splitTextToSize breaks mid-word with Courier
   const wordWrap = (str: string, maxW: number): string[] => {
     const words = str.split(/(\s+)/); // Split keeping whitespace tokens
@@ -1713,29 +1727,60 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
     return result.length > 0 ? result : [str];
   };
   let lastPage = doc.getNumberOfPages();
-  const stripMarkers = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/__(.+?)__/g, '$1');
-  const hasMarkers = (s: string) => /(\*\*|__|\*[^*])/.test(s);
+  const stripMarkers = (s: string) =>
+    s.replace(/\*\*(.+?)\*\*/g, '$1')
+     .replace(/~~(.+?)~~/g, '$1')
+     .replace(/__(.+?)__/g, '$1')
+     .replace(/\*(.+?)\*/g, '$1');
+
+  // Outline numbering state, persisted across the whole block. Reset by a
+  // depth-0 plain line (also how notes are joined), so numbering never bleeds.
+  const counters: number[] = [];
+  const orderedMarker = (depth: number): string => {
+    counters.length = depth + 1;
+    counters[depth] = (counters[depth] ?? 0) + 1;
+    return counters.slice(0, depth + 1).filter((v) => v > 0).join('.');
+  };
+
   const paragraphs = text.split(/\n\n+/);
   for (let p = 0; p < paragraphs.length; p++) {
     if (p > 0) y += paragraphGap;
-    const para = paragraphs[p].trim();
-    if (!para) continue;
+    if (!paragraphs[p].trim()) continue;
 
-    const hardLines = para.split(/\n/);
+    const hardLines = paragraphs[p].split(/\n/);
     for (let hlIdx = 0; hlIdx < hardLines.length; hlIdx++) {
       const hardLine = hardLines[hlIdx];
       if (!hardLine.trim()) continue;
+
+      // Classify for list rendering. content keeps inline markers intact.
+      const cl = classifyLine(hardLine);
+      let marker = '';
+      if (cl.kind === 'ordered') marker = orderedMarker(cl.depth);
+      else if (cl.kind === 'bullet') marker = '•';
+      else if (cl.depth === 0) counters.length = 0; // top-level plain -> reset
+
+      const isList = cl.kind === 'ordered' || cl.kind === 'bullet';
+      const lineText = isList ? cl.content : hardLine;
+      const indentMm = isList ? cl.depth * INDENT_MM : 0;
+
+      // Reserve gutter wide enough for the number string (deep chains widen).
+      doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize);
+      const gutterMm = !isList ? 0
+        : cl.kind === 'ordered' ? Math.max(GUTTER_MM, doc.getTextWidth(`${marker}.`) + 1.5)
+        : GUTTER_MM;
+      const contentX = x + indentMm + gutterMm;
+      const availWidth = safeMaxWidth - indentMm - gutterMm;
+
       // Use bold font width for wrapping if line contains bold markers — bold Courier is wider
-      const hasBold = /\*\*/.test(hardLine);
+      const hasBold = /\*\*/.test(lineText);
       doc.setFont(PDF_VALUE_FONT, hasBold ? 'bold' : 'normal');
       doc.setFontSize(fontSize);
-      const stripped = stripMarkers(hardLine);
-      const wrappedLines: string[] = wordWrap(stripped, safeMaxWidth);
+      const stripped = stripMarkers(lineText);
+      const wrappedLines: string[] = wordWrap(stripped, availWidth);
       doc.setFont(PDF_VALUE_FONT, 'normal');
       let charIdx = 0;
       for (let wli = 0; wli < wrappedLines.length; wli++) {
         const wrappedLine = wrappedLines[wli];
-        const isLastLine = wli === wrappedLines.length - 1 && hlIdx === hardLines.length - 1;
         y = checkPageBreak(doc, y, lineH + SPACING.SM);
         // If page changed, call onPageBreak to draw section continuation header
         const curPage = doc.getNumberOfPages();
@@ -1743,74 +1788,88 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
           lastPage = curPage;
           if (onPageBreak) y = onPageBreak(y);
         }
+
+        // Draw the list marker on the first wrapped line only.
+        if (isList && wli === 0) {
+          doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
+          if (cl.kind === 'bullet') {
+            doc.setFillColor(...COLOR.TEXT_PRIMARY);
+            doc.circle(x + indentMm + 1.2, y - lineH * 0.28, BULLET_R, 'F');
+          } else {
+            doc.text(`${marker}.`, x + indentMm, y);
+          }
+        }
+
         const lineLen = wrappedLine.length;
         // Skip whitespace between words at line boundaries
-        while (charIdx < hardLine.length && hardLine[charIdx] === ' ' && wli > 0) charIdx++;
-        let segStart = charIdx;
+        while (charIdx < lineText.length && lineText[charIdx] === ' ' && wli > 0) charIdx++;
+        const segStart = charIdx;
         let visibleCount = 0;
         let i = charIdx;
-        while (visibleCount < lineLen && i < hardLine.length) {
-          if (hardLine.slice(i, i + 2) === '**') {
-            const end = hardLine.indexOf('**', i + 2);
+        while (visibleCount < lineLen && i < lineText.length) {
+          if (lineText.slice(i, i + 2) === '**') {
+            const end = lineText.indexOf('**', i + 2);
             if (end !== -1) { visibleCount += end - i - 2; i = end + 2; continue; }
           }
-          if (hardLine[i] === '*' && (i + 1 >= hardLine.length || hardLine[i + 1] !== '*')) {
-            const end = hardLine.indexOf('*', i + 1);
-            if (end !== -1 && (end + 1 >= hardLine.length || hardLine[end + 1] !== '*')) { visibleCount += end - i - 1; i = end + 1; continue; }
-          }
-          if (hardLine.slice(i, i + 2) === '__') {
-            const end = hardLine.indexOf('__', i + 2);
+          if (lineText.slice(i, i + 2) === '~~') {
+            const end = lineText.indexOf('~~', i + 2);
             if (end !== -1) { visibleCount += end - i - 2; i = end + 2; continue; }
+          }
+          if (lineText.slice(i, i + 2) === '__') {
+            const end = lineText.indexOf('__', i + 2);
+            if (end !== -1) { visibleCount += end - i - 2; i = end + 2; continue; }
+          }
+          if (lineText[i] === '*' && (i + 1 >= lineText.length || lineText[i + 1] !== '*')) {
+            const end = lineText.indexOf('*', i + 1);
+            if (end !== -1 && (end + 1 >= lineText.length || lineText[end + 1] !== '*')) { visibleCount += end - i - 1; i = end + 1; continue; }
           }
           visibleCount++; i++;
         }
-        const lineSeg = hardLine.slice(segStart, i);
+        const lineSeg = lineText.slice(segStart, i);
         charIdx = i;
 
-        // Justification disabled 2026-05-05 — the per-line word-spacing
-        // adjustment was making narrative text appear visually denser
-        // than the surrounding left-aligned field values, which the
-        // user perceived as a font-size mismatch (the actual font size
-        // is identical, but justified text reads as more compressed
-        // than left-aligned text at the same size). Plain left-aligned
-        // rendering keeps the narrative tonally consistent with
-        // addFieldPair's wrapped values everywhere else.
-
-        // Lines with formatting markers or last line: render with formatting
-        let cursorX = x;
-        const segRegex = /(\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__)/g;
+        // Render the slice with inline formatting (groups: 2=bold, 3=strike, 4=underline, 5=italic).
+        let cursorX = contentX;
+        const segRegex = /(\*\*(.+?)\*\*|~~(.+?)~~|__(.+?)__|\*(.+?)\*)/g;
         let lastIdx = 0;
         let segMatch: RegExpExecArray | null;
         while ((segMatch = segRegex.exec(lineSeg)) !== null) {
           if (segMatch.index > lastIdx) {
-            const plain = lineSeg.slice(lastIdx, segMatch.index);
+            const plain = stripStrayMarkers(lineSeg.slice(lastIdx, segMatch.index));
             doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             doc.text(plain, cursorX, y); cursorX += doc.getTextWidth(plain);
           }
-          if (segMatch[2]) {
+          if (segMatch[2] !== undefined) {            // BOLD
             doc.setFont(PDF_VALUE_FONT, 'bold'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             doc.text(segMatch[2], cursorX, y); cursorX += doc.getTextWidth(segMatch[2]);
-          } else if (segMatch[3]) {
-            doc.setFont(PDF_VALUE_FONT, 'bolditalic'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
-            doc.text(segMatch[3], cursorX, y); cursorX += doc.getTextWidth(segMatch[3]);
-          } else if (segMatch[4]) {
+          } else if (segMatch[3] !== undefined) {     // STRIKE
+            doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
+            doc.text(segMatch[3], cursorX, y);
+            const tw = doc.getTextWidth(segMatch[3]);
+            doc.setDrawColor(...COLOR.TEXT_PRIMARY); doc.setLineWidth(0.2);
+            doc.line(cursorX, y - lineH * 0.28, cursorX + tw, y - lineH * 0.28);
+            cursorX += tw;
+          } else if (segMatch[4] !== undefined) {     // UNDERLINE
             doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             doc.text(segMatch[4], cursorX, y);
             const tw = doc.getTextWidth(segMatch[4]);
             doc.setDrawColor(...COLOR.TEXT_PRIMARY); doc.setLineWidth(0.2);
             doc.line(cursorX, y + 0.8, cursorX + tw, y + 0.8);
             cursorX += tw;
+          } else if (segMatch[5] !== undefined) {     // ITALIC (existing bolditalic look)
+            doc.setFont(PDF_VALUE_FONT, 'bolditalic'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
+            doc.text(segMatch[5], cursorX, y); cursorX += doc.getTextWidth(segMatch[5]);
           }
           lastIdx = segMatch.index + segMatch[0].length;
         }
         if (lastIdx < lineSeg.length) {
-          const plain = lineSeg.slice(lastIdx);
+          const plain = stripStrayMarkers(lineSeg.slice(lastIdx));
           doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
           doc.text(plain, cursorX, y);
         }
         y += lineH;
       }
-      while (charIdx < hardLine.length && hardLine[charIdx] === ' ') charIdx++;
+      while (charIdx < lineText.length && lineText[charIdx] === ' ') charIdx++;
     }
   }
   doc.setFont(PDF_VALUE_FONT, 'normal');
@@ -1830,7 +1889,7 @@ export function addNarrativeSection(
   priority?: string,
 ): number {
   if (!rawText) return y;
-  const text = sanitizePdfText(rawText);
+  const text = sanitizePdfText(rawText, { preserveMarkers: true });
   y = checkPageBreak(doc, y, 30, priority);
   const sec = openAutoSection(doc, title, y);
   // Extra breathing room between the section header bar and the first
