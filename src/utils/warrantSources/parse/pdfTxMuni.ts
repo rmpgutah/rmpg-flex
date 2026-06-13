@@ -5,14 +5,19 @@
  * (mergePages:true) text stream gives no reliable name/offense boundary. The
  * adapter therefore fetches with `{ lines: true }` (mergePages:false), which
  * preserves pdf.js row newlines, and this parser reconstructs logical records
- * from the line structure:
+ * from the line structure.
  *
- *   - An "anchor line" carries the row's structural fields (a date + balance for
- *     Killeen, a warrant-number + balance for Bell Mead, a date + citation for
- *     Taylor). The defendant name is whatever precedes those fields, possibly
- *     accumulated from preceding name-only lines (long names wrap).
- *   - Offense text is whatever follows the structural fields on the anchor line,
- *     plus any subsequent continuation lines until the next anchor / name line.
+ * The strong, unambiguous signal per row is the structural-field group: a date +
+ * balance (Killeen), a warrant-number + balance (Bell Mead), or a date + citation
+ * (Taylor). Offenses never contain that group, so each match anchors one record.
+ * Around each anchor:
+ *   - The defendant NAME is the text before the fields, completed by pulling back
+ *     preceding buffered lines until the name contains its "LAST," comma (long
+ *     names wrap onto their own line ahead of the anchor line). This avoids ever
+ *     mistaking an all-caps, comma-bearing OFFENSE fragment (e.g. "ALLEY, BLDG")
+ *     for a defendant name.
+ *   - The OFFENSE is the text after the fields on the anchor line plus any
+ *     following continuation lines, minus lines pulled back into the next name.
  *
  * Three column layouts, auto-detected from the header line:
  *   Killeen   : Defendant Name | Warrant Date | Balance Due | Offense Description
@@ -33,7 +38,7 @@ type TxLayout = 'killeen' | 'bellmead' | 'taylor';
 const DATE = `\\d{2}\\/\\d{2}\\/\\d{4}`;
 const MONEY = `[\\d,]+\\.\\d{2}`;
 
-/** Per-layout anchor: matches the structural middle of a record within a line.
+/** Per-layout anchor: matches the structural field group within a line.
  *  Group 1 / 2 are the captured fields; match.index marks where the name ends. */
 const ANCHOR: Record<TxLayout, RegExp> = {
   // DATE  BALANCE   (name before, offense after)
@@ -44,11 +49,8 @@ const ANCHOR: Record<TxLayout, RegExp> = {
   taylor: new RegExp(`(${DATE})\\s+([A-Z0-9]+)`),
 };
 
-/** A line that begins a new defendant: "LAST, FIRST …" (all-caps surname, comma, given). */
-const NAME_START = /^[A-Z][A-Z'.\-]*(?: [A-Z][A-Z'.\-]*)*,\s+[A-Z]/;
-
-/** Lines to drop entirely (repeated page headers / banners / page numbers). */
-const BOILERPLATE = /^(?:WARRANT LIST|Defendant Name\b|[A-Z].* MUNICIPAL COURT ACTIVE WARRANT LISTING\b|Page \d+(?: of \d+)?$|\d+ of \d+$)/i;
+/** Repeated page headers / banners / footers to drop entirely (full-line, anchored). */
+const BOILERPLATE = /^(?:WARRANT LIST|Defendant Name\b|AS OF \d|ACTIVE WARRANT LISTING\b|[A-Z][A-Z' .\-]* MUNICIPAL COURT\s*$|Page \d+(?: of \d+)?\s*$|\d+ of \d+\s*$)/i;
 
 /** Trailing balance for Taylor (0-2 decimals, optional thousands separators). */
 const TAYLOR_TRAILING_BALANCE = /\s+(\d[\d,]*(?:\.\d{1,2})?)\s*$/;
@@ -90,12 +92,13 @@ function cleanCharge(raw: string): string | null {
   return c || null;
 }
 
-interface RawRecord { name: string; field1: string; field2: string; offense: string; }
+interface RawRecord { name: string; field1: string; field2: string; offenseParts: string[]; }
 
 function buildHit(layout: TxLayout, rec: RawRecord, sourceKey: string, state: string): RawWarrantHit | null {
   const { last_name, first_name, middle_name, full_name } = splitName(rec.name);
   if (!full_name) return null;
 
+  const offenseRaw = rec.offenseParts.join(' ');
   let issue_date: string | null = null;
   let case_number: string | undefined;
   let bail_amount: number | null = null;
@@ -106,24 +109,26 @@ function buildHit(layout: TxLayout, rec: RawRecord, sourceKey: string, state: st
     issue_date = normalizeDate(rec.field1);
     case_number = rec.field2?.trim() || undefined;
     ref = case_number;
-    const bm = TAYLOR_TRAILING_BALANCE.exec(rec.offense);
+    const bm = TAYLOR_TRAILING_BALANCE.exec(offenseRaw);
     bail_amount = bm ? normalizeBond(bm[1]) : null;
-    charge = cleanCharge(bm ? rec.offense.slice(0, bm.index) : rec.offense);
+    charge = cleanCharge(bm ? offenseRaw.slice(0, bm.index) : offenseRaw);
   } else if (layout === 'bellmead') {
     case_number = rec.field1?.replace(/\s+/g, ' ').trim() || undefined;
     ref = case_number;
     bail_amount = normalizeBond(rec.field2);
-    charge = cleanCharge(rec.offense);
+    charge = cleanCharge(offenseRaw);
   } else {
     // killeen
     issue_date = normalizeDate(rec.field1);
     bail_amount = normalizeBond(rec.field2);
-    charge = cleanCharge(rec.offense);
+    charge = cleanCharge(offenseRaw);
     ref = rec.field1; // date — id-derivation input only
   }
 
-  // Same defendant repeats per offense, so the id must fold in the charge.
-  const warrant_id = deriveWarrantId([full_name, ref, charge]);
+  // Same defendant repeats per offense; fold the charge AND balance into the id so
+  // distinct warrants (same name/date/charge, different balance) stay separate while
+  // true duplicate rows still collapse.
+  const warrant_id = deriveWarrantId([full_name, ref, charge, bail_amount == null ? '' : String(bail_amount)]);
 
   return {
     source_key: sourceKey,
@@ -156,33 +161,35 @@ export function parseTxMuniPdf(text: string, sourceKey: string, state: string): 
   if (!layout) return [];
 
   const anchor = ANCHOR[layout];
-  const lines = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const lines = text.split('\n')
+    .map(l => l.replace(/\s+/g, ' ').trim())
+    .filter(l => l && !BOILERPLATE.test(l));
 
   const records: RawRecord[] = [];
-  let pendingName = '';
   let cur: RawRecord | null = null;
-  const flush = () => { if (cur) { records.push(cur); cur = null; } };
+  let buffer: string[] = []; // non-anchor lines since the last anchor (offense + any wrapped next-name)
 
   for (const line of lines) {
-    if (BOILERPLATE.test(line)) continue;
-
     const a = anchor.exec(line);
     if (a && a.index >= 0) {
-      flush();
-      const name = `${pendingName} ${line.slice(0, a.index)}`.replace(/\s+/g, ' ').trim();
-      pendingName = '';
-      cur = { name, field1: a[1], field2: a[2], offense: line.slice(a.index + a[0].length).trim() };
-    } else if (NAME_START.test(line)) {
-      // Start of a new defendant whose structural fields are on a later (wrapped) line.
-      flush();
-      pendingName = `${pendingName} ${line}`.replace(/\s+/g, ' ').trim();
-    } else if (cur) {
-      // Offense continuation line.
-      cur.offense = `${cur.offense} ${line}`.trim();
+      // The name is the text before the fields, completed by pulling back buffered
+      // lines until it contains its "LAST," comma (handles names that wrap above the
+      // anchor line). Whatever remains in the buffer is the previous record's offense.
+      const before = line.slice(0, a.index).trim();
+      const nameParts = before ? [before] : [];
+      while (!nameParts.join(' ').includes(',') && buffer.length > 0) {
+        nameParts.unshift(buffer.pop() as string);
+      }
+      if (cur) { cur.offenseParts.push(...buffer); records.push(cur); }
+      buffer = [];
+      const name = nameParts.join(' ').replace(/\s+/g, ' ').trim();
+      const head = line.slice(a.index + a[0].length).trim();
+      cur = { name, field1: a[1], field2: a[2], offenseParts: head ? [head] : [] };
+    } else {
+      buffer.push(line); // offense continuation, or a wrapped name awaiting its anchor
     }
-    // else: stray line before any record begins — ignore.
   }
-  flush();
+  if (cur) { cur.offenseParts.push(...buffer); records.push(cur); }
 
   const hits: RawWarrantHit[] = [];
   const seen = new Set<string>();

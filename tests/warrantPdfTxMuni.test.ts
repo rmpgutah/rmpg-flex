@@ -54,12 +54,26 @@ describe('parseTxMuniPdf — Killeen (date | balance | offense)', () => {
     expect(amounts).toContain(811.8);
   });
 
-  it('does not leak the page-header boilerplate into a charge', () => {
+  it('reconstructs a wrapped offense that contains commas without corrupting the name', () => {
+    const hits = parseTxMuniPdf(text, 'pdf-txmuni-killeen-tx', 'TX');
+    // "ADAMS, JOHNATHAN RYAN 01/13/2026 297.83" offense wraps as
+    //   "FAILED TO YIELD ROW FROM PVT RD, DR," / "ALLEY, BLDG"
+    // The comma-bearing fragment "ALLEY, BLDG" must NOT be read as a new defendant.
+    const wrapped = hits.find(h => h.last_name === 'Adams' && h.first_name === 'Johnathan' && h.bail_amount === 297.83);
+    expect(wrapped).toBeDefined();
+    expect(wrapped?.charge_description).toContain('PVT RD');
+    expect(wrapped?.charge_description).toContain('ALLEY');
+    // and no defendant ever absorbs an offense fragment as a surname
+    expect(hits.some(h => h.last_name?.includes('Alley') || h.last_name?.includes('Pvt'))).toBe(false);
+  });
+
+  it('strips page-break boilerplate out of every charge and name', () => {
     const hits = parseTxMuniPdf(text, 'pdf-txmuni-killeen-tx', 'TX');
     for (const h of hits) {
-      expect(h.charge_description ?? '').not.toContain('Defendant Name');
-      expect(h.charge_description ?? '').not.toContain('WARRANT LIST');
-      expect(h.full_name ?? '').not.toContain('Warrant');
+      const c = `${h.charge_description ?? ''} ${h.full_name ?? ''}`;
+      expect(c).not.toContain('Defendant Name');
+      expect(c).not.toContain('WARRANT LIST');
+      expect(c).not.toMatch(/AS OF \d/);
     }
   });
 });
@@ -103,6 +117,14 @@ describe('parseTxMuniPdf — Bell Mead (warrant-no | balance | offense)', () => 
       expect(h.source_key).toBe('pdf-txmuni-bellmead-tx');
       expect(h.state).toBe('TX');
       expect(h.full_name).toBeTruthy();
+    }
+  });
+
+  it('strips the two-line "MUNICIPAL COURT / ACTIVE WARRANT LISTING" page banner from charges', () => {
+    const hits = parseTxMuniPdf(text, 'pdf-txmuni-bellmead-tx', 'TX');
+    for (const h of hits) {
+      expect(h.charge_description ?? '').not.toMatch(/MUNICIPAL COURT/i);
+      expect(h.charge_description ?? '').not.toMatch(/ACTIVE WARRANT LISTING/i);
     }
   });
 });

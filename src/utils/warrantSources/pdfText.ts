@@ -17,8 +17,10 @@ export async function extractPdfText(buffer: ArrayBuffer, opts?: PdfTextOptions)
     const pdf = await getDocumentProxy(new Uint8Array(buffer));
     if (opts?.lines) {
       const { text } = await extractText(pdf, { mergePages: false });
-      const pages = (Array.isArray(text) ? text : [text]) as string[];
-      return pages.join('\n');
+      const pages = (Array.isArray(text) ? text : [text]) as unknown[];
+      // A page with no text layer (scanned image) can come back null/undefined;
+      // drop those so they don't coerce to literal "null"/"undefined" via join.
+      return pages.filter((p): p is string => typeof p === 'string').join('\n');
     }
     const { text } = await extractText(pdf, { mergePages: true });
     // mergePages:true guarantees text is string per the overload, but guard defensively via unknown cast
