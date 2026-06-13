@@ -37,6 +37,7 @@ async function ensureTable(db: ReturnType<typeof getDb>) {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     officer_id INTEGER NOT NULL,
     call_id INTEGER,
+    incident_id INTEGER,
     r2_key TEXT NOT NULL,
     content_type TEXT NOT NULL,
     size_bytes INTEGER NOT NULL,
@@ -46,6 +47,9 @@ async function ensureTable(db: ReturnType<typeof getDb>) {
     taken_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
   )`);
+  // D1 has no IF NOT EXISTS on ADD COLUMN — swallow the re-apply error so the
+  // column self-heals on tables created before incident linkage existed.
+  try { await execute(db, `ALTER TABLE field_photos ADD COLUMN incident_id INTEGER`); } catch { /* column exists */ }
 }
 
 // POST / — multipart upload. The photo arrives already stamped.
@@ -69,6 +73,8 @@ fieldPhotos.post('/', async (c) => {
   const lng = lngRaw != null && lngRaw !== '' ? parseFloat(String(lngRaw)) : null;
   const callIdRaw = form.get('call_id');
   const callId = callIdRaw != null && callIdRaw !== '' ? parseInt(String(callIdRaw), 10) : null;
+  const incidentIdRaw = form.get('incident_id');
+  const incidentId = incidentIdRaw != null && incidentIdRaw !== '' ? parseInt(String(incidentIdRaw), 10) : null;
   const notes = form.get('notes') != null ? String(form.get('notes')).slice(0, 2000) : null;
 
   const ext = file.type === 'image/png' ? '.png' : file.type === 'image/webp' ? '.webp' : '.jpg';
@@ -81,9 +87,11 @@ fieldPhotos.post('/', async (c) => {
   const db = getDb(c.env);
   await ensureTable(db);
   const r = await execute(db,
-    `INSERT INTO field_photos (officer_id, call_id, r2_key, content_type, size_bytes, latitude, longitude, notes)
-     VALUES (?,?,?,?,?,?,?,?)`,
-    user.id, Number.isFinite(callId as number) ? callId : null, key, file.type, file.size,
+    `INSERT INTO field_photos (officer_id, call_id, incident_id, r2_key, content_type, size_bytes, latitude, longitude, notes)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+    user.id, Number.isFinite(callId as number) ? callId : null,
+    Number.isFinite(incidentId as number) ? incidentId : null,
+    key, file.type, file.size,
     Number.isFinite(lat as number) ? lat : null, Number.isFinite(lng as number) ? lng : null, notes,
   );
   return c.json({
@@ -96,15 +104,16 @@ fieldPhotos.post('/', async (c) => {
 fieldPhotos.get('/', async (c) => {
   const db = getDb(c.env);
   await ensureTable(db);
-  const { officer_id, call_id, from, to, limit } = c.req.query();
+  const { officer_id, call_id, incident_id, from, to, limit } = c.req.query();
   const where: string[] = [];
   const p: unknown[] = [];
   if (officer_id) { where.push('p.officer_id = ?'); p.push(parseInt(officer_id, 10)); }
   if (call_id) { where.push('p.call_id = ?'); p.push(parseInt(call_id, 10)); }
+  if (incident_id) { where.push('p.incident_id = ?'); p.push(parseInt(incident_id, 10)); }
   if (from) { where.push('p.taken_at >= ?'); p.push(String(from).replace('T', ' ')); }
   if (to) { where.push('p.taken_at <= ?'); p.push(String(to).replace('T', ' ')); }
   const rows = await query<Record<string, unknown>>(db, `
-    SELECT p.id, p.officer_id, u.full_name AS officer_name, p.call_id,
+    SELECT p.id, p.officer_id, u.full_name AS officer_name, p.call_id, p.incident_id,
            c.call_number, p.r2_key, p.content_type, p.size_bytes,
            p.latitude, p.longitude, p.notes, p.taken_at
       FROM field_photos p
