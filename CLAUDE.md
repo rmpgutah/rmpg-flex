@@ -31,7 +31,7 @@ RMPG Flex is a **police CAD/RMS** (Computer-Aided Dispatch / Records Management 
 | Frontend | React 18 + TypeScript + Vite 6 + Tailwind (built to `client/dist/`, deployed to Cloudflare Pages project `rmpg-flex`) |
 | Maps | **Mapbox GL JS** (overrides the legacy "Google Maps only" rule, which was anti-fragmentation for the VPS — see `[[project-mapbox-decision]]` memory) |
 | Edge | Python edge runner for Flex Dashcam AI (`edge/`, Jetson target) — independent of the Worker |
-| Styling | Spillman Flex / Motorola Solutions pure-black theme — `#0a0a0a` base, `#d4a017` gold, zero blue |
+| Styling | Spillman Flex / Motorola Solutions pure-black theme — `#000000` base, `#d4a017` gold, zero blue |
 
 ## Repository Layout
 
@@ -161,7 +161,7 @@ export default function SomePage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="SECTION TITLE" icon={SomeIcon} />
-      {/* Surface tokens: bg-surface-base #0a0a0a, raised #141414, sunken #050505 */}
+      {/* Surface tokens: bg-surface-base #000000, raised #0b0b0b, sunken #000000 */}
     </div>
   );
 }
@@ -173,7 +173,7 @@ export default function SomePage() {
 Use `<IconButton aria-label="...">` from `client/src/components/IconButton.tsx`. The `aria-label` is a required TS prop — that's the only enforcement; no ESLint a11y plugin runs in `client/`.
 
 ### Design tokens (Spillman / Motorola pure-black)
-- Surfaces: `#0a0a0a` base, `#141414` raised, `#050505` sunken, `#000000` deep
+- Surfaces: `#000000` base, `#0b0b0b` raised, `#000000` sunken, `#000000` deep (base/sunken/deep are all true `#000` in the pure-black theme; `raised` `#0b0b0b` + `overlay` `#030303` are the only non-black surfaces. The old `#0a0a0a`/`#141414`/`#050505` scale was the retired steel-blue theme.)
 - Brand gold: `#d4a017`. Neutral gray: `#888888`. **Zero blue anywhere.**
 - Borders: `#232323` default, `#121212` subtle, `#3a3a3a` strong (`strong` was bumped from the old steel-blue `#2e2e2e` to `#3a3a3a` in the 2026-04-08 pure-black redesign for visibility on the `#000` base — `:root` in `client/src/index.css` is the source of truth)
 - Radius: **2 px everywhere** — never `rounded-lg`. Global Tailwind override at the end of `client/src/index.css` enforces this with `!important`.
