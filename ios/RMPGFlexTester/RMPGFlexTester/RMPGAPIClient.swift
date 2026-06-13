@@ -7,6 +7,35 @@ enum SmokeOutcome {
     case transport(String)
 }
 
+/// Typed API error. Parses the Worker's `{ error|message, code, ... }` body
+/// so callers get the server's own words (and machine `code`) instead of a
+/// raw "HTTP 409: {json}" blob. The full decoded payload is kept so actionable
+/// conflicts (duty-start NEEDS_VEHICLE carrying `available_vehicles`,
+/// NEEDS_MILEAGE carrying `previous_mileage`) can be handled, not just shown.
+struct APIError: LocalizedError {
+    let status: Int
+    let code: String?
+    let serverMessage: String?
+    let payload: [String: Any]
+
+    /// True for 409 Conflict — a state clash the officer can usually resolve
+    /// (already clocked in, unit on call, vehicle taken, mileage needed).
+    var isConflict: Bool { status == 409 }
+
+    var errorDescription: String? {
+        if let m = serverMessage, !m.isEmpty { return m }
+        return "Request failed (HTTP \(status))"
+    }
+
+    static func from(status: Int, data: Data) -> APIError {
+        let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        let msg = (obj["error"] as? String) ?? (obj["message"] as? String)
+            ?? (obj["hint"] as? String)
+        return APIError(status: status, code: obj["code"] as? String,
+                        serverMessage: msg, payload: obj)
+    }
+}
+
 struct RMPGAPIClient {
     var baseURL = URL(string: "https://api.rmpgutah.us")!
     var jwt: String?
@@ -60,9 +89,7 @@ struct RMPGAPIClient {
         let (data, resp) = try await URLSession.shared.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
-            let text = String(data: data, encoding: .utf8) ?? ""
-            throw NSError(domain: "RMPG", code: status,
-                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(200))"])
+            throw APIError.from(status: status, data: data)
         }
         return try JSONSerialization.jsonObject(with: data)
     }
@@ -76,9 +103,7 @@ struct RMPGAPIClient {
         let (data, resp) = try await URLSession.shared.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
-            let text = String(data: data, encoding: .utf8) ?? ""
-            throw NSError(domain: "RMPG", code: status,
-                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(150))"])
+            throw APIError.from(status: status, data: data)
         }
     }
 
@@ -93,9 +118,7 @@ struct RMPGAPIClient {
         let (data, resp) = try await URLSession.shared.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
-            let text = String(data: data, encoding: .utf8) ?? ""
-            throw NSError(domain: "RMPG", code: status,
-                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(150))"])
+            throw APIError.from(status: status, data: data)
         }
         return try JSONSerialization.jsonObject(with: data)
     }
@@ -110,9 +133,7 @@ struct RMPGAPIClient {
         let (respData, resp) = try await URLSession.shared.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
-            let text = String(data: respData, encoding: .utf8) ?? ""
-            throw NSError(domain: "RMPG", code: status,
-                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(150))"])
+            throw APIError.from(status: status, data: respData)
         }
     }
 

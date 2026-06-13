@@ -36,8 +36,14 @@ struct ShiftStartSheet: View {
     @State private var photoUrls: [String] = []
     @State private var submitting = false
     @State private var error: String?
+    // Vehicles offered by a NEEDS_VEHICLE 409 (officer has no take-home
+    // assigned) — merged into the picker so the conflict is resolvable inline.
+    @State private var offeredVehicles: [[String: Any]] = []
 
-    private var vehicles: [[String: Any]] { dutyState["available_vehicles"] as? [[String: Any]] ?? [] }
+    private var vehicles: [[String: Any]] {
+        let base = dutyState["available_vehicles"] as? [[String: Any]] ?? []
+        return offeredVehicles.isEmpty ? base : offeredVehicles
+    }
     private var failed: [ChecklistItem] { items.filter { !$0.pass } }
 
     var body: some View {
@@ -129,6 +135,25 @@ struct ShiftStartSheet: View {
                    ? "✓ On duty — pre-trip logged clean"
                    : "✓ On duty — pre-trip logged with \(failed.count) defect(s), maintenance request opened")
             dismiss()
+        } catch let api as APIError where api.isConflict {
+            // Actionable shift-start conflicts (duty.ts) — keep the sheet open
+            // and tell the officer exactly what to fix instead of dead-ending.
+            switch api.code {
+            case "NEEDS_VEHICLE":
+                offeredVehicles = api.payload["available_vehicles"] as? [[String: Any]] ?? []
+                error = offeredVehicles.isEmpty
+                    ? "No take-home vehicle and none available — ask dispatch to assign one."
+                    : "Pick a vehicle below, then GO ON DUTY again."
+            case "NEEDS_MILEAGE":
+                error = "Enter this vehicle's starting odometer above, then try again."
+            case "VEHICLE_TAKEN":
+                offeredVehicles = api.payload["available_vehicles"] as? [[String: Any]] ?? offeredVehicles
+                error = "That vehicle is taken by another unit — pick a different one."
+            default:
+                // NO_UNIT / VEHICLE_NOT_IN_SERVICE / mileage sanity checks:
+                // server message is already officer-readable.
+                error = api.errorDescription
+            }
         } catch {
             self.error = error.localizedDescription
         }

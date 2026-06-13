@@ -180,7 +180,8 @@ struct FieldOpsView: View {
             status = "✗ Set RMPG credentials in Settings"; return
         }
         do { try await work(c) } catch {
-            if (error as NSError).code == 401,
+            let code = (error as? APIError)?.status ?? (error as NSError).code
+            if code == 401,
                let user = KeychainStore.load(key: "rmpgUser"),
                let pass = KeychainStore.load(key: "rmpgPass"),
                let token = try? await c.login(username: user, password: pass) {
