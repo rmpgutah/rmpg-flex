@@ -15,6 +15,25 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
   return null;
 }
 
+// ── Sentinel client for unaffiliated businesses ───────────────────
+// properties.client_id is NOT NULL and FKs to clients(id). A business
+// created without a parent client (e.g. a standalone business record)
+// would otherwise violate that constraint and 500. Create one
+// "Unaffiliated Business" client the first time it's needed and reuse
+// it forever (create-on-first-use + reuse-by-name), so the FK target
+// always exists and these rows stay filterable.
+const BUSINESS_SENTINEL_CLIENT_NAME = 'Unaffiliated Business';
+async function ensureBusinessSentinelClient(db: D1Database): Promise<number> {
+  const found = await queryFirst<{ id: number }>(
+    db, 'SELECT id FROM clients WHERE name = ? LIMIT 1', BUSINESS_SENTINEL_CLIENT_NAME);
+  if (found) return found.id;
+  const result = await execute(db,
+    `INSERT INTO clients (name, contact_name, status, notes)
+     VALUES (?, 'system', 'active', 'Auto-created parent for businesses created without a client_id. Do not delete — used as the default client_id for unaffiliated business rows.')`,
+    BUSINESS_SENTINEL_CLIENT_NAME);
+  return Number(result.meta.last_row_id);
+}
+
 // GET /records/properties
 records.get('/properties', async (c) => {
   try {
@@ -1067,6 +1086,11 @@ records.post('/businesses', async (c) => {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.name || !body.business_type) return c.json({ error: 'name and business_type required' }, 400);
+    // properties.client_id is NOT NULL + FK → clients(id); a business
+    // created without a client has no natural parent, so fall back to the
+    // "Unaffiliated Business" sentinel instead of null (which 500'd with a
+    // NOT NULL constraint failure).
+    const sentinelClientId = await ensureBusinessSentinelClient(db);
     // Persist the full business profile (migration 0061 added these columns).
     // Previously only name/address/type/phone/email/notes were written, so
     // EIN/DBA/owner/contact/industry/revenue/status were silently dropped.
@@ -1078,7 +1102,7 @@ records.post('/businesses', async (c) => {
          owner_name, owner_phone, contact_name, contact_phone, contact_email,
          industry, employee_count, annual_revenue, status, is_active, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      body.client_id || null, body.name, body.address || '', body.city || null, body.state || null, body.zip || null,
+      body.client_id || sentinelClientId, body.name, body.address || '', body.city || null, body.state || null, body.zip || null,
       body.business_type, body.latitude || null, body.longitude || null, body.phone || null, body.email || null, body.notes || null,
       body.dba_name || null, body.ein || null, body.license_number || null, body.website || null,
       body.owner_name || null, body.owner_phone || null, body.contact_name || null, body.contact_phone || null, body.contact_email || null,
