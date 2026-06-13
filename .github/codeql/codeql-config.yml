@@ -1,0 +1,18 @@
+name: "RMPG Flex CodeQL config"
+
+# Exclude the quarantined legacy VPS server from analysis.
+#
+# legacy/server-vps/** is the retired Hostinger/Express/better-sqlite3 stack. It
+# is read-only, NOT built, NOT tested, and NOT deployed (see LEGACY.md and the
+# top of CLAUDE.md). Scanning it produces a large volume of findings for code
+# that can never run in production (raw-SQL injection, fs path-injection, etc.),
+# drowning out real findings in the live Cloudflare Worker (/src/) and React
+# client (/client/src/). The live code is what we care about.
+#
+# paths-ignore is honored for the interpreted languages we scan
+# (javascript-typescript, python, actions — all build-mode: none).
+paths-ignore:
+  - 'legacy/**'
+  - '**/*.min.js'
+  - 'client/dist/**'
+  - 'dist/**'

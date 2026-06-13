@@ -100,10 +100,14 @@ function setPath<T extends Record<string, any>>(obj: T, path: string, value: unk
   const copy: any = Array.isArray(obj) ? [...obj] : { ...obj };
   let cursor: any = copy;
   for (let i = 0; i < keys.length - 1; i++) {
-    cursor[keys[i]] = { ...(cursor[keys[i]] ?? {}) };
-    cursor = cursor[keys[i]];
+    const k = keys[i];
+    if (FORBIDDEN_PATH_KEYS.has(k)) return obj; // inline barrier at each write site (not just the up-front check)
+    cursor[k] = { ...(cursor[k] ?? {}) };
+    cursor = cursor[k];
   }
-  cursor[keys[keys.length - 1]] = value;
+  const lastKey = keys[keys.length - 1];
+  if (FORBIDDEN_PATH_KEYS.has(lastKey)) return obj; // inline barrier at the final write site
+  cursor[lastKey] = value;
   return copy as T;
 }
 

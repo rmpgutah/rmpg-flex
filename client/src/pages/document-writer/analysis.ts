@@ -8,7 +8,8 @@
 import type { Editor } from '@tiptap/react';
 
 const esc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;'); // escape quotes too — output is used inside HTML attributes
 
 // ── Readability (Flesch Reading Ease + Flesch-Kincaid Grade) ───────────────
 

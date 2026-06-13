@@ -10,7 +10,8 @@ import { DOMSerializer } from '@tiptap/pm/model';
 import type { DocSettings, PageSize } from './types';
 
 const esc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;'); // escape quotes too — output is used inside HTML attributes
 
 // ── Auto-numbered captions (Figure 1, Table 2, Exhibit A…) ──────────────────
 
