@@ -53,6 +53,24 @@ struct FieldOpsView: View {
                         }
                         .themeCard()
                     }
+                    NavigationLink {
+                        NotificationsView()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "bell.badge.fill")
+                                .foregroundStyle(Theme.gold).frame(width: 24)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("NOTIFICATIONS")
+                                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                                Text("Dispatcher alerts · intel hits")
+                                    .font(.system(size: 10)).foregroundStyle(Theme.neutral)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.neutral)
+                        }
+                        .themeCard()
+                    }
                     if let myCall { callCard(myCall) }
                     panicButton
                     if let status { StatusLine(text: status) }
