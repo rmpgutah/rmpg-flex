@@ -473,5 +473,14 @@ export default {
         .then((r) => { const n = r?.meta?.changes ?? 0; if (n) console.log(`[sessions] purged ${n} dead session row(s)`); })
         .catch((err) => console.error('Sessions purge failed:', err)),
     );
+    // Process-serve needs-attention sweep — raises notifications + supervisor
+    // email digest for overdue/approaching/diligence-gap/unassigned jobs.
+    // Deduped by serve_nudges (per-job per-condition renotify window).
+    ctx.waitUntil(
+      import('./utils/serveNudgeSweep')
+        .then(({ sweepServeNudges }) => sweepServeNudges(env.DB, env))
+        .then((n) => { if (n) console.log(`[serve-nudge] ${n} nudge(s) raised`); })
+        .catch((err) => console.error('[serve-nudge] sweep failed:', err)),
+    );
   },
 };
