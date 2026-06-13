@@ -1064,5 +1064,8 @@ export default function DocumentWriterPage() {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Escape quotes too — escapeHtml() output is interpolated into HTML attributes
+  // (meta content="…", titles, header/footer/watermark text).
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }

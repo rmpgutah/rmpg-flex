@@ -551,7 +551,9 @@ email.get('/messages', async (c) => {
   params.set('$orderby', 'receivedDateTime desc');
   params.set('$top', String(perPage));
   if (skip > 0) params.set('$skip', String(skip));
-  if (search) params.set('$search', `"${search.replace(/"/g, '\\"')}"`);
+  // Escape backslash FIRST, then quotes, before embedding in the OData $search
+  // quoted string (otherwise a value with `\` could break out of the literal).
+  if (search) params.set('$search', `"${search.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
   try {
     const res = await graphFetch(
       c.env,

@@ -25,8 +25,10 @@ const MIN_PREFIX = 3;
 const MAX_RESULTS = 6;
 
 function decode(s: string): string {
-  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&rsquo;/g, '’').replace(/&ldquo;/g, '“').replace(/&rdquo;/g, '”');
+  // Decode &amp; LAST: doing it first lets "&amp;lt;" collapse into "<" (double-unescaping).
+  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&rsquo;/g, '’').replace(/&ldquo;/g, '“').replace(/&rdquo;/g, '”')
+    .replace(/&amp;/g, '&');
 }
 
 export default function Autocomplete({ editor, enabled }: { editor: Editor; enabled: boolean }) {

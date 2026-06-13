@@ -84,7 +84,6 @@ async function fetchText(url, { tries = 4, delay = 120 } = {}) {
 function decodeEntities(s) {
   return s
     .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
@@ -92,7 +91,8 @@ function decodeEntities(s) {
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n))
     .replace(/&mdash;/gi, '—')
     .replace(/&ndash;/gi, '–')
-    .replace(/&sect;/gi, '§');
+    .replace(/&sect;/gi, '§')
+    .replace(/&amp;/gi, '&'); // decode &amp; LAST so "&amp;lt;" can't collapse into "<"
 }
 const stripTags = (s) => s.replace(/<[^>]+>/g, ' ');
 const collapse = (s) => decodeEntities(stripTags(s)).replace(/\s+/g, ' ').trim();

@@ -31,7 +31,8 @@ function writeFavs(s: Set<string>) { localStorage.setItem(SNIP_FAV_KEY, JSON.str
 
 // Convert common HTML entities back to plain text for display in the panel.
 function decode(s: string): string {
-  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&rsquo;/g, '’').replace(/&ldquo;/g, '“').replace(/&rdquo;/g, '”');
+  // Decode &amp; LAST: doing it first lets "&amp;lt;" collapse into "<" (double-unescaping).
+  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&rsquo;/g, '’').replace(/&ldquo;/g, '“').replace(/&rdquo;/g, '”').replace(/&amp;/g, '&');
 }
 
 export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
