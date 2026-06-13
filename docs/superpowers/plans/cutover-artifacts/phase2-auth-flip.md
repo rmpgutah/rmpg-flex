@@ -56,12 +56,16 @@ The flip is correctly **scoped to `/api/auth` only**.
 **Rewrite health watch (`wrangler tail rmpg-flex-api`, ~90s ambient window):** 63 request events,
 **63/63 `outcome: ok`, zero 4xx/5xx, zero exceptions.**
 
+## Human login canary — PASS (2026-06-12)
+
+The operator performed a full interactive login (username + password + **2FA TOTP**) → Dashboard
+through the flipped routing. The live dashboard session's `GET /api/auth/me` (with the SPA's own token)
+returned **200** (`chzamo5000`, admin), served by the rewrite with **zero `[legacy-fallthrough]`**,
+while ambient dashboard traffic (`/api/comms/activity-feed`, `/api/ws`) still fell through to legacy in
+the same tail window — confirming end-to-end correctness and correct scoping. Session restored.
+
 ## Outstanding (do NOT close Phase 2 yet)
 
-- **Human login canary:** a fresh interactive login (login → 2FA → dashboard) through the flipped
-  routing. The operator's session was bumped to `/login` during pre-flight (refresh-token rotation);
-  their re-login is the natural human canary. Routing + handlers are already verified above, and the
-  lockout-critical paths were pre-proven, so this is confirmatory.
 - **Task 2.2 Step 5 — 48h bake (NEXT SESSION):** confirm zero `[legacy-fallthrough] * /api/auth/*`
   lines AND no `/api/auth` 4xx/5xx spike on `rmpg-flex-api` over 48h. Then mark Phase 2 complete.
 
