@@ -460,6 +460,10 @@ export interface Unit {
   emergency_active?: number | boolean | null;
   emergency_call_id?: number | string | null;
   emergency_since?: string | null;
+  /** On-foot (walking) detection — orthogonal to status. 1/true while the
+   *  officer is detected out of the vehicle (CoreMotion). */
+  on_foot?: number | boolean | null;
+  on_foot_since?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -2017,7 +2021,8 @@ export type WSMessageType =
   | 'security:updated'
   // Speed tracking
   | 'speed:alert'
-  | 'geofence:alert';
+  | 'geofence:alert'
+  | 'officer_on_foot_overdue';
 
 export interface WSMessage {
   type: WSMessageType;
