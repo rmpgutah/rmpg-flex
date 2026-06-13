@@ -93,6 +93,8 @@ struct IDScanView: View {
                         Text("CITE / WARN THIS SUBJECT").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(RaisedButtonStyle())
+                    Button("SEND TO MDT") { Task { await sendScanToMDT() } }
+                        .buttonStyle(RaisedButtonStyle())
                 }
 
                 if let result {
@@ -213,6 +215,16 @@ struct IDScanView: View {
         knownPersonId = nil
         scanning = false
         Task { await relay(parsed) }
+    }
+
+    /// Push the scanned subject to the in-vehicle MDT terminal.
+    @MainActor private func sendScanToMDT() async {
+        guard let f = result?.fields else { return }
+        let ok = await MDTLink.shared.send(type: "person", payload: [
+            "name": [f["last_name"] ?? "", f["first_name"] ?? ""].filter { !$0.isEmpty }.joined(separator: ", "),
+            "dob": f["date_of_birth"] ?? "", "dl": f["dl_number"] ?? "",
+        ])
+        relayStatus = ok ? "✓ Subject sent to your vehicle MDT" : "✗ MDT send failed"
     }
 
     /// Prefill a citation from a license/MRZ scan (name, DOB, DL number).

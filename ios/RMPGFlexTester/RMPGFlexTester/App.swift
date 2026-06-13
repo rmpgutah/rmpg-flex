@@ -48,6 +48,7 @@ struct MainTabView: View {
                 .tabItem { Label("System", systemImage: "gearshape.2.fill") }
         }
         .tint(Theme.gold)
+        .task { MDTLink.shared.startPolling() }
     }
 }
 
