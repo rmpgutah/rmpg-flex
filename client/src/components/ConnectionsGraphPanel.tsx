@@ -10,7 +10,8 @@ import { recordTypeLabel } from '../utils/recordTypeLabel';
 interface GraphNode {
   id: string;
   type: 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident'
-      | 'warrant' | 'citation' | 'arrest' | 'field_interview' | 'trespass_order' | 'serve_job';
+      | 'warrant' | 'citation' | 'arrest' | 'field_interview' | 'trespass_order' | 'serve_job'
+      | 'intel_report';
   label: string;
   /** Original-case label for prose (label itself is uppercased for the node). */
   rawLabel?: string;
@@ -45,6 +46,7 @@ const NODE_COLORS: Record<string, string> = {
   field_interview: '#64748b',
   trespass_order: '#a855f7',
   serve_job: '#14b8a6',
+  intel_report: '#e879f9',
 };
 
 const NODE_RADIUS: Record<string, number> = {
@@ -60,6 +62,7 @@ const NODE_RADIUS: Record<string, number> = {
   field_interview: 14,
   trespass_order: 16,
   serve_job: 16,
+  intel_report: 18,
 };
 
 // ── Force simulation (simple spring + repulsion) ─────────────
