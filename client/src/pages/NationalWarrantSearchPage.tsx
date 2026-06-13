@@ -661,13 +661,19 @@ export default function NationalWarrantSearchPage() {
   );
 }
 
+// ── Name helper — prefers structured parts, falls back to full_name ──
+const warrantName = (w: any): string =>
+  w.last_name
+    ? `${String(w.last_name).toUpperCase()}, ${w.first_name ?? ''}`.trim().replace(/,\s*$/, '')
+    : (w.full_name ? String(w.full_name).toUpperCase() : 'UNKNOWN');
+
 // ── Warrant Result Row ──────────────────────────────────────
 function WarrantRow({ warrant }: { warrant: any }) {
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
 
   const buildWarrantMenu = (): ContextMenuItem[] => {
-    const fullName = `${warrant.last_name || ''}, ${warrant.first_name || ''}`.trim().replace(/^,\s*/, '');
+    const fullName = warrantName(warrant);
     return [
       m.copy('Copy name', fullName),
       ...(warrant.charges ? [m.copy('Copy charges', warrant.charges)] : []),
@@ -698,7 +704,7 @@ function WarrantRow({ warrant }: { warrant: any }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-bold text-white">
-            {warrant.last_name?.toUpperCase()}, {warrant.first_name}
+            {warrantName(warrant)}
           </span>
           {warrant.dob && (
             <span className="text-[10px] text-rmpg-400">
