@@ -359,12 +359,18 @@ export default function DispatchPage() {
   const [vehicleSearchResults, setVehicleSearchResults] = useState<any[]>([]);
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
+  const [showBusinessDropdown, setShowBusinessDropdown] = useState(false);
+  const [businessQuery, setBusinessQuery] = useState('');
+  const [businessSearchResults, setBusinessSearchResults] = useState<any[]>([]);
   const personSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vehicleSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const businessSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const personAbortRef = useRef<AbortController | null>(null);
   const vehicleAbortRef = useRef<AbortController | null>(null);
+  const businessAbortRef = useRef<AbortController | null>(null);
   const personDropdownRef = useRef<HTMLDivElement>(null);
   const vehicleDropdownRef = useRef<HTMLDivElement>(null);
+  const businessDropdownRef = useRef<HTMLDivElement>(null);
   const [showCreatePersonModal, setShowCreatePersonModal] = useState(false);
   const [showCreateVehicleModal, setShowCreateVehicleModal] = useState(false);
   const [isCreatingRecord, setIsCreatingRecord] = useState(false);
@@ -442,21 +448,24 @@ export default function DispatchPage() {
     return () => {
       if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
       if (vehicleSearchTimerRef.current) clearTimeout(vehicleSearchTimerRef.current);
+      if (businessSearchTimerRef.current) clearTimeout(businessSearchTimerRef.current);
       if (personAbortRef.current) personAbortRef.current.abort();
       if (vehicleAbortRef.current) vehicleAbortRef.current.abort();
+      if (businessAbortRef.current) businessAbortRef.current.abort();
     };
   }, []);
 
-  // Close person/vehicle dropdowns on outside click
+  // Close person/vehicle/business dropdowns on outside click
   useEffect(() => {
-    if (!showPersonDropdown && !showVehicleDropdown) return;
+    if (!showPersonDropdown && !showVehicleDropdown && !showBusinessDropdown) return;
     const handler = (e: MouseEvent) => {
       if (showPersonDropdown && personDropdownRef.current && !personDropdownRef.current.contains(e.target as Node)) setShowPersonDropdown(false);
       if (showVehicleDropdown && vehicleDropdownRef.current && !vehicleDropdownRef.current.contains(e.target as Node)) setShowVehicleDropdown(false);
+      if (showBusinessDropdown && businessDropdownRef.current && !businessDropdownRef.current.contains(e.target as Node)) setShowBusinessDropdown(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [showPersonDropdown, showVehicleDropdown]);
+  }, [showPersonDropdown, showVehicleDropdown, showBusinessDropdown]);
 
   const searchPersons = useCallback((query: string) => {
     if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
@@ -498,10 +507,6 @@ export default function DispatchPage() {
   const [linkVehicleRole, setLinkVehicleRole] = useState('involved');
   const [callBusinesses, setCallBusinesses] = useState<any[]>([]);
   const [linkBusinessRole, setLinkBusinessRole] = useState('involved');
-  const [businessSearchResults, setBusinessSearchResults] = useState<any[]>([]);
-  const [showBusinessDropdown, setShowBusinessDropdown] = useState(false);
-  const [businessQuery, setBusinessQuery] = useState('');
-  const businessDropdownRef = useRef<HTMLDivElement>(null);
   const { options: linkOptions } = useLinkOptions();
 
   const fetchCallPersons = useCallback(async (callId: string | number) => {
@@ -571,12 +576,22 @@ export default function DispatchPage() {
     } catch { setCallBusinesses([]); }
   }, []);
 
-  const searchBusinesses = useCallback((q: string) => {
-    setBusinessQuery(q);
-    if (q.trim().length < 2) { setBusinessSearchResults([]); setShowBusinessDropdown(false); return; }
-    apiFetch<any[]>(`/dispatch/business-search?q=${encodeURIComponent(q)}`)
-      .then((r) => { setBusinessSearchResults(Array.isArray(r) ? r : []); setShowBusinessDropdown(true); })
-      .catch(() => setBusinessSearchResults([]));
+  const searchBusinesses = useCallback((query: string) => {
+    setBusinessQuery(query);
+    if (businessSearchTimerRef.current) clearTimeout(businessSearchTimerRef.current);
+    if (businessAbortRef.current) businessAbortRef.current.abort();
+    if (query.trim().length < 2) { setBusinessSearchResults([]); setShowBusinessDropdown(false); return; }
+    businessSearchTimerRef.current = setTimeout(async () => {
+      try {
+        const controller = new AbortController();
+        businessAbortRef.current = controller;
+        const results = await apiFetch<any[]>(`/dispatch/business-search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+        setBusinessSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
+        setShowBusinessDropdown(true);
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') setBusinessSearchResults([]);
+      }
+    }, 300);
   }, []);
 
   const linkBusinessToCall = useCallback(async (callId: string | number, businessId: string | number, role: string) => {
@@ -674,7 +689,6 @@ export default function DispatchPage() {
       setShowCreateVehicleModal(false);
       setVehicleDupState(null);
       fetchCallVehicles(selectedCall.id);
-      fetchCallBusinesses(selectedCall.id);
       addToast(result?.created ? 'Vehicle created and linked' : 'Existing vehicle linked', 'success');
     } catch (err: any) {
       if (err?.code === 'DUPLICATE_CANDIDATES' && Array.isArray(err?.payload?.candidates)) {
@@ -685,7 +699,7 @@ export default function DispatchPage() {
     } finally {
       setIsCreatingRecord(false);
     }
-  }, [selectedCall, linkVehicleRole, addToast, fetchCallVehicles, fetchCallBusinesses]);
+  }, [selectedCall, linkVehicleRole, addToast, fetchCallVehicles]);
 
   const handleCreateVehicleFromDispatch = useCallback(
     (data: VehicleFormData) => submitVehicleQuickAdd(data),
