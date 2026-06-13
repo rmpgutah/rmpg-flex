@@ -15,6 +15,25 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
   return null;
 }
 
+// ── Sentinel client for scan / field-imported properties ──────────
+// properties.client_id is NOT NULL and FKs to clients(id). A property
+// created from a DL scan is the address printed on the license — it has
+// no natural parent client. Mirror the serve-intake sentinel pattern
+// (utils/serveIntakeRecords.ts): create one named "Field Intelligence —
+// Scanned" client the first time it's needed and reuse it forever, so
+// the FK target always exists and scan-imported addresses stay filterable.
+const SCAN_SENTINEL_CLIENT_NAME = 'Field Intelligence — Scanned';
+async function ensureScanSentinelClient(db: D1Database): Promise<number> {
+  const found = await queryFirst<{ id: number }>(
+    db, 'SELECT id FROM clients WHERE name = ? LIMIT 1', SCAN_SENTINEL_CLIENT_NAME);
+  if (found) return found.id;
+  const result = await execute(db,
+    `INSERT INTO clients (name, contact_name, status, notes)
+     VALUES (?, 'system', 'active', 'Auto-created for scan/field-imported property rows (DL scanner). Do not delete — used as the default client_id for those rows.')`,
+    SCAN_SENTINEL_CLIENT_NAME);
+  return Number(result.meta.last_row_id);
+}
+
 // GET /records/properties
 records.get('/properties', async (c) => {
   try {
@@ -304,11 +323,14 @@ records.post('/from-dl-scan', async (c) => {
       property = await queryFirst<Record<string, unknown>>(db,
         'SELECT * FROM properties WHERE lower(address) = lower(?) LIMIT 1', address);
       if (!property) {
+        // properties.client_id is NOT NULL + FK → clients(id); DL-scan
+        // addresses have no parent client, so attach the scan sentinel.
+        const sentinelClientId = await ensureScanSentinelClient(db);
         const result = await execute(db, `
-          INSERT INTO properties (name, address, city, state, zip, property_type,
+          INSERT INTO properties (client_id, name, address, city, state, zip, property_type,
             occupancy_status, owner_name, notes, is_active, created_at)
-          VALUES (?,?,?,?,?,?,?,?,?, 1, datetime('now'))`,
-          address, address, str(scan.city), str(scan.state), str(scan.zip),
+          VALUES (?,?,?,?,?,?,?,?,?,?, 1, datetime('now'))`,
+          sentinelClientId, address, address, str(scan.city), str(scan.state), str(scan.zip),
           'residential', 'occupied', `${first} ${last}`,
           `Created from DL scan — listed address of ${first} ${last}`);
         property = await queryFirst<Record<string, unknown>>(db,
