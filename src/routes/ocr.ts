@@ -18,6 +18,7 @@ import type { Env } from '../types';
 import {
   extractFromText,
   extractFromImage,
+  extractFromImageClaude,
   extractTextFromPdf,
 } from '../utils/serveIntakeExtract';
 import { getContainer } from '@cloudflare/containers';
@@ -66,11 +67,16 @@ ocr.post('/scan-document', async (c) => {
   try {
     if (file.type.startsWith('image/')) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const r = await withTimeout(extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
+      // Advanced OCR: prefer Claude vision (anthropic_api_key) when configured;
+      // fall back to Workers-AI vision when the key is absent or Claude errors.
+      const claude = await withTimeout(
+        extractFromImageClaude(c.env, bytes, file.type), AI_TIMEOUT_MS, 'Claude OCR timed out',
+      ).catch(() => null);
+      const r = claude ?? await withTimeout(extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
       return c.json({
         success: r.success, documentType: r.documentType, confidence: r.confidence,
         fields: r.fields, rawText: r.rawText, allDates: r.allDates,
-        ocrUsed: true, ocrEngine: 'workers-ai-vision',
+        ocrUsed: true, ocrEngine: claude ? 'claude-vision' : 'workers-ai-vision',
         model: r.model, extractionMs: r.ms, error: r.error,
       });
     }

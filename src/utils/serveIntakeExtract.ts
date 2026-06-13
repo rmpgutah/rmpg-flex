@@ -1,3 +1,5 @@
+import { getAnthropicKey, getClaudeModel, callClaude, bytesToBase64 } from './anthropic';
+
 // ============================================================
 // RMPG Flex — Serve Intake structured-field extraction
 // ============================================================
@@ -491,6 +493,38 @@ export async function extractFromImage(
       rawText: '', allDates: [], model: VISION_MODEL, ms: Date.now() - started,
       error: err instanceof Error ? err.message : String(err),
     };
+  }
+}
+
+// ── Advanced OCR: Claude vision (when anthropic_api_key is configured) ─────
+// Drop-in for extractFromImage that uses the Claude Messages API instead of the
+// Workers-AI llama vision model — markedly stronger document OCR + structured
+// extraction. Reuses the SAME prompt + parser + normalizer so the result shape
+// is identical. Returns null (NOT a failure result) when the key is absent or
+// the call errors, so callers fall back to the Workers-AI path.
+export async function extractFromImageClaude(
+  env: { DB: D1Database },
+  imageBytes: Uint8Array,
+  mediaType = 'image/jpeg',
+): Promise<ExtractionResult | null> {
+  if (imageBytes.byteLength === 0 || imageBytes.byteLength > MAX_VISION_BYTES) return null;
+  const key = await getAnthropicKey(env);
+  if (!key) return null; // no Claude key — caller uses Workers AI
+  const started = Date.now();
+  const model = await getClaudeModel(env);
+  try {
+    const text = await callClaude(key, {
+      system: SYSTEM_PROMPT,
+      text: `${buildUserPrompt('(image-only document — OCR the visible text, then extract)')}\n\nReturn ONLY the JSON object, no prose.`,
+      image: { base64: bytesToBase64(imageBytes), mediaType },
+      model, maxTokens: 2048, temperature: 0,
+    });
+    const parsed = tryParseModelJson({ response: text });
+    const synthesized = Object.values<any>(parsed?.fields ?? {})
+      .map((f) => f?.value).filter(Boolean).join(' | ');
+    return normalize(parsed, synthesized, `claude:${model}`, Date.now() - started);
+  } catch {
+    return null; // fall back to Workers AI
   }
 }
 
