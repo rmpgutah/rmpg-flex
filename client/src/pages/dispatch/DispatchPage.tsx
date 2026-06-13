@@ -496,6 +496,12 @@ export default function DispatchPage() {
   const [callVehicles, setCallVehicles] = useState<any[]>([]);
   const [linkPersonRole, setLinkPersonRole] = useState('involved');
   const [linkVehicleRole, setLinkVehicleRole] = useState('involved');
+  const [callBusinesses, setCallBusinesses] = useState<any[]>([]);
+  const [linkBusinessRole, setLinkBusinessRole] = useState('involved');
+  const [businessSearchResults, setBusinessSearchResults] = useState<any[]>([]);
+  const [showBusinessDropdown, setShowBusinessDropdown] = useState(false);
+  const [businessQuery, setBusinessQuery] = useState('');
+  const businessDropdownRef = useRef<HTMLDivElement>(null);
   const { options: linkOptions } = useLinkOptions();
 
   const fetchCallPersons = useCallback(async (callId: string | number) => {
@@ -558,6 +564,57 @@ export default function DispatchPage() {
     }
   }, [addToast, fetchCallVehicles]);
 
+  const fetchCallBusinesses = useCallback(async (callId: string | number) => {
+    try {
+      const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/businesses`);
+      setCallBusinesses(Array.isArray(data) ? data : []);
+    } catch { setCallBusinesses([]); }
+  }, []);
+
+  const searchBusinesses = useCallback((q: string) => {
+    setBusinessQuery(q);
+    if (q.trim().length < 2) { setBusinessSearchResults([]); setShowBusinessDropdown(false); return; }
+    apiFetch<any[]>(`/dispatch/business-search?q=${encodeURIComponent(q)}`)
+      .then((r) => { setBusinessSearchResults(Array.isArray(r) ? r : []); setShowBusinessDropdown(true); })
+      .catch(() => setBusinessSearchResults([]));
+  }, []);
+
+  const linkBusinessToCall = useCallback(async (callId: string | number, businessId: string | number, role: string) => {
+    try {
+      await apiFetch(`/dispatch/calls/${callId}/businesses`, {
+        method: 'POST', body: JSON.stringify({ business_id: businessId, role }),
+      });
+      fetchCallBusinesses(callId);
+    } catch (err: any) {
+      console.error('Link business error:', err);
+      addToast(err?.message || 'Failed to link business', 'error');
+    }
+  }, [fetchCallBusinesses, addToast]);
+
+  const quickAddBusiness = useCallback(async (callId: string | number, name: string, role: string) => {
+    try {
+      await apiFetch(`/dispatch/calls/${callId}/businesses/quick-add`, {
+        method: 'POST', body: JSON.stringify({ name, role }),
+      });
+      fetchCallBusinesses(callId);
+      setBusinessQuery(''); setBusinessSearchResults([]); setShowBusinessDropdown(false);
+    } catch (err: any) {
+      console.error('Quick-add business error:', err);
+      addToast(err?.message || 'Failed to add business', 'error');
+    }
+  }, [fetchCallBusinesses, addToast]);
+
+  const unlinkBusinessFromCall = useCallback(async (callId: string | number, linkId: string | number) => {
+    try {
+      await apiFetch(`/dispatch/calls/${callId}/businesses/${linkId}`, { method: 'DELETE' });
+      setCallBusinesses(prev => prev.filter(b => b.id !== linkId));
+    } catch (err: any) {
+      console.error('Unlink business error:', err);
+      addToast(err?.message || 'Failed to unlink business', 'error');
+      fetchCallBusinesses(callId);
+    }
+  }, [addToast, fetchCallBusinesses]);
+
   // Create-from-dispatch: uses the fused /quick-add endpoints so the server
   // runs duplicate detection BEFORE creating a new persons / vehicles_records
   // row. Stops MNI fragmentation from "John Doe DOB:1985" being re-created on
@@ -617,6 +674,7 @@ export default function DispatchPage() {
       setShowCreateVehicleModal(false);
       setVehicleDupState(null);
       fetchCallVehicles(selectedCall.id);
+      fetchCallBusinesses(selectedCall.id);
       addToast(result?.created ? 'Vehicle created and linked' : 'Existing vehicle linked', 'success');
     } catch (err: any) {
       if (err?.code === 'DUPLICATE_CANDIDATES' && Array.isArray(err?.payload?.candidates)) {
@@ -627,7 +685,7 @@ export default function DispatchPage() {
     } finally {
       setIsCreatingRecord(false);
     }
-  }, [selectedCall, linkVehicleRole, addToast, fetchCallVehicles]);
+  }, [selectedCall, linkVehicleRole, addToast, fetchCallVehicles, fetchCallBusinesses]);
 
   const handleCreateVehicleFromDispatch = useCallback(
     (data: VehicleFormData) => submitVehicleQuickAdd(data),
@@ -664,11 +722,13 @@ export default function DispatchPage() {
     if (cid && cid !== ('undefined' as any) && cid !== ('null' as any) && cid !== '') {
       fetchCallPersons(cid);
       fetchCallVehicles(cid);
+      fetchCallBusinesses(cid);
     } else {
       setCallPersons([]);
       setCallVehicles([]);
+      setCallBusinesses([]);
     }
-  }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles]);
+  }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles, fetchCallBusinesses]);
 
   // Auto-save unsaved call edits on component unmount (SPA navigation).
   // Shares the body assembly with the click-Save path via buildCallEditBody
@@ -4855,6 +4915,50 @@ export default function DispatchPage() {
                             {editData.vehicle_description?.length >= 2 && vehicleSearchResults.length === 0 && !showVehicleDropdown && (
                               <button type="button" onClick={() => setShowCreateVehicleModal(true)} className="mt-0.5 inline-flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-brand-400 bg-brand-900/30 border border-brand-700/40 hover:bg-brand-900/50 transition-colors">
                                 <PlusCircle className="w-3 h-3" /> Create New Vehicle
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {/* ── Linked Businesses ── */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <label className="text-[9px] text-brand-gold-500">Linked Businesses</label>
+                            <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkBusinessRole} onChange={(e) => setLinkBusinessRole(e.target.value)}>
+                              {linkOptions.business_role.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          {callBusinesses.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-1">
+                              {callBusinesses.map((cb: any) => (
+                                <span key={cb.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
+                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cb.role || '').replace(/_/g, ' ')}</span>
+                                  {cb.name}
+                                  {cb.business_type && <span className="text-rmpg-500">{cb.business_type}</span>}
+                                  <button type="button" onClick={() => unlinkBusinessFromCall(selectedCall.id, cb.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <div className="relative" ref={businessDropdownRef}>
+                            <input type="text" className="input-dark text-xs" placeholder="Search business records to link..." value={businessQuery} onChange={(e) => searchBusinesses(e.target.value)} onFocus={() => { if (businessSearchResults.length > 0) setShowBusinessDropdown(true); }} />
+                            {showBusinessDropdown && businessSearchResults.length > 0 && (
+                              <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
+                                {businessSearchResults.map((b: any) => (
+                                  <button type="button" key={b.id} className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
+                                    linkBusinessToCall(selectedCall.id, b.id, linkBusinessRole);
+                                    setBusinessQuery(''); setShowBusinessDropdown(false);
+                                  }}>
+                                    <span className="font-semibold text-white">{b.name}</span>
+                                    {b.address && <span className="text-rmpg-500 ml-1 text-[9px]">— {b.address}</span>}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {businessQuery.trim().length >= 2 && businessSearchResults.length === 0 && (
+                              <button type="button" onClick={() => quickAddBusiness(selectedCall.id, businessQuery.trim(), linkBusinessRole)} className="mt-0.5 inline-flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-brand-400 bg-brand-900/30 border border-brand-700/40 hover:bg-brand-900/50 transition-colors">
+                                <PlusCircle className="w-3 h-3" /> Add "{businessQuery.trim()}"
                               </button>
                             )}
                           </div>
