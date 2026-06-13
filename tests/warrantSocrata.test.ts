@@ -31,4 +31,23 @@ describe('parseSocrata', () => {
     expect(hits[0].full_name).toBe('Doe, Jane');
     expect(hits[0].charge_description).toBe('THEFT');
   });
+  it('skips rows with no identifying fields (no name, no case#, no dob)', () => {
+    const rows = [{ junk: 'x' }, { junk: 'y' }];
+    const hits = parseSocrata(rows, { charge: 'junk' }, 'src');
+    expect(hits).toHaveLength(0);  // both skipped, not collapsed into one
+  });
+  it('gives two different people distinct warrant_ids (no false dedup)', () => {
+    const rows = [
+      { name: 'SMITH, JOHN', dob: '1980-01-01' },
+      { name: 'JONES, MARY', dob: '1990-02-02' },
+    ];
+    const m = { name: 'name', dob: 'dob' };
+    const hits = parseSocrata(rows, m, 'src');
+    expect(hits).toHaveLength(2);
+    expect(hits[0].warrant_id).not.toBe(hits[1].warrant_id);
+  });
+  it('cleans middle_name', () => {
+    const hits = parseSocrata([{ f: 'JOHN', m: 'QUINCY', l: 'SMITH' }], { first: 'f', middle: 'm', last: 'l' }, 'src');
+    expect(hits[0].middle_name).toBe('Quincy');
+  });
 });

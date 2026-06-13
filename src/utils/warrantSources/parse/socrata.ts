@@ -11,12 +11,18 @@ export interface FieldMap {
 const get = (row: Record<string, unknown>, key?: string): string | null =>
   key && row[key] != null ? String(row[key]) : null;
 
-/** Stable per-source warrant id: prefer case_no; else a hash of name+dob. */
+/** Stable per-source warrant id from identifying parts. Two independent rolling
+ *  hashes → ~64-bit id, low collision even on large single-source feeds that lack
+ *  a case number. */
 export function deriveWarrantId(parts: (string | null | undefined)[]): string {
   const basis = parts.filter(Boolean).join('|').toUpperCase();
-  let h = 0;
-  for (let i = 0; i < basis.length; i++) { h = (h * 31 + basis.charCodeAt(i)) | 0; }
-  return `h${(h >>> 0).toString(36)}`;
+  let h1 = 0x811c9dc5, h2 = 0;
+  for (let i = 0; i < basis.length; i++) {
+    const c = basis.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193);   // FNV-1a style
+    h2 = (h2 * 31 + c) | 0;
+  }
+  return `h${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}`;
 }
 
 export function parseSocrata(rows: Record<string, unknown>[], map: FieldMap, sourceKey: string): RawWarrantHit[] {
@@ -35,18 +41,20 @@ export function parseSocrata(rows: Record<string, unknown>[], map: FieldMap, sou
         : null;
     const caseNo = get(row, map.case_no);
     const dob = normalizeDate(get(row, map.dob));
+    if (!caseNo && !fullName && !dob) continue;  // unidentifiable row — skip, don't collapse to one id
     const warrantId = caseNo || deriveWarrantId([fullName, dob]);
     if (seen.has(warrantId)) continue;
     seen.add(warrantId);
+    const ageStr = get(row, map.age);
     out.push({
       source_key: sourceKey,
       warrant_id: warrantId,
       first_name: first ? cleanName(first) : null,
-      middle_name: middle,
+      middle_name: middle ? cleanName(middle) : null,
       last_name: last ? cleanName(last) : null,
       full_name: fullName,
       date_of_birth: dob,
-      age: get(row, map.age) ? Number(get(row, map.age)) : null,
+      age: ageStr ? Number(ageStr) : null,
       city: get(row, map.city),
       state: get(row, map.state),
       charge_description: get(row, map.charge),
