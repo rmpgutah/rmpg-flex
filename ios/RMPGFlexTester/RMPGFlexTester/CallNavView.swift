@@ -26,7 +26,28 @@ struct CallNavView: View {
             }
             .padding(10).background(Theme.raised)
 
-            RouteMapView(dest: dest, route: route).frame(maxHeight: .infinity)
+            RouteMapView(dest: dest, route: route).frame(height: 240)
+
+            if steps.isEmpty {
+                Spacer(minLength: 0)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: NavStepFormat.icon(for: step.instructions))
+                                    .font(.system(size: 14)).foregroundStyle(Theme.gold).frame(width: 22)
+                                Text(step.instructions).font(.system(size: 12)).foregroundStyle(.white)
+                                Spacer()
+                                Text(NavStepFormat.distance(step.distance))
+                                    .font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.neutral)
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 8)
+                            Rectangle().fill(Theme.borderSubtle).frame(height: 1)
+                        }
+                    }
+                }
+            }
 
             VStack(spacing: 6) {
                 Button { open(walking: false) } label: {
@@ -45,6 +66,9 @@ struct CallNavView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await computeRoute() }
     }
+
+    // Apple's first step is the empty "start" leg — drop it.
+    private var steps: [MKRoute.Step] { route?.steps.filter { !$0.instructions.isEmpty } ?? [] }
 
     private func computeRoute() async {
         guard let origin = LocationManager.shared.last?.coordinate else { summary = "Waiting for GPS fix…"; return }
