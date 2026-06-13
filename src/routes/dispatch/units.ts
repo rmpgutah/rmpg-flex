@@ -269,7 +269,12 @@ units.put('/:id/status', async (c) => {
     if (!body.status || typeof body.status !== 'string') return c.json({ error: 'status is required' }, 400);
     const detach = ['available', 'off_duty', 'out_of_service'].includes(body.status)
       ? ', current_call_id = NULL' : '';
-    await execute(db, `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now')${detach} WHERE id = ?`, body.status, id);
+    // Going off duty / out of service ends any on-foot episode — otherwise the
+    // on_foot flag (and its board/map badge + overdue sweep) stays stuck on a
+    // unit that's no longer in the field.
+    const clearFoot = ['off_duty', 'out_of_service'].includes(body.status)
+      ? ', on_foot = 0, on_foot_since = NULL, on_foot_alerted = 0' : '';
+    await execute(db, `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now')${detach}${clearFoot} WHERE id = ?`, body.status, id);
     const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
     try {
       await emitAlert(c.env, 'dispatch_update', { action: 'unit_status_changed', unit: updated });

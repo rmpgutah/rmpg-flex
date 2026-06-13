@@ -254,6 +254,25 @@ export function useDispatchVoiceAlerts(options?: {
       })
     );
 
+    // ── Officer on foot overdue (safety sweep) ──
+    unsubs.push(
+      subscribe('officer_on_foot_overdue', (msg) => {
+        const data = ((msg as any).data || msg) as any;
+        const cs = data.call_sign || 'Unit';
+        const mins = data.minutes ?? 5;
+        if (isEdgeTTSEnabled()) {
+          speak(`${cs} has been on foot for over ${mins} minutes. Check officer status.`, 'moderate');
+        }
+        onAlert?.({
+          id: nextAlertId(),
+          severity: 'moderate',
+          title: 'OFFICER ON FOOT',
+          message: `${cs} on foot over ${mins} min${data.officer_name ? ` — ${data.officer_name}` : ''}`,
+          timestamp: Date.now(),
+        });
+      })
+    );
+
     // ── Warrant hit from safety screening ──
     unsubs.push(
       subscribe('call:warrant_alert', (msg) => {

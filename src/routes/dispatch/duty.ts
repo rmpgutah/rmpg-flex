@@ -387,7 +387,7 @@ duty.post('/end', async (c) => {
     // 2) Take the unit off duty + release its vehicle back to the pool.
     if (unit) {
       await execute(db,
-        `UPDATE units SET status = 'off_duty', current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`, unit.id);
+        `UPDATE units SET status = 'off_duty', current_call_id = NULL, on_foot = 0, on_foot_since = NULL, on_foot_alerted = 0, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`, unit.id);
       await releaseUnitVehicle(db, unit.id);
       const fresh = await queryFirst(db, `SELECT * FROM units WHERE id = ?`, unit.id);
       try { if (fresh) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: fresh }); } catch { /* never break the write */ }

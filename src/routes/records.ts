@@ -1102,6 +1102,11 @@ records.post('/businesses', async (c) => {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.name || !body.business_type) return c.json({ error: 'name and business_type required' }, 400);
+    // properties.client_id is NOT NULL + FK → clients(id); a business
+    // created without a client has no natural parent, so fall back to the
+    // "Unaffiliated Business" sentinel instead of null (which 500'd with a
+    // NOT NULL constraint failure).
+    const sentinelClientId = await ensureBusinessSentinelClient(db);
     // Persist the full business profile (migration 0061 added these columns).
     // Previously only name/address/type/phone/email/notes were written, so
     // EIN/DBA/owner/contact/industry/revenue/status were silently dropped.

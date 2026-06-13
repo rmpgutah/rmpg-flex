@@ -236,6 +236,7 @@
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record interaction audio for evidence; continues with the screen locked while a recording is active.";
 				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Send your unit position to the dispatch map and attach coordinates to panic alerts.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Motion activity is used to detect when an officer is on foot for dispatch awareness and officer safety.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -263,6 +264,7 @@
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record interaction audio for evidence; continues with the screen locked while a recording is active.";
 				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Send your unit position to the dispatch map and attach coordinates to panic alerts.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Motion activity is used to detect when an officer is on foot for dispatch awareness and officer safety.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

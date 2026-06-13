@@ -101,6 +101,15 @@ dlRecords.post('/', async (c) => {
     const fullName = `${b.first_name || ''} ${b.middle_name || ''} ${b.last_name || ''}`
       .replace(/\s+/g, ' ').trim();
     const source = typeof b.source === 'string' && b.source ? b.source : 'MANUAL_ENTRY';
+    // Scanner payloads use `dl_expiry`; the manual form uses `dl_expiration`.
+    // Accept either so a scanned license's expiry is never silently dropped.
+    const dlExpiration = b.dl_expiration || b.dl_expiry || '';
+    // Preserve the complete scanned payload — including fields with no
+    // dedicated column (REAL ID, organ donor, veteran, country, document
+    // discriminator) — so nothing from the scan is lost on persist.
+    const rawRecord = typeof b.raw_record === 'string'
+      ? b.raw_record.slice(0, 32_000)
+      : JSON.stringify(b).slice(0, 32_000);
 
     // Upsert keyed on (dl_number, dl_state) — matches the legacy
     // dlRecordStore contract (one row per physical license).
@@ -119,14 +128,14 @@ dlRecords.post('/', async (c) => {
            first_name = ?, middle_name = ?, last_name = ?, full_name = ?, suffix = ?,
            date_of_birth = ?, gender = ?, height = ?, weight = ?,
            eye_color = ?, hair_color = ?, race = ?,
-           source = ?, updated_at = datetime('now')
+           source = ?, raw_record = ?, updated_at = datetime('now')
          WHERE id = ?`,
-        b.dl_class || '', b.dl_status || '', b.dl_expiration || '', b.dl_issue_date || '',
+        b.dl_class || '', b.dl_status || '', dlExpiration, b.dl_issue_date || '',
         b.dl_restrictions || '', b.dl_endorsements || '',
         b.first_name || '', b.middle_name || '', b.last_name || '', fullName, b.suffix || '',
         b.date_of_birth || '', b.gender || '', b.height || '', b.weight || '',
         b.eye_color || '', b.hair_color || '', b.race || '',
-        source, existing.id,
+        source, rawRecord, existing.id,
       );
       recordId = existing.id;
       await execute(db, 'DELETE FROM dl_addresses WHERE dl_record_id = ?', recordId);
@@ -138,15 +147,15 @@ dlRecords.post('/', async (c) => {
            dl_restrictions, dl_endorsements,
            first_name, middle_name, last_name, full_name, suffix,
            date_of_birth, gender, height, weight, eye_color, hair_color, race,
-           source, fetched_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+           source, raw_record, fetched_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
         b.dl_number, b.dl_state, b.dl_class || '', b.dl_status || '',
-        b.dl_expiration || '', b.dl_issue_date || '',
+        dlExpiration, b.dl_issue_date || '',
         b.dl_restrictions || '', b.dl_endorsements || '',
         b.first_name || '', b.middle_name || '', b.last_name || '', fullName, b.suffix || '',
         b.date_of_birth || '', b.gender || '', b.height || '', b.weight || '',
         b.eye_color || '', b.hair_color || '', b.race || '',
-        source,
+        source, rawRecord,
       );
       recordId = Number(result.meta.last_row_id);
     }
@@ -375,15 +384,23 @@ dlRecords.post('/scan-log', async (c) => {
         const existing = await queryFirst<{ id: number }>(
           db, 'SELECT id FROM dl_records WHERE dl_number = ? AND dl_state = ?', b.dl_number, b.dl_state);
         if (!existing) {
+          // Capture the full scanned record — every field the client sends,
+          // including restrictions/endorsements/suffix and the complete
+          // raw_record payload — so the system-of-record link isn't a stub.
+          const rawRecord = typeof b.raw_record === 'string'
+            ? b.raw_record.slice(0, 32_000)
+            : JSON.stringify(b).slice(0, 32_000);
           await execute(db, `
             INSERT INTO dl_records (dl_number, dl_state, dl_class, dl_expiration, dl_issue_date,
+              dl_restrictions, dl_endorsements, suffix,
               first_name, middle_name, last_name, full_name, date_of_birth, gender,
-              height, weight, eye_color, hair_color, source, fetched_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DL_SCAN', datetime('now'), datetime('now'))`,
+              height, weight, eye_color, hair_color, raw_record, source, fetched_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DL_SCAN', datetime('now'), datetime('now'))`,
             b.dl_number, b.dl_state, b.dl_class || '', b.dl_expiry || '', b.dl_issue_date || '',
+            b.dl_restrictions || '', b.dl_endorsements || '', b.suffix || '',
             b.first_name || '', b.middle_name || '', b.last_name || '',
             `${b.first_name || ''} ${b.last_name || ''}`.trim(), b.dob || '', b.gender || '',
-            b.height || '', b.weight || '', b.eye_color || '', b.hair_color || '');
+            b.height || '', b.weight || '', b.eye_color || '', b.hair_color || '', rawRecord);
         }
       } catch { /* link is best-effort; the log row is the record */ }
     }
