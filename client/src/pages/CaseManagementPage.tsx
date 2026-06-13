@@ -245,7 +245,7 @@ function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    apiFetch<any>(`/records/cases/${caseId}/solvability`)
+    apiFetch<any>(`/cases/${caseId}/solvability`)
       .then(d => { if (!cancelled) setData(d); })
       .catch(() => { if (!cancelled) setData(null); })
       .finally(() => { if (!cancelled) setLoading(false); });
