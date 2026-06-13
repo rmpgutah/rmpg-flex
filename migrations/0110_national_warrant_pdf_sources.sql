@@ -1,4 +1,4 @@
--- 0110: PDF warrant sources for the national pull (PR2) + re-enable Baton Rouge.
+-- 0110: PDF warrant sources for the national pull (PR2). Baton Rouge stays disabled (see end).
 -- ⚠️ Apply directly to live D1 (785de7ae) after merge (deploy step is continue-on-error).
 --
 -- Only sources VERIFIED (2026-06-13) to fetch + parse into real warrants are enabled=1.
@@ -18,7 +18,10 @@ INSERT OR IGNORE INTO national_warrant_sources
   -- Newton GA (column-major parser, includes DOB) — verified live.
   ('pdf-newton-ga', 'pdf-newton', 'Newton County GA Sheriff Warrants', 'GA', 'Newton', 'https://cdn.myocv.com/ocvapps/a70830014/files/012926%20Warrants.PDF', NULL, NULL, 'full-list', 'pdf', 'criminal', 1, 3);
 
--- Re-enable Baton Rouge (~113K rows) now that batched ingest (PR2 Task 2) replaces the
--- per-hit upsert. Batches of 100 via D1 batch() (binding ops don't count toward the fetch
--- subrequest cap). If the live cron budget proves tight, set enabled=0 again — it's reversible.
-UPDATE national_warrant_sources SET enabled = 1 WHERE source_key = 'socrata-brla-citycourt';
+-- Baton Rouge (~113K rows) stays DISABLED. Batched ingest (PR2 Task 2) replaces the per-hit
+-- upsert, but at 113K the full-list leg still (a) fetches 3×50K-row Socrata pages into memory
+-- and (b) issues ~1,130 D1 batches in ONE cron invocation — and the full-list leg runs BEFORE
+-- the Utah leg, so a wall-clock/memory blow-out there would starve Utah (RMPG's home jurisdiction).
+-- Re-enable only as a separately-verified, monitored step (ideally after the scan reorders
+-- Utah-first or chunks large rosters across invocations):
+--   UPDATE national_warrant_sources SET enabled = 1 WHERE source_key = 'socrata-brla-citycourt';
