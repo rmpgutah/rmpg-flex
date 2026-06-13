@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from 
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
-  CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronDown, Link,
+  CheckCircle, XCircle, AlertTriangle, Loader2, FileText, FileSignature, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
   Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash,
 } from 'lucide-react';
@@ -74,6 +74,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { renderFormattedText } from '../../utils/renderFormatted';
 import NoteComposer from './components/NoteComposer';
+import CallDocumentsPanel from './components/CallDocumentsPanel';
 import { useDistrictOptions, normalizeSectorId } from '../../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../../hooks/useAddressAutofill';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
@@ -341,7 +342,7 @@ export default function DispatchPage() {
   const [callWarnings, setCallWarnings] = useState<WarningTag[]>([]);
   // NCIC Query Panel
   const [showNcicPanel, setShowNcicPanel] = useState(false);
-  const [detailTab, setDetailTab] = useState<'info' | 'persons' | 'timeline' | 'notes' | 'flags' | 'attachments' | 'audit'>('info');
+  const [detailTab, setDetailTab] = useState<'info' | 'persons' | 'timeline' | 'notes' | 'documents' | 'flags' | 'attachments' | 'audit'>('info');
   const [auditTrail, setAuditTrail] = useState<any[]>([]);
   const [auditTrailLoading, setAuditTrailLoading] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; call: CallForService } | null>(null);
@@ -3991,13 +3992,14 @@ export default function DispatchPage() {
 
               {/* Detail Tabs */}
               <div className="flex border-b border-[#2b2b2b] flex-shrink-0" style={{ background: '#050505' }}>
-                {(['info', 'persons', 'timeline', 'notes', 'attachments', 'flags', 'audit'] as const).map(tab => {
-                  const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
+                {(['info', 'persons', 'timeline', 'notes', 'documents', 'attachments', 'flags', 'audit'] as const).map(tab => {
+                  const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', documents: 'Documents', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
                   const icons: Record<string, React.ReactNode> = {
                     info: <FileText style={{ width: 9, height: 9 }} />,
                     persons: <User style={{ width: 9, height: 9 }} />,
                     timeline: <Clock style={{ width: 9, height: 9 }} />,
                     notes: <MessageSquare style={{ width: 9, height: 9 }} />,
+                    documents: <FileSignature style={{ width: 9, height: 9 }} />,
                     attachments: <FileText style={{ width: 9, height: 9 }} />,
                     flags: <Shield style={{ width: 9, height: 9 }} />,
                     audit: <Shield style={{ width: 9, height: 9 }} />,
@@ -5781,6 +5783,11 @@ export default function DispatchPage() {
                       ))}
                     </div>
                   </div>
+                )}
+
+                {/* ── DOCUMENTS TAB ─── */}
+                {detailTab === 'documents' && selectedCall.id && (
+                  <CallDocumentsPanel callId={Number(selectedCall.id)} />
                 )}
 
                 {/* ── ATTACHMENTS TAB ─── */}
