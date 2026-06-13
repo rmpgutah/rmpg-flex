@@ -48,10 +48,18 @@ final class MDTLink: ObservableObject {
     /// Push a typed item to the vehicle MDT. Returns true on success.
     @discardableResult
     func send(type: String, payload: [String: Any]) async -> Bool {
+        let body: [String: Any] = ["to": "mdt", "type": type, "payload": payload]
         let err = await authedRetrying { c in
-            try await c.requestJSON("POST", "api/mdt/send",
-                                    body: ["to": "mdt", "type": type, "payload": payload])
+            try await c.requestJSON("POST", "api/mdt/send", body: body)
         }
-        return err == nil
+        if let err {
+            // Dead zone → queue for auto-replay; treat as accepted.
+            if OfflineSyncLogic.shouldQueue(err) {
+                OfflineSync.shared.enqueue(method: "POST", path: "api/mdt/send", body: body, label: "MDT \(type)")
+                return true
+            }
+            return false
+        }
+        return true
     }
 }

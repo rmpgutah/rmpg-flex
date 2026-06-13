@@ -12,8 +12,8 @@ TST="$IOS/RMPGFlexTester/RMPGFlexTesterTests"
 PKG="$(mktemp -d)/WorkflowKit"
 mkdir -p "$PKG/Sources/WorkflowKit" "$PKG/Tests/WorkflowKitTests"
 
-SOURCES=(WorkflowModels WorkflowBody WorkflowValidation FieldValidation MultipartBody DictationState WorkflowRegistry MDTMessage)
-TESTS=(WorkflowModelsTests WorkflowBodyTests WorkflowValidationTests FieldValidationTests MultipartBodyTests WorkflowRegistryTests MDTMessageTests)
+SOURCES=(WorkflowModels WorkflowBody WorkflowValidation FieldValidation MultipartBody DictationState WorkflowRegistry MDTMessage OfflineSyncLogic)
+TESTS=(WorkflowModelsTests WorkflowBodyTests WorkflowValidationTests FieldValidationTests MultipartBodyTests WorkflowRegistryTests MDTMessageTests OfflineSyncLogicTests)
 
 for f in "${SOURCES[@]}"; do
   if [ -f "$SRC/$f.swift" ]; then cp "$SRC/$f.swift" "$PKG/Sources/WorkflowKit/"; fi
