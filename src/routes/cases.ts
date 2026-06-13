@@ -158,7 +158,12 @@ cases.get('/stats', async (c) => {
     );
     const byInvestigator = await query<Record<string, unknown>>(
       db,
-      `SELECT COALESCE(u.full_name, 'Unassigned') AS investigator, COUNT(*) AS count
+      `SELECT COALESCE(u.full_name, 'Unassigned') AS investigator, COUNT(*) AS count,
+              SUM(CASE WHEN
+                (c.due_date IS NOT NULL AND date(c.due_date) < date('now')) OR
+                (c.due_date IS NULL AND c.sla_hours IS NOT NULL AND c.sla_hours > 0
+                  AND datetime(c.opened_date, '+' || c.sla_hours || ' hours') < datetime('now'))
+              THEN 1 ELSE 0 END) AS overdue
        FROM cases c LEFT JOIN users u ON c.lead_investigator_id = u.id
        WHERE c.archived_at IS NULL AND c.status NOT LIKE 'closed%'
        GROUP BY c.lead_investigator_id ORDER BY count DESC LIMIT 12`,
@@ -327,6 +332,50 @@ cases.post('/', async (c) => {
       error: 'Failed to create case', code: 'CREATE_ERROR',
       detail: err instanceof Error ? err.message : String(err),
     }, 500);
+  }
+});
+
+// ── POST /bulk — bulk status / assign / archive (v3 Phase 3) ──
+// Static 'bulk' prefix; registered before /:id. Supervisor+ only.
+cases.post('/bulk', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const { ids, action, value } = await c.req.json<{ ids?: number[]; action?: string; value?: unknown }>()
+      .catch(() => ({} as Record<string, never>));
+    const cleanIds = Array.isArray(ids) ? ids.map(Number).filter(Number.isFinite).slice(0, 200) : [];
+    if (cleanIds.length === 0) return c.json({ error: 'ids required', code: 'IDS_REQUIRED' }, 400);
+    if (!['status', 'assign', 'archive'].includes(String(action))) {
+      return c.json({ error: 'action must be status|assign|archive', code: 'BAD_ACTION' }, 400);
+    }
+
+    let assigneeName: string | null = null;
+    if (action === 'assign' && value) {
+      const u = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', Number(value));
+      assigneeName = u?.full_name ?? null;
+    }
+
+    let updated = 0;
+    for (const id of cleanIds) {
+      try {
+        if (action === 'status') {
+          const closedClause = String(value).startsWith('closed') ? `, closed_date = datetime('now')` : '';
+          await execute(db, `UPDATE cases SET status = ?, updated_at = datetime('now')${closedClause} WHERE id = ?`, value, id);
+          await logCaseActivity(c, id, 'status.changed', { to: value, bulk: true });
+        } else if (action === 'assign') {
+          await execute(db, `UPDATE cases SET lead_investigator_id = ?, updated_at = datetime('now') WHERE id = ?`, value ? Number(value) : null, id);
+          await logCaseActivity(c, id, 'case.updated', { fields: ['lead_investigator_id'], bulk: true, assignee_name: assigneeName });
+        } else {
+          await execute(db, `UPDATE cases SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`, id);
+          await logCaseActivity(c, id, 'case.archived', { bulk: true });
+        }
+        updated++;
+      } catch { /* per-id best-effort */ }
+    }
+    return c.json({ success: true, updated });
+  } catch (err) {
+    return c.json({ error: 'Bulk action failed', code: 'BULK_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
 

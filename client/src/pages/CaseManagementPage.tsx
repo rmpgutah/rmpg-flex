@@ -398,6 +398,7 @@ export default function CaseManagementPage() {
   const [filterPriority, setFilterPriority] = useState('');
   const [filterOverdue, setFilterOverdue] = useState(false);
   const [filterMine, setFilterMine] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -503,6 +504,26 @@ export default function CaseManagementPage() {
       related: cf?.related, tasks, activity: caseActivity,
     });
     addToast('Case report generated', 'success');
+  };
+
+  // ── Bulk selection + actions (v3 Phase 3) ──
+  const toggleSelect = (id: number) => setSelectedIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const clearSelection = () => setSelectedIds(new Set());
+  const handleBulk = async (action: 'status' | 'assign' | 'archive', value?: string) => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    try {
+      const r = await apiFetch<{ updated: number }>(`/cases/bulk`, { method: 'POST', body: JSON.stringify({ ids, action, value }) });
+      const n = r?.updated ?? ids.length;
+      addToast(`${n} case${n === 1 ? '' : 's'} updated`, 'success');
+      clearSelection();
+      fetchCases({ silent: true });
+      fetchStats();
+    } catch (e: any) { addToast(e.message || 'Bulk action failed', 'error'); }
   };
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
@@ -794,6 +815,27 @@ export default function CaseManagementPage() {
           </button>
         </div>
 
+        {/* Bulk action bar (v3 Phase 3) */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-1 flex-wrap px-2 py-1.5 border-b border-rmpg-700 bg-brand-900/20">
+            <span className="text-[10px] font-bold text-brand-300">{selectedIds.size} selected</span>
+            <select aria-label="Bulk set status" defaultValue=""
+              onChange={e => { if (e.target.value) { handleBulk('status', e.target.value); e.currentTarget.value = ''; } }}
+              className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-0.5 outline-none">
+              <option value="">Set status…</option>
+              {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            <select aria-label="Bulk assign" defaultValue=""
+              onChange={e => { if (e.target.value) { handleBulk('assign', e.target.value); e.currentTarget.value = ''; } }}
+              className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-0.5 outline-none">
+              <option value="">Assign to…</option>
+              {users.map(u => <option key={u.id} value={String(u.id)}>{u.full_name}</option>)}
+            </select>
+            <button type="button" onClick={() => handleBulk('archive')} className="text-[10px] px-2 py-0.5 border border-rmpg-700 text-rmpg-400 hover:text-white transition-colors">Archive</button>
+            <button type="button" onClick={clearSelection} className="text-[10px] px-2 py-0.5 text-rmpg-500 hover:text-white transition-colors ml-auto">Clear</button>
+          </div>
+        )}
+
         {/* Case List */}
         <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
           {loading ? (
@@ -807,13 +849,19 @@ export default function CaseManagementPage() {
             />
           ) : (
             cases.map(c => (
+              <div key={c.id}
+                className={`flex items-stretch border-b border-rmpg-800 border-l-2 ${
+                  selected?.id === c.id ? 'bg-brand-900/20 border-l-brand-500' : 'border-l-transparent'
+                }`}
+              >
+                <label className="flex items-center pl-2 pr-1 cursor-pointer" title="Select for bulk action">
+                  <input type="checkbox" className="accent-brand-500" checked={selectedIds.has(c.id)}
+                    onChange={() => toggleSelect(c.id)} aria-label={`Select case ${c.case_number}`} />
+                </label>
               <button type="button"
-                key={c.id}
                 onClick={() => { setSelected(c); setDetailTab('overview'); }}
                 onContextMenu={(e) => openMenu(e, buildCaseMenu(c))}
-                className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-colors ${
-                  selected?.id === c.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'
-                }`}
+                className={`flex-1 min-w-0 text-left px-2 py-2 transition-colors ${selected?.id === c.id ? '' : 'hover:bg-rmpg-800/40'}`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-mono font-bold text-white">{c.case_number}</span>
@@ -836,6 +884,7 @@ export default function CaseManagementPage() {
                   )}
                 </div>
               </button>
+              </div>
             ))
           )}
         </div>

@@ -20,7 +20,7 @@ interface DashStats {
   total?: number; open?: number; closed?: number; overdue?: number;
   clearance_rate?: number; avg_solvability?: number;
   aging?: { d0_7: number; d8_30: number; d31_90: number; d90p: number };
-  by_investigator?: { investigator: string; count: number }[];
+  by_investigator?: { investigator: string; count: number; overdue?: number }[];
   by_status?: Record<string, number>;
   by_priority?: Record<string, number>;
 }
@@ -98,11 +98,19 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
             <div className="text-[10px] text-rmpg-500 py-2">No open cases</div>
           ) : (
             <table className="w-full text-[10px]">
+              <thead>
+                <tr className="border-b border-rmpg-700">
+                  <th className="text-left text-[8px] font-mono text-rmpg-500 uppercase py-[3px]">Investigator</th>
+                  <th className="text-right text-[8px] font-mono text-rmpg-500 uppercase py-[3px] w-14">Open</th>
+                  <th className="text-right text-[8px] font-mono text-rmpg-500 uppercase py-[3px] w-16">Overdue</th>
+                </tr>
+              </thead>
               <tbody>
                 {investigators.map((row, i) => (
                   <tr key={i} className="border-b border-rmpg-800 last:border-0">
                     <td className="py-[3px] text-rmpg-300">{row.investigator}</td>
-                    <td className="py-[3px] text-right font-bold text-white tabular-nums w-12">{row.count}</td>
+                    <td className="py-[3px] text-right font-bold text-white tabular-nums">{row.count}</td>
+                    <td className={`py-[3px] text-right font-bold tabular-nums ${row.overdue ? 'text-red-400' : 'text-rmpg-600'}`}>{row.overdue || 0}</td>
                   </tr>
                 ))}
               </tbody>
