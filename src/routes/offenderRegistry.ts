@@ -31,6 +31,7 @@ const ALERT_SELECT = `
          a.alert_longitude AS location_lng,
          a.alert_address   AS location_address,
          TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) AS person_name,
+         p.first_name, p.last_name, p.middle_name,
          p.dob, p.is_sex_offender, p.gang_affiliation
   FROM offender_alerts a
   LEFT JOIN persons p ON p.id = a.person_id`;
