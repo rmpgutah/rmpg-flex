@@ -50,6 +50,46 @@ final class FieldCalcTests: XCTestCase {
         XCTAssertNil(FieldCalc.sunTimeUTCMinutes(dayOfYear: 355, lat: 71.29, lon: -156.79, sunrise: true))
     }
 
+    func testBAC() {
+        XCTAssertEqual(FieldCalc.bacWidmark(stdDrinks: 4, weightLbs: 180, male: true, hours: 1), 0.0789, accuracy: 0.002)
+        XCTAssertEqual(FieldCalc.bacWidmark(stdDrinks: 0, weightLbs: 180, male: true, hours: 5), 0)
+        XCTAssertEqual(FieldCalc.hoursToReach(bac: 0.15, target: 0.05), 6.667, accuracy: 0.01)
+    }
+
+    func testCrashReconstruction() {
+        XCTAssertEqual(FieldCalc.reactionDistanceFt(mph: 60), 132.3, accuracy: 0.5)
+        XCTAssertEqual(FieldCalc.brakingDistanceFt(mph: 60, dragFactor: 0.75), 160, accuracy: 0.5)
+        XCTAssertEqual(FieldCalc.totalStoppingFt(mph: 60, dragFactor: 0.75), 292.3, accuracy: 1)
+        XCTAssertEqual(FieldCalc.criticalSpeedMph(radiusFt: 100, dragFactor: 0.75), 33.43, accuracy: 0.1)
+        XCTAssertEqual(FieldCalc.speedMph(distanceFt: 88, seconds: 1), 60, accuracy: 0.1)
+        XCTAssertEqual(FieldCalc.followingGapFt(mph: 60), 264.6, accuracy: 0.5)
+        XCTAssertEqual(FieldCalc.etaMinutes(miles: 10, mph: 40), 15, accuracy: 0.01)
+    }
+
+    func testDMSAndDates() {
+        XCTAssertEqual(FieldCalc.toDMS(40.7608, isLat: true), "40°45'38.88\"N")
+        XCTAssertEqual(FieldCalc.toDMS(-111.8910, isLat: false), "111°53'27.60\"W")
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
+        XCTAssertEqual(FieldCalc.age(dobISO: "1974-08-12", now: f.date(from: "2026-06-12")!), 51)
+        XCTAssertEqual(FieldCalc.daysBetween("2026-06-01", "2026-06-12"), 11)
+    }
+
+    func testGlasgowAndFines() {
+        XCTAssertEqual(FieldCalc.glasgow(eye: 4, verbal: 5, motor: 6)?.total, 15)
+        XCTAssertEqual(FieldCalc.glasgow(eye: 1, verbal: 1, motor: 3)?.severity.hasPrefix("Severe"), true)
+        XCTAssertNil(FieldCalc.glasgow(eye: 9, verbal: 1, motor: 1))
+        XCTAssertEqual(FieldCalc.speedFineUSD(mphOver: 12), "$150")
+        XCTAssertTrue(FieldCalc.speedFineUSD(mphOver: 40).contains("court"))
+        XCTAssertEqual(FieldCalc.sumAmounts("120, 45.50, $1,200"), 1365.5, accuracy: 0.01)
+    }
+
+    func testMoreConversions() {
+        XCTAssertEqual(FieldCalc.convert("32f"), "32°F = 0.0°C")
+        XCTAssertEqual(FieldCalc.convert("100c"), "100°C = 212.0°F")
+        XCTAssertEqual(FieldCalc.convert("28g")?.hasPrefix("28 g = 0.99 oz"), true)
+        XCTAssertEqual(FieldCalc.convert("2mi")?.hasPrefix("2.0 mi = 10560 ft"), true)
+    }
+
     func testConversions() {
         XCTAssertEqual(FieldCalc.cmToFeetInches(180), "5'11\"")
         XCTAssertEqual(FieldCalc.cmToFeetInches(183), "6'0\"")

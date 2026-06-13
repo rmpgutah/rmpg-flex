@@ -144,6 +144,126 @@ enum FieldCalc {
             let cm = (f * 12 + i) * 2.54
             return "\(Int(f))'\(Int(i))\" = \(Int(cm.rounded())) cm"
         }
+        // Temperature: 32f / 0c
+        if let f = num("f") { return String(format: "%.0f°F = %.1f°C", f, (f - 32) * 5 / 9) }
+        if let cdeg = num("c") { return String(format: "%.0f°C = %.1f°F", cdeg, cdeg * 9 / 5 + 32) }
+        // Drug/property weights: 28g / 1oz / 1lb
+        if let g = num("g") { return String(format: "%.0f g = %.2f oz = %.3f lb", g, g / 28.3495, g / 453.592) }
+        if let oz = num("oz") { return String(format: "%.1f oz = %.0f g (%.3f lb)", oz, oz * 28.3495, oz / 16) }
+        // Distance: 100yd / 2mi / 12in
+        if let yd = num("yd") { return String(format: "%.0f yd = %.0f ft = %.1f m", yd, yd * 3, yd * 0.9144) }
+        if let mi = num("mi") { return String(format: "%.1f mi = %.0f ft = %.2f km", mi, mi * 5280, mi * 1.60934) }
+        if let inch = num("in") { return String(format: "%.0f in = %.2f ft = %.1f cm", inch, inch / 12, inch * 2.54) }
         return nil
+    }
+
+    // ── BAC (Widmark): BAC = (oz·5.14 / (W·r)) − 0.015·hours ─────
+    // Standard drink ≈ 0.6 oz pure ethanol; r = 0.73 (M) / 0.66 (F).
+    static func bacWidmark(stdDrinks: Double, weightLbs: Double, male: Bool, hours: Double) -> Double {
+        guard weightLbs > 0 else { return 0 }
+        let r = male ? 0.73 : 0.66
+        let raw = (stdDrinks * 0.6 * 5.14) / (weightLbs * r) - 0.015 * max(hours, 0)
+        return max(0, raw)
+    }
+    /// Hours from a given BAC down to a target, at the 0.015/hr burn-off rate.
+    static func hoursToReach(bac: Double, target: Double) -> Double {
+        max(0, (bac - target) / 0.015)
+    }
+
+    // ── Stopping distance (ft): reaction + braking ──────────────
+    // reaction = 1.47·mph·t (1.47 ft/s per mph); braking = mph² / (30·f).
+    static func reactionDistanceFt(mph: Double, perceptionSec: Double = 1.5) -> Double {
+        1.47 * mph * perceptionSec
+    }
+    static func brakingDistanceFt(mph: Double, dragFactor: Double) -> Double {
+        guard dragFactor > 0 else { return 0 }
+        return (mph * mph) / (30 * dragFactor)
+    }
+    static func totalStoppingFt(mph: Double, dragFactor: Double, perceptionSec: Double = 1.5) -> Double {
+        reactionDistanceFt(mph: mph, perceptionSec: perceptionSec) + brakingDistanceFt(mph: mph, dragFactor: dragFactor)
+    }
+
+    /// Critical (minimum) speed from a yaw mark: S = 3.86·√(R·f). R in feet.
+    static func criticalSpeedMph(radiusFt: Double, dragFactor: Double) -> Double {
+        guard radiusFt > 0, dragFactor > 0 else { return 0 }
+        return 3.86 * (radiusFt * dragFactor).squareRoot()
+    }
+
+    /// Speed from a known distance covered in a known time. ft + sec → mph.
+    static func speedMph(distanceFt: Double, seconds: Double) -> Double {
+        guard seconds > 0 else { return 0 }
+        return (distanceFt / seconds) * 0.681818
+    }
+
+    /// 3-second following rule → feet of gap at a given speed.
+    static func followingGapFt(mph: Double, seconds: Double = 3) -> Double {
+        1.47 * mph * seconds
+    }
+
+    /// ETA in minutes to cover a distance at a speed. miles + mph → minutes.
+    static func etaMinutes(miles: Double, mph: Double) -> Double {
+        guard mph > 0 else { return 0 }
+        return miles / mph * 60
+    }
+
+    // ── Decimal degrees ↔ DMS ───────────────────────────────────
+    static func toDMS(_ value: Double, isLat: Bool) -> String {
+        let hemi = isLat ? (value >= 0 ? "N" : "S") : (value >= 0 ? "E" : "W")
+        let v = abs(value)
+        let deg = Int(v)
+        let minFull = (v - Double(deg)) * 60
+        let min = Int(minFull)
+        let sec = (minFull - Double(min)) * 60
+        return String(format: "%d°%02d'%05.2f\"%@", deg, min, sec, hemi)
+    }
+    static func latLonToDMS(lat: Double, lon: Double) -> String {
+        "\(toDMS(lat, isLat: true))  \(toDMS(lon, isLat: false))"
+    }
+
+    // ── Age + date math ─────────────────────────────────────────
+    /// Whole years between a yyyy-MM-dd date of birth and `now`.
+    static func age(dobISO: String, now: Date = Date()) -> Int? {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
+        guard let dob = f.date(from: String(dobISO.prefix(10))) else { return nil }
+        return Calendar(identifier: .gregorian).dateComponents([.year], from: dob, to: now).year
+    }
+    /// Days between two yyyy-MM-dd dates (b − a). Negative if b precedes a.
+    static func daysBetween(_ a: String, _ b: String) -> Int? {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
+        guard let da = f.date(from: String(a.prefix(10))), let db = f.date(from: String(b.prefix(10))) else { return nil }
+        return Calendar(identifier: .gregorian).dateComponents([.day], from: da, to: db).day
+    }
+
+    // ── Glasgow Coma Scale ──────────────────────────────────────
+    static func glasgow(eye: Int, verbal: Int, motor: Int) -> (total: Int, severity: String)? {
+        guard (1...4).contains(eye), (1...5).contains(verbal), (1...6).contains(motor) else { return nil }
+        let t = eye + verbal + motor
+        let sev = t >= 13 ? "Minor" : t >= 9 ? "Moderate" : "Severe (≤8: secure airway)"
+        return (t, sev)
+    }
+
+    /// Utah speeding fine estimate (typical bail schedule) by mph over limit.
+    static func speedFineUSD(mphOver: Int) -> String {
+        switch mphOver {
+        case ..<1: return "At/under limit — no fine"
+        case 1...10: return "$120"
+        case 11...15: return "$150"
+        case 16...20: return "$200"
+        case 21...25: return "$270"
+        case 26...30: return "$370"
+        default: return "Mandatory court appearance (31+ over)"
+        }
+    }
+
+    /// Sum a free-form list of dollar amounts ("120, 45.50, $1,200") → total.
+    /// Splits on whitespace/+ (not comma) so thousands separators survive;
+    /// strips $ and , from each token before parsing.
+    static func sumAmounts(_ s: String) -> Double {
+        s.split(whereSeparator: { $0 == " " || $0 == "+" || $0 == "\n" })
+            .compactMap { tok -> Double? in
+                Double(tok.replacingOccurrences(of: "$", with: "")
+                          .replacingOccurrences(of: ",", with: ""))
+            }
+            .reduce(0, +)
     }
 }

@@ -39,6 +39,17 @@ enum ToolAction {
     case markPoint
     case unitConvert
     case scratchpad
+    // Advanced FIELD CALC (single compact text input, parsed in-app)
+    case bac            // "drinks weight sex hours" → BAC
+    case stopDistance   // "mph [drag]" → reaction+braking+total
+    case criticalSpeed  // "radiusFt [drag]" → min speed
+    case gps2Speed      // "feet seconds" → mph
+    case eta            // "miles mph" → time + arrival
+    case gcs            // "eye verbal motor" → GCS total
+    case ageCalc        // "YYYY-MM-DD" → age + days
+    case dms            // "lat lon" → degrees-minutes-seconds
+    case fineEst        // "mphOver" → fine
+    case sumMoney       // "120 45.50 1200" → total
 }
 
 struct FieldTool: Identifiable {
@@ -51,20 +62,32 @@ struct FieldTool: Identifiable {
 enum FieldToolRegistry {
     static let categories = [
         "SELF-INITIATED", "LOOKUPS", "UNIT STATUS", "CLEAR CALL",
-        "TIMERS & UTILITIES", "FIELD CALC", "LEGAL REFERENCE", "CODES & REFERENCE",
+        "TIMERS & UTILITIES", "FIELD CALC", "MEDICAL & RESCUE",
+        "LEGAL REFERENCE", "CODES & REFERENCE",
     ]
 
     static let tools: [FieldTool] = selfInitiated + lookups + unitStatus
-        + clearCall + utilities + fieldCalc + legalReference + codesReference
+        + clearCall + utilities + fieldCalc + medicalReference
+        + legalReference + codesReference
 
     // ── Field calculators (pure, on-device — work with zero coverage) ──
     private static let fieldCalc: [FieldTool] = [
         FieldTool(id: "fc_phonetic", title: "Phonetic Speller", category: "FIELD CALC", action: .phonetic),
         FieldTool(id: "fc_skid", title: "Skid Marks → Speed", category: "FIELD CALC", action: .skidSpeed),
+        FieldTool(id: "fc_stop", title: "Stopping Distance", category: "FIELD CALC", action: .stopDistance),
+        FieldTool(id: "fc_critical", title: "Yaw → Critical Speed", category: "FIELD CALC", action: .criticalSpeed),
+        FieldTool(id: "fc_gps2speed", title: "Speed from Distance/Time", category: "FIELD CALC", action: .gps2Speed),
+        FieldTool(id: "fc_eta", title: "ETA (miles @ mph)", category: "FIELD CALC", action: .eta),
+        FieldTool(id: "fc_bac", title: "BAC Estimate (Widmark)", category: "FIELD CALC", action: .bac),
+        FieldTool(id: "fc_fine", title: "Speeding Fine Estimate", category: "FIELD CALC", action: .fineEst),
+        FieldTool(id: "fc_gcs", title: "Glasgow Coma Scale", category: "FIELD CALC", action: .gcs),
+        FieldTool(id: "fc_age", title: "Age / Date Math", category: "FIELD CALC", action: .ageCalc),
+        FieldTool(id: "fc_dms", title: "Coords → Deg/Min/Sec", category: "FIELD CALC", action: .dms),
+        FieldTool(id: "fc_sum", title: "Restitution / Property Total", category: "FIELD CALC", action: .sumMoney),
         FieldTool(id: "fc_sun", title: "Sunrise / Sunset (here)", category: "FIELD CALC", action: .sunTimes),
         FieldTool(id: "fc_dist", title: "Distance to Coordinates", category: "FIELD CALC", action: .distanceTo),
         FieldTool(id: "fc_mark", title: "Mark Point / Measure", category: "FIELD CALC", action: .markPoint),
-        FieldTool(id: "fc_convert", title: "Unit Converter (cm/kg/mph)", category: "FIELD CALC", action: .unitConvert),
+        FieldTool(id: "fc_convert", title: "Unit Converter (cm/kg/°/$)", category: "FIELD CALC", action: .unitConvert),
     ]
 
     // ── 1. Self-initiated calls (created at my GPS, me assigned) ──
@@ -89,6 +112,18 @@ enum FieldToolRegistry {
         ("vandalism_found", "P3", "Vandalism Found", "Vandalism discovered on patrol"),
         ("open_door", "P2", "Open Door/Window", "Insecure premise found"),
         ("hazard_found", "P3", "Hazard Found", "Road/site hazard discovered"),
+        ("dui_investigation", "P1", "DUI Investigation", "Impaired driver investigation"),
+        ("disturbance", "P2", "Disturbance", "Disturbance / noise complaint"),
+        ("fight", "P1", "Fight in Progress", "Physical altercation in progress"),
+        ("shots_fired", "P1", "Shots Fired", "Reported gunfire — proceed with caution"),
+        ("medical_assist", "P1", "Medical Assist", "Medical emergency — EMS requested"),
+        ("traffic_control", "P3", "Traffic Control", "Directing traffic / road closure"),
+        ("found_property", "P4", "Found Property", "Property found / turned in"),
+        ("animal_complaint", "P3", "Animal Complaint", "Animal at large / bite / nuisance"),
+        ("abandoned_vehicle", "P4", "Abandoned Vehicle", "Abandoned/derelict vehicle tag"),
+        ("civil_standby", "P3", "Civil Standby", "Keep-the-peace civil standby"),
+        ("vin_verification", "P4", "VIN Verification", "VIN inspection / verification"),
+        ("prisoner_transport", "P2", "Prisoner Transport", "Custody transport in progress"),
     ]
     private static var selfInitiated: [FieldTool] {
         callTypes.map { t in
@@ -145,6 +180,26 @@ enum FieldToolRegistry {
                   action: .lookup(path: "api/dispatch/calls?limit=25", queryKey: nil, prompt: nil)),
         FieldTool(id: "lk_warrant_num", title: "Warrant Check (Warrant #)", category: "LOOKUPS",
                   action: .warrantSearch(byNumber: true)),
+        FieldTool(id: "lk_reg_owner", title: "Registered Owner (Plate)", category: "LOOKUPS",
+                  action: .lookup(path: "api/records/vehicles/plate-lookup", queryKey: "plate", prompt: "License plate")),
+        FieldTool(id: "lk_veh_bolo", title: "Vehicle BOLO Check", category: "LOOKUPS",
+                  action: .lookup(path: "api/records/vehicles/bolo-check", queryKey: "plate", prompt: "License plate")),
+        FieldTool(id: "lk_person_q", title: "Person Quick Search", category: "LOOKUPS",
+                  action: .lookup(path: "api/records/persons/search", queryKey: "q", prompt: "Name or phone")),
+        FieldTool(id: "lk_veh_q", title: "Vehicle VIN/Plate Search", category: "LOOKUPS",
+                  action: .lookup(path: "api/records/vehicles/search", queryKey: "q", prompt: "Plate or VIN")),
+        FieldTool(id: "lk_expired_reg", title: "Expired Registrations", category: "LOOKUPS",
+                  action: .lookup(path: "api/records/vehicles/alerts/expired-registration", queryKey: nil, prompt: nil)),
+        FieldTool(id: "lk_jail", title: "Jail Bookings", category: "LOOKUPS",
+                  action: .lookup(path: "api/intel/jail/bookings", queryKey: nil, prompt: nil)),
+        FieldTool(id: "lk_intel", title: "Intel Federated Search", category: "LOOKUPS",
+                  action: .lookup(path: "api/intel/search", queryKey: "q", prompt: "Name / plate / phone / keyword")),
+        FieldTool(id: "lk_watchlist", title: "Active Watchlist", category: "LOOKUPS",
+                  action: .lookup(path: "api/intel/watchlist", queryKey: nil, prompt: nil)),
+        FieldTool(id: "lk_recordings", title: "My Recordings", category: "LOOKUPS",
+                  action: .lookup(path: "api/intel/recordings", queryKey: nil, prompt: nil)),
+        FieldTool(id: "lk_my_photos", title: "Field Photos", category: "LOOKUPS",
+                  action: .lookup(path: "api/field-photos", queryKey: nil, prompt: nil)),
     ]
 
     // ── 3. Unit status (full status set) ──
@@ -325,9 +380,89 @@ enum FieldToolRegistry {
         """),
     ]
     private static var legalReference: [FieldTool] {
-        legalCards.map { FieldTool(id: $0.0, title: $0.1, category: "LEGAL REFERENCE",
+        (legalCards + legalCardsExtra).map { FieldTool(id: $0.0, title: $0.1, category: "LEGAL REFERENCE",
                                    action: .reference($0.2)) }
     }
+
+    // ── 6b. Additional legal reference cards ──
+    private static let legalCardsExtra: [(String, String, String)] = [
+        ("ref_implied_consent", "Implied Consent — UT 41-6a-520", """
+        Operating on UT roads = consent to chemical test on lawful DUI arrest.
+        Officer chooses test (blood/breath/urine). Read the admonition:
+        refusal → 18-mo license revocation (first), admissible at trial,
+        and may be an enhancement. A warrant is still required to compel a
+        blood draw over refusal (Birchfield/McNeely). Document the warning,
+        the refusal words verbatim, and the time.
+        """),
+        ("ref_exigent", "Exigent Circumstances", """
+        Warrantless entry justified by a true emergency:
+        • Hot pursuit of a fleeing felon
+        • Imminent destruction of evidence
+        • Emergency aid (life/safety — render assistance)
+        • Risk of escape / danger to others
+        Scope is limited to the exigency; secure + get a warrant for more.
+        Articulate the SPECIFIC facts known at entry, not hindsight.
+        """),
+        ("ref_consent_search", "Consent Search Limits", """
+        Must be VOLUNTARY (totality of circumstances — no coercion/claim of
+        authority). May be limited in scope and WITHDRAWN at any time.
+        Third party may consent only over areas of common authority.
+        Document: who consented, exact words, scope stated, withdrawal if any.
+        A consent search of a phone needs consent to the DATA, not just the device.
+        """),
+        ("ref_inventory", "Vehicle Inventory / Impound", """
+        Lawful impound + standardized agency policy = inventory search OK
+        (not investigatory). Must follow the policy uniformly; a pretext
+        inventory is invalid. List contents, note valuables, secure them.
+        Closed containers per policy. Document policy basis + tow company.
+        """),
+        ("ref_knock", "Knock & Announce", """
+        Announce authority + purpose, wait a reasonable time before forcing
+        entry (≈15-20s absent exigency). No-knock requires specific judicial
+        authorization or true exigency (destruction/danger). Note the time
+        knocked, words used, and the wait before entry.
+        """),
+        ("ref_curtilage", "Curtilage vs Open Fields", """
+        Curtilage (area of intimate home activity) = 4th Amendment protected:
+        proximity to home, enclosure, use, steps to shield from view (Dunn).
+        Open fields beyond curtilage = NOT protected. A driveway/porch in the
+        normal approach path is an implied-license knock-and-talk zone.
+        Drones/thermal over curtilage need a warrant (Kyllo).
+        """),
+        ("ref_brady", "Brady / Giglio", """
+        Disclose EXCULPATORY + impeachment evidence to the prosecutor.
+        Includes inconsistent statements, deals with witnesses, prior officer
+        misconduct findings (Giglio material). When in doubt, turn it over —
+        suppression voids convictions. Preserve ALL notes; don't destroy.
+        """),
+        ("ref_eyewitness", "Eyewitness ID Procedure", """
+        Avoid suggestion. Lineups/photo arrays: fillers must match the
+        description; tell witness the suspect may NOT be present; use a
+        blind/blinded administrator; record confidence statement at ID in the
+        witness's own words BEFORE feedback. Show-ups only when prompt + near
+        scene, with a non-suggestive admonition. Document everything.
+        """),
+        ("ref_excited_delirium", "Agitated/Excited Delirium", """
+        Medical EMERGENCY, not just resistance. Signs: extreme agitation,
+        sweating, superhuman strength, incoherence, hyperthermia, pain
+        immunity. After control: NO prone restraint — position on side,
+        monitor breathing, EMS immediately. Restraint asphyxia risk is high.
+        Treat as a person in crisis; document medical request + monitoring.
+        """),
+        ("ref_community_caretaking", "Community Caretaking", """
+        Limited non-investigatory function: welfare checks, disabled vehicles,
+        public safety hazards. Cannot be a pretext for an evidence search
+        (Caniglia limits home entries). Actions must be reasonable and
+        narrowly tied to the caretaking need. Document the safety basis.
+        """),
+        ("ref_stop_id", "Stop & Identify — UT 77-7-15", """
+        A peace officer may stop a person in public on reasonable suspicion of
+        a crime and demand NAME, address, and an explanation of actions.
+        Utah has no statute compelling ID production beyond name in a Terry
+        stop; refusal alone isn't a crime absent another offense. Security
+        officers are NOT peace officers — no compelled-ID authority.
+        """),
+    ]
 
     // ── 7. Codes & quick references ──
     private static let codeCards: [(String, String, String)] = [
@@ -452,7 +587,138 @@ enum FieldToolRegistry {
         """),
     ]
     private static var codesReference: [FieldTool] {
-        codeCards.map { FieldTool(id: $0.0, title: $0.1, category: "CODES & REFERENCE",
+        (codeCards + codeCardsExtra).map { FieldTool(id: $0.0, title: $0.1, category: "CODES & REFERENCE",
                                   action: .reference($0.2)) }
+    }
+
+    // ── 7b. Additional code/reference cards ──
+    private static let codeCardsExtra: [(String, String, String)] = [
+        ("ref_color_codes", "NCIC Vehicle Color Codes", """
+        BLK Black  BLU Blue  BRO Brown  GLD Gold  GRY Gray  GRN Green
+        MAR Maroon ONG Orange PLE Purple RED Red  SIL Silver TAN Tan
+        WHI White  YEL Yellow  TRQ Turquoise  CRM Cream/Ivory
+        Two-tone: primary/secondary (e.g. WHI/BLU).
+        """),
+        ("ref_make_codes", "Common Vehicle Make Codes", """
+        CHEV Chevrolet  FORD Ford  TOYT Toyota  HOND Honda  NISS Nissan
+        DODG Dodge  JEEP Jeep  GMC GMC  RAM Ram  SUBA Subaru  HYUN Hyundai
+        KIA Kia  VOLK VW  BMW BMW  MERZ Mercedes  TESL Tesla  CADI Cadillac
+        CHRY Chrysler  BUIC Buick  LEXS Lexus  MAZD Mazda  ACUR Acura
+        """),
+        ("ref_weapon_codes", "Weapon Type Codes", """
+        Handgun: PI pistol (semi-auto) · RE revolver
+        Long gun: RI rifle · SG shotgun · AR assault-style rifle
+        Other: KN knife/edged · BB blunt · CW chemical (OC) · TZ taser
+        Document: make, model, caliber/gauge, serial, condition, round count.
+        Render safe before packaging; never package loaded (76-10 weapon laws).
+        """),
+        ("ref_dre_categories", "DRE Drug Categories", """
+        1 CNS Depressants (alcohol, benzos) — sluggish, low pulse
+        2 CNS Stimulants (meth, cocaine) — restless, high pulse/BP
+        3 Hallucinogens (LSD, psilocybin) — hallucinations, dilated
+        4 Dissociative (PCP, ketamine) — nystagmus, blank stare
+        5 Narcotic Analgesics (opioids) — pinpoint pupils, on the nod
+        6 Inhalants — disorientation, residue/odor
+        7 Cannabis — eyelid/body tremors, elevated pulse.
+        """),
+        ("ref_scars_marks", "Scars / Marks / Tattoos (SMT)", """
+        Code: SC scar · TAT tattoo · PIERC piercing · AMP amputation
+        · MARK birthmark · NEEDLE track marks
+        Location codes: L/R + body part (e.g. TAT L ARM, SC R CHK).
+        Document gang-significant ink (numbers, area codes, dots, teardrops),
+        military/extremist symbols. Photograph in good light with scale.
+        """),
+        ("ref_disposition_codes", "Common Disposition Codes", """
+        RTF Report taken     CIT Citation issued   WARN Warning
+        ARR Arrest made      GOA Gone on arrival    UTL Unable to locate
+        UNF Unfounded        CIV Civil matter       REF Referred agency
+        AST Assistance rendered  CHK Checks OK       CBD Cancelled by disp.
+        Match the call's clear code to the actual outcome — it drives stats.
+        """),
+        ("ref_priority_codes", "CAD Priority Levels", """
+        P1 — Life threat / crime in progress / officer needs help (immediate)
+        P2 — Urgent: just-occurred crime, in-progress no injury
+        P3 — Routine: cold report, minor, schedule when free
+        P4 — Self-initiated / administrative / non-urgent
+        Roll lights-and-siren only as policy + priority authorize.
+        """),
+        ("ref_aircraft_lz", "Medevac LZ Setup", """
+        100'×100' clear, firm, level (<8° slope). Clear wires/poles/debris.
+        Mark corners (cones/lights — no loose items that can fly up).
+        Approach/depart into wind; brief on obstacles + wind direction.
+        Stay 50m back, NEVER approach until crew signals; approach from the
+        FRONT in the pilot's view, never the tail rotor. Eye protection on.
+        """),
+    ]
+
+    // ── 8. Medical & rescue quick-reference (tactical-casualty + crisis) ──
+    private static let medicalCards: [(String, String, String)] = [
+        ("med_march", "TCCC — MARCH", """
+        M Massive hemorrhage — tourniquet HIGH & TIGHT, wound pack + pressure
+        A Airway — position (recovery), chin-lift/jaw-thrust, NPA if trained
+        R Respiration — seal sucking chest wounds (vented), watch for tension
+        C Circulation — control remaining bleeds, check for shock
+        H Hypothermia/Head — keep warm, protect spine, reassess.
+        Treat the biggest killer first: BLOOD, then airway.
+        """),
+        ("med_tourniquet", "Tourniquet Application", """
+        Place 2-3\" above the wound (NOT on a joint); high & tight if unsure.
+        Tighten until bright-red bleeding STOPS + distal pulse gone.
+        Note the TIME applied on the TQ (or skin). Do NOT loosen once set.
+        A second TQ above the first if one doesn't control it. Pain is normal.
+        Convert only by trained EMS. Mark 'T' + time on the patient's forehead.
+        """),
+        ("med_narcan", "Naloxone (Narcan) — Opioid OD", """
+        Signs: pinpoint pupils, slow/absent breathing, blue lips, unresponsive.
+        Give 4mg intranasal (half each nostril). Rescue breaths between doses.
+        Repeat every 2-3 min if no response (up to available doses).
+        It wears off in 30-90 min — OD can RETURN; EMS transport always.
+        Recovery position once breathing. Document doses + times given.
+        """),
+        ("med_cpr", "CPR / AED (Adult)", """
+        Unresponsive + no normal breathing → call it, start compressions.
+        Rate 100-120/min, depth 2-2.4\", full recoil, center of chest.
+        30:2 if trained on breaths; otherwise hands-only continuous.
+        AED: power on, bare/dry chest, pads, clear, shock if advised,
+        resume compressions immediately. Minimize interruptions (<10s).
+        """),
+        ("med_hemorrhage", "Bleeding Control (no TQ site)", """
+        Junctional/torso bleed (can't tourniquet): WOUND PACK with gauze
+        directly onto the bleeding vessel, pack tight, hold firm pressure
+        3+ minutes, then pressure dressing. Don't peek early.
+        Shock signs: pale, cold, clammy, fast weak pulse, anxiety, thirst.
+        Lay flat, keep warm, rapid EMS — bleeding kills fastest.
+        """),
+        ("med_strangulation", "Strangulation Assessment (DV)", """
+        HIGH lethality predictor in DV. Even without marks, internal injury
+        is possible. Ask: loss of consciousness? incontinence? voice change,
+        trouble swallowing, neck pain, vision changes, breathing difficulty?
+        Photograph neck/eyes (petechiae). MANDATE EMS eval. UT: aggravated
+        assault by strangulation is a felony (76-5-103). Document statements.
+        """),
+        ("med_heat_cold", "Heat / Cold Emergencies", """
+        HEAT STROKE: hot/altered mental status — cooling NOW (shade, water,
+        fan, ice to neck/armpits/groin), EMS. Heat exhaustion: rest, hydrate.
+        HYPOTHERMIA: remove wet clothing, insulate, warm core, handle gently
+        (rough handling → cardiac). 'Not dead until warm & dead.'
+        """),
+        ("med_seizure", "Seizure / Diabetic / Stroke", """
+        SEIZURE: clear hazards, cushion head, time it, NOTHING in mouth,
+        recovery position after, EMS if >5 min / repeated / first-time.
+        DIABETIC low: confusion/sweating/combative — oral glucose if awake.
+        STROKE (BE-FAST): Balance, Eyes, Face droop, Arm drift, Speech, Time —
+        note LAST-KNOWN-WELL time, rapid transport.
+        """),
+        ("med_mh_hold", "Mental Health Hold — UT 26B-5", """
+        Officer may take to a designated facility if reason to believe the
+        person, due to mental illness, poses substantial danger to self/others
+        or is gravely disabled. Document SPECIFIC behaviors + statements (not
+        diagnosis). De-escalate: time, distance, cover, one voice. Request
+        MCOT co-response. Secure weapons. Transport is custody — not arrest.
+        """),
+    ]
+    private static var medicalReference: [FieldTool] {
+        medicalCards.map { FieldTool(id: $0.0, title: $0.1, category: "MEDICAL & RESCUE",
+                                     action: .reference($0.2)) }
     }
 }

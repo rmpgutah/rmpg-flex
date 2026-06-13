@@ -23,6 +23,9 @@ struct FieldToolkitView: View {
     @State private var queueCount = OfflineQueue.count
     @State private var markedPoint: CLLocation?
     @State private var showScratchpad = false
+    @State private var favorites = ToolPrefs.favorites
+    @State private var collapsed = ToolPrefs.collapsed
+    @State private var recentsTick = 0   // bump to refresh recents after a run
 
     private var filtered: [FieldTool] {
         guard !search.isEmpty else { return FieldToolRegistry.tools }
@@ -32,49 +35,65 @@ struct FieldToolkitView: View {
         }
     }
 
+    private var byId: [String: FieldTool] {
+        Dictionary(uniqueKeysWithValues: FieldToolRegistry.tools.map { ($0.id, $0) })
+    }
+    private var favoriteTools: [FieldTool] {
+        FieldToolRegistry.tools.filter { favorites.contains($0.id) }
+    }
+    private var recentTools: [FieldTool] {
+        _ = recentsTick
+        return ToolPrefs.recents.compactMap { byId[$0] }
+    }
+    // Virtual categories shown only when not searching.
+    private var displayCategories: [String] {
+        guard search.isEmpty else { return FieldToolRegistry.categories }
+        var cats: [String] = []
+        if !favoriteTools.isEmpty { cats.append("FAVORITES") }
+        if !recentTools.isEmpty { cats.append("RECENTLY USED") }
+        return cats + FieldToolRegistry.categories
+    }
+    private func tools(in category: String) -> [FieldTool] {
+        switch category {
+        case "FAVORITES": return favoriteTools
+        case "RECENTLY USED": return recentTools
+        default: return filtered.filter { $0.category == category }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 6) {
-                TextField("Search \(FieldToolRegistry.tools.count) field functions…", text: $search)
-                    .font(.system(size: 13, design: .monospaced))
-                    .padding(8).background(Theme.raised)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                    .autocorrectionDisabled()
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(Theme.neutral)
+                    TextField("Search \(FieldToolRegistry.tools.count) field functions…", text: $search)
+                        .font(.system(size: 13, design: .monospaced))
+                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                    if !search.isEmpty {
+                        Button { search = ""; Haptics.tap() } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.neutral)
+                        }
+                    }
+                }
+                .padding(8).background(Theme.raised)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
 
                 if queueCount > 0 {
                     Text("⏳ \(queueCount) action(s) queued offline — tap Sync Offline Queue when back in coverage")
                         .font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.orange)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                if let toast {
-                    Text(toast).font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(toast.hasPrefix("✓") ? Theme.gold : Theme.orange)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                if let toast { StatusLine(text: toast) }
 
                 ScrollView {
-                    ForEach(FieldToolRegistry.categories, id: \.self) { cat in
-                        let tools = filtered.filter { $0.category == cat }
-                        if !tools.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(cat).font(.system(size: 9, weight: .semibold))
-                                    .foregroundStyle(Theme.gold)
-                                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 5) {
-                                    ForEach(tools) { tool in
-                                        Button { run(tool) } label: {
-                                            Text(tool.title)
-                                                .font(.system(size: 11, weight: .medium))
-                                                .frame(maxWidth: .infinity, minHeight: 34)
-                                                .padding(.horizontal, 4)
-                                                .background(Theme.raised)
-                                                .foregroundStyle(.white)
-                                                .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                                        }
-                                    }
-                                }
-                            }
-                            .padding(.bottom, 8)
-                        }
+                    if !search.isEmpty && filtered.isEmpty {
+                        Text("No functions match “\(search)”.")
+                            .font(.system(size: 12)).foregroundStyle(Theme.neutral)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 20)
+                    }
+                    ForEach(displayCategories, id: \.self) { cat in
+                        let catTools = tools(in: cat)
+                        if !catTools.isEmpty { categorySection(cat, catTools) }
                     }
                 }
             }
@@ -82,6 +101,7 @@ struct FieldToolkitView: View {
             .background(Theme.base)
             .navigationTitle("FIELD TOOLKIT")
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: toast) { _, new in if let new { Haptics.forStatus(new) } }
             .alert(askingInput?.title ?? "", isPresented: Binding(
                 get: { askingInput != nil }, set: { if !$0 { askingInput = nil } })) {
                 TextField(promptFor(askingInput), text: $inputText)
@@ -113,6 +133,67 @@ struct FieldToolkitView: View {
         }
     }
 
+    // ── Category section: color dot + count + collapse toggle ──
+    @ViewBuilder
+    private func categorySection(_ cat: String, _ catTools: [FieldTool]) -> some View {
+        let isCollapsed = collapsed.contains(cat) && search.isEmpty
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                guard search.isEmpty else { return }
+                ToolPrefs.toggleCollapsed(cat); collapsed = ToolPrefs.collapsed; Haptics.tap()
+            } label: {
+                HStack(spacing: 6) {
+                    Circle().fill(CategoryStyle.color(cat)).frame(width: 7, height: 7)
+                    Text(cat).font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.gold)
+                    Text("\(catTools.count)").font(.system(size: 9)).foregroundStyle(Theme.neutral)
+                    Spacer()
+                    if search.isEmpty {
+                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                            .font(.system(size: 9)).foregroundStyle(Theme.neutral)
+                    }
+                }
+            }
+            if !isCollapsed {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 5) {
+                    ForEach(catTools) { tool in toolButton(tool, accent: CategoryStyle.color(cat)) }
+                }
+            }
+        }
+        .padding(.bottom, 8)
+    }
+
+    // ── One tool: tap to run, long-press to (un)favorite ──
+    @ViewBuilder
+    private func toolButton(_ tool: FieldTool, accent: Color) -> some View {
+        let fav = favorites.contains(tool.id)
+        Button { tapTool(tool) } label: {
+            HStack(spacing: 3) {
+                Rectangle().fill(accent).frame(width: 2).frame(maxHeight: .infinity)
+                Text(tool.title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 6)
+                if fav { Image(systemName: "star.fill").font(.system(size: 8)).foregroundStyle(Theme.gold) }
+            }
+            .frame(maxWidth: .infinity, minHeight: 38)
+            .padding(.trailing, 6)
+            .background(Theme.raised)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+        }
+        .contextMenu {
+            Button(fav ? "Remove favorite" : "Add to favorites", systemImage: fav ? "star.slash" : "star") {
+                ToolPrefs.toggleFavorite(tool.id); favorites = ToolPrefs.favorites; Haptics.tap()
+            }
+        }
+    }
+
+    private func tapTool(_ tool: FieldTool) {
+        Haptics.tap()
+        ToolPrefs.recordUse(tool.id); recentsTick += 1
+        run(tool)
+    }
+
     private func promptFor(_ tool: FieldTool?) -> String {
         if case .lookup(_, _, let prompt) = tool?.action { return prompt ?? "" }
         if case .warrantSearch(let byNumber) = tool?.action {
@@ -122,7 +203,17 @@ struct FieldToolkitView: View {
         if case .phonetic = tool?.action { return "Plate / name to spell" }
         if case .skidSpeed = tool?.action { return "Skid length in feet" }
         if case .distanceTo = tool?.action { return "lat, lon (e.g. 40.7608, -111.8910)" }
-        if case .unitConvert = tool?.action { return "e.g. 180cm · 75kg · 100kmh · 5'11" }
+        if case .unitConvert = tool?.action { return "180cm · 75kg · 100kmh · 32f · 28g · $1,200" }
+        if case .stopDistance = tool?.action { return "mph [drag] e.g. 45 0.75" }
+        if case .criticalSpeed = tool?.action { return "radius-ft [drag] e.g. 120 0.7" }
+        if case .gps2Speed = tool?.action { return "feet seconds e.g. 88 1" }
+        if case .eta = tool?.action { return "miles mph e.g. 12 35" }
+        if case .bac = tool?.action { return "drinks weight sex hours e.g. 3 180 m 2" }
+        if case .gcs = tool?.action { return "eye verbal motor e.g. 4 5 6" }
+        if case .ageCalc = tool?.action { return "YYYY-MM-DD (or two dates)" }
+        if case .dms = tool?.action { return "lat lon e.g. 40.7608 -111.8910" }
+        if case .fineEst = tool?.action { return "mph over the limit" }
+        if case .sumMoney = tool?.action { return "amounts e.g. 120 45.50 1200" }
         return ""
     }
 
@@ -165,30 +256,44 @@ struct FieldToolkitView: View {
             .navigationTitle(resultTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // Route any result (skid table, sun times, measurement,
-                // lookup row) into the call scratchpad → attaches to the
-                // active call's notes from there.
-                Button("+ PAD") {
-                    var block = resultTitle
-                    if let resultText { block += "\n" + resultText }
-                    for row in resultRows.prefix(3) {
-                        let line = row.keys.sorted()
-                            .compactMap { k -> String? in
-                                let v = "\(row[k] ?? "")"
-                                return v.isEmpty || v == "<null>" ? nil : "\(k)=\(v)"
-                            }
-                            .joined(separator: " ")
-                        if !line.isEmpty { block += "\n" + line }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    // Copy the whole result to the clipboard.
+                    Button { UIPasteboard.general.string = resultPlainText(); Haptics.success() } label: {
+                        Image(systemName: "doc.on.doc")
                     }
-                    ScratchpadStore.append(block)
-                    showResult = false
-                    toast = "✓ Added to scratchpad"
+                    .foregroundStyle(Theme.gold)
+                    // Share via the system sheet (AirDrop, Messages, etc.).
+                    ShareLink(item: resultPlainText()) { Image(systemName: "square.and.arrow.up") }
+                        .foregroundStyle(Theme.gold)
+                    // Route the result into the call scratchpad.
+                    Button("+ PAD") {
+                        ScratchpadStore.append(resultPlainText())
+                        showResult = false
+                        toast = "✓ Added to scratchpad"
+                    }
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.gold)
                 }
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.gold)
             }
         }
         .presentationBackground(Theme.base)
+    }
+
+    /// Flatten the current result (text + rows) to a plain-text block for
+    /// copy / share / scratchpad.
+    private func resultPlainText() -> String {
+        var block = resultTitle
+        if let resultText { block += "\n" + resultText }
+        for row in resultRows.prefix(25) {
+            let line = row.keys.sorted()
+                .compactMap { k -> String? in
+                    let v = "\(row[k] ?? "")"
+                    return v.isEmpty || v == "<null>" ? nil : "\(k)=\(v)"
+                }
+                .joined(separator: " ")
+            if !line.isEmpty { block += "\n" + line }
+        }
+        return block
     }
 
     // ── Dispatch a tool ─────────────────────────────────────
@@ -204,7 +309,9 @@ struct FieldToolkitView: View {
         case .addCallNote:
             inputText = ""
             askingInput = tool
-        case .phonetic, .skidSpeed, .distanceTo, .unitConvert:
+        case .phonetic, .skidSpeed, .distanceTo, .unitConvert,
+             .stopDistance, .criticalSpeed, .gps2Speed, .eta, .bac, .gcs,
+             .ageCalc, .dms, .fineEst, .sumMoney:
             inputText = ""
             askingInput = tool
         case .scratchpad:
@@ -291,10 +398,100 @@ struct FieldToolkitView: View {
                 resultTitle = "CONVERTED"
                 resultText = out; resultRows = []; showResult = true
             } else {
-                toast = "✗ Try: 180cm · 75kg · 165lbs · 100kmh · 60mph · 5'11"
+                toast = "✗ Try: 180cm · 75kg · 100kmh · 32f · 28g · 2mi · $ via Sum tool"
             }
+        case .stopDistance:
+            let p = numbers(trimmed)
+            guard let mph = p.first, mph > 0 else { toast = "✗ Enter speed in mph (e.g. 45 0.75)"; return }
+            let drag = p.count > 1 ? p[1] : 0.75
+            let react = FieldCalc.reactionDistanceFt(mph: mph)
+            let brake = FieldCalc.brakingDistanceFt(mph: mph, dragFactor: drag)
+            resultTitle = "STOPPING DISTANCE @ \(Int(mph)) MPH"
+            resultText = String(format: "Reaction (1.5s): %.0f ft\nBraking (f=%.2f): %.0f ft\nTOTAL: %.0f ft (%.0f car lengths)\n\nDry≈0.75 · wet≈0.50 · gravel≈0.55 · snow≈0.30 · ice≈0.15.",
+                                react, drag, brake, react + brake, (react + brake) / 15)
+            resultRows = []; showResult = true
+        case .criticalSpeed:
+            let p = numbers(trimmed)
+            guard let radius = p.first, radius > 0 else { toast = "✗ Enter yaw radius in feet (e.g. 120 0.7)"; return }
+            let drag = p.count > 1 ? p[1] : 0.75
+            resultTitle = "CRITICAL SPEED"
+            resultText = String(format: "Min speed: %.0f mph\n(radius %.0f ft, f=%.2f)\n\nS = 3.86·√(R·f). Minimum to hold the yaw — actual was at or above. Court use needs a reconstructionist + measured radius/drag.",
+                                FieldCalc.criticalSpeedMph(radiusFt: radius, dragFactor: drag), radius, drag)
+            resultRows = []; showResult = true
+        case .gps2Speed:
+            let p = numbers(trimmed)
+            guard p.count >= 2, p[0] > 0, p[1] > 0 else { toast = "✗ Enter feet and seconds (e.g. 88 1)"; return }
+            resultTitle = "SPEED"
+            resultText = String(format: "%.1f mph  (%.1f ft/s)\nover %.0f ft in %.1f s",
+                                FieldCalc.speedMph(distanceFt: p[0], seconds: p[1]), p[0] / p[1], p[0], p[1])
+            resultRows = []; showResult = true
+        case .eta:
+            let p = numbers(trimmed)
+            guard p.count >= 2, p[1] > 0 else { toast = "✗ Enter miles and mph (e.g. 12 35)"; return }
+            let mins = FieldCalc.etaMinutes(miles: p[0], mph: p[1])
+            resultTitle = "ETA"
+            resultText = String(format: "%.0f min %.0f sec\n%.1f mi @ %.0f mph", mins, (mins.truncatingRemainder(dividingBy: 1)) * 60, p[0], p[1])
+            resultRows = []; showResult = true
+        case .bac:
+            let toks = trimmed.split(separator: " ").map(String.init)
+            let nums = numbers(trimmed)
+            guard nums.count >= 2 else { toast = "✗ Format: drinks weight sex hours (e.g. 3 180 m 2)"; return }
+            let male = !trimmed.lowercased().contains("f")
+            let hours = nums.count >= 3 ? nums[2] : 0
+            let bac = FieldCalc.bacWidmark(stdDrinks: nums[0], weightLbs: nums[1], male: male, hours: hours)
+            resultTitle = "BAC ESTIMATE"
+            resultText = String(format: "≈ %.3f g/dL  %@\n%.0f drinks · %.0f lb · %@ · %.1f h\n\nTo 0.05: %.1f h · to 0.00: %.1f h\n\nWidmark ESTIMATE only — not evidentiary. UT per-se 0.05 (41-6a-502).",
+                                bac, bac >= 0.05 ? "⚠ AT/OVER 0.05" : "under 0.05",
+                                nums[0], nums[1], male ? "M" : "F", hours,
+                                FieldCalc.hoursToReach(bac: bac, target: 0.05),
+                                FieldCalc.hoursToReach(bac: bac, target: 0))
+            _ = toks
+            resultRows = []; showResult = true
+        case .gcs:
+            let p = numbers(trimmed).map { Int($0) }
+            guard p.count >= 3, let g = FieldCalc.glasgow(eye: p[0], verbal: p[1], motor: p[2]) else {
+                toast = "✗ Eye(1-4) Verbal(1-5) Motor(1-6) e.g. 4 5 6"; return
+            }
+            resultTitle = "GLASGOW COMA SCALE"
+            resultText = "GCS \(g.total)/15 — \(g.severity)\n\nE\(p[0]) V\(p[1]) M\(p[2])\n\nNote it with a TIME; trend matters more than one score."
+            resultRows = []; showResult = true
+        case .ageCalc:
+            let dates = trimmed.split(separator: " ").map(String.init)
+            if dates.count >= 2, let d = FieldCalc.daysBetween(dates[0], dates[1]) {
+                resultTitle = "DATE MATH"
+                resultText = "\(d) days between\n\(dates[0]) → \(dates[1])\n(\(abs(d) / 365) yr \(abs(d) % 365) days)"
+            } else if let age = FieldCalc.age(dobISO: trimmed) {
+                resultTitle = "AGE"
+                resultText = "\(age) years old\nDOB \(String(trimmed.prefix(10)))\n\(age >= 21 ? "21+" : age >= 18 ? "Adult, under 21" : "JUVENILE (under 18)")"
+            } else {
+                toast = "✗ Enter YYYY-MM-DD (or two dates separated by a space)"; return
+            }
+            resultRows = []; showResult = true
+        case .dms:
+            guard let (lat, lon) = FieldCalc.parseLatLon(trimmed.replacingOccurrences(of: ",", with: " ")) else {
+                toast = "✗ Enter lat lon (e.g. 40.7608 -111.8910)"; return
+            }
+            resultTitle = "DEGREES / MIN / SEC"
+            resultText = FieldCalc.latLonToDMS(lat: lat, lon: lon) + String(format: "\n\nDecimal: %.6f, %.6f", lat, lon)
+            resultRows = []; showResult = true
+        case .fineEst:
+            guard let first = numbers(trimmed).first else { toast = "✗ Enter mph over the limit"; return }
+            let over = Int(first)
+            resultTitle = "SPEEDING FINE (est.)"
+            resultText = "\(over) over → \(FieldCalc.speedFineUSD(mphOver: over))\n\nTypical UT bail schedule — actual set by court/justice court; school/construction zones enhanced."
+            resultRows = []; showResult = true
+        case .sumMoney:
+            let total = FieldCalc.sumAmounts(trimmed)
+            resultTitle = "TOTAL"
+            resultText = String(format: "$%.2f\n\nfrom: %@", total, trimmed)
+            resultRows = []; showResult = true
         default: break
         }
+    }
+
+    /// Pull the numbers out of a compact input like "45 0.75" or "3 180 m 2".
+    private func numbers(_ s: String) -> [Double] {
+        s.split(whereSeparator: { $0 == " " || $0 == "," }).compactMap { Double($0) }
     }
 
     private func runSunTimes() {
@@ -353,7 +550,9 @@ struct FieldToolkitView: View {
         // FIELD CALC tools are pure on-device — no network, no login,
         // they must work with zero coverage.
         switch tool.action {
-        case .phonetic, .skidSpeed, .distanceTo, .unitConvert:
+        case .phonetic, .skidSpeed, .distanceTo, .unitConvert,
+             .stopDistance, .criticalSpeed, .gps2Speed, .eta, .bac, .gcs,
+             .ageCalc, .dms, .fineEst, .sumMoney:
             runFieldCalc(tool, input: input ?? "")
             return
         default: break
