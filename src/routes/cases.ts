@@ -21,6 +21,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
@@ -82,6 +83,31 @@ function autoPriority(caseType: string): string {
   if (ELEVATED.has(caseType)) return 'high';
   if (LOW.has(caseType)) return 'low';
   return 'normal';
+}
+
+// ── Activity logging — best-effort audit trail (v2 Phase 1) ──
+// Records a case mutation into case_activity. Deliberately swallows its
+// own errors: an audit-log failure (e.g. table drift) must never break
+// the operation it was recording. `action` is a stable machine key
+// (formatActivity on the client maps it to a label/icon); `detail` is an
+// action-specific JSON blob.
+async function logCaseActivity(
+  c: Context<Env>,
+  caseId: number,
+  action: string,
+  detail?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id?: number; full_name?: string; username?: string } | undefined;
+    const actorId = (c.get('userId') as number | undefined) ?? user?.id ?? null;
+    const actorName = user?.full_name || user?.username || null;
+    await execute(
+      db,
+      `INSERT INTO case_activity (case_id, action, actor_id, actor_name, detail) VALUES (?, ?, ?, ?, ?)`,
+      caseId, action, actorId, actorName, detail ? JSON.stringify(detail) : null,
+    );
+  } catch { /* non-fatal — never block the mutation on an audit write */ }
 }
 
 // ── GET /stats — must come before GET /:id ─────────────────
@@ -240,6 +266,7 @@ cases.post('/', async (c) => {
       } catch { /* table may not exist yet — non-fatal */ }
     }
 
+    await logCaseActivity(c, newId, 'case.created', { case_number: caseNumber, title: b.title.trim() });
     return c.json({ data: { id: newId, case_number: caseNumber } }, 201);
   } catch (err) {
     return c.json({
@@ -335,6 +362,7 @@ cases.put('/:id', async (c) => {
     }
 
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM cases WHERE id = ?', id);
+    await logCaseActivity(c, id, 'case.updated', { fields: Object.keys(b).filter((k) => UPDATABLE.has(k)) });
     return c.json({ data: updated });
   } catch (err) {
     return c.json({ error: 'Failed to update case', code: 'UPDATE_ERROR' }, 500);
@@ -356,6 +384,7 @@ cases.put('/:id/submit-review', async (c) => {
       return c.json({ error: `Cannot submit case in status: ${existing.status}`, code: 'INVALID_STATUS_TRANSITION' }, 400);
     }
     await execute(db, `UPDATE cases SET status = 'under_review', updated_at = datetime('now') WHERE id = ?`, id);
+    await logCaseActivity(c, id, 'review.submitted', { from: existing.status, to: 'under_review' });
     return c.json({ data: { id, status: 'under_review' } });
   } catch (err) {
     return c.json({ error: 'Failed to submit case for review', code: 'SUBMIT_REVIEW_ERROR' }, 500);
@@ -376,6 +405,7 @@ cases.put('/:id/approve', async (c) => {
       return c.json({ error: `Cannot approve case in status: ${existing.status}`, code: 'INVALID_STATUS_TRANSITION' }, 400);
     }
     await execute(db, `UPDATE cases SET status = 'approved', updated_at = datetime('now') WHERE id = ?`, id);
+    await logCaseActivity(c, id, 'review.approved', { from: 'under_review', to: 'approved' });
     return c.json({ data: { id, status: 'approved' } });
   } catch (err) {
     return c.json({ error: 'Failed to approve case', code: 'APPROVE_ERROR' }, 500);
@@ -405,6 +435,7 @@ cases.put('/:id/status', async (c) => {
 
     const result = await execute(db, `UPDATE cases SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     if (result.meta.changes === 0) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
+    await logCaseActivity(c, id, 'status.changed', { to: status, ...(disposition ? { disposition } : {}) });
     return c.json({ data: { id, status, disposition } });
   } catch (err) {
     return c.json({ error: 'Failed to update case status', code: 'STATUS_UPDATE_ERROR' }, 500);
@@ -422,6 +453,7 @@ cases.post('/:id/archive', async (c) => {
       db, `UPDATE cases SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`, id,
     );
     if (result.meta.changes === 0) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
+    await logCaseActivity(c, id, 'case.archived');
     return c.json({ data: { id, archived: true } });
   } catch (err) {
     return c.json({ error: 'Failed to archive case', code: 'ARCHIVE_ERROR' }, 500);
@@ -501,6 +533,7 @@ cases.post('/:id/notes', async (c) => {
     const note = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM case_notes WHERE id = ?', Number(result.meta.last_row_id),
     );
+    await logCaseActivity(c, id, 'note.added', { note_type: note_type ?? 'general' });
     return c.json({ data: note }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to add note', code: 'NOTE_POST_ERROR' }, 500);
@@ -562,6 +595,7 @@ cases.post('/:id/calculate-solvability', async (c) => {
       // into its checkbox state (CaseManagementPage line ~477).
       score, JSON.stringify(factors), id,
     );
+    await logCaseActivity(c, id, 'solvability.calculated', { score });
     return c.json({ data: { id, score, breakdown } });
   } catch (err) {
     return c.json({ error: 'Failed to calculate solvability', code: 'SOLVABILITY_ERROR' }, 500);
@@ -625,6 +659,27 @@ cases.get('/:id/solvability', async (c) => {
   }
 });
 
+// ── GET /:id/activity — audit / activity trail (v2 Phase 1) ──
+cases.get('/:id/activity', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const limit = Math.min(parseInt(c.req.query('limit') || '200', 10) || 200, 500);
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT id, action, actor_id, actor_name, detail, created_at
+       FROM case_activity WHERE case_id = ?
+       ORDER BY datetime(created_at) DESC, id DESC
+       LIMIT ?`,
+      id, limit,
+    );
+    return c.json({ data: rows });
+  } catch (err) {
+    return c.json({ error: 'Failed to get case activity', code: 'ACTIVITY_GET_ERROR' }, 500);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // PERSONS JUNCTION — case_person_links
 // ═══════════════════════════════════════════════════════════════
@@ -677,6 +732,7 @@ cases.post('/:id/persons', async (c) => {
        WHERE cpl.case_id = ? AND cpl.person_id = ?`,
       id, person_id,
     );
+    if (result.meta.changes > 0) await logCaseActivity(c, id, 'link.added', { entity: 'persons', entity_id: person_id });
     return c.json({ data: link }, result.meta.changes > 0 ? 201 : 200);
   } catch (err) {
     return c.json({ error: 'Failed to attach person', code: 'PERSON_POST_ERROR' }, 500);
@@ -720,6 +776,7 @@ cases.delete('/:id/persons/:personEntryId', async (c) => {
       result = await execute(db, 'DELETE FROM case_person_links WHERE id = ? AND case_id = ?', ref, caseId);
     }
     if (result.meta.changes === 0) return c.json({ error: 'Link not found', code: 'NOT_FOUND' }, 404);
+    await logCaseActivity(c, caseId, 'link.removed', { entity: 'persons', entity_id: ref });
     return c.json({ success: true });
   } catch (err) {
     return c.json({ error: 'Failed to remove person link', code: 'PERSON_DELETE_ERROR' }, 500);
@@ -791,6 +848,7 @@ for (const [type, cfg] of Object.entries(CASE_JUNCTIONS)) {
         `INSERT OR IGNORE INTO ${cfg.table} (case_id, ${cfg.fk}, added_by) VALUES (?, ?, ?)`,
         caseId, entityId, userId ?? null,
       );
+      if (res.meta.changes > 0) await logCaseActivity(c, caseId, 'link.added', { entity: type, entity_id: entityId });
       return c.json({ success: true, linked: res.meta.changes > 0 }, res.meta.changes > 0 ? 201 : 200);
     } catch (err) {
       return c.json({ error: 'Failed to link record', code: 'LINK_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
@@ -812,6 +870,7 @@ for (const [type, cfg] of Object.entries(CASE_JUNCTIONS)) {
         res = await execute(db, `DELETE FROM ${cfg.table} WHERE case_id = ? AND id = ?`, caseId, entityId);
       }
       if (res.meta.changes === 0) return c.json({ error: 'Link not found', code: 'NOT_FOUND' }, 404);
+      await logCaseActivity(c, caseId, 'link.removed', { entity: type, entity_id: entityId });
       return c.json({ success: true });
     } catch (err) {
       return c.json({ error: 'Failed to unlink record', code: 'UNLINK_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);

@@ -29,6 +29,7 @@ import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { humanizeCaseType, humanizeSolvabilityFactor } from '../utils/statusLabels';
 import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
+import { formatActivity, type CaseActivityRow } from '../utils/caseActivity';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
@@ -403,6 +404,8 @@ export default function CaseManagementPage() {
 
   // Full case data for entity tabs
   const [caseFull, setCaseFull] = useState<CaseFull | null>(null);
+  // Audit/activity trail (v2 Phase 1) — newest first
+  const [caseActivity, setCaseActivity] = useState<CaseActivityRow[]>([]);
 
   // Solvability
   const [solvFactors, setSolvFactors] = useState<Record<string, boolean>>({});
@@ -449,11 +452,17 @@ export default function CaseManagementPage() {
     try { const res = await apiFetch<{ data: CaseNote[] }>(`/cases/${caseId}/notes`); setNotes(res.data || []); } catch (e) { console.warn('[Cases] fetch notes failed:', e); }
   }, []);
 
+  // Refreshes both the full-case aggregate and its audit trail, so every
+  // existing onRefresh (link/unlink, etc.) keeps the Timeline tab current.
   const fetchFullCase = useCallback(async (caseId: number) => {
     try {
       const data = await apiFetch<any>(`/cases/${caseId}/full`);
       setCaseFull(data);
     } catch { /* silent */ }
+    try {
+      const r = await apiFetch<{ data: CaseActivityRow[] }>(`/cases/${caseId}/activity`);
+      setCaseActivity(Array.isArray(r) ? r : (r?.data || []));
+    } catch { setCaseActivity([]); }
   }, []);
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
@@ -503,6 +512,7 @@ export default function CaseManagementPage() {
       await apiFetch(`/cases/${selected.id}/notes`, { method: 'POST', body: JSON.stringify({ content: newNote }) });
       setNewNote('');
       fetchNotes(selected.id);
+      fetchFullCase(selected.id);
       addToast('Note added', 'success');
     } catch (err: any) { addToast(err.message, 'error'); }
     finally { setNoteSubmitting(false); }
@@ -1090,14 +1100,24 @@ export default function CaseManagementPage() {
               {detailTab === 'timeline' && (
                 <div className="space-y-3">
                   <div className="text-[10px] font-mono text-rmpg-500 uppercase">Case Timeline</div>
-                  {(caseFull?.notes || []).length === 0 && (caseFull?.calls || []).length === 0 && (caseFull?.incidents || []).length === 0 ? (
+                  {caseActivity.length === 0 && (caseFull?.notes || []).length === 0 && (caseFull?.calls || []).length === 0 && (caseFull?.incidents || []).length === 0 ? (
                     <div className="text-center py-6 text-rmpg-500 text-xs">No timeline events</div>
                   ) : (
                     <div className="relative pl-4 border-l border-rmpg-700 space-y-3">
                       {[
-                        ...(caseFull?.calls || []).map((c: any) => ({ date: c.created_at, type: 'Call', label: `CFS ${c.case_number || '#' + c.id} — ${c.call_type || 'Unknown'}`, color: '#888888' })),
+                        // Audit trail — the authoritative who/what/when. Skip
+                        // note.added here; notes render below with full content.
+                        ...caseActivity
+                          .filter((a) => a.action !== 'note.added')
+                          .map((a) => {
+                            const f = formatActivity(a.action, a.detail);
+                            return { date: a.created_at, type: a.actor_name || 'System', label: f.label, color: f.color };
+                          }),
+                        // Notes (with content)
+                        ...(caseFull?.notes || []).map((n: any) => ({ date: n.created_at, type: 'Note', label: (n.content || '').substring(0, 100) || 'Note', color: '#8b5cf6' })),
+                        // Linked-record occurrence context
+                        ...(caseFull?.calls || []).map((c: any) => ({ date: c.created_at, type: 'Call', label: `CFS ${c.call_number || c.case_number || '#' + c.id} — ${c.incident_type || c.call_type || 'Unknown'}`, color: '#888888' })),
                         ...(caseFull?.incidents || []).map((i: any) => ({ date: i.created_at, type: 'Incident', label: `${i.incident_number || '#' + i.id} — ${i.incident_type || 'Unknown'}`, color: '#f59e0b' })),
-                        ...(caseFull?.notes || []).map((n: any) => ({ date: n.created_at, type: 'Note', label: n.content?.substring(0, 80) || 'Note', color: '#8b5cf6' })),
                       ]
                         .sort((a, b) => (b.date ? parseTimestamp(b.date).getTime() : 0) - (a.date ? parseTimestamp(a.date).getTime() : 0))
                         .map((event, idx) => (
