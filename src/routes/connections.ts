@@ -434,9 +434,15 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
       }
 
       case 'intel_report': {
-        for (const r of await query<any>(db,
-          `SELECT entity_type, entity_id, role FROM intel_report_links WHERE report_id = ? LIMIT 200`, id))
-          add(r.entity_type, r.entity_id, r.role || 'mentioned', 'intel_report_links');
+        // Only a disseminated product exposes its links (parity with loadNode's
+        // status gate) — a draft report's edges must not surface in the graph.
+        const dissem = await queryFirst<any>(db,
+          "SELECT 1 AS ok FROM intel_reports WHERE id = ? AND status = 'disseminated'", id);
+        if (dissem) {
+          for (const r of await query<any>(db,
+            `SELECT entity_type, entity_id, role FROM intel_report_links WHERE report_id = ? LIMIT 200`, id))
+            add(r.entity_type, r.entity_id, r.role || 'mentioned', 'intel_report_links');
+        }
         break;
       }
     }
