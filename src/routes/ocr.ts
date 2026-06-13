@@ -69,6 +69,33 @@ ocr.get('/claude-health', async (c) => {
   }
 });
 
+// POST /api/ocr/accept-llama-license — one-time Meta-Llama Community License
+// acceptance for the Workers-AI vision/extract models. Cloudflare gates first use
+// behind submitting the prompt "agree" (error 5016); running it through the AI
+// binding records acceptance account-wide so the Workers-AI OCR fallback works
+// (independent of the Anthropic-credit-gated Claude path). Admin/manager only.
+ocr.post('/accept-llama-license', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const models = [
+    '@cf/meta/llama-3.2-11b-vision-instruct',     // image OCR (extractFromImage)
+    '@cf/meta/llama-3.3-70b-instruct-fp8-fast',   // text extraction (extractFromText)
+  ];
+  const results: Record<string, string> = {};
+  for (const m of models) {
+    try {
+      await c.env.AI.run(m as any, { prompt: 'agree' } as any);
+      results[m] = 'accepted';
+    } catch (e) {
+      results[m] = e instanceof Error ? e.message : String(e);
+    }
+  }
+  const ok = Object.values(results).every((v) => v === 'accepted');
+  return c.json({ ok, results });
+});
+
 ocr.post('/scan-document', async (c) => {
   const user = c.get('user') as { id: number; role: string } | undefined;
   if (!user || !INTAKE_ROLES.includes(user.role)) {
