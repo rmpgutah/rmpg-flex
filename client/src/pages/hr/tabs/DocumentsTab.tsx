@@ -8,6 +8,8 @@ import { useMenuActions } from '../../../utils/contextMenuActions';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { formatEnumValue } from '../../../utils/formatters';
+import { coded } from '../../../utils/searchText';
 interface HRDocument {
   id: number;
   title: string;
@@ -147,7 +149,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
           {docs.filter(doc => {
             if (!searchQuery) return true;
             const q = searchQuery.toLowerCase();
-            return doc.title.toLowerCase().includes(q) || doc.description?.toLowerCase().includes(q) || doc.category.toLowerCase().includes(q);
+            return doc.title.toLowerCase().includes(q) || doc.description?.toLowerCase().includes(q) || coded(doc.category, formatEnumValue).includes(q);
           }).map(doc => (
             <div key={doc.id} role="listitem" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedDocId(doc.id); }} className={`panel-beveled p-3 cursor-pointer transition-all duration-150 hover:bg-surface-raised/30 hover:shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-500/40 ${selectedDocId === doc.id ? 'border-brand-500 shadow-sm' : ''}`} onClick={() => setSelectedDocId(doc.id)} onContextMenu={(e) => openMenu(e, buildDocMenu(doc))}>
               <div className="flex items-center justify-between">
