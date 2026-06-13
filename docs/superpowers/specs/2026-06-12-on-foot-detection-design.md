@@ -69,10 +69,14 @@ State lives on `units`: `on_foot`, `on_foot_since`, `on_foot_source`.
 1. **Auto status badge:** ON_FOOT → `units.on_foot = 1` + `on_foot_since`;
    BACK_IN_VEHICLE → clear. Dispatch board + map read the flag. Status enum
    untouched.
-2. **Officer-safety timer:** ON_FOOT → start per-officer watch via existing
-   `WelfareWatchDO` (default 5 min, constant in code). Cancel on
-   back-in-vehicle or check-in. On fire →
-   `emitAlert('officer_on_foot_overdue', {...})`.
+2. **Officer-safety timer:** a per-minute cron sweep (existing `* * * * *`
+   trigger in src/index.ts) finds units with `on_foot = 1`,
+   `on_foot_alerted = 0`, and `on_foot_since` older than 5 minutes, fires
+   `emitAlert('officer_on_foot_overdue', {...})`, and sets
+   `on_foot_alerted = 1` (re-armed on the next ON_FOOT transition).
+   WelfareWatchDO was NOT used: its handleStart() overwrites the single
+   per-officer watch state, which would clobber an active call-welfare
+   watch for the same officer.
 3. **Segment log:** new `foot_segments` table — `officer_id, unit_id,
    started_at, ended_at, start_lat/lng, end_lat/lng, duration_s, distance_m,
    peak_activity`. Written on transitions; for after-action review, analytics,
@@ -86,15 +90,16 @@ speed-based fallback classifier for web-only GPS, admin threshold-tuning UI.
 - **Dispatch board (DispatchPage units panel):** "ON FOOT" badge (gold, 9px,
   no pill — per design tokens) + elapsed time (`ON FOOT 4:32`) when
   `on_foot = 1`.
-- **Map (MapPage unit markers):** walking glyph replaces the vehicle arrow
-  while on foot.
+- **Map (MapPage unit markers):** heading arrow kept (still meaningful on
+  foot); a gold `FOOT` mini-badge (ClearPathGPS-badge pattern) marks
+  on-foot units.
 - **Safety alert:** AlertHub client toast/voice map gets
   `officer_on_foot_overdue`, P1-style welfare treatment.
 - **Foot-segment review:** compact "On-Foot Activity" section on the
   unit/officer detail (recent segments: when, where, duration, distance).
   No new page.
 
-## Part 5 — Schema (one migration, ~0101, idempotent)
+## Part 5 — Schema (one migration, 0102, idempotent)
 
 - `gps_breadcrumbs` + `activity TEXT`, `activity_confidence TEXT` (ALTER —
   not a 100-col watched table).
