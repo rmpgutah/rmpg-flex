@@ -14,6 +14,9 @@ struct CallsQueueView: View {
     @State private var loading = true
     @State private var working = false
     @State private var status: String?
+    @State private var actionTarget: ActionTarget?
+
+    private struct ActionTarget: Identifiable { let id: Int; let number: String }
 
     var body: some View {
         ScrollView {
@@ -42,6 +45,7 @@ struct CallsQueueView: View {
         .background(Theme.base)
         .navigationTitle("CALLS QUEUE")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $actionTarget) { CfsActionsView(callId: $0.id, callNumber: $0.number) }
         .refreshable { await refresh() }
         .task {
             await load()
@@ -100,6 +104,11 @@ struct CallsQueueView: View {
                     .buttonStyle(GoldButtonStyle())
                     .disabled(working)
                 }
+                Button { actionTarget = ActionTarget(id: id, number: callNo) } label: {
+                    Image(systemName: "ellipsis.circle.fill")
+                        .font(.system(size: 22)).foregroundStyle(Theme.gold)
+                }
+                .accessibilityLabel("Call actions")
             }
             .padding(.top, 2)
         }

@@ -12,8 +12,25 @@ import { resolveDistrict } from '../../utils/districtResolver';
 import { parseUnitIds, canonicalUnitIdsJson } from './unitIds';
 import { setFleetOdometer, vehicleOdometerForUnit } from '../../utils/fleetOdometer';
 import { codedLike, escapeLike } from '../../utils/searchText';
+import { planAction, isCfsVerb } from '../../utils/cfsActions';
 
 const calls = new Hono<Env>();
+
+// CFS Action Bus audit table — every named action (status / disposition / unit /
+// hazard / narrative / timer / notify / query / link) lands here for the call's
+// action history. Self-heals on first use (no migration).
+async function ensureCfsActionLog(db: ReturnType<typeof getDb>): Promise<void> {
+  await execute(db, `CREATE TABLE IF NOT EXISTS cfs_action_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    call_id INTEGER,
+    action TEXT,
+    verb TEXT,
+    params TEXT,
+    narrative TEXT,
+    actor_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`);
+}
 
 // REGRESSION-GUARD: role gates on mutation endpoints. Pre-Claude these
 // had only authMiddleware (valid JWT), so any authenticated user including
@@ -1030,6 +1047,85 @@ calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
   } catch (err) {
     return c.json({ error: 'Failed to update status' }, 500);
   }
+});
+
+// POST /dispatch/calls/:id/action — the unified CFS Action Bus. Applies a named
+// action ({action, verb, params}) to the call: column updates + narrative append
+// + audit + action-log row (+ entity link). Return type pinned to dodge TS2589.
+calls.post('/:id/action', requireRole(...WRITE_ROLES), async (c): Promise<Response> => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const { action, verb, params } = await c.req.json<{
+      action?: string; verb?: string; params?: Record<string, unknown>;
+    }>().catch(() => ({}) as { action?: string; verb?: string; params?: Record<string, unknown> });
+    if (!isCfsVerb(verb)) return c.json({ error: 'invalid or missing verb' }, 400);
+
+    const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'call not found' }, 404);
+
+    const plan = planAction(call, String(action ?? verb), verb, params ?? {});
+    if ('error' in plan) return c.json({ error: plan.error }, 400);
+
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    for (const [k, v] of Object.entries(plan.updates)) { sets.push(`${k} = ?`); vals.push(v); }
+    if (plan.narrative) {
+      sets.push(`narrative = TRIM(COALESCE(narrative, '') || ?)`);
+      vals.push(`\n[${new Date().toISOString()}] ${plan.narrative}`);
+    }
+    if ('status' in plan.updates) sets.push(`status_changed_at = datetime('now')`);
+    for (const t of plan.setTimes) sets.push(`${t} = COALESCE(${t}, datetime('now'))`);
+    sets.push(`updated_at = datetime('now')`);
+    vals.push(id);
+    await execute(db, `UPDATE calls_for_service SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+
+    // Entity link — best-effort; the call_links schema may differ on live, and a
+    // failed link must never fail the action (it's still logged below).
+    if (plan.link) {
+      try {
+        await execute(db,
+          `INSERT INTO call_links (call_id, entity_type, entity_id, created_at) VALUES (?, ?, ?, datetime('now'))`,
+          id, plan.link.entity_type, plan.link.entity_id);
+      } catch (linkErr) {
+        console.warn('[cfs action] call_links insert degraded:', (linkErr as Error)?.message);
+      }
+    }
+
+    await ensureCfsActionLog(db);
+    const userId = c.get('userId') as number | undefined;
+    await execute(db,
+      `INSERT INTO cfs_action_log (call_id, action, verb, params, narrative, actor_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+      id, String(action ?? verb), verb, JSON.stringify(params ?? {}), plan.narrative, userId ?? null);
+    try {
+      if (userId != null) {
+        await execute(db,
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+           VALUES (?, 'CFS_ACTION', 'call', ?, ?, datetime('now'))`,
+          userId, id, plan.narrative);
+      }
+    } catch (auditErr) {
+      console.warn('[cfs action] audit_log insert degraded:', (auditErr as Error)?.message);
+    }
+
+    const updated = await queryFirst<Record<string, unknown>>(db,
+      'SELECT id, status, priority, disposition, unit_call_signs, narrative FROM calls_for_service WHERE id = ?', id);
+    return c.json({ success: true, action: action ?? verb, narrative: plan.narrative, call: updated });
+  } catch (err) {
+    console.error('POST /dispatch/calls/:id/action failed:', err);
+    return c.json({ error: 'action failed' }, 500);
+  }
+});
+
+// GET /dispatch/calls/:id/actions — CFS action history (newest first).
+calls.get('/:id/actions', async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  await ensureCfsActionLog(db);
+  const rows = await query<Record<string, unknown>>(db,
+    'SELECT * FROM cfs_action_log WHERE call_id = ? ORDER BY id DESC LIMIT 200', c.req.param('id'))
+    .catch(() => [] as Record<string, unknown>[]);
+  return c.json(rows);
 });
 
 // POST /dispatch/calls/:id/archive
