@@ -528,6 +528,32 @@ export async function extractFromImageClaude(
   }
 }
 
+// Advanced OCR: Claude text extraction (when anthropic_api_key is configured) —
+// drop-in for extractFromText that runs the SAME rich serve-doc system prompt on
+// Claude instead of Llama-70B. Returns null (not a failure result) when the key
+// is absent or the call errors, so callers fall back to the Workers-AI path.
+export async function extractFromTextClaude(
+  env: { DB: D1Database }, rawText: string,
+): Promise<ExtractionResult | null> {
+  const trimmed = (rawText || '').trim();
+  if (trimmed.length < 20) return null;
+  const key = await getAnthropicKey(env);
+  if (!key) return null;
+  const started = Date.now();
+  const model = await getClaudeModel(env);
+  try {
+    const reply = await callClaude(key, {
+      system: SYSTEM_PROMPT,
+      text: `${buildUserPrompt(trimmed.slice(0, 40000))}\n\nReturn ONLY the JSON object, no prose.`,
+      model, maxTokens: 2048,
+    });
+    const parsed = tryParseModelJson({ response: reply });
+    return normalize(parsed, rawText, `claude:${model}`, Date.now() - started);
+  } catch {
+    return null;
+  }
+}
+
 // ── Container OCR helper ──────────────────────────────────────
 // Forward an in-memory buffer to the PDF Tools container's
 // /extract-text endpoint. The container handles pdftotext + Tesseract

@@ -41,6 +41,8 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import {
   extractFromText,
   extractFromImage,
+  extractFromImageClaude,
+  extractFromTextClaude,
   extractTextFromPdf,
   fieldsToQueueRow,
   normalizeFields,
@@ -118,6 +120,26 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ]);
 }
 
+// Claude-first OCR with Workers-AI fallback. Claude (extractFrom*Claude) uses the
+// SAME rich serve-doc prompt + parser, so the result shape is identical and the
+// merge/commit code is unchanged. Returns null from the Claude leg (no key / no
+// credits / error) → we transparently fall back to the free Workers-AI path.
+// extraction.model carries 'claude:…' vs the Llama id so callers can label engine.
+async function ocrImage(env: Env['Bindings'], bytes: Uint8Array, mime: string): Promise<ExtractionResult> {
+  const claude = await withTimeout(
+    extractFromImageClaude(env, bytes, mime), AI_TIMEOUT_MS, 'Claude OCR timed out',
+  ).catch(() => null);
+  return claude ?? withTimeout(extractFromImage(env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
+}
+async function ocrText(env: Env['Bindings'], text: string): Promise<ExtractionResult> {
+  const claude = await withTimeout(
+    extractFromTextClaude(env, text), AI_TIMEOUT_MS, 'Claude text timed out',
+  ).catch(() => null);
+  return claude ?? withTimeout(
+    extractFromText(env.AI, text, env.SERVE_INTAKE_LORA), AI_TIMEOUT_MS, 'Text extraction timed out',
+  );
+}
+
 async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | null): Promise<string> {
   const ts = Date.now();
   const safeName = (file.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
@@ -172,10 +194,8 @@ async function scanDocumentHandler(c: any): Promise<Response> {
   try {
     if (isImage(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      extraction = await withTimeout(
-        extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out',
-      );
-      ocrEngine = 'workers-ai-vision';
+      extraction = await ocrImage(c.env, bytes, file.type);
+      ocrEngine = extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       let text = clientText;
@@ -214,10 +234,7 @@ async function scanDocumentHandler(c: any): Promise<Response> {
         }, 422);
       }
 
-      extraction = await withTimeout(
-        extractFromText(c.env.AI, text, c.env.SERVE_INTAKE_LORA),
-        AI_TIMEOUT_MS, 'Text extraction timed out',
-      );
+      extraction = await ocrText(c.env, text);
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
     }
@@ -342,11 +359,11 @@ si.post('/upload', async (c) => {
 
       // Images: Vision does OCR + extraction in one timeout-bounded pass.
       if (isImage(file.type)) {
-        const ex = await withTimeout(
-          extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out',
-        ).catch((e) => emptyExtraction('workers-ai-vision', e instanceof Error ? e.message : String(e)));
+        const ex = await ocrImage(c.env, bytes, file.type)
+          .catch((e) => emptyExtraction('workers-ai-vision', e instanceof Error ? e.message : String(e)));
+        const engine = ex.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
         for (const d of ex.allDates) allDates.add(d);
-        return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: 'workers-ai-vision', r2Key, ex };
+        return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: engine, r2Key, ex };
       }
 
       // PDFs: acquire text, then extract fields from THIS doc alone.
@@ -371,10 +388,8 @@ si.post('/upload', async (c) => {
           }
         }
         const ex = text.trim().length >= 20
-          ? await withTimeout(
-              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP), c.env.SERVE_INTAKE_LORA),
-              AI_TIMEOUT_MS, 'Field extraction timed out',
-            ).catch((e) => emptyExtraction(EXTRACT_MODEL, e instanceof Error ? e.message : String(e)))
+          ? await ocrText(c.env, text.slice(0, PER_DOC_CAP))
+              .catch((e) => emptyExtraction(EXTRACT_MODEL, e instanceof Error ? e.message : String(e)))
           : emptyExtraction(EXTRACT_MODEL, 'Insufficient text to extract');
         ex.rawText = text;
         for (const d of ex.allDates) allDates.add(d);
@@ -697,7 +712,7 @@ si.post('/intake', async (c) => {
   if (docs.length === 0) return c.json({ error: 'No documents in request' }, 400);
 
   const combined = docs.map((d) => `--- ${d.type || 'document'} ---\n${d.text || ''}`).join('\n\n');
-  const extraction = await extractFromText(c.env.AI, combined, c.env.SERVE_INTAKE_LORA);
+  const extraction = await ocrText(c.env, combined);
   // Same deterministic normalization the /upload path applies, so the
   // legacy single-call route produces equally clean field shapes.
   const normalized = normalizeFields(extraction.fields);
