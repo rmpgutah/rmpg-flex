@@ -129,11 +129,11 @@ export function interpolAdapter(type: InterpolType): ScreeningAdapter {
         await execute(db,
           `INSERT INTO warrants
              (warrant_number, external_warrant_id, external_source_key, subject_person_id,
-              subject_first_name, subject_last_name, warrant_type, source, priority,
+              subject_first_name, subject_last_name, type, warrant_type, source, priority,
               issuing_agency, auto_created, charge_description, status)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           warrantNumber, hit.external_id, 'interpol-red', hit.person_id,
-          first ?? null, last ?? null, 'INTERPOL_RED', 'interpol', 'P2',
+          first ?? null, last ?? null, 'arrest', 'INTERPOL_RED', 'interpol', 'P2',
           'INTERPOL', 1, hit.summary ?? 'INTERPOL Red Notice', 'active',
         );
       }

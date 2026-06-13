@@ -29,7 +29,7 @@ export function shouldRunSource(state: SourceRunState | null, cooldownHours = 3)
 async function watchPopulation(env: Bindings, sourceKey: string): Promise<PersonRow[]> {
   const db = getDb(env);
   const rows = await query<PersonRow>(db, `
-    SELECT p.id, p.first_name, p.middle_name, p.last_name, p.dob, p.nationality, p.citizenship
+    SELECT p.id, p.first_name, p.middle_name, p.last_name, p.dob, p.citizenship
       FROM persons p
      WHERE p.id IN (
         SELECT entity_id FROM intel_watchlist WHERE entity_type='person' AND active=1
