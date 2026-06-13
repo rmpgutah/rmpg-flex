@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Loader2, Trash2, Check, RotateCcw, Clock, ExternalLink, ListChecks } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
 import PanelTitleBar from './PanelTitleBar';
 import IconButton from './IconButton';
 import { useToast } from './ToastProvider';
@@ -73,6 +74,7 @@ export function CaseTasksTab({ caseId, users, onChanged }: { caseId: number; use
       .finally(() => setLoading(false));
   }, [caseId]);
   useEffect(load, [load]);
+  useLiveSync('records', load);
 
   const refresh = () => { load(); onChanged?.(); };
 
@@ -233,6 +235,7 @@ export function CaseMyTasksView({ onOpenCase }: { onOpenCase: (caseId: number) =
       .finally(() => setLoading(false));
   }, [filter]);
   useEffect(load, [load]);
+  useLiveSync('records', load);
 
   const complete = async (t: CaseTask) => {
     try { await apiFetch(`/cases/${t.case_id}/tasks/${t.id}`, { method: 'PUT', body: JSON.stringify({ status: 'done' }) }); load(); }

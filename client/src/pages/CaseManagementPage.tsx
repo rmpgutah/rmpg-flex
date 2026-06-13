@@ -35,6 +35,7 @@ import { CaseDashboardView, SlaBadge } from '../components/CaseDashboard';
 import { CaseRelatedSection } from '../components/CaseRelated';
 import { CaseReadinessCard, fetchCaseCompleteness } from '../components/CaseReadiness';
 import { downloadCaseReport } from '../utils/caseReportGenerator';
+import { getSavedViews, persistViews, upsertView, type SavedView } from '../utils/caseSavedViews';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
@@ -399,6 +400,7 @@ export default function CaseManagementPage() {
   const [filterOverdue, setFilterOverdue] = useState(false);
   const [filterMine, setFilterMine] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -526,6 +528,35 @@ export default function CaseManagementPage() {
     } catch (e: any) { addToast(e.message || 'Bulk action failed', 'error'); }
   };
 
+  // ── Saved filter views (v3 Phase 4) ──
+  useEffect(() => { setSavedViews(getSavedViews()); }, []);
+  const applyView = (view: SavedView) => {
+    const f = view.filters;
+    setSearchQuery(f.search || '');
+    setFilterStatus(f.status || '');
+    setFilterType(f.type || '');
+    setFilterPriority(f.priority || '');
+    setFilterMine(!!f.mine);
+    setFilterOverdue(!!f.overdue);
+    setPage(1);
+  };
+  const saveCurrentView = () => {
+    const name = window.prompt('Save current filters as a view named:');
+    if (!name?.trim()) return;
+    const view: SavedView = {
+      name: name.trim(),
+      filters: {
+        search: searchQuery || undefined, status: filterStatus || undefined,
+        type: filterType || undefined, priority: filterPriority || undefined,
+        mine: filterMine || undefined, overdue: filterOverdue || undefined,
+      },
+    };
+    const next = upsertView(savedViews, view);
+    setSavedViews(next);
+    persistViews(next);
+    addToast(`View "${view.name}" saved`, 'success');
+  };
+
   useEffect(() => { fetchCases(); }, [fetchCases]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => {
@@ -536,7 +567,13 @@ export default function CaseManagementPage() {
       .finally(() => { if (!cancelled) setPersonnelLoading(false); });
     return () => { cancelled = true; };
   }, []);
-  useLiveSync('records', () => { fetchCases({ silent: true }); fetchStats(); });
+  // Realtime: refresh the list/stats and the open case detail when any case
+  // mutation broadcasts on 'records' (v3 Phase 4).
+  useLiveSync('records', () => {
+    fetchCases({ silent: true });
+    fetchStats();
+    if (selected) fetchFullCase(selected.id);
+  });
 
   useEffect(() => {
     if (selected) {
@@ -813,6 +850,16 @@ export default function CaseManagementPage() {
             className={`text-[10px] px-2 py-1 border transition-colors ${filterOverdue ? 'bg-red-900/30 border-red-700/50 text-red-400' : 'border-rmpg-700 text-rmpg-500 hover:text-rmpg-300'}`}>
             Overdue
           </button>
+          {savedViews.length > 0 && (
+            <select aria-label="Saved views" defaultValue=""
+              onChange={e => { const vv = savedViews.find(x => x.name === e.target.value); if (vv) applyView(vv); e.currentTarget.value = ''; }}
+              className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
+              <option value="">Views…</option>
+              {savedViews.map(vv => <option key={vv.name} value={vv.name}>{vv.name}</option>)}
+            </select>
+          )}
+          <button type="button" onClick={saveCurrentView} title="Save current filters as a view"
+            className="text-[10px] px-2 py-1 border border-rmpg-700 text-rmpg-500 hover:text-rmpg-300 transition-colors">★ Save</button>
         </div>
 
         {/* Bulk action bar (v3 Phase 3) */}

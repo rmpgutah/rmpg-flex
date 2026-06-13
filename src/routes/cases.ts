@@ -27,6 +27,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { isValidTaskStatus, isValidTaskPriority, completedAtFor } from '../utils/caseTasks';
 import { evaluateCompleteness } from '../utils/caseCompleteness';
 import { pickTemplate } from '../utils/caseTaskTemplates';
+import { broadcastAll } from './ws';
 
 const cases = new Hono<Env>();
 
@@ -110,6 +111,10 @@ async function logCaseActivity(
       `INSERT INTO case_activity (case_id, action, actor_id, actor_name, detail) VALUES (?, ?, ?, ?, ?)`,
       caseId, action, actorId, actorName, detail ? JSON.stringify(detail) : null,
     );
+    // Realtime (v3 Phase 4): every case mutation logs activity, so this is the
+    // single seam to notify other devices on the 'records' channel. Best-effort
+    // and same-isolate only (matches the existing useLiveSync('records')).
+    try { broadcastAll('data_changed', { module: 'records', entity: 'cases', case_id: caseId }); } catch { /* ignore */ }
   } catch { /* non-fatal — never block the mutation on an audit write */ }
 }
 
