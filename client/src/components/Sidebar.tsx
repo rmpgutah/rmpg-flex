@@ -104,6 +104,14 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     ],
   },
   {
+    id: 'intel',
+    label: 'Intelligence',
+    items: [
+      { path: '/intel/reports', icon: FileText, label: 'Intel Products' },
+      { path: '/intel/sources', icon: Network, label: 'Source Registry' },
+    ],
+  },
+  {
     id: 'system',
     label: 'System',
     items: [
