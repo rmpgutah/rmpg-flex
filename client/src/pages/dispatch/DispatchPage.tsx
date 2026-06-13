@@ -76,6 +76,7 @@ import { computeListLines, tokenizeInline } from '../../utils/noteFormatting';
 import NoteComposer from './components/NoteComposer';
 import { useDistrictOptions, normalizeSectorId } from '../../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../../hooks/useAddressAutofill';
+import { useLinkOptions } from '../../hooks/useLinkOptions';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import QuickPsoModal from '../../components/QuickPsoModal';
 import {
@@ -495,6 +496,7 @@ export default function DispatchPage() {
   const [callVehicles, setCallVehicles] = useState<any[]>([]);
   const [linkPersonRole, setLinkPersonRole] = useState('involved');
   const [linkVehicleRole, setLinkVehicleRole] = useState('involved');
+  const { options: linkOptions } = useLinkOptions();
 
   const fetchCallPersons = useCallback(async (callId: string | number) => {
     try {
@@ -4267,10 +4269,9 @@ export default function DispatchPage() {
                            />
                           <select className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
                             <option value="">-- Relationship --</option>
-                            <option value="employee">Employee</option><option value="victim">Victim</option>
-                            <option value="witness">Witness</option><option value="complainant">Complainant</option>
-                            <option value="management">Management</option><option value="alarm_company">Alarm Company</option>
-                            <option value="officer">Officer</option><option value="anonymous">Anonymous</option><option value="other">Other</option>
+                            {linkOptions.caller_relationship.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
                           </select>
                         </div>
                       ) : (
@@ -4768,12 +4769,9 @@ export default function DispatchPage() {
                           <div className="flex items-center gap-2 mb-1">
                             <label className="text-[9px] text-brand-gold-500">Linked Persons</label>
                             <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
-                              <option value="suspect">Suspect</option>
-                              <option value="victim">Victim</option>
-                              <option value="witness">Witness</option>
-                              <option value="reporting_party">Reporting Party</option>
-                              <option value="involved">Involved</option>
-                              <option value="other">Other</option>
+                              {linkOptions.person_role.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
                             </select>
                           </div>
                           {callPersons.length > 0 && (
@@ -4819,12 +4817,9 @@ export default function DispatchPage() {
                           <div className="flex items-center gap-2 mb-1">
                             <label className="text-[9px] text-brand-gold-500">Linked Vehicles</label>
                             <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkVehicleRole} onChange={(e) => setLinkVehicleRole(e.target.value)}>
-                              <option value="suspect_vehicle">Suspect Vehicle</option>
-                              <option value="victim_vehicle">Victim Vehicle</option>
-                              <option value="witness_vehicle">Witness Vehicle</option>
-                              <option value="involved">Involved</option>
-                              <option value="evidence">Evidence</option>
-                              <option value="other">Other</option>
+                              {linkOptions.vehicle_role.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
                             </select>
                           </div>
                           {callVehicles.length > 0 && (
