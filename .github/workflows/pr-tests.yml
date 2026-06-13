@@ -16,6 +16,12 @@ concurrency:
   group: pr-tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least-privilege default for every job (CWE-275). These are read-only quality
+# gates — checkout + typecheck/test/build — so they need nothing beyond reading
+# the repo. A job that ever needs more (e.g. PR comments) must opt in locally.
+permissions:
+  contents: read
+
 jobs:
   worker-typecheck:
     name: Worker TypeScript check

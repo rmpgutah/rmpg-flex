@@ -9,6 +9,11 @@ on:
     - cron: "17 8 * * 1"  # Weekly Monday 8:17am UTC
   workflow_dispatch:
 
+# Least-privilege GITHUB_TOKEN (CWE-275). This job only runs `npm audit` and a
+# client build canary — it reads the repo and uploads nothing back to GitHub.
+permissions:
+  contents: read
+
 jobs:
   security-scan:
     name: Security Audit & Build Canary
