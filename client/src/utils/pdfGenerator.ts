@@ -242,9 +242,9 @@ export function applyFieldNumber(label: string): string {
  * These fonts only support Latin-1 (ISO-8859-1). Unicode arrows, em-dashes, curly quotes,
  * etc. have zero width in font metrics, causing justification to spread text wildly.
  */
-export function sanitizePdfText(text: string): string {
+export function sanitizePdfText(text: string, opts: { preserveMarkers?: boolean } = {}): string {
   if (!text) return text;
-  return text
+  let s = text
     // HTML entity decode — narrative text occasionally arrives still
     // escaped from upstream rich-text editors / scrapers (e.g.
     // "BANKRUPTCY -&GT;" surfacing as literal "&GT;" in serve-intake
@@ -277,15 +277,24 @@ export function sanitizePdfText(text: string): string {
     // word characters (e.g. "*urgent*" or "*Note:") — bare standalone
     // asterisks (e.g. "list bullet *") are kept since stripping them
     // would mangle real bullet content.
-    .replace(/\*\*/g, '')
-    .replace(/__/g, '')
+    ;
+  // Marker stripping is the serve-intake "unmatched marker" safety net. It is
+  // destructive to matched pairs, so skip it when the caller will render markup
+  // downstream (addFormattedText); stray markers are removed per plain-segment
+  // via stripStrayMarkers instead.
+  if (!opts.preserveMarkers) {
+    s = s
+      .replace(/\*\*/g, '')
+      .replace(/__/g, '')
     // Paired single-underscore italic markers around a parenthetical —
     // "_(AUTO-GENERATED)_" rendered literally on PS-201 notes (caught
     // 2026-06-11). Paired-only so real underscores in case numbers /
     // filenames (CASE_123, REPORT_FINAL.PDF) are never touched.
     .replace(/_\((.*?)\)_/g, '($1)')
     .replace(/\*(?=\w)/g, '')
-    .replace(/(?<=\w)\*/g, '')
+    .replace(/(?<=\w)\*/g, '');
+  }
+  s = s
     // Render-side patch for known concatenated-word artifacts in stored
     // case-narrative text (legacy generator bug from before the source
     // was fixed; existing dispatch_messages rows have the bad text
@@ -344,6 +353,7 @@ export function sanitizePdfText(text: string): string {
     .toUpperCase();              // Police-form convention: ALL CAPS (applied
                                  // globally as the single sanitization chokepoint
                                  // so every render path emits uppercase text).
+  return s;
 }
 
 /**
@@ -1830,7 +1840,7 @@ export function addNarrativeSection(
   priority?: string,
 ): number {
   if (!rawText) return y;
-  const text = sanitizePdfText(rawText);
+  const text = sanitizePdfText(rawText, { preserveMarkers: true });
   y = checkPageBreak(doc, y, 30, priority);
   const sec = openAutoSection(doc, title, y);
   // Extra breathing room between the section header bar and the first
