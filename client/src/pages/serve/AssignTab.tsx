@@ -15,6 +15,11 @@ export default function AssignTab() {
 
   const jobs: BoardJob[] = sel === 'unassigned' ? board.unassigned : (board.byOfficer[String(sel)] ?? []);
 
+  const totals = board.officers.reduce((acc, o) => { for (const k in o.attention) acc[k] = (acc[k] ?? 0) + o.attention[k]; return acc; }, {} as Record<string, number>);
+  const unassignedNear = board.unassigned.filter((j) => j.attention.includes('unassigned_near_deadline')).length;
+  if (unassignedNear) totals['unassigned_near_deadline'] = (totals['unassigned_near_deadline'] ?? 0) + unassignedNear;
+  const overdue = totals['deadline_passed'] ?? 0;
+
   const doAssign = async () => {
     if (!picked.length || target === '') return;
     await assign(picked, Number(target)); setPicked([]); await loadBoard();
@@ -37,6 +42,11 @@ export default function AssignTab() {
       </div>
 
       <div>
+        {(overdue > 0 || (totals['unassigned_near_deadline'] ?? 0) > 0 || (totals['deadline_approaching'] ?? 0) > 0 || (totals['diligence_gap'] ?? 0) > 0) && (
+          <div className="mb-2 px-2 py-1 border border-[#3a3a3a] text-[10px] text-[#e0533d] bg-[#1a0f0d]">
+            ⚠ {overdue} overdue · {(totals['unassigned_near_deadline'] ?? 0)} unassigned near deadline · {(totals['deadline_approaching'] ?? 0)} due soon · {(totals['diligence_gap'] ?? 0)} stalled
+          </div>
+        )}
         <div className="flex items-center justify-between mb-2">
           <div className="text-[9px] font-semibold text-[#888] uppercase flex items-center gap-1"><Users size={12} /> {sel === 'unassigned' ? 'Unassigned pool' : (board.officers.find((o) => o.id === sel)?.name ?? '') + "'s run"}</div>
           {picked.length > 0 && (
