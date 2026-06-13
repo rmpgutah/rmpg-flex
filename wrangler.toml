@@ -11,6 +11,21 @@ main = "src/index.ts"
 compatibility_date = "2026-05-01"
 compatibility_flags = ["nodejs_compat"]
 
+# ─── Smart Placement (enabled 2026-06-12, monitor) ─────────
+# This worker is D1-heavy (most CAD endpoints make several sequential
+# D1 round-trips). Smart Placement lets CF run the fetch handler closer
+# to D1's region instead of always at the edge nearest the user, which
+# can cut multi-query latency. Caveats being monitored:
+#   • It does NOT relocate Durable Objects — the voice/alert WebSocket
+#     hubs (/api/voice-ws, /api/alerts-ws) are unaffected.
+#   • Light/interactive requests could see slightly higher first-byte
+#     latency if CF places compute away from SLC.
+# CF only relocates when it predicts a net win, and (since 2025-03)
+# won't revert on brief low-traffic dips. To roll back: delete this block
+# and redeploy. Watch dispatch responsiveness for ~a day.
+[placement]
+mode = "smart"
+
 # Custom domain. Wrangler provisions the DNS record + zone hostname
 # mapping; the zone (rmpgutah.us) must already be on this Cloudflare
 # account.
