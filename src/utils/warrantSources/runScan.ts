@@ -27,7 +27,7 @@ import {
   runUtahWarrantScan,
   type WatchRunResult,
 } from '../utahWarrantPoller';
-import { getEnabledAdapters } from './registry';
+import { getEnabledAdapters, getAllEnabledAdapters } from './registry';
 import { upsertScrapedWarrant, markScrapedCleared } from './store';
 import { reconcileHits, type CanonicalHit } from './reconcile';
 import { normalizeCharge } from './chargeNormalize';
@@ -197,6 +197,61 @@ async function loadPersons(db: D1Database): Promise<PersonRow[]> {
 }
 
 /**
+ * Full-list leg: fetch each full-list source's entire warrant roster, upsert
+ * every hit into scraped_warrants (with person_id=null — person matching/
+ * promotion happens via the reconcile/search paths), then clear-sweep rows for
+ * that source not seen this run. Isolated per adapter: a throwing source does
+ * not abort the remaining adapters. Returns one ScrapedSourceSummary per adapter.
+ */
+export async function runFullListLeg(
+  db: D1Database,
+  adapters: WarrantSourceAdapter[],
+): Promise<ScrapedSourceSummary[]> {
+  const out: ScrapedSourceSummary[] = [];
+  for (const adapter of adapters) {
+    if (adapter.mode !== 'full-list' || typeof adapter.fetchAll !== 'function') continue;
+    const runStartedAt = new Date().toISOString();
+    let found = 0;
+    let errors = 0;
+    let cleared = 0;
+    try {
+      const hits = await adapter.fetchAll({ DB: db });
+      for (const hit of hits) {
+        try {
+          await upsertScrapedWarrant(db, hit, null);
+          found++;
+        } catch (err) {
+          errors++;
+          console.warn(
+            `[warrantSources.runScan.fullList] ${adapter.meta.key} upsert failed:`,
+            err instanceof Error ? err.message : String(err),
+          );
+        }
+      }
+      // Clear-sweep: mark rows of this source that were NOT seen since
+      // runStartedAt as 'cleared' (same datetime-normalisation pattern as the
+      // per-person leg's clear sweep in markScrapedCleared).
+      cleared = await markScrapedCleared(db, adapter.meta.key, runStartedAt).catch((err) => {
+        console.warn(
+          `[warrantSources.runScan.fullList] ${adapter.meta.key} clear sweep failed:`,
+          err instanceof Error ? err.message : String(err),
+        );
+        return 0;
+      });
+    } catch (err) {
+      // fetchAll itself threw — count as a single adapter-level error.
+      errors++;
+      console.warn(
+        `[warrantSources.runScan.fullList] ${adapter.meta.key} fetchAll failed:`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+    out.push({ source_key: adapter.meta.key, checked: 0, found, cleared, errors });
+  }
+  return out;
+}
+
+/**
  * Run BOTH legs:
  *   1. Scraped leg — every enabled non-api source × persons → scraped_warrants,
  *      then per-person reconcile + confirmed-only promotion to `warrants`.
@@ -215,7 +270,7 @@ export async function runAllSourceScans(
 
   // ── Scraped leg ────────────────────────────────────────────────────────────
   const adapters =
-    opts.adapters ?? (await getEnabledAdapters(db)).filter((a) => a.meta.kind !== 'api');
+    opts.adapters ?? (await getAllEnabledAdapters(db)).filter((a) => a.meta.kind !== 'api');
   const persons = opts.persons ?? (await loadPersons(db));
 
   const scraped: ScrapedSourceSummary[] = [];
@@ -226,7 +281,13 @@ export async function runAllSourceScans(
   // single canonical hit and is promoted exactly once. Keyed by person id.
   const hitsByPerson = new Map<number, RawWarrantHit[]>();
 
-  for (const adapter of adapters) {
+  // Only per-person adapters participate in the per-person leg. Full-list
+  // adapters (fetchAll) run separately in runFullListLeg below.
+  const perPersonAdapters = adapters.filter(
+    (a) => a.mode === 'per-person' && typeof a.fetchForPerson === 'function',
+  );
+
+  for (const adapter of perPersonAdapters) {
     const sourceKey = adapter.meta.key;
     const runStartedAt = new Date().toISOString();
     const summary: ScrapedSourceSummary = {
@@ -327,6 +388,18 @@ export async function runAllSourceScans(
       }
     }
   }
+
+  // ── Full-list leg ────────────────────────────────────────────────────────────
+  // Full-list adapters (FBI / Utah County / Socrata / ArcGIS) fetch the entire
+  // published warrant roster in one call. Hits are stored with person_id=null
+  // here; local person-matching / promotion is handled by the reconcile/search
+  // paths in a later PR. The clear-sweep marks rows for this source that were
+  // NOT seen this run as 'cleared', mirroring the per-person leg's sweep.
+  const fullListSummaries = await runFullListLeg(
+    db,
+    adapters.filter((a) => a.mode === 'full-list'),
+  );
+  for (const s of fullListSummaries) scraped.push(s);
 
   // ── Utah leg (UNCHANGED) ─────────────────────────────────────────────────────
   // runUtahWarrantScan owns utah_warrants + Utah promotion + Utah watch-log +
