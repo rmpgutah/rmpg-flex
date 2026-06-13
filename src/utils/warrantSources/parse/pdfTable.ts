@@ -48,15 +48,16 @@ export interface ZuercherRawRecord {
  *  Page 2+: "Page N of N Date Issued Warrant Number OCA # Last, First Name Charges Bond Extradition Status" */
 const MCKENZIE_PAGE_HDR = /Page \d+ of \d+ (?:Active Warrants )?(?:Printed on [A-Za-z]+ \d+, \d+ )?Date Issued Warrant Number OCA # Last, First Name Charges Bond Extradition Status /g;
 
-/** Record boundary in McKenzie text: date WarrantNo OCAno (start of record header). */
-const MCKENZIE_RECORD_ANCHOR = /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(W\d{2,4}-\d+)\s+(\d+)\s+/g;
-
-/** Extradition + status at end of a McKenzie body string. */
-const MCKENZIE_EXTR_STATUS = /\s+(North Dakota Only|North Dakota,?|Continental United|Special)\s+(Active|Inactive|Recalled|Cleared)\s*$/;
+/** Extradition + status at end of a McKenzie body string. Extradition scope varies
+ *  by county: "<State> Only" / "<State>," for in-state-only, and the full
+ *  "Continental United States" (and bare "Continental United") for nationwide
+ *  pickup on the out-of-state Zuercher counties (Tuscarawas/Harrison OH, etc.). */
+const MCKENZIE_EXTR_STATUS = /\s+([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+)? Only|[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+)?,|Continental United States|Continental United|Surrounding States|Nationwide|Statewide|Special)\s+(Active|Inactive|Recalled|Cleared)\s*$/;
 
 /** Bond value just before the extradition phrase.
- *  Covers: numeric amounts, "No Bond", "Bond", "Bond set [at:]", "Hold without", "PR", "Other". */
-const MCKENZIE_BOND = /(?:[\d][\d,]*(?:\.\d{1,2})?(?:\s*\([A-Za-z][^)]*\))?|No Bond|Bond set(?: at:)?|Bond|Hold without|PR|PTA[^\s]*|Other)\s*$/i;
+ *  Covers: numeric amounts, "No Bond", "Bond", "Bond set [at:]", "Hold without", "PR", "Other".
+ *  Word boundaries on the bare-word variants so a charge ending in "…Bond" isn't truncated. */
+const MCKENZIE_BOND = /(?:[\d][\d,]*(?:\.\d{1,2})?(?:\s*\([A-Za-z][^)]*\))?|\bNo Bond\b|Bond set(?: at:)?|\bBond\b|Hold without|\bPR\b|PTA[^\s]*|\bOther\b)\s*$/i;
 
 /** The charge-code prefix that separates the name from the charge text (e.g. "12.1-", "39-", "5-01-"). */
 const CHARGE_CODE_START = /\s+(?=\d[\d.-]{2,}[- ])/;
@@ -64,8 +65,11 @@ const CHARGE_CODE_START = /\s+(?=\d[\d.-]{2,}[- ])/;
 function parseMcKenzieBody(body: string): Pick<ZuercherRawRecord, 'name_raw' | 'charges_raw' | 'bond_raw' | 'extradition'> {
   const esm = MCKENZIE_EXTR_STATUS.exec(body);
   if (!esm) {
-    // Fallback: no extradition phrase found — still return name + whatever we can get
-    return { name_raw: body.split(/\s{2,}|\t/)[0]?.trim() ?? body.trim(), charges_raw: null, bond_raw: null };
+    // No extradition+status tail recognised. unpdf collapses the PDF to one flat,
+    // single-space string, so there's no reliable name/charge delimiter without the
+    // tail anchor — emitting the whole blob as a name would corrupt the record (an
+    // officer-safety hazard). Return an empty name so splitMcKenzieRecords drops it.
+    return { name_raw: '', charges_raw: null, bond_raw: null };
   }
   const extradition = esm[1]?.trim();
   const beforeExtr = body.slice(0, esm.index).trim();
