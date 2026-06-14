@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ScanSearch, RefreshCw, AlertTriangle } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import TrustBadge from './TrustBadge';
+import VehicleDossier from './VehicleDossier';
 import {
   captureSource, sourceLabel, confidenceBand, detectionBoxes, filterCaptures, eventTypeOptions,
   type GalleryCapture, type CaptureFilter, type CaptureSource, type ConfidenceBand,
@@ -115,6 +116,12 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<CaptureFilter>({ source: 'all', band: 'all', hits: 'all' });
+  const [dossierPlate, setDossierPlate] = useState<string | null>(null);
+
+  const handlePlate = (plate: string) => {
+    setDossierPlate(plate);
+    onPlate?.(plate);
+  };
 
   const load = () => {
     setLoading(true); setErr(null);
@@ -188,8 +195,12 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-        {shown.map((cap) => <CaptureTile key={cap.id} cap={cap} onPlate={onPlate} />)}
+        {shown.map((cap) => <CaptureTile key={cap.id} cap={cap} onPlate={handlePlate} />)}
       </div>
+
+      {dossierPlate && (
+        <VehicleDossier plate={dossierPlate} onClose={() => setDossierPlate(null)} />
+      )}
     </div>
   );
 }
