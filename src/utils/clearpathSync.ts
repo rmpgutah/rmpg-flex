@@ -196,7 +196,7 @@ async function upsertEvent(db: DB, m: MappingRow, event: CpgMediaEvent): Promise
 // ── Per-device sync ──────────────────────────────────────────
 
 async function syncDevice(
-  env: Bindings, db: DB, client: CpgClient, m: MappingRow, cameraId: number, budget: { left: number },
+  env: Bindings, db: DB, client: CpgClient, m: MappingRow, cameraId: number, budget: { left: number; errors: string[] },
 ): Promise<number> {
   const now = Date.now();
   let fromMs = m.last_media_synced_at ? Date.parse(m.last_media_synced_at) : now - LOOKBACK_FIRST_SYNC_MS;
