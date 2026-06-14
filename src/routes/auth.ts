@@ -112,6 +112,34 @@ function userPayload(user: any) {
   };
 }
 
+// Best-effort audit of every login outcome into `login_attempts` (the table the
+// Security Dashboard reads — /security/recent-threats, /blocked-ips,
+// /login-history, /event-timeline). MUST never throw: a logging failure cannot
+// be allowed to block or break a login, mirroring the login_count counter
+// pattern. `created_at` is omitted so the column default (Denver-local time,
+// consistent with historical rows) fires. `username` is the value as submitted
+// so it joins to users.username exactly the way the dashboard queries expect;
+// failed attempts for unknown usernames are kept on purpose as probe intel.
+async function recordLoginAttempt(
+  db: any,
+  username: unknown,
+  ip: string,
+  success: boolean,
+  failureReason: string | null,
+): Promise<void> {
+  try {
+    await execute(
+      db,
+      `INSERT INTO login_attempts (username, ip_address, success, failure_reason)
+       VALUES (?, ?, ?, ?)`,
+      String(username ?? '').slice(0, 255),
+      ip || null,
+      success ? 1 : 0,
+      success ? null : failureReason,
+    );
+  } catch { /* non-critical — never fail a login on an audit-write error */ }
+}
+
 auth.post('/login', async (c) => {
   try {
     const { username, password, deviceFingerprint } = await c.req.json();
@@ -130,6 +158,7 @@ auth.post('/login', async (c) => {
       rateLimitAllow(c.env.KV, `login:user:${uname}`, 10, 300),
     ]);
     if (!ipOk || !userOk) {
+      await recordLoginAttempt(getDb(c.env), username, ip, false, 'rate_limited');
       return c.json({ error: 'Too many login attempts. Try again in a few minutes.', code: 'RATE_LIMITED' }, 429);
     }
 
@@ -141,13 +170,16 @@ auth.post('/login', async (c) => {
     );
 
     if (!user) {
+      await recordLoginAttempt(db, username, ip, false, 'user_not_found');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
     if (user.status !== 'active') {
+      await recordLoginAttempt(db, username, ip, false, 'account_inactive');
       return c.json({ error: 'Account is inactive', code: 'ACCOUNT_INACTIVE' }, 403);
     }
 
     if (!compareSync(password, user.password_hash)) {
+      await recordLoginAttempt(db, username, ip, false, 'invalid_password');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
 
@@ -197,6 +229,8 @@ auth.post('/login', async (c) => {
         user.id,
       );
     } catch { /* non-critical */ }
+
+    await recordLoginAttempt(db, user.username, ip, true, null);
 
     return c.json({
       token: accessToken,
@@ -258,6 +292,8 @@ async function issueLoginTokens(c: any, db: any, user: any) {
       user.id,
     );
   } catch { /* non-fatal */ }
+  const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
+  await recordLoginAttempt(db, user.username, ip, true, null);
   return c.json({
     token: accessToken,
     refreshToken,
