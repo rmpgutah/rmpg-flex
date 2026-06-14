@@ -1,15 +1,20 @@
 // Patrol plate/sighting log (Intel Wave 1) + ALPR camera capture.
-// Mobile-first: tap SCAN to photograph a plate — the Roboflow "ALPR
-// Vehicle Details Capture" workflow reads plate + vehicle details, which
-// flow through the SAME cross-hit screening as a manual entry (STOLEN /
-// watchlist / owner-warrant hits render as full-width red banners). Manual
-// big-plate entry remains for when there's no camera or the read is poor.
-// Every sighting is stored, building a searchable per-plate history.
-import { useEffect, useRef, useState } from 'react';
-import { Car, MapPin, ScanLine } from 'lucide-react';
+// Mobile-first: tap SCAN to photograph a plate — Cloudflare Workers AI reads
+// the plate + vehicle details (no external key/credits), which flow through the
+// SAME cross-hit screening as a manual entry (STOLEN / watchlist / owner-warrant
+// hits render as full-width red banners). Manual big-plate entry remains for
+// when there's no camera or the read is poor. Every sighting is stored and
+// source-tagged (FIELD CAMERA / DASHCAM / MANUAL), building a searchable,
+// mappable per-plate history. ClearPath dashcam reads land here automatically.
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Car, MapPin, ScanLine, Map as MapIcon } from 'lucide-react';
 import { apiFetch, apiPostForm, authedImageUrl } from '../hooks/useApi';
 import { downscaleImage } from '../utils/downscaleImage';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { sightingSource, sightingSourceKey, ALL_SOURCES, type SightingSourceKey } from '../utils/alprSource';
+import SightingsMap, { type MapSighting } from '../components/SightingsMap';
+import PlateDossier from '../components/PlateDossier';
+import ClearPathDashcamPanel from '../components/ClearPathDashcamPanel';
 
 interface ScreenHit { kind: string; severity: 'critical' | 'warning'; detail: string }
 interface Vehicle { id: number; plate_number: string; make: string; model: string; color: string; year: number }
@@ -56,6 +61,7 @@ function conditionBadgeClass(condition?: string | null): string {
 }
 interface Sighting {
   id: number; plate: string; location_text: string | null; notes: string | null; created_at: string;
+  lat?: number | null; lng?: number | null; state?: string | null; confidence?: number | null;
 }
 
 // Shared hit banners — identical styling for manual + ALPR results.
@@ -90,7 +96,19 @@ export default function PlateLogPage() {
   const [reviewQueue, setReviewQueue] = useState<ReviewItem[]>([]);
   const [reviewBusy, setReviewBusy] = useState<number | null>(null);
   const [reviewMsg, setReviewMsg] = useState<{ text: string; kind: 'ok' | 'warn' | 'err' } | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<SightingSourceKey | 'all'>('all');
+  const [dossierPlate, setDossierPlate] = useState<string | null>(null);
+  const [showMap, setShowMap] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Source-filtered recent sightings + per-source counts.
+  const filteredRecent = useMemo(
+    () => sourceFilter === 'all' ? recent : recent.filter((s) => sightingSourceKey(s.notes) === sourceFilter),
+    [recent, sourceFilter]);
+  const dashcamCount = useMemo(() => recent.filter((s) => sightingSourceKey(s.notes) === 'dashcam').length, [recent]);
+  const mapSightings: MapSighting[] = useMemo(
+    () => filteredRecent.map((s) => ({ id: s.id, plate: s.plate, lat: s.lat ?? null, lng: s.lng ?? null, notes: s.notes, created_at: s.created_at })),
+    [filteredRecent]);
 
   const loadRecent = () => {
     apiFetch<Sighting[]>('/intel/sightings?limit=15')
@@ -346,17 +364,46 @@ export default function PlateLogPage() {
         </div>
       )}
 
+      {/* ── ClearPath dashcam integration ── */}
+      <ClearPathDashcamPanel dashcamCount={dashcamCount} />
+
+      {/* ── Recent sightings: source filter + map toggle + tappable rows ── */}
       <div className="bg-[#141414] border border-[#222222]">
-        <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-[#1a1a1a]">RECENT SIGHTINGS</div>
-        {recent.length === 0 && <div className="p-2 text-[11px] text-[#888888]">None yet.</div>}
-        {recent.map((s) => (
-          <div key={s.id} className="px-2 py-[2px] text-[11px] text-gray-200 flex gap-2 border-b border-[#1a1a1a] last:border-b-0">
-            <span className="text-[#d4a017] w-24 shrink-0">{s.plate}</span>
-            <span className="text-[#888888] flex-1 truncate">{s.location_text || ''} {s.notes || ''}</span>
-            <span className="text-[#888888]">{String(s.created_at).slice(5, 16)}</span>
+        <div className="px-2 py-[3px] border-b border-[#1a1a1a] flex items-center justify-between gap-2">
+          <span className="text-[9px] font-semibold text-[#d4a017]">RECENT SIGHTINGS</span>
+          <div className="flex items-center gap-1">
+            {(['all', ...ALL_SOURCES.map((s) => s.key)] as const).map((k) => (
+              <button key={k} type="button" onClick={() => setSourceFilter(k)}
+                className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border tracking-wide ${
+                  sourceFilter === k ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777777]'}`}>
+                {k === 'all' ? 'ALL' : sightingSource(k === 'dashcam' ? 'ClearPath dashcam' : k === 'camera' ? 'ALPR' : '').label}
+              </button>
+            ))}
+            <button type="button" onClick={() => setShowMap((v) => !v)} title="Toggle map"
+              className={`ml-1 p-0.5 border ${showMap ? 'border-[#d4a017] text-[#d4a017]' : 'border-[#2a2a2a] text-[#777777]'}`}>
+              <MapIcon className="w-3 h-3" />
+            </button>
           </div>
-        ))}
+        </div>
+
+        {showMap && <div className="p-1.5 border-b border-[#1a1a1a]"><SightingsMap sightings={mapSightings} height={220} onPick={setDossierPlate} /></div>}
+
+        {filteredRecent.length === 0 && <div className="p-2 text-[11px] text-[#888888]">None{sourceFilter !== 'all' ? ' for this source' : ' yet'}.</div>}
+        {filteredRecent.map((s) => {
+          const src = sightingSource(s.notes);
+          return (
+            <button key={s.id} type="button" onClick={() => setDossierPlate(s.plate)}
+              className="w-full px-2 py-[3px] text-[11px] text-gray-200 flex items-center gap-2 border-b border-[#1a1a1a] last:border-b-0 hover:bg-[#1a1a1a] text-left">
+              <span className={`text-[8px] font-bold uppercase px-1 py-0.5 border shrink-0 ${src.badgeClass}`}>{src.label}</span>
+              <span className="text-[#d4a017] w-20 shrink-0 font-medium tracking-wide">{s.plate}</span>
+              <span className="text-[#888888] flex-1 truncate">{s.location_text || s.notes || ''}</span>
+              <span className="text-[#666666] shrink-0">{String(s.created_at).slice(5, 16)}</span>
+            </button>
+          );
+        })}
       </div>
+
+      {dossierPlate && <PlateDossier plate={dossierPlate} onClose={() => setDossierPlate(null)} />}
     </div>
   );
 }
