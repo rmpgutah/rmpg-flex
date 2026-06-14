@@ -4,12 +4,14 @@ enum MultipartUpload {
     /// POST a jpeg + string fields as multipart/form-data. Returns parsed JSON.
     @discardableResult
     static func upload(_ client: RMPGAPIClient, path: String,
-                       fields: [String: String], jpeg: Data) async throws -> Any {
+                       fields: [String: String], jpeg: Data,
+                       timeout: TimeInterval = 60) async throws -> Any {
         let boundary = "rmpg-\(UUID().uuidString)"
         let body = buildMultipartBody(boundary: boundary, fields: fields,
                                       fileField: "photo", filename: "field.jpg",
                                       mime: "image/jpeg", fileData: jpeg)
         var req = URLRequest(url: URL(string: client.baseURL.absoluteString + "/" + path)!)
+        req.timeoutInterval = timeout   // never let a slow/hung upload freeze the caller
         req.httpMethod = "POST"
         if let jwt = client.jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")

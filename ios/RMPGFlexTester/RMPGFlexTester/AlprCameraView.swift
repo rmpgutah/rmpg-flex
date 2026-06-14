@@ -17,6 +17,7 @@ struct AlprCameraView: View {
     @State private var attachToCall = true
     @State private var status: String?
     @State private var patrolTask: Task<Void, Never>?
+    @State private var callId: Int?   // resolved once, not per frame
 
     private var criticalCount: Int { AlprScanLog.criticalCount(entries) }
 
@@ -44,6 +45,7 @@ struct AlprCameraView: View {
         .onAppear {
             cam.onPhoto = { raw in Task { await scan(raw) } }
             cam.configure()
+            Task { await resolveCall() }   // resolve the linked call once, off the capture path
         }
         .onDisappear { patrolTask?.cancel(); cam.stop() }
     }
@@ -157,14 +159,14 @@ struct AlprCameraView: View {
         if let loc = LocationManager.shared.last {
             fields["lat"] = "\(loc.coordinate.latitude)"; fields["lng"] = "\(loc.coordinate.longitude)"
         }
-        if attachToCall,
-           let state = try? await client.requestJSON("GET", "api/dispatch/duty/me") as? [String: Any],
-           let callId = (state["unit"] as? [String: Any])?["current_call_id"] as? Int {
-            fields["call_id"] = "\(callId)"
-        }
+        if attachToCall, let callId { fields["call_id"] = "\(callId)" }
 
+        status = "Reading plate…"
         do {
-            let json = try await MultipartUpload.upload(client, path: "api/alpr/capture", fields: fields, jpeg: jpeg)
+            // Hard timeout so a slow Roboflow workflow / network stall can never
+            // leave the shutter spinning — scanning resets via the defer either way.
+            let json = try await MultipartUpload.upload(client, path: "api/alpr/capture",
+                                                        fields: fields, jpeg: jpeg, timeout: 30)
             let summary = AlprResultParse.summary(from: json)
             let before = criticalCount
             entries = AlprScanLog.merge(entries, summary)
@@ -179,8 +181,22 @@ struct AlprCameraView: View {
                 status = "✓ \(summary.vehicleCount) read"
             }
         } catch {
-            // 503 here = ALPR not configured on the server (no provider key).
-            status = "✗ \(error.localizedDescription)"
+            // 503 = ALPR not configured (no provider key); timeout = slow/no response.
+            let ns = error as NSError
+            status = ns.code == NSURLErrorTimedOut
+                ? "✗ Scan timed out — point steady at the plate and retry"
+                : "✗ \(error.localizedDescription)"
+        }
+    }
+
+    /// Resolve the officer's current call once (best-effort), so scan() never has
+    /// to make a per-frame duty/me round-trip that could stall the capture.
+    @MainActor private func resolveCall() async {
+        guard attachToCall, callId == nil else { return }
+        _ = await authedRetrying { c in
+            if let st = try await c.requestJSON("GET", "api/dispatch/duty/me") as? [String: Any] {
+                callId = (st["unit"] as? [String: Any])?["current_call_id"] as? Int
+            }
         }
     }
 }
