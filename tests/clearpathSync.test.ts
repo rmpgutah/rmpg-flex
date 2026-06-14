@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   kmhToMph, channelOf, isOutsideChannel, pickVideoObjects, mediaDedupeKey, formatTs, r2KeyFor,
 } from '../src/utils/clearpathSync';
-import { pickAlprImageUrl } from '../src/utils/clearpathAlpr';
+import { pickAlprImageUrl, validatePlate } from '../src/utils/clearpathAlpr';
 import type { CpgMediaEvent, CpgMediaObject } from '../src/utils/clearpathGps';
 
 const mo = (over: Partial<CpgMediaObject>): CpgMediaObject => ({
@@ -68,4 +68,14 @@ describe('clearpathAlpr pure helpers', () => {
     expect(pickAlprImageUrl(ev([inside, insecure]))).toBeNull();
   });
 
+  it('validatePlate normalizes real plates and rejects model junk', () => {
+    expect(validatePlate('abc-123')).toBe('ABC123');
+    expect(validatePlate(' 7XY 99 ')).toBe('7XY99');
+    expect(validatePlate('NOTVISIBLE')).toBeNull();
+    expect(validatePlate('none')).toBeNull();
+    expect(validatePlate('')).toBeNull();
+    expect(validatePlate(null)).toBeNull();
+    expect(validatePlate('A')).toBeNull();           // too short
+    expect(validatePlate('TOOLONGPLATE')).toBeNull(); // too long
+  });
 });

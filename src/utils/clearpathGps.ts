@@ -329,6 +329,7 @@ export interface CpgMediaObject {
   location: { lat: number; lng: number } | null;
   gps?: Array<{ latitude: number; longitude: number; speed: number; altitude: number; timestamp: number }>;
   cameraId?: number;
+  durationSec?: number | null;
   [key: string]: unknown;
 }
 

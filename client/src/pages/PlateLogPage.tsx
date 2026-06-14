@@ -15,6 +15,7 @@ import { sightingSource, sightingSourceKey, ALL_SOURCES, type SightingSourceKey 
 import SightingsMap, { type MapSighting } from '../components/SightingsMap';
 import PlateDossier from '../components/PlateDossier';
 import ClearPathDashcamPanel from '../components/ClearPathDashcamPanel';
+import AlprCaptureGallery from '../components/AlprCaptureGallery';
 
 interface ScreenHit { kind: string; severity: 'critical' | 'warning'; detail: string }
 interface Vehicle { id: number; plate_number: string; make: string; model: string; color: string; year: number }
@@ -99,6 +100,7 @@ export default function PlateLogPage() {
   const [sourceFilter, setSourceFilter] = useState<SightingSourceKey | 'all'>('all');
   const [dossierPlate, setDossierPlate] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
+  const [view, setView] = useState<'scan' | 'gallery'>('scan');
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Source-filtered recent sightings + per-source counts.
@@ -218,6 +220,20 @@ export default function PlateLogPage() {
     <div className="p-4 space-y-4 max-w-xl mx-auto">
       <PanelTitleBar title="PLATE LOG" icon={Car} />
 
+      {/* View toggle: live scan/manual vs. the ALPR capture gallery */}
+      <div className="flex items-center gap-1">
+        {([['scan', 'SCAN / LOG'], ['gallery', 'CAPTURES']] as const).map(([k, label]) => (
+          <button key={k} type="button" onClick={() => setView(k)}
+            className={`flex-1 text-[10px] font-semibold tracking-wider py-1.5 border ${
+              view === k ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'gallery' && <AlprCaptureGallery onPlate={setDossierPlate} />}
+
+      {view === 'scan' && (<>
       {/* ── ALPR camera capture ── */}
       <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onScanFile} />
       <button
@@ -402,6 +418,7 @@ export default function PlateLogPage() {
           );
         })}
       </div>
+      </>)}
 
       {dossierPlate && <PlateDossier plate={dossierPlate} onClose={() => setDossierPlate(null)} />}
     </div>
