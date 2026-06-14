@@ -195,6 +195,12 @@ export default function FieldCameraPage() {
     return () => { streamRef.current?.getTracks().forEach((t) => t.stop()); };
   }, [facing, startCamera]);
 
+  // Revoke the capture preview object URL on change + unmount so abandoned
+  // captures (navigate-away, capture-twice, ALPR keep-on-screen) don't leak.
+  useEffect(() => {
+    return () => { if (preview) URL.revokeObjectURL(preview); };
+  }, [preview]);
+
   // Composite a source (video frame or picked image) into a stamped JPEG.
   const stampToBlob = useCallback(async (
     source: HTMLVideoElement | HTMLImageElement,
@@ -301,12 +307,12 @@ export default function FieldCameraPage() {
     if (!blob || uploading) return;
     setUploading(true);
     try {
-      // 'photo' is the field name both /field-photos and /alpr/capture accept.
-      const form = new FormData();
-      form.append('photo', blob, 'field-photo.jpg');
-      if (gps) { form.append('lat', String(gps.lat)); form.append('lng', String(gps.lng)); }
-      if (callId) form.append('call_id', callId);
-      if (incidentId) form.append('incident_id', incidentId);
+      // Shared metadata appends so the two post paths can't diverge.
+      const appendMeta = (fd: FormData) => {
+        if (gps) { fd.append('lat', String(gps.lat)); fd.append('lng', String(gps.lng)); }
+        if (callId) fd.append('call_id', callId);
+        if (incidentId) fd.append('incident_id', incidentId);
+      };
 
       if (alprMode) {
         // Downscale for a fast plate read; the full-res stamped blob still goes
@@ -314,21 +320,24 @@ export default function FieldCameraPage() {
         const alprBlob = await downscaleImage(blob, 1280, 0.8);
         const alprForm = new FormData();
         alprForm.append('photo', alprBlob, 'field-photo.jpg');
-        if (gps) { alprForm.append('lat', String(gps.lat)); alprForm.append('lng', String(gps.lng)); }
-        if (callId) alprForm.append('call_id', callId);
-        if (incidentId) alprForm.append('incident_id', incidentId);
+        appendMeta(alprForm);
         alprForm.append('capture_reason', 'on_scene_alpr');
         const r = await apiPostForm<AlprScanResult>('/alpr/capture', alprForm);
+        const rHits = r.hits ?? [];
         setScan(r);
         addToast(
-          r.vehicle_count
+          (r.vehicle_count ?? 0)
             ? 'ALPR: plate read — identifying vehicle…'
             : 'ALPR: no readable plate — photo saved to call',
-          r.hits.some((h) => h.severity === 'critical') ? 'error' : 'success',
+          rHits.some((h) => h.severity === 'critical') ? 'error' : 'success',
         );
         if (r.enrich_status === 'pending') void pollEnrichment(r.id);
         // keep the preview + result on screen so the officer can review hits
       } else {
+        // 'photo' is the field name both /field-photos and /alpr/capture accept.
+        const form = new FormData();
+        form.append('photo', blob, 'field-photo.jpg');
+        appendMeta(form);
         await apiPostForm('/field-photos', form);
         addToast(callId ? 'Photo saved to call' : 'Photo saved', 'success');
         discard();
@@ -405,7 +414,7 @@ export default function FieldCameraPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            {scan.hits.filter((h) => h.severity === 'critical').map((h, i) => (
+            {(scan.hits ?? []).filter((h) => h.severity === 'critical').map((h, i) => (
               <div key={`c${i}-${h.detail}`} className="flex items-start gap-1.5 bg-red-950 border border-red-600 text-red-300 text-xs font-semibold px-2 py-1.5">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
                 <span>{scan.accepted === false ? 'UNCONFIRMED — verify plate: ' : ''}{h.detail}</span>
@@ -417,12 +426,12 @@ export default function FieldCameraPage() {
                 <span>Low-confidence read{scan.plate_confidence != null ? ` (${Math.round(scan.plate_confidence * 100)}%)` : ''} — held for review. Not recorded as confirmed until an officer verifies it.</span>
               </div>
             )}
-            {scan.vehicle_count === 0 && (
+            {(scan.vehicle_count ?? 0) === 0 && (
               <div className="text-[11px] text-[#888] px-1 py-2">
                 No readable plate found. The photo was still saved to the call.
               </div>
             )}
-            {scan.vehicles.map((v, i) => (
+            {(scan.vehicles ?? []).map((v, i) => (
               <div key={v.vehicle_record_id ?? i} className="border border-[#222] bg-[#0b0b0b] p-2">
                 <div className="flex items-center justify-between">
                   <span className="text-lg tracking-[0.15em] text-white font-semibold">{v.plate || '—'}</span>
@@ -503,7 +512,7 @@ export default function FieldCameraPage() {
             <button
               type="button"
               onClick={discard}
-              disabled={uploading}
+              disabled={uploading || !!scan}
               className="flex flex-col items-center gap-1 text-red-400 disabled:opacity-40"
               aria-label="Discard photo"
             >

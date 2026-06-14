@@ -27,7 +27,10 @@ const SOURCES: Record<SightingSourceKey, SightingSource> = {
 export function sightingSourceKey(notes: string | null | undefined): SightingSourceKey {
   const n = (notes || '').trim().toLowerCase();
   if (n.startsWith('clearpath dashcam')) return 'dashcam';
-  if (n.startsWith('alpr')) return 'camera';
+  // Server emits "ALPR: …" or "ALPR capture …"; PlateLogPage passes bare 'ALPR'
+  // for the legend chip. Match those exact forms so free-text manual notes
+  // (e.g. "ALPR camera was offline, entered manually") don't false-positive.
+  if (n === 'alpr' || n.startsWith('alpr:') || n.startsWith('alpr capture')) return 'camera';
   return 'manual';
 }
 

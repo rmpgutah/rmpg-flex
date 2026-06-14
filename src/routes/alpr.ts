@@ -109,6 +109,14 @@ async function ensureAlprSchema(db: ReturnType<typeof getDb>) {
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_alpr_plate ON alpr_captures(plate)`);
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_alpr_capture_id ON alpr_captures(capture_id)`);
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_alpr_call ON alpr_captures(call_id)`);
+  // UNIQUE index on capture_id so the idempotent offline-replay insert can rely on
+  // ON CONFLICT(capture_id) DO NOTHING — closes the concurrent-replay race that
+  // check-then-insert leaves open. Partial index (WHERE capture_id IS NOT NULL) so
+  // the many NULL capture_id rows (non-replay captures) don't collide. Best-effort:
+  // if pre-existing duplicate capture_id rows on live block creation, swallow and
+  // fall back to the check-then-insert path.
+  try { await execute(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_alpr_capture_id_uniq ON alpr_captures(capture_id) WHERE capture_id IS NOT NULL`); }
+  catch { /* legacy dupes block the unique index — check-then-insert still guards */ }
   for (const [name, type] of ALPR_EXTRA_COLUMNS) {
     if (!(await columnExists(db, 'alpr_captures', name))) {
       try { await execute(db, `ALTER TABLE alpr_captures ADD COLUMN ${name} ${type}`); }
@@ -130,6 +138,25 @@ async function ensureAlprSchema(db: ReturnType<typeof getDb>) {
   )`);
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_vcp_capture ON vehicle_capture_photos(capture_id)`);
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_vcp_plate ON vehicle_capture_photos(canonical_plate)`);
+
+  // field_photos is owned by fieldPhotos.ts — but the call-attached original from
+  // /capture links the photo to the call gallery, so ensure the table exists here
+  // too (mirrors fieldPhotos.ts ensureTable) rather than silently dropping the link.
+  await execute(db, `CREATE TABLE IF NOT EXISTS field_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    officer_id INTEGER NOT NULL,
+    call_id INTEGER,
+    incident_id INTEGER,
+    r2_key TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    latitude REAL,
+    longitude REAL,
+    notes TEXT,
+    taken_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  )`);
+  try { await execute(db, `ALTER TABLE field_photos ADD COLUMN incident_id INTEGER`); } catch { /* column exists */ }
 
   // vehicle_sightings is owned by migration 0100 — never CREATE it here, only
   // reconcile the structured-damage columns the enrich/accept paths write.
@@ -221,6 +248,7 @@ interface FinalizeResult {
   vehicles: Array<Record<string, unknown>>;
   recordIds: number[]; sightingId: number | null;
   accepted: boolean; plateConf: number | null;
+  status: 'done' | 'failed';
 }
 
 /** Finalize a capture from a single Cloudflare plate read: screen the plate
@@ -242,6 +270,7 @@ async function finalizeCapture(
   const out: FinalizeResult = {
     hits: [], vehicles: [], recordIds: [], sightingId: null,
     accepted: false, plateConf: read?.confidence ?? null,
+    status: 'done',
   };
   const plate = read?.plate ?? null;
 
@@ -287,13 +316,6 @@ async function finalizeCapture(
       const up = await upsertVehicleRecord(db, cfReadToVehicle({ ...read, plate: canonical }), screen.vehicleId);
       recordId = up?.id ?? screen.vehicleId ?? null;
       if (recordId) out.recordIds.push(recordId);
-      if (recordId && args.callId != null) {
-        try {
-          await execute(db,
-            `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
-             VALUES (?, ?, 'observed', 'ALPR', ?, datetime('now'))`, args.callId, recordId, args.userId);
-        } catch (err: any) { console.error('[alpr] link failed:', err?.message); }
-      }
       try {
         const base = `ALPR: ${[read.color, read.make, read.model, read.year].filter(Boolean).join(' ')}`.trim();
         const note = base === 'ALPR:' ? 'ALPR capture (Workers AI)' : base;
@@ -307,6 +329,18 @@ async function finalizeCapture(
       // Sub-threshold but existing record — use existing id so the photo package links
       // to the right vehicle without asserting any attribute updates.
       recordId = screen.vehicleId;
+    }
+
+    // Link the vehicle to the call whenever a record exists (asserted OR a
+    // sub-threshold-but-screened sighting that resolved to an existing record),
+    // not only on asserted reads — so a screened sighting still ties to the call.
+    if (recordId && args.callId != null) {
+      try {
+        await execute(db,
+          `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
+           VALUES (?, ?, 'observed', ?, ?, datetime('now'))`,
+          args.callId, recordId, asserted ? 'ALPR' : 'ALPR (unconfirmed)', args.userId);
+      } catch (err: any) { console.error('[alpr] link failed:', err?.message); }
     }
 
     // Persist the vehicle_capture_photos package for any read that clears the lower gate.
@@ -351,6 +385,7 @@ async function finalizeCapture(
       out.sightingId, JSON.stringify(out.recordIds), args.captureRowId);
   } catch (err: any) {
     console.error('[alpr] finalize failed:', err?.message);
+    out.status = 'failed';
     try { await execute(db, `UPDATE alpr_captures SET enrich_status='failed', accepted=0, review_status='needs_review' WHERE id=?`, args.captureRowId); } catch { /* */ }
   }
   return out;
@@ -407,11 +442,19 @@ alpr.post('/capture', operational, async (c) => {
   const ext = extFrom((file as any).name, file.type);
   const imageKey = `${attachToCall ? FIELD_PHOTO_PREFIX : ALPR_PREFIX}${crypto.randomUUID()}.${ext}`;
   const contentType = file.type || 'image/jpeg';
-  await c.env.UPLOADS.put(imageKey, bytes, { httpMetadata: { contentType } });
+  // Best-effort R2 put: a storage failure must NOT 500 the whole capture. We still
+  // run the read + persist the row (image_url just resolves to a missing object).
+  let imageStored = true;
+  try {
+    await c.env.UPLOADS.put(imageKey, bytes, { httpMetadata: { contentType } });
+  } catch (err: any) {
+    imageStored = false;
+    console.error('[alpr] R2 image put failed:', err?.message);
+  }
 
   // Attach the photo to the call/incident via field_photos (best-effort).
   let fieldPhotoId: number | null = null;
-  if (attachToCall) {
+  if (attachToCall && imageStored) {
     try {
       const fp = await execute(db,
         `INSERT INTO field_photos (officer_id, call_id, incident_id, r2_key, content_type, size_bytes, latitude, longitude, notes)
@@ -435,17 +478,28 @@ alpr.post('/capture', operational, async (c) => {
 
   // Capture row (plate known). finalizeCapture then screens + applies the 0.85
   // gate + creates records, and stamps the row 'done'.
+  // ON CONFLICT(capture_id) DO NOTHING makes the offline-replay idempotent at the
+  // DB level (closes the concurrent-replay race the check-above can't) when the
+  // unique partial index exists; on conflict no row is inserted (changes === 0)
+  // and we return the row the winning racer created.
   const ins = await execute(db,
     `INSERT INTO alpr_captures
        (sighting_id, capture_id, case_id, plate, state, confidence, plate_confidence,
         review_status, image_key, raw_json, lat, lng, location_text, captured_by,
         call_id, incident_id, field_photo_id, vehicle_count, vehicle_record_ids, enrich_status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+     ON CONFLICT(capture_id) DO NOTHING`,
     null, captureId, strOrNull(params.case_id), plate, read?.state ?? null,
     read?.confidence ?? null, read?.confidence ?? null, 'pending', imageKey,
     JSON.stringify({ engine: read?.model_id ?? 'workers-ai', plate, read }),
     lat, lng, locationText, userId,
     callId, incidentId, fieldPhotoId, plate ? 1 : 0, JSON.stringify([]));
+  // A concurrent replay won the race (no row inserted) — return the existing one
+  // rather than finalizing a phantom row.
+  if (captureId && (ins.meta.changes ?? 0) === 0) {
+    const existing = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE capture_id = ?', captureId);
+    if (existing) return c.json({ success: true, duplicate: true, ...shapeCapture(existing) });
+  }
   const captureRowId = Number(ins.meta.last_row_id);
 
   const fin = await finalizeCapture(c.env, db, {
@@ -453,13 +507,19 @@ alpr.post('/capture', operational, async (c) => {
   });
 
   const hits = Array.from(new Map(fin.hits.map((h) => [h.detail, h])).values());
+  // Honest status: reflect finalize's real outcome instead of hardcoding success.
+  const finalized = fin.status === 'done';
+  // Real persisted vehicle_count: finalize writes vehicle_count=1 only for a
+  // processed plate on success; a no-plate read or a failed finalize persisted 0.
+  const vehicleCount = finalized && plate ? fin.vehicles.length : 0;
   return c.json({
-    success: true,
+    success: finalized,
+    status: fin.status,
     id: captureRowId,
     call_id: callId,
     incident_id: incidentId,
     field_photo_id: fieldPhotoId,
-    vehicle_count: plate ? 1 : 0,
+    vehicle_count: vehicleCount,
     vehicles: fin.vehicles,
     capture: {
       plate, state: read?.state ?? null,
@@ -473,7 +533,7 @@ alpr.post('/capture', operational, async (c) => {
       alerted: hits.some((h) => h.severity === 'critical'),
     },
     detections: [],
-    enrich_status: 'done',
+    enrich_status: fin.status,
     accepted: plate ? fin.accepted : null,
     plate_confidence: fin.plateConf,
     condition: null,
@@ -736,16 +796,53 @@ alpr.post('/edge', async (c) => {
   if (!ts || !(await verifyEdgeSignature({ secret, timestamp: ts, body, signature: sig, nowSec })))
     return c.json({ error: 'bad signature' }, 401);
 
-  const rec = JSON.parse(body) as {
+  // Malformed body must 400, not throw an unhandled 500 — even post-HMAC.
+  let rec: {
     plate?: string; state?: string; make?: string; model?: string; year?: string;
     color?: string; type?: string; plate_confidence?: number; device_id?: string;
+    lat?: number; lng?: number; location_text?: string;
   };
+  try {
+    rec = JSON.parse(body);
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
   if (!rec.plate) return c.json({ error: 'no plate' }, 400);
 
   const db = getDb(c.env); await ensureAlprSchema(db);
   const trust = trustScore({ reads: [rec.plate], modelPct: rec.plate_confidence });
   const PACKAGE_GATE = 0.80; const canonical = trust.canonical || rec.plate;
-  await screenVehicle(db, { plate: canonical });
+
+  // Screen UNCONDITIONALLY (officer safety) and WIRE the result into the same
+  // hit/notification path the on-scene /capture flow uses — an edge read of a
+  // stolen/watchlisted plate must fire a critical-hit notification, not be dropped.
+  const screen = await screenVehicle(db, { plate: canonical });
+  const hits = screen.hits;
+  const critical = hits.filter((h) => h.severity === 'critical');
+  if (critical.length) {
+    try {
+      await execute(db,
+        `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+         VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, NULL, 0, datetime('now'))`,
+        `EDGE PLATE HIT: ${canonical}`,
+        critical.map((h) => h.detail).join('; '), screen.vehicleId);
+    } catch (err: any) { console.error('[alpr] edge notify failed:', err?.message); }
+  }
+
+  // Record the edge read as a vehicle_sighting so it lands in the same history as
+  // every other source (no call_id on edge reads → no call_vehicles link).
+  let sightingId: number | null = null;
+  try {
+    const note = `ALPR (edge)${[rec.color, rec.make, rec.model, rec.year].filter(Boolean).length ? ': ' + [rec.color, rec.make, rec.model, rec.year].filter(Boolean).join(' ') : ''}`;
+    const sres = await execute(db,
+      `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, confidence)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+      canonical, rec.state ?? null, screen.vehicleId,
+      rec.location_text ?? null, num(rec.lat), num(rec.lng), note,
+      typeof rec.plate_confidence === 'number' ? rec.plate_confidence : null);
+    sightingId = Number(sres.meta.last_row_id);
+  } catch (err: any) { console.error('[alpr] edge sighting failed:', err?.message); }
+
   let photoRowId: number | null = null;
   if (trust.trustScore >= PACKAGE_GATE) {
     const r = await execute(db,
@@ -758,7 +855,9 @@ alpr.post('/edge', async (c) => {
     photoRowId = r.meta.last_row_id as number;
   }
   return c.json({ success: true, canonical_plate: canonical, trust_score: trust.trustScore,
-                  trust_basis: trust.basis, photo_row_id: photoRowId });
+                  trust_basis: trust.basis, photo_row_id: photoRowId,
+                  sighting_id: sightingId, hits,
+                  alerted: critical.length > 0 });
 });
 
 // ── Model registry: trained-adapter provenance per ALPR target ───────────────
@@ -782,7 +881,9 @@ alpr.get('/models', operational, async (c) => {
 alpr.put('/models/:target', operational, async (c) => {
   const db = getDb(c.env);
   const target = c.req.param('target');
-  const b = await c.req.json() as Record<string, unknown>;
+  let b: Record<string, unknown>;
+  try { b = await c.req.json() as Record<string, unknown>; }
+  catch { return c.json({ error: 'Invalid JSON body' }, 400); }
   await execute(db, MODEL_REGISTRY_DDL);
   await execute(db,
     `INSERT INTO model_registry (target, adapter_version, base_model, holdout_metric, beats_baseline, promoted_at, notes)
