@@ -29,3 +29,35 @@ export function formatScore(rawPlate: string): FormatResult {
   }
   return { score: /^[A-Z0-9]{5,8}$/.test(plate) ? 0.5 : 0.2, jurisdiction: null };
 }
+
+export interface ConsensusResult {
+  canonical: string;
+  ratio: number;
+  readCount: number;
+  variants: { plate: string; count: number }[];
+}
+
+/** Cluster reads by normalized form; winner = largest cluster, displayed as its
+ *  most common ORIGINAL spelling. ratio = winningClusterSize / total. */
+export function consensus(reads: string[]): ConsensusResult {
+  const valid = (reads ?? []).filter((r) => r && r.trim());
+  if (valid.length === 0) return { canonical: '', ratio: 0, readCount: 0, variants: [] };
+
+  const clusters = new Map<string, string[]>();
+  for (const r of valid) {
+    const key = normalizePlate(r);
+    (clusters.get(key) ?? clusters.set(key, []).get(key)!).push(r.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+  }
+  let bestKey = ''; let bestArr: string[] = [];
+  for (const [k, arr] of clusters) if (arr.length > bestArr.length) { bestKey = k; bestArr = arr; }
+
+  const spell = new Map<string, number>();
+  for (const s of bestArr) spell.set(s, (spell.get(s) ?? 0) + 1);
+  const canonical = [...spell.entries()].sort((a, b) => b[1] - a[1])[0][0];
+
+  const variants = [...clusters.entries()]
+    .filter(([k]) => k !== bestKey)
+    .map(([, arr]) => ({ plate: arr[0], count: arr.length }));
+
+  return { canonical, ratio: bestArr.length / valid.length, readCount: valid.length, variants };
+}
