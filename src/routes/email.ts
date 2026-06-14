@@ -765,17 +765,23 @@ email.delete('/messages/:id', async (c) => {
 let _outboxRecordColsEnsured = false;
 async function ensureOutboxRecordColumns(db: D1Database): Promise<boolean> {
   if (_outboxRecordColsEnsured) return true;
-  if (!(await columnExists(db, 'email_outbox', 'record_type'))) {
-    try { await execute(db, 'ALTER TABLE email_outbox ADD COLUMN record_type TEXT'); } catch { /* race/exists */ }
-    try { await execute(db, 'ALTER TABLE email_outbox ADD COLUMN record_id INTEGER'); } catch { /* race/exists */ }
+  try {
+    if (!(await columnExists(db, 'email_outbox', 'record_type'))) {
+      try { await execute(db, 'ALTER TABLE email_outbox ADD COLUMN record_type TEXT'); } catch { /* already exists */ }
+      try { await execute(db, 'ALTER TABLE email_outbox ADD COLUMN record_id INTEGER'); } catch { /* already exists */ }
+    }
+    _outboxRecordColsEnsured = await columnExists(db, 'email_outbox', 'record_type');
+  } catch {
+    // email_outbox table not yet created; stay false so the next call retries
   }
-  _outboxRecordColsEnsured = await columnExists(db, 'email_outbox', 'record_type');
   return _outboxRecordColsEnsured;
 }
 
 // Shared send core: enqueue to the durable outbox, attempt a synchronous Graph
 // send, and on failure leave the row pending for the cron drain to retry.
 // Used by both POST /send and the PDF-from-context handler.
+// NOTE: opts.recordType AND opts.recordId must BOTH be non-null to link the
+// send to a record — supplying only one silently omits the link.
 export async function enqueueAndSend(
   env: Bindings,
   ownerUserId: number,
