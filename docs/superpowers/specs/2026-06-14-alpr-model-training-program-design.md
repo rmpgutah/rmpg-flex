@@ -1,4 +1,4 @@
-# ALPR model-training program — five trained models fed by the dossier flywheel
+# ALPR vision-LoRA program — one multi-task model, trained on the dossier, run on the edge
 
 - **Date:** 2026-06-14
 - **Status:** Draft (awaiting user review)
@@ -6,177 +6,176 @@
 - **Branch:** `claude/lucid-haslett-e97ab6`
 - **Program context:** Sub-project of the footage-plate-repair program. **Depends on** the
   vehicle capture dossier + OCR trust layer
-  ([2026-06-14-vehicle-capture-dossier-ocr-trust-design.md]) — that dossier is the
-  training-data flywheel and the trust layer is where trained-model confidences land.
-  Reuses the live Roboflow workspace (`rmpg-utah`) and the schema-agnostic parser
-  ([2026-06-14-alpr-fast-scan-design.md] / [2026-06-14-advanced-vehicle-scanner-design.md]).
-  This is a **program** (5 models), each model shipping independently.
+  ([2026-06-14-vehicle-capture-dossier-ocr-trust-design.md]) — the dossier is the
+  training-data flywheel and the trust layer is where the model's reads land as a voter.
+  Reuses the `training/` LoRA scaffold (serve-intake pattern: `train_lora.py`,
+  `train_modal.py`, `build-dataset.ts`, `run-eval.ts`) and the `edge/` Jetson runner
+  (`flex_edge`, HMAC webhooks to `/api/dashcam-ai/*`).
 
 ---
 
 ## Problem
 
-Today plate + vehicle attributes come from a **vision LLM** (GLM-OCR + `open_ai`
-`vehicle_details`). It hallucinates, reports miscalibrated confidence, and reads
-make/model/year/color/type inconsistently. The operator wants **trained models** that
-understand plate formatting across **all 50 states** and produce reliable
-make/model/year/color/vehicle-type — purpose-built recognizers, evaluated against ground
-truth, rather than a general LLM guessing.
+Plate + vehicle attributes come from a general vision **LLM** (GLM-OCR + `open_ai`
+`vehicle_details`) that hallucinates, reports miscalibrated confidence, and reads
+make/model/year/color/type inconsistently. The operator wants a **purpose-trained model**
+that understands plate formatting across all 50 states and produces reliable
+make/model/year/color/vehicle-type — and wants it built with **LoRA**, on the
+department's own data.
 
 ## Decisions (from brainstorming)
 
 | Decision | Choice |
 |----------|--------|
-| Approach | **Train ML models** (not just a validation KB) — the KB/normalizer still exists inside the trust layer (#2); these models improve the *reads* it verifies |
-| Scope | **All five** targets in scope, **including custom plate-character OCR** |
-| Build order | All in scope; **work sequenced by tractability** — type+color → state → MMY → OCR — each goes live independently as it beats baseline (operator's "all five" is the destination, not "all at once") |
-| Platform | **Roboflow** hosted training + serverless-workflow inference (fits the live pipeline); edge/Jetson on-device deploy is a later fast-follow |
-| Data engine | **Dossier flywheel** — confirmed captures (plate/vehicle crops + verified labels) pushed to Roboflow; **auto-label** bootstrap; Universe datasets where good ones exist |
-| Relationship to trust layer | Trained models are **new independent voters** in #2's cross-model corroboration; they do **not** bypass the 80/85% gates |
-| Acceptance | A model goes live **only when it beats the current LLM baseline** on a held-out set ([Claude] runs eval, [You] judges) |
-| Division of labor | **[You]** label/review/judge (confirming captures = labeling); **[Claude]** projects, upload automation, versioning, training runs, eval read-out, workflow, integration; **[Together]** taxonomies + acceptance bars |
+| Method | **LoRA fine-tuning** (parameter-efficient) of a pretrained **vision-language model** — not Roboflow from-scratch classifiers, not a text-only LoRA |
+| Model count | **One multi-task vision-LoRA** emitting plate string + issuing-state + make/model/year/color/type in a single structured pass (satisfies "all five, including OCR" with one model) |
+| Inference host | **Edge Jetson** (`edge/flex_edge`) — on-device ALPR at the footage source; **not** Workers AI (verified: Workers AI LoRA is **text-only**, cannot serve a vision LoRA) |
+| Training host | **Modal GPU** via the existing `training/train_modal.py` pattern (offline; Jetson is inference-only) |
+| Data engine | **Dossier flywheel** — confirmed `vehicle_capture_photos` (crops + officer-verified labels) → dataset; reuse `training/build-dataset.ts` + `verify-labels.ts` |
+| Relationship to trust layer | The edge model's read is a **voter** in #2's cross-model corroboration + consensus; it does **not** bypass the 80/85% gates |
+| Acceptance | Goes live only when it **beats the GLM-OCR/LLM baseline** on a held-out set (`training/run-eval.ts`); [Claude] runs eval, [You] judges |
+| Division of labor | **[You]** label (confirm captures) + judge eval + provision Jetson; **[Claude]** dataset builder, training/Modal config, eval harness, edge inference engine + webhook wiring; **[Together]** label schema + acceptance bars |
 
 ## Goal
 
-Five purpose-built, independently-evaluated recognizers — plate-character OCR, plate
-issuing-state (50+DC), make/model/year, color, vehicle-type — trained from the
-department's own accumulating captures, deployed behind the existing trust layer and
-85% assert gate, each replacing its LLM counterpart only after it provably beats it.
+A single LoRA-fine-tuned vision-language model, trained on the department's own confirmed
+captures via Modal, deployed on the in-vehicle Jetson, that reads plate + state +
+make/model/year/color/type on-device — feeding the existing trust layer as a high-quality
+voter, promoted only after it provably beats the current LLM baseline.
 
 ### Non-goals
 
-- Replacing the **trust layer / dossier** (#2) — this program feeds it, doesn't supersede.
-- A from-scratch labeling marathon — confirming captures + auto-label is the labeling path.
-- On-device/edge (Jetson) inference — noted fast-follow, not v1.
-- The footage auto-capture pipeline (#2-adjacent sub-project) — independent.
-- Realtime retraining; training is operator-triggered per phase.
-
----
-
-## The five models
-
-| # | Model | Roboflow project type | Input crop | Classes / output |
-|---|-------|----------------------|-----------|------------------|
-| 1 | **Vehicle type** | classification | vehicle crop | sedan, SUV, pickup, van, box-truck, semi, motorcycle, bus, … (fixed enum) |
-| 2 | **Color** | classification | vehicle crop | ~12 canonical (black, white, silver, gray, red, blue, green, brown, gold, yellow, orange, purple) |
-| 3 | **Plate issuing-state** | classification | plate crop | 50 states + DC (Mexico/Sonora + territories later) |
-| 4 | **Make / Model / Year** | hierarchical classification | vehicle crop | make → model (conditioned) → year-band |
-| 5 | **Plate-character OCR** | object detection (glyphs) | plate crop | 36 glyphs (0-9, A-Z), assembled left-to-right by x-position |
-
-**Why this order:** type/color are small fixed enums (fast to usable accuracy); state is 51
-classes but visually distinct (designs/colors/fonts); MMY is thousands of fine-grained
-classes (hardest, most data — staged make→model→year); OCR is a detection model needing
-the most careful eval against the strong GLM-OCR baseline, so it's last.
+- Replacing the **trust layer / dossier** (#2) — this feeds it.
+- Workers AI inference for the vision model (impossible — text-LoRA only).
+- Roboflow from-scratch classifiers (the LoRA route supersedes the earlier 5-model plan).
+- Realtime/continuous retraining — training is operator-triggered per dataset milestone.
+- A cloud GPU inference fallback (possible later; v1 is edge-only).
 
 ---
 
 ## Architecture
 
 ```
-                 ┌──────────────── DATA FLYWHEEL ([Claude] automates) ───────────┐
- confirmed       │  D1 vehicle_capture_photos + R2 crops (plate, vehicle)        │
- capture  ──────▶│  + officer-verified labels (plate/state/make/model/color/type)│
- (#2 dossier)    │       │                                                        │
-                 │       ▼  push to matching Roboflow project (upload API)        │
-                 │  Roboflow projects ×5  ◀── auto-label bootstrap on raw caps    │
-                 │       │            ([You] review labels)                       │
-                 │       ▼  versions_generate → models_train → model_evals        │
-                 │  per-model eval vs LLM baseline  ([You] judges, [Claude] runs) │
-                 └───────│───────────────────────────────────────────────────────┘
-                         ▼ (only models that beat baseline)
-              Roboflow WORKFLOW: vehicle-detect → crops →
-                 plate crop → {OCR model, state model}
-                 vehicle crop → {MMY model, color model, type model}
-                         ▼
-              schema-agnostic parser (existing) → enhanced_alpr_record
-                         ▼
-              #2 TRUST LAYER: trained-model outputs become independent voters in
-              cross-model corroboration; consensus + format validity unchanged;
-              80% package / 85% assert gates run on the derived trust score
+        ┌──────────── DATA FLYWHEEL ([Claude] automates, [You] labels) ──────────┐
+ #2     │  D1 vehicle_capture_photos + R2 crops + officer-verified labels         │
+ dossier│        │  (plate string, state, make, model, year, color, type)         │
+        │        ▼  build-dataset.ts → JSONL (image + structured target)          │
+        │  verify-labels.ts ([You] review) → validate-dataset.ts                  │
+        └────────│───────────────────────────────────────────────────────────────┘
+                 ▼
+        TRAIN (Modal GPU, offline):  train_lora.py / train_modal.py
+          base = open VLM (Qwen2-VL-7B or Llama-3.2-11B-Vision)
+          → LoRA adapter (multi-task structured output)
+                 ▼
+        EVAL: run-eval.ts on held-out set vs GLM-OCR/LLM baseline
+          (exact-plate match, state acc, MMY top-1, color/type acc)  ([You] judges)
+                 ▼ (promote only if it beats baseline)
+        EXPORT + quantize (INT4, TensorRT-LLM) → deploy to edge/flex_edge
+                 ▼
+        EDGE (Jetson Orin, in-vehicle):  frame/crop → vision-LoRA →
+          structured ALPR record → HMAC POST (existing edge→Worker contract)
+                 ▼
+        Worker capture route → schema-agnostic parser → #2 TRUST LAYER:
+          edge read becomes an independent voter; consensus + format validity
+          unchanged; 80% package / 85% assert gates run on the derived trust score
 ```
 
-### Integration is additive, not a rewrite
+### Why this shape
 
-The Roboflow workflow gains trained-model blocks alongside (then instead of) the LLM
-blocks. The route/parser are **schema-agnostic by shape**, so new outputs map through with
-minimal change. Each trained confidence is added to `raw_reads[]`/corroboration evidence in
-#2 — more voters, stronger trust. Nothing about the gates or storage changes.
+- **Edge inference** keeps ALPR at the footage source ($0/call, no cloud round-trip) and
+  reuses the proven `flex_edge` HMAC webhook contract — the LoRA model is just a new
+  TensorRT engine alongside the existing FCW/lane/object engines.
+- **Modal training** mirrors the serve-intake LoRA exactly (`train_modal.py`), so the
+  scaffolding, dataset format, and eval harness transfer rather than being reinvented.
+- **One multi-task model** is the natural LoRA shape — a VLM already does OCR + description;
+  the LoRA specializes it to *our* plates/vehicles and a *strict structured schema*.
 
 ---
 
-## Data strategy (the crux)
+## Components
 
-1. **Flywheel (primary).** `[Claude]` builds a pusher: confirmed `vehicle_capture_photos`
-   rows → upload the relevant crop + label to the matching Roboflow project (`image_upload`
-   + `annotations_save`). Officer confirmation in the dossier UI **is** the label. Grows
-   automatically with usage.
-2. **Auto-label (bootstrap).** `[Claude]` runs `autolabel_start` on raw/unconfirmed
-   captures to pre-label; `[You]` review/correct in the Roboflow UI (direct URLs provided).
-3. **Universe (supplement).** `[Claude]` forks specific Universe datasets where strong ones
-   exist (MMY + color have coverage; 50-state plate-state is thin — confirmed by search, so
-   that model leans hardest on the flywheel). Pinned per-model during planning.
-4. **Class taxonomies `[Together]`.** Fixed enums for type/color, the 50+DC state list, and
-   the make/model taxonomy (seed from NHTSA vPIC) agreed before labeling so classes are
-   stable across versions.
+### Training (`training/`, reuse + extend)
 
-## Per-model lifecycle ([Claude] runs, [You] judges)
+- **`build-dataset.ts`** — extend with an ALPR source: pull confirmed
+  `vehicle_capture_photos` (full/vehicle/plate crops) + verified labels from D1/R2 →
+  JSONL `{image, target:{plate,state,make,model,year,color,type}}`.
+- **`verify-labels.ts` / `validate-dataset.ts`** — reuse for [You]'s review + pre-flight.
+- **`train_modal.py`** — extend/clone for a **vision** base (the serve-intake one is text);
+  LoRA config (rank, target modules) for the chosen VLM.
+- **`run-eval.ts`** — ALPR metrics vs baseline: exact-plate match, per-field accuracy,
+  confusion on state/color/type.
 
-`create project → seed (Universe/flywheel) → auto-label → [You] review → versions_generate
-→ models_train → model_evals (mAP / accuracy / confusion matrix) → [You] approves → add
-block to workflow → canary behind trust layer → promote`.
+### Edge (`edge/flex_edge/`, new engine)
+
+- **`alpr.py`** (new): load the quantized VLM+LoRA (TensorRT-LLM), `infer(frame|crop) →
+  structured record`. Sits beside the existing inference stubs.
+- **Uploader**: reuse `client.py` + `signer.py` (HMAC) to POST the record. New webhook
+  **`/api/alpr/edge`** (HMAC-verified, mirrors `/api/dashcam-ai/*`) → routes into the
+  existing capture/trust pipeline. No new storage beyond #2.
+
+### Worker (thin)
+
+- **`/api/alpr/edge`** webhook (HMAC) → maps the edge record into `raw_reads[]` +
+  corroboration evidence for #2's `plateTrust`. The edge read is a voter (and, once
+  promoted past baseline, the preferred source).
+- **`model_registry`** config row: which adapter version is live, its measured
+  baseline-beating metric, and provenance shown in the dossier ("edge LoRA v3, 94% holdout").
+- Secret: edge HMAC key (reuse the dashcam-ai signing pattern). No `ROBOFLOW_API_KEY`
+  dependency on this path.
+
+---
+
+## Feasibility risks (called out, not hand-waved)
+
+- **Jetson memory.** Orin Nano (8 GB) running a 7–11B VLM needs aggressive **INT4**
+  quantization via TensorRT-LLM; latency + accuracy at INT4 must be measured early. May
+  force a **smaller VLM** (e.g., a 2–3B vision model) or an **Orin NX/AGX**. **Spike this
+  first** — it gates the whole edge-inference premise.
+- **Hardware availability.** v1 inference is edge-only, so it's bound to a Jetson actually
+  being in-vehicle. Until then, the model can run in the **Modal/`run-eval` harness** for
+  evaluation and (interim) batch scoring of footage server-side off-device.
+- **Label volume for MMY.** Make/model/year is the data-hungry field; the flywheel fills it
+  slowly. The structured target lets MMY stay sparse/partial early (train on whatever
+  fields are verified per example) while plate/state/color/type mature first.
 
 ## Acceptance / eval gate
 
-- **Detection (OCR):** mAP + per-character confusion vs a held-out set; must beat GLM-OCR
-  exact-string match rate.
-- **Classification (type/color/state/MMY):** top-1 accuracy + confusion matrix; must beat
-  the LLM's accuracy on the same held-out set.
-- A model that loses to the LLM **stays a voter only** (corroboration), not the asserted
-  source, until a later version wins. No silent regressions.
-
-## Worker / app changes (thin)
-
-- The training/data-push automation lives in `scripts/` (Roboflow API) + possibly a cron
-  to push newly-confirmed captures — **not** in the request path.
-- The capture route's trust evidence (`raw_reads[]` / corroboration) gains the trained
-  models' outputs; no new tables beyond #2's. A small `model_registry` config (which model
-  id/version is live per target, and its measured baseline-beating metric) so the workflow
-  + UI can show provenance ("state: trained model v3, 96% holdout").
-- Secrets: reuse `ROBOFLOW_API_KEY`. Training is operator-triggered, not automatic.
+Promote the adapter only when `run-eval.ts` shows it **beating the GLM-OCR/LLM baseline**
+on a held-out set, per field. A field where it loses → its output stays a **voter only**
+(corroboration), not the asserted source, until a later adapter wins. No silent regressions.
 
 ## Error handling / safety
 
-- **Model unavailable / low-confidence** → fall back to the LLM read for that field; trust
-  layer already handles a missing voter.
-- **Trained model disagrees with LLM** → that disagreement *lowers* trust (correct — it's
-  real uncertainty), surfaced as "models disagree — verify."
-- **Drift** → periodic re-eval on fresh holdout; a dropped metric pulls the model back to
-  voter-only. `[Claude]` schedules, `[You]` reviews.
+- **Edge offline / engine error** → no edge read; the cloud LLM path + trust layer handle
+  the missing voter (already designed in #2).
+- **Edge disagrees with cloud/LLM** → disagreement *lowers* trust (correct), surfaced
+  "models disagree — verify."
+- **Drift** → periodic re-eval on fresh holdout; a dropped metric pulls the adapter back to
+  voter-only. [Claude] schedules, [You] reviews.
 
 ## Testing
 
-- The data-push + registry helpers in `scripts/` get unit tests (mapping a capture →
-  correct project/label; registry selection). Pure label-mapping logic is testable.
-- Model quality is **eval-gated, not unit-tested** — `model_evals` metrics + `[You]`'s
-  judgment are the gate.
-- Worker typecheck for the registry/route changes.
+- `build-dataset` / `run-eval` mapping + metric helpers: unit-tested (TS, vitest-style as
+  in `training/`).
+- Edge `alpr.py`: unit-test the record→webhook mapping + HMAC (mirror `test_signer.py`);
+  model accuracy is **eval-gated**, not unit-tested.
+- Worker: typecheck + smoke the `/api/alpr/edge` webhook locally.
 
 ## Build sequence
 
-1. `[Together]` lock taxonomies (type, color, 50+DC states, make/model seed).
-2. `[Claude]` create 5 Roboflow projects + the flywheel pusher (capture → project) + tests.
-3. **Model 1 (type)** + **Model 2 (color)** full lifecycle → first live trained blocks.
-4. **Model 3 (state)** — heaviest flywheel reliance.
-5. **Model 4 (MMY)** — staged make→model→year.
-6. **Model 5 (OCR)** — character detection, careful baseline eval.
-7. `model_registry` + trust-layer voter integration + provenance UI; SW bump as client
-   surfaces change.
+1. **Jetson INT4 VLM spike** — prove a quantized vision-LoRA runs at acceptable
+   latency/accuracy on the target board. Gate.
+2. `[Together]` lock the structured label schema (fields + enums; reuse #2's taxonomies).
+3. `[Claude]` ALPR `build-dataset.ts` source (dossier → JSONL) + `validate-dataset` + tests.
+4. `[Claude]` `train_modal.py` vision variant + first LoRA run on seed data; `run-eval.ts`
+   ALPR metrics; `[You]` judges vs baseline.
+5. `[Claude]` `edge/flex_edge/alpr.py` + `/api/alpr/edge` HMAC webhook + trust-voter wiring.
+6. `model_registry` + dossier provenance UI; iterate adapters as the flywheel grows.
 
 ## Open questions / fast-follows
 
-- **Edge/Jetson deploy** of the trained models for on-device dashcam ALPR (the `edge/`
-  runner) — strong fit, deferred.
-- **Make/model taxonomy depth** — full vPIC (huge) vs top-N makes/models by regional
-  prevalence; start top-N, expand from misclassifications.
-- **MX/border plates** — add Sonora + border states to the state classifier once US-50 is
-  solid (the sample data has them).
+- **Base VLM choice** — Qwen2-VL vs Llama-3.2-Vision vs a smaller 2–3B model, decided by
+  the Jetson spike (accuracy vs fits-in-memory).
+- **Cloud GPU fallback** — host the same adapter on an external GPU endpoint for cruisers
+  without a Jetson; deferred (v1 edge-only + Modal eval harness).
+- **MX/border plates** — extend the state field once US-50 is solid (sample data has Sonora).
