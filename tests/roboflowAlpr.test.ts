@@ -15,10 +15,12 @@ import {
   acceptByConfidence,
   ALPR_ACCEPT_CONFIDENCE,
   unfenceJson,
+  allOcrStrings,
   alprRunUrl,
   stripDataUri,
   RoboflowConfigError,
   RoboflowHttpError,
+  RoboflowQuotaError,
   RoboflowTimeoutError,
   ROBOFLOW_WORKSPACE,
   ROBOFLOW_WORKFLOW_ID,
@@ -476,6 +478,47 @@ describe('runAlprVehicleCapture — error & retry handling', () => {
     await expect(runAlprVehicleCapture({ apiKey: 'k', image: img, retries: 0, fetchImpl, sleep: async () => {} }))
       .rejects.toBeInstanceOf(RoboflowTimeoutError);
   });
+
+  it('does not retry a 402 and throws RoboflowQuotaError', async () => {
+    let n = 0;
+    const fetchImpl: typeof fetch = (async () => { n++; return new Response('credit_cap_exceeded', { status: 402 }); }) as any;
+    await expect(runAlprVehicleCapture({ apiKey: 'k', image: img, fetchImpl, sleep: async () => {} }))
+      .rejects.toBeInstanceOf(RoboflowQuotaError);
+    expect(n).toBe(1);
+  });
+
+  it('treats a non-402 body that names the credit cap as a quota error and does not retry', async () => {
+    let n = 0;
+    const fetchImpl: typeof fetch = (async () => { n++; return new Response('cannot currently spend credits', { status: 500 }); }) as any;
+    await expect(runAlprVehicleCapture({ apiKey: 'k', image: img, fetchImpl, sleep: async () => {} }))
+      .rejects.toBeInstanceOf(RoboflowQuotaError);
+    expect(n).toBe(1);
+  });
+
+  it('exhausts retries on a persistent 500 and throws RoboflowHttpError after retries+1 attempts', async () => {
+    let n = 0;
+    const fetchImpl: typeof fetch = (async () => { n++; return new Response('boom', { status: 500 }); }) as any;
+    const err = await runAlprVehicleCapture({ apiKey: 'k', image: img, retries: 2, fetchImpl, sleep: async () => {} }).catch((e) => e);
+    expect(err).toBeInstanceOf(RoboflowHttpError);
+    expect((err as RoboflowHttpError).status).toBe(500);
+    expect(n).toBe(3); // retries:2 => 3 attempts
+  });
+
+  it('with retries:0 makes exactly one attempt before throwing', async () => {
+    let n = 0;
+    const fetchImpl: typeof fetch = (async () => { n++; return new Response('boom', { status: 500 }); }) as any;
+    await expect(runAlprVehicleCapture({ apiKey: 'k', image: img, retries: 0, fetchImpl, sleep: async () => {} }))
+      .rejects.toBeInstanceOf(RoboflowHttpError);
+    expect(n).toBe(1);
+  });
+
+  it('defaults to DEFAULT_RETRIES (2) => 3 attempts on a persistent 500', async () => {
+    let n = 0;
+    const fetchImpl: typeof fetch = (async () => { n++; return new Response('boom', { status: 500 }); }) as any;
+    await expect(runAlprVehicleCapture({ apiKey: 'k', image: img, fetchImpl, sleep: async () => {} }))
+      .rejects.toBeInstanceOf(RoboflowHttpError);
+    expect(n).toBe(3);
+  });
 });
 
 // Live integration test — skipped unless a real key is present, so CI stays
@@ -590,5 +633,130 @@ describe('roboflowAlpr — advanced scanner (damage + 85% acceptance gate)', () 
     expect(v.condition).toBe('clean');
     expect(v.damageObserved).toBe(false);
     expect(v.damageAreas).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Regression batch for recent hardening (2026-06-14):
+//   1. confidence-scale normalization (0–100 → [0,1]) so the 0.85 gate works
+//   2. narrowed reviewStatus heuristic (no false match on review_notes/_lane-ish)
+//   3. parseVehicles bare-OCR fallback emits one vehicle per distinct OCR string
+//   4. unfenceJson unwraps a fenced JSON ARRAY wrapped in prose
+// ─────────────────────────────────────────────────────────────
+describe('roboflowAlpr — confidence scale normalization (0–100 → [0,1])', () => {
+  it('normalizes a percentage-scale plate confidence (93 → 0.93) so the 0.85 gate works', () => {
+    // The LLM workflow ships sibling scores 0–100 (risk_score:12, data_quality_score:88),
+    // so field_confidence.plate could arrive as a percentage. A raw 93 would defeat
+    // the >= 0.85 gate; normalizeCapture/fieldConfidences must scale it into [0,1].
+    const entry = {
+      enhanced_alpr_record: fenced({
+        vehicles: [{ license_plate_text: 'PCT100', make: 'Toyota',
+          field_confidence: { plate: 93, make: 80 } }],
+      }),
+    };
+    const cap = normalizeCapture(entry);
+    expect(cap.confidence).toBeCloseTo(0.93);                 // 93 → 0.93
+    expect(cap.confidence! <= 1).toBe(true);
+
+    const [v] = parseVehicles(entry);
+    expect(v.confidence).toBeCloseTo(0.93);
+    expect(v.confidences.make).toBeCloseTo(0.80);
+    // The gate now behaves correctly on the normalized value.
+    expect(acceptByConfidence(v.plate, v.confidence)).toBe('PCT100'); // 0.93 ≥ 0.85
+  });
+
+  it('leaves a value already in [0,1] unchanged and clamps out-of-range highs', () => {
+    const fractional = parseVehicles({
+      enhanced_alpr_record: fenced({ vehicles: [{ license_plate_text: 'FRAC1',
+        field_confidence: { plate: 0.88 } }] }),
+    })[0];
+    expect(fractional.confidence).toBeCloseTo(0.88);          // untouched
+
+    // A nonsense 150 (>100) clamps to the 1.0 ceiling, never exceeds the band.
+    const overflow = parseVehicles({
+      enhanced_alpr_record: fenced({ vehicles: [{ license_plate_text: 'OVR1',
+        field_confidence: { plate: 150 } }] }),
+    })[0];
+    expect(overflow.confidence).toBeLessThanOrEqual(1);
+    expect(overflow.confidence).toBeGreaterThan(0);
+  });
+});
+
+describe('roboflowAlpr — narrowed reviewStatus heuristic', () => {
+  it('does NOT mislabel reviewStatus from review_notes / generic *_status scalars', () => {
+    // The old broad /review|status/ heuristic grabbed review_notes / processing_status
+    // as a bogus reviewStatus. With no real review_lane and review_required:false,
+    // reviewStatus must stay null despite those decoy keys.
+    const cap = normalizeCapture({
+      license_plate_text: 'NOTE1',
+      review_notes: 'looks fine to me',
+      review_reason: 'routine',
+      processing_status: 'complete',
+      review_required: false,
+    });
+    expect(cap.reviewStatus).toBeNull();
+  });
+
+  it('still reads the real review_lane output', () => {
+    expect(normalizeCapture({ review_lane: 'manual_review' }).reviewStatus).toBe('manual_review');
+  });
+
+  it('falls back to review_required when no review_lane is present', () => {
+    expect(normalizeCapture({ review_required: true }).reviewStatus).toBe('review_required');
+  });
+});
+
+describe('roboflowAlpr — parseVehicles bare-OCR fallback (one vehicle per distinct OCR string)', () => {
+  it('emits one plate-only vehicle per distinct OCR string when record + details are absent', () => {
+    // Multi-vehicle frame, license_plate_text shaped like license_predictions:
+    // one nested entry per crop. No enhanced_alpr_record, no vehicle_details, so
+    // the bare-OCR fallback must emit ALL plates (not just the first).
+    const vehicles = parseVehicles({ license_plate_text: [['AAA111'], ['BBB222'], ['CCC333']] });
+    expect(vehicles.map((v) => v.plate).sort()).toEqual(['AAA111', 'BBB222', 'CCC333']);
+    // Plate-only: no descriptive attributes from a bare OCR string.
+    expect(vehicles.every((v) => v.make === null && v.confidence === null)).toBe(true);
+  });
+
+  it('collapses exact-duplicate OCR strings via the dedupe-by-plate pass', () => {
+    // "AAA 111" and "AAA111" clean to the same plate → one entry.
+    const vehicles = parseVehicles({ license_plate_text: [['AAA 111'], ['AAA111'], ['DDD444']] });
+    expect(vehicles.map((v) => v.plate).sort()).toEqual(['AAA111', 'DDD444']);
+  });
+
+  it('allOcrStrings collects every nested string (not just the first)', () => {
+    expect(allOcrStrings([['AAA111'], ['BBB222']])).toEqual(['AAA111', 'BBB222']);
+    expect(allOcrStrings('SOLO9')).toEqual(['SOLO9']);
+    expect(allOcrStrings([['', '  ']])).toEqual([]); // empty/whitespace dropped
+  });
+});
+
+describe('roboflowAlpr — unfenceJson handles a fenced JSON ARRAY wrapped in prose', () => {
+  it('unfences a fenced array and parses it intact (does not corrupt to {…})', () => {
+    const fencedArray = '```json\n[{"panel":"door","type":"dent"}]\n```';
+    expect(JSON.parse(unfenceJson(fencedArray))).toEqual([{ panel: 'door', type: 'dent' }]);
+  });
+
+  it('slices a prose-wrapped array to the first-appearing bracket type', () => {
+    // "Result: [ {…} ]" — the array bracket appears before any object bracket, so
+    // unfenceJson must slice to [...] (slicing to {...} would yield [] on parse).
+    const prose = 'Result: [{"a":1},{"b":2}] — done';
+    expect(JSON.parse(unfenceJson(prose))).toEqual([{ a: 1 }, { b: 2 }]);
+  });
+
+  it('still slices a prose-wrapped object when the object bracket appears first', () => {
+    const prose = 'Here: {"a":1} trailing text';
+    expect(JSON.parse(unfenceJson(prose))).toEqual({ a: 1 });
+  });
+
+  it('parseVehicles recovers per-crop vehicle_details from a fenced array of dicts', () => {
+    // vehicle_details over a LIST of crops is an array of fenced ```json strings;
+    // a single fenced array string must also unfence and yield one vehicle per dict.
+    const vehicles = parseVehicles({
+      vehicle_details: '```json\n' + JSON.stringify([
+        { license_plate_text: 'CRP1', make: 'Honda' },
+        { license_plate_text: 'CRP2', make: 'Ford' },
+      ]) + '\n```',
+    });
+    expect(vehicles.map((v) => v.plate).sort()).toEqual(['CRP1', 'CRP2']);
   });
 });

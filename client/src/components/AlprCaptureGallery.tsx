@@ -6,7 +6,7 @@
 // Trust fields (trust_score / trust_basis / read_count) are enriched server-side
 // from the most-recent vehicle_capture_photos package so we can render an honest
 // TrustBadge without losing event_type, alerted/HITS, or anything else.
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScanSearch, RefreshCw, AlertTriangle } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import TrustBadge from './TrustBadge';
@@ -21,7 +21,10 @@ const GOLD = '#d4a017';
 /** One capture tile: image + overlay (box or plate chip) + meta footer. */
 function CaptureTile({ cap, onPlate }: { cap: GalleryCapture; onPlate?: (p: string) => void }) {
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
+  const [imgError, setImgError] = useState(false);
   const src = cap.image_url || cap.annotated_image_url;
+  // Reset the error state if the underlying image source changes.
+  useEffect(() => { setImgError(false); }, [src]);
   const boxes = useMemo(() => detectionBoxes(cap.detections, nat?.w, nat?.h), [cap.detections, nat]);
   const band = confidenceBand(cap.confidence, cap.accepted);
   const source = captureSource(cap);
@@ -43,11 +46,12 @@ function CaptureTile({ cap, onPlate }: { cap: GalleryCapture; onPlate?: (p: stri
         onClick={() => displayPlate && onPlate?.(displayPlate)}
         className="relative w-full block aspect-[4/3] bg-black overflow-hidden"
         title={displayPlate || 'capture'}>
-        {src ? (
+        {src && !imgError ? (
           <img
             src={authedImageUrl(src)} alt={displayPlate || 'ALPR capture'}
             loading="lazy"
             onLoad={(e) => setNat({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+            onError={() => setImgError(true)}
             className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-[#444]">
@@ -123,14 +127,23 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
     onPlate?.(plate);
   };
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true); setErr(null);
-    apiFetch<GalleryCapture[]>('/alpr/captures?gallery=1&limit=120')
+    return apiFetch<GalleryCapture[]>('/alpr/captures?gallery=1&limit=120')
       .then((r) => setCaps(Array.isArray(r) ? r : []))
       .catch((e) => setErr(e?.message || 'Failed to load captures'))
       .finally(() => setLoading(false));
-  };
-  useEffect(load, []);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setErr(null);
+    apiFetch<GalleryCapture[]>('/alpr/captures?gallery=1&limit=120')
+      .then((r) => { if (!cancelled) setCaps(Array.isArray(r) ? r : []); })
+      .catch((e) => { if (!cancelled) setErr(e?.message || 'Failed to load captures'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   const eventTypes = useMemo(() => eventTypeOptions(caps), [caps]);
   const shown = useMemo(() => filterCaptures(caps, filter), [caps, filter]);
@@ -142,7 +155,7 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
       <div className="border border-[#232323] bg-[#0b0b0b] p-2 space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-[9px] font-semibold text-[#d4a017] tracking-wider">CAPTURE GALLERY</span>
-          <button onClick={load} className="text-[9px] text-[#888] hover:text-white flex items-center gap-1">
+          <button onClick={load} aria-label="Refresh captures" title="Refresh captures" className="text-[9px] text-[#888] hover:text-white flex items-center gap-1">
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> {shown.length}/{caps.length}
           </button>
         </div>

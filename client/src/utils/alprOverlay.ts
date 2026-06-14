@@ -87,9 +87,14 @@ export function normalizeDetection(det: any, natW?: number | null, natH?: number
   }
   if ([x1, y1, x2, y2].some((v) => typeof v !== 'number' || !Number.isFinite(v))) return null;
 
-  // Decide whether coords are already fractional (all within [0,1.5]) or pixels.
+  // Decide whether coords are already fractional or pixels. Real normalized
+  // coords sit in [0,1]; anything larger is pixel-space and can't be normalized
+  // without the natural image size, so omit the box until dimensions exist
+  // (the caller recomputes once onLoad fires) rather than crushing it to a
+  // full-frame garbage rectangle.
   const maxVal = Math.max(x1!, y1!, x2!, y2!);
-  const asFraction = maxVal <= 1.5 || !natW || !natH;
+  if (maxVal > 1.0 && (!natW || !natH)) return null;
+  const asFraction = maxVal <= 1.0;
   const fx = asFraction ? 1 : 1 / (natW as number);
   const fy = asFraction ? 1 : 1 / (natH as number);
 

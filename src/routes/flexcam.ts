@@ -1,11 +1,43 @@
 // src/routes/flexcam.ts
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { ensureFootageSchema, enqueueFootage } from '../utils/footage/captureOrchestrator';
 import { buildManifest, concatToR2 } from '../utils/footage/concat';
+import { requireRole } from '../middleware/auth';
+import { footageEvidenceNumber, isUnlockable, buildCourtManifest, manifestPayloadHash, logCustody, viewSessionKey } from '../utils/footage/evidence';
+import { signTriple } from '../utils/pdfSign';
 
 const flexcam = new Hono<Env>();
+
+// Display name for chain-of-custody rows. The user var has a typed `full_name`
+// (see types.ts Variables.user); fall back to the user id, else null.
+const actorName = (c: Context<Env>): string | null =>
+  c.var.user?.full_name ?? (c.var.user?.id != null ? String(c.var.user.id) : null);
+
+// ── Evidence schema reconciler ───────────────────────────────
+// Idempotent + module-cached. Phase-2 evidence columns/tables routinely fail to
+// reach live D1 silently (deploy apply is continue-on-error), so reconcile at
+// runtime before any evidence handler touches the schema.
+let evidenceSchemaReady = false;
+async function ensureEvidenceSchema(db: D1Database): Promise<void> {
+  if (evidenceSchemaReady) return;
+  const cols: Array<[string, string]> = [
+    ['evidence_locked', 'INTEGER DEFAULT 0'], ['evidence_number', 'TEXT'], ['classification', "TEXT DEFAULT 'routine'"],
+    ['preserved_reason', 'TEXT'], ['preserved_event_type', 'TEXT'], ['preserved_event_id', 'INTEGER'],
+  ];
+  for (const [name, type] of cols) {
+    try { if (!(await columnExists(db, 'footage_requests', name))) await execute(db, `ALTER TABLE footage_requests ADD COLUMN ${name} ${type}`); } catch { /* */ }
+  }
+  try { if (!(await columnExists(db, 'footage_chunks', 'sha256'))) await execute(db, `ALTER TABLE footage_chunks ADD COLUMN sha256 TEXT`); } catch { /* */ }
+  await execute(db, `CREATE TABLE IF NOT EXISTS footage_custody_log (id INTEGER PRIMARY KEY AUTOINCREMENT, footage_request_id INTEGER NOT NULL, action TEXT NOT NULL, actor_user_id INTEGER, actor_name TEXT, reason TEXT, detail TEXT, session_key TEXT, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {});
+  await execute(db, `CREATE INDEX IF NOT EXISTS idx_footage_custody_req ON footage_custody_log(footage_request_id, id)`).catch(() => {});
+  await execute(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_footage_custody_view ON footage_custody_log(footage_request_id, actor_user_id, session_key) WHERE action='viewed'`).catch(() => {});
+  await execute(db, `CREATE TABLE IF NOT EXISTS footage_evidence_links (id INTEGER PRIMARY KEY AUTOINCREMENT, footage_request_id INTEGER NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, linked_by INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {});
+  await execute(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_footage_evlink ON footage_evidence_links(footage_request_id, entity_type, entity_id)`).catch(() => {});
+  evidenceSchemaReady = true;
+}
 
 flexcam.get('/status', async (c): Promise<Response> => {
   const db = getDb(c.env);
@@ -70,6 +102,7 @@ flexcam.get('/footage/:id/chunk/:seq/stream', async (c): Promise<Response> => {
   if (!row?.r2_key) return c.json({ error: 'Chunk not found' }, 404);
   const obj = await c.env.UPLOADS.get(row.r2_key);
   if (!obj) return c.json({ error: 'Object missing' }, 404);
+  await logCustody(db, { requestId: Number(c.req.param('id')), action: 'viewed', actorUserId: c.var.user?.id ?? null, actorName: actorName(c), sessionKey: viewSessionKey(c.var.user?.id ?? null, new Date().toISOString()) }); // new-date-ok
   return new Response(obj.body, { headers: { 'Content-Type': row.content_type || 'video/mp4', 'Cache-Control': 'private, max-age=3600' } });
 });
 
@@ -98,6 +131,107 @@ flexcam.post('/render/:id', async (c): Promise<Response> => {
   const result = await concatToR2(c.env, mergedKey, manifest.chunks, 'mp4');
   await execute(db, 'UPDATE footage_requests SET merged_r2_key=?, merged_status=? WHERE id=?', result === 'ready' ? mergedKey : null, result, id);
   return c.json({ merged_status: result, merged_r2_key: result === 'ready' ? mergedKey : null });
+});
+
+// ── Evidence endpoints ───────────────────────────────────────
+
+flexcam.post('/footage/:id/lock', async (c): Promise<Response> => {
+  const db = getDb(c.env); await ensureEvidenceSchema(db);
+  const id = Number(c.req.param('id'));
+  const row = await queryFirst<{ evidence_number: string | null }>(db, 'SELECT evidence_number FROM footage_requests WHERE id=?', id).catch(() => null);
+  if (!row) return c.json({ error: 'Not found' }, 404);
+  let evNum = row.evidence_number;
+  if (!evNum) {
+    const year = Number(new Date().toISOString().slice(0, 4)); // new-date-ok
+    const seq = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM footage_requests WHERE evidence_number IS NOT NULL AND substr(evidence_number,1,2)=?", String(year).slice(-2)).catch(() => ({ n: 0 }));
+    evNum = footageEvidenceNumber(year, (seq?.n ?? 0) + 1);
+  }
+  await execute(db, "UPDATE footage_requests SET evidence_locked=1, classification='evidence', evidence_number=COALESCE(evidence_number, ?), updated_at=datetime('now') WHERE id=?", evNum, id);
+  await logCustody(db, { requestId: id, action: 'locked', actorUserId: c.var.user?.id ?? null, actorName: actorName(c) });
+  return c.json({ success: true, evidence_number: evNum });
+});
+
+flexcam.post('/footage/:id/unlock', requireRole('admin'), async (c): Promise<Response> => {
+  const db = getDb(c.env); await ensureEvidenceSchema(db);
+  const id = Number(c.req.param('id'));
+  let body: { reason?: string }; try { body = await c.req.json(); } catch { body = {}; }
+  if (!isUnlockable(body.reason)) return c.json({ error: 'A reason is required to unlock evidence' }, 400);
+  const exists = await queryFirst<{ id: number }>(db, 'SELECT id FROM footage_requests WHERE id=?', id).catch(() => null);
+  if (!exists) return c.json({ error: 'Not found' }, 404);
+  await execute(db, "UPDATE footage_requests SET evidence_locked=0, updated_at=datetime('now') WHERE id=?", id);
+  await logCustody(db, { requestId: id, action: 'unlocked', actorUserId: c.var.user?.id ?? null, actorName: actorName(c), reason: (body.reason as string).trim() });
+  return c.json({ success: true });
+});
+
+flexcam.get('/footage/:id/custody', async (c): Promise<Response> => {
+  const db = getDb(c.env); await ensureEvidenceSchema(db);
+  const id = Number(c.req.param('id'));
+  const req = await queryFirst<Record<string, unknown>>(db, 'SELECT id, evidence_locked, evidence_number, classification, preserved_reason FROM footage_requests WHERE id=?', id).catch(() => null);
+  if (!req) return c.json({ error: 'Not found' }, 404);
+  const custody = await query(db, 'SELECT action, actor_user_id, actor_name, reason, detail, created_at FROM footage_custody_log WHERE footage_request_id=? ORDER BY id', id).catch(() => []);
+  const links = await query(db, 'SELECT entity_type, entity_id, linked_by, notes, created_at FROM footage_evidence_links WHERE footage_request_id=?', id).catch(() => []);
+  return c.json({ request: req, custody, links });
+});
+
+flexcam.post('/footage/:id/links', async (c): Promise<Response> => {
+  const db = getDb(c.env); await ensureEvidenceSchema(db);
+  const id = Number(c.req.param('id'));
+  let body: { entity_type?: string; entity_id?: number; notes?: string }; try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON' }, 400); }
+  const allowed = ['incident', 'call', 'case', 'use_of_force', 'person', 'warrant'];
+  if (!body.entity_type || !allowed.includes(body.entity_type) || !body.entity_id) return c.json({ error: 'entity_type (one of ' + allowed.join('|') + ') + entity_id required' }, 400);
+  await execute(db, 'INSERT OR IGNORE INTO footage_evidence_links (footage_request_id, entity_type, entity_id, linked_by, notes) VALUES (?, ?, ?, ?, ?)', id, body.entity_type, body.entity_id, c.var.user?.id ?? null, body.notes ?? null);
+  await logCustody(db, { requestId: id, action: 'linked', actorUserId: c.var.user?.id ?? null, actorName: actorName(c), detail: { entity_type: body.entity_type, entity_id: body.entity_id } });
+  return c.json({ success: true });
+});
+
+flexcam.get('/footage/:id/links', async (c): Promise<Response> => {
+  const db = getDb(c.env); await ensureEvidenceSchema(db);
+  const links = await query(db, 'SELECT entity_type, entity_id, linked_by, notes, created_at FROM footage_evidence_links WHERE footage_request_id=?', Number(c.req.param('id'))).catch(() => []);
+  return c.json({ links });
+});
+
+flexcam.post('/footage/:id/court-package', async (c): Promise<Response> => {
+  const db = getDb(c.env); await ensureEvidenceSchema(db);
+  const id = Number(c.req.param('id'));
+  const req = await queryFirst<{ id: number; evidence_number: string | null; classification: string; preserved_reason: string | null; from_ts: number; to_ts: number; evidence_locked: number }>(
+    db, 'SELECT id, evidence_number, classification, preserved_reason, from_ts, to_ts, evidence_locked FROM footage_requests WHERE id=?', id).catch(() => null);
+  if (!req) return c.json({ error: 'Not found' }, 404);
+  if (!req.evidence_locked) return c.json({ error: 'Lock this footage as evidence before generating a court package' }, 409);
+  const chunks = await query<{ id: number; seq: number; from_ts: number; to_ts: number; bytes: number; sha256: string | null; status: string; r2_key: string | null }>(
+    db, 'SELECT id, seq, from_ts, to_ts, bytes, sha256, status, r2_key FROM footage_chunks WHERE request_id=? ORDER BY seq', id).catch(() => []);
+  const MAX_HASH_BYTES = 100 * 1024 * 1024; // 100 MB — avoid loading a pathological chunk into the 128 MB isolate
+  for (const ch of chunks) {
+    if (ch.sha256 || ch.status !== 'downloaded' || !ch.r2_key) continue;
+    if (ch.bytes && ch.bytes > MAX_HASH_BYTES) continue; // skip oversized; sha256 stays null
+    const obj = await c.env.UPLOADS.get(ch.r2_key); if (!obj) continue;
+    const digest = await crypto.subtle.digest('SHA-256', await obj.arrayBuffer());
+    ch.sha256 = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    await execute(db, 'UPDATE footage_chunks SET sha256=? WHERE id=?', ch.sha256, ch.id).catch(() => {});
+  }
+  const links = await query<{ entity_type: string; entity_id: number }>(db, 'SELECT entity_type, entity_id FROM footage_evidence_links WHERE footage_request_id=?', id).catch(() => []);
+  const custody = await query<{ action: string; actor_name: string | null; reason: string | null; created_at: string }>(db, 'SELECT action, actor_name, reason, created_at FROM footage_custody_log WHERE footage_request_id=? ORDER BY id', id).catch(() => []);
+  const manifest = buildCourtManifest({ request: req, chunks, links, custody });
+  const payloadHash = await manifestPayloadHash(manifest);
+  const caseRef = links.find((l) => l.entity_type === 'incident' || l.entity_type === 'case');
+  const signed = await signTriple(c.env, `flexcam:${req.evidence_number ?? id}`, caseRef ? `${caseRef.entity_type}:${caseRef.entity_id}` : '', payloadHash);
+  await logCustody(db, { requestId: id, action: 'exported', actorUserId: c.var.user?.id ?? null, actorName: actorName(c), detail: { payloadHash } });
+  return c.json({ manifest, payloadHash, ...signed });
+});
+
+// Locked-evidence delete guard: a request flagged as evidence cannot be deleted
+// until an admin unlocks it. The blocked attempt is itself recorded to custody.
+flexcam.delete('/footage/:id', async (c): Promise<Response> => {
+  const db = getDb(c.env); await ensureEvidenceSchema(db);
+  const id = Number(c.req.param('id'));
+  const row = await queryFirst<{ evidence_locked: number }>(db, 'SELECT evidence_locked FROM footage_requests WHERE id=?', id).catch(() => null);
+  if (!row) return c.json({ error: 'Not found' }, 404);
+  if (row.evidence_locked) {
+    await logCustody(db, { requestId: id, action: 'delete_attempt', actorUserId: c.var.user?.id ?? null, actorName: actorName(c) });
+    return c.json({ error: 'Locked as evidence — unlock (admin) before deleting' }, 409);
+  }
+  await execute(db, 'DELETE FROM footage_chunks WHERE request_id=?', id);
+  await execute(db, 'DELETE FROM footage_requests WHERE id=?', id);
+  return c.json({ success: true });
 });
 
 export default flexcam;
