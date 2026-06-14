@@ -11,6 +11,7 @@ import { recordPath } from './intelTypes';
 import SearchBar from './search/SearchBar';
 import FacetSidebar from './search/FacetSidebar';
 import ResultGroup, { groupByType } from './search/ResultGroup';
+import { stepIndex } from './search/stepIndex';
 import { useSavedSearches } from './useSavedSearches';
 
 export default function IntelSearch() {
@@ -37,11 +38,28 @@ export default function IntelSearch() {
     return clusterHits(r);
   }, [results, activeType, activeFlags]);
 
+  // Grouped + flat views share one order so the keyboard cursor maps to the DOM.
+  const grouped = useMemo(() => groupByType(clustered), [clustered]);
+  const flat = useMemo(() => grouped.flatMap(([, items]) => items), [grouped]);
+  const [cursor, setCursor] = useState(-1);
+  useEffect(() => setCursor(-1), [flat]);
+  const highlightKey = cursor >= 0 && flat[cursor] ? `${flat[cursor].hit.type}:${flat[cursor].hit.id}` : null;
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setCursor((c) => stepIndex(c < 0 ? -1 : c, +1, flat.length)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setCursor((c) => stepIndex(c < 0 ? 0 : c, -1, flat.length)); }
+    else if (e.key === 'Enter' && cursor >= 0 && flat[cursor]) {
+      const h = flat[cursor].hit;
+      if (e.metaKey || e.ctrlKey) navigate(recordPath({ type: h.type, id: h.id }));
+      else selectEntity(h.type, h.id, h.label);
+    }
+  };
+
   const toggleType = (t: string) => setActiveType((cur) => (cur === t ? null : t));
   const toggleFlag = (f: string) => setActiveFlags((cur) => (cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f]));
 
   return (
-    <div className="p-3 space-y-3">
+    <div className="p-3 space-y-3" onKeyDown={onKeyDown}>
       <SearchBar value={raw} onChange={setRaw} onSave={(name) => save(name, raw)} />
       {error && <div className="text-[10px] text-[#ff6b5e]">Search error: {error}</div>}
 
@@ -56,8 +74,8 @@ export default function IntelSearch() {
           {clustered.length > 0 && (
             <div className="font-mono text-[9px] text-[#666] px-1">{clustered.length} result{clustered.length === 1 ? '' : 's'}</div>
           )}
-          {groupByType(clustered).map(([type, items]) => (
-            <ResultGroup key={type} type={type} items={items}
+          {grouped.map(([type, items]) => (
+            <ResultGroup key={type} type={type} items={items} highlightKey={highlightKey}
               onSelect={selectEntity}
               onOpen={(t, id) => navigate(recordPath({ type: t, id }))} />
           ))}
