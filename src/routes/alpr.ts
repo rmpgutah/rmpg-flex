@@ -93,8 +93,10 @@ const SIGHTING_EXTRA_COLUMNS: Array<[string, string]> = [
 ];
 
 /** Create the table (with all columns) and reconcile any missing columns at
- *  runtime, so the route self-heals if migration 0108/0109 never reached D1. */
-async function ensureAlprSchema(db: ReturnType<typeof getDb>) {
+ *  runtime, so the route self-heals if migration 0108/0109 never reached D1.
+ *  Returns whether the partial UNIQUE index on capture_id exists — the INSERT
+ *  may only use `ON CONFLICT(capture_id)` when it does (SQLite throws otherwise). */
+async function ensureAlprSchema(db: ReturnType<typeof getDb>): Promise<boolean> {
   await execute(db, `CREATE TABLE IF NOT EXISTS alpr_captures (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sighting_id INTEGER, capture_id TEXT, case_id TEXT,
@@ -117,6 +119,13 @@ async function ensureAlprSchema(db: ReturnType<typeof getDb>) {
   // fall back to the check-then-insert path.
   try { await execute(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_alpr_capture_id_uniq ON alpr_captures(capture_id) WHERE capture_id IS NOT NULL`); }
   catch { /* legacy dupes block the unique index — check-then-insert still guards */ }
+  // Whether the unique index actually landed. On live, pre-existing duplicate
+  // capture_id rows make the CREATE above fail (and be swallowed), so the INSERT
+  // must NOT emit ON CONFLICT(capture_id) — that would throw "does not match any
+  // UNIQUE constraint" and break every capture. Detect the real state here.
+  const uniqIdx = await queryFirst<{ name: string }>(db,
+    `SELECT name FROM sqlite_master WHERE type='index' AND name='idx_alpr_capture_id_uniq'`);
+  const hasCaptureUniqueIndex = !!uniqIdx;
   for (const [name, type] of ALPR_EXTRA_COLUMNS) {
     if (!(await columnExists(db, 'alpr_captures', name))) {
       try { await execute(db, `ALTER TABLE alpr_captures ADD COLUMN ${name} ${type}`); }
@@ -167,6 +176,18 @@ async function ensureAlprSchema(db: ReturnType<typeof getDb>) {
       }
     } catch { /* table absent or lost a race — fine, best-effort */ }
   }
+  return hasCaptureUniqueIndex;
+}
+
+/** Build the upsert suffix for the alpr_captures INSERT. SQLite only accepts
+ *  `ON CONFLICT(capture_id)` when a matching UNIQUE index exists, and a PARTIAL
+ *  index requires its predicate (`WHERE capture_id IS NOT NULL`) to be repeated
+ *  in the conflict target. When the index is absent (legacy dupes on live) or the
+ *  capture has no capture_id, emit no clause and rely on check-then-insert. */
+export function captureConflictClause(hasUniqueIndex: boolean, captureId: string | null): string {
+  return hasUniqueIndex && captureId != null
+    ? ' ON CONFLICT(capture_id) WHERE capture_id IS NOT NULL DO NOTHING'
+    : '';
 }
 
 function extFrom(filename: string | undefined, contentType: string | undefined): string {
@@ -427,7 +448,7 @@ alpr.post('/capture', operational, async (c) => {
   const locationText = strOrNull(params.location_label) ?? strOrNull(params.street_address);
   const attachToCall = callId != null || incidentId != null;
 
-  await ensureAlprSchema(db);
+  const hasCaptureUniqueIndex = await ensureAlprSchema(db);
 
   // Idempotent offline-replay: a repeated capture_id returns the prior row.
   const captureId = typeof params.capture_id === 'string' ? params.capture_id : null;
@@ -478,25 +499,28 @@ alpr.post('/capture', operational, async (c) => {
 
   // Capture row (plate known). finalizeCapture then screens + applies the 0.85
   // gate + creates records, and stamps the row 'done'.
-  // ON CONFLICT(capture_id) DO NOTHING makes the offline-replay idempotent at the
-  // DB level (closes the concurrent-replay race the check-above can't) when the
-  // unique partial index exists; on conflict no row is inserted (changes === 0)
-  // and we return the row the winning racer created.
+  // The ON CONFLICT(capture_id) suffix makes the offline-replay idempotent at the
+  // DB level (closes the concurrent-replay race the check-above can't) — but ONLY
+  // when the partial unique index exists, and it must repeat the index predicate.
+  // captureConflictClause() returns '' when the index is absent (legacy dupes on
+  // live) so the INSERT can't throw; check-then-insert above still guards the
+  // common case.
   const ins = await execute(db,
     `INSERT INTO alpr_captures
        (sighting_id, capture_id, case_id, plate, state, confidence, plate_confidence,
         review_status, image_key, raw_json, lat, lng, location_text, captured_by,
         call_id, incident_id, field_photo_id, vehicle_count, vehicle_record_ids, enrich_status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-     ON CONFLICT(capture_id) DO NOTHING`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')` +
+    captureConflictClause(hasCaptureUniqueIndex, captureId),
     null, captureId, strOrNull(params.case_id), plate, read?.state ?? null,
     read?.confidence ?? null, read?.confidence ?? null, 'pending', imageKey,
     JSON.stringify({ engine: read?.model_id ?? 'workers-ai', plate, read }),
     lat, lng, locationText, userId,
     callId, incidentId, fieldPhotoId, plate ? 1 : 0, JSON.stringify([]));
   // A concurrent replay won the race (no row inserted) — return the existing one
-  // rather than finalizing a phantom row.
-  if (captureId && (ins.meta.changes ?? 0) === 0) {
+  // rather than finalizing a phantom row. Only possible when the conflict clause
+  // was actually emitted.
+  if (captureId && hasCaptureUniqueIndex && (ins.meta.changes ?? 0) === 0) {
     const existing = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE capture_id = ?', captureId);
     if (existing) return c.json({ success: true, duplicate: true, ...shapeCapture(existing) });
   }
