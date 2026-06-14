@@ -387,20 +387,11 @@ const STUBS: StubRule[] = [
   // component source) so the page renders its empty state instead of
   // crashing/erroring. Remove a stub when its real backend lands.
   //
-  // DashcamAiPage: reads evRes.events (array) + fleetRes.units (array) — set
-  // straight into state with no `?? []`, so the keys MUST be arrays.
-  {
-    match: /^\/api\/driving-events(\?.*)?$/,
-    methods: ['GET'],
-    body: { events: [], total: 0, limit: 200, offset: 0 },
-    reason: 'no driving_events table; DashcamAiPage tolerates empty events',
-  },
-  {
-    match: /^\/api\/driving-events\/fleet-health(\?.*)?$/,
-    methods: ['GET'],
-    body: { units: [] },
-    reason: 'no driving_events table; DashcamAiPage fleet-health tolerates empty units',
-  },
+  // DashcamAiPage: /api/driving-events + /fleet-health now have a REAL handler
+  // in the rewrite (src/routes/drivingEvents.ts, normalizing the live ClearPath
+  // dashcam feed) — the empty-list stubs were removed 2026-06-14 and the prefix
+  // routes to env.API via API_ROUTES below. (Stubs are checked before API_ROUTES,
+  // so leaving them here permanently shadowed the real data.)
   // WebResearchPage: reads data?.connected (coerced).
   {
     match: /^\/api\/web-research\/status(\?.*)?$/,
@@ -1791,6 +1782,10 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/company-documents' },
   // ── ClearPathGPS integration stubs ──
   { kind: 'prefix', value: '/api/clearpathgps' },
+  // ── Dashcam AI Console — driving-events feed (normalized dashcam_events) ──
+  // New top-level prefix; route to the rewrite so the console populates (else it
+  // falls through to legacy, which returns an empty list).
+  { kind: 'prefix', value: '/api/driving-events' },
   // ── Forensic lab (alias for /api/forensics) ──
   { kind: 'prefix', value: '/api/forensic-lab' },
 

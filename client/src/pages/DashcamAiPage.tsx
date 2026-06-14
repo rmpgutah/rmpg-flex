@@ -13,14 +13,13 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Activity, AlertTriangle, Camera, Cpu, Filter, MapPin, PlayCircle, RefreshCw,
   Shield, Signal, Video, Zap,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { formatEnumValue } from '../utils/formatters';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import usePersistedState from '../hooks/usePersistedState';
 import useLiveSync from '../hooks/useLiveSync';
 import { parseTimestamp } from '../utils/dateUtils';
@@ -48,6 +47,9 @@ interface DrivingEvent {
   has_video: number;
   video_url: string | null;
   clip_object_key: string | null;
+  still_image_url: string | null;
+  plate: string | null;
+  raw_event_type: string | null;
   duration_sec: number | null;
   model_version: string | null;
   confidence: number | null;
@@ -131,7 +133,6 @@ function formatRelative(s: string | null): string {
 // ── Page ────────────────────────────────────────────────────
 
 export default function DashcamAiPage(): React.ReactElement {
-  const navigate = useNavigate();
   const [events, setEvents] = useState<DrivingEvent[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -398,19 +399,42 @@ export default function DashcamAiPage(): React.ReactElement {
                 aria-label="Close detail"
               >×</button>
             </div>
-            <div className="px-3 pt-3">
-              <button
-                onClick={() => navigate(`/dashcam-ai/${selected.id}`)}
-                className="w-full px-3 py-2 border border-[#d4a017] text-[#d4a017] hover:bg-[#d4a017] hover:text-black transition-colors text-[11px] uppercase tracking-wider font-semibold inline-flex items-center justify-center gap-2"
-                type="button"
-                aria-label="Open AAR replay for this event"
-              >
-                <PlayCircle className="w-4 h-4" aria-hidden="true" />
-                AAR Replay
-              </button>
-            </div>
+            {/* AI still (ClearPath dashcam frame) with the read plate overlaid. */}
+            {selected.still_image_url && (
+              <div className="px-3 pt-3">
+                <a
+                  href={authedImageUrl(selected.still_image_url)} target="_blank" rel="noreferrer"
+                  className="relative block border border-[#222] hover:border-[#d4a017] transition-colors group"
+                  aria-label="Open full dashcam still"
+                >
+                  <img
+                    src={authedImageUrl(selected.still_image_url)} alt="Dashcam still"
+                    className="w-full aspect-[4/3] object-cover" />
+                  <span className="absolute top-1 left-1 text-[8px] font-bold tracking-wider px-1 py-[1px] bg-black/75 text-[#bbb] border border-[#333]">
+                    AI STILL
+                  </span>
+                  {selected.plate && (
+                    <span className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/90 to-transparent text-base tracking-[0.18em] font-semibold text-white">
+                      {selected.plate}
+                      {selected.confidence != null && (
+                        <span className="text-[9px] font-mono text-[#d4a017] ml-2 align-middle">{(selected.confidence * 100).toFixed(0)}%</span>
+                      )}
+                    </span>
+                  )}
+                  <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <PlayCircle className="w-8 h-8 text-[#d4a017] drop-shadow" aria-hidden="true" />
+                  </span>
+                </a>
+              </div>
+            )}
             <div className="p-3 space-y-2 text-[11px]">
               <DetailRow icon={Shield} label="Source"   value={selected.source} />
+              {selected.raw_event_type && (
+                <DetailRow icon={Activity} label="AI event" value={selected.raw_event_type} />
+              )}
+              {selected.plate && (
+                <DetailRow icon={Camera} label="Plate read" value={selected.plate} />
+              )}
               <DetailRow icon={AlertTriangle} label="Severity" value={formatEnumValue(selected.severity)} />
               <DetailRow icon={MapPin} label="Unit" value={`${selected.call_sign ?? `unit-${selected.unit_id}`}${selected.officer_name ? ` / ${selected.officer_name}` : ''}`} />
               {selected.confidence != null && (
