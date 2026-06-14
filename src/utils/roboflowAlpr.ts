@@ -424,8 +424,10 @@ export function unfenceJson(s: string): string {
   // ```json … ```  or  ``` … ```  (tolerate any/no language tag).
   const fence = /^```[a-zA-Z0-9]*\s*([\s\S]*?)\s*```$/.exec(t);
   if (fence) t = fence[1].trim();
-  // Still wrapped in prose? Slice to the outermost object.
-  if (!t.startsWith('{')) {
+  // Still wrapped in prose? Slice to the outermost object — but leave a JSON
+  // array intact (slicing to `{…}` would corrupt a fenced `[…]`, e.g. the
+  // per-crop vehicle_details list or damage_areas).
+  if (!t.startsWith('{') && !t.startsWith('[')) {
     const a = t.indexOf('{');
     const b = t.lastIndexOf('}');
     if (a !== -1 && b > a) t = t.slice(a, b + 1);
