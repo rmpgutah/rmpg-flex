@@ -349,7 +349,14 @@ export async function runAllSourceScans(
       errors: 0,
     };
   } else {
-    utah = await runUtahWarrantScan(db);
+    try {
+      utah = await runUtahWarrantScan(db);
+    } catch (err) {
+      // Utah runs first now; a throw must NOT abort the independent scraped/
+      // full-list legs. Degrade to a failed result and continue.
+      console.warn('[warrantSources.runScan] Utah leg threw:', err instanceof Error ? err.message : String(err));
+      utah = { run_id: 'utah-error', status: 'failed', persons_checked: 0, new_warrants_found: 0, warrants_cleared: 0, errors: 1 };
+    }
   }
 
   // ── Scraped leg ────────────────────────────────────────────────────────────
