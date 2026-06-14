@@ -30,6 +30,8 @@ import { screenVehicle } from '../utils/intelScreen';
 import { bytesToBase64 } from '../utils/anthropic';
 import {
   runAlprVehicleCapture,
+  acceptByConfidence,
+  ALPR_ACCEPT_CONFIDENCE,
   RoboflowConfigError,
   RoboflowTimeoutError,
   RoboflowHttpError,
@@ -40,6 +42,19 @@ import {
 import { runPlateFast } from '../utils/roboflowPlateFast';
 
 const alpr = new Hono<Env>();
+
+/** Acceptance threshold (0.85). Overridable via the ALPR_ACCEPT_CONFIDENCE env. */
+function acceptThreshold(env: Env['Bindings']): number {
+  const v = Number((env as Record<string, unknown>).ALPR_ACCEPT_CONFIDENCE);
+  return Number.isFinite(v) && v > 0 && v <= 1 ? v : ALPR_ACCEPT_CONFIDENCE;
+}
+
+/** A damage summary line for a vehicle_sightings.notes string (schema-free). */
+function damageNote(v: AlprVehicle): string {
+  if (!v.damageObserved && !v.damageAreas.length) return '';
+  const areas = v.damageAreas.map((a) => [a.severity, a.panel, a.type].filter(Boolean).join(' ')).filter(Boolean);
+  return ` | damage: ${v.damageSummary || areas.join('; ') || 'observed'}`;
+}
 
 // Field-operational roles capture plates; client_viewer / contract_manager
 // / human_resources are excluded (mirrors the intel.ts gate).
@@ -75,6 +90,10 @@ const ALPR_EXTRA_COLUMNS: Array<[string, string]> = [
   ['call_id', 'INTEGER'], ['incident_id', 'INTEGER'], ['field_photo_id', 'INTEGER'],
   ['vehicle_count', 'INTEGER'], ['vehicle_record_ids', 'TEXT'],
   ['enrich_status', 'TEXT'],
+  // Advanced scanner: condition/damage + the 0.85 acceptance gate.
+  ['condition', 'TEXT'], ['damage_observed', 'INTEGER'], ['damage_summary', 'TEXT'],
+  ['plate_confidence', 'REAL'], ['accepted', 'INTEGER'],
+  ['reviewed_by', 'INTEGER'], ['reviewed_at', 'TEXT'],
 ];
 
 /** Create the table (with all columns) and reconcile any missing columns at
@@ -189,13 +208,30 @@ async function enrichCapture(
       parameters: args.params,
     });
 
+    const TH = acceptThreshold(env);
+    // Gate identity attributes to the acceptance threshold before they touch the
+    // permanent vehicles_records — each field on its OWN confidence, fail-closed
+    // (a missing confidence is treated as below the gate). Descriptive
+    // damage/condition is NOT gated away here; it's stored as an observation.
+    const gateVehicle = (v: AlprVehicle): AlprVehicle => ({
+      ...v,
+      state: acceptByConfidence(v.state, v.confidences.plate ?? v.confidence, TH),
+      make: acceptByConfidence(v.make, v.confidences.make, TH),
+      model: acceptByConfidence(v.model, v.confidences.model, TH),
+      year: acceptByConfidence(v.year, v.confidences.year, TH),
+      color: acceptByConfidence(v.color, v.confidences.color, TH),
+    });
+
     for (const v of result.vehicles) {
       if (!v.plate || v.plate.length < 2) continue;
+      const plateConf = v.confidences.plate ?? v.confidence ?? null;
+      const accepted = (plateConf ?? 0) >= TH;
       const screen = await screenVehicle(db, { plate: v.plate });
-      const up = await upsertVehicleRecord(db, v, screen.vehicleId);  // enriches blank fields
+      const up = await upsertVehicleRecord(db, gateVehicle(v), screen.vehicleId);  // gated identity fill
       const recordId = up?.id ?? screen.vehicleId ?? null;
 
-      // Primary plate already fully handled in the fast path — attributes only.
+      // Primary plate already record/linked/sighted in the fast path; its
+      // attributes were just filled (gated) above. Capture-level handled below.
       if (args.primaryPlate && v.plate === args.primaryPlate) continue;
 
       // Secondary vehicle: full link + sighting + screening + notify.
@@ -207,20 +243,22 @@ async function enrichCapture(
         } catch (err: any) { console.error('[alpr] enrich link failed:', err?.message); }
       }
       try {
-        const note = `ALPR: ${[v.color, v.make, v.model, v.year].filter(Boolean).join(' ')}`.trim();
+        const base = `ALPR: ${[v.color, v.make, v.model, v.year].filter(Boolean).join(' ')}`.trim();
+        const note = `${base === 'ALPR:' ? 'ALPR capture' : base}${accepted ? '' : ' (unverified <85%)'}${damageNote(v)}`;
         await execute(db,
           `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          v.plate, v.state, recordId, args.locationText, args.lat, args.lng,
-          note === 'ALPR:' ? 'ALPR capture' : note, args.userId);
+          v.plate, v.state, recordId, args.locationText, args.lat, args.lng, note, args.userId);
       } catch (err: any) { console.error('[alpr] enrich sighting failed:', err?.message); }
       const critical = screen.hits.filter((h) => h.severity === 'critical');
       if (critical.length) {
         try {
+          // Safety: screen even sub-85% plates, but label the hit UNCONFIRMED.
+          const title = `${accepted ? '' : 'UNCONFIRMED — verify plate: '}PLATE HIT: ${v.plate}`;
           await execute(db,
             `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
              VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
-            `PLATE HIT: ${v.plate}`, critical.map((h) => h.detail).join('; '), recordId, args.userId);
+            title, critical.map((h) => h.detail).join('; '), recordId, args.userId);
         } catch (err: any) { console.error('[alpr] enrich notify failed:', err?.message); }
       }
     }
@@ -234,6 +272,13 @@ async function enrichCapture(
         { httpMetadata: { contentType: annotated.mimeType } });
     }
 
+    // Capture-level summary reflects the PRIMARY vehicle + the acceptance gate.
+    const primary = result.vehicles.find((v) => v.plate && v.plate === args.primaryPlate)
+      ?? result.vehicles.find((v) => v.plate) ?? null;
+    const gp = primary ? gateVehicle(primary) : null;
+    const primaryConf = primary ? (primary.confidences.plate ?? primary.confidence ?? null) : null;
+    const accepted = !!primary && (primaryConf ?? 0) >= TH;
+    const dmgObs = primary?.damageObserved ?? result.capture.damageObserved;
     const cap = result.capture;
     const rawJson = JSON.stringify({
       capture: cap, vehicles: result.vehicles, detections: result.detections,
@@ -244,11 +289,18 @@ async function enrichCapture(
       `UPDATE alpr_captures SET make=COALESCE(NULLIF(make,''),?), model=COALESCE(NULLIF(model,''),?),
          color=COALESCE(NULLIF(color,''),?), year=COALESCE(year,?), state=COALESCE(NULLIF(state,''),?),
          vehicle_type=COALESCE(NULLIF(vehicle_type,''),?), risk_score=COALESCE(risk_score,?),
-         review_status=COALESCE(NULLIF(review_status,''),?), raw_json=?,
+         condition=?, damage_observed=?, damage_summary=?, plate_confidence=?, accepted=?,
+         review_status=?, raw_json=?,
          annotated_image_key=COALESCE(annotated_image_key,?), vehicle_count=?, enrich_status='done'
        WHERE id=?`,
-      cap.make, cap.model, cap.color, cap.year, cap.state, cap.vehicleType, cap.riskScore,
-      cap.reviewStatus, rawJson, annotatedKey, result.vehicles.length, args.captureRowId);
+      gp?.make ?? null, gp?.model ?? null, gp?.color ?? null, gp?.year ?? null, gp?.state ?? null,
+      cap.vehicleType, cap.riskScore,
+      (primary?.condition ?? cap.condition) ?? null,
+      dmgObs == null ? null : (dmgObs ? 1 : 0),
+      (primary?.damageSummary ?? cap.damageSummary) ?? null,
+      primaryConf, accepted ? 1 : 0,
+      accepted ? (cap.reviewStatus || 'accepted') : 'needs_review',
+      rawJson, annotatedKey, result.vehicles.length, args.captureRowId);
   } catch (err: any) {
     console.error('[alpr] enrich failed:', err?.message);
     try { await execute(db, `UPDATE alpr_captures SET enrich_status='failed' WHERE id=?`, args.captureRowId); }
@@ -425,6 +477,13 @@ alpr.post('/capture', operational, async (c) => {
       year: null, vehicleType: null, confidence: null, riskScore: null, reviewStatus: null, alerted: false },
     detections: fast.predictions,
     enrich_status: 'pending',
+    // Advanced scanner fields — undetermined until the enrich gate runs.
+    accepted: null,
+    plate_confidence: null,
+    condition: null,
+    damage_observed: null,
+    damage_summary: null,
+    damage_areas: [],
     hits,
     image_url: imageUrlFor(imageKey),
     annotated_image_url: null,
@@ -437,10 +496,12 @@ alpr.get('/captures', operational, async (c) => {
   const plate = (c.req.query('plate') || '').toUpperCase().replace(/[\s-]/g, '');
   const caseId = c.req.query('case_id') || '';
   const callId = c.req.query('call_id') || '';
+  const review = c.req.query('review');
   const limit = Math.min(Number(c.req.query('limit')) || 25, 100);
   try {
     let rows;
-    if (plate) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE plate LIKE ? ORDER BY created_at DESC LIMIT ?`, `%${plate}%`, limit);
+    if (review) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE accepted = 0 OR review_status = 'needs_review' ORDER BY created_at DESC LIMIT ?`, limit);
+    else if (plate) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE plate LIKE ? ORDER BY created_at DESC LIMIT ?`, `%${plate}%`, limit);
     else if (callId) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE call_id = ? ORDER BY created_at DESC LIMIT ?`, Number(callId), limit);
     else if (caseId) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE case_id = ? ORDER BY created_at DESC LIMIT ?`, caseId, limit);
     else rows = await query<any>(db, `SELECT * FROM alpr_captures ORDER BY created_at DESC LIMIT ?`, limit);
@@ -456,6 +517,65 @@ alpr.get('/capture/:id', operational, async (c) => {
   const row = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', Number(c.req.param('id')));
   if (!row) return c.json({ error: 'Not found' }, 404);
   return c.json(shapeCapture(row));
+});
+
+// ── Review queue: confirm a held (sub-85%) capture ───────────
+// Promotes a held read after a human verifies it. Optionally corrects the
+// plate; (re)links + screens the corrected vehicle. Records the reviewer.
+alpr.post('/capture/:id/accept', operational, async (c) => {
+  const db = getDb(c.env);
+  await ensureAlprSchema(db);
+  const id = Number(c.req.param('id'));
+  const userId = Number(c.var.user?.id ?? 0);
+  const row = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
+  if (!row) return c.json({ error: 'Not found' }, 404);
+
+  let body: any = {};
+  try { body = await c.req.json(); } catch { /* no body is fine */ }
+  const corrected = typeof body.plate === 'string' && body.plate.trim()
+    ? body.plate.toUpperCase().replace(/[\s-]/g, '') : null;
+  const plate = corrected || row.plate;
+
+  // (Re)link + screen the confirmed plate (best-effort; never blocks confirm).
+  let hits: Array<{ kind: string; severity: string; detail: string }> = [];
+  if (plate) {
+    try {
+      const screen = await screenVehicle(db, { plate });
+      hits = screen.hits;
+      const v: AlprVehicle = { plate, state: row.state ?? null, make: row.make ?? null, model: row.model ?? null,
+        color: row.color ?? null, year: row.year ?? null, vehicleType: row.vehicle_type ?? null, plateType: null,
+        confidence: row.plate_confidence ?? null, condition: row.condition ?? null, damageObserved: null,
+        damageSummary: row.damage_summary ?? null, damageAreas: [], aftermarket: null, confidences: {} };
+      const up = await upsertVehicleRecord(db, v, screen.vehicleId);
+      const recordId = up?.id ?? screen.vehicleId ?? null;
+      if (recordId && row.call_id != null) {
+        await execute(db,
+          `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
+           VALUES (?, ?, 'observed', 'ALPR (confirmed)', ?, datetime('now'))`, row.call_id, recordId, userId);
+      }
+    } catch (err: any) { console.error('[alpr] accept relink failed:', err?.message); }
+  }
+
+  await execute(db,
+    `UPDATE alpr_captures SET accepted=1, review_status='confirmed', plate=COALESCE(?, plate),
+       reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+    corrected, userId, id);
+  const updated = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
+  return c.json({ success: true, hits, ...shapeCapture(updated) });
+});
+
+// ── Review queue: reject a held capture (kept for audit) ─────
+alpr.post('/capture/:id/reject', operational, async (c) => {
+  const db = getDb(c.env);
+  await ensureAlprSchema(db);
+  const id = Number(c.req.param('id'));
+  const userId = Number(c.var.user?.id ?? 0);
+  const row = await queryFirst<any>(db, 'SELECT id FROM alpr_captures WHERE id = ?', id);
+  if (!row) return c.json({ error: 'Not found' }, 404);
+  await execute(db,
+    `UPDATE alpr_captures SET accepted=0, review_status='rejected', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+    userId, id);
+  return c.json({ success: true });
 });
 
 // ── Stream a stored image back from R2 (prefix-validated) ────
@@ -494,10 +614,19 @@ function shapeCapture(row: any) {
   try { raw = row.raw_json ? JSON.parse(row.raw_json) : null; } catch { /* keep null */ }
   try { outputKeys = row.output_keys ? JSON.parse(row.output_keys) : null; } catch { /* keep null */ }
   try { recordIds = row.vehicle_record_ids ? JSON.parse(row.vehicle_record_ids) : null; } catch { /* keep null */ }
+  const toBool = (x: any) => (x == null ? null : x === 1 || x === true);
+  const primaryRaw = Array.isArray(raw?.vehicles) ? raw.vehicles[0] : null;
   return {
     ...row,
     alerted: row.alerted === 1 || row.alerted === true,
     enrich_status: row.enrich_status ?? null,
+    // Advanced scanner: condition/damage + the 0.85 acceptance gate.
+    accepted: toBool(row.accepted),
+    plate_confidence: row.plate_confidence ?? null,
+    condition: row.condition ?? null,
+    damage_observed: toBool(row.damage_observed),
+    damage_summary: row.damage_summary ?? null,
+    damage_areas: Array.isArray(primaryRaw?.damageAreas) ? primaryRaw.damageAreas : [],
     raw,
     output_keys: outputKeys,
     vehicle_record_ids: recordIds,
@@ -508,12 +637,19 @@ function shapeCapture(row: any) {
       vehicleType: row.vehicle_type ?? null, confidence: row.confidence ?? null,
       riskScore: row.risk_score ?? null, reviewStatus: row.review_status ?? null,
       alerted: row.alerted === 1 || row.alerted === true,
+      condition: row.condition ?? null, damageObserved: toBool(row.damage_observed),
+      damageSummary: row.damage_summary ?? null, accepted: toBool(row.accepted),
+      plateConfidence: row.plate_confidence ?? null,
     },
     vehicles: Array.isArray(raw?.vehicles)
       ? raw.vehicles.map((v: any) => ({
           plate: v.plate ?? null, state: v.state ?? null, make: v.make ?? null, model: v.model ?? null,
           color: v.color ?? null, year: v.year ?? null, vehicle_type: v.vehicleType ?? v.vehicle_type ?? null,
           confidence: v.confidence ?? null,
+          condition: v.condition ?? null, damage_observed: v.damageObserved ?? null,
+          damage_summary: v.damageSummary ?? null,
+          damage_areas: Array.isArray(v.damageAreas) ? v.damageAreas : [],
+          aftermarket: v.aftermarket ?? null, confidences: v.confidences ?? {},
         }))
       : [],
     image_url: imageUrlFor(row.image_key),
