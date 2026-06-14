@@ -21,7 +21,11 @@
 
 import { Hono } from 'hono';
 import { authMiddleware, requireRole } from '../middleware/auth';
-import { getDb, queryFirst, query, execute } from '../utils/db';
+import { getDb, queryFirst, query, execute, columnExists } from '../utils/db';
+import {
+  parseAddrList, mapAttachments, buildSendPayload,
+  type SendAttachment, type SendInput,
+} from '../utils/emailSend';
 import { encryptSecret, decryptSecret } from '../utils/emailCrypto';
 import type { Bindings, Variables } from '../types';
 
@@ -753,107 +757,75 @@ email.delete('/messages/:id', async (c) => {
 });
 
 // ─── Send / reply / forward (Graph — replaces SMTP) ──────────────
-// Accepts BOTH "a@x.com, b@y.com" and ["a@x.com","b@y.com"] — the compose
-// UI sends arrays for /schedule and strings elsewhere.
-function parseAddrList(raw: string | string[] | undefined): Array<{ emailAddress: { address: string } }> {
-  const parts = Array.isArray(raw) ? raw : (raw || '').split(/[,;]/);
-  return parts
-    .map((s) => String(s).trim())
-    .filter((s) => s && /@/.test(s))
-    .map((address) => ({ emailAddress: { address } }));
+// parseAddrList / mapAttachments / buildSendPayload + SendAttachment / SendInput
+// now live in ../utils/emailSend (shared with the PDF-from-context handler).
+
+// Runtime reconcile for the 0118 record-link columns (deploy migration step is
+// continue-on-error; this guarantees the columns exist before we write them).
+let _outboxRecordColsEnsured = false;
+async function ensureOutboxRecordColumns(db: D1Database): Promise<boolean> {
+  if (_outboxRecordColsEnsured) return true;
+  if (!(await columnExists(db, 'email_outbox', 'record_type'))) {
+    try { await execute(db, 'ALTER TABLE email_outbox ADD COLUMN record_type TEXT'); } catch { /* race/exists */ }
+    try { await execute(db, 'ALTER TABLE email_outbox ADD COLUMN record_id INTEGER'); } catch { /* race/exists */ }
+  }
+  _outboxRecordColsEnsured = await columnExists(db, 'email_outbox', 'record_type');
+  return _outboxRecordColsEnsured;
 }
 
-interface SendAttachment { name?: string; contentType?: string; contentBytes?: string }
+// Shared send core: enqueue to the durable outbox, attempt a synchronous Graph
+// send, and on failure leave the row pending for the cron drain to retry.
+// Used by both POST /send and the PDF-from-context handler.
+export async function enqueueAndSend(
+  env: Bindings,
+  ownerUserId: number,
+  payload: unknown,
+  opts: { recordType?: string | null; recordId?: number | null } = {},
+): Promise<{ outboxId: number; status: 'sent' | 'queued'; error?: string }> {
+  const json = JSON.stringify(payload);
+  const wantLink = opts.recordType != null && opts.recordId != null;
+  const hasRecordCols = wantLink ? await ensureOutboxRecordColumns(env.DB) : false;
 
-// Graph fileAttachment payloads from the compose UI's base64 list.
-function mapAttachments(atts: SendAttachment[] | undefined): Array<Record<string, unknown>> {
-  return (atts || [])
-    .filter((a) => a && a.contentBytes)
-    .slice(0, 20)
-    .map((a) => ({
-      '@odata.type': '#microsoft.graph.fileAttachment',
-      name: (a.name || 'attachment').slice(0, 255),
-      contentType: a.contentType || 'application/octet-stream',
-      contentBytes: a.contentBytes,
-    }));
+  const queued = hasRecordCols
+    ? await execute(env.DB,
+        "INSERT INTO email_outbox (owner_user_id, payload, status, record_type, record_id) VALUES (?, ?, 'pending', ?, ?)",
+        ownerUserId, json, opts.recordType, opts.recordId)
+    : await execute(env.DB,
+        "INSERT INTO email_outbox (owner_user_id, payload, status) VALUES (?, ?, 'pending')",
+        ownerUserId, json);
+  const outboxId = queued.meta.last_row_id as number;
+
+  try {
+    const res = await graphFetch(env, '/me/sendMail', { method: 'POST', body: json });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      const err = `Graph ${res.status}: ${text.slice(0, 200)}`;
+      await execute(env.DB,
+        "UPDATE email_outbox SET attempts = 1, last_error = ?, next_attempt_at = datetime('now','localtime','+1 minute') WHERE id = ?",
+        err, outboxId);
+      return { outboxId, status: 'queued', error: err };
+    }
+    await execute(env.DB,
+      "UPDATE email_outbox SET status = 'sent', sent_at = datetime('now','localtime') WHERE id = ?",
+      outboxId);
+    return { outboxId, status: 'sent' };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Failed';
+    await execute(env.DB,
+      "UPDATE email_outbox SET attempts = 1, last_error = ?, next_attempt_at = datetime('now','localtime','+1 minute') WHERE id = ?",
+      msg, outboxId);
+    return { outboxId, status: 'queued', error: msg };
+  }
 }
 
 email.post('/send', async (c) => {
   const userId = c.get('userId');
-  const body = await c.req.json().catch(() => ({})) as {
-    to?: string | string[]; cc?: string | string[]; bcc?: string | string[];
-    subject?: string; body?: string; isHtml?: boolean;
-    attachments?: SendAttachment[]; importance?: string;
-    requestReadReceipt?: boolean; requestDeliveryReceipt?: boolean;
-    replyTo?: string | string[];
-  };
-  const toRecipients = parseAddrList(body.to);
-  if (!toRecipients.length) return c.json({ error: 'At least one recipient required' }, 400);
-
-  const attachments = mapAttachments(body.attachments);
-  const importance = ['low', 'normal', 'high'].includes(body.importance || '') ? body.importance : 'normal';
-  const replyToList = parseAddrList(body.replyTo);
-  const payload = {
-    message: {
-      subject: body.subject || '(no subject)',
-      body: {
-        contentType: body.isHtml === false ? 'Text' : 'HTML',
-        content: body.body || '',
-      },
-      toRecipients,
-      ccRecipients: parseAddrList(body.cc),
-      bccRecipients: parseAddrList(body.bcc),
-      ...(attachments.length ? { attachments } : {}),
-      importance,
-      isReadReceiptRequested: !!body.requestReadReceipt,
-      isDeliveryReceiptRequested: !!body.requestDeliveryReceipt,
-      ...(replyToList.length ? { replyTo: replyToList } : {}),
-    },
-    saveToSentItems: true,
-  };
-
-  // Durable outbox: enqueue first, then attempt synchronous send. If the
-  // sync send succeeds we mark sent in the same response; if it fails the
-  // cron drains it later. Either way the operator's "send" click is
-  // never lost to a transient Graph hiccup.
-  const queued = await execute(
-    c.env.DB,
-    "INSERT INTO email_outbox (owner_user_id, payload, status) VALUES (?, ?, 'pending')",
-    userId, JSON.stringify(payload),
-  );
-  const outboxId = queued.meta.last_row_id as number;
-
-  try {
-    const res = await graphFetch(c.env, '/me/sendMail', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      const err = `Graph ${res.status}: ${text.slice(0, 200)}`;
-      await execute(
-        c.env.DB,
-        "UPDATE email_outbox SET attempts = 1, last_error = ?, next_attempt_at = datetime('now','localtime','+1 minute') WHERE id = ?",
-        err, outboxId,
-      );
-      // 202 — queued for retry, not a hard failure
-      return c.json({ success: false, queued: true, outboxId, error: err }, 202);
-    }
-    await execute(
-      c.env.DB,
-      "UPDATE email_outbox SET status = 'sent', sent_at = datetime('now','localtime') WHERE id = ?",
-      outboxId,
-    );
-    return c.json({ success: true, outboxId });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Failed';
-    await execute(
-      c.env.DB,
-      "UPDATE email_outbox SET attempts = 1, last_error = ?, next_attempt_at = datetime('now','localtime','+1 minute') WHERE id = ?",
-      msg, outboxId,
-    );
-    return c.json({ success: false, queued: true, outboxId, error: msg }, 202);
-  }
+  const body = await c.req.json().catch(() => ({})) as SendInput;
+  if (!parseAddrList(body.to).length) return c.json({ error: 'At least one recipient required' }, 400);
+  const payload = buildSendPayload(body);
+  const r = await enqueueAndSend(c.env, userId, payload);
+  if (r.status === 'sent') return c.json({ success: true, outboxId: r.outboxId });
+  return c.json({ success: false, queued: true, outboxId: r.outboxId, error: r.error }, 202);
 });
 
 // Outbox introspection for the EmailPage compose UI ("3 messages queued for retry")
