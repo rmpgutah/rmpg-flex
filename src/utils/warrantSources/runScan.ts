@@ -30,8 +30,8 @@ import {
 } from '../utahWarrantPoller';
 import { getEnabledAdapters, getAllEnabledAdapters } from './registry';
 import {
-  upsertScrapedWarrant, markScrapedCleared, upsertScrapedWarrantsBatch,
-  readSourceProgress, saveSourceProgress, completeSourceCycle,
+  upsertScrapedWarrant, markScrapedCleared, bulkUpsertScrapedWarrants,
+  upsertScrapedWarrantsBatch, readSourceProgress, saveSourceProgress, completeSourceCycle,
 } from './store';
 import { reconcileHits, type CanonicalHit } from './reconcile';
 import { normalizeCharge } from './chargeNormalize';
@@ -276,33 +276,35 @@ export async function runFullListLeg(
     let cleared = 0;
     try {
       const hits = await adapter.fetchAll({ DB: db });
-      const MAX_FULL_LIST_HITS = 5000;  // safety net: keep one source from exhausting the cron D1 budget
-      const toStore = hits.length > MAX_FULL_LIST_HITS ? hits.slice(0, MAX_FULL_LIST_HITS) : hits;
-      if (hits.length > MAX_FULL_LIST_HITS) {
-        console.warn(`[warrantSources] ${adapter.meta.key} returned ${hits.length} hits; capping to ${MAX_FULL_LIST_HITS} this run (batched ingest needed for full coverage).`);
+      const MAX_FULL_LIST_HITS = 200000;  // raised: batched ingest handles large rosters efficiently
+      const truncated = hits.length > MAX_FULL_LIST_HITS;
+      const toStore = truncated ? hits.slice(0, MAX_FULL_LIST_HITS) : hits;
+      if (truncated) {
+        console.warn(`[warrantSources] ${adapter.meta.key} returned ${hits.length} hits; capping to ${MAX_FULL_LIST_HITS} this run.`);
       }
-      for (const hit of toStore) {
-        try {
-          await upsertScrapedWarrant(db, hit, null);
-          found++;
-        } catch (err) {
-          errors++;
-          console.warn(
-            `[warrantSources.runScan.fullList] ${adapter.meta.key} upsert failed:`,
-            err instanceof Error ? err.message : String(err),
-          );
-        }
-      }
-      // Clear-sweep: mark rows of this source that were NOT seen since
-      // runStartedAt as 'cleared' (same datetime-normalisation pattern as the
-      // per-person leg's clear sweep in markScrapedCleared).
-      cleared = await markScrapedCleared(db, adapter.meta.key, runStartedAt).catch((err) => {
+      try {
+        found = await bulkUpsertScrapedWarrants(db, adapter.meta.key, toStore);
+      } catch (err) {
+        errors++;
         console.warn(
-          `[warrantSources.runScan.fullList] ${adapter.meta.key} clear sweep failed:`,
+          `[warrantSources.runScan.fullList] ${adapter.meta.key} bulk upsert failed:`,
           err instanceof Error ? err.message : String(err),
         );
-        return 0;
-      });
+      }
+      // Clear-sweep ONLY on a clean, non-empty, NON-TRUNCATED ingest. A failed/empty fetch
+      // must NOT wipe a source's active warrants (a transient hiccup would otherwise mark real
+      // warrants 'cleared' — the worst false-negative for a warrant system). And on a truncated
+      // roster the un-ingested tail (rows beyond the cap) wasn't refreshed this run, so sweeping
+      // would wrongly clear those still-valid warrants — skip the sweep until the source fits.
+      if (errors === 0 && found > 0 && !truncated) {
+        cleared = await markScrapedCleared(db, adapter.meta.key, runStartedAt).catch((err) => {
+          console.warn(
+            `[warrantSources.runScan.fullList] ${adapter.meta.key} clear sweep failed:`,
+            err instanceof Error ? err.message : String(err),
+          );
+          return 0;
+        });
+      }
     } catch (err) {
       // fetchAll itself threw — count as a single adapter-level error.
       errors++;
@@ -420,13 +422,19 @@ export async function runAllSourceScans(
     }
 
     // Per-source clear sweep (rows of THIS source not seen since runStartedAt).
-    try {
-      summary.cleared = await markScrapedCleared(db, sourceKey, runStartedAt);
-    } catch (err) {
-      console.warn(
-        `[warrantSources.runScan] ${sourceKey} clear sweep failed:`,
-        err instanceof Error ? err.message : String(err),
-      );
+    // ONLY when every person fetch succeeded — mirrors the full-list leg's guard.
+    // If any fetch errored, this run's last_seen_at refreshes are incomplete, so a
+    // sweep would wrongly clear warrants for persons we failed to re-check (a total
+    // endpoint outage would otherwise wipe the whole source's active roster).
+    if (summary.errors === 0) {
+      try {
+        summary.cleared = await markScrapedCleared(db, sourceKey, runStartedAt);
+      } catch (err) {
+        console.warn(
+          `[warrantSources.runScan] ${sourceKey} clear sweep failed:`,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
     }
 
     // Persist scraper state (mirror the poller's CASE update). Best-effort.

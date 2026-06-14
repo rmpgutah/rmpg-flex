@@ -11,7 +11,7 @@ import { formatEnumValue } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import {
   ClipboardCheck, Search, Plus, User, X, Save, Loader2, CheckCircle,
-  AlertTriangle, Send, RotateCcw, Zap, Calendar, RefreshCw, Eye,
+  AlertTriangle, Send, RotateCcw, Zap, Calendar, RefreshCw, Eye, FileText,
 } from 'lucide-react';
 import type { DailyActivityReport, DARStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -21,6 +21,7 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 import { apiFetch } from '../hooks/useApi';
 import { parseTimestamp } from '../utils/dateUtils';
+import { generateDarPdf } from '../utils/darPdf';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
@@ -309,6 +310,9 @@ export default function DailyActivityReportsPage() {
         {selected ? (
           <>
             <PanelTitleBar title={`${selected.dar_number} — ${selected.shift_date ? parseTimestamp(selected.shift_date).toLocaleDateString() : ''}`} icon={ClipboardCheck}>
+              <button type="button" onClick={() => generateDarPdf(selected)} className="toolbar-btn print:hidden" title="Export client/court-ready PDF">
+                <FileText style={{ width: 11, height: 11 }} /> PDF
+              </button>
               {(selected.status === 'draft' || isGodMode) && (
                 <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-primary print:hidden">
                   <Send style={{ width: 11, height: 11 }} /> Submit

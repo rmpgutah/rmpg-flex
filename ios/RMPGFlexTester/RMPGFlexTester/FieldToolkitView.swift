@@ -120,7 +120,7 @@ struct FieldToolkitView: View {
                 .presentationBackground(Theme.base)
             }
             .sheet(isPresented: $showPhotoSheet) { FieldPhotoSheet() }
-            .sheet(isPresented: $showAlprSheet) { AlprScanSheet().presentationBackground(Theme.base) }
+            .fullScreenCover(isPresented: $showAlprSheet) { AlprCameraView() }
             .sheet(isPresented: $showScratchpad) {
                 ScratchpadView().presentationBackground(Theme.base)
             }
