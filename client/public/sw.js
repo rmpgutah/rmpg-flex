@@ -604,7 +604,8 @@
 //       scroll") + per-path scroll restore across reloads.
 // v954: OCR trust layer + per-vehicle capture dossier (honest TrustBadge replaces
 //       self-reported %, derived trust gates) on top of main v953.
-const CACHE_NAME = 'rmpg-flex-v954';
+// v955: FlexCam Phase 2 evidence UI (lock badge + custody + court-package) on top of main v954.
+const CACHE_NAME = 'rmpg-flex-v955';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
