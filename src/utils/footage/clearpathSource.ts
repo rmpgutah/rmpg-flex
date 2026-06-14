@@ -16,7 +16,7 @@ export function buildMediaRequestPayload(assetId: number, fromTs: number, toTs: 
     assetId,
     startTime: fromTs,
     duration: Math.round((toTs - fromTs) / 1000),
-    cameras: channel === 'inside' ? ['driver'] : ['road'],
+    cameras: channel === 'inside' ? ['driver'] : ['road'], // 'inside' → driver-facing; any other channel → road-facing ('outside')
   };
 }
 
@@ -41,16 +41,23 @@ export function classifyChunkStatus(obj: Record<string, unknown>): FootageChunkS
 
 // ── IO helpers ───────────────────────────────────────────────
 
-async function post(client: CpgClient, path: string, body: unknown): Promise<Record<string, unknown>> {
-  const token = await client.getToken();
-  const res = await fetch(new URL(path, API_BASE).toString(), {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) throw new Error(`ClearPath media-request ${res.status}`);
-  return (await res.json()) as Record<string, unknown>;
+async function post(env: EnvLike, client: CpgClient, path: string, body: unknown): Promise<Record<string, unknown>> {
+  const attempt = async (retried: boolean): Promise<Record<string, unknown>> => {
+    const token = await client.getToken();
+    const res = await fetch(new URL(path, API_BASE).toString(), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (res.status === 401 && !retried) {
+      try { await env.KV.delete('cpg:access_token'); } catch { /* KV optional */ }
+      return attempt(true);
+    }
+    if (!res.ok) throw new Error(`ClearPath media-request ${res.status}`);
+    return (await res.json()) as Record<string, unknown>;
+  };
+  return attempt(false);
 }
 
 // ── The source ───────────────────────────────────────────────
@@ -61,11 +68,12 @@ export class ClearPathSource implements FootageSource {
   constructor(private env: EnvLike, private client: CpgClient) {}
 
   async requestWindow(assetId: number, fromTs: number, toTs: number, channels: string[]): Promise<FootageRequestHandle[]> {
+    // TODO: parallelize chunk requests per channel once the endpoint contract is confirmed (spike).
     const handles: FootageRequestHandle[] = [];
     for (const channel of channels.length ? channels : ['outside']) {
       const chunks = splitWindow(fromTs, toTs, this.maxChunkSeconds);
       for (const c of chunks) {
-        const resp = await post(this.client, CPG_MEDIA_REQUEST_PATH, buildMediaRequestPayload(assetId, c.fromTs, c.toTs, channel));
+        const resp = await post(this.env, this.client, CPG_MEDIA_REQUEST_PATH, buildMediaRequestPayload(assetId, c.fromTs, c.toTs, channel));
         handles.push({ seq: c.seq, vendorId: parseRequestId(resp), fromTs: c.fromTs, toTs: c.toTs, channel });
       }
     }
@@ -77,7 +85,8 @@ export class ClearPathSource implements FootageSource {
     const page = await listMedia(this.env, this.client, assetId, handle.fromTs, handle.toTs, 0, 50);
     for (const ev of page.items) {
       for (const mo of ev.mediaObject) {
-        const matchChannel = handle.channel === 'inside' ? mo.channel === 'inside' : mo.channel !== 'inside';
+        // 'inside' matches driver-facing; everything else is treated as road-facing.
+      const matchChannel = handle.channel === 'inside' ? mo.channel === 'inside' : mo.channel !== 'inside';
         if (matchChannel && mo.type === 'VIDEO') {
           const st = classifyChunkStatus(mo as unknown as Record<string, unknown>);
           if (st.state !== 'requested') return st;
