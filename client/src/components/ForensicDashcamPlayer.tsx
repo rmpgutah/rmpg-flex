@@ -9,7 +9,7 @@
 // driving-analysis readout (distance, peak g-forces, event verdict).
 // ============================================================
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Gauge, Navigation, AlertTriangle, Activity, Car, MapPin, Loader2, ScanSearch, Route, Camera, Moon, ZoomIn, ShieldAlert, Layers, FileText, RefreshCw } from 'lucide-react';
+import { X, Gauge, Navigation, AlertTriangle, Activity, Car, MapPin, Loader2, ScanSearch, Route, Camera, Moon, ZoomIn, ShieldAlert, Layers, FileText, RefreshCw, Siren, Radio, CheckCircle2 } from 'lucide-react';
 import { apiFetch, apiPostForm, authedImageUrl } from '../hooks/useApi';
 import {
   instAccelG, activeThreats, severityColor, zoomTransform, evidenceStampLines, evidenceFilename,
@@ -30,6 +30,7 @@ import { loadVehicleDetector, detectVehicles, type DetectorStatus } from '../uti
 import {
   emptyTrackerState, stepTracker, visibleTracks, primaryTrack, type TrackerState, type Track,
 } from '../utils/vehicleTracker';
+import { aggressionScore, detectAnomalies, proximity, type RiskScore, type Anomaly } from '../utils/tacticalIntel';
 
 interface VehicleAttrs { state?: string | null; make?: string | null; model?: string | null; color?: string | null; year?: number | null }
 interface MediaResp {
@@ -197,6 +198,19 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     return `${left} ${right} Z`;
   }, [roadPath]);
   const primary = useMemo(() => primaryTrack(tracks, natW, natH), [tracks, natW, natH]);
+
+  // Wave 4 — tactical intel/AI: pursuit-aggression score, driving anomalies,
+  // and a closing-proximity alarm derived from the primary track's frame fill.
+  const risk = useMemo<RiskScore>(() => aggressionScore(stats, evType, null), [stats, evType]);
+  const anomalies = useMemo<Anomaly[]>(() => detectAnomalies(gps), [gps]);
+  const prevAreaRef = useRef(0);
+  const prox = useMemo(() => {
+    if (!primary) { prevAreaRef.current = 0; return null; }
+    const area = primary.bbox[2] * primary.bbox[3];
+    const p = proximity(area, prevAreaRef.current, natW * natH);
+    prevAreaRef.current = area;
+    return p;
+  }, [primary, natW, natH]);
   const predictedGeo = useMemo(() => predictPath(gps, t, 4, 0.5), [gps, t]);
   // Predicted continuation ray on the (north-up) GPS mini-map, in SVG units.
   const predRay = useMemo(() => {
@@ -326,6 +340,41 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
       logAudit('forensic_plate_rescan', got ? `read ${got}` : 'no read');
     } catch (e) {
       setRescan({ busy: false, result: 'Re-scan failed' });
+    }
+  };
+
+  // Auto-BOLO — push the target vehicle to the live BOLO board with the AI's
+  // attributes + risk assessment pre-filled. One click from forensic review.
+  const [bolo, setBolo] = useState<{ busy: boolean; done: boolean; err: string | null }>({ busy: false, done: false, err: null });
+  const createBolo = async () => {
+    setBolo({ busy: true, done: false, err: null });
+    const plate = media?.plate || null;
+    const vehDesc = [vTag, plate ? `plate ${plate}` : null].filter(Boolean).join(' · ') || 'Unknown vehicle';
+    const where = media?.address || address || null;
+    const descParts = [
+      `Flagged from dashcam forensic review (event #${eventId}${evType ? `, ${evType.replace(/_/g, ' ')}` : ''}).`,
+      `Driving-risk ${risk.score}/100 (${risk.level})${risk.factors.length ? `: ${risk.factors.join(', ')}` : ''}.`,
+      `Peak ${Math.round(stats.maxSpeed)} mph.`,
+      anomalies.length ? `Anomalies: ${anomalies.map((a) => a.label).join(', ')}.` : '',
+      where ? `Last seen near ${where}.` : '',
+      pos ? `GPS ${pos.latitude.toFixed(5)}, ${pos.longitude.toFixed(5)}.` : '',
+    ].filter(Boolean).join(' ');
+    try {
+      await apiFetch('/api/comms/bolos', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'vehicle',
+          title: `BOLO — ${plate || vTag || 'vehicle'}`,
+          vehicle_description: vehDesc,
+          description: descParts,
+          priority: risk.level === 'severe' || critical.length ? 'high' : risk.level === 'high' ? 'medium' : 'low',
+          photo_url: media?.still_url || null,
+        }),
+      });
+      setBolo({ busy: false, done: true, err: null });
+      logAudit('forensic_bolo_created', `${plate || vTag || 'vehicle'} risk ${risk.score}`);
+    } catch (e: any) {
+      setBolo({ busy: false, done: false, err: e?.message || 'BOLO failed' });
     }
   };
 
@@ -494,6 +543,17 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                     <div className="text-[10px] text-white/90 mt-0.5">{hits.map((h) => h.detail).join(' · ')}</div>
                   </div>
                 )}
+                {/* Closing-proximity alarm (officer safety) */}
+                {prox && prox.level !== 'none' && (
+                  <div className={`absolute ${hits.length ? 'top-12' : 'top-2'} left-1/2 -translate-x-1/2 px-3 py-1 border-2 text-center ${
+                    prox.level === 'alert' ? 'bg-red-950/90 border-red-500 animate-pulse' : 'bg-amber-950/85 border-amber-500'}`}>
+                    <div className={`flex items-center gap-1.5 justify-center text-[11px] font-bold tracking-wider ${prox.level === 'alert' ? 'text-red-300' : 'text-amber-300'}`}>
+                      <Siren className="w-4 h-4" />
+                      {prox.level === 'alert' ? 'COLLISION RISK — VEHICLE CLOSING' : 'CLOSING DISTANCE'}
+                      <span className="font-mono text-[10px] opacity-80">{Math.round(prox.fillPct * 100)}% frame</span>
+                    </div>
+                  </div>
+                )}
                 {/* Speed — big, color-coded */}
                 <div className="absolute top-3 left-3 flex flex-col">
                   <div className="flex items-baseline gap-1">
@@ -594,6 +654,41 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
               <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold mb-2 flex items-center gap-1">
                 <Activity className="w-3 h-3" /> Driving analysis
               </div>
+
+              {/* AI pursuit / aggression risk gauge */}
+              {(() => {
+                const col = risk.level === 'severe' ? '#ef4444' : risk.level === 'high' ? '#f97316' : risk.level === 'elevated' ? '#d4a017' : '#22c55e';
+                return (
+                  <div className="mb-2.5 border border-[#222] bg-surface-sunken p-2">
+                    <div className="flex items-center justify-between text-[9px] uppercase tracking-wider mb-1">
+                      <span className="flex items-center gap-1 text-rmpg-400 font-semibold"><Gauge className="w-3 h-3" /> AI risk score</span>
+                      <span className="font-mono font-bold tabular-nums" style={{ color: col }}>{risk.score}/100 · {risk.level}</span>
+                    </div>
+                    <div className="h-1.5 bg-[#0a0a0a] border border-[#1a1a1a] overflow-hidden">
+                      <div className="h-full transition-all" style={{ width: `${risk.score}%`, background: col }} />
+                    </div>
+                    {risk.factors.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {risk.factors.map((f, i) => (
+                          <span key={i} className="text-[9px] px-1 py-0.5 border border-[#2a2a2a] text-rmpg-300 bg-black/40">{f}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Driving anomalies */}
+              {anomalies.length > 0 && (
+                <div className="mb-2.5 flex flex-wrap gap-1">
+                  {anomalies.map((a) => (
+                    <span key={a.key} className="text-[9px] font-bold tracking-wider px-1.5 py-0.5 border border-orange-700/60 bg-orange-950/30 text-orange-300 flex items-center gap-1">
+                      <AlertTriangle className="w-2.5 h-2.5" /> {a.label}{a.tSec > 0 ? ` @${a.tSec.toFixed(0)}s` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-1.5 text-[11px]">
                 <Stat icon={Gauge} label="Peak speed" value={`${Math.round(stats.maxSpeed)} mph`} tone={stats.maxSpeed > 70 ? 'warn' : 'normal'} />
                 <Stat icon={Gauge} label="Avg speed" value={`${Math.round(stats.avgSpeed)} mph`} />
@@ -606,6 +701,21 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                 <span className="text-[9px] uppercase tracking-wider text-[#d4a017] font-semibold block mb-1">Forensic verdict</span>
                 {verdict}
               </div>
+
+              {/* Auto-BOLO — push target vehicle to the live BOLO board */}
+              <button
+                onClick={createBolo}
+                disabled={bolo.busy || bolo.done}
+                className={`mt-2.5 w-full flex items-center justify-center gap-1.5 text-[11px] font-bold tracking-wider px-2 py-2 border transition-colors ${
+                  bolo.done ? 'border-green-700 text-green-400 bg-green-950/30'
+                  : 'border-red-700/70 text-red-300 bg-red-950/30 hover:bg-red-900/40'} disabled:opacity-70`}
+                aria-label="Create BOLO for this vehicle">
+                {bolo.busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : bolo.done ? <CheckCircle2 className="w-3.5 h-3.5" />
+                  : <Radio className="w-3.5 h-3.5" />}
+                {bolo.done ? 'BOLO ISSUED' : bolo.busy ? 'ISSUING…' : `CREATE BOLO${media?.plate ? ` — ${media.plate}` : ''}`}
+              </button>
+              {bolo.err && <div className="mt-1 text-[10px] text-red-400">{bolo.err}</div>}
 
               {/* Plate re-identification — cross-source prior sightings */}
               {media?.plate && prior && (
