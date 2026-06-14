@@ -731,6 +731,22 @@ describe('runFullListLeg — chunked cycle gate', () => {
     await runFullListLeg(DB, [adapter], { now: NOW });
     expect(seenCursor).toBe('4000');
   });
+
+  it('batch errors on a done=true chunk: NO clear-sweep, NO cycle complete, retries same cursor', async () => {
+    // Force every D1 batch() to fail → upsertScrapedWarrantsBatch reports errors>0.
+    // Even though the adapter says done=true, the gate must NOT sweep/complete
+    // (a sweep would wrongly clear active warrants that just failed to re-store).
+    const { DB, runs } = fakeDb({ cursor: '6000', cycle_started_at: '2026-06-09T00:00:00.000Z', rows_this_cycle: 6000 });
+    DB.batch = async () => { throw new Error('D1_ERROR: transient'); };
+    const adapter = chunkAdapter({ hits: [hit('w7')], nextCursor: '6037', done: true });
+    const summary = await runFullListLeg(DB, [adapter], { now: NOW });
+
+    expect(summary[0].errors).toBeGreaterThan(0);
+    expect(runs.some(s => /UPDATE scraped_warrants SET status='cleared'/i.test(s))).toBe(false);  // NO sweep despite done
+    expect(runs.some(s => /last_full_cycle_at/i.test(s))).toBe(false);                            // NOT completed
+    // cursor persisted UNCHANGED (retry same window) → a progress upsert without last_full_cycle_at
+    expect(runs.some(s => /INSERT INTO national_warrant_source_progress/i.test(s) && !/last_full_cycle_at/i.test(s))).toBe(true);
+  });
 });
 ```
 
@@ -781,14 +797,27 @@ insert the chunked branch:
         found = r.found;
         errors += r.errors;
 
-        if (done) {
+        if (errors > 0) {
+          // Writes were unreliable this tick. NEVER clear-sweep when we couldn't
+          // store reliably — a sweep here would clear active warrants that merely
+          // failed to re-store (the feature's #1 invariant: never wrongly clear).
+          // Don't advance past the failed window either: persist the SAME incoming
+          // cursor so the next tick retries it. The batched upsert is idempotent
+          // (ON CONFLICT), so re-running the window is safe.
+          await saveSourceProgress(db, key, cursor, cycleStartedAt, (prog?.rows_this_cycle ?? 0) + found);
+        } else if (done) {
           // Full pass complete → clear rows of THIS source not seen during the
           // entire cycle (scoped to cycle_started_at, NOT this tick), then reset.
           cleared = await markScrapedCleared(db, key, cycleStartedAt).catch((err) => {
             console.warn(`[warrantSources.runScan.chunk] ${key} clear sweep failed:`, err instanceof Error ? err.message : String(err));
             return 0;
           });
-          await completeSourceCycle(db, key, now());
+          // Guard separately so a completion failure logs accurately (not as a
+          // misleading "fetchChunk failed" in the outer catch) and doesn't inflate
+          // the error count — the sweep is idempotent, so the next tick re-completes.
+          await completeSourceCycle(db, key, now()).catch((err) => {
+            console.warn(`[warrantSources.runScan.chunk] ${key} completeSourceCycle failed:`, err instanceof Error ? err.message : String(err));
+          });
         } else {
           // Mid-cycle / truncated → persist cursor, SKIP the clear-sweep so the
           // un-ingested tail (and prior chunks) are never wrongly cleared.
@@ -796,8 +825,10 @@ insert the chunked branch:
         }
       } catch (err) {
         errors++;
-        console.warn(`[warrantSources.runScan.chunk] ${key} fetchChunk failed:`, err instanceof Error ? err.message : String(err));
+        console.warn(`[warrantSources.runScan.chunk] ${key} chunk tick failed:`, err instanceof Error ? err.message : String(err));
       }
+      // checked:0 — the chunked leg walks the REMOTE roster, not the local persons
+      // list, so the per-person 'checked' metric doesn't apply here.
       out.push({ source_key: key, checked: 0, found, cleared, errors });
       continue;
     }
@@ -834,7 +865,20 @@ git commit -m "feat(warrants): cycle-aware clear-sweep gate for chunked full-lis
 
 In `runAllSourceScans`, the Utah block currently sits at the END (the `let utah: WatchRunResult; if (opts.skipUtah) {...} else { utah = await runUtahWarrantScan(db); }` block, ~lines 412–424, just before `return { utah, scraped }`).
 
-Move that entire block to run **first** — immediately after the `const delayMs = ...` line and before the `// ── Scraped leg ──` comment. Update the two header comments:
+Move that entire block to run **first** — immediately after the `const delayMs = ...` line and before the `// ── Scraped leg ──` comment. **Guard the Utah call** so a throw can't abort the now-following scraped legs (the legs are documented as independent; `runUtahWarrantScan`'s initial `warrant_watch_runs` INSERT is outside its own try/catch, so it *can* throw). Wrap the non-skip path:
+```ts
+  } else {
+    try {
+      utah = await runUtahWarrantScan(db);
+    } catch (err) {
+      // Utah runs first now; a throw must NOT abort the independent scraped/
+      // full-list legs. Degrade to a failed result and continue.
+      console.warn('[warrantSources.runScan] Utah leg threw:', err instanceof Error ? err.message : String(err));
+      utah = { run_id: 'utah-error', status: 'failed', persons_checked: 0, new_warrants_found: 0, warrants_cleared: 0, errors: 1 };
+    }
+  }
+```
+Update the two header comments:
 - The file header "Order:" paragraph (lines 20–22) → describe Utah-first: *"Order: the Utah leg runs FIRST so a large chunked scraped source can never consume the tick's budget before RMPG's home jurisdiction is scanned; the scraped + full-list legs follow."*
 - The step list in the `runAllSourceScans` docblock (the "1. Scraped leg … 2. Utah leg …" comment) → renumber so Utah is step 1.
 
