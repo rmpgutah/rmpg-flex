@@ -222,44 +222,55 @@ async function enrichCapture(
       color: acceptByConfidence(v.color, v.confidences.color, TH),
     });
 
+    const acceptedRecordIds: number[] = [];
     for (const v of result.vehicles) {
       if (!v.plate || v.plate.length < 2) continue;
       const plateConf = v.confidences.plate ?? v.confidence ?? null;
       const accepted = (plateConf ?? 0) >= TH;
+      const isPrimary = !!args.primaryPlate && v.plate === args.primaryPlate;
       const screen = await screenVehicle(db, { plate: v.plate });
-      const up = await upsertVehicleRecord(db, gateVehicle(v), screen.vehicleId);  // gated identity fill
-      const recordId = up?.id ?? screen.vehicleId ?? null;
+      let recordId: number | null = null;
 
-      // Primary plate already record/linked/sighted in the fast path; its
-      // attributes were just filled (gated) above. Capture-level handled below.
-      if (args.primaryPlate && v.plate === args.primaryPlate) continue;
-
-      // Secondary vehicle: full link + sighting + screening + notify.
-      if (recordId && args.callId != null) {
+      // ACCEPTANCE GATE: only a read ≥0.85 creates/enriches the authoritative
+      // vehicles_records + call link + sighting. A held (<0.85) read creates
+      // NOTHING here — the capture is held for review (POST /accept promotes it),
+      // so nothing unverified ever enters the records as fact.
+      if (accepted) {
+        const up = await upsertVehicleRecord(db, gateVehicle(v), screen.vehicleId);
+        recordId = up?.id ?? screen.vehicleId ?? null;
+        if (recordId) acceptedRecordIds.push(recordId);
+        if (recordId && args.callId != null) {
+          try {
+            await execute(db,
+              `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
+               VALUES (?, ?, 'observed', 'ALPR', ?, datetime('now'))`, args.callId, recordId, args.userId);
+          } catch (err: any) { console.error('[alpr] enrich link failed:', err?.message); }
+        }
         try {
+          const base = `ALPR: ${[v.color, v.make, v.model, v.year].filter(Boolean).join(' ')}`.trim();
+          const note = `${base === 'ALPR:' ? 'ALPR capture' : base}${damageNote(v)}`;
           await execute(db,
-            `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
-             VALUES (?, ?, 'observed', 'ALPR', ?, datetime('now'))`, args.callId, recordId, args.userId);
-        } catch (err: any) { console.error('[alpr] enrich link failed:', err?.message); }
+            `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            v.plate, v.state, recordId, args.locationText, args.lat, args.lng, note, args.userId);
+        } catch (err: any) { console.error('[alpr] enrich sighting failed:', err?.message); }
       }
-      try {
-        const base = `ALPR: ${[v.color, v.make, v.model, v.year].filter(Boolean).join(' ')}`.trim();
-        const note = `${base === 'ALPR:' ? 'ALPR capture' : base}${accepted ? '' : ' (unverified <85%)'}${damageNote(v)}`;
-        await execute(db,
-          `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          v.plate, v.state, recordId, args.locationText, args.lat, args.lng, note, args.userId);
-      } catch (err: any) { console.error('[alpr] enrich sighting failed:', err?.message); }
-      const critical = screen.hits.filter((h) => h.severity === 'critical');
-      if (critical.length) {
-        try {
-          // Safety: screen even sub-85% plates, but label the hit UNCONFIRMED.
-          const title = `${accepted ? '' : 'UNCONFIRMED — verify plate: '}PLATE HIT: ${v.plate}`;
-          await execute(db,
-            `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-             VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
-            title, critical.map((h) => h.detail).join('; '), recordId, args.userId);
-        } catch (err: any) { console.error('[alpr] enrich notify failed:', err?.message); }
+
+      // Critical-hit notification — screening runs on EVERY plate (incl. held)
+      // for officer safety. The PRIMARY was already alerted in the fast path
+      // (immediate), so notify only SECONDARY vehicles here, labelling UNCONFIRMED
+      // when the read is sub-85%.
+      if (!isPrimary) {
+        const critical = screen.hits.filter((h) => h.severity === 'critical');
+        if (critical.length) {
+          try {
+            const title = `${accepted ? '' : 'UNCONFIRMED — verify plate: '}PLATE HIT: ${v.plate}`;
+            await execute(db,
+              `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+               VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
+              title, critical.map((h) => h.detail).join('; '), recordId, args.userId);
+          } catch (err: any) { console.error('[alpr] enrich notify failed:', err?.message); }
+        }
       }
     }
 
@@ -290,7 +301,7 @@ async function enrichCapture(
          color=COALESCE(NULLIF(color,''),?), year=COALESCE(year,?), state=COALESCE(NULLIF(state,''),?),
          vehicle_type=COALESCE(NULLIF(vehicle_type,''),?), risk_score=COALESCE(risk_score,?),
          condition=?, damage_observed=?, damage_summary=?, plate_confidence=?, accepted=?,
-         review_status=?, raw_json=?,
+         review_status=?, raw_json=?, vehicle_record_ids=?,
          annotated_image_key=COALESCE(annotated_image_key,?), vehicle_count=?, enrich_status='done'
        WHERE id=?`,
       gp?.make ?? null, gp?.model ?? null, gp?.color ?? null, gp?.year ?? null, gp?.state ?? null,
@@ -300,10 +311,13 @@ async function enrichCapture(
       (primary?.damageSummary ?? cap.damageSummary) ?? null,
       primaryConf, accepted ? 1 : 0,
       accepted ? (cap.reviewStatus || 'accepted') : 'needs_review',
-      rawJson, annotatedKey, result.vehicles.length, args.captureRowId);
+      rawJson, JSON.stringify(acceptedRecordIds), annotatedKey, result.vehicles.length, args.captureRowId);
   } catch (err: any) {
     console.error('[alpr] enrich failed:', err?.message);
-    try { await execute(db, `UPDATE alpr_captures SET enrich_status='failed' WHERE id=?`, args.captureRowId); }
+    // Surface a failed-enrich capture for manual review instead of orphaning it
+    // (accepted/review_status would otherwise stay NULL → invisible to both the
+    // review queue and 'confirmed' views).
+    try { await execute(db, `UPDATE alpr_captures SET enrich_status='failed', accepted=0, review_status='needs_review' WHERE id=?`, args.captureRowId); }
     catch { /* swallow — background path */ }
   }
 }
@@ -400,45 +414,26 @@ alpr.post('/capture', operational, async (c) => {
   let firstSightingId: number | null = null;
 
   if (fast.plate) {
-    const v: AlprVehicle = { plate: fast.plate, state: fast.state, make: null, model: null,
-      color: null, year: null, vehicleType: null, plateType: null, confidence: null,
-      condition: null, damageObserved: null, damageSummary: null, damageAreas: [],
-      aftermarket: null, confidences: {} };
+    // SAFETY-CRITICAL stays in the fast path: screen the plate now so a stolen/
+    // watchlist hit alerts within ~1s. But do NOT create authoritative records yet.
+    // The 0.85 acceptance gate runs in enrich (the fast path only has a detector
+    // box score, not per-field confidence). Held (<85%) reads must NOT enter
+    // vehicles_records / vehicle_sightings as fact — accepted reads are created by
+    // enrich; held reads only on explicit officer confirm (POST /accept).
     const screen = await screenVehicle(db, { plate: fast.plate });
-    const up = await upsertVehicleRecord(db, v, screen.vehicleId);
-    const recordId = up?.id ?? screen.vehicleId ?? null;
-    if (recordId) vehicleRecordIds.push(recordId);
-
-    if (recordId && callId != null) {
-      try {
-        await execute(db,
-          `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
-           VALUES (?, ?, 'observed', 'ALPR', ?, datetime('now'))`, callId, recordId, userId);
-      } catch (err: any) { console.error('[alpr] call_vehicles link failed:', err?.message); }
-    }
-
-    try {
-      const sr = await execute(db,
-        `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by)
-         VALUES (?, ?, ?, ?, ?, ?, 'ALPR capture', ?)`,
-        v.plate, v.state, recordId, locationText, lat, lng, userId);
-      firstSightingId = Number(sr.meta.last_row_id);
-    } catch (err: any) { console.error('[alpr] sighting insert failed:', err?.message); }
-
+    allHits.push(...screen.hits);
     const critical = screen.hits.filter((h) => h.severity === 'critical');
     if (critical.length) {
       try {
         await execute(db,
           `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-           VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
-          `PLATE HIT: ${v.plate}`, critical.map((h) => h.detail).join('; '), recordId, userId);
+           VALUES ('intel_screen', 'high', ?, ?, 'vehicle', NULL, ?, 0, datetime('now'))`,
+          `PLATE HIT: ${fast.plate}`, critical.map((h) => h.detail).join('; '), userId);
       } catch (err: any) { console.error('[alpr] notify failed:', err?.message); }
     }
-
-    allHits.push(...screen.hits);
-    vehicleResults.push({ plate: v.plate, state: v.state, make: null, model: null, year: null,
-      color: null, vehicle_type: null, confidence: null, vehicle_record_id: recordId,
-      vehicle_record_created: up?.created ?? false, sighting_id: firstSightingId, hits: screen.hits });
+    vehicleResults.push({ plate: fast.plate, state: fast.state, make: null, model: null, year: null,
+      color: null, vehicle_type: null, confidence: null, vehicle_record_id: null,
+      vehicle_record_created: false, sighting_id: null, hits: screen.hits });
   }
 
   // Capture row with enrich_status='pending'.
@@ -493,6 +488,7 @@ alpr.post('/capture', operational, async (c) => {
 // ── List recent captures ─────────────────────────────────────
 alpr.get('/captures', operational, async (c) => {
   const db = getDb(c.env);
+  await ensureAlprSchema(db); // read path self-heals: cols may predate migration 0114 on live
   const plate = (c.req.query('plate') || '').toUpperCase().replace(/[\s-]/g, '');
   const caseId = c.req.query('case_id') || '';
   const callId = c.req.query('call_id') || '';
@@ -500,7 +496,10 @@ alpr.get('/captures', operational, async (c) => {
   const limit = Math.min(Number(c.req.query('limit')) || 25, 100);
   try {
     let rows;
-    if (review) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE accepted = 0 OR review_status = 'needs_review' ORDER BY created_at DESC LIMIT ?`, limit);
+    // Review queue = only rows still awaiting review. Keying on review_status
+    // (not accepted=0) is essential: a REJECTED row is also accepted=0 and would
+    // otherwise reappear in the queue forever.
+    if (review) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE review_status = 'needs_review' ORDER BY created_at DESC LIMIT ?`, limit);
     else if (plate) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE plate LIKE ? ORDER BY created_at DESC LIMIT ?`, `%${plate}%`, limit);
     else if (callId) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE call_id = ? ORDER BY created_at DESC LIMIT ?`, Number(callId), limit);
     else if (caseId) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE case_id = ? ORDER BY created_at DESC LIMIT ?`, caseId, limit);
@@ -514,6 +513,7 @@ alpr.get('/captures', operational, async (c) => {
 // ── Single capture ───────────────────────────────────────────
 alpr.get('/capture/:id', operational, async (c) => {
   const db = getDb(c.env);
+  await ensureAlprSchema(db); // read path self-heals: cols may predate migration 0114 on live
   const row = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', Number(c.req.param('id')));
   if (!row) return c.json({ error: 'Not found' }, 404);
   return c.json(shapeCapture(row));
@@ -532,20 +532,38 @@ alpr.post('/capture/:id/accept', operational, async (c) => {
 
   let body: any = {};
   try { body = await c.req.json(); } catch { /* no body is fine */ }
-  const corrected = typeof body.plate === 'string' && body.plate.trim()
-    ? body.plate.toUpperCase().replace(/[\s-]/g, '') : null;
+  // Optional plate correction — validate + bound it (don't screen/record junk).
+  let corrected: string | null = null;
+  if (typeof body.plate === 'string' && body.plate.trim()) {
+    const norm = body.plate.toUpperCase().replace(/[\s-]/g, '');
+    if (!/^[A-Z0-9]{2,10}$/.test(norm)) {
+      return c.json({ error: 'Invalid corrected plate (expect 2–10 alphanumeric chars).' }, 400);
+    }
+    corrected = norm;
+  }
   const plate = corrected || row.plate;
 
-  // (Re)link + screen the confirmed plate (best-effort; never blocks confirm).
+  // Now that a human has verified it, create/confirm the authoritative record +
+  // link + sighting (held reads created none). If the plate was CORRECTED, the
+  // original read's attributes belonged to the wrong plate — drop them; the new
+  // plate's attributes will be re-enriched on its next clean scan.
   let hits: Array<{ kind: string; severity: string; detail: string }> = [];
   if (plate) {
     try {
       const screen = await screenVehicle(db, { plate });
       hits = screen.hits;
-      const v: AlprVehicle = { plate, state: row.state ?? null, make: row.make ?? null, model: row.model ?? null,
-        color: row.color ?? null, year: row.year ?? null, vehicleType: row.vehicle_type ?? null, plateType: null,
-        confidence: row.plate_confidence ?? null, condition: row.condition ?? null, damageObserved: null,
-        damageSummary: row.damage_summary ?? null, damageAreas: [], aftermarket: null, confidences: {} };
+      const v: AlprVehicle = {
+        plate,
+        state: corrected ? null : (row.state ?? null),
+        make: corrected ? null : (row.make ?? null),
+        model: corrected ? null : (row.model ?? null),
+        color: corrected ? null : (row.color ?? null),
+        year: corrected ? null : (row.year ?? null),
+        vehicleType: corrected ? null : (row.vehicle_type ?? null),
+        plateType: null, confidence: corrected ? null : (row.plate_confidence ?? null),
+        condition: null, damageObserved: null, damageSummary: null, damageAreas: [],
+        aftermarket: null, confidences: {},
+      };
       const up = await upsertVehicleRecord(db, v, screen.vehicleId);
       const recordId = up?.id ?? screen.vehicleId ?? null;
       if (recordId && row.call_id != null) {
@@ -553,6 +571,10 @@ alpr.post('/capture/:id/accept', operational, async (c) => {
           `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
            VALUES (?, ?, 'observed', 'ALPR (confirmed)', ?, datetime('now'))`, row.call_id, recordId, userId);
       }
+      await execute(db,
+        `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by)
+         VALUES (?, ?, ?, ?, ?, ?, 'ALPR (confirmed)', ?)`,
+        plate, v.state, recordId, row.location_text ?? null, row.lat ?? null, row.lng ?? null, userId);
     } catch (err: any) { console.error('[alpr] accept relink failed:', err?.message); }
   }
 
@@ -615,7 +637,10 @@ function shapeCapture(row: any) {
   try { outputKeys = row.output_keys ? JSON.parse(row.output_keys) : null; } catch { /* keep null */ }
   try { recordIds = row.vehicle_record_ids ? JSON.parse(row.vehicle_record_ids) : null; } catch { /* keep null */ }
   const toBool = (x: any) => (x == null ? null : x === 1 || x === true);
-  const primaryRaw = Array.isArray(raw?.vehicles) ? raw.vehicles[0] : null;
+  // Prefer the vehicle whose plate matches the capture (the primary), so the
+  // capture-level damage isn't taken from an arbitrary secondary vehicle.
+  const rawVehicles = Array.isArray(raw?.vehicles) ? raw.vehicles : [];
+  const primaryRaw = rawVehicles.find((v: any) => v && v.plate && v.plate === row.plate) ?? rawVehicles[0] ?? null;
   return {
     ...row,
     alerted: row.alerted === 1 || row.alerted === true,

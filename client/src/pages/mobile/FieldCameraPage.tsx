@@ -275,13 +275,20 @@ export default function FieldCameraPage() {
                 accepted: cap.accepted ?? prev.accepted, plate_confidence: cap.plate_confidence ?? prev.plate_confidence,
                 condition: cap.condition ?? prev.condition, damage_observed: cap.damage_observed ?? prev.damage_observed,
                 damage_summary: cap.damage_summary ?? prev.damage_summary, damage_areas: cap.damage_areas ?? prev.damage_areas,
-                vehicles: cap.vehicles?.length ? cap.vehicles!.map((v) => ({
-                  plate: v.plate, make: v.make, model: v.model, color: v.color, year: v.year,
-                  vehicle_type: v.vehicle_type, confidence: v.confidence,
-                  condition: v.condition, damage_observed: v.damage_observed, damage_summary: v.damage_summary,
-                  damage_areas: v.damage_areas,
-                  vehicle_record_id: null, vehicle_record_created: false, hits: [],
-                })) : prev.vehicles }
+                vehicles: cap.vehicles?.length ? cap.vehicles!.map((v) => {
+                  // Merge enriched attributes onto the matching fast vehicle so
+                  // the per-vehicle critical-hit display + record badge survive.
+                  const prevV = prev.vehicles.find((p) => p.plate && p.plate === v.plate);
+                  return {
+                    plate: v.plate, make: v.make, model: v.model, color: v.color, year: v.year,
+                    vehicle_type: v.vehicle_type, confidence: v.confidence,
+                    condition: v.condition, damage_observed: v.damage_observed, damage_summary: v.damage_summary,
+                    damage_areas: v.damage_areas,
+                    vehicle_record_id: prevV?.vehicle_record_id ?? null,
+                    vehicle_record_created: prevV?.vehicle_record_created ?? false,
+                    hits: prevV?.hits ?? [],
+                  };
+                }) : prev.vehicles }
             : prev));
         }
         if (cap.enrich_status === 'done' || cap.enrich_status === 'failed') return;
@@ -398,8 +405,8 @@ export default function FieldCameraPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            {scan.hits.filter((h) => h.severity === 'critical').map((h) => (
-              <div key={h.detail} className="flex items-start gap-1.5 bg-red-950 border border-red-600 text-red-300 text-xs font-semibold px-2 py-1.5">
+            {scan.hits.filter((h) => h.severity === 'critical').map((h, i) => (
+              <div key={`c${i}-${h.detail}`} className="flex items-start gap-1.5 bg-red-950 border border-red-600 text-red-300 text-xs font-semibold px-2 py-1.5">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
                 <span>{scan.accepted === false ? 'UNCONFIRMED — verify plate: ' : ''}{h.detail}</span>
               </div>
@@ -446,8 +453,8 @@ export default function FieldCameraPage() {
                     )}
                   </div>
                 )}
-                {v.hits.filter((h) => h.severity === 'critical').map((h) => (
-                  <div key={h.detail} className="text-[11px] text-red-400 font-semibold mt-1">⚠ {h.detail}</div>
+                {v.hits.filter((h) => h.severity === 'critical').map((h, hi) => (
+                  <div key={`vh${hi}-${h.detail}`} className="text-[11px] text-red-400 font-semibold mt-1">⚠ {h.detail}</div>
                 ))}
               </div>
             ))}

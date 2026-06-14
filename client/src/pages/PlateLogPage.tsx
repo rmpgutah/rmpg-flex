@@ -62,13 +62,13 @@ interface Sighting {
 function HitBanners({ hits }: { hits: ScreenHit[] }) {
   return (
     <>
-      {hits.filter((h) => h.severity === 'critical').map((h) => (
-        <div key={h.detail} className="bg-red-950 border border-red-600 text-red-300 text-sm font-semibold px-3 py-2">
+      {hits.filter((h) => h.severity === 'critical').map((h, i) => (
+        <div key={`c${i}-${h.detail}`} className="bg-red-950 border border-red-600 text-red-300 text-sm font-semibold px-3 py-2">
           ⚠ {h.detail}
         </div>
       ))}
-      {hits.filter((h) => h.severity === 'warning').map((h) => (
-        <div key={h.detail} className="border border-[#d4a017] text-[#d4a017] text-[11px] px-3 py-1">
+      {hits.filter((h) => h.severity === 'warning').map((h, i) => (
+        <div key={`w${i}-${h.detail}`} className="border border-[#d4a017] text-[#d4a017] text-[11px] px-3 py-1">
           {h.detail}
         </div>
       ))}
@@ -89,6 +89,7 @@ export default function PlateLogPage() {
   const [scanErr, setScanErr] = useState<string | null>(null);
   const [reviewQueue, setReviewQueue] = useState<ReviewItem[]>([]);
   const [reviewBusy, setReviewBusy] = useState<number | null>(null);
+  const [reviewMsg, setReviewMsg] = useState<{ text: string; kind: 'ok' | 'warn' | 'err' } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadRecent = () => {
@@ -104,10 +105,21 @@ export default function PlateLogPage() {
   const reviewAction = async (id: number, action: 'accept' | 'reject') => {
     setReviewBusy(id);
     try {
-      await apiFetch(`/alpr/capture/${id}/${action}`, { method: 'POST', body: JSON.stringify({}) });
+      const res = await apiFetch<{ hits?: Array<{ severity: string; detail: string }> }>(
+        `/alpr/capture/${id}/${action}`, { method: 'POST', body: JSON.stringify({}) });
+      if (action === 'accept') {
+        // Confirming re-screens the plate — a STOLEN/watchlist hit MUST be shown.
+        const crit = (res?.hits || []).filter((h) => h.severity === 'critical');
+        setReviewMsg(crit.length
+          ? { text: `Confirmed — HIT: ${crit.map((h) => h.detail).join('; ')}`, kind: 'warn' }
+          : { text: 'Confirmed.', kind: 'ok' });
+      } else {
+        setReviewMsg({ text: 'Rejected.', kind: 'ok' });
+      }
       loadReview(); loadRecent();
-    } catch (e) { console.error(e); }
-    finally { setReviewBusy(null); }
+    } catch (e: any) {
+      setReviewMsg({ text: `Action failed: ${e?.message || 'error'} — please retry.`, kind: 'err' });
+    } finally { setReviewBusy(null); }
   };
   useEffect(loadRecent, []);
   useEffect(loadReview, []);
@@ -290,6 +302,15 @@ export default function PlateLogPage() {
         {busy ? 'CHECKING…' : 'LOG + CHECK'}
       </button>
 
+      {reviewMsg && (
+        <div className={`text-[11px] px-2 py-1.5 border flex items-center justify-between ${
+          reviewMsg.kind === 'err' ? 'border-red-700 bg-red-950/50 text-red-300'
+          : reviewMsg.kind === 'warn' ? 'border-yellow-700 bg-yellow-950/50 text-yellow-200'
+          : 'border-[#2e2e2e] bg-[#141414] text-[#aaaaaa]'}`}>
+          <span>{reviewMsg.text}</span>
+          <button type="button" onClick={() => setReviewMsg(null)} className="text-current opacity-70 ml-2" aria-label="Dismiss">×</button>
+        </div>
+      )}
       {reviewQueue.length > 0 && (
         <div className="bg-[#141414] border border-yellow-800">
           <div className="px-2 py-[3px] text-[9px] font-semibold text-yellow-400 border-b border-yellow-900 flex items-center justify-between">
