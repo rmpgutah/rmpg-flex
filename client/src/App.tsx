@@ -126,6 +126,7 @@ const WatchlistSection = lazyRetry(() => import('./pages/intel/WatchlistSection'
 const AlertsSection = lazyRetry(() => import('./pages/intel/AlertsSection'));
 const ReviewQueues = lazyRetry(() => import('./pages/intel/ReviewQueues'));
 const IntelComingSoon = lazyRetry(() => import('./pages/intel/IntelComingSoon'));
+const IntelAiAnalyst = lazyRetry(() => import('./pages/intel/IntelAiAnalyst'));
 const BoloBoard = lazyRetry(() => import('./pages/intel/BoloBoard'));
 const IntelSearch = lazyRetry(() => import('./pages/intel/IntelSearch'));
 const PlateLogPage = lazyRetry(() => import('./pages/PlateLogPage'));
@@ -486,7 +487,7 @@ function AppRoutes() {
               <Route path="plate-log" element={<RouteErrorBoundary><PlateLogPage /></RouteErrorBoundary>} />
               <Route path="queues" element={<RouteErrorBoundary><ReviewQueues /></RouteErrorBoundary>} />
               <Route path="map" element={<RouteErrorBoundary><IntelComingSoon title="Map / Geospatial Intel" phase="Phase · Map" /></RouteErrorBoundary>} />
-              <Route path="ai" element={<RouteErrorBoundary><IntelComingSoon title="AI Analyst" phase="Phase · AI (offline-gated)" /></RouteErrorBoundary>} />
+              <Route path="ai" element={<RouteErrorBoundary><IntelAiAnalyst /></RouteErrorBoundary>} />
               <Route path="reports" element={<RouteErrorBoundary><IntelReportsPage /></RouteErrorBoundary>} />
               <Route path="reports/:id" element={<RouteErrorBoundary><IntelReportDetailPage /></RouteErrorBoundary>} />
               <Route path="sources" element={<RouteErrorBoundary><IntelSourcesPage /></RouteErrorBoundary>} />
