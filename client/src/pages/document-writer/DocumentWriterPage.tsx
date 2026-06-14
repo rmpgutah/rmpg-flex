@@ -448,10 +448,11 @@ export default function DocumentWriterPage() {
       bodyHtml: editor.getHTML(),
       author,
       letterhead: docSettings.letterhead,
+      margins: docSettings.page.margins,
     });
     const safe = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'document';
     downloadFile(`${safe}.html`, html, 'text/html');
-  }, [editor, title, author, docSettings.properties.title, docSettings.letterhead]);
+  }, [editor, title, author, docSettings.properties.title, docSettings.letterhead, docSettings.page.margins]);
 
   // "New from current" — duplicate the document into a fresh, unsaved copy.
   const handleDuplicate = useCallback(() => {
@@ -608,13 +609,13 @@ export default function DocumentWriterPage() {
     if (!sel) { flashError('Select some text first.'); return; }
     if (target === 'file') {
       const safe = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'selection';
-      downloadFile(`${safe} - selection.html`, buildStandaloneHtml({ title: `${title} (selection)`, bodyHtml: sel.html, author }), 'text/html');
+      downloadFile(`${safe} - selection.html`, buildStandaloneHtml({ title: `${title} (selection)`, bodyHtml: sel.html, author, margins: docSettings.page.margins }), 'text/html');
       flashNotice('Exported the selection as HTML.');
     } else {
       try { await copyRich(sel.html); flashNotice('Copied the selection (rich text).'); }
       catch { flashError('Clipboard write blocked.'); }
     }
-  }, [editor, title, author, flashNotice, flashError]);
+  }, [editor, title, author, flashNotice, flashError, docSettings.page.margins]);
 
   // Clear the document back to a blank page (with confirm).
   const handleClearDocument = useCallback(() => {

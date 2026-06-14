@@ -305,8 +305,15 @@ export function buildStandaloneHtml(opts: {
   bodyHtml: string;
   author?: string;
   letterhead?: boolean;
+  /** Page margins in px (96px = 1in). Defaults to the app's narrow side margins
+   *  so the exported HTML matches the on-screen / printed page width. */
+  margins?: { top: number; right: number; bottom: number; left: number };
 }): string {
   const { title, bodyHtml, author, letterhead } = opts;
+  const m = opts.margins ?? { top: 72, right: 48, bottom: 72, left: 48 };
+  // box-sizing:border-box so max-width:8.5in is the WHOLE sheet (margins inside),
+  // not 8.5in + padding — otherwise the "page" renders 8.5in + 2*margin wide.
+  const pageCss = `max-width:8.5in;margin:0 auto;box-sizing:border-box;padding:${m.top}px ${m.right}px ${m.bottom}px ${m.left}px`;
   const lh = letterhead
     ? `<div class="lh"><div class="lh-name">ROCKY MOUNTAIN PROTECTIVE GROUP</div>` +
       `<div class="lh-sub">Private Security &amp; Process Service — Salt Lake City, Utah</div></div>`
@@ -318,7 +325,7 @@ export function buildStandaloneHtml(opts: {
     `<title>${esc(title)}</title>`, meta,
     '<style>',
     ':root{color-scheme:light}',
-    'body{font-family:"Times New Roman",Times,serif;font-size:12pt;line-height:1.5;color:#111;background:#fff;max-width:8.5in;margin:0 auto;padding:1in}',
+    `body{font-family:"Times New Roman",Times,serif;font-size:12pt;line-height:1.5;color:#111;background:#fff;${pageCss}}`,
     '.lh{text-align:center;border-bottom:2px solid #d4a017;padding-bottom:6px;margin-bottom:18px}',
     '.lh-name{font-size:16pt;font-weight:700;letter-spacing:.03em}.lh-sub{font-size:9pt;color:#555}',
     'h1{font-size:1.9em}h2{font-size:1.5em}h3{font-size:1.25em}h4{font-size:1.1em}',
