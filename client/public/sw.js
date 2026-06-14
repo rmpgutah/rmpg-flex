@@ -605,8 +605,10 @@
 // v954: OCR trust layer + per-vehicle capture dossier (honest TrustBadge replaces
 //       self-reported %, derived trust gates) on top of main v953.
 // v955: FlexCam Phase 2 evidence UI (lock badge + custody + court-package) on top of main v954.
-// v956: Intel Search & dossier rebuild — clickable associates, watchlist toggle,
-//       grouped/keyboard-nav results, working New Report page — on top of main v955.
+// v956: ALPR full audit & harden — /edge stolen-hit notifications + sightings,
+//       honest capture status (no fake success:true), capture_id idempotency,
+//       guarded R2/JSON, real vehicle_count, schema reconciliation across
+//       capture/edge/clearpath/footage, client overlay/upload/dossier fixes.
 const CACHE_NAME = 'rmpg-flex-v956';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [

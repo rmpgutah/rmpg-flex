@@ -27,12 +27,14 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
   const [sightings, setSightings] = useState<SightingRow[]>([]);
   const [vehicle, setVehicle] = useState<VehicleRow | null>(null);
   const [hits, setHits] = useState<Hit[]>([]);
+  const [screenFailed, setScreenFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const norm = plate.toUpperCase().replace(/[\s-]/g, '');
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setScreenFailed(false);
     Promise.allSettled([
       apiFetch<SightingRow[]>(`/intel/sightings?plate=${encodeURIComponent(norm)}&limit=100`),
       apiFetch<VehicleRow[]>(`/records/vehicles/search?q=${encodeURIComponent(norm)}`),
@@ -43,7 +45,10 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
       const vrows = v.status === 'fulfilled' && Array.isArray(v.value) ? v.value : [];
       setVehicle(vrows.find((r) => (r.plate_number || '').toUpperCase().replace(/[\s-]/g, '') === norm) || null);
       setHits(h.status === 'fulfilled' && Array.isArray(h.value?.hits) ? h.value.hits : []);
+      setScreenFailed(h.status === 'rejected');
       setLoading(false);
+    }).catch((e) => {
+      if (!cancelled) { console.error(e); setLoading(false); }
     });
     return () => { cancelled = true; };
   }, [norm]);
@@ -78,7 +83,12 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
           {hits.filter((h) => h.severity === 'warning').map((h, i) => (
             <div key={`w${i}`} className="border border-[#d4a017] text-[#d4a017] text-[11px] px-3 py-1">{h.detail}</div>
           ))}
-          {!loading && !hits.length && (
+          {!loading && screenFailed && (
+            <div className="bg-amber-950 border border-amber-600 text-amber-300 text-sm font-semibold px-3 py-2 flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 shrink-0" /> Screening unavailable — could not verify hits. Treat as UNVERIFIED.
+            </div>
+          )}
+          {!loading && !screenFailed && !hits.length && (
             <div className="text-[11px] text-green-400/80 border border-green-900 bg-green-950/30 px-3 py-1.5">No active hits on this plate.</div>
           )}
 

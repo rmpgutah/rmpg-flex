@@ -97,7 +97,9 @@ export function trustScore(input: TrustInput): TrustResult {
   if (fmt.jurisdiction) parts.push(`${fmt.jurisdiction} format valid`);
   else parts.push('no known format');
 
-  const tiebreaker = 0.05 * (input.modelPct ?? 0);
+  const rawPct = input.modelPct ?? 0;
+  const m = rawPct > 1 ? rawPct / 100 : rawPct;        // accept either 0..1 or 0..100
+  const tiebreaker = 0.05 * Math.max(0, Math.min(1, m));
 
   let score = consensusComponent + formatComponent + tiebreaker;
   if (c.readCount <= 1) score = Math.min(score, 0.84);

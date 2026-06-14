@@ -41,7 +41,7 @@
 // ============================================================
 
 import type { Bindings } from '../../types';
-import { queryFirst, execute } from '../db';
+import { queryFirst, execute, columnExists } from '../db';
 import { screenVehicle } from '../intelScreen';
 import {
   runAlprVehicleCapture,
@@ -64,6 +64,29 @@ function toBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
   }
   return btoa(binary);
+}
+
+// Structured per-observation columns on vehicle_sightings added by migration
+// 0115 (confidence + condition/damage). The cron-driven footage path never
+// hits the on-scene route's ensureAlprSchema(), so reconcile the columns the
+// sighting INSERT below depends on here too — otherwise, if 0115 never reached
+// live D1 (deploy migration-apply is continue-on-error), the INSERT throws and
+// is swallowed, silently dropping every footage-derived plate sighting.
+// vehicle_sightings itself is owned by migration 0100 — never CREATE it here,
+// only ADD the missing columns. Best-effort + idempotent (mirrors alpr.ts).
+const SIGHTING_EXTRA_COLUMNS: Array<[string, string]> = [
+  ['confidence', 'REAL'],
+  ['condition', 'TEXT'], ['damage_observed', 'INTEGER'], ['damage_summary', 'TEXT'],
+];
+
+async function ensureSightingColumns(db: DB): Promise<void> {
+  for (const [name, type] of SIGHTING_EXTRA_COLUMNS) {
+    try {
+      if (!(await columnExists(db, 'vehicle_sightings', name))) {
+        await execute(db, `ALTER TABLE vehicle_sightings ADD COLUMN ${name} ${type}`);
+      }
+    } catch { /* table absent or lost a race — fine, best-effort */ }
+  }
 }
 
 /** Upsert a vehicles_records row by plate (enrich blanks; create if new).
@@ -147,6 +170,20 @@ export async function alprFootageChunk(
   // see the deferred-frame note in the header.)
   const obj = await env.UPLOADS.get(r2Key).catch(() => null);
   if (!obj) { console.warn('[flexcam-alpr] R2 object missing:', r2Key); return; }
+
+  // A footage chunk is an mp4 VIDEO (content_type set to 'video/mp4' by the
+  // capture orchestrator). runAlprVehicleCapture expects a still IMAGE, and a
+  // Worker can't decode a video frame — so for a video/* object the Roboflow
+  // run is guaranteed to read 0 vehicles while still burning a credit and up to
+  // a 60s timeout per chunk. Skip the round-trip until a keyframe (image/jpeg)
+  // source is wired; the persistence machinery below lights up automatically
+  // once an image-typed chunk arrives. (See the deferred-frame note in header.)
+  const contentType = obj.httpMetadata?.contentType ?? '';
+  if (contentType && !contentType.startsWith('image/')) {
+    console.info('[flexcam-alpr] footage ALPR inert for non-image chunk (pending keyframe extraction):', r2Key, contentType);
+    return;
+  }
+
   const bytes = new Uint8Array(await obj.arrayBuffer());
   if (!bytes.length || bytes.length > MAX_ALPR_BYTES) {
     if (bytes.length > MAX_ALPR_BYTES) console.warn('[flexcam-alpr] chunk too large for ALPR, skipping:', r2Key, bytes.length);
@@ -174,6 +211,14 @@ export async function alprFootageChunk(
 
   if (!vehicles.length) return; // no plate read from the chunk — nothing to log
   // NOTE: Phase 1 intentionally does not write an alpr_captures row for footage chunks (plates still land in vehicle_sightings / plate-log). Revisit if footage plates need to surface in the ALPR captures UI.
+
+  // Reconcile the vehicle_sightings columns the persist path writes (migration
+  // 0115's confidence + damage cols) before any INSERT — the cron path never
+  // calls the on-scene route's ensureAlprSchema(), so this self-heals live D1
+  // if 0115 never landed (otherwise the sighting INSERT silently throws). Done
+  // once here, after we know there's at least one plate to persist.
+  await ensureSightingColumns(db);
+
   const locationText = `FlexCam ${deviceId ?? ''}`.trim() || 'FlexCam footage';
   for (const v of vehicles) {
     await persistVehicle(db, v, deviceId, locationText);

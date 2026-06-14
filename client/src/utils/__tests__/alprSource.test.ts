@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sightingSourceKey, sightingSource } from '../alprSource';
+import { sightingSourceKey, sightingSource, ALL_SOURCES } from '../alprSource';
 
 describe('sightingSourceKey', () => {
   it('classifies ClearPath dashcam reads', () => {
@@ -19,5 +19,17 @@ describe('sightingSourceKey', () => {
     expect(sightingSource('ClearPath dashcam x').label).toBe('DASHCAM');
     expect(sightingSource('ALPR: x').color).toBe('#3b82f6');
     expect(sightingSource(null).label).toBe('MANUAL');
+  });
+  it('does not false-positive on free-text manual notes mentioning ALPR', () => {
+    expect(sightingSourceKey('ALPR camera was offline, entered manually')).toBe('manual');
+  });
+  it('classifies a "ALPR:" prefix even with leading whitespace', () => {
+    expect(sightingSourceKey('  ALPR: x')).toBe('camera');
+  });
+  it('classifies the bare "ALPR" legend chip', () => {
+    expect(sightingSourceKey('ALPR')).toBe('camera');
+  });
+  it('exposes the expected set of source keys in ALL_SOURCES', () => {
+    expect(ALL_SOURCES.map((s) => s.key)).toEqual(['camera', 'dashcam', 'manual']);
   });
 });
