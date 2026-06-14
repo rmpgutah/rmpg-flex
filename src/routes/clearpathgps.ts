@@ -393,9 +393,23 @@ cpg.post('/media-sync-now', adminOnly, async (c) => {
   try {
     const { syncClearpathMedia } = await import('../utils/clearpathSync');
     const r = await syncClearpathMedia(c.env);
-    return c.json({ synced: r.synced, errors: r.errors, ...(r.skipped ? { note: `Skipped: ${r.skipped}` } : {}) });
+    return c.json({ synced: r.synced, errors: r.errors,
+      ...(r.skipped ? { note: `Skipped: ${r.skipped}` } : {}),
+      ...(r.clip_errors ? { clip_errors: r.clip_errors } : {}) });
   } catch (err) {
     return c.json({ synced: 0, errors: 1, error: clientErrorMessage(err) });
+  }
+});
+
+// Lightweight still-only ALPR scan — pulls a few dashcam stills, runs ALPR, and
+// writes capture rows (powers the gallery). Fast vs. the full clip sync.
+cpg.post('/scan-alpr-now', adminOnly, async (c) => {
+  try {
+    const { scanClearpathMediaAlpr } = await import('../utils/clearpathSync');
+    const r = await scanClearpathMediaAlpr(c.env);
+    return c.json({ scanned: r.scanned, captured: r.captured, ...(r.skipped ? { note: `Skipped: ${r.skipped}` } : {}) });
+  } catch (err) {
+    return c.json({ scanned: 0, captured: 0, error: clientErrorMessage(err) });
   }
 });
 
