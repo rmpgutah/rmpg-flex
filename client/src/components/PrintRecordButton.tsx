@@ -20,6 +20,7 @@ import DocumentViewer from './DocumentViewer';
 import SignaturePad from './SignaturePad';
 import { PdfEmailDialog } from './PdfEmailDialog';
 import { emailBlob } from '../utils/emailPdf';
+import { useToast } from './ToastProvider';
 
 interface PrintRecordButtonProps {
   /** Record type to generate PDF for */
@@ -67,6 +68,7 @@ export default function PrintRecordButton({
   entityId,
 }: PrintRecordButtonProps) {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const [viewerOpen, setViewerOpen] = useState(false);
   const [pdfBlobUrl, setPdfBlobUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -434,13 +436,20 @@ export default function PrintRecordButton({
         URL.revokeObjectURL(blobUrl);
       }
       const linkId = entityId != null && entityId !== '' && Number.isFinite(Number(entityId)) ? Number(entityId) : undefined;
-      await emailBlob(blob!, recordType, to, cc, subject, body, entityType, linkId);
+      const res = await emailBlob(blob!, recordType, to, cc, subject, body, entityType, linkId);
+      addToast(
+        res?.queued
+          ? 'Email queued — it will send when the mail service is reachable.'
+          : `Email sent to ${to.join(', ')}`,
+        'success',
+      );
     } catch (err) {
       console.error('[PrintRecordButton] Email failed:', err);
+      addToast(err instanceof Error ? `Email failed: ${err.message}` : 'Email failed', 'error');
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, identifier, entityType, entityId, enrichWithImages, fetchFreshRecordData]);
+  }, [recordType, recordData, identifier, entityType, entityId, enrichWithImages, fetchFreshRecordData, addToast]);
 
   /** Sign & Export: if user has no saved signature, show the sign pad; otherwise generate with saved sig */
   const handleSignAndExport = useCallback(async () => {
