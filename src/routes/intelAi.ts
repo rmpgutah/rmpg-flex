@@ -112,4 +112,21 @@ intelAi.post('/summarize', async (c): Promise<Response> => {
   }
 });
 
+// GET /health[?test=1] — is the AI engine live? Cheap by default (just reports
+// whether the key is configured + the model). ?test=1 does a tiny live call so
+// the operator can confirm the key is VALID and the account has credit, without
+// burning credit on every page load.
+intelAi.get('/health', async (c): Promise<Response> => {
+  const key = await getAnthropicKey(c.env);
+  const model = await getClaudeModel(c.env);
+  if (!key) return c.json({ configured: false, model, ok: false, detail: 'anthropic_api_key not set' });
+  if (c.req.query('test') !== '1') return c.json({ configured: true, model, ok: null });
+  try {
+    const reply = await callClaude(key, { text: 'Reply with the single word: OK', model, maxTokens: 4 });
+    return c.json({ configured: true, model, ok: /ok/i.test(reply), reply: reply.slice(0, 40) });
+  } catch (err: any) {
+    return c.json({ configured: true, model, ok: false, detail: String(err?.message).slice(0, 200) });
+  }
+});
+
 export default intelAi;

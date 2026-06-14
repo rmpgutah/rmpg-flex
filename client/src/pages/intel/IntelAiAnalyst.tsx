@@ -2,12 +2,13 @@
 // with citations (POST /api/intel/ai/ask), plus a per-person Claude dossier
 // summary (fetch system-history → POST /api/intel/ai/summarize). Degrades
 // cleanly when the Anthropic key isn't configured (the API returns 503).
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sparkles, Loader2, FileText, AlertTriangle, Search } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
 interface Source { type: string; id: number; label: string; snippet?: string; }
 interface AskResult { answer: string; citations: Source[]; sources: Source[]; }
+interface Health { configured: boolean; model: string; ok: boolean | null; detail?: string; }
 
 const EXAMPLES = [
   'Any active warrants linked to a silver Toyota?',
@@ -27,6 +28,21 @@ export default function IntelAiAnalyst() {
   const [error, setError] = useState('');
   const [summaries, setSummaries] = useState<Record<number, string>>({});
   const [summarizing, setSummarizing] = useState<number | null>(null);
+  const [health, setHealth] = useState<Health | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  // Cheap key-presence check on mount (no Claude call). The "Test" button runs
+  // a tiny live call to confirm the key is valid + the account has credit.
+  useEffect(() => {
+    apiFetch<Health>('/intel/ai/health').then(setHealth).catch(() => setHealth(null));
+  }, []);
+
+  const testConnection = async () => {
+    setTesting(true);
+    try { setHealth(await apiFetch<Health>('/intel/ai/health?test=1')); }
+    catch (e: any) { setHealth({ configured: true, model: '', ok: false, detail: e?.message }); }
+    finally { setTesting(false); }
+  };
 
   const ask = async (q?: string) => {
     const text = (q ?? question).trim();
@@ -66,6 +82,24 @@ export default function IntelAiAnalyst() {
         <Sparkles className="w-4 h-4 text-brand-400" />
         <h1 className="text-sm font-semibold text-rmpg-100">AI Analyst</h1>
         <span className="text-[10px] text-rmpg-500">Claude over your intel index</span>
+        {health && (
+          <span className="ml-auto flex items-center gap-1.5 text-[10px]">
+            <span className={`w-2 h-2 rounded-full ${
+              !health.configured ? 'bg-red-500' : health.ok === false ? 'bg-amber-500' : health.ok ? 'bg-green-500' : 'bg-rmpg-500'
+            }`} />
+            <span className="text-rmpg-400">
+              {!health.configured ? 'No API key'
+                : health.ok === true ? `Live · ${health.model}`
+                : health.ok === false ? `Key set · call failed`
+                : `Key set · ${health.model}`}
+            </span>
+            <button type="button" onClick={testConnection} disabled={testing || !health.configured}
+              className="text-brand-400 hover:text-brand-300 border border-rmpg-700/50 rounded-sm px-1.5 py-0.5 disabled:opacity-40"
+              title={health.detail || 'Run a 1-token live test call'}>
+              {testing ? '…' : 'Test'}
+            </button>
+          </span>
+        )}
       </div>
 
       <div className="flex gap-2">
