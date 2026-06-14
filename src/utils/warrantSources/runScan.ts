@@ -17,9 +17,10 @@
 // versions are intentionally NOT exported and NOT modified — keeping the Utah
 // path byte-identical is the #1 rule of this task.
 //
-// Order: scraped leg runs FIRST (cheap DB roster read + per-source pacing),
-// then the Utah leg. Either way both run; the order is documented for
-// reproducibility and has no correctness coupling between legs.
+// Order: the Utah leg runs FIRST so a large chunked scraped source can never
+// consume the tick's budget before RMPG's home jurisdiction is scanned; the
+// scraped + full-list legs follow. Neither leg has a correctness dependency on
+// the other — the order is a resource-starvation safeguard.
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, execute } from '../db';
@@ -317,9 +318,10 @@ export async function runFullListLeg(
 
 /**
  * Run BOTH legs:
- *   1. Scraped leg — every enabled non-api source × persons → scraped_warrants,
+ *   1. Utah leg — the UNCHANGED runUtahWarrantScan(db), runs FIRST so a large
+ *      chunked scraped source can never starve RMPG's home jurisdiction.
+ *   2. Scraped leg — every enabled non-api source × persons → scraped_warrants,
  *      then per-person reconcile + confirmed-only promotion to `warrants`.
- *   2. Utah leg — the UNCHANGED runUtahWarrantScan(db).
  *
  * Each scraped adapter and each person fetch is wrapped in try/catch so one bad
  * source/person can't abort the run. Utah runs in its own path with its own
@@ -331,6 +333,24 @@ export async function runAllSourceScans(
 ): Promise<AllSourceScanResult> {
   const runId = `multi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const delayMs = opts.delayMs ?? ((i: number) => jitterDelayMs(BASE_DELAY_MS, 1, i));
+
+  // ── Utah leg (UNCHANGED) ─────────────────────────────────────────────────────
+  // Runs FIRST so large chunked scraped sources can never starve RMPG's home
+  // jurisdiction. runUtahWarrantScan owns utah_warrants + Utah promotion +
+  // Utah watch-log + its own warrant_watch_runs row. Call as-is; do not reimplement.
+  let utah: WatchRunResult;
+  if (opts.skipUtah) {
+    utah = {
+      run_id: 'skipped',
+      status: 'completed',
+      persons_checked: 0,
+      new_warrants_found: 0,
+      warrants_cleared: 0,
+      errors: 0,
+    };
+  } else {
+    utah = await runUtahWarrantScan(db);
+  }
 
   // ── Scraped leg ────────────────────────────────────────────────────────────
   const adapters =
@@ -464,23 +484,6 @@ export async function runAllSourceScans(
     adapters.filter((a) => a.mode === 'full-list'),
   );
   for (const s of fullListSummaries) scraped.push(s);
-
-  // ── Utah leg (UNCHANGED) ─────────────────────────────────────────────────────
-  // runUtahWarrantScan owns utah_warrants + Utah promotion + Utah watch-log +
-  // its own warrant_watch_runs row. Call as-is; do not reimplement.
-  let utah: WatchRunResult;
-  if (opts.skipUtah) {
-    utah = {
-      run_id: 'skipped',
-      status: 'completed',
-      persons_checked: 0,
-      new_warrants_found: 0,
-      warrants_cleared: 0,
-      errors: 0,
-    };
-  } else {
-    utah = await runUtahWarrantScan(db);
-  }
 
   return { utah, scraped };
 }
