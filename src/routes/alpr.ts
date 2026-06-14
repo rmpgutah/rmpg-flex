@@ -73,6 +73,7 @@ const NUM_PARAMS = new Set(['risk_score_threshold', 'plate_confidence_threshold'
 const ALPR_EXTRA_COLUMNS: Array<[string, string]> = [
   ['call_id', 'INTEGER'], ['incident_id', 'INTEGER'], ['field_photo_id', 'INTEGER'],
   ['vehicle_count', 'INTEGER'], ['vehicle_record_ids', 'TEXT'],
+  ['enrich_status', 'TEXT'],
 ];
 
 /** Create the table (with all columns) and reconcile any missing columns at
