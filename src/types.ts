@@ -75,6 +75,9 @@ export type Bindings = {
   // See src/utils/clearpathGps.ts (getApiConfig).
   CPG_REFRESH_TOKEN?: string;
   CPG_USER_ID?: string;
+  // HMAC-SHA256 shared secret for edge device (Jetson vision-LoRA) ingest.
+  // Set via `wrangler secret put ALPR_EDGE_SECRET`; unset → /api/alpr/edge returns 503.
+  ALPR_EDGE_SECRET?: string;
 };
 
 export type Variables = {
