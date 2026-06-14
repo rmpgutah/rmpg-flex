@@ -209,6 +209,8 @@ export async function completeSourceCycle(
 // in a D1 batch() — orders of magnitude fewer round-trips than the per-row
 // SELECT-then-write upsertScrapedWarrant (kept for the per-person leg). Sub-batched
 // so one bad statement-set can't abort the rest.
+// NOTE: this column list mirrors upsertScrapedWarrant's INSERT above. If you add
+// a column to one, add it to the other.
 const SCRAPED_UPSERT_SQL = `
   INSERT INTO scraped_warrants (
     source_key, warrant_id, full_name, first_name, last_name, middle_name,
@@ -230,6 +232,12 @@ const SCRAPED_UPSERT_SQL = `
     photo_url=excluded.photo_url, detail_url=excluded.detail_url,
     person_id=excluded.person_id`;
 
+/**
+ * Batched upsert of full-list hits. D1 batch() is all-or-nothing per 100-row
+ * slice, so a failed slice counts ALL its rows as errors (never throws). There is
+ * NO per-row fallback here — callers MUST treat `errors > 0` as a failed chunk and
+ * neither advance the cursor nor run the clear-sweep (see runFullListLeg's gate).
+ */
 export async function upsertScrapedWarrantsBatch(
   db: D1Database,
   hits: RawWarrantHit[],

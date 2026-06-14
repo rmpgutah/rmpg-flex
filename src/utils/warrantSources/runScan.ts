@@ -28,7 +28,10 @@ import {
   type WatchRunResult,
 } from '../utahWarrantPoller';
 import { getEnabledAdapters, getAllEnabledAdapters } from './registry';
-import { upsertScrapedWarrant, markScrapedCleared } from './store';
+import {
+  upsertScrapedWarrant, markScrapedCleared, upsertScrapedWarrantsBatch,
+  readSourceProgress, saveSourceProgress, completeSourceCycle,
+} from './store';
 import { reconcileHits, type CanonicalHit } from './reconcile';
 import { normalizeCharge } from './chargeNormalize';
 import { jitterDelayMs } from './resilience';
@@ -206,10 +209,59 @@ async function loadPersons(db: D1Database): Promise<PersonRow[]> {
 export async function runFullListLeg(
   db: D1Database,
   adapters: WarrantSourceAdapter[],
+  opts: { now?: () => string } = {},
 ): Promise<ScrapedSourceSummary[]> {
+  const now = opts.now ?? (() => new Date().toISOString());
   const out: ScrapedSourceSummary[] = [];
   for (const adapter of adapters) {
-    if (adapter.mode !== 'full-list' || typeof adapter.fetchAll !== 'function') continue;
+    if (adapter.mode !== 'full-list') continue;
+
+    // ── Chunked path (cursor-driven; large rosters across many ticks) ────────
+    if (typeof adapter.fetchChunk === 'function') {
+      const key = adapter.meta.key;
+      let found = 0;
+      let errors = 0;
+      let cleared = 0;
+      try {
+        const prog = await readSourceProgress(db, key);
+        const cycleStartedAt = prog?.cycle_started_at ?? now();
+        const cursor = prog?.cursor ?? null;
+
+        const { hits, nextCursor, done } = await adapter.fetchChunk(cursor, { DB: db });
+        const r = await upsertScrapedWarrantsBatch(db, hits, null);
+        found = r.found;
+        errors += r.errors;
+
+        if (errors > 0) {
+          // Writes were unreliable this tick. NEVER clear-sweep when we couldn't
+          // store reliably — a sweep here would clear active warrants that merely
+          // failed to re-store (the feature's #1 invariant: never wrongly clear).
+          // Don't advance past the failed window either: persist the SAME incoming
+          // cursor so the next tick retries it. The batched upsert is idempotent
+          // (ON CONFLICT), so re-running the window is safe.
+          await saveSourceProgress(db, key, cursor, cycleStartedAt, (prog?.rows_this_cycle ?? 0) + found);
+        } else if (done) {
+          // Full pass complete → clear rows of THIS source not seen during the
+          // entire cycle (scoped to cycle_started_at, NOT this tick), then reset.
+          cleared = await markScrapedCleared(db, key, cycleStartedAt).catch((err) => {
+            console.warn(`[warrantSources.runScan.chunk] ${key} clear sweep failed:`, err instanceof Error ? err.message : String(err));
+            return 0;
+          });
+          await completeSourceCycle(db, key, now());
+        } else {
+          // Mid-cycle / truncated → persist cursor, SKIP the clear-sweep so the
+          // un-ingested tail (and prior chunks) are never wrongly cleared.
+          await saveSourceProgress(db, key, nextCursor, cycleStartedAt, (prog?.rows_this_cycle ?? 0) + found);
+        }
+      } catch (err) {
+        errors++;
+        console.warn(`[warrantSources.runScan.chunk] ${key} fetchChunk failed:`, err instanceof Error ? err.message : String(err));
+      }
+      out.push({ source_key: key, checked: 0, found, cleared, errors });
+      continue;
+    }
+
+    if (typeof adapter.fetchAll !== 'function') continue;
     const runStartedAt = new Date().toISOString();
     let found = 0;
     let errors = 0;
