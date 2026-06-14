@@ -1786,6 +1786,9 @@ const API_ROUTES: RouteRule[] = [
   // New top-level prefix; route to the rewrite so the console populates (else it
   // falls through to legacy, which returns an empty list).
   { kind: 'prefix', value: '/api/driving-events' },
+  // Live forensic-player plate hotlist screen — rewrite-only (legacy 404s).
+  // Specific regex so the rest of /api/intel/* keeps its existing routing.
+  { kind: 'regex', value: /^\/api\/intel\/screen-plate(\?.*)?$/, methods: ['GET'] },
   // ── Forensic lab (alias for /api/forensics) ──
   { kind: 'prefix', value: '/api/forensic-lab' },
 

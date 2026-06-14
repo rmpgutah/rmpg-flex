@@ -431,6 +431,7 @@ export function normalizeMediaObject(raw: Record<string, unknown>, eventTypes: s
     location: first && Number.isFinite(first.latitude) && Number.isFinite(first.longitude)
       ? { lat: first.latitude, lng: first.longitude } : null,
     gps: gps.length ? gps : undefined,
+    durationSec: raw.duration != null && Number.isFinite(Number(raw.duration)) ? Number(raw.duration) : null,
   };
 }
 

@@ -196,15 +196,17 @@ async function upsertEvent(db: DB, m: MappingRow, event: CpgMediaEvent): Promise
 // ── Per-device sync ──────────────────────────────────────────
 
 async function syncDevice(
-  env: Bindings, db: DB, client: CpgClient, m: MappingRow, cameraId: number, budget: { left: number; errors: string[] },
+  env: Bindings, db: DB, client: CpgClient, m: MappingRow, cameraId: number,
+  budget: { left: number; errors: string[] },
 ): Promise<number> {
   const now = Date.now();
   let fromMs = m.last_media_synced_at ? Date.parse(m.last_media_synced_at) : now - LOOKBACK_FIRST_SYNC_MS;
   const cap = now - 30 * 24 * 60 * 60 * 1000; // ClearPath retains ~30 days
   if (!Number.isFinite(fromMs) || fromMs < cap) fromMs = cap;
 
-  // `cameraId` here is the GPS-Insight assetId (the media API key).
-  const events = await listAllMedia(env, client, cameraId, fromMs, now);
+  // `cameraId` here is the GPS-Insight assetId (the media API key). Only pull a
+  // couple of pages — enough to fill the per-run clip budget.
+  const events = await listAllMedia(env, client, cameraId, fromMs, now, MEDIA_PAGES_PER_RUN);
   let synced = 0;
   for (const event of events) {
     const eventRowId = await upsertEvent(db, m, event);
@@ -298,7 +300,7 @@ export async function syncClearpathMedia(env: Bindings): Promise<{ synced: numbe
 // entirely: per media event it persists the still to R2 + runs ALPR + writes an
 // alpr_captures row (with/without a plate). Bounded + idempotent (dedupes on the
 // cpg_dashcam:<device>:<ts> capture_id). Runs far faster than the clip sync.
-const MAX_ALPR_STILLS_PER_RUN = 8;
+const MAX_ALPR_STILLS_PER_RUN = 12;       // coverage: stills processed per scan tick
 
 export async function scanClearpathMediaAlpr(env: Bindings): Promise<{ scanned: number; captured: number; skipped?: string }> {
   const db = getDb(env);
@@ -326,7 +328,7 @@ export async function scanClearpathMediaAlpr(env: Bindings): Promise<{ scanned: 
     const cameraId = await resolveCameraId(db, m, cameras);
     if (!cameraId) continue;
     let events: CpgMediaEvent[];
-    try { events = await listAllMedia(env, client, cameraId, from, now, 1); } catch { continue; }
+    try { events = await listAllMedia(env, client, cameraId, from, now, 2); } catch { continue; }
     for (const event of events) {
       if (captured >= MAX_ALPR_STILLS_PER_RUN) break;
       if (!pickAlprImageUrl(event)) continue; // only outside stills become captures

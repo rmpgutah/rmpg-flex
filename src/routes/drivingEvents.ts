@@ -12,7 +12,7 @@
 
 import { Hono, type Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst } from '../utils/db';
+import { getDb, query, queryFirst, execute } from '../utils/db';
 import { classifyDrivingEvent, fleetStatusFor } from '../utils/drivingEvents';
 import { getApiConfig, listMedia, type CpgMediaObject } from '../utils/clearpathGps';
 
@@ -169,6 +169,53 @@ drivingEvents.get('/fleet-health', async (c: Context<Env>): Promise<Response> =>
   return c.json({ units });
 });
 
+// ── Plate re-identification — prior sightings of a plate across all sources ──
+// Routed under /api/driving-events (rewrite-proxied) to dodge the legacy
+// fall-through; defined BEFORE /:id so 'plate-history' isn't read as an id.
+drivingEvents.get('/plate-history', async (c: Context<Env>): Promise<Response> => {
+  const db = getDb(c.env);
+  const plate = (c.req.query('plate') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!/^[A-Z0-9]{2,8}$/.test(plate)) return c.json({ plate, count: 0, sightings: [] });
+  try {
+    const rows = await query<any>(db, `
+      SELECT id, plate, state, location_text, lat, lng, notes, confidence, created_at
+      FROM vehicle_sightings WHERE UPPER(REPLACE(REPLACE(plate,' ',''),'-','')) = ?
+      ORDER BY created_at DESC LIMIT 20`, plate);
+    const total = await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(*) AS n FROM vehicle_sightings WHERE UPPER(REPLACE(REPLACE(plate,' ',''),'-','')) = ?`, plate);
+    // distinct days seen (frequency signal)
+    const days = new Set(rows.map((r) => String(r.created_at || '').slice(0, 10))).size;
+    return c.json({
+      plate, count: total?.n ?? rows.length, distinct_days: days,
+      sightings: rows.map((r) => ({
+        id: r.id, location: r.location_text, lat: r.lat, lng: r.lng,
+        source: /dashcam/i.test(r.notes || '') ? 'dashcam' : /alpr/i.test(r.notes || '') ? 'field' : 'manual',
+        confidence: r.confidence, created_at: r.created_at,
+      })),
+    });
+  } catch (err: any) {
+    return c.json({ plate, count: 0, sightings: [], error: err?.message }, 200);
+  }
+});
+
+// Chain-of-custody audit write for forensic actions (view/export/rescan).
+// Lives here (operational-gated) rather than under /api/audit (admin/manager only).
+drivingEvents.post('/audit-log', async (c: Context<Env>): Promise<Response> => {
+  const db = getDb(c.env);
+  let body: { action?: string; event_id?: number; details?: string };
+  try { body = await c.req.json(); } catch { return c.json({ ok: false }, 200); }
+  const action = (body.action || 'forensic_access').toString().slice(0, 64);
+  const userId = Number((c.get('user') as any)?.id) || (c.get('userId') as number) || null;
+  const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || null;
+  try {
+    await execute(db,
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+       VALUES (?, ?, 'dashcam_event', ?, ?, ?, datetime('now'))`,
+      userId, action, body.event_id ?? null, (body.details || '').toString().slice(0, 500), ip);
+  } catch { /* best-effort — never block the UI on an audit write */ }
+  return c.json({ ok: true });
+});
+
 // ── Single event (detail) ────────────────────────────────────
 drivingEvents.get('/:id', async (c: Context<Env>): Promise<Response> => {
   const db = getDb(c.env);
@@ -249,10 +296,24 @@ drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
   catch (err) { return c.json({ error: (err as Error)?.message || 'resolve failed', has_video: false }, 200); }
   if (!resolved) return c.json({ has_video: false, gps: [], error: 'No media for this event' }, 200);
   const { media, event } = resolved;
-  // The persisted ALPR still + plate (written by the still scan), if any.
-  const cap = await queryFirst<{ image_key: string | null; plate: string | null; confidence: number | null }>(db,
-    "SELECT image_key, plate, confidence FROM alpr_captures WHERE capture_id = ? LIMIT 1",
+  // The persisted ALPR still + plate + vehicle attributes (from the still scan).
+  const cap = await queryFirst<{
+    image_key: string | null; plate: string | null; confidence: number | null;
+    state: string | null; make: string | null; model: string | null; color: string | null;
+    year: number | null; raw_json: string | null;
+  }>(db,
+    "SELECT image_key, plate, confidence, state, make, model, color, year, raw_json FROM alpr_captures WHERE capture_id = ? LIMIT 1",
     `cpg_dashcam:${event.cpg_device_id}:${event.cpg_media_timestamp}`).catch(() => null);
+  // Null out the model's "not visible / unknown" non-answers so the tag stays clean.
+  const cleanAttr = (s: string | null): string | null => {
+    if (!s) return null;
+    const t = s.trim().toLowerCase();
+    return ['', 'not visible', 'notvisible', 'unknown', 'n/a', 'na', 'none', 'not legible', 'unreadable', 'obscured'].includes(t) ? null : s;
+  };
+  // Any detection geometry the engine recorded (Roboflow path); [] for plate-only reads.
+  let detections: unknown[] = [];
+  try { const raw = cap?.raw_json ? JSON.parse(cap.raw_json) : null;
+    detections = Array.isArray(raw?.detections) ? raw.detections : Array.isArray(raw?.predictions) ? raw.predictions : []; } catch { /* */ }
   return c.json({
     id, has_video: !!media.accessUrl,
     stream_url: media.accessUrl ? `/api/driving-events/${id}/stream` : null,
@@ -264,6 +325,8 @@ drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
     still_url: cap?.image_key ? `/api/alpr/image/${cap.image_key}` : null,
     plate: cap?.plate ?? null,
     plate_confidence: cap?.confidence ?? null,
+    vehicle: cap ? { state: cleanAttr(cap.state), make: cleanAttr(cap.make), model: cleanAttr(cap.model), color: cleanAttr(cap.color), year: cap.year } : null,
+    detections,
   });
 });
 
