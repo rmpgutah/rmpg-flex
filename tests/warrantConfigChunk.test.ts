@@ -69,6 +69,23 @@ describe('arcgis fetchChunk', () => {
     expect(res.done).toBe(false);
     expect(res.nextCursor).toBe('2000');          // resume after the rows we DID get
   });
+
+  it('does not spin when a full page never advances the cursor (missing OBJECTIDs)', async () => {
+    // A full 2000-feature page with NO OBJECTID on any feature → maxObjectId can't
+    // advance lastOid. Must break after ONE fetch, not loop until the CPU limit.
+    const badFeatures = Array.from({ length: 2000 }, (_, i) => ({
+      attributes: { FirstName: 'A', LastName: 'B', CitationNumber: `C${i}` },  // no OBJECTID
+    }));
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ features: badFeatures, exceededTransferLimit: true }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const [adapter] = await getConfigAdapters(dbWithSource(ARCGIS_ROW));
+    const res = await adapter.fetchChunk!(null, { DB: dbWithSource(ARCGIS_ROW) });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);   // broke after one page — did NOT spin
+    expect(res.done).toBe(false);
+    expect(res.nextCursor).toBe('0');             // cursor unmoved (no progress)
+  });
 });
 
 describe('socrata fetchChunk', () => {

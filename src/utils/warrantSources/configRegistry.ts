@@ -57,7 +57,13 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
           const features = body.features ?? [];
           if (features.length === 0) return { hits, nextCursor: String(lastOid), done: true };
           hits.push(...parseArcgis(body, map, row.source_key));
+          const prevOid = lastOid;
           lastOid = maxObjectId(features, lastOid);
+          // Defensive: a non-empty page that fails to advance the cursor (features
+          // with missing/NaN OBJECTID) would otherwise re-fetch the same window
+          // forever and hit the Worker CPU limit. Break instead — done:false (via
+          // the post-loop return) leaves the cursor put so the leg retries next tick.
+          if (lastOid <= prevOid) break;
           if (!arcgisHasMore(body, ARCGIS_SERVER_PAGE)) return { hits, nextCursor: String(lastOid), done: true };
         }
         return { hits, nextCursor: String(lastOid), done: false };
