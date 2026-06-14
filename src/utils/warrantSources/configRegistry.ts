@@ -3,6 +3,35 @@ import type { WarrantSourceAdapter, RawWarrantHit, SourceKind, WarrantCategory }
 import { query } from '../db';
 import { parseSocrata, type FieldMap } from './parse/socrata';
 import { parseArcgis } from './parse/arcgis';
+import { fetchPdfText } from './pdfText';
+import { parseZuercherPdf } from './parse/pdfZuercher';
+import { parseTxMuniPdf } from './parse/pdfTxMuni';
+import { parseNewtonPdf } from './parse/pdfNewton';
+import { parseIncodePdf } from './parse/pdfIncode';
+import { parseBonnerXml } from './parse/bonnerXml';
+import { parseZuercherCsv } from './parse/zuercherCsv';
+
+type TextParser = (text: string, sourceKey: string, state: string) => RawWarrantHit[];
+/** Plain-text (non-PDF, non-JSON) full-list families: fetch the URL as text and parse.
+ *  xml-bonner = Bonner County ID structured XML; csv-zuercher = the Zuercher portal
+ *  `web_warrant_list.csv` export (reusable across Zuercher-platform sheriffs). */
+const TEXT_FAMILIES: Record<string, TextParser> = {
+  'xml-bonner': parseBonnerXml,
+  'csv-zuercher': parseZuercherCsv,
+};
+
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+
+type PdfParser = (text: string, sourceKey: string, state: string) => RawWarrantHit[];
+/** PDF layout families: each maps to a parser + whether it needs line-preserving
+ *  text (mergePages:false). Zuercher reconstructs from the flat stream; the all-caps
+ *  TX-muni / column-major Newton / multi-line INCODE layouts need row newlines. */
+const PDF_FAMILIES: Record<string, { parse: PdfParser; lines: boolean }> = {
+  'pdf-zuercher': { parse: parseZuercherPdf, lines: false },
+  'pdf-txmuni': { parse: parseTxMuniPdf, lines: true },
+  'pdf-newton': { parse: parseNewtonPdf, lines: true },
+  'pdf-incode': { parse: parseIncodePdf, lines: true },
+};
 
 interface SourceRow {
   source_key: string; family: string; display_name: string; state: string | null;
@@ -52,6 +81,24 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
           if (!body.exceededTransferLimit) break;
         }
         return out;
+      } catch { return []; }
+    } };
+  }
+  const pdf = PDF_FAMILIES[row.family];
+  if (pdf) {
+    return { meta, mode: 'full-list', async fetchAll(): Promise<RawWarrantHit[]> {
+      const text = await fetchPdfText(row.base_url ?? '', { lines: pdf.lines });
+      if (!text) return [];  // URL 404'd / no text layer — degrade gracefully, don't throw
+      try { return pdf.parse(text, row.source_key, row.state ?? 'US'); } catch { return []; }
+    } };
+  }
+  const textParser = TEXT_FAMILIES[row.family];
+  if (textParser) {
+    return { meta, mode: 'full-list', async fetchAll(): Promise<RawWarrantHit[]> {
+      try {
+        const res = await fetch(row.base_url ?? '', { headers: { 'User-Agent': BROWSER_UA, Accept: '*/*' } });
+        if (!res.ok) return [];  // 404/403 — degrade gracefully
+        return textParser(await res.text(), row.source_key, row.state ?? 'US');
       } catch { return []; }
     } };
   }

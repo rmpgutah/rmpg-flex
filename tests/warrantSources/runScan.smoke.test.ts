@@ -115,8 +115,9 @@ describe('runAllSourceScans (orchestrator smoke)', () => {
     const entry = summary.scraped.find((s) => s.source_key === 'ada-county-id');
     expect(entry!.errors).toBe(1);
     expect(entry!.found).toBe(0);
-    // still cleared (per-source sweep runs even when fetches errored)
-    expect(calls.some((c) => /UPDATE scraped_warrants SET status='cleared'/i.test(c.sql))).toBe(true);
+    // The per-source sweep MUST be skipped when a fetch errored — otherwise an
+    // endpoint outage would wipe the source's active warrants (officer-safety).
+    expect(calls.some((c) => /UPDATE scraped_warrants SET status='cleared'/i.test(c.sql))).toBe(false);
     // nothing promoted (no hits)
     expect(calls.some((c) => /INSERT INTO warrants/i.test(c.sql))).toBe(false);
   });

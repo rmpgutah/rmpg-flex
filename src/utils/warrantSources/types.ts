@@ -24,7 +24,7 @@ export interface RawWarrantHit {
   detail_url?: string | null;
 }
 
-export type SourceKind = 'api' | 'html' | 'browser' | 'portal' | 'json' | 'socrata' | 'arcgis' | 'pdf' | 'p2c-legacy' | 'p2c-cloud';
+export type SourceKind = 'api' | 'html' | 'browser' | 'portal' | 'json' | 'socrata' | 'arcgis' | 'pdf' | 'xml' | 'csv' | 'p2c-legacy' | 'p2c-cloud';
 export type SourceMode = 'full-list' | 'per-person';
 export type WarrantCategory = 'criminal' | 'civil' | 'wanted';
 
