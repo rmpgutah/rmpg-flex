@@ -808,6 +808,14 @@ const STUBS: StubRule[] = [
 ];
 
 const API_ROUTES: RouteRule[] = [
+  // ── ALPR Vehicle Details Capture (rewrite-only; Roboflow) ──
+  // /api/alpr/* (capture, captures, image, health) lives only in the rewrite
+  // (src/routes/alpr.ts) and needs the ROBOFLOW_API_KEY secret, set on
+  // rmpg-flex-api (env.API) — NOT on legacy rmpg-flex. Without this rule the
+  // path fell through to env.LEGACY, whose identical /src/ bundle has the code
+  // but not the secret, so every capture 503'd "ALPR not configured".
+  { kind: 'prefix', value: '/api/alpr' },
+
   // ── AUTH CUTOVER (Phase 2, 2026-06-12) ──
   // Login/refresh/me/logout/password/profile now served by the rewrite
   // (src/routes/auth.ts). Pre-flight (cutover-artifacts/, Task 2.1) confirmed
