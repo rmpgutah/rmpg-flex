@@ -203,10 +203,17 @@ panic.post('/panic', async (c) => {
   // ── FlexCam auto-preserve (best-effort, strictly additive). Resolves the
   // officer's camera asset internally from unitId; never throws into the panic
   // flow — a preserve failure logs and is swallowed so the alarm still fires.
-  try {
-    const { preserveForEvent } = await import('../../utils/footage/autoPreserve');
-    await preserveForEvent(c.env, { eventType: 'panic_alert', eventId: Number(panicId), reason: 'panic', unitId: unit?.id ?? null, officerUserId: userId, callId: callId ?? null, eventTs: Date.now() }); // new-date-ok
-  } catch (e) { console.error('[flexcam-preserve] panic:', (e as Error)?.message); }
+  // Fire-and-forget via waitUntil: the preserve issues ~11 sequential ClearPath
+  // POSTs (7-min window) which must NOT delay the agency-wide alarm broadcast
+  // below or the officer's response. waitUntil also keeps the work alive after
+  // the response returns (a bare un-awaited promise can be killed by the runtime).
+  const _preserve = (async () => {
+    try {
+      const { preserveForEvent } = await import('../../utils/footage/autoPreserve');
+      await preserveForEvent(c.env, { eventType: 'panic_alert', eventId: Number(panicId), reason: 'panic', unitId: unit?.id ?? null, officerUserId: userId, callId: callId ?? null, eventTs: Date.now() }); // new-date-ok
+    } catch (e) { console.error('[flexcam-preserve] panic:', (e as Error)?.message); }
+  })();
+  try { c.executionCtx.waitUntil(_preserve); } catch { /* no execution ctx (e.g. tests) — let it float */ }
 
   const created = await queryFirst<Record<string, unknown>>(
     db,

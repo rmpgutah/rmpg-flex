@@ -32,6 +32,7 @@ async function ensureEvidenceSchema(db: D1Database): Promise<void> {
   }
   try { if (!(await columnExists(db, 'footage_chunks', 'sha256'))) await execute(db, `ALTER TABLE footage_chunks ADD COLUMN sha256 TEXT`); } catch { /* */ }
   await execute(db, `CREATE TABLE IF NOT EXISTS footage_custody_log (id INTEGER PRIMARY KEY AUTOINCREMENT, footage_request_id INTEGER NOT NULL, action TEXT NOT NULL, actor_user_id INTEGER, actor_name TEXT, reason TEXT, detail TEXT, session_key TEXT, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {});
+  await execute(db, `CREATE INDEX IF NOT EXISTS idx_footage_custody_req ON footage_custody_log(footage_request_id, id)`).catch(() => {});
   await execute(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_footage_custody_view ON footage_custody_log(footage_request_id, actor_user_id, session_key) WHERE action='viewed'`).catch(() => {});
   await execute(db, `CREATE TABLE IF NOT EXISTS footage_evidence_links (id INTEGER PRIMARY KEY AUTOINCREMENT, footage_request_id INTEGER NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, linked_by INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {});
   await execute(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_footage_evlink ON footage_evidence_links(footage_request_id, entity_type, entity_id)`).catch(() => {});

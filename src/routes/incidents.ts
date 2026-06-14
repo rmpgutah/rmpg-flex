@@ -111,12 +111,21 @@ incidents.post('/', requireRole(...WRITE_ROLES), async (c) => {
     // ── FlexCam auto-preserve (best-effort, strictly additive). Resolve the
     // officer's unit from the reporting officer; never throws into the filing
     // flow — a preserve failure logs and is swallowed so the incident still files.
-    try {
-      const incidentId = Number(result.meta.last_row_id);
-      const unit = userId ? await queryFirst<{ id: number }>(getDb(c.env), 'SELECT id FROM units WHERE officer_id=? LIMIT 1', userId).catch(() => null) : null;
-      const { preserveForEvent } = await import('../utils/footage/autoPreserve');
-      await preserveForEvent(c.env, { eventType: 'incident', eventId: incidentId, reason: 'incident', unitId: unit?.id ?? null, officerUserId: userId ?? null, callId: (body as any).call_id ?? null, eventTs: Date.now() }); // new-date-ok
-    } catch (e) { console.error('[flexcam-preserve] incident:', (e as Error)?.message); }
+    // Fire-and-forget via waitUntil: the preserve issues ~11 sequential ClearPath
+    // POSTs (7-min window) which must NOT delay the filing response. waitUntil
+    // also keeps the work alive after the response returns. The unit lookup runs
+    // INSIDE _preserve; only the request-scoped ids are captured up front.
+    const incidentId = Number(result.meta.last_row_id);
+    const preserveUserId = userId ?? null;
+    const preserveCallId = call_id != null ? Number(call_id) : null;
+    const _preserve = (async () => {
+      try {
+        const unit = preserveUserId ? await queryFirst<{ id: number }>(getDb(c.env), 'SELECT id FROM units WHERE officer_id=? LIMIT 1', preserveUserId).catch(() => null) : null;
+        const { preserveForEvent } = await import('../utils/footage/autoPreserve');
+        await preserveForEvent(c.env, { eventType: 'incident', eventId: incidentId, reason: 'incident', unitId: unit?.id ?? null, officerUserId: preserveUserId, callId: preserveCallId, eventTs: Date.now() }); // new-date-ok
+      } catch (e) { console.error('[flexcam-preserve] incident:', (e as Error)?.message); }
+    })();
+    try { c.executionCtx.waitUntil(_preserve); } catch { /* no execution ctx (e.g. tests) — let it float */ }
     return c.json(created, 201);
   } catch (err) {
     console.error('[incidents] create error', err);
