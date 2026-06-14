@@ -11,3 +11,57 @@
   --spm-text: #1a1a1a;
   --spm-text-muted: #555555;
 }
+
+/* ── Base surface + text recolor ───────────────────────────── */
+.spillman-theme { background: var(--spm-form); color: var(--spm-text); }
+
+/* rmpg / surface / brand background families → light Spillman surfaces.
+   Substring attribute selectors absorb the /alpha utility variants too. */
+.spillman-theme [class*="bg-rmpg-9"],
+.spillman-theme [class*="bg-rmpg-95"],
+.spillman-theme [class*="bg-surface-base"],
+.spillman-theme [class*="bg-surface-deep"],
+.spillman-theme [class*="bg-surface-sunken"] { background-color: var(--spm-form) !important; }
+
+.spillman-theme [class*="bg-rmpg-8"],
+.spillman-theme [class*="bg-rmpg-7"],
+.spillman-theme [class*="bg-surface-raised"],
+.spillman-theme [class*="bg-surface-overlay"] { background-color: #ffffff !important; }
+
+/* Borders → structural Spillman grey */
+.spillman-theme [class*="border-rmpg-"] { border-color: var(--spm-border) !important; }
+
+/* Text → dark on light; brand/amber accents → steel-blue */
+.spillman-theme .text-white { color: #15202b !important; }
+.spillman-theme [class*="text-rmpg-3"],
+.spillman-theme [class*="text-rmpg-4"],
+.spillman-theme [class*="text-rmpg-5"] { color: var(--spm-text-muted) !important; }
+.spillman-theme [class*="text-brand-4"],
+.spillman-theme [class*="text-brand-5"] { color: var(--spm-accent) !important; }
+
+/* Scrollbars → light */
+.spillman-theme .scrollbar-dark::-webkit-scrollbar-track { background: #d8d4c8 !important; }
+.spillman-theme .scrollbar-dark::-webkit-scrollbar-thumb { background: #b3ae9e !important; }
+
+/* Window title bar → steel-blue gradient */
+.spillman-theme .panel-title-bar {
+  background: linear-gradient(#5a7ea6, #2e4a66) !important;
+  border-color: #2e4a66 !important;
+  color: #ffffff !important;
+}
+.spillman-theme .panel-title-bar .title-icon,
+.spillman-theme .panel-title-bar span { color: #ffffff !important; }
+
+/* Toolbar buttons → classic raised */
+.spillman-theme .toolbar-btn {
+  background: linear-gradient(#ffffff, #e8e6da) !important;
+  border: 1px solid #b3ae9e !important;
+  color: #1a1a1a !important;
+}
+.spillman-theme .toolbar-btn:hover { background: linear-gradient(#ffffff, #dad7c9) !important; }
+.spillman-theme .toolbar-btn-primary {
+  background: linear-gradient(#dfe8f6, #b9d2ee) !important;
+  border-color: #6f93bd !important;
+  color: #16314f !important;
+  font-weight: 600 !important;
+}
