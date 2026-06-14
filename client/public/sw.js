@@ -604,7 +604,9 @@
 //       scroll") + per-path scroll restore across reloads.
 // v954: OCR trust layer + per-vehicle capture dossier (honest TrustBadge replaces
 //       self-reported %, derived trust gates) on top of main v953.
-const CACHE_NAME = 'rmpg-flex-v954';
+// v958: Mapbox visual upgrade — branded pure-black/gold basemap (shared runtime
+//       restyler) + consistent shared markers across all map surfaces.
+const CACHE_NAME = 'rmpg-flex-v958';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
