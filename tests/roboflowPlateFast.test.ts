@@ -1,5 +1,28 @@
 import { describe, it, expect } from 'vitest';
-import { parseFastPlate, fastRunUrl, ROBOFLOW_FAST_WORKFLOW_ID } from '../src/utils/roboflowPlateFast';
+import { parseFastPlate, fastRunUrl, ROBOFLOW_FAST_WORKFLOW_ID, runPlateFast } from '../src/utils/roboflowPlateFast';
+import { isQuotaResponse, RoboflowQuotaError } from '../src/utils/roboflowAlpr';
+
+describe('roboflow credit-cap (quota) handling', () => {
+  it('isQuotaResponse flags 402 and credit-cap bodies', () => {
+    expect(isQuotaResponse(402, '')).toBe(true);
+    expect(isQuotaResponse(500, "reason: 'credit_cap_exceeded'")).toBe(true);
+    expect(isQuotaResponse(502, 'workspace ran out of credits')).toBe(true);
+    expect(isQuotaResponse(500, 'some other error')).toBe(false);
+    expect(isQuotaResponse(200, '')).toBe(false);
+  });
+
+  it('runPlateFast throws a typed RoboflowQuotaError on a 402 (no retry)', async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls++;
+      return new Response('{"message":"credit_cap_exceeded"}', { status: 402 });
+    }) as unknown as typeof fetch;
+    await expect(runPlateFast({
+      image: { type: 'url', value: 'https://x/y.jpg' }, apiKey: 'k', retries: 2, fetchImpl,
+    })).rejects.toBeInstanceOf(RoboflowQuotaError);
+    expect(calls).toBe(1); // failed fast, did not burn retries on a quota error
+  });
+});
 
 describe('parseFastPlate', () => {
   it('extracts a plate from a nested OCR output and cleans it', () => {
