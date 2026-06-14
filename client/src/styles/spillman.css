@@ -1,0 +1,13 @@
+/* Spillman Flex grey/steel-blue theme — scoped to .spillman-theme.
+   Reusable layer: the --spm-* tokens can later drive an app-wide rollout. */
+.spillman-theme {
+  --spm-chrome: #d6d3c8;
+  --spm-form: #ece9dd;
+  --spm-field: #f7f9fb;
+  --spm-border: #9a958a;
+  --spm-field-border: #c3cdd8;
+  --spm-accent: #2e4a66;
+  --spm-select: #316ac5;
+  --spm-text: #1a1a1a;
+  --spm-text-muted: #555555;
+}

@@ -628,7 +628,7 @@ export default function RecordsPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full animate-fade-in">
+    <div className="spillman-theme flex flex-col h-full animate-fade-in">
       <SplitPanel
         left={leftPanel}
         right={rightPanel}
