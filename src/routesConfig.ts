@@ -100,6 +100,7 @@ import alarms from './routes/alarms';
 import alpr from './routes/alpr';
 import citations from './routes/citations';
 import clearpathgps from './routes/clearpathgps';
+import flexcam from './routes/flexcam';
 import clients from './routes/clients';
 import cloudflare from './routes/cloudflare';
 import connections from './routes/connections';
@@ -529,6 +530,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
   { prefix: '/api/clearpathgps', router: clearpathgps, auth: 'required' },
+  { prefix: '/api/flexcam', router: flexcam, auth: 'required',
+    note: 'FlexCam full-trip footage capture (source-agnostic; ClearPath adapter). Phase 1.' },
   { prefix: '/api/microbilt', router: microbilt, auth: 'required',
     note: 'DL search (local dl_records/persons + live MicroBilt API when creds configured) + dl/stats + status. Was a stub mount — the DL SEARCH page 404d.' },
   { prefix: '/api/servemanager', router: stubs, auth: 'required' },
