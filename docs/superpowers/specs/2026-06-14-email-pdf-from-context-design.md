@@ -1,10 +1,40 @@
 # Email PDF from Context — Design
 
 **Date:** 2026-06-14
-**Status:** Approved (design); implementation plan pending
-**Subsystem:** Email (MS Graph) + PDF generation (`PdfReviewModal`)
+**Status:** Implemented (with the front-end correction below)
+**Subsystem:** Email (MS Graph) + PDF generation
 **Approach:** B — real multipart `/api/pdf-engine/email` handler over a shared send core
 **Linkage scope:** Persist + surface on record
+
+---
+
+## ⚠️ Implementation correction (2026-06-14, discovered during execution)
+
+This spec's front-end premise was **wrong**: it assumed the "Email PDF" button was
+reachable app-wide via `PdfReviewModal` / `CommitDropdown`. During Task 8 we verified
+that **`PdfReviewModal` is rendered in zero production pages** (its only importer is a
+type-only import in `CommitDropdown`, which is itself never rendered). The entire
+`PdfReviewModal → CommitDropdown → PdfEmailDialog → emailBlob` UI was dead code.
+
+The **live** PDF component is **`PrintRecordButton`** (`recordPdfGenerator.ts`), rendered
+on warrant / citation / property / call / evidence / fleet / personnel pages, keyed by
+`entityType`/`entityId`. It had no email action.
+
+**Corrected front-end approach (built):**
+- `emailBlob` extracted from the dead `PdfReviewModal` to `client/src/utils/emailPdf.ts`.
+- An **Email action added to the live `PrintRecordButton`** (reuses `PdfEmailDialog` + the
+  existing blob pipeline `fetchFreshRecordData → enrichWithImages → generateRecordPdfBlobUrl`),
+  posting to `/api/pdf-engine/email` with `record_type=entityType`, `record_id=entityId`.
+  Every `PrintRecordButton` instance now has Email.
+- `<EmailedDocuments>` surfaces are mounted only where there is a **detail panel** with a
+  stable selected record + `entityType`/`entityId`: **warrant, evidence, fleet, personnel**.
+  The case/incident/evidence-property mounts from the first pass were removed (no email path).
+- Per-row/inline `PrintRecordButton`s (citation, property/business, call) get the Email action
+  but **no surface and no record-link** (they lack `entityType`/`entityId` and aren't detail
+  panels) — deferred, noted as a fast-follow.
+
+The **backend** (migration 0118, `enqueueAndSend`, `POST /api/pdf-engine/email`,
+`GET /api/email/by-record`) is exactly as designed below and unaffected by the correction.
 
 ---
 
