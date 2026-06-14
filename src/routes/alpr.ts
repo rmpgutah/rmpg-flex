@@ -486,6 +486,20 @@ alpr.post('/capture', operational, async (c) => {
   });
 });
 
+// ── List vehicle_capture_photos packages (honest trust layer) ─
+// GET /packages?plate=&min_trust=  — newest-first, optional filters
+alpr.get('/packages', operational, async (c) => {
+  const db = getDb(c.env); await ensureAlprSchema(db);
+  const plate = c.req.query('plate');
+  const minTrust = c.req.query('min_trust');
+  const where: string[] = []; const args: unknown[] = [];
+  if (plate) { where.push('canonical_plate = ?'); args.push(plate); }
+  if (minTrust) { where.push('trust_score >= ?'); args.push(Number(minTrust)); }
+  const sql = `SELECT * FROM vehicle_capture_photos ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC LIMIT 200`;
+  const rows = await query(db, sql, ...args);
+  return c.json({ packages: rows });
+});
+
 // ── List recent captures ─────────────────────────────────────
 alpr.get('/captures', operational, async (c) => {
   const db = getDb(c.env);
