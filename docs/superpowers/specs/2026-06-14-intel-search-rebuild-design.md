@@ -17,11 +17,12 @@ Worker endpoint; all migrations (0098/0099/0100/0104/0107) are present on live.
 
 | Symptom | Real cause | Evidence |
 |---|---|---|
-| Weak / messy search | **Duplicate rows in `intel_index`** | `MATCH 'carlos*'` returns person id 64 **twice** and 65 **twice**; person index count = 54 for 52 persons. Indexer already does DELETE-before-INSERT (intelIndexer.ts:103), so these are **stale** rows from an older seed. |
-| "Blank panes" | Thin sections with no/under-built states + a **dead associates path** | `IntelContextPanel` (`DossierLite.associates`) is fetched but **never rendered** (IntelContextPanel.tsx:17 vs body). `WatchlistSection` is bare. |
+| Weak / "messy" search | **Thin presentation**, NOT bad data. Both search endpoints already collapse duplicates. | `/query` (intelQuery.ts:27-28, 93) and `/search` (intel.ts:70) both key hits by `${type}:${id}` in a `Map` and compute facets from the deduped set. The stale index dupes (`carlos*` returns id 64/65 twice in raw SQL) are **invisible** to the UI. Results look weak because cards are flat/ungrouped with no relevance cue. |
+| "Blank panes" | Thin sections + a **dead associates path** | `IntelContextPanel` fetches `DossierLite.associates` (IntelContextPanel.tsx:17) but **never renders it**. `WatchlistSection` is bare. |
 | Thin / placeholder feel | Surfaces are 13–72 lines; result cards lack grouping, score, date, keyboard nav | IntelSearch.tsx (72), Dashboard (47), sections (13–25). |
 
-**Backend is healthy** — no endpoint rebuild needed. Fixes are surgical.
+**Backend is healthy and already de-dupes** — no endpoint rebuild, no read-path
+dedupe needed. Fixes are UI + workflow, plus one optional hygiene reindex.
 
 ## 2. Architecture (unchanged backbone)
 
@@ -34,18 +35,14 @@ is the contract; the rebuild respects it.
 
 ### A. Repair (root causes)
 
-**A1 — De-dupe the read path (robust, index-agnostic).**
-In `src/utils/intelQuery.ts` (`runIntelQuery`), collapse results to one row per
-`(entity_type, entity_id)`, keeping the best (lowest) bm25 rank. Compute
-`facets.byType` / `byFlag` from the **deduped** set so counts are honest. This
-makes search correct even if the index later re-accrues cruft.
-- Unit test in `tests/intelQuery.test.ts`: feed rows with a duplicate
-  `(person, 64)` → expect one result, facet count 1.
+**A1 — (Already done — no work.)** Read-path de-dupe is implemented in BOTH
+`/query` (intelQuery.ts:27) and `/search` (intel.ts:70). No task. Verified during
+planning; documented here so a future reader doesn't re-add it.
 
-**A2 — Purge existing live dupes (operational).**
-After merge, trigger `POST /api/intel/reindex` (admin) against live to rebuild
-the index cleanly; verify `SELECT COUNT(*)` person rows == persons table.
-Documented as a post-merge step in the PR body (deploy apply is best-effort).
+**A2 — Purge stale index dupes (operational hygiene, optional).**
+After merge, trigger `POST /api/intel/reindex` (admin) on live to rebuild the
+index cleanly and verify person index rows == persons table. Cosmetic only
+(users never see the dupes); listed as a post-merge step in the PR body.
 
 **A3 — Non-blank sections.**
 `WatchlistSection` and any overview-fed section get an explicit, branded
@@ -87,8 +84,8 @@ without rebuilding the whole development cycle.
 
 ```
 type query → useQueryParser → useIntelQuery → GET /intel/query
-  → runIntelQuery (FTS5 MATCH + identifier sniff) → DEDUPE by (type,id)
-  → { results, facets(deduped) }
+  → runIntelQuery (FTS5 MATCH + identifier sniff; already dedupes by type:id)
+  → { results, facets }
 → IntelSearch groups by type, keyboard-navigable cards
 → select → IntelContext.selectEntity → IntelContextPanel
   → GET /intel/dossier/person/:id → photo + escalation + timeline + ASSOCIATES
@@ -106,7 +103,9 @@ type query → useQueryParser → useIntelQuery → GET /intel/query
 
 ## 6. Testing
 
-- **Worker:** `tests/intelQuery.test.ts` — de-dupe + facet honesty (new cases).
+- **Worker:** no new worker tests required (no worker logic changes; existing
+  `tests/intelQuery.test.ts` stays green). The "Start report" prefill is read
+  client-side from query params.
 - **Client (vitest):**
   - `useQueryParser` unchanged (existing tests stay green).
   - New: associate-row render + click calls `selectEntity` with associate id.
@@ -122,7 +121,7 @@ review UX changes, jail-roster ingest UI. Each is its own spec→PR.
 
 ## 8. Definition of done
 
-1. Duplicate hits never appear in search; facet counts match deduped results.
+1. Search results are grouped by entity type with a relevance cue and keyboard nav (no longer "thin").
 2. Dossier panel shows photo, escalation, timeline, and clickable associates.
 3. Watchlist toggle works from search card and dossier panel.
 4. "Start report" pre-fills the report create modal.
