@@ -382,6 +382,14 @@ export default {
           .then((n) => { if (n) console.log(`[email-snooze] resurfaced ${n}`); })
           .catch((err) => console.error('[email-snooze] failed:', err)),
       );
+      // ClearPath dashcam media sync (Phase B) + per-clip ALPR (Phase C).
+      // Self-throttled by clearpathgps_last_media_sync vs the configured
+      // interval; no-ops cheaply when the integration or media sync is off.
+      ctx.waitUntil(
+        import('./utils/clearpathSync')
+          .then(({ maybeRunClearpathMediaSync }) => maybeRunClearpathMediaSync(env))
+          .catch((err) => console.error('[cpg-media] cron failed:', err)),
+      );
       return;
     }
     ctx.waitUntil(

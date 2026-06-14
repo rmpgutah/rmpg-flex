@@ -35,6 +35,7 @@ import {
   RoboflowConfigError,
   RoboflowTimeoutError,
   RoboflowHttpError,
+  RoboflowQuotaError,
   type AlprParameters,
   type AlprImageOutput,
   type AlprVehicle,
@@ -423,6 +424,13 @@ alpr.post('/capture', operational, async (c) => {
     });
   } catch (err) {
     if (err instanceof RoboflowConfigError) return c.json({ error: err.message }, 400);
+    // Credit cap exhausted — the photo is already saved (field_photos above); this
+    // is an operational (billing) failure, not a code bug. Surface it clearly so
+    // the field UI says "out of credits" instead of an opaque HTTP 402.
+    if (err instanceof RoboflowQuotaError) return c.json({
+      error: err.message, quota_exceeded: true,
+      hint: 'Raise the workspace credit cap or add billing at app.roboflow.com/settings/plan. The photo was saved.',
+    }, 503);
     if (err instanceof RoboflowTimeoutError) return c.json({ error: err.message }, 504);
     if (err instanceof RoboflowHttpError) return c.json({ error: err.message, status: err.status }, 502);
     return c.json({ error: 'ALPR fast scan failed', detail: (err as Error)?.message }, 502);

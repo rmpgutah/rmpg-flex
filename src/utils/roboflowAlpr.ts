@@ -79,6 +79,22 @@ export class RoboflowHttpError extends RoboflowError {
     this.name = 'RoboflowHttpError';
   }
 }
+/** Roboflow refused the run because the workspace is out of serverless credits
+ *  (HTTP 402 credit_cap_exceeded). Not retried — retrying just re-hits the cap.
+ *  Fix is operational: raise the credit cap / add billing in the Roboflow
+ *  workspace, NOT a code or prompt change. */
+export class RoboflowQuotaError extends RoboflowError {
+  constructor(detail?: unknown) {
+    super('Roboflow workspace is out of serverless credits — raise the credit cap or add billing at app.roboflow.com/settings/plan', { status: 402, detail });
+    this.name = 'RoboflowQuotaError';
+  }
+}
+
+/** True when a non-2xx Roboflow response is a credit/quota exhaustion (402 or a
+ *  body that names the credit cap), so callers can fail fast with a clear message. */
+export function isQuotaResponse(status: number, detail?: string): boolean {
+  return status === 402 || /credit_cap_exceeded|ran out of credits|cannot currently spend credits/i.test(detail || '');
+}
 
 // ── Input / output types ─────────────────────────────────────
 
@@ -776,6 +792,7 @@ export async function runAlprVehicleCapture(opts: RunAlprOptions): Promise<AlprR
       });
       if (!res.ok) {
         const detail = await res.text().catch(() => '');
+        if (isQuotaResponse(res.status, detail)) throw new RoboflowQuotaError(detail.slice(0, 300));
         if (isRetriableStatus(res.status) && attempt < maxAttempts - 1) {
           lastErr = new RoboflowHttpError(`Roboflow HTTP ${res.status}`, res.status, detail.slice(0, 500));
           continue;
@@ -786,6 +803,7 @@ export async function runAlprVehicleCapture(opts: RunAlprOptions): Promise<AlprR
       const parsed = parseAlprResponse(json);
       return { ...parsed, imageEntries: unwrapOutputs(json).length };
     } catch (err) {
+      if (err instanceof RoboflowQuotaError) throw err;
       if (err instanceof RoboflowHttpError && !isRetriableStatus(err.status ?? 0)) throw err;
       if (err instanceof RoboflowConfigError) throw err;
       const aborted = (err as { name?: string })?.name === 'AbortError';

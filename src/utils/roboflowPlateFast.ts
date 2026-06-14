@@ -13,8 +13,8 @@
 
 import {
   buildAlprRequest, unwrapOutputs, asDetections, cleanPlate, firstOcrString,
-  ROBOFLOW_SERVERLESS_BASE, ROBOFLOW_WORKSPACE,
-  RoboflowError, RoboflowConfigError, RoboflowTimeoutError, RoboflowHttpError,
+  ROBOFLOW_SERVERLESS_BASE, ROBOFLOW_WORKSPACE, isQuotaResponse,
+  RoboflowError, RoboflowConfigError, RoboflowTimeoutError, RoboflowHttpError, RoboflowQuotaError,
   type RoboflowImageInput, type AlprDetection,
 } from './roboflowAlpr';
 
@@ -88,6 +88,7 @@ export async function runPlateFast(opts: RunFastOptions): Promise<FastPlateResul
       });
       if (!res.ok) {
         const detail = await res.text().catch(() => '');
+        if (isQuotaResponse(res.status, detail)) throw new RoboflowQuotaError(detail.slice(0, 300));
         if (retriable(res.status) && attempt < maxAttempts - 1) {
           lastErr = new RoboflowHttpError(`Roboflow HTTP ${res.status}`, res.status, detail.slice(0, 300));
           continue;
@@ -96,6 +97,7 @@ export async function runPlateFast(opts: RunFastOptions): Promise<FastPlateResul
       }
       return parseFastPlate(await res.json());
     } catch (err) {
+      if (err instanceof RoboflowQuotaError) throw err;
       if (err instanceof RoboflowHttpError && !retriable(err.status ?? 0)) throw err;
       if (err instanceof RoboflowConfigError) throw err;
       const aborted = (err as { name?: string })?.name === 'AbortError';
