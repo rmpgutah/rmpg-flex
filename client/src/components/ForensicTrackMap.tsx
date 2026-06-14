@@ -10,6 +10,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
+import { buildDotMarker } from '../utils/mapMarkers';
 import { positionAtTime, type GpsPoint } from '../utils/dashcamForensics';
 
 const GOLD = '#d4a017';
@@ -41,6 +43,7 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
         const map = new mapboxgl.Map({ container: containerRef.current, style: MAPBOX_STYLE_DARK, center, zoom: 15, attributionControl: false });
         mapRef.current = map;
         registerMapInstance(map);
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
         map.on('load', () => {
           if (cancelled) return;
           const line = coords.map((p) => [p.longitude, p.latitude]);
@@ -49,11 +52,14 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
           map.addSource('pred', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } });
           map.addLayer({ id: 'pred', type: 'line', source: 'pred', paint: { 'line-color': GOLD, 'line-width': 3, 'line-dasharray': [1.5, 1.5], 'line-opacity': 0.85 } });
           if (line.length) {
-            const mk = (lngLat: [number, number], color: string) => { const el = document.createElement('div'); el.style.cssText = `width:10px;height:10px;border-radius:50%;background:${color};box-shadow:0 0 4px ${color}`; return new mapboxgl.Marker({ element: el }).setLngLat(lngLat).addTo(map); };
+            const mk = (lngLat: [number, number], color: string) => { const el = buildDotMarker({ color, size: 10 }); return new mapboxgl.Marker({ element: el }).setLngLat(lngLat).addTo(map); };
             mk(line[0] as [number, number], '#22c55e');
             mk(line[line.length - 1] as [number, number], '#ef4444');
-            const pel = document.createElement('div');
-            pel.style.cssText = `width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid ${GOLD};box-shadow:0 0 8px ${GOLD}`;
+            // White playback-position dot with a gold ring — a plain (non-directional)
+            // marker, so the shared dot builder fits; keep the gold ring + glow.
+            const pel = buildDotMarker({ color: '#ffffff', size: 14 });
+            pel.style.border = `2px solid ${GOLD}`;
+            pel.style.boxShadow = `0 0 8px ${GOLD}`;
             posMarkerRef.current = new mapboxgl.Marker({ element: pel }).setLngLat(line[0] as [number, number]).addTo(map);
             const b = line.reduce((acc, c) => acc.extend(c as [number, number]), new mapboxgl.LngLatBounds(line[0] as [number, number], line[0] as [number, number]));
             map.fitBounds(b, { padding: 28, maxZoom: 17, duration: 0 });

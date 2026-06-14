@@ -9,6 +9,8 @@ import { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
+import { buildDotMarker } from '../utils/mapMarkers';
 import { sightingSource } from '../utils/alprSource';
 
 export interface MapSighting {
@@ -52,6 +54,7 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
           zoom: 11,
           attributionControl: false,
         });
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
         mapRef.current = map;
         registerMapInstance(map);
         setLoaded(true);
@@ -79,10 +82,13 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
     const bounds = new mapboxgl.LngLatBounds();
     for (const s of located) {
       const src = sightingSource(s.notes);
-      const el = document.createElement('div');
-      el.style.cssText = `width:14px;height:14px;border-radius:50%;cursor:pointer;` +
-        `background:${src.color};border:2px solid ${s.hit ? '#ef4444' : '#000'};` +
-        `box-shadow:0 0 ${s.hit ? '8px 2px rgba(239,68,68,0.7)' : '4px rgba(0,0,0,0.5)'};`;
+      const el = buildDotMarker({ color: src.color, size: 11 });
+      el.style.cursor = 'pointer';
+      // Preserve the on-hit red ring + glow the shared builder doesn't model.
+      if (s.hit) {
+        el.style.border = '2px solid #ef4444';
+        el.style.boxShadow = '0 0 8px 2px rgba(239,68,68,0.7)';
+      }
       el.title = `${s.plate} · ${src.label}`;
       if (onPick) el.addEventListener('click', () => onPick(s.plate));
       const marker = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([s.lng!, s.lat!]).addTo(map);

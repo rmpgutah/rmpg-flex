@@ -15,6 +15,7 @@ import {
   MAPBOX_STYLE_STREETS, MAPBOX_STYLE_LIGHT,
 } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
+import { applyRmpgBasemap, type BasemapVariant } from '../utils/mapboxBasemap';
 import type { NavRoutePoint } from '../types';
 import {
   applyNavTheme, resolveNavTheme, navThemeStyleUrl, trailFilter, speedAdaptiveZoom,
@@ -37,6 +38,15 @@ const STYLE_OPTIONS: { value: 'dark' | 'satellite' | 'streets'; label: string; u
   { value: 'satellite', label: 'Satellite', url: MAPBOX_STYLE_SATELLITE },
   { value: 'streets', label: 'Streets', url: MAPBOX_STYLE_STREETS },
 ];
+
+// Map the user's style selection (same signal that picks initialUrl/insetUrl)
+// to the RMPG basemap re-skin variant. 'streets' = stock light style → 'light'
+// (basemap intentionally leaves light as-is, the print path).
+function basemapVariantFor(s: 'dark' | 'satellite' | 'streets'): BasemapVariant {
+  if (s === 'satellite') return 'satellite';
+  if (s === 'streets') return 'light';
+  return 'dark';
+}
 
 export interface DroppedPin {
   lat: number;
@@ -93,6 +103,7 @@ export default function NavMapView({
   const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [style, setStyle] = useState<'dark' | 'satellite' | 'streets'>(initialStyle);
+  const styleRef = useRef(style);
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   const [userPanned, setUserPanned] = useState(false);
   const positionMarkerRef = useRef<mapboxgl.Marker | null>(null);
@@ -112,6 +123,11 @@ export default function NavMapView({
   // Mapbox style URLs for the theme recolor (#96). Satellite/streets keep
   // their own URLs; only the 'dark' selection participates in day/night.
   const themeStyleUrls = { dark: MAPBOX_STYLE_DARK, light: MAPBOX_STYLE_LIGHT };
+
+  // Keep styleRef current so once-registered 'style.load' listeners (which
+  // close over `style` by value) re-skin with the live variant after a
+  // runtime setStyle() swap instead of the stale initial style.
+  useEffect(() => { styleRef.current = style; }, [style]);
 
   // ── Initialize mapbox + create map ─────────────────────────
   useEffect(() => {
@@ -155,6 +171,9 @@ export default function NavMapView({
 
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false, visualizePitch: false }), 'top-right');
         map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+
+        // Brand the basemap on every style (re-applies after setStyle swaps).
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: basemapVariantFor(styleRef.current) }));
 
         // Track when user pans so we know to stop auto-recentering
         map.on('dragstart', () => setUserPanned(true));
@@ -406,6 +425,7 @@ export default function NavMapView({
         attributionControl: false,
         interactive: false,
       });
+      inset.on('style.load', () => applyRmpgBasemap(inset, { variant: basemapVariantFor(styleRef.current) }));
       inset.on('load', () => {
         if (cancelled) { try { inset.remove(); } catch { /* ignore */ } return; }
         if (style === 'dark') {

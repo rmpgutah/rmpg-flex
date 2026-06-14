@@ -14,6 +14,8 @@ import { useNavigate } from 'react-router-dom';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
+import { buildUnitMarker, buildCallMarker } from '../utils/mapMarkers';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { apiFetch } from '../hooks/useApi';
@@ -146,6 +148,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         zoom,
         attributionControl: false,
       });
+      map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
       mapRef.current = map;
       registerMapInstance(map);
       setMapReady(true); // re-render so useMapRouting picks up the real map instance
@@ -190,14 +193,12 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     if (hasCallLoc && mapRef.current) {
       if (callMarkerRef.current) {
         callMarkerRef.current.setLngLat([call!.longitude!, call!.latitude!]);
-        const el = callMarkerRef.current.getElement();
-        if (el) el.textContent = call!.call_number || 'CALL';
+        // The builder nests the label in a <span>; update it in place so the
+        // teardrop shape/rotation isn't wiped by setting textContent on the root.
+        const label = callMarkerRef.current.getElement()?.querySelector('span');
+        if (label) label.textContent = call!.call_number || 'CALL';
       } else {
-        const el = document.createElement('div');
-        el.style.cssText =
-          'background:#ef4444;color:#fff;font-size:9px;font-weight:900;' +
-          "padding:1px 4px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;box-shadow:0 1px 4px rgba(0,0,0,0.4);";
-        el.textContent = call!.call_number || 'CALL';
+        const el = buildCallMarker({ priority: call!.priority, label: call!.call_number || 'CALL' });
         callMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
           .setLngLat([call!.longitude!, call!.latitude!])
           .addTo(mapRef.current);
@@ -238,13 +239,10 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
 
     if (!av || av.gps_lat == null || av.gps_lon == null) return;
 
-    const el = document.createElement('div');
-    el.style.cssText =
-      'background:#111827;color:#d4a017;font-size:8px;font-weight:900;' +
-      "padding:2px 4px;border:1.5px solid #d4a017;white-space:nowrap;" +
-      "font-family:'JetBrains Mono',monospace;border-radius:2px;" +
-      'box-shadow:0 0 6px rgba(212,160,23,0.4), 0 2px 6px rgba(0,0,0,0.5);';
-    el.textContent = av.vehicle_number || 'V';
+    // Take-home vehicle: no dispatch status in scope, so render the shared unit
+    // pin with the vehicle number as its label (gold-ring 'onscene' tone keeps
+    // the original gold-branded accent the plain neutral ring would have lost).
+    const el = buildUnitMarker({ label: av.vehicle_number || 'V', status: 'onscene' });
     const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
       .setLngLat([av.gps_lon, av.gps_lat])
       .addTo(map);
@@ -281,14 +279,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       const existing = unitMarkersRef.current.get(id);
       if (existing) {
         existing.setLngLat([unit.longitude!, unit.latitude!]);
-        const el = existing.getElement();
-        if (el && el.textContent !== unit.call_sign) el.textContent = unit.call_sign;
+        // Label lives in the builder's <span>; update it (not the root) in place.
+        const label = existing.getElement()?.querySelector('span');
+        if (label && label.textContent !== unit.call_sign) label.textContent = unit.call_sign;
       } else {
-        const el = document.createElement('div');
-        el.style.cssText =
-          'background:#888888;color:#fff;font-size:8px;font-weight:900;' +
-          "padding:1px 4px;border:1px solid #363636;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
-        el.textContent = unit.call_sign;
+        const el = buildUnitMarker({ label: unit.call_sign, status: unit.status });
         const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
           .setLngLat([unit.longitude!, unit.latitude!])
           .addTo(map);
