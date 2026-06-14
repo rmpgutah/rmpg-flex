@@ -15,6 +15,7 @@ struct DailyActivityReportView: View {
     @State private var submitting = false
     @State private var filed = false
     @State private var status: String?
+    @State private var showSummary = false
 
     private var today: String {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: Date())
@@ -59,6 +60,13 @@ struct DailyActivityReportView: View {
         .background(Theme.base)
         .navigationTitle("DAILY ACTIVITY REPORT")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showSummary = true } label: { Label("Summary", systemImage: "chart.bar.doc.horizontal") }
+                    .foregroundStyle(Theme.gold)
+            }
+        }
+        .sheet(isPresented: $showSummary) { ShiftSummaryView() }
         .refreshable { await autoCompile() }
         .task { await autoCompile() }
     }
