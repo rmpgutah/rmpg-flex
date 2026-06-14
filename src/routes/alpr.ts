@@ -34,6 +34,7 @@ import {
 } from '../utils/roboflowAlpr';
 import { readPlateCloudflare, type CloudflarePlateResult } from '../utils/cloudflarePlate';
 import { trustScore } from '../utils/plateTrust';
+import { verifyEdgeSignature } from '../utils/edgeHmac';
 
 const alpr = new Hono<Env>();
 
@@ -720,6 +721,44 @@ alpr.get('/vehicle/:plate/dossier', operational, async (c) => {
   const rows = await query<Record<string, unknown>>(db,
     `SELECT * FROM vehicle_capture_photos WHERE canonical_plate = ? ORDER BY created_at DESC`, plate);
   return c.json({ plate, packages: rows });
+});
+
+// ── Edge device ingest: Jetson vision-LoRA structured ALPR record ────────────
+// Edge device (Jetson vision-LoRA) posts a structured ALPR record. HMAC-verified,
+// then routed through the same trust path as every other source (source_type='edge_lora').
+alpr.post('/edge', async (c) => {
+  const secret = c.env.ALPR_EDGE_SECRET;
+  if (!secret) return c.json({ error: 'edge ingest not configured' }, 503);
+  const ts = Number(c.req.header('X-Edge-Timestamp'));
+  const sig = c.req.header('X-Edge-Signature') ?? '';
+  const body = await c.req.text();
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!ts || !(await verifyEdgeSignature({ secret, timestamp: ts, body, signature: sig, nowSec })))
+    return c.json({ error: 'bad signature' }, 401);
+
+  const rec = JSON.parse(body) as {
+    plate?: string; state?: string; make?: string; model?: string; year?: string;
+    color?: string; type?: string; plate_confidence?: number; device_id?: string;
+  };
+  if (!rec.plate) return c.json({ error: 'no plate' }, 400);
+
+  const db = getDb(c.env); await ensureAlprSchema(db);
+  const trust = trustScore({ reads: [rec.plate], modelPct: rec.plate_confidence });
+  const PACKAGE_GATE = 0.80; const canonical = trust.canonical || rec.plate;
+  await screenVehicle(db, { plate: canonical });
+  let photoRowId: number | null = null;
+  if (trust.trustScore >= PACKAGE_GATE) {
+    const r = await execute(db,
+      `INSERT INTO vehicle_capture_photos
+        (capture_id, canonical_plate, raw_reads_json, variants_json, read_count,
+         consensus_ratio, trust_score, trust_basis, source_type, asserted, created_at)
+       VALUES (NULL,?,?,?,?,?,?,?,?,?,datetime('now'))`,
+      canonical, JSON.stringify([rec.plate]), JSON.stringify(trust.variants), trust.readCount,
+      trust.consensusRatio, trust.trustScore, trust.basis, 'edge_lora', 0);
+    photoRowId = r.meta.last_row_id as number;
+  }
+  return c.json({ success: true, canonical_plate: canonical, trust_score: trust.trustScore,
+                  trust_basis: trust.basis, photo_row_id: photoRowId });
 });
 
 // ── helpers ──────────────────────────────────────────────────
