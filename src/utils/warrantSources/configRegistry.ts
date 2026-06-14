@@ -28,14 +28,20 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
       try {
         const url = buildSocrataOffsetUrl(row.base_url ?? '', row.resource_id ?? '', offset, CHUNK_TARGET);
         const res = await fetch(url, { headers: { Accept: 'application/json' } });
-        if (!res.ok) return { hits: [], nextCursor: cursor, done: false };  // error → retry same page, no sweep
+        if (!res.ok) {
+          // error → retry same page, no sweep. Log so a persistently-failing
+          // source isn't a silent stall (cursor stuck with errors:0 in the summary).
+          console.warn(`[warrantSources.config] ${row.source_key} socrata fetch HTTP ${res.status} at offset ${offset}; retrying next tick`);
+          return { hits: [], nextCursor: cursor, done: false };
+        }
         const rows = (await res.json()) as Record<string, unknown>[];
         return {
           hits: parseSocrata(rows, map, row.source_key),
           nextCursor: String(offset + CHUNK_TARGET),
           done: rows.length < CHUNK_TARGET,   // raw row count, NOT deduped hits
         };
-      } catch {
+      } catch (err) {
+        console.warn(`[warrantSources.config] ${row.source_key} socrata fetch threw at offset ${offset}:`, err instanceof Error ? err.message : String(err));
         return { hits: [], nextCursor: cursor, done: false };
       }
     } };
@@ -52,7 +58,12 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
         while (hits.length < CHUNK_TARGET) {
           const url = buildArcgisKeysetUrl(row.base_url ?? '', lastOid, ARCGIS_SERVER_PAGE);
           const res = await fetch(url, { headers: { Accept: 'application/json' } });
-          if (!res.ok) return { hits, nextCursor: String(lastOid), done: false };
+          if (!res.ok) {
+            // keep what we have, retry from lastOid next tick. Log so a
+            // persistently-failing source isn't a silent stall.
+            console.warn(`[warrantSources.config] ${row.source_key} arcgis fetch HTTP ${res.status} after OBJECTID ${lastOid}; retrying next tick`);
+            return { hits, nextCursor: String(lastOid), done: false };
+          }
           const body = (await res.json()) as { features?: { attributes?: Record<string, unknown> }[]; exceededTransferLimit?: boolean };
           const features = body.features ?? [];
           if (features.length === 0) return { hits, nextCursor: String(lastOid), done: true };
@@ -67,7 +78,8 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
           if (!arcgisHasMore(body, ARCGIS_SERVER_PAGE)) return { hits, nextCursor: String(lastOid), done: true };
         }
         return { hits, nextCursor: String(lastOid), done: false };
-      } catch {
+      } catch (err) {
+        console.warn(`[warrantSources.config] ${row.source_key} arcgis fetch threw after OBJECTID ${lastOid}:`, err instanceof Error ? err.message : String(err));
         return { hits, nextCursor: String(lastOid), done: false };
       }
     } };
