@@ -200,6 +200,14 @@ panic.post('/panic', async (c) => {
     ).catch((err) => console.error('[panic] set unit emergency failed (non-fatal)', err));
   }
 
+  // ── FlexCam auto-preserve (best-effort, strictly additive). Resolves the
+  // officer's camera asset internally from unitId; never throws into the panic
+  // flow — a preserve failure logs and is swallowed so the alarm still fires.
+  try {
+    const { preserveForEvent } = await import('../../utils/footage/autoPreserve');
+    await preserveForEvent(c.env, { eventType: 'panic_alert', eventId: Number(panicId), reason: 'panic', unitId: unit?.id ?? null, officerUserId: userId, callId: callId ?? null, eventTs: Date.now() }); // new-date-ok
+  } catch (e) { console.error('[flexcam-preserve] panic:', (e as Error)?.message); }
+
   const created = await queryFirst<Record<string, unknown>>(
     db,
     // call_number is joined so the dispatcher overlay's P1 card renders

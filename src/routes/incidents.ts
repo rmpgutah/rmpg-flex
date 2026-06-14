@@ -108,6 +108,15 @@ incidents.post('/', requireRole(...WRITE_ROLES), async (c) => {
       geo?.sector_id ?? null, geo?.zone_id ?? null, geo?.beat_id ?? null, geo?.zone_beat ?? null,
       geo?.area_code ?? null, geo?.area_name ?? null);
     const created = await queryFirst(db, 'SELECT * FROM incidents WHERE id = ?', result.meta.last_row_id);
+    // ── FlexCam auto-preserve (best-effort, strictly additive). Resolve the
+    // officer's unit from the reporting officer; never throws into the filing
+    // flow — a preserve failure logs and is swallowed so the incident still files.
+    try {
+      const incidentId = Number(result.meta.last_row_id);
+      const unit = userId ? await queryFirst<{ id: number }>(getDb(c.env), 'SELECT id FROM units WHERE officer_id=? LIMIT 1', userId).catch(() => null) : null;
+      const { preserveForEvent } = await import('../utils/footage/autoPreserve');
+      await preserveForEvent(c.env, { eventType: 'incident', eventId: incidentId, reason: 'incident', unitId: unit?.id ?? null, officerUserId: userId ?? null, callId: (body as any).call_id ?? null, eventTs: Date.now() }); // new-date-ok
+    } catch (e) { console.error('[flexcam-preserve] incident:', (e as Error)?.message); }
     return c.json(created, 201);
   } catch (err) {
     console.error('[incidents] create error', err);
