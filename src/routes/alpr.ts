@@ -761,6 +761,43 @@ alpr.post('/edge', async (c) => {
                   trust_basis: trust.basis, photo_row_id: photoRowId });
 });
 
+// ── Model registry: trained-adapter provenance per ALPR target ───────────────
+const MODEL_REGISTRY_DDL = `CREATE TABLE IF NOT EXISTS model_registry (
+  target TEXT PRIMARY KEY,
+  adapter_version TEXT,
+  base_model TEXT,
+  holdout_metric REAL,
+  beats_baseline INTEGER DEFAULT 0,
+  promoted_at TEXT,
+  notes TEXT
+)`;
+
+alpr.get('/models', operational, async (c) => {
+  const db = getDb(c.env);
+  await execute(db, MODEL_REGISTRY_DDL);
+  const models = await query(db, `SELECT * FROM model_registry ORDER BY target`);
+  return c.json({ models });
+});
+
+alpr.put('/models/:target', operational, async (c) => {
+  const db = getDb(c.env);
+  const target = c.req.param('target');
+  const b = await c.req.json() as Record<string, unknown>;
+  await execute(db, MODEL_REGISTRY_DDL);
+  await execute(db,
+    `INSERT INTO model_registry (target, adapter_version, base_model, holdout_metric, beats_baseline, promoted_at, notes)
+     VALUES (?,?,?,?,?,datetime('now'),?)
+     ON CONFLICT(target) DO UPDATE SET adapter_version=excluded.adapter_version, base_model=excluded.base_model,
+       holdout_metric=excluded.holdout_metric, beats_baseline=excluded.beats_baseline, promoted_at=excluded.promoted_at, notes=excluded.notes`,
+    target,
+    b.adapter_version ?? null,
+    b.base_model ?? null,
+    b.holdout_metric ?? null,
+    b.beats_baseline ? 1 : 0,
+    b.notes ?? null);
+  return c.json({ success: true });
+});
+
 // ── helpers ──────────────────────────────────────────────────
 function num(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null;
