@@ -167,7 +167,7 @@ flexcam.get('/footage/:id/custody', async (c): Promise<Response> => {
   const id = Number(c.req.param('id'));
   const req = await queryFirst<Record<string, unknown>>(db, 'SELECT id, evidence_locked, evidence_number, classification, preserved_reason FROM footage_requests WHERE id=?', id).catch(() => null);
   if (!req) return c.json({ error: 'Not found' }, 404);
-  const custody = await query(db, 'SELECT action, actor_user_id, actor_name, reason, detail, session_key, created_at FROM footage_custody_log WHERE footage_request_id=? ORDER BY id', id).catch(() => []);
+  const custody = await query(db, 'SELECT action, actor_user_id, actor_name, reason, detail, created_at FROM footage_custody_log WHERE footage_request_id=? ORDER BY id', id).catch(() => []);
   const links = await query(db, 'SELECT entity_type, entity_id, linked_by, notes, created_at FROM footage_evidence_links WHERE footage_request_id=?', id).catch(() => []);
   return c.json({ request: req, custody, links });
 });
@@ -192,13 +192,16 @@ flexcam.get('/footage/:id/links', async (c): Promise<Response> => {
 flexcam.post('/footage/:id/court-package', async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureEvidenceSchema(db);
   const id = Number(c.req.param('id'));
-  const req = await queryFirst<{ id: number; evidence_number: string | null; classification: string; preserved_reason: string | null; from_ts: number; to_ts: number }>(
-    db, 'SELECT id, evidence_number, classification, preserved_reason, from_ts, to_ts FROM footage_requests WHERE id=?', id).catch(() => null);
+  const req = await queryFirst<{ id: number; evidence_number: string | null; classification: string; preserved_reason: string | null; from_ts: number; to_ts: number; evidence_locked: number }>(
+    db, 'SELECT id, evidence_number, classification, preserved_reason, from_ts, to_ts, evidence_locked FROM footage_requests WHERE id=?', id).catch(() => null);
   if (!req) return c.json({ error: 'Not found' }, 404);
+  if (!req.evidence_locked) return c.json({ error: 'Lock this footage as evidence before generating a court package' }, 409);
   const chunks = await query<{ id: number; seq: number; from_ts: number; to_ts: number; bytes: number; sha256: string | null; status: string; r2_key: string | null }>(
     db, 'SELECT id, seq, from_ts, to_ts, bytes, sha256, status, r2_key FROM footage_chunks WHERE request_id=? ORDER BY seq', id).catch(() => []);
+  const MAX_HASH_BYTES = 100 * 1024 * 1024; // 100 MB — avoid loading a pathological chunk into the 128 MB isolate
   for (const ch of chunks) {
     if (ch.sha256 || ch.status !== 'downloaded' || !ch.r2_key) continue;
+    if (ch.bytes && ch.bytes > MAX_HASH_BYTES) continue; // skip oversized; sha256 stays null
     const obj = await c.env.UPLOADS.get(ch.r2_key); if (!obj) continue;
     const digest = await crypto.subtle.digest('SHA-256', await obj.arrayBuffer());
     ch.sha256 = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
