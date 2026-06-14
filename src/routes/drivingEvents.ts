@@ -249,10 +249,18 @@ drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
   catch (err) { return c.json({ error: (err as Error)?.message || 'resolve failed', has_video: false }, 200); }
   if (!resolved) return c.json({ has_video: false, gps: [], error: 'No media for this event' }, 200);
   const { media, event } = resolved;
-  // The persisted ALPR still + plate (written by the still scan), if any.
-  const cap = await queryFirst<{ image_key: string | null; plate: string | null; confidence: number | null }>(db,
-    "SELECT image_key, plate, confidence FROM alpr_captures WHERE capture_id = ? LIMIT 1",
+  // The persisted ALPR still + plate + vehicle attributes (from the still scan).
+  const cap = await queryFirst<{
+    image_key: string | null; plate: string | null; confidence: number | null;
+    state: string | null; make: string | null; model: string | null; color: string | null;
+    year: number | null; raw_json: string | null;
+  }>(db,
+    "SELECT image_key, plate, confidence, state, make, model, color, year, raw_json FROM alpr_captures WHERE capture_id = ? LIMIT 1",
     `cpg_dashcam:${event.cpg_device_id}:${event.cpg_media_timestamp}`).catch(() => null);
+  // Any detection geometry the engine recorded (Roboflow path); [] for plate-only reads.
+  let detections: unknown[] = [];
+  try { const raw = cap?.raw_json ? JSON.parse(cap.raw_json) : null;
+    detections = Array.isArray(raw?.detections) ? raw.detections : Array.isArray(raw?.predictions) ? raw.predictions : []; } catch { /* */ }
   return c.json({
     id, has_video: !!media.accessUrl,
     stream_url: media.accessUrl ? `/api/driving-events/${id}/stream` : null,
@@ -264,6 +272,8 @@ drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
     still_url: cap?.image_key ? `/api/alpr/image/${cap.image_key}` : null,
     plate: cap?.plate ?? null,
     plate_confidence: cap?.confidence ?? null,
+    vehicle: cap ? { state: cap.state, make: cap.make, model: cap.model, color: cap.color, year: cap.year } : null,
+    detections,
   });
 });
 
