@@ -261,19 +261,35 @@ cpg.delete('/mappings/:id', adminOnly, async (c) => {
   return c.json({ success: true });
 });
 
-// ── Media sync — Phase B fills these in (this same branch) ───
-// Until media sync is wired, these return benign shapes so the tab never breaks.
+// ── Media sync (Phase B) + dashcam events ────────────────────
 
 cpg.get('/media-status', async (c) => {
   const db = getDb(c.env);
+  let totals = { total_synced_clips: 0, total_synced_bytes: 0 };
+  try {
+    const r = await queryFirst<{ n: number; b: number }>(
+      db, "SELECT COUNT(*) AS n, COALESCE(SUM(file_size),0) AS b FROM dashcam_videos WHERE source = 'clearpathgps'");
+    if (r) totals = { total_synced_clips: r.n ?? 0, total_synced_bytes: r.b ?? 0 };
+  } catch { /* table may predate Phase B */ }
+  let devices: unknown[] = [];
+  let syncErrors = 0;
+  try {
+    devices = await query(db, `
+      SELECT m.cpg_device_id, m.cpg_display_name, m.last_media_synced_at,
+             m.media_sync_errors, u.call_sign
+      FROM cpg_device_mappings m
+      LEFT JOIN units u ON u.id = m.unit_id
+      WHERE m.is_active = 1`);
+    const e = await queryFirst<{ s: number }>(db, 'SELECT COALESCE(SUM(media_sync_errors),0) AS s FROM cpg_device_mappings WHERE is_active = 1');
+    syncErrors = e?.s ?? 0;
+  } catch { /* */ }
   return c.json({
     media_sync_enabled: await isTruthy(db, CPG_KEYS.mediaEnabled),
     media_poll_interval_seconds: parseInt((await getConfigValue(db, CPG_KEYS.mediaPollInterval)) || '300', 10),
     last_media_sync: await getConfigValue(db, 'clearpathgps_last_media_sync'),
-    total_synced_clips: 0,
-    total_synced_bytes: 0,
-    sync_errors: 0,
-    devices: [],
+    ...totals,
+    sync_errors: syncErrors,
+    devices,
   });
 });
 
@@ -293,11 +309,55 @@ cpg.put('/media-settings', adminOnly, setMediaSettings);
 cpg.post('/media-settings', adminOnly, setMediaSettings);
 
 cpg.post('/media-sync-now', adminOnly, async (c) => {
-  return c.json({ synced: 0, errors: 0, note: 'Media sync activates once enabled and devices are mapped.' });
+  try {
+    const { syncClearpathMedia } = await import('../utils/clearpathSync');
+    const r = await syncClearpathMedia(c.env);
+    return c.json({ synced: r.synced, errors: r.errors, ...(r.skipped ? { note: `Skipped: ${r.skipped}` } : {}) });
+  } catch (err) {
+    return c.json({ synced: 0, errors: 1, error: clientErrorMessage(err) });
+  }
 });
 
-cpg.get('/dashcam-events', async (c) => c.json({ events: [], total: 0 }));
-cpg.get('/dashcam-events/by-officer/:id', async (c) => c.json({ events: [], total: 0 }));
-cpg.get('/dashcam-events/export', async (c) => c.json([]));
+async function dashcamEventQuery(c: Context<Env>, where: string, ...params: unknown[]) {
+  const db = getDb(c.env);
+  const limit = Math.max(1, Math.min(500, parseInt(c.req.query('limit') || '50', 10)));
+  try {
+    const events = await query(db, `
+      SELECT e.*, u.call_sign, ofc.full_name AS officer_name
+      FROM dashcam_events e
+      LEFT JOIN units u ON u.id = e.unit_id
+      LEFT JOIN users ofc ON ofc.id = u.officer_id
+      ${where}
+      ORDER BY e.event_timestamp DESC
+      LIMIT ?`, ...params, limit);
+    const totalRow = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM dashcam_events e ${where}`, ...params);
+    return c.json({ events, total: totalRow?.n ?? events.length });
+  } catch {
+    return c.json({ events: [], total: 0 });
+  }
+}
+
+cpg.get('/dashcam-events', async (c) => dashcamEventQuery(c, ''));
+cpg.get('/dashcam-events/by-officer/:id', async (c) =>
+  dashcamEventQuery(c, 'WHERE e.unit_id IN (SELECT id FROM units WHERE officer_id = ?)', c.req.param('id')));
+cpg.get('/dashcam-events/export', async (c) => {
+  const db = getDb(c.env);
+  try { return c.json(await query(db, 'SELECT * FROM dashcam_events ORDER BY event_timestamp DESC LIMIT 1000')); }
+  catch { return c.json([]); }
+});
+
+// Stream a synced dashcam clip from R2 (playback / evidence).
+cpg.get('/media/:id/stream', async (c) => {
+  const db = getDb(c.env);
+  const row = await queryFirst<{ r2_key: string | null; file_path: string | null; mime_type: string | null }>(
+    db, 'SELECT r2_key, file_path, mime_type FROM dashcam_videos WHERE id = ?', c.req.param('id')).catch(() => null);
+  const key = row?.r2_key || row?.file_path;
+  if (!key) return c.json({ error: 'Clip not found' }, 404);
+  const obj = await c.env.UPLOADS.get(key);
+  if (!obj) return c.json({ error: 'Clip object missing from storage' }, 404);
+  return new Response(obj.body, {
+    headers: { 'Content-Type': row?.mime_type || 'video/mp4', 'Cache-Control': 'private, max-age=3600' },
+  });
+});
 
 export default cpg;

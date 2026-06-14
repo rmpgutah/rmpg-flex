@@ -264,6 +264,66 @@ export async function listCameras(creds: CpgCredentials): Promise<CpgCamera[]> {
   return resp.items || [];
 }
 
+// ── Media clips (v2.0 Media API) — Phase B/C ─────────────────
+
+export interface CpgMediaObject {
+  channel: string;                  // "outside" | "inside"
+  type: string;                     // "VIDEO" | "IMAGE"
+  title: string;
+  thumbnailUrl: string;             // pre-signed S3 URL (1h expiry)
+  accessUrl: string;                // pre-signed S3 URL (1h expiry)
+  status: string;                   // "AVAILABLE" | "PROCESSING" | ...
+  lastUpdate: number;
+  expiringSoon: boolean;
+  eventType: string;
+  location: { lat: number; lng: number } | null;
+  gps?: Array<{ latitude: number; longitude: number; speed: number; altitude: number; timestamp: number }>;
+  cameraId?: number;
+  [key: string]: unknown;
+}
+
+export interface CpgMediaEvent {
+  address: string;
+  batchId: string;
+  eventTimestamp: number;            // epoch ms
+  lastUpdate: number;
+  expiringSoon: boolean;
+  status: string;
+  mediaObject: CpgMediaObject[];
+}
+
+interface CpgMediaListResponse {
+  total: number;
+  totalPages: number;
+  currentPage: number;
+  pageSize: number;
+  items: CpgMediaEvent[];
+}
+
+/** One page of media for a camera within [from, to] epoch-ms. */
+export async function listMedia(
+  creds: CpgCredentials, cameraId: number, from: number, to: number, page = 0, pageSize = 50,
+): Promise<CpgMediaListResponse> {
+  const qs = new URLSearchParams({ from: String(from), to: String(to), page: String(page), pageSize: String(pageSize) });
+  return mediaFetch<CpgMediaListResponse>(creds, `/v2.0/media/legacy/cameras/${cameraId}/data?${qs}`);
+}
+
+/** All media across pages for a camera within [from, to]. Bounded by maxPages
+ *  so a misbehaving account can't spin the cron. */
+export async function listAllMedia(
+  creds: CpgCredentials, cameraId: number, from: number, to: number, maxPages = 20,
+): Promise<CpgMediaEvent[]> {
+  const all: CpgMediaEvent[] = [];
+  let page = 0;
+  while (page < maxPages) {
+    const resp = await listMedia(creds, cameraId, from, to, page, 50);
+    if (resp.items?.length) all.push(...resp.items);
+    if (page >= resp.totalPages - 1 || !resp.items?.length) break;
+    page++;
+  }
+  return all;
+}
+
 /** Test connectivity: prefer the GPS vehicle list, fall back to media cameras.
  *  Returns the visible device/camera count or throws a typed error. */
 export async function testConnection(creds: CpgCredentials): Promise<number> {
