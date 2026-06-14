@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { emailBlob } from '../utils/emailPdf';
 import type {
   FormSchema, SchemaSection, FieldSpec, LabeledField,
   CheckboxField, NarrativeField, TableField, SignatureField,
@@ -52,41 +53,6 @@ export async function attachBlobToRecord(
   });
   if (!res.ok) throw new Error(`attach failed: ${res.status}`);
   return res.json();
-}
-
-/** POST the PDF blob + email fields to /api/pdf-engine/email. */
-export async function emailBlob(
-  blob: Blob,
-  formType: string,
-  to: string[],
-  cc: string[],
-  subject: string,
-  body: string,
-): Promise<void> {
-  const fd = new FormData();
-  fd.append('form_type', formType);
-  to.forEach((t) => fd.append('to', t));
-  cc.forEach((c) => fd.append('cc', c));
-  fd.append('subject', subject);
-  fd.append('body', body);
-  fd.append('pdf', blob, `${formType}.pdf`);
-
-  let token = '';
-  try {
-    token = typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function'
-      ? (localStorage.getItem('accessToken') || '')
-      : '';
-  } catch { /* no-op */ }
-
-  const res = await fetch('/api/pdf-engine/email', {
-    method: 'POST',
-    body: fd,
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`email failed: ${res.status} ${text}`);
-  }
 }
 
 // Reject prototype-pollution keys — a path like "__proto__.foo" or
@@ -207,7 +173,7 @@ export function PdfReviewModal<T extends Record<string, any>>({
     try {
       setCommitStatus({ kind: 'ok', message: 'Sending…' });
       const blob = await fetch(blobUrl).then((r) => r.blob());
-      await emailBlob(blob, schema.meta.formNumber, to, cc, subject, body);
+      await emailBlob(blob, schema.meta.formNumber, to, cc, subject, body, recordType, recordId);
       setCommitStatus({ kind: 'ok', message: `Emailed to ${to.join(', ')}.` });
       onCommit(data, 'email');
     } catch (err) {

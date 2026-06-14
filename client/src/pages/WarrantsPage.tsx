@@ -35,6 +35,7 @@ import {
 import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/recordPdfGenerator';
 import CollapsibleSection from '../components/CollapsibleSection';
 import LinkedEmailsSection from '../components/LinkedEmailsSection';
+import EmailedDocuments from '../components/EmailedDocuments';
 import {
   priorityBucket, priorityChipClass, formatAge, freshnessClass, freshnessIcon,
   stateFromSource,
@@ -2472,6 +2473,7 @@ export default function WarrantsPage() {
 
                 {/* Linked Emails (autolinker + manual) */}
                 <LinkedEmailsSection entityType="warrant" entityId={selectedWarrant.id} />
+                <EmailedDocuments recordType="warrant" recordId={selectedWarrant.id} />
 
                 {/* Phase 1: Print PDF action */}
                 <button

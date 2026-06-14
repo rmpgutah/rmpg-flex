@@ -38,11 +38,16 @@ const ALLOWED_CONNECT = [
   'https://api.fbi.gov',
   'https://photon.komoot.io',
   'https://static.cloudflareinsights.com',
+  // TensorFlow.js COCO-SSD (forensic dashcam AI vehicle tracking): the ESM
+  // module CDN + the model-weights origin.
+  'https://esm.sh',
+  'https://cdn.esm.sh',
+  'https://storage.googleapis.com',
 ].join(' ');
 
 const FULL_CSP = [
   `default-src 'self'`,
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com`,
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com https://esm.sh https://cdn.esm.sh`,
   `style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com`,
   `img-src 'self' data: blob: https: http:`,
   `font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com`,

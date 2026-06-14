@@ -10,11 +10,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Car, MapPin, ScanLine, Map as MapIcon } from 'lucide-react';
 import { apiFetch, apiPostForm, authedImageUrl } from '../hooks/useApi';
 import { downscaleImage } from '../utils/downscaleImage';
+import { enhancePlateImage } from '../utils/alprImagePrep';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { sightingSource, sightingSourceKey, ALL_SOURCES, type SightingSourceKey } from '../utils/alprSource';
 import SightingsMap, { type MapSighting } from '../components/SightingsMap';
 import PlateDossier from '../components/PlateDossier';
 import ClearPathDashcamPanel from '../components/ClearPathDashcamPanel';
+import AlprCaptureGallery from '../components/AlprCaptureGallery';
 
 interface ScreenHit { kind: string; severity: 'critical' | 'warning'; detail: string }
 interface Vehicle { id: number; plate_number: string; make: string; model: string; color: string; year: number }
@@ -99,6 +101,7 @@ export default function PlateLogPage() {
   const [sourceFilter, setSourceFilter] = useState<SightingSourceKey | 'all'>('all');
   const [dossierPlate, setDossierPlate] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
+  const [view, setView] = useState<'scan' | 'gallery'>('scan');
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Source-filtered recent sightings + per-source counts.
@@ -174,9 +177,12 @@ export default function PlateLogPage() {
     if (!file || scanBusy) return;
     setScanBusy(true); setScanErr(null);
     try {
-      const small = await downscaleImage(file, 1280, 0.8);
+      const small = await downscaleImage(file, 1600, 0.9);
+      // Image dynamics for OCR accuracy: contrast-stretch + unsharp + ensure the
+      // plate has enough pixels. Falls back to `small` on any canvas failure.
+      const enhanced = await enhancePlateImage(small, { targetWidth: 1280, maxWidth: 1600, contrast: true, sharpen: 0.9 });
       const fd = new FormData();
-      fd.append('image', small, 'plate.jpg');
+      fd.append('image', enhanced, 'plate.jpg');
       fd.append('capture_reason', 'patrol_alpr');
       if (location.trim()) fd.append('location_label', location.trim());
       if (notes.trim()) fd.append('capture_notes', notes.trim());
@@ -218,6 +224,20 @@ export default function PlateLogPage() {
     <div className="p-4 space-y-4 max-w-xl mx-auto">
       <PanelTitleBar title="PLATE LOG" icon={Car} />
 
+      {/* View toggle: live scan/manual vs. the ALPR capture gallery */}
+      <div className="flex items-center gap-1">
+        {([['scan', 'SCAN / LOG'], ['gallery', 'CAPTURES']] as const).map(([k, label]) => (
+          <button key={k} type="button" onClick={() => setView(k)}
+            className={`flex-1 text-[10px] font-semibold tracking-wider py-1.5 border ${
+              view === k ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'gallery' && <AlprCaptureGallery onPlate={setDossierPlate} />}
+
+      {view === 'scan' && (<>
       {/* ── ALPR camera capture ── */}
       <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onScanFile} />
       <button
@@ -402,6 +422,7 @@ export default function PlateLogPage() {
           );
         })}
       </div>
+      </>)}
 
       {dossierPlate && <PlateDossier plate={dossierPlate} onClose={() => setDossierPlate(null)} />}
     </div>
