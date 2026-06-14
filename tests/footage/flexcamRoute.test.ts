@@ -12,6 +12,14 @@ describe('flexcam route', () => {
   });
 });
 
+describe('flexcam evidence', () => {
+  it('unlock without a reason → not 200 (auth guard or 400)', async () => {
+    const res = await flexcam.request('/footage/1/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+      { DB: makeStubDb(), UPLOADS: {} } as any);
+    expect(res.status).not.toBe(200);
+  });
+});
+
 function makeStubDb() {
   const stmt = { bind: () => stmt, all: async () => ({ results: [] }), first: async () => null, run: async () => ({ meta: {} }) };
   return { prepare: () => stmt } as any;
