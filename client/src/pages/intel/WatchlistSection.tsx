@@ -12,7 +12,13 @@ export default function WatchlistSection() {
   return (
     <div className="p-3 space-y-2">
       <div className="font-mono text-[10px] tracking-widest text-[#888] uppercase">Watchlist ({rows.length})</div>
-      {rows.length === 0 && <div className="text-[10px] text-[#555]">No active watches.</div>}
+      {rows.length === 0 && (
+        <div className="border border-[#1f1f1f] bg-[#070707] rounded-[2px] px-3 py-6 text-center">
+          <div className="text-[#10b981] text-[18px] leading-none mb-1">✓</div>
+          <div className="text-[11px] text-[#999]">All clear — no active watches</div>
+          <div className="text-[9px] text-[#555] mt-1">Flag a person or vehicle from search to monitor it here.</div>
+        </div>
+      )}
       {rows.map((w) => (
         <button key={`${w.entity_type}:${w.entity_id}`} onClick={() => selectEntity(w.entity_type, w.entity_id, w.label || `Entity #${w.entity_id}`)}
           className="w-full text-left flex items-center gap-2 bg-[#070707] border border-[#1f1f1f] rounded-[2px] px-2 py-[6px]">
