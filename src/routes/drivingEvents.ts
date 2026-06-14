@@ -257,6 +257,12 @@ drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
   }>(db,
     "SELECT image_key, plate, confidence, state, make, model, color, year, raw_json FROM alpr_captures WHERE capture_id = ? LIMIT 1",
     `cpg_dashcam:${event.cpg_device_id}:${event.cpg_media_timestamp}`).catch(() => null);
+  // Null out the model's "not visible / unknown" non-answers so the tag stays clean.
+  const cleanAttr = (s: string | null): string | null => {
+    if (!s) return null;
+    const t = s.trim().toLowerCase();
+    return ['', 'not visible', 'notvisible', 'unknown', 'n/a', 'na', 'none', 'not legible', 'unreadable', 'obscured'].includes(t) ? null : s;
+  };
   // Any detection geometry the engine recorded (Roboflow path); [] for plate-only reads.
   let detections: unknown[] = [];
   try { const raw = cap?.raw_json ? JSON.parse(cap.raw_json) : null;
@@ -272,7 +278,7 @@ drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
     still_url: cap?.image_key ? `/api/alpr/image/${cap.image_key}` : null,
     plate: cap?.plate ?? null,
     plate_confidence: cap?.confidence ?? null,
-    vehicle: cap ? { state: cap.state, make: cap.make, model: cap.model, color: cap.color, year: cap.year } : null,
+    vehicle: cap ? { state: cleanAttr(cap.state), make: cleanAttr(cap.make), model: cleanAttr(cap.model), color: cleanAttr(cap.color), year: cap.year } : null,
     detections,
   });
 });
