@@ -170,6 +170,7 @@ const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDe
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 const CourtRecordsPage = lazyRetry(() => import('./pages/CourtRecordsPage'));
 const DashCamDetailPage = lazyRetry(() => import('./pages/DashCamDetailPage'));
+const FlexCamPage = lazyRetry(() => import('./pages/FlexCamPage'));
 const DashcamAiPage = lazyRetry(() => import('./pages/DashcamAiPage'));
 const DocumentIntakePage = lazyRetry(() => import('./pages/DocumentIntakePage'));
 const DocumentsPage = lazyRetry(() => import('./pages/DocumentsPage'));
@@ -455,6 +456,7 @@ function AppRoutes() {
             <Route path="/fleet" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
+            <Route path="/flexcam" element={<RouteErrorBoundary><FlexCamPage /></RouteErrorBoundary>} />
             <Route path="/warrants" element={<RouteErrorBoundary><WarrantsPage /></RouteErrorBoundary>} />
             <Route path="/national-warrants" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
             <Route path="/screening" element={<Navigate to="/warrants" replace />} />
