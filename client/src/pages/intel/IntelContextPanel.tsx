@@ -14,12 +14,12 @@ interface DossierLite {
   flags?: string[];
   escalation?: { recent: number; baseline: number; ratio: number; trend: string } | null;
   timeline?: Array<{ kind: string; label?: string; description?: string; date?: string }>;
-  associates?: Array<{ person_id?: number; id?: number; label?: string; name?: string; shared?: number; count?: number }>;
+  associates?: Array<{ person_id: number; name: string; shared_events: number; kinds: string[] }>;
   watched?: boolean;
 }
 
 export default function IntelContextPanel() {
-  const { selected, panelMode, setPanelMode, panelCollapsed, togglePanel } = useIntelContext();
+  const { selected, selectEntity, panelMode, setPanelMode, panelCollapsed, togglePanel } = useIntelContext();
   const [dossier, setDossier] = useState<DossierLite | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -99,6 +99,21 @@ export default function IntelContextPanel() {
                             <div className="font-mono text-[8px] text-[#555]">{t.date || ''}</div>
                           </div>
                         </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {(dossier.associates || []).length > 0 && (
+                    <div>
+                      <div className="font-mono text-[8px] tracking-widest text-[#555] uppercase mb-[6px]">Associates</div>
+                      {(dossier.associates || []).slice(0, 8).map((a) => (
+                        <button key={a.person_id}
+                          onClick={() => selectEntity('person', a.person_id, a.name)}
+                          className="w-full text-left flex items-center gap-2 py-[3px] hover:bg-[#0a0a0a] rounded-[2px] px-1">
+                          <span className="w-[6px] h-[6px] rounded-full bg-[#22d3ee] mt-[1px] shrink-0" />
+                          <span className="text-[10px] text-[#cfcfcf] flex-1 truncate">{a.name}</span>
+                          <span className="font-mono text-[8px] text-[#666]">{a.shared_events} shared</span>
+                        </button>
                       ))}
                     </div>
                   )}
