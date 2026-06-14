@@ -535,7 +535,28 @@ alpr.get('/captures', operational, async (c) => {
       if (source === 'dashcam') where.push("capture_id LIKE 'cpg_dashcam:%'");
       else if (source === 'field') where.push("(call_id IS NOT NULL OR field_photo_id IS NOT NULL) AND COALESCE(capture_id,'') NOT LIKE 'cpg_dashcam:%'");
       else if (source === 'manual') where.push("call_id IS NULL AND field_photo_id IS NULL AND COALESCE(capture_id,'') NOT LIKE 'cpg_dashcam:%'");
-      const sql = `SELECT * FROM alpr_captures ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC LIMIT ?`;
+      // Left-join the most-recent vehicle_capture_photos package per capture so
+      // the gallery can render TrustBadge without losing event_type / alerted.
+      const baseWhere = where.length ? 'WHERE ' + where.join(' AND ') : '';
+      const sql = `
+        SELECT ac.*,
+               pkg.trust_score    AS pkg_trust_score,
+               pkg.trust_basis    AS pkg_trust_basis,
+               pkg.read_count     AS pkg_read_count,
+               pkg.canonical_plate AS pkg_canonical_plate,
+               pkg.asserted       AS pkg_asserted
+        FROM alpr_captures ac
+        LEFT JOIN (
+          SELECT vcp.*
+          FROM vehicle_capture_photos vcp
+          JOIN (
+            SELECT capture_id, MAX(created_at) AS mx
+            FROM vehicle_capture_photos
+            GROUP BY capture_id
+          ) latest ON vcp.capture_id = latest.capture_id AND vcp.created_at = latest.mx
+        ) pkg ON pkg.capture_id = ac.id
+        ${baseWhere}
+        ORDER BY ac.created_at DESC LIMIT ?`;
       params.push(limit);
       rows = await query<any>(db, sql, ...params);
     }
@@ -780,6 +801,12 @@ function shapeCapture(row: any) {
       : [],
     image_url: imageUrlFor(row.image_key),
     annotated_image_url: imageUrlFor(row.annotated_image_key),
+    // Trust fields from the most-recent vehicle_capture_photos package (may be
+    // null when no package exists yet — client renders UNVERIFIED badge).
+    trust_score: row.pkg_trust_score ?? null,
+    trust_basis: row.pkg_trust_basis ?? null,
+    read_count: row.pkg_read_count ?? null,
+    canonical_plate: row.pkg_canonical_plate ?? null,
   };
 }
 
