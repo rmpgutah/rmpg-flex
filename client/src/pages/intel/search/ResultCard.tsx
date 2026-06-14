@@ -6,14 +6,15 @@ const TYPE_TAG: Record<string, string> = {
   case: 'text-[#d4a017]', incident: 'text-[#f59e0b]', call: 'text-[#22d3ee]',
 };
 
-export default function ResultCard({ clustered, onSelect, onOpen }: {
+export default function ResultCard({ clustered, onSelect, onOpen, highlighted }: {
   clustered: ClusteredHit;
   onSelect: (type: string, id: number, label: string) => void;
   onOpen: (type: string, id: number) => void;
+  highlighted?: boolean;
 }) {
   const h = clustered.hit;
   return (
-    <div className="border border-[#1f1f1f] bg-[#070707] rounded-[2px] p-2 flex items-center gap-3 hover:border-[#3a3a3a]">
+    <div className={`bg-[#070707] rounded-[2px] p-2 flex items-center gap-3 border ${highlighted ? 'border-[#d4a017]' : 'border-[#1f1f1f] hover:border-[#3a3a3a]'}`}>
       {h.type === 'person' && (
         h.photo_url
           ? <img src={authedImageUrl(h.photo_url)} alt="" className="w-9 h-11 object-cover rounded-[2px] border border-[#2a2a2a] shrink-0" />
@@ -32,6 +33,12 @@ export default function ResultCard({ clustered, onSelect, onOpen }: {
           {h.flags.map((f) => (
             <span key={f} className="font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] bg-[#3a0d0a] text-[#ff6b5e]">{f}</span>
           ))}
+        </div>
+        <div className="flex items-center gap-2 mt-[3px]">
+          <div className="h-[3px] w-[60px] bg-[#161616] rounded-[2px] overflow-hidden" data-testid="relevance-bar">
+            <div className="h-full bg-[#d4a017]" style={{ width: `${Math.max(8, Math.min(100, h.score))}%` }} />
+          </div>
+          {h.date && <span className="font-mono text-[8px] text-[#555]">{h.date}</span>}
         </div>
       </button>
       <button onClick={() => onOpen(h.type, h.id)}
