@@ -419,6 +419,7 @@ export default function PrintRecordButton({
 
   const handleEmailSend = useCallback(async (to: string[], cc: string[], subject: string, body: string) => {
     setEmailDialogOpen(false);
+    if (!recordData) return;
     setLoading(true);
     try {
       // Mirror handlePreview's blob generation:
@@ -426,10 +427,14 @@ export default function PrintRecordButton({
       const enrichedData = await enrichWithImages(freshData);
       const v2BlobUrl = await tryV2DispatchBlobUrl({ recordType, recordData: enrichedData, identifier });
       const blobUrl = v2BlobUrl ?? await generateRecordPdfBlobUrl(recordType, enrichedData);
-      const blob = await fetch(blobUrl).then((r) => r.blob());
-      URL.revokeObjectURL(blobUrl);
+      let blob: Blob;
+      try {
+        blob = await fetch(blobUrl).then((r) => r.blob());
+      } finally {
+        URL.revokeObjectURL(blobUrl);
+      }
       const linkId = entityId != null && entityId !== '' && Number.isFinite(Number(entityId)) ? Number(entityId) : undefined;
-      await emailBlob(blob, recordType, to, cc, subject, body, entityType, linkId);
+      await emailBlob(blob!, recordType, to, cc, subject, body, entityType, linkId);
     } catch (err) {
       console.error('[PrintRecordButton] Email failed:', err);
     } finally {
@@ -548,7 +553,7 @@ export default function PrintRecordButton({
         disabled={loading}
       >
         <Mail style={{ width: 12, height: 12 }} />
-        {!iconOnly && <span>Email</span>}
+        {!iconOnly && <span>{loading ? 'Loading…' : 'Email'}</span>}
       </button>
       <DocumentViewer
         isOpen={viewerOpen}
