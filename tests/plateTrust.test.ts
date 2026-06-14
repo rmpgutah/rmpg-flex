@@ -11,13 +11,19 @@ describe('normalizePlate', () => {
 });
 
 describe('formatScore', () => {
-  it('matches a CA plate (1ABC234) and names the jurisdiction', () => {
+  it('matches a CA plate and names the jurisdiction', () => {
+    // 5KJH345 matches CA ^\d[A-Z]{3}\d{3}$
     const r = formatScore('5KJH345');
     expect(r.score).toBeGreaterThanOrEqual(0.9);
     expect(r.jurisdiction).toBe('CA');
   });
   it('penalizes a string that matches no known format', () => {
     expect(formatScore('!!').score).toBeLessThan(0.3);
+  });
+  it('folds ambiguous glyphs so an OCR O/I/S read still matches a digit format', () => {
+    // '0ISKJH' folds to '015KJH' → Utah ^\d{3}[A-Z]{3}$
+    const r = formatScore('0ISKJH');
+    expect(r.jurisdiction).toBe('UT');
   });
 });
 
@@ -51,5 +57,11 @@ describe('trustScore', () => {
     const r = trustScore({ reads: ['KJH345', 'KJH345'], modelPct: 0.8 });
     expect(r.canonical).toBe('KJH345');
     expect(typeof r.basis).toBe('string');
+  });
+  it('returns zero trust for no reads', () => {
+    const r = trustScore({ reads: [] });
+    expect(r.trustScore).toBe(0);
+    expect(r.basis).toBe('no reads');
+    expect(r.readCount).toBe(0);
   });
 });

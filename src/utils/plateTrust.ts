@@ -22,7 +22,8 @@ export interface FormatResult { score: number; jurisdiction: string | null; }
 
 /** Best jurisdiction match for a RAW (un-normalized) plate. */
 export function formatScore(rawPlate: string): FormatResult {
-  const plate = (rawPlate ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const plate = (rawPlate ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    .replace(/[OISBZ]/g, (ch) => AMBIGUITY[ch] ?? ch);
   if (plate.length < 2) return { score: 0.1, jurisdiction: null };
   for (const f of PLATE_FORMATS) {
     if (f.regex.test(plate)) return { score: 0.95, jurisdiction: f.code };
@@ -80,6 +81,10 @@ export interface TrustResult {
  *  model's self-reported % is at most a small tiebreaker. A single read is hard-
  *  capped below the assert gate (no corroboration). */
 export function trustScore(input: TrustInput): TrustResult {
+  if ((input.reads ?? []).filter((r) => r && r.trim()).length === 0) {
+    return { canonical: '', trustScore: 0, basis: 'no reads', consensusRatio: 0,
+             readCount: 0, variants: [], jurisdiction: null };
+  }
   const c = consensus(input.reads);
   const fmt = formatScore(c.canonical);
   const parts: string[] = [];
