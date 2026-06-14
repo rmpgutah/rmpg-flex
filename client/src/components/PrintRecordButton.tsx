@@ -8,7 +8,7 @@
 // ============================================================
 
 import { useCallback, useState, useEffect } from 'react';
-import { Printer, Eye, PenLine, Smartphone } from 'lucide-react';
+import { Printer, Eye, PenLine, Smartphone, Mail } from 'lucide-react';
 import { downloadRecordPdf, generateRecordPdfBlobUrl, type RecordPdfType } from '../utils/recordPdfGenerator';
 import { tryV2Dispatch, tryV2DispatchBlobUrl } from '../utils/pdf/v2DispatchAdapter';
 import { fetchEntityImages, fetchImageFromUrl } from '../utils/pdfImageHelpers';
@@ -18,6 +18,8 @@ import { useAuth } from '../context/AuthContext';
 import { mapDbCall } from '../pages/dispatch/utils/dispatchMappers';
 import DocumentViewer from './DocumentViewer';
 import SignaturePad from './SignaturePad';
+import { PdfEmailDialog } from './PdfEmailDialog';
+import { emailBlob } from '../utils/emailPdf';
 
 interface PrintRecordButtonProps {
   /** Record type to generate PDF for */
@@ -69,6 +71,7 @@ export default function PrintRecordButton({
   const [pdfBlobUrl, setPdfBlobUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [signModalOpen, setSignModalOpen] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
   const [signatureChecked, setSignatureChecked] = useState(false);
 
@@ -414,6 +417,26 @@ export default function PrintRecordButton({
     }
   }, [recordType, recordData, identifier, pdfBlobUrl, enrichWithImages, fetchFreshRecordData]);
 
+  const handleEmailSend = useCallback(async (to: string[], cc: string[], subject: string, body: string) => {
+    setEmailDialogOpen(false);
+    setLoading(true);
+    try {
+      // Mirror handlePreview's blob generation:
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData);
+      const v2BlobUrl = await tryV2DispatchBlobUrl({ recordType, recordData: enrichedData, identifier });
+      const blobUrl = v2BlobUrl ?? await generateRecordPdfBlobUrl(recordType, enrichedData);
+      const blob = await fetch(blobUrl).then((r) => r.blob());
+      URL.revokeObjectURL(blobUrl);
+      const linkId = entityId != null && entityId !== '' && Number.isFinite(Number(entityId)) ? Number(entityId) : undefined;
+      await emailBlob(blob, recordType, to, cc, subject, body, entityType, linkId);
+    } catch (err) {
+      console.error('[PrintRecordButton] Email failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [recordType, recordData, identifier, entityType, entityId, enrichWithImages, fetchFreshRecordData]);
+
   /** Sign & Export: if user has no saved signature, show the sign pad; otherwise generate with saved sig */
   const handleSignAndExport = useCallback(async () => {
     if (!recordData) return;
@@ -517,6 +540,16 @@ export default function PrintRecordButton({
         <PenLine style={{ width: 12, height: 12 }} />
         {!iconOnly && <span>{loading ? 'Signing…' : 'Sign & Export'}</span>}
       </button>
+      <button
+        type="button"
+        className={`toolbar-btn ${className}`}
+        onClick={() => setEmailDialogOpen(true)}
+        title="Email this PDF report"
+        disabled={loading}
+      >
+        <Mail style={{ width: 12, height: 12 }} />
+        {!iconOnly && <span>Email</span>}
+      </button>
       <DocumentViewer
         isOpen={viewerOpen}
         onClose={handleCloseViewer}
@@ -524,6 +557,13 @@ export default function PrintRecordButton({
         title={`${recordTypeLabel} Record`}
         type="pdf"
       />
+      {emailDialogOpen && (
+        <PdfEmailDialog
+          defaultSubject={`${recordTypeLabel} Record${identifier ? ` — ${identifier}` : ''}`}
+          onCancel={() => setEmailDialogOpen(false)}
+          onSend={handleEmailSend}
+        />
+      )}
 
       {/* Quick-sign modal */}
       {signModalOpen && (

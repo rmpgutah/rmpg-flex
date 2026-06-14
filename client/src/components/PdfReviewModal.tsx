@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { apiPostForm } from '../hooks/useApi';
+import { emailBlob } from '../utils/emailPdf';
 import type {
   FormSchema, SchemaSection, FieldSpec, LabeledField,
   CheckboxField, NarrativeField, TableField, SignatureField,
@@ -53,31 +53,6 @@ export async function attachBlobToRecord(
   });
   if (!res.ok) throw new Error(`attach failed: ${res.status}`);
   return res.json();
-}
-
-/** POST the PDF blob + email fields to /api/pdf-engine/email via the canonical
- *  multipart helper (correct API origin + auth; the old bare fetch used the wrong
- *  token key). recordType/recordId tie the send to its record for surfacing. */
-export async function emailBlob(
-  blob: Blob,
-  formType: string,
-  to: string[],
-  cc: string[],
-  subject: string,
-  body: string,
-  recordType?: string,
-  recordId?: number,
-): Promise<void> {
-  const fd = new FormData();
-  fd.append('form_type', formType);
-  to.forEach((t) => fd.append('to', t));
-  cc.forEach((v) => fd.append('cc', v));
-  fd.append('subject', subject);
-  fd.append('body', body);
-  if (recordType) fd.append('record_type', recordType);
-  if (recordId != null) fd.append('record_id', String(recordId));
-  fd.append('pdf', blob, `${formType}.pdf`);
-  await apiPostForm('/pdf-engine/email', fd);
 }
 
 // Reject prototype-pollution keys — a path like "__proto__.foo" or

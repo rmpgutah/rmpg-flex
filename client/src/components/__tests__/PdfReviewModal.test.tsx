@@ -317,7 +317,7 @@ vi.mock('../../hooks/useApi', async (importOriginal) => {
   return { ...actual, apiPostForm: mockApiPostForm };
 });
 
-import { emailBlob } from '../PdfReviewModal';
+import { emailBlob } from '../../utils/emailPdf';
 
 describe('emailBlob', () => {
   beforeEach(() => {
