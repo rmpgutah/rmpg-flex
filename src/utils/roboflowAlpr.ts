@@ -143,12 +143,39 @@ export interface AlprCapture {
   year: number | null;
   vehicleType: string | null;
   confidence: number | null;
+  /** Capture-level condition/damage summary (from the first vehicle). */
+  condition: string | null;
+  damageObserved: boolean | null;
+  damageSummary: string | null;
   riskScore: number | null;
   reviewStatus: string | null;
   /** True iff any alert-ish scalar/flag came back truthy. */
   alerted: boolean;
   /** Every scalar output, keyed by its real output name. Nothing lost. */
   rawScalars: Record<string, string | number | boolean>;
+}
+
+/** A single area of visible damage on a vehicle. */
+export interface AlprDamageArea {
+  /** Panel/region, e.g. "front-bumper", "driver-door", "hood". */
+  panel: string | null;
+  /** Damage type, e.g. "dent", "scratch", "crack", "missing-part", "scuff". */
+  type: string | null;
+  /** "minor" | "moderate" | "severe" (free text, normalized lower-case). */
+  severity: string | null;
+}
+
+/** Per-field confidence (0–1) from a vehicle's `field_confidence` map. Used by
+ *  the 0.85 acceptance gate: identity fields gate what's written to the record;
+ *  descriptive fields (condition/damage) gate the verified/unverified label. */
+export interface AlprFieldConfidence {
+  plate?: number | null;
+  make?: number | null;
+  model?: number | null;
+  year?: number | null;
+  color?: number | null;
+  condition?: number | null;
+  damage?: number | null;
 }
 
 /** One detected vehicle (from `enhanced_alpr_record.vehicles[]`). A single
@@ -164,6 +191,19 @@ export interface AlprVehicle {
   plateType: string | null;
   /** Plate-read confidence (0–1) from the vehicle's field_confidence map. */
   confidence: number | null;
+  // ── Advanced scanner: condition + damage (descriptive observations) ──
+  /** Overall condition: clean | minor | moderate | heavy | salvage (or null). */
+  condition: string | null;
+  /** Whether any visible damage was reported. */
+  damageObserved: boolean | null;
+  /** One-line human summary of visible damage (or null). */
+  damageSummary: string | null;
+  /** Structured per-area damage. */
+  damageAreas: AlprDamageArea[];
+  /** Visible aftermarket parts / decals / commercial markings (or null). */
+  aftermarket: string | null;
+  /** Per-field confidence map (0–1) for the acceptance gate. */
+  confidences: AlprFieldConfidence;
 }
 
 export interface ParsedAlpr {
@@ -384,8 +424,10 @@ export function unfenceJson(s: string): string {
   // ```json … ```  or  ``` … ```  (tolerate any/no language tag).
   const fence = /^```[a-zA-Z0-9]*\s*([\s\S]*?)\s*```$/.exec(t);
   if (fence) t = fence[1].trim();
-  // Still wrapped in prose? Slice to the outermost object.
-  if (!t.startsWith('{')) {
+  // Still wrapped in prose? Slice to the outermost object — but leave a JSON
+  // array intact (slicing to `{…}` would corrupt a fenced `[…]`, e.g. the
+  // per-crop vehicle_details list or damage_areas).
+  if (!t.startsWith('{') && !t.startsWith('[')) {
     const a = t.indexOf('{');
     const b = t.lastIndexOf('}');
     if (a !== -1 && b > a) t = t.slice(a, b + 1);
@@ -427,6 +469,21 @@ function yearFrom(v: unknown): number | null {
   const s = typeof v === 'number' ? String(v) : typeof v === 'string' ? v : '';
   const m = /\b(?:19|20)\d{2}\b/.exec(s);
   return m ? Number(m[0]) : null;
+}
+
+/** Default acceptance threshold: a read is "accepted" only at ≥85% confidence
+ *  (the [0.85,1.0] band). Overridable per call (e.g. from an env var). */
+export const ALPR_ACCEPT_CONFIDENCE = 0.85;
+
+/**
+ * The 85% acceptance gate, as a pure helper. Returns `value` when its
+ * confidence meets the threshold, else `null`. A missing/unknown confidence is
+ * treated as below the gate (fail-closed — never assert an unscored read).
+ */
+export function acceptByConfidence<T>(value: T, conf: number | null | undefined, threshold = ALPR_ACCEPT_CONFIDENCE): T | null {
+  if (value == null) return null;
+  if (typeof conf !== 'number' || !Number.isFinite(conf)) return null;
+  return conf >= threshold ? value : null;
 }
 function firstStringByKey(entry: Record<string, unknown>, re: RegExp): string | null {
   for (const [k, v] of Object.entries(entry)) {
@@ -480,6 +537,11 @@ export function normalizeCapture(entry: Record<string, unknown>): AlprCapture {
     firstStringByKey(entry, KEY.plate);
   const reviewRequired = asBool(entry[ALPR_OUTPUT.reviewRequired]);
 
+  // Condition/damage summary — prefer the structured vehicle (vd → firstVeh).
+  const dmgRaw = vd.damage_observed ?? firstVeh?.damage_observed;
+  const damageObserved =
+    typeof dmgRaw === 'boolean' ? dmgRaw : dmgRaw == null ? null : asBool(dmgRaw);
+
   return {
     plate: plateRaw ? cleanPlate(plateRaw) : null,
     state: asStr(vd.license_plate_state_or_region) ?? firstStringByKey(entry, KEY.state),
@@ -489,6 +551,9 @@ export function normalizeCapture(entry: Record<string, unknown>): AlprCapture {
     year: yearFrom(vd.year_range) ?? yearFrom(entry.year),
     vehicleType: asStr(vd.vehicle_type) ?? asStr(vd.plate_type),
     confidence,
+    condition: asStr(vd.overall_condition) ?? asStr(vd.condition) ?? asStr(firstVeh?.overall_condition),
+    damageObserved,
+    damageSummary: asStr(vd.damage_summary) ?? asStr(firstVeh?.damage_summary),
     riskScore: asNum(entry[ALPR_OUTPUT.riskScore]),
     reviewStatus: asStr(entry[ALPR_OUTPUT.reviewLane]) ?? (reviewRequired ? 'review_required' : null) ?? firstStringByKey(entry, KEY.review),
     alerted: asBool(entry[ALPR_OUTPUT.watchlistHit]) || asBool(entry[ALPR_OUTPUT.alertRequired]),
@@ -496,13 +561,58 @@ export function normalizeCapture(entry: Record<string, unknown>): AlprCapture {
   };
 }
 
+/** Parse the per-field confidence map off a vehicle record. */
+function fieldConfidences(v: Record<string, unknown>): AlprFieldConfidence {
+  const fc = asRecord(v.field_confidence) ?? {};
+  return {
+    plate: asNum(fc.plate),
+    make: asNum(fc.make),
+    model: asNum(fc.model),
+    year: asNum(fc.year),
+    color: asNum(fc.color),
+    condition: asNum(fc.condition),
+    damage: asNum(fc.damage),
+  };
+}
+
+/** Parse `damage_areas` — tolerates a list of dicts, a list of strings, or a
+ *  fenced/JSON-string of either (same defensive shape-handling as the rest). */
+export function parseDamageAreas(v: unknown): AlprDamageArea[] {
+  const out: AlprDamageArea[] = [];
+  let list: unknown[] = [];
+  if (Array.isArray(v)) list = v;
+  else if (typeof v === 'string' && v.trim()) {
+    const t = unfenceJson(v);
+    if (t.startsWith('[')) { try { const a = JSON.parse(t); if (Array.isArray(a)) list = a; } catch { /* not JSON */ } }
+  }
+  for (const el of list) {
+    const r = asRecord(el);
+    if (r) {
+      const area: AlprDamageArea = {
+        panel: asStr(r.panel) ?? asStr(r.area) ?? asStr(r.location),
+        type: asStr(r.type) ?? asStr(r.damage_type),
+        severity: asStr(r.severity)?.toLowerCase() ?? null,
+      };
+      if (area.panel || area.type || area.severity) out.push(area);
+    } else {
+      const s = asStr(el);
+      if (s) out.push({ panel: s, type: null, severity: null });
+    }
+  }
+  return out;
+}
+
 /** Map one vehicle record (from enhanced_alpr_record.vehicles[] or the single
  *  vehicle_details dict) to a normalized AlprVehicle. */
 function vehicleFromRecord(v: Record<string, unknown>): AlprVehicle {
-  let confidence: number | null = null;
-  const fc = v.field_confidence;
-  if (fc && typeof fc === 'object') confidence = asNum((fc as Record<string, unknown>).plate);
+  const confidences = fieldConfidences(v);
   const plate = asStr(v.license_plate_text);
+  const damageAreas = parseDamageAreas(v.damage_areas);
+  const damageObservedRaw = v.damage_observed;
+  const damageObserved =
+    typeof damageObservedRaw === 'boolean' ? damageObservedRaw
+    : damageObservedRaw == null ? (damageAreas.length > 0 ? true : null)
+    : asBool(damageObservedRaw);
   return {
     plate: plate ? cleanPlate(plate) : null,
     state: asStr(v.license_plate_state_or_region),
@@ -512,7 +622,13 @@ function vehicleFromRecord(v: Record<string, unknown>): AlprVehicle {
     year: yearFrom(v.year_range),
     vehicleType: asStr(v.vehicle_type),
     plateType: asStr(v.plate_type),
-    confidence,
+    confidence: confidences.plate ?? null,
+    condition: asStr(v.overall_condition) ?? asStr(v.condition),
+    damageObserved,
+    damageSummary: asStr(v.damage_summary),
+    damageAreas,
+    aftermarket: asStr(v.aftermarket_or_markings) ?? asStr(v.distinctive_features),
+    confidences,
   };
 }
 
@@ -571,7 +687,7 @@ export function parseVehicles(entry: Record<string, unknown>): AlprVehicle[] {
       raw = vds.map(vehicleFromRecord);
     } else {
       const plate = firstOcrString(entry[ALPR_OUTPUT.plateText]);
-      if (plate) raw = [{ plate: cleanPlate(plate), state: null, make: null, model: null, color: null, year: null, vehicleType: null, plateType: null, confidence: null }];
+      if (plate) raw = [{ plate: cleanPlate(plate), state: null, make: null, model: null, color: null, year: null, vehicleType: null, plateType: null, confidence: null, condition: null, damageObserved: null, damageSummary: null, damageAreas: [], aftermarket: null, confidences: {} }];
     }
   }
   // Drop empty entries (no plate AND no descriptive attributes).

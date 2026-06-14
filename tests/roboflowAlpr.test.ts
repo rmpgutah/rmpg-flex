@@ -11,6 +11,9 @@ import {
   normalizeCapture,
   parseVehicles,
   parseAlprResponse,
+  parseDamageAreas,
+  acceptByConfidence,
+  ALPR_ACCEPT_CONFIDENCE,
   unfenceJson,
   alprRunUrl,
   stripDataUri,
@@ -494,5 +497,98 @@ describe.skipIf(!process.env.ROBOFLOW_API_KEY)('roboflowAlpr — live', () => {
 describe('helpers', () => {
   it('stripDataUri passes through bare base64', () => {
     expect(stripDataUri('AAAB')).toBe('AAAB');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Advanced scanner: condition/damage extraction + the 0.85 acceptance gate.
+// Shapes mirror the live `workflow_specs_run` prototype (2026-06-14): the
+// open_ai block returns per-vehicle overall_condition / damage_observed /
+// damage_areas[{panel,type,severity}] / damage_summary / field_confidence
+// (incl. condition & damage), as a markdown-fenced JSON string.
+// ─────────────────────────────────────────────────────────────
+describe('roboflowAlpr — advanced scanner (damage + 85% acceptance gate)', () => {
+  it('acceptByConfidence: keeps ≥0.85, drops below, fail-closed on missing/null', () => {
+    expect(acceptByConfidence('Ford', 0.9)).toBe('Ford');
+    expect(acceptByConfidence('Ford', 0.85)).toBe('Ford');      // boundary inclusive
+    expect(acceptByConfidence('Ford', 0.7)).toBeNull();          // below gate → held
+    expect(acceptByConfidence('Ford', undefined)).toBeNull();    // no confidence → fail-closed
+    expect(acceptByConfidence('Ford', null)).toBeNull();
+    expect(acceptByConfidence(null, 0.99)).toBeNull();           // no value
+    expect(acceptByConfidence('Ford', 0.6, 0.5)).toBe('Ford');   // custom threshold
+    expect(ALPR_ACCEPT_CONFIDENCE).toBe(0.85);
+  });
+
+  it('parseDamageAreas: dicts, bare strings, and fenced JSON arrays', () => {
+    const dicts = parseDamageAreas([
+      { panel: 'front-bumper', type: 'dent', severity: 'Moderate' },
+      { area: 'hood', damage_type: 'scratch' },                  // alt keys
+    ]);
+    expect(dicts).toHaveLength(2);
+    expect(dicts[0]).toEqual({ panel: 'front-bumper', type: 'dent', severity: 'moderate' }); // lc severity
+    expect(dicts[1].panel).toBe('hood');
+    expect(dicts[1].type).toBe('scratch');
+
+    expect(parseDamageAreas(['rear-bumper scuff'])).toEqual([{ panel: 'rear-bumper scuff', type: null, severity: null }]);
+    const fromFence = parseDamageAreas('```json\n[{"panel":"door","type":"crack","severity":"severe"}]\n```');
+    expect(fromFence).toEqual([{ panel: 'door', type: 'crack', severity: 'severe' }]);
+    expect(parseDamageAreas(null)).toEqual([]);
+  });
+
+  it('extracts condition/damage + per-field confidence from a fenced record', () => {
+    const entry = {
+      enhanced_alpr_record: fenced({
+        vehicles: [{
+          license_plate_text: '7ABC890', make: 'Ford', model: 'F-150', color_primary: 'black',
+          overall_condition: 'moderate', damage_observed: true,
+          damage_areas: [{ panel: 'driver-door', type: 'dent', severity: 'moderate' }],
+          damage_summary: 'Dent on the driver door.', aftermarket_or_markings: 'ladder rack',
+          field_confidence: { plate: 0.94, make: 0.98, color: 0.9, condition: 0.7, damage: 0.7 },
+        }],
+        summary: 'Black Ford F-150 with a driver-door dent.',
+      }),
+    };
+    const [v] = parseVehicles(entry);
+    expect(v.plate).toBe('7ABC890');
+    expect(v.condition).toBe('moderate');
+    expect(v.damageObserved).toBe(true);
+    expect(v.damageAreas).toEqual([{ panel: 'driver-door', type: 'dent', severity: 'moderate' }]);
+    expect(v.damageSummary).toBe('Dent on the driver door.');
+    expect(v.aftermarket).toBe('ladder rack');
+    expect(v.confidences.plate).toBeCloseTo(0.94);
+    expect(v.confidences.condition).toBeCloseTo(0.7);
+
+    // The gate: plate/make accepted (≥0.85); condition NOT (0.7) but still present
+    // on the vehicle as an observation (route stores it labelled unverified).
+    expect(acceptByConfidence(v.make, v.confidences.make)).toBe('Ford');
+    expect(acceptByConfidence(v.condition, v.confidences.condition)).toBeNull();
+
+    const cap = normalizeCapture(entry);
+    expect(cap.condition).toBe('moderate');
+    expect(cap.damageObserved).toBe(true);
+    expect(cap.damageSummary).toBe('Dent on the driver door.');
+  });
+
+  it('damage_observed infers true from damage_areas when the flag is omitted', () => {
+    const [v] = parseVehicles({
+      enhanced_alpr_record: fenced({ vehicles: [{
+        license_plate_text: 'XYZ1', damage_areas: [{ panel: 'rear-bumper', type: 'scuff', severity: 'minor' }],
+        field_confidence: { plate: 0.9 },
+      }] }),
+    });
+    expect(v.damageObserved).toBe(true);            // inferred from a non-empty damage_areas
+    expect(v.damageAreas).toHaveLength(1);
+  });
+
+  it('a clean vehicle reports no damage', () => {
+    const [v] = parseVehicles({
+      enhanced_alpr_record: fenced({ vehicles: [{
+        license_plate_text: 'CLEAN1', overall_condition: 'clean', damage_observed: false,
+        damage_areas: [], field_confidence: { plate: 0.97, condition: 0.95 },
+      }] }),
+    });
+    expect(v.condition).toBe('clean');
+    expect(v.damageObserved).toBe(false);
+    expect(v.damageAreas).toEqual([]);
   });
 });

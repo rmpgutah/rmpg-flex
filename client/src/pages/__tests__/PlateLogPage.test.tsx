@@ -8,6 +8,8 @@ const apiFetch = vi.fn(async (path: string, init?: RequestInit) => {
     vehicle: { id: 7, plate_number: 'ABC123', make: 'Ford', model: 'F-150', color: 'Red', year: 2020 },
     hits: [{ kind: 'stolen', severity: 'critical', detail: 'STOLEN — ABC123' }],
   };
+  // The ALPR review queue (sub-85% holds) is empty in this test.
+  if (path.includes('/alpr/captures')) return [];
   return [{ id: 1, plate: 'XYZ789', location_text: 'Main St', notes: null, created_at: '2026-06-12T10:00:00' }];
 });
 vi.mock('../../hooks/useApi', () => ({ apiFetch: (...a: any[]) => apiFetch(...(a as [string])) }));
