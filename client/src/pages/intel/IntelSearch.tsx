@@ -20,7 +20,7 @@ export default function IntelSearch() {
   const [activeFlags, setActiveFlags] = useState<string[]>([]);
   const { results, facets, loading, error, run } = useIntelQuery();
   const { selectEntity } = useIntelContext();
-  const { save } = useSavedSearches();
+  const { save, saved, recent } = useSavedSearches();
   const navigate = useNavigate();
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -61,6 +61,18 @@ export default function IntelSearch() {
   return (
     <div className="p-3 space-y-3" onKeyDown={onKeyDown}>
       <SearchBar value={raw} onChange={setRaw} onSave={(name) => save(name, raw)} />
+      {raw.trim().length < 2 && (saved.length > 0 || recent.length > 0) && (
+        <div className="flex gap-1 flex-wrap">
+          {saved.slice(0, 6).map((s) => (
+            <button key={`s${s.id}`} onClick={() => setRaw(s.query_text)}
+              className="font-mono text-[9px] px-2 py-[3px] rounded-[2px] border border-[#3a2a08] text-[#d4a017]">★ {s.name}</button>
+          ))}
+          {recent.slice(0, 6).map((r, i) => (
+            <button key={`r${i}`} onClick={() => setRaw(r.query_text)}
+              className="font-mono text-[9px] px-2 py-[3px] rounded-[2px] border border-[#232323] text-[#999]">{r.query_text}</button>
+          ))}
+        </div>
+      )}
       {error && <div className="text-[10px] text-[#ff6b5e]">Search error: {error}</div>}
 
       <div className="flex gap-4">
