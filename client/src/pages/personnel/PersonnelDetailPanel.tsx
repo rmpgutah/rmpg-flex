@@ -25,6 +25,7 @@ import DashCameraDetailTab from './detail-tabs/DashCameraDetailTab';
 import DeploymentDetailTab from './detail-tabs/DeploymentDetailTab';
 import FitnessCommendationsTab from './tabs/FitnessCommendationsTab';
 import PrintRecordButton from '../../components/PrintRecordButton';
+import EmailedDocuments from '../../components/EmailedDocuments';
 
 interface ActivityEntry {
   id: string;
@@ -439,7 +440,13 @@ export default function PersonnelDetailPanel({
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto min-h-0 p-4 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
-        {activeTab === 'profile' && <ProfileDetailTab officer={officer} credentials={officerCreds} />}
+        {activeTab === 'profile' && (
+          <>
+            <ProfileDetailTab officer={officer} credentials={officerCreds} />
+            {/* Emailed Documents (outbound PDFs sent from this record) */}
+            <EmailedDocuments recordType="personnel" recordId={officer.id} />
+          </>
+        )}
         {activeTab === 'credentials' && (
           <CredentialsDetailTab
             credentials={officerCreds}

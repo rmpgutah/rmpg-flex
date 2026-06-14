@@ -142,6 +142,7 @@ import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import stubs from './routes/stubs';
+import pdfEngine from './routes/pdfEngine';
 import dar from './routes/dar';
 import evidence from './routes/evidence';
 import codeEnforcement from './routes/codeEnforcement';
@@ -550,7 +551,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/firecrawl-tools', router: stubs, auth: 'required' },
   { prefix: '/api/mobile', router: stubs, auth: 'public' },
   { prefix: '/api/pdf-artifacts', router: stubs, auth: 'required' },
-  { prefix: '/api/pdf-engine', router: stubs, auth: 'required' },
+  { prefix: '/api/pdf-engine', router: pdfEngine, auth: 'required' },
   { prefix: '/api/updates', router: stubs, auth: 'public' },
   { prefix: '/api/voice-persona', router: stubs, auth: 'required' },
 
