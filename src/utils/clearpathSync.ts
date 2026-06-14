@@ -300,7 +300,7 @@ export async function syncClearpathMedia(env: Bindings): Promise<{ synced: numbe
 // entirely: per media event it persists the still to R2 + runs ALPR + writes an
 // alpr_captures row (with/without a plate). Bounded + idempotent (dedupes on the
 // cpg_dashcam:<device>:<ts> capture_id). Runs far faster than the clip sync.
-const MAX_ALPR_STILLS_PER_RUN = 8;
+const MAX_ALPR_STILLS_PER_RUN = 12;       // coverage: stills processed per scan tick
 
 export async function scanClearpathMediaAlpr(env: Bindings): Promise<{ scanned: number; captured: number; skipped?: string }> {
   const db = getDb(env);
@@ -328,7 +328,7 @@ export async function scanClearpathMediaAlpr(env: Bindings): Promise<{ scanned: 
     const cameraId = await resolveCameraId(db, m, cameras);
     if (!cameraId) continue;
     let events: CpgMediaEvent[];
-    try { events = await listAllMedia(env, client, cameraId, from, now, 1); } catch { continue; }
+    try { events = await listAllMedia(env, client, cameraId, from, now, 2); } catch { continue; }
     for (const event of events) {
       if (captured >= MAX_ALPR_STILLS_PER_RUN) break;
       if (!pickAlprImageUrl(event)) continue; // only outside stills become captures

@@ -16,10 +16,12 @@ import {
   type GpsPoint, type TrackPoint,
 } from '../utils/dashcamForensics';
 import {
-  turnRateDegPerSec, bearingAt, videoPredictivePath, pickPrimary, plateRegion, clampBox, vehicleTag,
-  type Detection,
+  turnRateDegPerSec, bearingAt, videoPredictivePath, plateRegion, clampBox, vehicleTag,
 } from '../utils/drivingPrediction';
 import { loadVehicleDetector, detectVehicles, type DetectorStatus } from '../utils/aiVehicleTracking';
+import {
+  emptyTrackerState, stepTracker, visibleTracks, primaryTrack, type TrackerState, type Track,
+} from '../utils/vehicleTracker';
 
 interface VehicleAttrs { state?: string | null; make?: string | null; model?: string | null; color?: string | null; year?: number | null }
 interface MediaResp {
@@ -52,10 +54,11 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
   const [t, setT] = useState(0);             // current playback time (s)
   const [aiOn, setAiOn] = useState(true);    // live CV vehicle tracking
   const [detStatus, setDetStatus] = useState<DetectorStatus>('idle');
-  const [dets, setDets] = useState<Detection[]>([]);
+  const [tracks, setTracks] = useState<Track[]>([]);
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const detLoopRef = useRef<number | null>(null);
+  const trackerRef = useRef<TrackerState>(emptyTrackerState());
 
   useEffect(() => {
     let alive = true;
@@ -76,10 +79,11 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
   // Live CV vehicle detection loop — boxes that follow the vehicle in frame.
   // Lazy-loads the model from a CDN on first enable; degrades to telemetry-only.
   useEffect(() => {
-    if (!aiOn || !media?.has_video) { setDets([]); return; }
+    if (!aiOn || !media?.has_video) { setTracks([]); trackerRef.current = emptyTrackerState(); return; }
     let cancelled = false;
     let model: unknown = null;
     let busy = false;
+    trackerRef.current = emptyTrackerState();
     setDetStatus('loading');
     loadVehicleDetector().then((m) => {
       if (cancelled) return;
@@ -88,20 +92,25 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
       if (!m) return;
       const tick = async () => {
         const v = videoRef.current;
-        if (!cancelled && v && !v.paused && !v.ended && !busy) {
+        // Only burn GPU while actually visible + playing (tab-hidden / paused → idle).
+        if (!cancelled && v && !v.paused && !v.ended && !document.hidden && !busy) {
           busy = true;
-          const found = await detectVehicles(model, v);
-          if (!cancelled) setDets(found);
+          const found = await detectVehicles(model, v, 12);
+          if (!cancelled) {
+            trackerRef.current = stepTracker(trackerRef.current, found, { iouThresh: 0.3, smooth: 0.5, maxMissed: 8, trailLen: 14 });
+            setTracks(visibleTracks(trackerRef.current, 3));
+          }
           busy = false;
         }
-        if (!cancelled) detLoopRef.current = window.setTimeout(tick, 130);
+        if (!cancelled) detLoopRef.current = window.setTimeout(tick, 110);
       };
       tick();
     });
     return () => {
       cancelled = true;
       if (detLoopRef.current) { clearTimeout(detLoopRef.current); detLoopRef.current = null; }
-      setDets([]);
+      setTracks([]);
+      trackerRef.current = emptyTrackerState();
     };
   }, [aiOn, media?.has_video, media?.id]);
 
@@ -127,7 +136,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     const right = [...roadPath].reverse().map((p) => `L${(p.x + p.halfWidth).toFixed(1)},${p.y.toFixed(1)}`).join(' ');
     return `${left} ${right} Z`;
   }, [roadPath]);
-  const primary = useMemo(() => pickPrimary(dets, natW, natH), [dets, natW, natH]);
+  const primary = useMemo(() => primaryTrack(tracks, natW, natH), [tracks, natW, natH]);
   // Predicted continuation ray on the (north-up) GPS mini-map, in SVG units.
   const predRay = useMemo(() => {
     if (!dot) return '';
@@ -176,6 +185,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
             <ScanSearch className="w-3 h-3" />
             AI TRACK
             {aiOn && detStatus === 'loading' && <Loader2 className="w-3 h-3 animate-spin" />}
+            {aiOn && detStatus === 'ready' && <span className="text-[8px] tabular-nums">· {tracks.length} tracked</span>}
             {aiOn && detStatus === 'unavailable' && <span className="text-[8px] text-rmpg-500">(telemetry)</span>}
           </button>
           <button onClick={onClose} className="text-rmpg-400 hover:text-white p-1" aria-label="Close player"><X className="w-5 h-5" /></button>
@@ -217,14 +227,20 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                           fill="none" stroke="#d4a017" strokeWidth={3} strokeDasharray="12 9" opacity={0.85} vectorEffect="non-scaling-stroke" />
                       </>
                     )}
-                    {/* Live vehicle detections */}
-                    {aiOn && dets.map((d, i) => {
-                      const isP = !!primary && d.bbox === primary.bbox;
-                      const [x, y, w, h] = d.bbox;
+                    {/* Tracked vehicles — smoothed boxes + motion trail + id */}
+                    {aiOn && tracks.map((tr) => {
+                      const isP = !!primary && tr.id === primary.id;
+                      const [x, y, w, h] = tr.bbox;
+                      const col = isP ? '#d4a017' : '#7dd3fc';
                       return (
-                        <rect key={i} x={x} y={y} width={w} height={h} fill="none"
-                          stroke={isP ? '#d4a017' : '#7dd3fc'} strokeWidth={isP ? 4 : 2}
-                          opacity={isP ? 1 : 0.7} vectorEffect="non-scaling-stroke" />
+                        <g key={tr.id} opacity={isP ? 1 : 0.72}>
+                          {tr.trail.length > 1 && (
+                            <polyline points={tr.trail.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')}
+                              fill="none" stroke={col} strokeWidth={2} opacity={0.35} vectorEffect="non-scaling-stroke" />
+                          )}
+                          <rect x={x} y={y} width={w} height={h} fill="none" stroke={col} strokeWidth={isP ? 4 : 2} vectorEffect="non-scaling-stroke" />
+                          <text x={x + 3} y={y - 4} fontSize={13} fill={col} fontFamily="monospace">{tr.cls === 'person' ? 'PED' : 'VEH'}·{tr.id}</text>
+                        </g>
                       );
                     })}
                     {/* Primary vehicle: LP box + plate + Make/Model/Year/Color tag */}

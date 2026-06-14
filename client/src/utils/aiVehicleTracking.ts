@@ -10,7 +10,8 @@
 
 import type { Detection } from './drivingPrediction';
 
-const VEHICLE_CLASSES = new Set(['car', 'truck', 'bus', 'motorcycle']);
+// Vehicles for ALPR + a pedestrian class for officer-safety coverage.
+const VEHICLE_CLASSES = new Set(['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'person']);
 // Load the FULL tfjs (registers the WebGL/CPU compute backends) first, then
 // COCO-SSD pinned (?deps) to the SAME tfjs-core instance so the backend the
 // union package registered is visible to the model (avoids the classic
