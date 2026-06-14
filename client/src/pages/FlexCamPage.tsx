@@ -1,5 +1,5 @@
 // client/src/pages/FlexCamPage.tsx
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 
@@ -17,11 +17,12 @@ interface Req {
 }
 
 interface CustodyEntry {
-  id: number;
   action: string;
-  actor: string;
-  note?: string | null;
-  ts: number;
+  actor_user_id?: number | null;
+  actor_name?: string | null;
+  reason?: string | null;
+  detail?: string | null;
+  created_at: string;
 }
 
 interface CustodyResult {
@@ -54,12 +55,10 @@ export default function FlexCamPage() {
 
   function toggleCustody(id: number) {
     if (custodyOpen[id] !== undefined) {
-      // already fetched — collapse if expanded, otherwise keep collapsed state
+      // already open or errored — unconditionally collapse/clear so re-click retries
       setCustodyOpen((prev) => {
         const next = { ...prev };
-        if (next[id] !== null) {
-          delete next[id];
-        }
+        delete next[id];
         return next;
       });
       return;
@@ -132,8 +131,8 @@ export default function FlexCamPage() {
         </thead>
         <tbody>
           {reqs.map((r) => (
-            <>
-              <tr key={r.id} className="border-b border-[#232323]">
+            <Fragment key={r.id}>
+              <tr className="border-b border-[#232323]">
                 <td className="py-[2px]">{r.title || `Request ${r.id}`}</td>
                 <td>
                   <span>{r.status}</span>
@@ -188,14 +187,14 @@ export default function FlexCamPage() {
                       {custodyOpen[r.id]!.custody.length === 0 ? (
                         <div>No custody entries.</div>
                       ) : (
-                        custodyOpen[r.id]!.custody.map((entry) => (
-                          <div key={entry.id} className="py-[1px] border-b border-[#232323] last:border-0">
+                        custodyOpen[r.id]!.custody.map((entry, i) => (
+                          <div key={i} className="py-[1px] border-b border-[#232323] last:border-0">
                             <span className="text-[#d4a017]">{entry.action}</span>
                             {' — '}
-                            <span>{entry.actor}</span>
-                            {entry.note && <span className="ml-1 text-[#666]">({entry.note})</span>}
+                            <span>{entry.actor_name ?? (entry.actor_user_id != null ? `#${entry.actor_user_id}` : '')}</span>
+                            {entry.reason && <span className="ml-1 text-[#666]">({entry.reason})</span>}
                             <span className="ml-2 text-[#555]">
-                              {new Date(entry.ts * 1000).toLocaleString()}
+                              {new Date(entry.created_at).toLocaleString()}
                             </span>
                           </div>
                         ))
@@ -204,7 +203,7 @@ export default function FlexCamPage() {
                   </td>
                 </tr>
               )}
-            </>
+            </Fragment>
           ))}
           {!reqs.length && (
             <tr>
