@@ -129,6 +129,23 @@ uof.post('/', async (c) => {
          VALUES (?, 'CREATE', 'use_of_force', ?, ?, datetime('now'))`,
         userId, r.meta.last_row_id, `Use of force report submitted (${b.force_type})`);
     } catch { /* non-fatal */ }
+    // ── FlexCam auto-preserve (best-effort, strictly additive). The officer's
+    // unit isn't in scope here, so resolve it from the submitter; never throws
+    // into the report flow — a preserve failure logs and is swallowed.
+    // Fire-and-forget via waitUntil: the preserve issues ~11 sequential ClearPath
+    // POSTs (7-min window) which must NOT delay the report response. waitUntil
+    // also keeps the work alive after the response returns. The unit lookup runs
+    // INSIDE _preserve; only the request-scoped ids are captured up front.
+    const uofId = Number(r.meta.last_row_id);
+    const preserveUserId = userId;
+    const _preserve = (async () => {
+      try {
+        const unit = preserveUserId ? await queryFirst<{ id: number; current_call_id: number | null }>(getDb(c.env), 'SELECT id, current_call_id FROM units WHERE officer_id=? LIMIT 1', preserveUserId).catch(() => null) : null;
+        const { preserveForEvent } = await import('../utils/footage/autoPreserve');
+        await preserveForEvent(c.env, { eventType: 'use_of_force', eventId: uofId, reason: 'use_of_force', unitId: unit?.id ?? null, officerUserId: preserveUserId, callId: unit?.current_call_id ?? null, eventTs: Date.now() }); // new-date-ok
+      } catch (e) { console.error('[flexcam-preserve] uof:', (e as Error)?.message); }
+    })();
+    try { c.executionCtx.waitUntil(_preserve); } catch { /* no execution ctx (e.g. tests) — let it float */ }
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to create report', detail: (err as Error)?.message }, 500);

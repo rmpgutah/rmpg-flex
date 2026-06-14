@@ -14,9 +14,10 @@
 // ============================================================
 
 import type { Bindings } from '../types';
-import { queryFirst, execute } from './db';
+import { queryFirst, execute, columnExists } from './db';
 import { screenVehicle } from './intelScreen';
 import { ALPR_ACCEPT_CONFIDENCE } from './roboflowAlpr';
+import { trustScore } from './plateTrust';
 import { readPlateCloudflare } from './cloudflarePlate';
 import { type CpgMediaEvent, type CpgMediaObject } from './clearpathGps';
 
@@ -86,6 +87,35 @@ async function upsertVehicleByPlate(db: DB, plate: string, attrs: PlateAttrs): P
   } catch (err) { console.error('[cpg-alpr] vehicle upsert failed:', (err as Error)?.message); return null; }
 }
 
+/** Reconcile the columns this background path writes, mirroring the alpr route's
+ *  ensureAlprSchema. Migrations routinely fail to reach live D1 silently (deploy
+ *  step is continue-on-error), so without this a missing column makes the
+ *  vehicle_sightings / alpr_captures INSERTs throw — and they're caught + only
+ *  logged, so the sighting (which feeds /intel/plate-log) or capture would be
+ *  silently lost. We reconcile here rather than dropping columns so intel data is
+ *  never discarded, matching the established pattern in src/routes/alpr.ts.
+ *  (Cannot import the route's private ensureAlprSchema from a util without a
+ *  route→util import inversion; the columns this path touches are inlined here.) */
+const SIGHTING_EXTRA_COLUMNS: Array<[string, string]> = [['confidence', 'REAL']];
+const CAPTURE_EXTRA_COLUMNS: Array<[string, string]> = [
+  ['plate_confidence', 'REAL'], ['accepted', 'INTEGER'], ['review_status', 'TEXT'],
+  ['image_key', 'TEXT'], ['capture_id', 'TEXT'], ['raw_json', 'TEXT'],
+];
+async function ensureAlprWriteSchema(db: DB): Promise<void> {
+  for (const [name, type] of SIGHTING_EXTRA_COLUMNS) {
+    if (!(await columnExists(db, 'vehicle_sightings', name))) {
+      try { await execute(db, `ALTER TABLE vehicle_sightings ADD COLUMN ${name} ${type}`); }
+      catch { /* lost a race or already present — fine */ }
+    }
+  }
+  for (const [name, type] of CAPTURE_EXTRA_COLUMNS) {
+    if (!(await columnExists(db, 'alpr_captures', name))) {
+      try { await execute(db, `ALTER TABLE alpr_captures ADD COLUMN ${name} ${type}`); }
+      catch { /* lost a race or already present — fine */ }
+    }
+  }
+}
+
 // ── Main entry (called from the media-sync loop, best-effort) ─
 
 export async function alprDashcamClip(
@@ -98,6 +128,9 @@ export async function alprDashcamClip(
     if (args.videoId == null) return;
     try { await execute(db, 'UPDATE dashcam_videos SET alpr_status = ? WHERE id = ?', status, args.videoId); } catch { /* */ }
   };
+  // Reconcile the columns the sighting + capture INSERTs below depend on, the
+  // same way the alpr route does before its writes (best-effort, never fatal).
+  try { await ensureAlprWriteSchema(db); } catch { /* best-effort */ }
   const imageUrl = pickAlprImageUrl(args.event);
   if (!imageUrl) { await markVideo('skipped'); return; }
 
@@ -125,8 +158,12 @@ export async function alprDashcamClip(
   const plate = validatePlate(read?.plate);   // null for "NOTVISIBLE"/junk → recorded as a no-plate still
   const confidence = read?.confidence ?? null;
   const { lat, lng } = eventLatLng(args.event);
-  const threshold = ALPR_ACCEPT_CONFIDENCE;
-  const accepted = !!plate && (confidence ?? 0) >= threshold;
+  // Gate the master-record upsert on DERIVED trust, not the model's self-reported
+  // confidence (which plateTrust.ts distrusts). trustScore() hard-caps a single
+  // read at 0.84, so no lone dashcam read can auto-upsert a vehicles_records
+  // master row — matching the on-scene ASSERT_GATE behavior.
+  const trust = plate ? trustScore({ reads: [plate], modelPct: confidence ?? undefined }) : null;
+  const accepted = !!plate && !!trust && trust.trustScore >= ALPR_ACCEPT_CONFIDENCE;
   const deviceName = args.mapping.cpg_display_name || args.mapping.cpg_device_id;
   const locationText = args.event.address || `${deviceName} dashcam`;
 
@@ -162,7 +199,7 @@ export async function alprDashcamClip(
     } catch (err) { console.error('[cpg-alpr] screen failed:', (err as Error)?.message); }
   }
 
-  // Capture-level row (best-effort; alpr_captures self-heals in the alpr route).
+  // Capture-level row (best-effort; columns reconciled above via ensureAlprWriteSchema).
   // image_key points at the R2-persisted still so the capture gallery can render
   // it (and overlay the plate) long after the pre-signed S3 url expires.
   try {
@@ -180,7 +217,7 @@ export async function alprDashcamClip(
         eventType: args.event.mediaObject?.[0]?.eventType || null,
         videoId: args.videoId, imageUrl,
       }));
-  } catch { /* non-fatal — background path */ }
+  } catch (err) { console.error('[cpg-alpr] capture insert failed:', (err as Error)?.message); }
 
   await markVideo('done');
 }

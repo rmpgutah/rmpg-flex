@@ -118,6 +118,7 @@ const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
 const IntelReportsPage = lazyRetry(() => import('./pages/intel/IntelReportsPage'));
 const IntelReportDetailPage = lazyRetry(() => import('./pages/intel/IntelReportDetailPage'));
+const NewIntelReportPage = lazyRetry(() => import('./pages/intel/NewIntelReportPage'));
 const IntelSourcesPage = lazyRetry(() => import('./pages/intel/IntelSourcesPage'));
 const PersonDossierPage = lazyRetry(() => import('./pages/PersonDossierPage'));
 const IntelPortalLayout = lazyRetry(() => import('./pages/intel/IntelPortalLayout'));
@@ -491,6 +492,7 @@ function AppRoutes() {
               <Route path="map" element={<RouteErrorBoundary><IntelComingSoon title="Map / Geospatial Intel" phase="Phase · Map" /></RouteErrorBoundary>} />
               <Route path="ai" element={<RouteErrorBoundary><IntelAiAnalyst /></RouteErrorBoundary>} />
               <Route path="reports" element={<RouteErrorBoundary><IntelReportsPage /></RouteErrorBoundary>} />
+              <Route path="reports/new" element={<RouteErrorBoundary><NewIntelReportPage /></RouteErrorBoundary>} />
               <Route path="reports/:id" element={<RouteErrorBoundary><IntelReportDetailPage /></RouteErrorBoundary>} />
               <Route path="sources" element={<RouteErrorBoundary><IntelSourcesPage /></RouteErrorBoundary>} />
               <Route path="quick-capture" element={<RouteErrorBoundary><QuickCapturePage /></RouteErrorBoundary>} />

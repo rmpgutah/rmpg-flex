@@ -50,6 +50,35 @@ export function unsharpValue(orig: number, blurred: number, amount: number): num
   return v < 0 ? 0 : v > 255 ? 255 : v | 0;
 }
 
+/** OCR draw-scale: upscale small crops toward targetWidth, never below 1x,
+ *  but never exceed maxWidth (a hard canvas-memory ceiling — large sources are
+ *  intentionally downscaled to maxWidth, trading a little plate detail for a
+ *  bounded canvas/getImageData/unsharp cost). */
+export function ocrScale(sw: number, targetWidth: number, maxWidth: number): number {
+  if (sw <= 0) return 1;
+  return Math.min(maxWidth / sw, Math.max(1, targetWidth / sw));
+}
+
+/** Pure crop-and-scale geometry for enhancePlateImage: maps a fractional ROI
+ *  onto source pixels and picks the OCR draw size. Extracted so the source and
+ *  its tests can't drift (the canvas rasterization itself is only verifiable in
+ *  a real browser / headless-canvas env, not jsdom). */
+export function computeCropAndScale(
+  bw: number,
+  bh: number,
+  opts: { crop?: { x: number; y: number; w: number; h: number } | null; targetWidth?: number; maxWidth?: number },
+): { sx: number; sy: number; sw: number; sh: number; scale: number; dw: number; dh: number } {
+  const { crop = null, targetWidth = 1280, maxWidth = 1600 } = opts;
+  const sx = crop ? Math.round(crop.x * bw) : 0;
+  const sy = crop ? Math.round(crop.y * bh) : 0;
+  const sw = crop ? Math.max(1, Math.round(crop.w * bw)) : bw;
+  const sh = crop ? Math.max(1, Math.round(crop.h * bh)) : bh;
+  const scale = ocrScale(sw, targetWidth, maxWidth);
+  const dw = Math.max(1, Math.round(sw * scale));
+  const dh = Math.max(1, Math.round(sh * scale));
+  return { sx, sy, sw, sh, scale, dw, dh };
+}
+
 export interface EnhanceOpts {
   crop?: { x: number; y: number; w: number; h: number } | null; // fractional ROI (0..1)
   targetWidth?: number;     // upscale so the (cropped) width ≥ this (default 1280)
@@ -78,13 +107,7 @@ export async function enhancePlateImage(src: Blob, opts: EnhanceOpts = {}): Prom
   const { crop = null, targetWidth = 1280, maxWidth = 1600, contrast = true, sharpen = 0.8, quality = 0.92 } = opts;
   try {
     const bmp = await toBitmap(src);
-    const sx = crop ? Math.round(crop.x * bmp.w) : 0;
-    const sy = crop ? Math.round(crop.y * bmp.h) : 0;
-    const sw = crop ? Math.max(1, Math.round(crop.w * bmp.w)) : bmp.w;
-    const sh = crop ? Math.max(1, Math.round(crop.h * bmp.h)) : bmp.h;
-    const scale = Math.min(maxWidth / sw, Math.max(1, targetWidth / sw));
-    const dw = Math.max(1, Math.round(sw * scale));
-    const dh = Math.max(1, Math.round(sh * scale));
+    const { sx, sy, sw, sh, dw, dh } = computeCropAndScale(bmp.w, bmp.h, { crop, targetWidth, maxWidth });
 
     const canvas = document.createElement('canvas');
     canvas.width = dw; canvas.height = dh;
