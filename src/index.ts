@@ -390,6 +390,12 @@ export default {
           .then(({ maybeRunClearpathMediaSync }) => maybeRunClearpathMediaSync(env))
           .catch((err) => console.error('[cpg-media] cron failed:', err)),
       );
+      // FlexCam footage poll — downloads ready R2 chunks; no-op when disabled.
+      ctx.waitUntil(
+        import('./utils/footage/captureOrchestrator')
+          .then(({ maybeRunFootagePoll }) => maybeRunFootagePoll(env))
+          .catch((err) => console.error('[flexcam] poll error:', (err as Error)?.message)),
+      );
       return;
     }
     ctx.waitUntil(

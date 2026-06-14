@@ -91,6 +91,31 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
       if (setMileage) await setFleetOdometer(db, c?.vehicle_id ?? args.vehicleId, args.endMileage);
       else await accrueFleetOdometer(db, c?.vehicle_id ?? args.vehicleId, c?.distance_m ?? null);
       await broadcastTrip(env, db, d.close.tripId, 'closed');
+
+      // FlexCam: auto-capture full footage for trips tied to a dispatched call.
+      // Best-effort — must never disrupt trip close.
+      try {
+        const closed = await queryFirst<{ unit_id: number; call_id: number | null; call_number: string | null; start_time: string; end_time: string }>(
+          db, 'SELECT unit_id, call_id, call_number, start_time, end_time FROM unit_trips WHERE id=?', d.close.tripId);
+        if (closed && (closed.call_id || closed.call_number)) {
+          const map = await queryFirst<{ cpg_camera_id: number | null; cpg_device_id: string }>(
+            db, 'SELECT cpg_camera_id, cpg_device_id FROM cpg_device_mappings WHERE unit_id=? AND is_active=1 LIMIT 1', closed.unit_id);
+          const assetId = map?.cpg_camera_id ?? 0;
+          const fromTs = Date.parse(closed.start_time + 'Z');
+          const toTs = Date.parse(closed.end_time + 'Z');
+          if (assetId && Number.isFinite(fromTs) && Number.isFinite(toTs) && toTs > fromTs) {
+            const { enqueueFootage } = await import('./footage/captureOrchestrator');
+            // `env` here is typed narrowly (alert-hub only) but is the full Worker
+            // Bindings object at runtime (routes pass c.env). enqueueFootage only
+            // touches env.DB + optional ClearPath bindings, all present at runtime.
+            await enqueueFootage(env as unknown as import('../types').Bindings, {
+              assetId, unitId: closed.unit_id, cpgDeviceId: map!.cpg_device_id,
+              tripId: String(d.close.tripId), callId: closed.call_id ?? null, fromTs, toTs, reason: 'trip_auto',
+              title: `Trip ${d.close.tripId}${closed.call_number ? ' · Call ' + closed.call_number : ''}`,
+            });
+          }
+        }
+      } catch (e) { console.error('[flexcam] trip auto-capture skipped:', (e as Error)?.message); }
     }
   }
 
