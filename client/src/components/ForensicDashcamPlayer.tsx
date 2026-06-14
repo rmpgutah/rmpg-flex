@@ -9,7 +9,7 @@
 // driving-analysis readout (distance, peak g-forces, event verdict).
 // ============================================================
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Gauge, Navigation, AlertTriangle, Activity, Car, MapPin, Loader2, ScanSearch, Route, Camera, Moon, ZoomIn, ShieldAlert } from 'lucide-react';
+import { X, Gauge, Navigation, AlertTriangle, Activity, Car, MapPin, Loader2, ScanSearch, Route, Camera, Moon, ZoomIn, ShieldAlert, Layers } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import {
   instAccelG, activeThreats, severityColor, zoomTransform, evidenceStampLines, evidenceFilename,
@@ -20,8 +20,10 @@ import {
   type GpsPoint, type TrackPoint,
 } from '../utils/dashcamForensics';
 import {
-  turnRateDegPerSec, bearingAt, videoPredictivePath, plateRegion, clampBox, vehicleTag,
+  turnRateDegPerSec, bearingAt, videoPredictivePath, plateRegion, clampBox, vehicleTag, predictPath,
 } from '../utils/drivingPrediction';
+import ForensicTrackMap from './ForensicTrackMap';
+import PlateDossier from './PlateDossier';
 import { loadVehicleDetector, detectVehicles, type DetectorStatus } from '../utils/aiVehicleTracking';
 import {
   emptyTrackerState, stepTracker, visibleTracks, primaryTrack, type TrackerState, type Track,
@@ -64,6 +66,9 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
   const [zoomOn, setZoomOn] = useState(false);               // digital PTZ on primary
   const [rate, setRate] = useState(1);                       // playback speed
   const [hits, setHits] = useState<Array<{ kind?: string; severity: string; detail: string }>>([]);
+  const [trackView, setTrackView] = useState<'svg' | 'map'>('svg');
+  const [prior, setPrior] = useState<{ count: number; distinct_days?: number; sightings: Array<{ id: number; location: string | null; source: string; created_at: string | null }> } | null>(null);
+  const [dossier, setDossier] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const detLoopRef = useRef<number | null>(null);
   const trackerRef = useRef<TrackerState>(emptyTrackerState());
@@ -115,6 +120,15 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     apiFetch<{ hits: Array<{ kind?: string; severity: string; detail: string }> }>(`/api/intel/screen-plate?plate=${encodeURIComponent(plate)}`)
       .then((r) => setHits(Array.isArray(r.hits) ? r.hits : []))
       .catch(() => setHits([]));
+  }, [media?.plate]);
+
+  // Plate re-identification — prior sightings of this plate across all sources.
+  useEffect(() => {
+    const plate = media?.plate;
+    if (!plate) { setPrior(null); return; }
+    apiFetch<typeof prior>(`/api/driving-events/plate-history?plate=${encodeURIComponent(plate)}`)
+      .then((r) => setPrior(r)).catch(() => setPrior(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [media?.plate]);
 
   // Live CV vehicle detection loop — boxes that follow the vehicle in frame.
@@ -181,6 +195,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     return `${left} ${right} Z`;
   }, [roadPath]);
   const primary = useMemo(() => primaryTrack(tracks, natW, natH), [tracks, natW, natH]);
+  const predictedGeo = useMemo(() => predictPath(gps, t, 4, 0.5), [gps, t]);
   // Predicted continuation ray on the (north-up) GPS mini-map, in SVG units.
   const predRay = useMemo(() => {
     if (!dot) return '';
@@ -465,10 +480,20 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
           <div className="border-l border-[#222] bg-surface-raised overflow-auto">
             {/* Road track */}
             <div className="p-3 border-b border-[#222]">
-              <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold mb-2 flex items-center gap-1">
-                <MapPin className="w-3 h-3" /> GPS road track
+              <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> GPS road track</span>
+                <span className="flex items-center gap-0.5">
+                  {(['svg', 'map'] as const).map((v) => (
+                    <button key={v} onClick={() => setTrackView(v)}
+                      className={`text-[8px] px-1.5 py-0.5 border ${trackView === v ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-rmpg-500'}`}>
+                      {v === 'svg' ? 'SCHEMATIC' : 'MAP'}
+                    </button>
+                  ))}
+                </span>
               </div>
-              {trackPts.length > 1 ? (
+              {trackView === 'map' && gps.length > 1 ? (
+                <ForensicTrackMap gps={gps} tSec={t} predicted={predictedGeo} height={210} />
+              ) : trackPts.length > 1 ? (
                 <svg viewBox="0 0 100 100" className="w-full aspect-square bg-[#050505] border border-[#1a1a1a]">
                   {/* speed-colored segments */}
                   {trackPts.slice(1).map((p, i) => (
@@ -516,13 +541,36 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                 <span className="text-[9px] uppercase tracking-wider text-[#d4a017] font-semibold block mb-1">Forensic verdict</span>
                 {verdict}
               </div>
-              <div className="mt-2 text-[9px] text-rmpg-600">
+
+              {/* Plate re-identification — cross-source prior sightings */}
+              {media?.plate && prior && (
+                <div className="mt-3 border-t border-[#222] pt-2">
+                  <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold mb-1.5">
+                    <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> Plate re-ID</span>
+                    <button onClick={() => setDossier(media.plate)} className="text-[8px] px-1.5 py-0.5 border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1400]">DOSSIER</button>
+                  </div>
+                  <div className="text-[11px] text-rmpg-200">
+                    <span className="text-[#d4a017] tracking-[0.15em] font-semibold">{media.plate}</span>
+                    <span className="text-rmpg-400"> — {prior.count} prior sighting{prior.count === 1 ? '' : 's'}{prior.distinct_days ? ` over ${prior.distinct_days} day${prior.distinct_days === 1 ? '' : 's'}` : ''}</span>
+                  </div>
+                  {prior.sightings.slice(0, 4).map((s) => (
+                    <button key={s.id} onClick={() => setDossier(media.plate)} className="w-full text-left text-[10px] text-rmpg-500 flex justify-between gap-2 mt-0.5 hover:text-rmpg-300">
+                      <span className="truncate">{s.location || s.source}</span>
+                      <span className="shrink-0 font-mono">{String(s.created_at || '').slice(5, 16)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-3 text-[9px] text-rmpg-600">
                 On-demand stream — clip is fetched only on play, never archived. Telemetry: ClearPath 1&nbsp;Hz GPS.
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {dossier && <PlateDossier plate={dossier} onClose={() => setDossier(null)} />}
     </div>
   );
 }

@@ -169,6 +169,35 @@ drivingEvents.get('/fleet-health', async (c: Context<Env>): Promise<Response> =>
   return c.json({ units });
 });
 
+// ── Plate re-identification — prior sightings of a plate across all sources ──
+// Routed under /api/driving-events (rewrite-proxied) to dodge the legacy
+// fall-through; defined BEFORE /:id so 'plate-history' isn't read as an id.
+drivingEvents.get('/plate-history', async (c: Context<Env>): Promise<Response> => {
+  const db = getDb(c.env);
+  const plate = (c.req.query('plate') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!/^[A-Z0-9]{2,8}$/.test(plate)) return c.json({ plate, count: 0, sightings: [] });
+  try {
+    const rows = await query<any>(db, `
+      SELECT id, plate, state, location_text, lat, lng, notes, confidence, created_at
+      FROM vehicle_sightings WHERE UPPER(REPLACE(REPLACE(plate,' ',''),'-','')) = ?
+      ORDER BY created_at DESC LIMIT 20`, plate);
+    const total = await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(*) AS n FROM vehicle_sightings WHERE UPPER(REPLACE(REPLACE(plate,' ',''),'-','')) = ?`, plate);
+    // distinct days seen (frequency signal)
+    const days = new Set(rows.map((r) => String(r.created_at || '').slice(0, 10))).size;
+    return c.json({
+      plate, count: total?.n ?? rows.length, distinct_days: days,
+      sightings: rows.map((r) => ({
+        id: r.id, location: r.location_text, lat: r.lat, lng: r.lng,
+        source: /dashcam/i.test(r.notes || '') ? 'dashcam' : /alpr/i.test(r.notes || '') ? 'field' : 'manual',
+        confidence: r.confidence, created_at: r.created_at,
+      })),
+    });
+  } catch (err: any) {
+    return c.json({ plate, count: 0, sightings: [], error: err?.message }, 200);
+  }
+});
+
 // ── Single event (detail) ────────────────────────────────────
 drivingEvents.get('/:id', async (c: Context<Env>): Promise<Response> => {
   const db = getDb(c.env);
