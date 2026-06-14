@@ -18,6 +18,7 @@ import {
   Shield, Signal, Video, Zap,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ForensicDashcamPlayer from '../components/ForensicDashcamPlayer';
 import { formatEnumValue } from '../utils/formatters';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import usePersistedState from '../hooks/usePersistedState';
@@ -138,6 +139,7 @@ export default function DashcamAiPage(): React.ReactElement {
   const [loading, setLoading] = useState(false);
   const [fleet, setFleet] = useState<FleetHealthRow[]>([]);
   const [selected, setSelected] = useState<DrivingEvent | null>(null);
+  const [playerEventId, setPlayerEventId] = useState<number | null>(null);
 
   const [filters, setFilters] = usePersistedState('rmpg_dashcam_ai_filters', {
     source: '',
@@ -399,19 +401,22 @@ export default function DashcamAiPage(): React.ReactElement {
                 aria-label="Close detail"
               >×</button>
             </div>
-            {/* AI still (ClearPath dashcam frame) with the read plate overlaid. */}
-            {selected.still_image_url && (
+            {/* AI still → opens the forensic player (on-demand video + telemetry). */}
+            {(selected.still_image_url || selected.has_video) && (
               <div className="px-3 pt-3">
-                <a
-                  href={authedImageUrl(selected.still_image_url)} target="_blank" rel="noreferrer"
-                  className="relative block border border-[#222] hover:border-[#d4a017] transition-colors group"
-                  aria-label="Open full dashcam still"
+                <button
+                  type="button"
+                  onClick={() => setPlayerEventId(selected.id)}
+                  className="relative block w-full border border-[#222] hover:border-[#d4a017] transition-colors group"
+                  aria-label="Open forensic dashcam playback"
                 >
-                  <img
-                    src={authedImageUrl(selected.still_image_url)} alt="Dashcam still"
-                    className="w-full aspect-[4/3] object-cover" />
+                  {selected.still_image_url ? (
+                    <img src={authedImageUrl(selected.still_image_url)} alt="Dashcam still" className="w-full aspect-[4/3] object-cover" />
+                  ) : (
+                    <div className="w-full aspect-[4/3] bg-[#050505] flex items-center justify-center"><Video className="w-8 h-8 text-[#333]" aria-hidden="true" /></div>
+                  )}
                   <span className="absolute top-1 left-1 text-[8px] font-bold tracking-wider px-1 py-[1px] bg-black/75 text-[#bbb] border border-[#333]">
-                    AI STILL
+                    FORENSIC PLAYBACK
                   </span>
                   {selected.plate && (
                     <span className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/90 to-transparent text-base tracking-[0.18em] font-semibold text-white">
@@ -421,10 +426,10 @@ export default function DashcamAiPage(): React.ReactElement {
                       )}
                     </span>
                   )}
-                  <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <PlayCircle className="w-8 h-8 text-[#d4a017] drop-shadow" aria-hidden="true" />
+                  <span className="absolute inset-0 flex items-center justify-center">
+                    <PlayCircle className="w-10 h-10 text-[#d4a017]/90 drop-shadow group-hover:scale-110 transition-transform" aria-hidden="true" />
                   </span>
-                </a>
+                </button>
               </div>
             )}
             <div className="p-3 space-y-2 text-[11px]">
@@ -474,6 +479,15 @@ export default function DashcamAiPage(): React.ReactElement {
           </aside>
         )}
       </div>
+
+      {playerEventId != null && (
+        <ForensicDashcamPlayer
+          eventId={playerEventId}
+          eventType={selected?.raw_event_type ?? selected?.event_type}
+          address={selected?.address}
+          onClose={() => setPlayerEventId(null)}
+        />
+      )}
     </div>
   );
 }

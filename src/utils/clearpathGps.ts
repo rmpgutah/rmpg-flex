@@ -383,6 +383,7 @@ export interface CpgMediaObject {
   location: { lat: number; lng: number } | null;
   gps?: Array<{ latitude: number; longitude: number; speed: number; altitude: number; timestamp: number }>;
   cameraId?: number;
+  durationSec?: number | null;
   [key: string]: unknown;
 }
 
@@ -430,6 +431,7 @@ export function normalizeMediaObject(raw: Record<string, unknown>, eventTypes: s
     location: first && Number.isFinite(first.latitude) && Number.isFinite(first.longitude)
       ? { lat: first.latitude, lng: first.longitude } : null,
     gps: gps.length ? gps : undefined,
+    durationSec: raw.duration != null && Number.isFinite(Number(raw.duration)) ? Number(raw.duration) : null,
   };
 }
 

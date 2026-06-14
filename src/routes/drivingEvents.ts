@@ -14,6 +14,7 @@ import { Hono, type Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { classifyDrivingEvent, fleetStatusFor } from '../utils/drivingEvents';
+import { getApiConfig, listMedia, type CpgMediaObject } from '../utils/clearpathGps';
 
 const drivingEvents = new Hono<Env>();
 
@@ -181,6 +182,121 @@ drivingEvents.get('/:id', async (c: Context<Env>): Promise<Response> => {
   }
   if (!row) return c.json({ error: 'Not found' }, 404);
   return c.json(shapeEvent(row));
+});
+
+// ── On-demand video + telemetry ──────────────────────────────
+// Dashcam clips are NEVER bulk-downloaded. We resolve a fresh pre-signed S3 url
+// (and the 1Hz GPS+speed track) from ClearPath only when a clip is requested,
+// cache it in KV for < its expiry, and stream it through the Worker (the S3 url
+// is CORS-blocked in-browser, fine server-side). `/:id/stream` then proxies the
+// bytes with Range passthrough so the player can seek without buffering it all.
+
+const isOutsideObj = (m: CpgMediaObject) => {
+  const ch = (m.channel || 'outside').toLowerCase();
+  return ch !== 'inside' && ch !== 'interior' && ch !== 'cabin';
+};
+
+interface ResolvedMedia {
+  accessUrl: string | null;            // fresh pre-signed mp4 url (server-side only)
+  gps: Array<{ latitude: number; longitude: number; speed: number; altitude: number; timestamp: number }>;
+  durationSec: number | null;
+  address: string | null;
+}
+
+/** Resolve (and KV-cache for 30 min) the fresh video url + GPS track for an
+ *  event. The pre-signed url lives ~1h; we cache under it so a video's many
+ *  Range requests don't each hit the ClearPath API. */
+async function resolveEventMedia(env: Env['Bindings'], db: D1Database, eventId: number): Promise<{ media: ResolvedMedia; event: any } | null> {
+  const ev = await queryFirst<any>(db,
+    'SELECT id, cpg_device_id, cpg_media_timestamp, event_type, event_timestamp, address, latitude, longitude FROM dashcam_events WHERE id = ?', eventId);
+  if (!ev || ev.cpg_media_timestamp == null) return null;
+
+  const cacheKey = `cpg:video:${eventId}`;
+  try {
+    const cached = await env.KV.get(cacheKey, 'json') as ResolvedMedia | null;
+    if (cached) return { media: cached, event: ev };
+  } catch { /* KV optional */ }
+
+  const map = await queryFirst<{ cpg_camera_id: number | null }>(db,
+    'SELECT cpg_camera_id FROM cpg_device_mappings WHERE cpg_device_id = ? LIMIT 1', ev.cpg_device_id);
+  const assetId = Number(map?.cpg_camera_id);
+  if (!Number.isFinite(assetId)) return null;
+  const client = await getApiConfig(db, env).catch(() => null);
+  if (!client) return null;
+
+  const ts = Number(ev.cpg_media_timestamp);
+  const resp = await listMedia(env, client, assetId, ts - 120_000, ts + 120_000, 0, 50);
+  const item = resp.items.find((i) => i.eventTimestamp === ts) || resp.items[0];
+  if (!item) return null;
+  const vid = (item.mediaObject || []).find((m) => m.type === 'VIDEO' && isOutsideObj(m) && !!m.accessUrl);
+  const anyGps = vid || (item.mediaObject || []).find((m) => isOutsideObj(m) && (m.gps?.length));
+  const media: ResolvedMedia = {
+    accessUrl: vid?.accessUrl || null,
+    gps: (anyGps?.gps as ResolvedMedia['gps']) || [],
+    durationSec: (vid?.durationSec as number | null) ?? null,
+    address: item.address || ev.address || null,
+  };
+  try { await env.KV.put(cacheKey, JSON.stringify(media), { expirationTtl: 1800 }); } catch { /* */ }
+  return { media, event: ev };
+}
+
+// Telemetry JSON for the forensic overlay (GPS track + plate + metadata).
+drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  let resolved: Awaited<ReturnType<typeof resolveEventMedia>> = null;
+  try { resolved = await resolveEventMedia(c.env, db, id); }
+  catch (err) { return c.json({ error: (err as Error)?.message || 'resolve failed', has_video: false }, 200); }
+  if (!resolved) return c.json({ has_video: false, gps: [], error: 'No media for this event' }, 200);
+  const { media, event } = resolved;
+  // The persisted ALPR still + plate (written by the still scan), if any.
+  const cap = await queryFirst<{ image_key: string | null; plate: string | null; confidence: number | null }>(db,
+    "SELECT image_key, plate, confidence FROM alpr_captures WHERE capture_id = ? LIMIT 1",
+    `cpg_dashcam:${event.cpg_device_id}:${event.cpg_media_timestamp}`).catch(() => null);
+  return c.json({
+    id, has_video: !!media.accessUrl,
+    stream_url: media.accessUrl ? `/api/driving-events/${id}/stream` : null,
+    duration_sec: media.durationSec,
+    gps: media.gps,
+    address: media.address,
+    event_type: event.event_type,
+    event_timestamp: event.event_timestamp,
+    still_url: cap?.image_key ? `/api/alpr/image/${cap.image_key}` : null,
+    plate: cap?.plate ?? null,
+    plate_confidence: cap?.confidence ?? null,
+  });
+});
+
+// Stream the mp4 on-demand (Range passthrough; nothing is stored).
+drivingEvents.get('/:id/stream', async (c: Context<Env>): Promise<Response> => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  let resolved: Awaited<ReturnType<typeof resolveEventMedia>> = null;
+  try { resolved = await resolveEventMedia(c.env, db, id); } catch { resolved = null; }
+  const accessUrl = resolved?.media.accessUrl;
+  if (!accessUrl) return c.json({ error: 'Clip not available' }, 404);
+
+  const range = c.req.header('Range');
+  const upstream = await fetch(accessUrl, {
+    headers: range ? { Range: range } : {},
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!upstream.ok && upstream.status !== 206) {
+    // Stale pre-signed url? drop the cache so the next play re-resolves.
+    try { await c.env.KV.delete(`cpg:video:${id}`); } catch { /* */ }
+    return c.json({ error: `Upstream ${upstream.status}` }, 502);
+  }
+  // ClearPath stores the clip as application/octet-stream; <video> needs a real
+  // video type to play it. These are always mp4 dashcam clips.
+  const upType = upstream.headers.get('content-type') || '';
+  const headers = new Headers({
+    'Content-Type': /video\//i.test(upType) ? upType : 'video/mp4',
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'private, max-age=300',
+  });
+  const cr = upstream.headers.get('content-range'); if (cr) headers.set('Content-Range', cr);
+  const cl = upstream.headers.get('content-length'); if (cl) headers.set('Content-Length', cl);
+  return new Response(upstream.body, { status: upstream.status, headers });
 });
 
 export default drivingEvents;

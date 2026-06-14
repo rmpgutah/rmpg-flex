@@ -362,7 +362,10 @@ export async function maybeRunClearpathMediaSync(env: Bindings): Promise<void> {
     catch (err) { console.error('[cpg-alpr] scan failed:', (err as Error)?.message); }
   }
 
-  // 2) Heavy clip sync (full mp4 → R2) — best-effort, separately throttled.
+  // 2) Heavy clip sync (full mp4 → R2) is OFF by default — clips are streamed
+  //    on demand (/api/driving-events/:id/stream), never bulk-downloaded. Only a
+  //    deliberate `clearpathgps_clip_archive` opt-in turns on local archival.
+  if ((await getConfigValue(db, 'clearpathgps_clip_archive')) !== 'true') return;
   const last = await getConfigValue(db, 'clearpathgps_last_media_sync');
   if (last) {
     const t = Date.parse(last);
