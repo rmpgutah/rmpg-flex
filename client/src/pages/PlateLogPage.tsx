@@ -185,8 +185,10 @@ export default function PlateLogPage() {
       }
     } catch (err) {
       const status = (err as { status?: number })?.status;
+      // Plate reading runs on Cloudflare Workers AI (no external key/credits), so a
+      // 503 here is a transient model/binding issue, not a misconfiguration.
       setScanErr(status === 503
-        ? 'ALPR is not configured on the server (ROBOFLOW_API_KEY missing).'
+        ? 'Plate reader temporarily unavailable — please retry.'
         : (err as Error)?.message || 'Scan failed.');
     } finally { setScanBusy(false); }
   };

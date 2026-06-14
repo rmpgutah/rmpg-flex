@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   kmhToMph, channelOf, isOutsideChannel, pickVideoObjects, mediaDedupeKey, formatTs, r2KeyFor,
 } from '../src/utils/clearpathSync';
-import { pickAlprImageUrl, plateConfidenceOf } from '../src/utils/clearpathAlpr';
+import { pickAlprImageUrl } from '../src/utils/clearpathAlpr';
 import type { CpgMediaEvent, CpgMediaObject } from '../src/utils/clearpathGps';
 
 const mo = (over: Partial<CpgMediaObject>): CpgMediaObject => ({
@@ -68,8 +68,4 @@ describe('clearpathAlpr pure helpers', () => {
     expect(pickAlprImageUrl(ev([inside, insecure]))).toBeNull();
   });
 
-  it('plateConfidenceOf returns the max detection confidence', () => {
-    expect(plateConfidenceOf([{ confidence: 0.4 } as any, { confidence: 0.91 } as any])).toBeCloseTo(0.91);
-    expect(plateConfidenceOf([])).toBeNull();
-  });
 });

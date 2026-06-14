@@ -399,7 +399,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/alerts', router: alerts, auth: 'required',
     note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
   { prefix: '/api/alpr', router: alpr, auth: 'required',
-    note: 'ALPR Vehicle Details Capture (Roboflow workflow) → intel plate log; needs ROBOFLOW_API_KEY secret' },
+    note: 'ALPR plate read on Cloudflare Workers AI (free, no external key) → intel plate log' },
   { prefix: '/api/arrests', router: arrests, auth: 'required',
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
   { prefix: '/api/assets', router: assets, auth: 'required',

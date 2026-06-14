@@ -1,8 +1,8 @@
 // ============================================================
 // RMPG Flex — ClearPath dashcam ALPR (Phase C)
 // ============================================================
-// Runs the lean Roboflow plate workflow against the still image of an
-// outside-camera dashcam event, then wires the read into the intel layer:
+// Reads the plate from the still image of an outside-camera dashcam event on
+// Cloudflare Workers AI (free — no Roboflow credits), then wires it into intel:
 //   • always logs a vehicle_sightings row (feeds /intel/plate-log) with the
 //     event's GPS + confidence,
 //   • always screens the plate (stolen / watchlist) → critical-hit notification,
@@ -14,10 +14,10 @@
 // ============================================================
 
 import type { Bindings } from '../types';
-import { query, queryFirst, execute } from './db';
+import { queryFirst, execute } from './db';
 import { screenVehicle } from './intelScreen';
-import { ALPR_ACCEPT_CONFIDENCE, type AlprDetection } from './roboflowAlpr';
-import { runPlateFast } from './roboflowPlateFast';
+import { ALPR_ACCEPT_CONFIDENCE } from './roboflowAlpr';
+import { readPlateCloudflare } from './cloudflarePlate';
 import { type CpgMediaEvent, type CpgMediaObject } from './clearpathGps';
 
 type DB = D1Database;
@@ -43,16 +43,6 @@ export function pickAlprImageUrl(event: CpgMediaEvent): string | null {
   return null;
 }
 
-/** Highest detection confidence from the fast result, or null. */
-export function plateConfidenceOf(predictions: AlprDetection[]): number | null {
-  let best: number | null = null;
-  for (const p of predictions) {
-    const c = (p as { confidence?: number }).confidence;
-    if (typeof c === 'number' && Number.isFinite(c) && (best == null || c > best)) best = c;
-  }
-  return best;
-}
-
 /** Event GPS, best-effort (location → first gps point). */
 function eventLatLng(event: CpgMediaEvent): { lat: number | null; lng: number | null } {
   const first = event.mediaObject?.[0];
@@ -61,17 +51,25 @@ function eventLatLng(event: CpgMediaEvent): { lat: number | null; lng: number | 
   return { lat, lng };
 }
 
-async function upsertVehicleByPlate(db: DB, plate: string, state: string | null): Promise<number | null> {
+interface PlateAttrs { state?: string | null; make?: string | null; model?: string | null; color?: string | null; year?: number | null }
+
+async function upsertVehicleByPlate(db: DB, plate: string, attrs: PlateAttrs): Promise<number | null> {
   try {
     const existing = await queryFirst<{ id: number }>(
       db, 'SELECT id FROM vehicles_records WHERE UPPER(plate_number) = ? LIMIT 1', plate.toUpperCase());
     if (existing) {
-      if (state) await execute(db, "UPDATE vehicles_records SET state = COALESCE(NULLIF(state,''), ?), updated_at = datetime('now') WHERE id = ?", state, existing.id);
+      // Enrich only blank fields (COALESCE(NULLIF(...))) — never overwrite curated data.
+      await execute(db, `UPDATE vehicles_records SET
+          state = COALESCE(NULLIF(state,''), ?), make = COALESCE(NULLIF(make,''), ?),
+          model = COALESCE(NULLIF(model,''), ?), color = COALESCE(NULLIF(color,''), ?),
+          year = COALESCE(year, ?), updated_at = datetime('now') WHERE id = ?`,
+        attrs.state ?? null, attrs.make ?? null, attrs.model ?? null, attrs.color ?? null, attrs.year ?? null, existing.id);
       return existing.id;
     }
     const r = await execute(db,
-      "INSERT INTO vehicles_records (plate_number, state, notes, updated_at) VALUES (?, ?, 'Observed via ClearPath dashcam ALPR', datetime('now'))",
-      plate, state);
+      `INSERT INTO vehicles_records (plate_number, state, make, model, color, year, notes, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'Observed via ClearPath dashcam ALPR (Workers AI)', datetime('now'))`,
+      plate, attrs.state ?? null, attrs.make ?? null, attrs.model ?? null, attrs.color ?? null, attrs.year ?? null);
     return Number(r.meta.last_row_id);
   } catch (err) { console.error('[cpg-alpr] vehicle upsert failed:', (err as Error)?.message); return null; }
 }
@@ -82,29 +80,28 @@ export async function alprDashcamClip(
   env: Bindings, db: DB,
   args: { videoId: number; r2Key?: string; mapping: MappingRef; event: CpgMediaEvent },
 ): Promise<void> {
-  if (!env.ROBOFLOW_API_KEY) return;
-  const imageUrl = pickAlprImageUrl(args.event);
   const markVideo = async (status: string) => {
     try { await execute(db, 'UPDATE dashcam_videos SET alpr_status = ? WHERE id = ?', status, args.videoId); } catch { /* */ }
   };
+  const imageUrl = pickAlprImageUrl(args.event);
   if (!imageUrl) { await markVideo('skipped'); return; }
 
-  let plate: string | null = null;
-  let confidence: number | null = null;
+  // Fetch the dashcam still (a small JPEG, not the mp4) and read the plate on
+  // Workers AI — free, no Roboflow credits. The pre-signed S3 url needs no auth.
+  let read: Awaited<ReturnType<typeof readPlateCloudflare>> = null;
   try {
-    const res = await runPlateFast({
-      image: { type: 'url', value: imageUrl },
-      apiKey: env.ROBOFLOW_API_KEY,
-      apiUrl: env.ROBOFLOW_API_URL,
-      workflowId: env.ROBOFLOW_FAST_WORKFLOW_ID,
-    });
-    plate = res.plate;
-    confidence = plateConfidenceOf(res.predictions);
+    const resp = await fetch(imageUrl, { signal: AbortSignal.timeout(30_000) });
+    if (!resp.ok) throw new Error(`still fetch ${resp.status}`);
+    const bytes = new Uint8Array(await resp.arrayBuffer());
+    const mediaType = resp.headers.get('content-type') || 'image/jpeg';
+    read = await readPlateCloudflare(env, bytes, mediaType);
   } catch (err) {
-    console.error('[cpg-alpr] roboflow failed:', (err as Error)?.message);
+    console.error('[cpg-alpr] workers-ai read failed:', (err as Error)?.message);
     await markVideo('failed');
     return;
   }
+  const plate = read?.plate ?? null;
+  const confidence = read?.confidence ?? null;
   if (!plate) { await markVideo('done'); return; }
 
   const { lat, lng } = eventLatLng(args.event);
@@ -113,9 +110,12 @@ export async function alprDashcamClip(
   const deviceName = args.mapping.cpg_display_name || args.mapping.cpg_device_id;
   const locationText = args.event.address || `${deviceName} dashcam`;
 
-  // Full policy: upsert a master vehicle record only on an accepted (≥0.85) read.
+  // Full policy: upsert a master vehicle record only on an accepted (≥0.85) read,
+  // enriched with the make/model/color Workers AI returned in the same call.
   let vehicleId: number | null = null;
-  if (accepted) vehicleId = await upsertVehicleByPlate(db, plate, null);
+  if (accepted) vehicleId = await upsertVehicleByPlate(db, plate, {
+    state: read?.state, make: read?.make, model: read?.model, color: read?.color, year: read?.year,
+  });
 
   // Always log a sighting (feeds /intel/plate-log).
   try {
