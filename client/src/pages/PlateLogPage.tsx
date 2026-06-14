@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Car, MapPin, ScanLine } from 'lucide-react';
 import { apiFetch, apiPostForm, authedImageUrl } from '../hooks/useApi';
+import { downscaleImage } from '../utils/downscaleImage';
 import PanelTitleBar from '../components/PanelTitleBar';
 
 interface ScreenHit { kind: string; severity: 'critical' | 'warning'; detail: string }
@@ -26,6 +27,7 @@ interface AlprResult {
   id: number; sighting_id: number | null; capture: AlprCapture;
   detections: Array<{ class?: string; confidence?: number }>;
   output_keys: string[]; hits: ScreenHit[]; vehicle: Vehicle | null;
+  enrich_status?: 'pending' | 'done' | 'failed';
   image_url: string; annotated_image_url: string | null;
 }
 interface Sighting {
@@ -102,8 +104,9 @@ export default function PlateLogPage() {
     if (!file || scanBusy) return;
     setScanBusy(true); setScanErr(null);
     try {
+      const small = await downscaleImage(file, 1280, 0.8);
       const fd = new FormData();
-      fd.append('image', file);
+      fd.append('image', small, 'plate.jpg');
       fd.append('capture_reason', 'patrol_alpr');
       if (location.trim()) fd.append('location_label', location.trim());
       if (notes.trim()) fd.append('capture_notes', notes.trim());
@@ -112,6 +115,18 @@ export default function PlateLogPage() {
       setScan(r); setResult(null);
       if (r.capture.plate) setPlate(r.capture.plate);
       loadRecent();
+      // Background enrichment fills make/model/color a moment later — re-fetch
+      // the capture up to twice. Bounded; never loops forever.
+      if (r.enrich_status === 'pending') {
+        for (let i = 0; i < 2; i++) {
+          await new Promise((res) => setTimeout(res, 2500));
+          try {
+            const cap = await apiFetch<{ enrich_status?: string; capture?: AlprCapture }>(`/alpr/capture/${r.id}`);
+            if (cap.capture) setScan((prev) => (prev && prev.id === r.id ? { ...prev, capture: cap.capture!, enrich_status: 'done' } : prev));
+            if (cap.enrich_status === 'done' || cap.enrich_status === 'failed') break;
+          } catch { /* transient */ }
+        }
+      }
     } catch (err) {
       const status = (err as { status?: number })?.status;
       setScanErr(status === 503
