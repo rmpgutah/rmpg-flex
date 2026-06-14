@@ -71,6 +71,44 @@ describe('alprOverlay — detection geometry', () => {
     const boxes = detectionBoxes([{ x: 50, y: 50, width: 10, height: 10 }, { junk: true }], 100, 100);
     expect(boxes).toHaveLength(1);
   });
+  it('raw-array bbox [x1,y1,x2,y2] is parsed (fractional + pixel-with-dims variants)', () => {
+    // fractional raw array — natural size ignored
+    const frac = normalizeDetection([0.1, 0.2, 0.5, 0.6], 1920, 1080);
+    expect(frac).not.toBeNull();
+    expect(frac!.left).toBeCloseTo(0.1);
+    expect(frac!.top).toBeCloseTo(0.2);
+    expect(frac!.width).toBeCloseTo(0.4);
+    expect(frac!.height).toBeCloseTo(0.4);
+    // pixel raw array — scaled by the natural size
+    const px = normalizeDetection([10, 10, 110, 60], 200, 100);
+    expect(px).not.toBeNull();
+    expect(px!.left).toBeCloseTo(0.05);   // 10/200
+    expect(px!.top).toBeCloseTo(0.1);     // 10/100
+    expect(px!.width).toBeCloseTo(0.5);   // 100/200
+    expect(px!.height).toBeCloseTo(0.5);  // 50/100
+  });
+  it('pixel-space coords without natW/natH return null (no garbage full-frame box)', () => {
+    expect(normalizeDetection({ x1: 10, y1: 10, x2: 110, y2: 60 })).toBeNull();
+    expect(normalizeDetection([10, 10, 110, 60])).toBeNull();
+    expect(normalizeDetection({ x: 100, y: 50, width: 40, height: 20 }, null, null)).toBeNull();
+    // natW present but natH missing is still unusable
+    expect(normalizeDetection([10, 10, 110, 60], 200, null)).toBeNull();
+  });
+  it('asFraction boundary: max coord == 1.0 is fractional, just-above-1.0 with dims is pixels', () => {
+    // max coord exactly 1.0 → treated as fractional (natW/natH ignored)
+    const atOne = normalizeDetection({ x1: 0, y1: 0, x2: 1.0, y2: 1.0 }, 500, 500);
+    expect(atOne).not.toBeNull();
+    expect(atOne!.left).toBeCloseTo(0);
+    expect(atOne!.width).toBeCloseTo(1);
+    expect(atOne!.height).toBeCloseTo(1);
+    // just above 1.0 → pixel-space, needs dims to normalize
+    const overOne = normalizeDetection({ x1: 0, y1: 0, x2: 1.0001, y2: 1.0001 }, 2, 2);
+    expect(overOne).not.toBeNull();
+    expect(overOne!.width).toBeCloseTo(1.0001 / 2);
+    expect(overOne!.height).toBeCloseTo(1.0001 / 2);
+    // just above 1.0 WITHOUT dims → null (the tightened threshold)
+    expect(normalizeDetection({ x1: 0, y1: 0, x2: 1.0001, y2: 1.0001 })).toBeNull();
+  });
 });
 
 describe('alprOverlay — filtering', () => {
@@ -102,5 +140,19 @@ describe('alprOverlay — filtering', () => {
   });
   it('eventTypeOptions returns distinct sorted types', () => {
     expect(eventTypeOptions(set)).toEqual(['Hard_Brake', 'Manual']);
+  });
+  it('filters by eventType substring (case-insensitive) and handles empty-string edges', () => {
+    // case-insensitive substring match on event_type
+    expect(filterCaptures(set, { eventType: 'brake' }).map((c) => c.id)).toEqual([1]);
+    expect(filterCaptures(set, { eventType: 'HARD' }).map((c) => c.id)).toEqual([1]);
+    expect(filterCaptures(set, { eventType: 'a' }).map((c) => c.id)).toEqual([1, 2]); // hard_brake + manual
+    expect(filterCaptures(set, { eventType: 'nomatch' })).toHaveLength(0);
+    // empty-string eventType filter is falsy → no filtering applied (all pass)
+    expect(filterCaptures(set, { eventType: '' })).toHaveLength(3);
+    // a capture with null event_type never matches a non-empty needle
+    const nullEvt = cap({ id: 9, event_type: null });
+    expect(captureMatches(nullEvt, { eventType: 'brake' })).toBe(false);
+    // …but passes when no eventType filter is set
+    expect(captureMatches(nullEvt, {})).toBe(true);
   });
 });

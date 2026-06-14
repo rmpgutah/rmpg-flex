@@ -10,6 +10,18 @@
 -- ALPR-specific payload (vehicle attributes, confidence, R2 image keys,
 -- the real workflow output keys, and the normalized raw JSON), linked back
 -- to the sighting by sighting_id.
+--
+-- ⚠️ KEEP IN SYNC: this 0108 definition is mirrored by the inline CREATE TABLE
+-- in ensureAlprSchema (src/routes/alpr.ts). That inline DDL intentionally
+-- covers only the original 0108+0109 columns; every LATER alpr_captures column
+-- (0113 enrich_status, 0114 condition/damage_observed/damage_summary/
+-- plate_confidence/accepted/reviewed_by/reviewed_at) is reconciled at runtime
+-- via the ALPR_EXTRA_COLUMNS ADD COLUMN loop in that file. When you add a new
+-- alpr_captures column in a future migration, you MUST also add it to
+-- ALPR_EXTRA_COLUMNS so the runtime reconciler stays authoritative — the
+-- inline CREATE TABLE is NOT updated for post-0109 columns. (vehicle_sightings
+-- columns from 0115 belong to a different table — SIGHTING_EXTRA_COLUMNS — and
+-- must NOT be added to the alpr_captures manifest.)
 CREATE TABLE IF NOT EXISTS alpr_captures (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   sighting_id INTEGER,                 -- → vehicle_sightings.id (intel link)
