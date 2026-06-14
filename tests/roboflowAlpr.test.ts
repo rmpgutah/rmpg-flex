@@ -11,6 +11,7 @@ import {
   normalizeCapture,
   parseVehicles,
   parseAlprResponse,
+  unfenceJson,
   alprRunUrl,
   stripDataUri,
   RoboflowConfigError,
@@ -23,6 +24,12 @@ import {
 // A valid 1x1 transparent PNG (starts with the PNG base64 magic prefix).
 const PNG_1x1 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+// Wrap an object the way Roboflow's `open_ai@v4` block actually serializes its
+// structured-answering output: a JSON string inside a ```json … ``` fence.
+function fenced(obj: unknown): string {
+  return '```json\n' + JSON.stringify(obj, null, 2) + '\n```';
+}
 
 // ─────────────────────────────────────────────────────────────
 // Fixture modeled on the REAL workflow response, grounded 2026-06-13 via
@@ -38,7 +45,13 @@ function fixtureResponse() {
       {
         license_plate_text: '8XYZ123',
         vehicle_count: 1,
-        vehicle_details: {
+        // ⚠️ REAL wire shape: the `open_ai@v4` block returns its structured
+        // output as a STRING wrapped in a ```json … ``` markdown fence (NOT a
+        // parsed object). Modeling it as a fence-wrapped string is what makes
+        // this fixture exercise the unfencing path — an earlier version used a
+        // plain object, so the test passed green while EVERY real capture
+        // produced 0 vehicles / a null plate.
+        vehicle_details: fenced({
           license_plate_text: '8XYZ123',
           license_plate_state_or_region: 'Utah',
           plate_type: 'passenger',
@@ -50,13 +63,13 @@ function fixtureResponse() {
           color_primary: 'silver',
           color_secondary: null,
           orientation: 'rear',
-        },
-        enhanced_alpr_record: {
+        }),
+        enhanced_alpr_record: fenced({
           vehicles: [
             { detection_index: 0, license_plate_text: '8XYZ123', field_confidence: { plate: 0.93, make: 0.8 } },
           ],
           summary: 'Silver Toyota Camry, plate 8XYZ123.',
-        },
+        }),
         risk_score: 12,
         risk_level: 'low',
         review_required: false,
@@ -164,6 +177,117 @@ describe('roboflowAlpr — smoke test (runs the function on one sample image)', 
     } finally {
       rmSync(out, { force: true });
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Regression: the `open_ai@v4` block (vehicle_details / enhanced_alpr_record)
+// returns its structured output as a markdown-fenced JSON *string*, e.g.
+// "```json\n{ \"vehicles\": [...] }\n```". Before this fix the parser treated
+// it as a plain object, so the fenced string fell through to `null` and EVERY
+// real capture yielded 0 vehicles / a null plate while D1 stored raw_json with
+// vehicle_details:null / enhanced_alpr_record:null. These lock the unwrap in.
+// ─────────────────────────────────────────────────────────────
+describe('roboflowAlpr — unfences markdown-wrapped LLM JSON (the 0-vehicles bug)', () => {
+  it('unfenceJson strips ```json fences, bare ``` fences, and surrounding prose', () => {
+    expect(JSON.parse(unfenceJson('```json\n{"a":1}\n```'))).toEqual({ a: 1 });
+    expect(JSON.parse(unfenceJson('```\n{"a":1}\n```'))).toEqual({ a: 1 });
+    expect(JSON.parse(unfenceJson('{"a":1}'))).toEqual({ a: 1 });          // already bare
+    expect(JSON.parse(unfenceJson('Here you go:\n```json\n{"a":1}\n```'))).toEqual({ a: 1 });
+    expect(JSON.parse(unfenceJson('  ```JSON\r\n{"a":1}\r\n```  '))).toEqual({ a: 1 }); // CRLF + caps + ws
+  });
+
+  it('extracts vehicles + plate from fence-wrapped enhanced_alpr_record', () => {
+    const entry = {
+      license_plate_text: '',  // OCR can come back empty — record must still win
+      enhanced_alpr_record: fenced({
+        vehicles: [
+          { license_plate_text: '7ABC890', license_plate_state_or_region: 'UT', make: 'Ford', model: 'F-150',
+            color_primary: 'black', vehicle_type: 'pickup', year_range: '2021', field_confidence: { plate: 0.88 } },
+        ],
+        summary: 'Black Ford F-150.',
+      }),
+    };
+    const vehicles = parseVehicles(entry);
+    expect(vehicles).toHaveLength(1);
+    expect(vehicles[0].plate).toBe('7ABC890');
+    expect(vehicles[0].make).toBe('Ford');
+    expect(vehicles[0].confidence).toBeCloseTo(0.88);
+
+    const cap = normalizeCapture(entry);
+    expect(cap.plate).toBe('7ABC890');
+    expect(cap.make).toBe('Ford');
+
+    // parseAlprResponse stores the PARSED object (not the raw fenced string) so
+    // the route's raw_json persists real structured detail.
+    const parsed = parseAlprResponse({ outputs: [entry] });
+    expect((parsed.records.enhanced_alpr_record as any)?.summary).toBe('Black Ford F-150.');
+    expect(typeof parsed.records.enhanced_alpr_record).toBe('object');
+  });
+
+  it('parses EVERY vehicle in a multi-vehicle frame (deduped by plate)', () => {
+    const entry = {
+      enhanced_alpr_record: fenced({
+        vehicles: [
+          { license_plate_text: 'AAA111', make: 'Honda',  color_primary: 'white', field_confidence: { plate: 0.7 } },
+          { license_plate_text: 'BBB222', make: 'Chevy',  color_primary: 'red',   field_confidence: { plate: 0.9 } },
+          { license_plate_text: 'AAA 111', make: 'Honda', color_primary: 'white', field_confidence: { plate: 0.95 } }, // dup of #1, higher conf
+          { license_plate_text: null, make: 'Jeep', color_primary: 'green' },     // plateless but described → kept
+        ],
+      }),
+    };
+    const vehicles = parseVehicles(entry);
+    const plates = vehicles.map((v) => v.plate).sort();
+    expect(plates).toEqual(['AAA111', 'BBB222', null]);   // dup collapsed, plateless kept
+    const aaa = vehicles.find((v) => v.plate === 'AAA111');
+    expect(aaa?.confidence).toBeCloseTo(0.95);            // kept the higher-confidence read
+  });
+
+  // The LITERAL response captured 2026-06-14 from the live trimmed workflow's
+  // data path (license_plate_1.jpg) — the authoritative wire shapes:
+  //   • car_predictions      : { predictions:[…] }
+  //   • license_predictions  : [ { predictions:[…] } ]   (array, one per crop)
+  //   • license_plate_text   : [["34 T 6511"]]            (nested OCR array)
+  //   • vehicle_details      : ["```json\n{…}\n```"]      (array of fenced str)
+  //   • enhanced_alpr_record : "```json\n{ vehicles:[…] }\n```"  (single fenced)
+  it('parses the real live workflow response end-to-end', () => {
+    const realResponse = {
+      outputs: [
+        {
+          car_predictions: { image: { width: 3793, height: 2529 }, predictions: [
+            { width: 3418, height: 1671, x: 2075, y: 1316.5, confidence: 0.794, class_id: 2, class: 'car', detection_id: 'c454f437' },
+          ] },
+          license_predictions: [{ image: { width: 3793, height: 2529 }, predictions: [
+            { width: 591, height: 199, x: 3131.5, y: 1452.5, confidence: 0.999, class_id: 0, class: 'License_Plate', detection_id: '2e9633e2' },
+          ] }],
+          license_plate_text: [['34 T 6511']],
+          vehicle_details: ['```json\n' + JSON.stringify({ license_plate_text: '34 T 6511', make: 'Mercedes-Benz', model: '280 SE', color_primary: 'dark green', vehicle_type: 'sedan' }) + '\n```'],
+          enhanced_alpr_record: '```json\n' + JSON.stringify({
+            vehicles: [{ license_plate_text: '34 T 6511', license_plate_state_or_region: 'Unknown', make: 'Mercedes-Benz', model: '280 SE', color_primary: 'Green', vehicle_type: 'Sedan', orientation: 'Rear-left', field_confidence: { plate: 0.9 } }],
+            summary: 'Green Mercedes-Benz 280 SE, rear-left, plate 34 T 6511.',
+          }) + '\n```',
+        },
+      ],
+    };
+
+    const result = parseAlprResponse(realResponse);
+
+    // Vehicle extracted (the whole point) — plate normalized, make/model read.
+    expect(result.vehicles).toHaveLength(1);
+    expect(result.vehicles[0].plate).toBe('34T6511');
+    expect(result.vehicles[0].make).toBe('Mercedes-Benz');
+    expect(result.vehicles[0].confidence).toBeCloseTo(0.9);
+
+    // Capture summary populated from the record (no separate OCR/vehicle_details object).
+    expect(result.capture.plate).toBe('34T6511');
+    expect(result.capture.make).toBe('Mercedes-Benz');
+    expect(result.capture.color).toBe('Green');
+
+    // Both detection outputs flattened (car + per-crop license plate box).
+    expect(result.detections.map((d) => d.class).sort()).toEqual(['License_Plate', 'car']);
+
+    // raw_json will persist the parsed record (not the raw fenced string).
+    expect((result.records.enhanced_alpr_record as any)?.summary).toContain('Mercedes-Benz');
   });
 });
 

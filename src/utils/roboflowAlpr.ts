@@ -302,14 +302,22 @@ export function asImageOutput(outputName: string, value: unknown): AlprImageOutp
 
 /** Pull detections out of an "inference"-format object or array of predictions. */
 export function asDetections(outputName: string, value: unknown): AlprDetection[] {
-  let preds: unknown[] | null = null;
-  if (Array.isArray(value) && value.every((p) => p && typeof p === 'object')) {
-    preds = value;
-  } else if (value && typeof value === 'object') {
-    const p = (value as Record<string, unknown>).predictions;
-    if (Array.isArray(p)) preds = p;
-  }
-  if (!preds) return [];
+  // Gather candidate prediction objects. A detection model returns an
+  // "inference" object `{ predictions:[…] }`; when it runs over a LIST of crops
+  // (e.g. `license_model` over each car crop) it returns an ARRAY of such
+  // objects (one per crop). Recursively flatten both, plus a bare predictions
+  // array — so per-crop plate boxes aren't silently dropped.
+  const preds: unknown[] = [];
+  const collect = (v: unknown): void => {
+    if (Array.isArray(v)) { for (const el of v) collect(el); return; }
+    if (v && typeof v === 'object') {
+      const inner = (v as Record<string, unknown>).predictions;
+      if (Array.isArray(inner)) preds.push(...inner);
+      else preds.push(v); // a bare prediction object
+    }
+  };
+  collect(value);
+  if (!preds.length) return [];
   const out: AlprDetection[] = [];
   for (const raw of preds) {
     if (!raw || typeof raw !== 'object') continue;
@@ -364,12 +372,45 @@ function cleanPlate(v: string): string {
   return v.toUpperCase().replace(/[\s-]/g, '').trim();
 }
 
-/** Coerce a value to a plain record if it's a dict or a JSON-string dict. */
+/**
+ * Pull JSON-object text out of a string that may be wrapped in a markdown
+ * code fence and/or surrounded by prose. Roboflow's `open_ai@v4` block returns
+ * its structured-answering output as a STRING fenced in ```json … ``` (NOT a
+ * parsed object) — so the raw value looks like "```json\n{ … }\n```". This
+ * strips the fence and, if needed, slices to the outermost `{ … }`.
+ */
+export function unfenceJson(s: string): string {
+  let t = s.trim();
+  // ```json … ```  or  ``` … ```  (tolerate any/no language tag).
+  const fence = /^```[a-zA-Z0-9]*\s*([\s\S]*?)\s*```$/.exec(t);
+  if (fence) t = fence[1].trim();
+  // Still wrapped in prose? Slice to the outermost object.
+  if (!t.startsWith('{')) {
+    const a = t.indexOf('{');
+    const b = t.lastIndexOf('}');
+    if (a !== -1 && b > a) t = t.slice(a, b + 1);
+  }
+  return t;
+}
+
+/**
+ * Coerce a value to a plain record. Handles three shapes:
+ *  • an already-parsed dict,
+ *  • a bare JSON-object string (`{…}`),
+ *  • the markdown-fenced JSON string the `open_ai@v4` block emits for
+ *    structured-answering outputs (```json … ```) — the real wire shape of
+ *    `vehicle_details` / `enhanced_alpr_record`.
+ * Without the unfence step the LLM outputs parse as `null`, which is why
+ * every capture produced 0 vehicles / a null plate.
+ */
 function asRecord(v: unknown): Record<string, unknown> | null {
   if (v && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, unknown>;
-  if (typeof v === 'string' && v.trim().startsWith('{')) {
-    try { const p = JSON.parse(v); if (p && typeof p === 'object' && !Array.isArray(p)) return p as Record<string, unknown>; }
-    catch { /* not JSON */ }
+  if (typeof v === 'string' && v.trim()) {
+    const t = unfenceJson(v);
+    if (t.startsWith('{')) {
+      try { const p = JSON.parse(t); if (p && typeof p === 'object' && !Array.isArray(p)) return p as Record<string, unknown>; }
+      catch { /* not JSON */ }
+    }
   }
   return null;
 }
@@ -404,8 +445,20 @@ function firstStringByKey(entry: Record<string, unknown>, re: RegExp): string | 
  * (length-capped) in `rawScalars` so nothing useful is silently dropped.
  */
 export function normalizeCapture(entry: Record<string, unknown>): AlprCapture {
-  const vd = asRecord(entry[ALPR_OUTPUT.vehicleDetails]) ?? {};
   const record = asRecord(entry[ALPR_OUTPUT.alprRecord]) ?? {};
+
+  // First vehicle from the full-image `enhanced_alpr_record` — the fallback
+  // detail source when per-crop `vehicle_details` is absent/empty. This is the
+  // COMMON real-world case: the car detector finds no crop (close/odd angle)
+  // so OCR + vehicle_details come back empty, yet the full-image LLM still
+  // identifies the vehicle. Without this fallback the capture-level summary
+  // (plate/make/…) reads null even though per-vehicle records get created.
+  const vehicles = (record as { vehicles?: unknown }).vehicles;
+  const firstVeh =
+    Array.isArray(vehicles) && vehicles[0] && typeof vehicles[0] === 'object'
+      ? (vehicles[0] as Record<string, unknown>)
+      : null;
+  const vd = asRecord(entry[ALPR_OUTPUT.vehicleDetails]) ?? firstVeh ?? {};
 
   const rawScalars: Record<string, string | number | boolean> = {};
   for (const [k, v] of Object.entries(entry)) {
@@ -415,13 +468,16 @@ export function normalizeCapture(entry: Record<string, unknown>): AlprCapture {
 
   // Plate confidence lives in the per-vehicle field_confidence map.
   let confidence: number | null = null;
-  const vehicles = (record as { vehicles?: unknown }).vehicles;
-  if (Array.isArray(vehicles) && vehicles[0] && typeof vehicles[0] === 'object') {
-    const fc = (vehicles[0] as { field_confidence?: unknown }).field_confidence;
+  if (firstVeh) {
+    const fc = (firstVeh as { field_confidence?: unknown }).field_confidence;
     if (fc && typeof fc === 'object') confidence = asNum((fc as Record<string, unknown>).plate);
   }
 
-  const plateRaw = asStr(entry[ALPR_OUTPUT.plateText]) ?? asStr(vd.license_plate_text) ?? firstStringByKey(entry, KEY.plate);
+  const plateRaw =
+    asStr(entry[ALPR_OUTPUT.plateText]) ??
+    asStr(vd.license_plate_text) ??
+    asStr(firstVeh?.license_plate_text) ??
+    firstStringByKey(entry, KEY.plate);
   const reviewRequired = asBool(entry[ALPR_OUTPUT.reviewRequired]);
 
   return {
@@ -461,10 +517,44 @@ function vehicleFromRecord(v: Record<string, unknown>): AlprVehicle {
 }
 
 /**
- * Extract every detected vehicle. Prefers the per-vehicle list in
- * `enhanced_alpr_record.vehicles[]`; falls back to the single `vehicle_details`
- * dict, then to a bare `license_plate_text`. Deduped by plate (a photo may
- * list the same plate from multiple crops), keeping the highest-confidence read.
+ * Coerce a value into a list of record-dicts. Handles a single dict, a
+ * JSON/fenced-JSON string (object OR array), and an array whose elements are
+ * any of those. The `open_ai@v4` block run over a LIST of crops returns an
+ * ARRAY of fenced ```json strings (one per crop) — this flattens it to clean
+ * dicts so each per-crop vehicle read is recovered.
+ */
+function asRecordList(v: unknown): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  const push = (x: unknown): void => { const r = asRecord(x); if (r) out.push(r); };
+  if (Array.isArray(v)) {
+    for (const el of v) push(el);
+  } else if (typeof v === 'string' && v.trim()) {
+    const t = unfenceJson(v);
+    if (t.startsWith('[')) {
+      try { const arr = JSON.parse(t); if (Array.isArray(arr)) for (const el of arr) push(el); }
+      catch { /* not a JSON array */ }
+    } else push(v);
+  } else {
+    push(v);
+  }
+  return out;
+}
+
+/** First non-empty string anywhere in a (possibly nested) OCR output —
+ *  `license_plate_text` comes back nested, e.g. `[["34 T 6511"]]`. */
+function firstOcrString(v: unknown): string | null {
+  if (typeof v === 'string') return asStr(v);
+  if (Array.isArray(v)) { for (const el of v) { const s = firstOcrString(el); if (s) return s; } }
+  return null;
+}
+
+/**
+ * Extract every detected vehicle. Prefers the full-image
+ * `enhanced_alpr_record.vehicles[]` (the LLM enumerates EVERY vehicle in the
+ * frame — the authoritative count). Falls back to the per-crop `vehicle_details`
+ * (one dict per car crop, returned as an array of fenced ```json strings), then
+ * to a bare `license_plate_text` OCR string. Deduped by plate (a photo may list
+ * the same plate from multiple crops), keeping the highest-confidence read.
  */
 export function parseVehicles(entry: Record<string, unknown>): AlprVehicle[] {
   let raw: AlprVehicle[] = [];
@@ -474,10 +564,13 @@ export function parseVehicles(entry: Record<string, unknown>): AlprVehicle[] {
   if (list && list.length) {
     raw = list.filter((v): v is Record<string, unknown> => !!v && typeof v === 'object').map(vehicleFromRecord);
   } else {
-    const vd = asRecord(entry[ALPR_OUTPUT.vehicleDetails]);
-    if (vd) raw = [vehicleFromRecord(vd)];
-    else {
-      const plate = asStr(entry[ALPR_OUTPUT.plateText]);
+    // Per-crop vehicle_details: an array of fenced ```json dicts (one per car
+    // crop) → one vehicle each. `asRecordList` unwraps the real array shape.
+    const vds = asRecordList(entry[ALPR_OUTPUT.vehicleDetails]);
+    if (vds.length) {
+      raw = vds.map(vehicleFromRecord);
+    } else {
+      const plate = firstOcrString(entry[ALPR_OUTPUT.plateText]);
       if (plate) raw = [{ plate: cleanPlate(plate), state: null, make: null, model: null, color: null, year: null, vehicleType: null, plateType: null, confidence: null }];
     }
   }
@@ -514,12 +607,14 @@ export function parseAlprResponse(json: unknown): ParsedAlpr {
     if (img) { images.push(img); continue; }
     const dets = asDetections(name, value);
     if (dets.length) { detections.push(...dets); continue; }
-    // Object-valued outputs (vehicle_details, enhanced_alpr_record, …) are
-    // kept so structured detail isn't lost. Scalars are handled inside
-    // normalizeCapture (length-capped into rawScalars).
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      records[name] = value as Record<string, unknown>;
-    }
+    // Record-valued outputs (vehicle_details, enhanced_alpr_record, …) are
+    // kept so structured detail isn't lost — and persisted into the capture's
+    // raw_json. `asRecord` unwraps the markdown-fenced JSON STRING the LLM
+    // blocks emit, so the PARSED object (not the raw "```json…```" string) is
+    // stored. Scalars are handled inside normalizeCapture (capped into
+    // rawScalars).
+    const rec = asRecord(value);
+    if (rec) { records[name] = rec; continue; }
   }
 
   return { capture: normalizeCapture(entry), vehicles: parseVehicles(entry), detections, images, records, outputKeys };
