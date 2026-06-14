@@ -27,20 +27,12 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { screenVehicle } from '../utils/intelScreen';
-import { bytesToBase64 } from '../utils/anthropic';
 import {
-  runAlprVehicleCapture,
-  acceptByConfidence,
   ALPR_ACCEPT_CONFIDENCE,
-  RoboflowConfigError,
-  RoboflowTimeoutError,
-  RoboflowHttpError,
-  RoboflowQuotaError,
   type AlprParameters,
-  type AlprImageOutput,
   type AlprVehicle,
 } from '../utils/roboflowAlpr';
-import { runPlateFast } from '../utils/roboflowPlateFast';
+import { readPlateCloudflare, type CloudflarePlateResult } from '../utils/cloudflarePlate';
 
 const alpr = new Hono<Env>();
 
@@ -48,13 +40,6 @@ const alpr = new Hono<Env>();
 function acceptThreshold(env: Env['Bindings']): number {
   const v = Number((env as Record<string, unknown>).ALPR_ACCEPT_CONFIDENCE);
   return Number.isFinite(v) && v > 0 && v <= 1 ? v : ALPR_ACCEPT_CONFIDENCE;
-}
-
-/** A damage summary line for a vehicle_sightings.notes string (schema-free). */
-function damageNote(v: AlprVehicle): string {
-  if (!v.damageObserved && !v.damageAreas.length) return '';
-  const areas = v.damageAreas.map((a) => [a.severity, a.panel, a.type].filter(Boolean).join(' ')).filter(Boolean);
-  return ` | damage: ${v.damageSummary || areas.join('; ') || 'observed'}`;
 }
 
 // Field-operational roles capture plates; client_viewer / contract_manager
@@ -199,158 +184,124 @@ async function upsertVehicleRecord(
   return { id: Number(r.meta.last_row_id), created: true };
 }
 
-/** Background enrichment: run the full attribute workflow on the stored image.
- *  The PRIMARY plate was already record/linked/sighted/screened/notified in the
- *  fast path — here we only fill its attributes. SECONDARY vehicles (additional
- *  plates the heavy workflow finds) get the FULL treatment so a multi-vehicle
- *  frame is never under-screened (a stolen second plate must still alert). Best
- *  effort — sets enrich_status to 'done' or 'failed', never throws. */
-async function enrichCapture(
+/** Map a Cloudflare Workers AI plate read into the AlprVehicle shape the record
+ *  helpers expect. One vision call produced every field, so the single plate-read
+ *  confidence is each field's acceptance confidence. */
+function cfReadToVehicle(read: CloudflarePlateResult): AlprVehicle {
+  const conf = read.confidence;
+  return {
+    plate: read.plate, state: read.state, make: read.make, model: read.model,
+    color: read.color, year: read.year, vehicleType: read.bodyStyle, plateType: read.plateType,
+    confidence: conf, condition: null, damageObserved: null, damageSummary: null,
+    damageAreas: [], aftermarket: null,
+    confidences: { plate: conf, make: conf, model: conf, year: conf, color: conf },
+  };
+}
+
+interface FinalizeResult {
+  hits: Array<{ kind: string; severity: string; detail: string }>;
+  vehicles: Array<Record<string, unknown>>;
+  recordIds: number[]; sightingId: number | null;
+  accepted: boolean; plateConf: number | null;
+}
+
+/** Finalize a capture from a single Cloudflare plate read: screen the plate
+ *  (always — officer safety), apply the 0.85 acceptance gate, and only on an
+ *  accepted read create/enrich the authoritative vehicles_records + call link +
+ *  sighting. Held (<0.85) reads create nothing as fact (POST /accept promotes).
+ *  Stamps the alpr_captures row 'done'/'failed'; never throws. */
+async function finalizeCapture(
   env: Env['Bindings'],
+  db: ReturnType<typeof getDb>,
   args: {
-    captureRowId: number; imageKey: string; params: AlprParameters;
-    primaryPlate: string | null; callId: number | null; incidentId: number | null;
+    captureRowId: number; read: CloudflarePlateResult | null;
+    callId: number | null; incidentId: number | null;
     lat: number | null; lng: number | null; locationText: string | null; userId: number;
   },
-): Promise<void> {
-  const db = getDb(env);
+): Promise<FinalizeResult> {
+  const read = args.read;
+  const out: FinalizeResult = {
+    hits: [], vehicles: [], recordIds: [], sightingId: null,
+    accepted: false, plateConf: read?.confidence ?? null,
+  };
+  const plate = read?.plate ?? null;
+  const TH = acceptThreshold(env);
+  const accepted = !!plate && (out.plateConf ?? 0) >= TH;
+  out.accepted = accepted;
+
   try {
-    const obj = await env.UPLOADS.get(args.imageKey);
-    if (!obj) throw new Error(`enrich: image ${args.imageKey} missing from R2`);
-    const bytes = new Uint8Array(await obj.arrayBuffer());
+    if (!plate || !read) {
+      await execute(db, `UPDATE alpr_captures SET enrich_status='done', accepted=0, review_status='no_plate', vehicle_count=0 WHERE id=?`, args.captureRowId);
+      return out;
+    }
 
-    const result = await runAlprVehicleCapture({
-      apiKey: env.ROBOFLOW_API_KEY!,
-      apiUrl: env.ROBOFLOW_API_URL,
-      image: { type: 'base64', value: bytesToBase64(bytes) },
-      parameters: args.params,
-    });
+    const screen = await screenVehicle(db, { plate });
+    out.hits.push(...screen.hits);
+    const critical = screen.hits.filter((h) => h.severity === 'critical');
+    if (critical.length) {
+      try {
+        await execute(db,
+          `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+           VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
+          `${accepted ? '' : 'UNCONFIRMED — verify plate: '}PLATE HIT: ${plate}`,
+          critical.map((h) => h.detail).join('; '), screen.vehicleId, args.userId);
+      } catch (err: any) { console.error('[alpr] notify failed:', err?.message); }
+    }
 
-    const TH = acceptThreshold(env);
-    // Gate identity attributes to the acceptance threshold before they touch the
-    // permanent vehicles_records — each field on its OWN confidence, fail-closed
-    // (a missing confidence is treated as below the gate). Descriptive
-    // damage/condition is NOT gated away here; it's stored as an observation.
-    const gateVehicle = (v: AlprVehicle): AlprVehicle => ({
-      ...v,
-      state: acceptByConfidence(v.state, v.confidences.plate ?? v.confidence, TH),
-      make: acceptByConfidence(v.make, v.confidences.make, TH),
-      model: acceptByConfidence(v.model, v.confidences.model, TH),
-      year: acceptByConfidence(v.year, v.confidences.year, TH),
-      color: acceptByConfidence(v.color, v.confidences.color, TH),
-    });
-
-    const acceptedRecordIds: number[] = [];
-    for (const v of result.vehicles) {
-      if (!v.plate || v.plate.length < 2) continue;
-      const plateConf = v.confidences.plate ?? v.confidence ?? null;
-      const accepted = (plateConf ?? 0) >= TH;
-      const isPrimary = !!args.primaryPlate && v.plate === args.primaryPlate;
-      const screen = await screenVehicle(db, { plate: v.plate });
-      let recordId: number | null = null;
-
-      // ACCEPTANCE GATE: only a read ≥0.85 creates/enriches the authoritative
-      // vehicles_records + call link + sighting. A held (<0.85) read creates
-      // NOTHING here — the capture is held for review (POST /accept promotes it),
-      // so nothing unverified ever enters the records as fact.
-      if (accepted) {
-        const up = await upsertVehicleRecord(db, gateVehicle(v), screen.vehicleId);
-        recordId = up?.id ?? screen.vehicleId ?? null;
-        if (recordId) acceptedRecordIds.push(recordId);
-        if (recordId && args.callId != null) {
-          try {
-            await execute(db,
-              `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
-               VALUES (?, ?, 'observed', 'ALPR', ?, datetime('now'))`, args.callId, recordId, args.userId);
-          } catch (err: any) { console.error('[alpr] enrich link failed:', err?.message); }
-        }
+    let recordId: number | null = null;
+    if (accepted) {
+      const up = await upsertVehicleRecord(db, cfReadToVehicle(read), screen.vehicleId);
+      recordId = up?.id ?? screen.vehicleId ?? null;
+      if (recordId) out.recordIds.push(recordId);
+      if (recordId && args.callId != null) {
         try {
-          const base = `ALPR: ${[v.color, v.make, v.model, v.year].filter(Boolean).join(' ')}`.trim();
-          const note = `${base === 'ALPR:' ? 'ALPR capture' : base}${damageNote(v)}`;
-          // Structured per-observation damage/condition + the read confidence,
-          // alongside the human note (queryable, not buried in free text).
           await execute(db,
-            `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, condition, damage_observed, damage_summary, confidence)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            v.plate, v.state, recordId, args.locationText, args.lat, args.lng, note, args.userId,
-            v.condition ?? null, v.damageObserved == null ? null : (v.damageObserved ? 1 : 0),
-            v.damageSummary ?? null, plateConf);
-        } catch (err: any) { console.error('[alpr] enrich sighting failed:', err?.message); }
+            `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
+             VALUES (?, ?, 'observed', 'ALPR', ?, datetime('now'))`, args.callId, recordId, args.userId);
+        } catch (err: any) { console.error('[alpr] link failed:', err?.message); }
       }
-
-      // Critical-hit notification — screening runs on EVERY plate (incl. held)
-      // for officer safety. The PRIMARY was already alerted in the fast path
-      // (immediate), so notify only SECONDARY vehicles here, labelling UNCONFIRMED
-      // when the read is sub-85%.
-      if (!isPrimary) {
-        const critical = screen.hits.filter((h) => h.severity === 'critical');
-        if (critical.length) {
-          try {
-            const title = `${accepted ? '' : 'UNCONFIRMED — verify plate: '}PLATE HIT: ${v.plate}`;
-            await execute(db,
-              `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-               VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
-              title, critical.map((h) => h.detail).join('; '), recordId, args.userId);
-          } catch (err: any) { console.error('[alpr] enrich notify failed:', err?.message); }
-        }
-      }
+      try {
+        const base = `ALPR: ${[read.color, read.make, read.model, read.year].filter(Boolean).join(' ')}`.trim();
+        const note = base === 'ALPR:' ? 'ALPR capture (Workers AI)' : base;
+        const sres = await execute(db,
+          `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, confidence)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          plate, read.state, recordId, args.locationText, args.lat, args.lng, note, args.userId, out.plateConf);
+        out.sightingId = Number(sres.meta.last_row_id);
+      } catch (err: any) { console.error('[alpr] sighting failed:', err?.message); }
     }
 
-    // Persist any annotated image (first image output).
-    let annotatedKey: string | null = null;
-    const annotated: AlprImageOutput | undefined = result.images[0];
-    if (annotated) {
-      annotatedKey = `${ALPR_PREFIX}${crypto.randomUUID()}-annot.${annotated.ext}`;
-      await env.UPLOADS.put(annotatedKey, Uint8Array.from(atob(annotated.base64), (ch) => ch.charCodeAt(0)),
-        { httpMetadata: { contentType: annotated.mimeType } });
-    }
-
-    // Capture-level summary reflects the PRIMARY vehicle + the acceptance gate.
-    const primary = result.vehicles.find((v) => v.plate && v.plate === args.primaryPlate)
-      ?? result.vehicles.find((v) => v.plate) ?? null;
-    const gp = primary ? gateVehicle(primary) : null;
-    const primaryConf = primary ? (primary.confidences.plate ?? primary.confidence ?? null) : null;
-    const accepted = !!primary && (primaryConf ?? 0) >= TH;
-    const dmgObs = primary?.damageObserved ?? result.capture.damageObserved;
-    const cap = result.capture;
-    const rawJson = JSON.stringify({
-      capture: cap, vehicles: result.vehicles, detections: result.detections,
-      vehicle_details: result.records.vehicle_details ?? null,
-      enhanced_alpr_record: result.records.enhanced_alpr_record ?? null,
+    out.vehicles.push({
+      plate, state: read.state,
+      make: accepted ? read.make : null, model: accepted ? read.model : null,
+      year: accepted ? read.year : null, color: accepted ? read.color : null,
+      vehicle_type: accepted ? read.bodyStyle : null, confidence: out.plateConf,
+      vehicle_record_id: recordId, vehicle_record_created: recordId != null,
+      sighting_id: out.sightingId, hits: screen.hits,
     });
+
     await execute(db,
-      `UPDATE alpr_captures SET make=COALESCE(NULLIF(make,''),?), model=COALESCE(NULLIF(model,''),?),
-         color=COALESCE(NULLIF(color,''),?), year=COALESCE(year,?), state=COALESCE(NULLIF(state,''),?),
-         vehicle_type=COALESCE(NULLIF(vehicle_type,''),?), risk_score=COALESCE(risk_score,?),
-         condition=?, damage_observed=?, damage_summary=?, plate_confidence=?, accepted=?,
-         review_status=?, raw_json=?, vehicle_record_ids=?,
-         annotated_image_key=COALESCE(annotated_image_key,?), vehicle_count=?, enrich_status='done'
-       WHERE id=?`,
-      gp?.make ?? null, gp?.model ?? null, gp?.color ?? null, gp?.year ?? null, gp?.state ?? null,
-      cap.vehicleType, cap.riskScore,
-      (primary?.condition ?? cap.condition) ?? null,
-      dmgObs == null ? null : (dmgObs ? 1 : 0),
-      (primary?.damageSummary ?? cap.damageSummary) ?? null,
-      primaryConf, accepted ? 1 : 0,
-      accepted ? (cap.reviewStatus || 'accepted') : 'needs_review',
-      rawJson, JSON.stringify(acceptedRecordIds), annotatedKey, result.vehicles.length, args.captureRowId);
+      `UPDATE alpr_captures SET make=?, model=?, color=?, year=?, state=?, vehicle_type=?,
+         plate_confidence=?, accepted=?, review_status=?, sighting_id=?, vehicle_record_ids=?,
+         vehicle_count=1, enrich_status='done' WHERE id=?`,
+      accepted ? read.make : null, accepted ? read.model : null, accepted ? read.color : null,
+      accepted ? read.year : null, read.state, accepted ? read.bodyStyle : null,
+      out.plateConf, accepted ? 1 : 0, accepted ? 'accepted' : 'needs_review',
+      out.sightingId, JSON.stringify(out.recordIds), args.captureRowId);
   } catch (err: any) {
-    console.error('[alpr] enrich failed:', err?.message);
-    // Surface a failed-enrich capture for manual review instead of orphaning it
-    // (accepted/review_status would otherwise stay NULL → invisible to both the
-    // review queue and 'confirmed' views).
-    try { await execute(db, `UPDATE alpr_captures SET enrich_status='failed', accepted=0, review_status='needs_review' WHERE id=?`, args.captureRowId); }
-    catch { /* swallow — background path */ }
+    console.error('[alpr] finalize failed:', err?.message);
+    try { await execute(db, `UPDATE alpr_captures SET enrich_status='failed', accepted=0, review_status='needs_review' WHERE id=?`, args.captureRowId); } catch { /* */ }
   }
+  return out;
 }
 
 // ── Health: is the integration configured? ───────────────────
 alpr.get('/health', operational, (c) => {
   return c.json({
     ok: true,
-    configured: !!c.env.ROBOFLOW_API_KEY,
-    workspace: 'rmpg-utah',
-    workflow: 'alpr-vehicle-details-capture-1781360579827',
+    configured: true, // Workers AI is always available — no external key/credits
+    engine: 'workers-ai',
+    model: '@cf/meta/llama-3.2-11b-vision-instruct',
   });
 });
 
@@ -358,10 +309,6 @@ alpr.get('/health', operational, (c) => {
 alpr.post('/capture', operational, async (c) => {
   const db = getDb(c.env);
   const userId = c.get('userId') as number;
-
-  if (!c.env.ROBOFLOW_API_KEY) {
-    return c.json({ error: 'ALPR not configured', hint: 'Set ROBOFLOW_API_KEY (wrangler secret put ROBOFLOW_API_KEY).' }, 503);
-  }
 
   let form: FormData;
   try { form = await c.req.formData(); }
@@ -413,97 +360,61 @@ alpr.post('/capture', operational, async (c) => {
     } catch (err: any) { console.error('[alpr] field_photos insert failed:', err?.message); }
   }
 
-  // ── FAST PATH: plate-only read (~1s) ──
-  let fast;
+  // ── Read the plate on Cloudflare Workers AI (free — no Roboflow credits) ──
+  // One vision call returns plate + state + make/model/color + confidence, so the
+  // old two-stage fast→enrich collapses into a single read. The photo is already
+  // saved above, so a read failure never loses the capture.
+  let read: CloudflarePlateResult | null = null;
   try {
-    fast = await runPlateFast({
-      apiKey: c.env.ROBOFLOW_API_KEY,
-      apiUrl: c.env.ROBOFLOW_API_URL,
-      workflowId: c.env.ROBOFLOW_FAST_WORKFLOW_ID,
-      image: { type: 'base64', value: bytesToBase64(bytes) },
-    });
+    read = await readPlateCloudflare(c.env, bytes, contentType);
   } catch (err) {
-    if (err instanceof RoboflowConfigError) return c.json({ error: err.message }, 400);
-    // Credit cap exhausted — the photo is already saved (field_photos above); this
-    // is an operational (billing) failure, not a code bug. Surface it clearly so
-    // the field UI says "out of credits" instead of an opaque HTTP 402.
-    if (err instanceof RoboflowQuotaError) return c.json({
-      error: err.message, quota_exceeded: true,
-      hint: 'Raise the workspace credit cap or add billing at app.roboflow.com/settings/plan. The photo was saved.',
-    }, 503);
-    if (err instanceof RoboflowTimeoutError) return c.json({ error: err.message }, 504);
-    if (err instanceof RoboflowHttpError) return c.json({ error: err.message, status: err.status }, 502);
-    return c.json({ error: 'ALPR fast scan failed', detail: (err as Error)?.message }, 502);
+    console.error('[alpr] workers-ai read failed:', (err as Error)?.message);
   }
+  const plate = read?.plate ?? null;
 
-  // Screen + create/link the plate record now (safety-critical stays in the fast path).
-  const vehicleResults: Array<Record<string, unknown>> = [];
-  const allHits: Array<{ kind: string; severity: string; detail: string }> = [];
-  const vehicleRecordIds: number[] = [];
-  let firstSightingId: number | null = null;
-
-  if (fast.plate) {
-    // SAFETY-CRITICAL stays in the fast path: screen the plate now so a stolen/
-    // watchlist hit alerts within ~1s. But do NOT create authoritative records yet.
-    // The 0.85 acceptance gate runs in enrich (the fast path only has a detector
-    // box score, not per-field confidence). Held (<85%) reads must NOT enter
-    // vehicles_records / vehicle_sightings as fact — accepted reads are created by
-    // enrich; held reads only on explicit officer confirm (POST /accept).
-    const screen = await screenVehicle(db, { plate: fast.plate });
-    allHits.push(...screen.hits);
-    const critical = screen.hits.filter((h) => h.severity === 'critical');
-    if (critical.length) {
-      try {
-        await execute(db,
-          `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-           VALUES ('intel_screen', 'high', ?, ?, 'vehicle', NULL, ?, 0, datetime('now'))`,
-          `PLATE HIT: ${fast.plate}`, critical.map((h) => h.detail).join('; '), userId);
-      } catch (err: any) { console.error('[alpr] notify failed:', err?.message); }
-    }
-    vehicleResults.push({ plate: fast.plate, state: fast.state, make: null, model: null, year: null,
-      color: null, vehicle_type: null, confidence: null, vehicle_record_id: null,
-      vehicle_record_created: false, sighting_id: null, hits: screen.hits });
-  }
-
-  // Capture row with enrich_status='pending'.
+  // Capture row (plate known). finalizeCapture then screens + applies the 0.85
+  // gate + creates records, and stamps the row 'done'.
   const ins = await execute(db,
     `INSERT INTO alpr_captures
-       (sighting_id, capture_id, case_id, plate, state, make, model, color, year, vehicle_type,
-        confidence, risk_score, review_status, alerted, image_key, annotated_image_key,
-        output_keys, raw_json, lat, lng, location_text, captured_by,
+       (sighting_id, capture_id, case_id, plate, state, confidence, plate_confidence,
+        review_status, image_key, raw_json, lat, lng, location_text, captured_by,
         call_id, incident_id, field_photo_id, vehicle_count, vehicle_record_ids, enrich_status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
-    firstSightingId, captureId, strOrNull(params.case_id), fast.plate, fast.state, null, null, null,
-    null, null, null, null, null, allHits.some((h) => h.severity === 'critical') ? 1 : 0, imageKey, null,
-    JSON.stringify([]), JSON.stringify({ fast: true, plate: fast.plate, detections: fast.predictions }),
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+    null, captureId, strOrNull(params.case_id), plate, read?.state ?? null,
+    read?.confidence ?? null, read?.confidence ?? null, 'pending', imageKey,
+    JSON.stringify({ engine: read?.model_id ?? 'workers-ai', plate, read }),
     lat, lng, locationText, userId,
-    callId, incidentId, fieldPhotoId, fast.plate ? 1 : 0, JSON.stringify(vehicleRecordIds));
+    callId, incidentId, fieldPhotoId, plate ? 1 : 0, JSON.stringify([]));
   const captureRowId = Number(ins.meta.last_row_id);
 
-  // Schedule background enrichment (full attribute workflow) — never blocks the response.
-  // Pass the primary plate so enrich only fills its attributes (already screened),
-  // and the context so SECONDARY vehicles get full link/sighting/screen/notify.
-  c.executionCtx.waitUntil(enrichCapture(c.env, {
-    captureRowId, imageKey, params, primaryPlate: fast.plate,
-    callId, incidentId, lat, lng, locationText, userId,
-  }));
+  const fin = await finalizeCapture(c.env, db, {
+    captureRowId, read, callId, incidentId, lat, lng, locationText, userId,
+  });
 
-  const hits = Array.from(new Map(allHits.map((h) => [h.detail, h])).values());
+  const hits = Array.from(new Map(fin.hits.map((h) => [h.detail, h])).values());
   return c.json({
     success: true,
     id: captureRowId,
     call_id: callId,
     incident_id: incidentId,
     field_photo_id: fieldPhotoId,
-    vehicle_count: fast.plate ? 1 : 0,
-    vehicles: vehicleResults,
-    capture: { plate: fast.plate, state: fast.state, make: null, model: null, color: null,
-      year: null, vehicleType: null, confidence: null, riskScore: null, reviewStatus: null, alerted: false },
-    detections: fast.predictions,
-    enrich_status: 'pending',
-    // Advanced scanner fields — undetermined until the enrich gate runs.
-    accepted: null,
-    plate_confidence: null,
+    vehicle_count: plate ? 1 : 0,
+    vehicles: fin.vehicles,
+    capture: {
+      plate, state: read?.state ?? null,
+      make: fin.accepted ? read?.make ?? null : null,
+      model: fin.accepted ? read?.model ?? null : null,
+      color: fin.accepted ? read?.color ?? null : null,
+      year: fin.accepted ? read?.year ?? null : null,
+      vehicleType: fin.accepted ? read?.bodyStyle ?? null : null,
+      confidence: fin.plateConf, riskScore: null,
+      reviewStatus: fin.accepted ? 'accepted' : (plate ? 'needs_review' : 'no_plate'),
+      alerted: hits.some((h) => h.severity === 'critical'),
+    },
+    detections: [],
+    enrich_status: 'done',
+    accepted: plate ? fin.accepted : null,
+    plate_confidence: fin.plateConf,
     condition: null,
     damage_observed: null,
     damage_summary: null,
@@ -511,6 +422,7 @@ alpr.post('/capture', operational, async (c) => {
     hits,
     image_url: imageUrlFor(imageKey),
     annotated_image_url: null,
+    engine: read?.model_id ?? 'workers-ai',
   });
 });
 
