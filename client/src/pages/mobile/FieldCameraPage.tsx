@@ -20,7 +20,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Camera, Loader2, MapPin, RefreshCw, X, Check, ScanLine, Car, AlertTriangle } from 'lucide-react';
-import { apiPostForm, authedImageUrl } from '../../hooks/useApi';
+import { apiPostForm, apiFetch, authedImageUrl } from '../../hooks/useApi';
+import { downscaleImage } from '../../utils/downscaleImage';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/ToastProvider';
 
@@ -33,8 +34,9 @@ interface ScanVehicle {
   vehicle_record_id: number | null; vehicle_record_created: boolean; hits: ScanHit[];
 }
 interface AlprScanResult {
-  success: boolean; call_id: number | null; field_photo_id: number | null;
+  success: boolean; id: number; call_id: number | null; field_photo_id: number | null;
   vehicle_count: number; vehicles: ScanVehicle[]; hits: ScanHit[];
+  enrich_status?: 'pending' | 'done' | 'failed';
   image_url: string | null; annotated_image_url: string | null;
 }
 
@@ -237,6 +239,30 @@ export default function FieldCameraPage() {
     previewBlobRef.current = null;
   }, [preview]);
 
+  // Background enrichment lands a moment after the fast plate read — re-fetch the
+  // capture up to twice to fill make/model/color. Bounded; never loops forever.
+  const pollEnrichment = useCallback(async (id: number) => {
+    for (let i = 0; i < 2; i++) {
+      await new Promise((res) => setTimeout(res, 2500));
+      try {
+        const cap = await apiFetch<{
+          enrich_status?: string;
+          vehicles?: Array<{ plate: string | null; make: string | null; model: string | null; color: string | null; year: number | null; vehicle_type: string | null; confidence: number | null }>;
+        }>(`/alpr/capture/${id}`);
+        if (cap.vehicles?.length) {
+          setScan((prev) => (prev && prev.id === id
+            ? { ...prev, enrich_status: 'done', vehicles: cap.vehicles!.map((v) => ({
+                plate: v.plate, make: v.make, model: v.model, color: v.color, year: v.year,
+                vehicle_type: v.vehicle_type, confidence: v.confidence,
+                vehicle_record_id: null, vehicle_record_created: false, hits: [],
+              })) }
+            : prev));
+        }
+        if (cap.enrich_status === 'done' || cap.enrich_status === 'failed') return;
+      } catch { /* transient — try once more */ }
+    }
+  }, []);
+
   const upload = useCallback(async () => {
     const blob = previewBlobRef.current;
     if (!blob || uploading) return;
@@ -250,17 +276,24 @@ export default function FieldCameraPage() {
       if (incidentId) form.append('incident_id', incidentId);
 
       if (alprMode) {
-        // Attaches to the call AND extracts every vehicle → creates/links records.
-        form.append('capture_reason', 'on_scene_alpr');
-        const r = await apiPostForm<AlprScanResult>('/alpr/capture', form);
+        // Downscale for a fast plate read; the full-res stamped blob still goes
+        // to the call's photo gallery via the field_photos row the server makes.
+        const alprBlob = await downscaleImage(blob, 1280, 0.8);
+        const alprForm = new FormData();
+        alprForm.append('photo', alprBlob, 'field-photo.jpg');
+        if (gps) { alprForm.append('lat', String(gps.lat)); alprForm.append('lng', String(gps.lng)); }
+        if (callId) alprForm.append('call_id', callId);
+        if (incidentId) alprForm.append('incident_id', incidentId);
+        alprForm.append('capture_reason', 'on_scene_alpr');
+        const r = await apiPostForm<AlprScanResult>('/alpr/capture', alprForm);
         setScan(r);
-        const created = r.vehicles.filter((v) => v.vehicle_record_created).length;
         addToast(
           r.vehicle_count
-            ? `ALPR: ${r.vehicle_count} vehicle(s), ${created} new record(s)`
+            ? 'ALPR: plate read — identifying vehicle…'
             : 'ALPR: no readable plate — photo saved to call',
           r.hits.some((h) => h.severity === 'critical') ? 'error' : 'success',
         );
+        if (r.enrich_status === 'pending') void pollEnrichment(r.id);
         // keep the preview + result on screen so the officer can review hits
       } else {
         await apiPostForm('/field-photos', form);
@@ -272,7 +305,7 @@ export default function FieldCameraPage() {
     } finally {
       setUploading(false);
     }
-  }, [gps, uploading, discard, addToast, alprMode, callId, incidentId]);
+  }, [gps, uploading, discard, addToast, alprMode, callId, incidentId, pollEnrichment]);
 
   const clearScan = useCallback(() => { setScan(null); discard(); }, [discard]);
 
@@ -324,10 +357,17 @@ export default function FieldCameraPage() {
         {scan && (
           <div className="absolute inset-0 z-10 bg-black/92 overflow-y-auto p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#d4a017] flex items-center gap-1">
-                <Car className="w-4 h-4" /> {scan.vehicle_count} vehicle(s)
-                {callId ? ` · linked to call #${callId}` : ''}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#d4a017] flex items-center gap-1">
+                  <Car className="w-4 h-4" /> {scan.vehicle_count} vehicle(s)
+                  {callId ? ` · linked to call #${callId}` : ''}
+                </span>
+                {scan.enrich_status === 'pending' && (
+                  <span className="text-[10px] text-[#888] flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Identifying…
+                  </span>
+                )}
+              </div>
               <button type="button" onClick={clearScan} className="text-[#888] p-1" aria-label="Done">
                 <X className="w-5 h-5" />
               </button>

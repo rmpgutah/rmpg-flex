@@ -37,6 +37,7 @@ import {
   type AlprImageOutput,
   type AlprVehicle,
 } from '../utils/roboflowAlpr';
+import { runPlateFast } from '../utils/roboflowPlateFast';
 
 const alpr = new Hono<Env>();
 
@@ -73,6 +74,7 @@ const NUM_PARAMS = new Set(['risk_score_threshold', 'plate_confidence_threshold'
 const ALPR_EXTRA_COLUMNS: Array<[string, string]> = [
   ['call_id', 'INTEGER'], ['incident_id', 'INTEGER'], ['field_photo_id', 'INTEGER'],
   ['vehicle_count', 'INTEGER'], ['vehicle_record_ids', 'TEXT'],
+  ['enrich_status', 'TEXT'],
 ];
 
 /** Create the table (with all columns) and reconcile any missing columns at
@@ -160,6 +162,100 @@ async function upsertVehicleRecord(
   return { id: Number(r.meta.last_row_id), created: true };
 }
 
+/** Background enrichment: run the full attribute workflow on the stored image.
+ *  The PRIMARY plate was already record/linked/sighted/screened/notified in the
+ *  fast path — here we only fill its attributes. SECONDARY vehicles (additional
+ *  plates the heavy workflow finds) get the FULL treatment so a multi-vehicle
+ *  frame is never under-screened (a stolen second plate must still alert). Best
+ *  effort — sets enrich_status to 'done' or 'failed', never throws. */
+async function enrichCapture(
+  env: Env['Bindings'],
+  args: {
+    captureRowId: number; imageKey: string; params: AlprParameters;
+    primaryPlate: string | null; callId: number | null; incidentId: number | null;
+    lat: number | null; lng: number | null; locationText: string | null; userId: number;
+  },
+): Promise<void> {
+  const db = getDb(env);
+  try {
+    const obj = await env.UPLOADS.get(args.imageKey);
+    if (!obj) throw new Error(`enrich: image ${args.imageKey} missing from R2`);
+    const bytes = new Uint8Array(await obj.arrayBuffer());
+
+    const result = await runAlprVehicleCapture({
+      apiKey: env.ROBOFLOW_API_KEY!,
+      apiUrl: env.ROBOFLOW_API_URL,
+      image: { type: 'base64', value: bytesToBase64(bytes) },
+      parameters: args.params,
+    });
+
+    for (const v of result.vehicles) {
+      if (!v.plate || v.plate.length < 2) continue;
+      const screen = await screenVehicle(db, { plate: v.plate });
+      const up = await upsertVehicleRecord(db, v, screen.vehicleId);  // enriches blank fields
+      const recordId = up?.id ?? screen.vehicleId ?? null;
+
+      // Primary plate already fully handled in the fast path — attributes only.
+      if (args.primaryPlate && v.plate === args.primaryPlate) continue;
+
+      // Secondary vehicle: full link + sighting + screening + notify.
+      if (recordId && args.callId != null) {
+        try {
+          await execute(db,
+            `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
+             VALUES (?, ?, 'observed', 'ALPR', ?, datetime('now'))`, args.callId, recordId, args.userId);
+        } catch (err: any) { console.error('[alpr] enrich link failed:', err?.message); }
+      }
+      try {
+        const note = `ALPR: ${[v.color, v.make, v.model, v.year].filter(Boolean).join(' ')}`.trim();
+        await execute(db,
+          `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          v.plate, v.state, recordId, args.locationText, args.lat, args.lng,
+          note === 'ALPR:' ? 'ALPR capture' : note, args.userId);
+      } catch (err: any) { console.error('[alpr] enrich sighting failed:', err?.message); }
+      const critical = screen.hits.filter((h) => h.severity === 'critical');
+      if (critical.length) {
+        try {
+          await execute(db,
+            `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+             VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
+            `PLATE HIT: ${v.plate}`, critical.map((h) => h.detail).join('; '), recordId, args.userId);
+        } catch (err: any) { console.error('[alpr] enrich notify failed:', err?.message); }
+      }
+    }
+
+    // Persist any annotated image (first image output).
+    let annotatedKey: string | null = null;
+    const annotated: AlprImageOutput | undefined = result.images[0];
+    if (annotated) {
+      annotatedKey = `${ALPR_PREFIX}${crypto.randomUUID()}-annot.${annotated.ext}`;
+      await env.UPLOADS.put(annotatedKey, Uint8Array.from(atob(annotated.base64), (ch) => ch.charCodeAt(0)),
+        { httpMetadata: { contentType: annotated.mimeType } });
+    }
+
+    const cap = result.capture;
+    const rawJson = JSON.stringify({
+      capture: cap, vehicles: result.vehicles, detections: result.detections,
+      vehicle_details: result.records.vehicle_details ?? null,
+      enhanced_alpr_record: result.records.enhanced_alpr_record ?? null,
+    });
+    await execute(db,
+      `UPDATE alpr_captures SET make=COALESCE(NULLIF(make,''),?), model=COALESCE(NULLIF(model,''),?),
+         color=COALESCE(NULLIF(color,''),?), year=COALESCE(year,?), state=COALESCE(NULLIF(state,''),?),
+         vehicle_type=COALESCE(NULLIF(vehicle_type,''),?), risk_score=COALESCE(risk_score,?),
+         review_status=COALESCE(NULLIF(review_status,''),?), raw_json=?,
+         annotated_image_key=COALESCE(annotated_image_key,?), vehicle_count=?, enrich_status='done'
+       WHERE id=?`,
+      cap.make, cap.model, cap.color, cap.year, cap.state, cap.vehicleType, cap.riskScore,
+      cap.reviewStatus, rawJson, annotatedKey, result.vehicles.length, args.captureRowId);
+  } catch (err: any) {
+    console.error('[alpr] enrich failed:', err?.message);
+    try { await execute(db, `UPDATE alpr_captures SET enrich_status='failed' WHERE id=?`, args.captureRowId); }
+    catch { /* swallow — background path */ }
+  }
+}
+
 // ── Health: is the integration configured? ───────────────────
 alpr.get('/health', operational, (c) => {
   return c.json({
@@ -229,41 +325,32 @@ alpr.post('/capture', operational, async (c) => {
     } catch (err: any) { console.error('[alpr] field_photos insert failed:', err?.message); }
   }
 
-  // Run the workflow (typed errors → clean HTTP codes).
-  let result;
+  // ── FAST PATH: plate-only read (~1s) ──
+  let fast;
   try {
-    result = await runAlprVehicleCapture({
+    fast = await runPlateFast({
       apiKey: c.env.ROBOFLOW_API_KEY,
       apiUrl: c.env.ROBOFLOW_API_URL,
+      workflowId: c.env.ROBOFLOW_FAST_WORKFLOW_ID,
       image: { type: 'base64', value: bytesToBase64(bytes) },
-      parameters: params,
     });
   } catch (err) {
     if (err instanceof RoboflowConfigError) return c.json({ error: err.message }, 400);
     if (err instanceof RoboflowTimeoutError) return c.json({ error: err.message }, 504);
     if (err instanceof RoboflowHttpError) return c.json({ error: err.message, status: err.status }, 502);
-    return c.json({ error: 'ALPR workflow failed', detail: (err as Error)?.message }, 502);
+    return c.json({ error: 'ALPR fast scan failed', detail: (err as Error)?.message }, 502);
   }
 
-  // Persist any annotated visualization image to R2 (first image output).
-  let annotatedKey: string | null = null;
-  const annotated: AlprImageOutput | undefined = result.images[0];
-  if (annotated) {
-    annotatedKey = `${ALPR_PREFIX}${crypto.randomUUID()}-annot.${annotated.ext}`;
-    await c.env.UPLOADS.put(annotatedKey, Uint8Array.from(atob(annotated.base64), (ch) => ch.charCodeAt(0)), {
-      httpMetadata: { contentType: annotated.mimeType },
-    });
-  }
-
-  // ── Per-vehicle: upsert record, link to call, log sighting, screen ──
+  // Screen + create/link the plate record now (safety-critical stays in the fast path).
   const vehicleResults: Array<Record<string, unknown>> = [];
   const allHits: Array<{ kind: string; severity: string; detail: string }> = [];
   const vehicleRecordIds: number[] = [];
   let firstSightingId: number | null = null;
 
-  for (const v of result.vehicles) {
-    if (!v.plate || v.plate.length < 2) continue;
-    const screen = await screenVehicle(db, { plate: v.plate });
+  if (fast.plate) {
+    const v: AlprVehicle = { plate: fast.plate, state: fast.state, make: null, model: null,
+      color: null, year: null, vehicleType: null, plateType: null, confidence: null };
+    const screen = await screenVehicle(db, { plate: fast.plate });
     const up = await upsertVehicleRecord(db, v, screen.vehicleId);
     const recordId = up?.id ?? screen.vehicleId ?? null;
     if (recordId) vehicleRecordIds.push(recordId);
@@ -272,20 +359,16 @@ alpr.post('/capture', operational, async (c) => {
       try {
         await execute(db,
           `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
-           VALUES (?, ?, 'observed', ?, ?, datetime('now'))`,
-          callId, recordId, `ALPR${v.confidence != null ? ` ${Math.round(v.confidence * 100)}%` : ''}`, userId);
+           VALUES (?, ?, 'observed', 'ALPR', ?, datetime('now'))`, callId, recordId, userId);
       } catch (err: any) { console.error('[alpr] call_vehicles link failed:', err?.message); }
     }
 
-    let sightingId: number | null = null;
     try {
-      const note = `ALPR: ${[v.color, v.make, v.model, v.year].filter(Boolean).join(' ')}`.trim();
       const sr = await execute(db,
         `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        v.plate, v.state, recordId, locationText, lat, lng, note === 'ALPR:' ? 'ALPR capture' : note, userId);
-      sightingId = Number(sr.meta.last_row_id);
-      if (firstSightingId == null) firstSightingId = sightingId;
+         VALUES (?, ?, ?, ?, ?, ?, 'ALPR capture', ?)`,
+        v.plate, v.state, recordId, locationText, lat, lng, userId);
+      firstSightingId = Number(sr.meta.last_row_id);
     } catch (err: any) { console.error('[alpr] sighting insert failed:', err?.message); }
 
     const critical = screen.hits.filter((h) => h.severity === 'critical');
@@ -299,51 +382,50 @@ alpr.post('/capture', operational, async (c) => {
     }
 
     allHits.push(...screen.hits);
-    vehicleResults.push({
-      plate: v.plate, state: v.state, make: v.make, model: v.model, year: v.year,
-      color: v.color, vehicle_type: v.vehicleType, confidence: v.confidence,
-      vehicle_record_id: recordId, vehicle_record_created: up?.created ?? false,
-      sighting_id: sightingId, hits: screen.hits,
-    });
+    vehicleResults.push({ plate: v.plate, state: v.state, make: null, model: null, year: null,
+      color: null, vehicle_type: null, confidence: null, vehicle_record_id: recordId,
+      vehicle_record_created: up?.created ?? false, sighting_id: firstSightingId, hits: screen.hits });
   }
 
-  // ── Capture-level record ──
-  const cap = result.capture;
-  const rawJson = JSON.stringify({
-    capture: cap, vehicles: result.vehicles, detections: result.detections,
-    vehicle_details: result.records.vehicle_details ?? null,
-    enhanced_alpr_record: result.records.enhanced_alpr_record ?? null,
-  });
+  // Capture row with enrich_status='pending'.
   const ins = await execute(db,
     `INSERT INTO alpr_captures
        (sighting_id, capture_id, case_id, plate, state, make, model, color, year, vehicle_type,
         confidence, risk_score, review_status, alerted, image_key, annotated_image_key,
         output_keys, raw_json, lat, lng, location_text, captured_by,
-        call_id, incident_id, field_photo_id, vehicle_count, vehicle_record_ids)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    firstSightingId, captureId, strOrNull(params.case_id), cap.plate, cap.state, cap.make, cap.model,
-    cap.color, cap.year, cap.vehicleType, cap.confidence, cap.riskScore, cap.reviewStatus,
-    cap.alerted ? 1 : 0, imageKey, annotatedKey, JSON.stringify(result.outputKeys), rawJson,
+        call_id, incident_id, field_photo_id, vehicle_count, vehicle_record_ids, enrich_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+    firstSightingId, captureId, strOrNull(params.case_id), fast.plate, fast.state, null, null, null,
+    null, null, null, null, null, allHits.some((h) => h.severity === 'critical') ? 1 : 0, imageKey, null,
+    JSON.stringify([]), JSON.stringify({ fast: true, plate: fast.plate, detections: fast.predictions }),
     lat, lng, locationText, userId,
-    callId, incidentId, fieldPhotoId, result.vehicles.length, JSON.stringify(vehicleRecordIds));
+    callId, incidentId, fieldPhotoId, fast.plate ? 1 : 0, JSON.stringify(vehicleRecordIds));
+  const captureRowId = Number(ins.meta.last_row_id);
 
-  // Aggregate, de-duplicated hits for a single banner.
+  // Schedule background enrichment (full attribute workflow) — never blocks the response.
+  // Pass the primary plate so enrich only fills its attributes (already screened),
+  // and the context so SECONDARY vehicles get full link/sighting/screen/notify.
+  c.executionCtx.waitUntil(enrichCapture(c.env, {
+    captureRowId, imageKey, params, primaryPlate: fast.plate,
+    callId, incidentId, lat, lng, locationText, userId,
+  }));
+
   const hits = Array.from(new Map(allHits.map((h) => [h.detail, h])).values());
-
   return c.json({
     success: true,
-    id: Number(ins.meta.last_row_id),
+    id: captureRowId,
     call_id: callId,
     incident_id: incidentId,
     field_photo_id: fieldPhotoId,
-    vehicle_count: result.vehicles.length,
+    vehicle_count: fast.plate ? 1 : 0,
     vehicles: vehicleResults,
-    capture: cap,
-    detections: result.detections,
-    output_keys: result.outputKeys,
+    capture: { plate: fast.plate, state: fast.state, make: null, model: null, color: null,
+      year: null, vehicleType: null, confidence: null, riskScore: null, reviewStatus: null, alerted: false },
+    detections: fast.predictions,
+    enrich_status: 'pending',
     hits,
     image_url: imageUrlFor(imageKey),
-    annotated_image_url: imageUrlFor(annotatedKey),
+    annotated_image_url: null,
   });
 });
 
@@ -413,9 +495,25 @@ function shapeCapture(row: any) {
   return {
     ...row,
     alerted: row.alerted === 1 || row.alerted === true,
+    enrich_status: row.enrich_status ?? null,
     raw,
     output_keys: outputKeys,
     vehicle_record_ids: recordIds,
+    // Normalized views so the client enrich re-fetch can refresh either shape.
+    capture: {
+      plate: row.plate ?? null, state: row.state ?? null, make: row.make ?? null,
+      model: row.model ?? null, color: row.color ?? null, year: row.year ?? null,
+      vehicleType: row.vehicle_type ?? null, confidence: row.confidence ?? null,
+      riskScore: row.risk_score ?? null, reviewStatus: row.review_status ?? null,
+      alerted: row.alerted === 1 || row.alerted === true,
+    },
+    vehicles: Array.isArray(raw?.vehicles)
+      ? raw.vehicles.map((v: any) => ({
+          plate: v.plate ?? null, state: v.state ?? null, make: v.make ?? null, model: v.model ?? null,
+          color: v.color ?? null, year: v.year ?? null, vehicle_type: v.vehicleType ?? v.vehicle_type ?? null,
+          confidence: v.confidence ?? null,
+        }))
+      : [],
     image_url: imageUrlFor(row.image_key),
     annotated_image_url: imageUrlFor(row.annotated_image_key),
   };
