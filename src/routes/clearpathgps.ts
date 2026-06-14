@@ -84,7 +84,6 @@ function clientErrorMessage(err: unknown): string {
 cpg.get('/status', async (c) => {
   const db = getDb(c.env);
   await ensureCpgSchema(db);
-  await ensureCpgConfig(db, c.env).catch(() => false); // self-heal config if D1 rows were wiped
   const client = await getApiConfig(db, c.env).catch(() => null);
   const pollInterval = parseInt((await getConfigValue(db, CPG_KEYS.pollInterval)) || '30', 10);
   const mediaPoll = parseInt((await getConfigValue(db, CPG_KEYS.mediaPollInterval)) || '300', 10);
@@ -138,14 +137,6 @@ const saveCreds = async (c: Context<Env>) => {
   await setConfigValue(db, CPG_KEYS.refreshToken, encrypted);
   if (userId) await setConfigValue(db, CPG_KEYS.userId, userId);
   if (accountId) await setConfigValue(db, CPG_KEYS.account, accountId);
-  // Durable KV backup (encrypted blob) so the config self-heals if the D1 rows
-  // are ever deleted. Re-read user/account so a partial save still backs up
-  // whatever is now configured.
-  await backupConfig(c.env, {
-    refreshToken: encrypted,
-    userId: userId || (await getConfigValue(db, CPG_KEYS.userId)),
-    account: accountId || (await getConfigValue(db, CPG_KEYS.account)),
-  });
   // A freshly-saved token invalidates any cached access token.
   try { await c.env.KV.delete('cpg:access_token'); } catch { /* */ }
   return c.json({ success: true });
@@ -163,9 +154,6 @@ cpg.delete('/credentials', adminOnly, async (c) => {
     await deleteConfigValue(db, k);
   }
   await setConfigValue(db, CPG_KEYS.enabled, 'false');
-  // Explicit clear = full removal, including the durable backup (so self-heal
-  // does NOT resurrect an intentionally-cleared connection).
-  await clearConfigBackup(c.env);
   try { await c.env.KV.delete('cpg:access_token'); } catch { /* */ }
   return c.json({ success: true });
 });

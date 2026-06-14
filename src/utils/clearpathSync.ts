@@ -196,17 +196,15 @@ async function upsertEvent(db: DB, m: MappingRow, event: CpgMediaEvent): Promise
 // ── Per-device sync ──────────────────────────────────────────
 
 async function syncDevice(
-  env: Bindings, db: DB, client: CpgClient, m: MappingRow, cameraId: number,
-  budget: { left: number; errors: string[] },
+  env: Bindings, db: DB, client: CpgClient, m: MappingRow, cameraId: number, budget: { left: number },
 ): Promise<number> {
   const now = Date.now();
   let fromMs = m.last_media_synced_at ? Date.parse(m.last_media_synced_at) : now - LOOKBACK_FIRST_SYNC_MS;
   const cap = now - 30 * 24 * 60 * 60 * 1000; // ClearPath retains ~30 days
   if (!Number.isFinite(fromMs) || fromMs < cap) fromMs = cap;
 
-  // `cameraId` here is the GPS-Insight assetId (the media API key). Only pull a
-  // couple of pages — enough to fill the per-run clip budget.
-  const events = await listAllMedia(env, client, cameraId, fromMs, now, MEDIA_PAGES_PER_RUN);
+  // `cameraId` here is the GPS-Insight assetId (the media API key).
+  const events = await listAllMedia(env, client, cameraId, fromMs, now);
   let synced = 0;
   for (const event of events) {
     const eventRowId = await upsertEvent(db, m, event);
