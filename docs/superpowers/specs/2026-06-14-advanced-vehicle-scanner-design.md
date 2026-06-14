@@ -66,12 +66,17 @@ Enrich path (background, c.executionCtx.waitUntil → enrichCapture):
   heavy workflow → per-vehicle { plate, make, model, year, color, type,
                                  condition, damage_observed, damage_areas[],
                                  damage_summary, field_confidence{...} }
-  ── ACCEPTANCE GATE (per field, ≥0.85) ──
-    plate ≥0.85  → accept: confirm/enrich the record + sighting; capture accepted=1
-    plate <0.85  → HOLD: capture accepted=0, review_status='needs_review';
-                   do NOT write authoritative attributes; still SCREEN (flag unconfirmed)
-    each attribute (make/model/year/color/condition/damage) written ONLY if its
-      own confidence ≥0.85; below → left null/unconfirmed
+  ── ACCEPTANCE GATE (three tiers) ──
+    1. PLATE / identity gate (drives hold-for-review):
+         plate ≥0.85 → accept: confirm record + sighting; capture accepted=1
+         plate <0.85 → HOLD: capture accepted=0, review_status='needs_review';
+                       still SCREEN (flag unconfirmed)
+    2. Identity ATTRIBUTES (make/model/year/color) → written to the permanent
+         vehicles_records ONLY if their own confidence ≥0.85; below → left blank
+    3. Descriptive OBSERVATIONS (condition/damage) → ALWAYS stored on the sighting
+         with their confidence + a verified(≥0.85)/unverified(<0.85) flag; never
+         discarded. (Prototype: GPT condition/damage confidence runs ~0.7, so these
+         usually render "unverified" — still valuable intel, just not asserted.)
   update alpr_captures (accepted, review_status, condition, damage_*, plate_confidence,
                         enrich_status='done')
 Client: re-fetches the capture once (existing bounded ≤2 poll) → fills accepted
@@ -104,9 +109,12 @@ Also set the workflow's existing `plate_confidence_threshold` parameter default
 `0.75 → 0.85` so detection and acceptance agree.
 
 **Process (avoids the known slug-churn landmine):**
-1. Prototype the new `output_structure` via `workflow_specs_run` (inline, non-destructive)
-   on a **real damaged-vehicle** image; confirm GPT-5.1 returns usable, structured damage
-   + per-field confidence.
+1. **✅ Prototyped 2026-06-14** via `workflow_specs_run` (inline, non-destructive): GPT-5.1
+   returned the full structured shape — `overall_condition`, `damage_observed`,
+   `damage_areas[{panel,type,severity}]`, `damage_summary`, and `field_confidence`
+   including `condition`/`damage` — as fenced JSON the parser already handles. Confidence
+   is differentiated (plate 0.94, color 0.96, year 0.0 when not visible, condition/damage
+   ~0.7). Confirms the design; the damaged-vehicle visual-accuracy check happens in testing.
 2. Publish via `workflows_update` **keeping the exact name**
    `ALPR Vehicle Details Capture 1781360579827` so the URL slug
    `alpr-vehicle-details-capture-1781360579827` is preserved.
@@ -123,8 +131,11 @@ Also set the workflow's existing `plate_confidence_threshold` parameter default
 - `normalizeCapture` surfaces capture-level `condition` + `damageObserved` +
   `damageSummary` from the first vehicle (existing `firstVeh` fallback).
 - New pure helper `acceptByConfidence(value, conf, threshold=0.85)` → returns the value
-  if `conf >= threshold`, else `null`. Used to build the **accepted** view without
-  mutating the raw parse (raw stays in `raw_json` for audit).
+  if `conf >= threshold`, else `null`. Used for the **identity** gate (plate) and to
+  decide which identity attributes (make/model/year/color) are written to the permanent
+  record. Descriptive observations (condition/damage) are NOT nulled by it — they're
+  stored on the sighting with their confidence + a verified/unverified flag. Raw parse
+  always retained in `raw_json` for audit.
 
 ### 3. Acceptance gate + hold-for-review (`src/routes/alpr.ts`)
 
@@ -240,8 +251,11 @@ exists; damage + confidence are additive.
 - Exact `damage_areas` panel vocabulary — start with a small open enum (front/rear bumper,
   hood, roof, each door/fender/quarter, windshield, lights, wheels) and let `panel` be
   free text the LLM fills; refine after seeing real output.
-- Confirm GPT-5.1 returns calibrated per-field confidence for `condition`/`damage` (verify
-  in the `workflow_specs_run` prototype; if weak, derive a coarse confidence from
-  agreement between the per-crop `vehicle_details` and full-image `alpr_record`).
+- ✅ Resolved by the prototype: GPT-5.1 *does* return per-field confidence for
+  `condition`/`damage`, but it runs moderate (~0.7). Design response (locked): the 0.85
+  gate governs **plate/identity** (hold-for-review) and which **identity attributes** are
+  written to the permanent record; **condition/damage are always stored on the sighting**
+  with their confidence + a verified/unverified label, so useful damage intel is never
+  buried by a strict gate.
 - Whether the lean-workflow enrichment swap (separate fast-follow) should be sequenced
   right after this to cut the 2× cost while damage is fresh.

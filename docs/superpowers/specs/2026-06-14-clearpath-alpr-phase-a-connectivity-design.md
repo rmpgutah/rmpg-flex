@@ -276,3 +276,32 @@ CI gates already enforce worker typecheck, client typecheck, client tests, clien
   `dashcam_videos` (live table currently lacks them).
 - Confirm whether `/discover-accounts` can truly enumerate accounts via the v2.0 API,
   or should just validate-and-echo the configured account (acceptable for the tab).
+
+---
+
+## Added requirement (2026-06-14) — camera recording profile
+
+Christopher requested control over the dashcam **recording behavior**:
+
+- **Continuous, full-rate recording while the ignition is on** (don't drop to the
+  low-FPS parking rate while driving).
+- **Keep normal parking mode when the engine is off** — i.e., motion/impact-triggered
+  recording when parked. *(He initially asked to disable motion-wake-when-off; after the
+  evidentiary tradeoff was flagged — that would mean no footage of a parked vehicle being
+  broken into, vandalized, or hit — he chose to KEEP parking mode for evidence coverage.)*
+
+**Reality / scope for Phase A:**
+- These are **SmartWitness device recording-profile settings**, not Worker code. ClearPath
+  runs SmartWitness cameras (e.g. CP2-NA-LTE); the known ClearPath/SmartWitness REST API is
+  for **media/data retrieval** (the Media API), so device-config-via-API is **unverified**.
+- **First Phase-A task for this:** with the user's ClearPath credentials, inspect the
+  portal's own config calls (same approach that surfaced the Media API) to determine whether
+  recording-mode config is API-pushable.
+  - If **yes** → add a **recording-profile control** to the Admin → ClearPath GPS tab
+    (set continuous-on-ignition + parking-mode-on; push to mapped devices).
+  - If **no** → document the exact ClearPath portal / SmartWitness settings to change (and
+    what to request from ClearPath support); the tab surfaces the intended profile read-only.
+- We do **not** reflash firmware or push a fleet-wide recording change blind; the change is
+  confirmed + reversible.
+- Note: continuous full-rate recording raises cellular/storage usage + cost; the ALPR
+  pipeline (Phase C) **samples frames**, it does not ingest every second of video.
