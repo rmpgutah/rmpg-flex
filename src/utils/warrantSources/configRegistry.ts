@@ -1,8 +1,9 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import type { WarrantSourceAdapter, RawWarrantHit, SourceKind, WarrantCategory } from './types';
+import type { WarrantSourceAdapter, RawWarrantHit, SourceKind, WarrantCategory, ChunkResult } from './types';
 import { query } from '../db';
 import { parseSocrata, type FieldMap } from './parse/socrata';
 import { parseArcgis } from './parse/arcgis';
+import { buildArcgisKeysetUrl, buildSocrataOffsetUrl, maxObjectId, arcgisHasMore, ARCGIS_SERVER_PAGE, CHUNK_TARGET } from './paging';
 import { fetchPdfText } from './pdfText';
 import { parseZuercherPdf } from './parse/pdfZuercher';
 import { parseTxMuniPdf } from './parse/pdfTxMuni';
@@ -51,37 +52,65 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
     priority: ((row.priority as 1 | 2 | 3 | 4) || 3), family: row.family, category: (row.kind as WarrantCategory),
   };
   if (row.family === 'socrata') {
-    return { meta, mode: 'full-list', async fetchAll(): Promise<RawWarrantHit[]> {
+    return { meta, mode: 'full-list', async fetchChunk(cursor: string | null): Promise<ChunkResult> {
+      const offset = cursor ? Number(cursor) : 0;
       try {
-        const out: RawWarrantHit[] = [];
-        const PAGE = 50000;
-        for (let offset = 0; offset < 1_000_000; offset += PAGE) {
-          // $order=:id gives a stable sort so $offset paging doesn't skip/repeat rows.
-          const url = `https://${row.base_url}/resource/${row.resource_id}.json?$limit=${PAGE}&$offset=${offset}&$order=:id`;
-          const res = await fetch(url, { headers: { Accept: 'application/json' } });
-          if (!res.ok) break;
-          const rows = (await res.json()) as Record<string, unknown>[];
-          out.push(...parseSocrata(rows, map, row.source_key));
-          if (rows.length < PAGE) break;  // last page
+        const url = buildSocrataOffsetUrl(row.base_url ?? '', row.resource_id ?? '', offset, CHUNK_TARGET);
+        const res = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (!res.ok) {
+          // error → retry same page, no sweep. Log so a persistently-failing
+          // source isn't a silent stall (cursor stuck with errors:0 in the summary).
+          console.warn(`[warrantSources.config] ${row.source_key} socrata fetch HTTP ${res.status} at offset ${offset}; retrying next tick`);
+          return { hits: [], nextCursor: cursor, done: false };
         }
-        return out;
-      } catch { return []; }
+        const rows = (await res.json()) as Record<string, unknown>[];
+        return {
+          hits: parseSocrata(rows, map, row.source_key),
+          nextCursor: String(offset + CHUNK_TARGET),
+          done: rows.length < CHUNK_TARGET,   // raw row count, NOT deduped hits
+        };
+      } catch (err) {
+        console.warn(`[warrantSources.config] ${row.source_key} socrata fetch threw at offset ${offset}:`, err instanceof Error ? err.message : String(err));
+        return { hits: [], nextCursor: cursor, done: false };
+      }
     } };
   }
   if (row.family === 'arcgis') {
-    return { meta, mode: 'full-list', async fetchAll(_env: { DB: D1Database } & Record<string, unknown>): Promise<RawWarrantHit[]> {
+    return { meta, mode: 'full-list', async fetchChunk(cursor: string | null): Promise<ChunkResult> {
+      const startOid = cursor ? Number(cursor) : 0;
+      const hits: RawWarrantHit[] = [];
+      let lastOid = startOid;
       try {
-        const out: RawWarrantHit[] = [];
-        for (let offset = 0; offset < 50000; offset += 1000) {
-          const url = `${row.base_url}/query?where=1%3D1&outFields=*&f=json&resultOffset=${offset}&resultRecordCount=1000`;
+        // Loop ≤2000-row keyset pages until we cross the soft budget at a page
+        // boundary, or the roster is exhausted (short page). A failed page mid-loop
+        // returns what we have with done=false so the leg retries from lastOid.
+        while (hits.length < CHUNK_TARGET) {
+          const url = buildArcgisKeysetUrl(row.base_url ?? '', lastOid, ARCGIS_SERVER_PAGE);
           const res = await fetch(url, { headers: { Accept: 'application/json' } });
-          if (!res.ok) break;
-          const body = (await res.json()) as { features?: unknown[]; exceededTransferLimit?: boolean };
-          out.push(...parseArcgis(body, map, row.source_key));
-          if (!body.exceededTransferLimit) break;
+          if (!res.ok) {
+            // keep what we have, retry from lastOid next tick. Log so a
+            // persistently-failing source isn't a silent stall.
+            console.warn(`[warrantSources.config] ${row.source_key} arcgis fetch HTTP ${res.status} after OBJECTID ${lastOid}; retrying next tick`);
+            return { hits, nextCursor: String(lastOid), done: false };
+          }
+          const body = (await res.json()) as { features?: { attributes?: Record<string, unknown> }[]; exceededTransferLimit?: boolean };
+          const features = body.features ?? [];
+          if (features.length === 0) return { hits, nextCursor: String(lastOid), done: true };
+          hits.push(...parseArcgis(body, map, row.source_key));
+          const prevOid = lastOid;
+          lastOid = maxObjectId(features, lastOid);
+          // Defensive: a non-empty page that fails to advance the cursor (features
+          // with missing/NaN OBJECTID) would otherwise re-fetch the same window
+          // forever and hit the Worker CPU limit. Break instead — done:false (via
+          // the post-loop return) leaves the cursor put so the leg retries next tick.
+          if (lastOid <= prevOid) break;
+          if (!arcgisHasMore(body, ARCGIS_SERVER_PAGE)) return { hits, nextCursor: String(lastOid), done: true };
         }
-        return out;
-      } catch { return []; }
+        return { hits, nextCursor: String(lastOid), done: false };
+      } catch (err) {
+        console.warn(`[warrantSources.config] ${row.source_key} arcgis fetch threw after OBJECTID ${lastOid}:`, err instanceof Error ? err.message : String(err));
+        return { hits, nextCursor: String(lastOid), done: false };
+      }
     } };
   }
   const pdf = PDF_FAMILIES[row.family];

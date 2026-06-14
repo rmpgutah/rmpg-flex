@@ -17,9 +17,10 @@
 // versions are intentionally NOT exported and NOT modified — keeping the Utah
 // path byte-identical is the #1 rule of this task.
 //
-// Order: scraped leg runs FIRST (cheap DB roster read + per-source pacing),
-// then the Utah leg. Either way both run; the order is documented for
-// reproducibility and has no correctness coupling between legs.
+// Order: the Utah leg runs FIRST so a large chunked scraped source can never
+// consume the tick's budget before RMPG's home jurisdiction is scanned; the
+// scraped + full-list legs follow. Neither leg has a correctness dependency on
+// the other — the order is a resource-starvation safeguard.
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, execute } from '../db';
@@ -28,7 +29,10 @@ import {
   type WatchRunResult,
 } from '../utahWarrantPoller';
 import { getEnabledAdapters, getAllEnabledAdapters } from './registry';
-import { upsertScrapedWarrant, bulkUpsertScrapedWarrants, markScrapedCleared } from './store';
+import {
+  upsertScrapedWarrant, markScrapedCleared, bulkUpsertScrapedWarrants,
+  upsertScrapedWarrantsBatch, readSourceProgress, saveSourceProgress, completeSourceCycle,
+} from './store';
 import { reconcileHits, type CanonicalHit } from './reconcile';
 import { normalizeCharge } from './chargeNormalize';
 import { jitterDelayMs } from './resilience';
@@ -206,10 +210,66 @@ async function loadPersons(db: D1Database): Promise<PersonRow[]> {
 export async function runFullListLeg(
   db: D1Database,
   adapters: WarrantSourceAdapter[],
+  opts: { now?: () => string } = {},
 ): Promise<ScrapedSourceSummary[]> {
+  const now = opts.now ?? (() => new Date().toISOString());
   const out: ScrapedSourceSummary[] = [];
   for (const adapter of adapters) {
-    if (adapter.mode !== 'full-list' || typeof adapter.fetchAll !== 'function') continue;
+    if (adapter.mode !== 'full-list') continue;
+
+    // ── Chunked path (cursor-driven; large rosters across many ticks) ────────
+    if (typeof adapter.fetchChunk === 'function') {
+      const key = adapter.meta.key;
+      let found = 0;
+      let errors = 0;
+      let cleared = 0;
+      try {
+        const prog = await readSourceProgress(db, key);
+        const cycleStartedAt = prog?.cycle_started_at ?? now();
+        const cursor = prog?.cursor ?? null;
+
+        const { hits, nextCursor, done } = await adapter.fetchChunk(cursor, { DB: db });
+        const r = await upsertScrapedWarrantsBatch(db, hits, null);
+        found = r.found;
+        errors += r.errors;
+
+        if (errors > 0) {
+          // Writes were unreliable this tick. NEVER clear-sweep when we couldn't
+          // store reliably — a sweep here would clear active warrants that merely
+          // failed to re-store (the feature's #1 invariant: never wrongly clear).
+          // Don't advance past the failed window either: persist the SAME incoming
+          // cursor so the next tick retries it. The batched upsert is idempotent
+          // (ON CONFLICT), so re-running the window is safe.
+          await saveSourceProgress(db, key, cursor, cycleStartedAt, (prog?.rows_this_cycle ?? 0) + found);
+        } else if (done) {
+          // Full pass complete → clear rows of THIS source not seen during the
+          // entire cycle (scoped to cycle_started_at, NOT this tick), then reset.
+          cleared = await markScrapedCleared(db, key, cycleStartedAt).catch((err) => {
+            console.warn(`[warrantSources.runScan.chunk] ${key} clear sweep failed:`, err instanceof Error ? err.message : String(err));
+            return 0;
+          });
+          // Guard separately so a completion failure logs accurately (not as a
+          // misleading "fetchChunk failed" in the outer catch) and doesn't inflate
+          // the error count — the sweep is idempotent, so the next tick re-completes.
+          await completeSourceCycle(db, key, now()).catch((err) => {
+            console.warn(`[warrantSources.runScan.chunk] ${key} completeSourceCycle failed:`, err instanceof Error ? err.message : String(err));
+          });
+        } else {
+          // Mid-cycle / truncated → persist cursor, SKIP the clear-sweep so the
+          // un-ingested tail (and prior chunks) are never wrongly cleared.
+          await saveSourceProgress(db, key, nextCursor, cycleStartedAt, (prog?.rows_this_cycle ?? 0) + found);
+        }
+      } catch (err) {
+        errors++;
+        console.warn(`[warrantSources.runScan.chunk] ${key} chunk tick failed:`, err instanceof Error ? err.message : String(err));
+      }
+      // checked:0 — the chunked leg walks the REMOTE roster, not the local persons
+      // list, so the per-person 'checked' metric doesn't apply here.
+      out.push({ source_key: key, checked: 0, found, cleared, errors });
+      continue;
+    }
+
+    if (typeof adapter.fetchAll !== 'function') continue;
     const runStartedAt = new Date().toISOString();
     let found = 0;
     let errors = 0;
@@ -260,9 +320,10 @@ export async function runFullListLeg(
 
 /**
  * Run BOTH legs:
- *   1. Scraped leg — every enabled non-api source × persons → scraped_warrants,
+ *   1. Utah leg — the UNCHANGED runUtahWarrantScan(db), runs FIRST so a large
+ *      chunked scraped source can never starve RMPG's home jurisdiction.
+ *   2. Scraped leg — every enabled non-api source × persons → scraped_warrants,
  *      then per-person reconcile + confirmed-only promotion to `warrants`.
- *   2. Utah leg — the UNCHANGED runUtahWarrantScan(db).
  *
  * Each scraped adapter and each person fetch is wrapped in try/catch so one bad
  * source/person can't abort the run. Utah runs in its own path with its own
@@ -274,6 +335,31 @@ export async function runAllSourceScans(
 ): Promise<AllSourceScanResult> {
   const runId = `multi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const delayMs = opts.delayMs ?? ((i: number) => jitterDelayMs(BASE_DELAY_MS, 1, i));
+
+  // ── Utah leg (UNCHANGED) ─────────────────────────────────────────────────────
+  // Runs FIRST so large chunked scraped sources can never starve RMPG's home
+  // jurisdiction. runUtahWarrantScan owns utah_warrants + Utah promotion +
+  // Utah watch-log + its own warrant_watch_runs row. Call as-is; do not reimplement.
+  let utah: WatchRunResult;
+  if (opts.skipUtah) {
+    utah = {
+      run_id: 'skipped',
+      status: 'completed',
+      persons_checked: 0,
+      new_warrants_found: 0,
+      warrants_cleared: 0,
+      errors: 0,
+    };
+  } else {
+    try {
+      utah = await runUtahWarrantScan(db);
+    } catch (err) {
+      // Utah runs first now; a throw must NOT abort the independent scraped/
+      // full-list legs. Degrade to a failed result and continue.
+      console.warn('[warrantSources.runScan] Utah leg threw:', err instanceof Error ? err.message : String(err));
+      utah = { run_id: 'utah-error', status: 'failed', persons_checked: 0, new_warrants_found: 0, warrants_cleared: 0, errors: 1 };
+    }
+  }
 
   // ── Scraped leg ────────────────────────────────────────────────────────────
   const adapters =
@@ -413,23 +499,6 @@ export async function runAllSourceScans(
     adapters.filter((a) => a.mode === 'full-list'),
   );
   for (const s of fullListSummaries) scraped.push(s);
-
-  // ── Utah leg (UNCHANGED) ─────────────────────────────────────────────────────
-  // runUtahWarrantScan owns utah_warrants + Utah promotion + Utah watch-log +
-  // its own warrant_watch_runs row. Call as-is; do not reimplement.
-  let utah: WatchRunResult;
-  if (opts.skipUtah) {
-    utah = {
-      run_id: 'skipped',
-      status: 'completed',
-      persons_checked: 0,
-      new_warrants_found: 0,
-      warrants_cleared: 0,
-      errors: 0,
-    };
-  } else {
-    utah = await runUtahWarrantScan(db);
-  }
 
   return { utah, scraped };
 }

@@ -40,9 +40,21 @@ export interface SourceMeta {
   category?: WarrantCategory;
 }
 
+/** One bounded window of a full-list roster, plus the cursor to resume from. */
+export interface ChunkResult {
+  hits: RawWarrantHit[];
+  nextCursor: string | null;   // opaque resume token (arcgis: last OBJECTID; socrata: next offset)
+  done: boolean;               // true = roster fully traversed this pass
+}
+
 export interface WarrantSourceAdapter {
   meta: SourceMeta;
   mode: SourceMode;
   fetchAll?(env: { DB: D1Database } & Record<string, unknown>): Promise<RawWarrantHit[]>;
+  /** Chunked full-list fetch: return one window starting after `cursor` (null = start). */
+  fetchChunk?(
+    cursor: string | null,
+    env: { DB: D1Database } & Record<string, unknown>,
+  ): Promise<ChunkResult>;
   fetchForPerson?(person: PersonRow, env: { DB: D1Database } & Record<string, unknown>): Promise<RawWarrantHit[]>;
 }
