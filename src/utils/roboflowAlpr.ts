@@ -368,7 +368,7 @@ const KEY = {
   review: /review|status/i,
 };
 
-function cleanPlate(v: string): string {
+export function cleanPlate(v: string): string {
   return v.toUpperCase().replace(/[\s-]/g, '').trim();
 }
 
@@ -542,7 +542,7 @@ function asRecordList(v: unknown): Record<string, unknown>[] {
 
 /** First non-empty string anywhere in a (possibly nested) OCR output —
  *  `license_plate_text` comes back nested, e.g. `[["34 T 6511"]]`. */
-function firstOcrString(v: unknown): string | null {
+export function firstOcrString(v: unknown): string | null {
   if (typeof v === 'string') return asStr(v);
   if (Array.isArray(v)) { for (const el of v) { const s = firstOcrString(el); if (s) return s; } }
   return null;
