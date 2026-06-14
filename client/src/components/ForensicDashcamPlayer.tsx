@@ -9,8 +9,12 @@
 // driving-analysis readout (distance, peak g-forces, event verdict).
 // ============================================================
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Gauge, Navigation, AlertTriangle, Activity, Car, MapPin, Loader2, ScanSearch, Route } from 'lucide-react';
+import { X, Gauge, Navigation, AlertTriangle, Activity, Car, MapPin, Loader2, ScanSearch, Route, Camera, Moon, ZoomIn, ShieldAlert } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import {
+  instAccelG, activeThreats, severityColor, zoomTransform, evidenceStampLines, evidenceFilename,
+  type Threat,
+} from '../utils/tacticalForensics';
 import {
   trackStats, normalizeTrack, positionAtTime, speedColor, compass, forensicVerdict,
   type GpsPoint, type TrackPoint,
@@ -56,9 +60,15 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
   const [detStatus, setDetStatus] = useState<DetectorStatus>('idle');
   const [tracks, setTracks] = useState<Track[]>([]);
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
+  const [nightVision, setNightVision] = useState(false);     // low-light enhancement
+  const [zoomOn, setZoomOn] = useState(false);               // digital PTZ on primary
+  const [rate, setRate] = useState(1);                       // playback speed
+  const [hits, setHits] = useState<Array<{ kind?: string; severity: string; detail: string }>>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const detLoopRef = useRef<number | null>(null);
   const trackerRef = useRef<TrackerState>(emptyTrackerState());
+  const screenedRef = useRef<string>('');                    // last plate screened (dedupe)
+  const captureRef = useRef<() => void>(() => {});           // latest evidence-capture fn (avoids stale closure)
 
   useEffect(() => {
     let alive = true;
@@ -70,11 +80,42 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     return () => { alive = false; };
   }, [eventId]);
 
+  // Tactical keyboard shortcuts + Esc-to-close.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      const v = videoRef.current;
+      switch (e.key) {
+        case 'Escape': onClose(); break;
+        case ' ': case 'k': if (v) { v.paused ? v.play().catch(() => {}) : v.pause(); e.preventDefault(); } break;
+        case 'ArrowRight': case 'l': if (v) v.currentTime = Math.min(v.duration || 1e9, v.currentTime + (e.shiftKey ? 1 : 0.1)); break;
+        case 'ArrowLeft': case 'j': if (v) v.currentTime = Math.max(0, v.currentTime - (e.shiftKey ? 1 : 0.1)); break;
+        case '>': case '.': setRate((r) => Math.min(2, +(r + 0.25).toFixed(2))); break;
+        case '<': case ',': setRate((r) => Math.max(0.25, +(r - 0.25).toFixed(2))); break;
+        case 'n': setNightVision((x) => !x); break;
+        case 'z': setZoomOn((x) => !x); break;
+        case 'a': setAiOn((x) => !x); break;
+        case 'c': captureRef.current(); break;
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose]);
+
+  // Apply playback speed.
+  useEffect(() => { if (videoRef.current) videoRef.current.playbackRate = rate; }, [rate, media?.id]);
+
+  // Live hotlist / BOLO screen of the read plate (read-only; no notification spam).
+  useEffect(() => {
+    const plate = media?.plate || '';
+    if (!plate) { setHits([]); return; }
+    if (screenedRef.current === plate) return;
+    screenedRef.current = plate;
+    apiFetch<{ hits: Array<{ kind?: string; severity: string; detail: string }> }>(`/api/intel/screen-plate?plate=${encodeURIComponent(plate)}`)
+      .then((r) => setHits(Array.isArray(r.hits) ? r.hits : []))
+      .catch(() => setHits([]));
+  }, [media?.plate]);
 
   // Live CV vehicle detection loop — boxes that follow the vehicle in frame.
   // Lazy-loads the model from a CDN on first enable; degrades to telemetry-only.
@@ -128,6 +169,9 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
   const natW = nat?.w || 1280, natH = nat?.h || 720;
   const turnRate = useMemo(() => turnRateDegPerSec(gps, t), [gps, t]);
   const heading = useMemo(() => bearingAt(gps, t), [gps, t]);
+  const accelG = useMemo(() => instAccelG(gps, t), [gps, t]);
+  const threats: Threat[] = useMemo(() => activeThreats({ speed: speedNow, turnRate, accelG, postedLimit: null }), [speedNow, turnRate, accelG]);
+  const critical = useMemo(() => hits.filter((h) => h.severity === 'critical'), [hits]);
   const vTag = useMemo(() => vehicleTag(media?.vehicle ?? null), [media]);
   const roadPath = useMemo(() => videoPredictivePath(turnRate, speedNow, natW, natH), [turnRate, speedNow, natW, natH]);
   const roadFill = useMemo(() => {
@@ -166,6 +210,57 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     return Math.max(0, Math.min(100, (t / dur) * 100));
   }, [t, trackPts, media]);
 
+  // Evidence frame capture — annotated frame (boxes + plate) + a burned-in
+  // chain-of-custody stamp, downloaded as a JPG. The stream is same-origin
+  // (Worker proxy) so the canvas isn't tainted.
+  const captureEvidence = () => {
+    const v = videoRef.current;
+    if (!v || !nat) return;
+    const W = nat.w, H = nat.h;
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    try { ctx.drawImage(v, 0, 0, W, H); } catch { return; }
+    ctx.lineWidth = Math.max(2, W / 380);
+    for (const tr of tracks) {
+      ctx.strokeStyle = primary && tr.id === primary.id ? '#d4a017' : '#7dd3fc';
+      ctx.strokeRect(tr.bbox[0], tr.bbox[1], tr.bbox[2], tr.bbox[3]);
+    }
+    if (primary && media?.plate) {
+      const [px, py, pw, ph] = clampBox(plateRegion(primary.bbox), W, H);
+      ctx.strokeStyle = '#22d3ee'; ctx.strokeRect(px, py, pw, ph);
+      ctx.font = `bold ${Math.round(H * 0.03)}px monospace`; ctx.fillStyle = '#22d3ee';
+      ctx.fillText(media.plate, px, Math.max(20, py - 8));
+    }
+    const meta = {
+      eventType: media?.event_type || evType, address: media?.address || address,
+      timestamp: media?.event_timestamp, lat: pos?.latitude, lng: pos?.longitude,
+      speed: speedNow, plate: media?.plate, playbackTime: t,
+    };
+    const lines = evidenceStampLines(meta);
+    const fs = Math.max(12, Math.round(H * 0.022));
+    const stripH = fs * (lines.length + 0.6) + 12;
+    ctx.fillStyle = 'rgba(0,0,0,0.68)'; ctx.fillRect(0, H - stripH, W, stripH);
+    ctx.textBaseline = 'top';
+    lines.forEach((l, i) => {
+      ctx.font = `${i === 0 ? 'bold ' : ''}${fs}px sans-serif`;
+      ctx.fillStyle = i === 0 ? '#d4a017' : '#e5e5e5';
+      ctx.fillText(l, 12, H - stripH + 6 + i * fs * 1.18);
+    });
+    canvas.toBlob((b) => {
+      if (!b) return;
+      const url = URL.createObjectURL(b);
+      const a = document.createElement('a'); a.href = url; a.download = evidenceFilename(meta); a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    }, 'image/jpeg', 0.95);
+  };
+  captureRef.current = captureEvidence;
+
+  // Digital-zoom transform on the primary track.
+  const zoom = useMemo(() => (zoomOn && primary ? zoomTransform(primary.bbox, natW, natH) : null), [zoomOn, primary, natW, natH]);
+  const videoFilter = nightVision ? 'brightness(1.7) contrast(1.35) saturate(1.15)' : undefined;
+
   return (
     <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col" role="dialog" aria-label="Forensic dashcam player">
       {/* Header */}
@@ -176,7 +271,29 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
           {evType && <span className="text-[10px] uppercase px-1.5 py-0.5 border border-amber-700/50 bg-amber-900/30 text-amber-300">{evType.replace(/_/g, ' ')}</span>}
           <span className="text-[11px] text-rmpg-400 truncate">{media?.address || address || ''}</span>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Tactical toolbar */}
+          {media?.has_video && (
+            <>
+              <button onClick={() => setRate((r) => (r >= 2 ? 0.25 : +(r + 0.25).toFixed(2)))}
+                className="text-[10px] font-mono px-1.5 py-1 border border-[#2a2a2a] text-rmpg-300 hover:border-[#d4a017] tabular-nums" title="Playback speed ( < / > )">
+                {rate.toFixed(2)}×
+              </button>
+              <button onClick={() => setNightVision((x) => !x)} title="Low-light enhance (n)"
+                className={`p-1 border ${nightVision ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`} aria-label="Toggle low-light enhancement">
+                <Moon className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => setZoomOn((x) => !x)} title="Digital zoom on target (z)"
+                className={`p-1 border ${zoomOn ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`} aria-label="Toggle digital zoom">
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => captureRef.current()} title="Capture evidence frame (c)"
+                className="p-1 border border-[#2a2a2a] text-rmpg-300 hover:border-[#d4a017]" aria-label="Capture evidence frame">
+                <Camera className="w-3.5 h-3.5" />
+              </button>
+              <span className="w-px h-4 bg-[#2a2a2a]" />
+            </>
+          )}
           <button
             onClick={() => setAiOn((v) => !v)}
             className={`text-[10px] font-semibold tracking-wider px-2 py-1 border flex items-center gap-1 ${
@@ -206,12 +323,14 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
           {/* ── Video + HUD overlay ── */}
           <div className="relative bg-black flex items-center justify-center overflow-hidden">
             {media.has_video && media.stream_url ? (
-              <div className="relative inline-flex max-h-full max-w-full">
+              <div className="relative inline-flex max-h-full max-w-full"
+                style={zoom ? { transform: `scale(${zoom.scale})`, transformOrigin: `${zoom.originXPct}% ${zoom.originYPct}%`, transition: 'transform 0.25s ease' } : { transition: 'transform 0.25s ease' }}>
                 <video
                   ref={videoRef}
                   src={authedImageUrl(media.stream_url)}
                   poster={media.still_url ? authedImageUrl(media.still_url) : undefined}
                   controls preload="none" playsInline
+                  style={videoFilter ? { filter: videoFilter } : undefined}
                   onLoadedMetadata={(e) => setNat({ w: e.currentTarget.videoWidth, h: e.currentTarget.videoHeight })}
                   onTimeUpdate={(e) => setT(e.currentTarget.currentTime)}
                   className="block max-h-full max-w-full" />
@@ -231,7 +350,10 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                     {aiOn && tracks.map((tr) => {
                       const isP = !!primary && tr.id === primary.id;
                       const [x, y, w, h] = tr.bbox;
-                      const col = isP ? '#d4a017' : '#7dd3fc';
+                      const col = isP ? (critical.length ? '#ef4444' : '#d4a017') : '#7dd3fc';
+                      const isVeh = tr.cls !== 'person';
+                      // per-vehicle LP region (non-primary get a faint scan box)
+                      const plr = isVeh && !isP ? clampBox(plateRegion(tr.bbox), natW, natH) : null;
                       return (
                         <g key={tr.id} opacity={isP ? 1 : 0.72}>
                           {tr.trail.length > 1 && (
@@ -239,6 +361,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                               fill="none" stroke={col} strokeWidth={2} opacity={0.35} vectorEffect="non-scaling-stroke" />
                           )}
                           <rect x={x} y={y} width={w} height={h} fill="none" stroke={col} strokeWidth={isP ? 4 : 2} vectorEffect="non-scaling-stroke" />
+                          {plr && <rect x={plr[0]} y={plr[1]} width={plr[2]} height={plr[3]} fill="none" stroke="#22d3ee" strokeWidth={1.5} opacity={0.6} vectorEffect="non-scaling-stroke" />}
                           <text x={x + 3} y={y - 4} fontSize={13} fill={col} fontFamily="monospace">{tr.cls === 'person' ? 'PED' : 'VEH'}·{tr.id}</text>
                         </g>
                       );
@@ -280,6 +403,17 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
             {/* HUD overlay (pointer-events-none so video controls still work) */}
             {gps.length > 0 && (
               <div className="absolute inset-0 pointer-events-none">
+                {/* BOLO / hotlist tactical alert */}
+                {hits.length > 0 && (
+                  <div className={`absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1.5 border-2 text-center max-w-[80%] ${
+                    critical.length ? 'bg-red-950/90 border-red-500 animate-pulse' : 'bg-amber-950/90 border-[#d4a017]'}`}>
+                    <div className={`flex items-center gap-1.5 justify-center text-[11px] font-bold tracking-wider ${critical.length ? 'text-red-300' : 'text-[#d4a017]'}`}>
+                      <ShieldAlert className="w-4 h-4" />
+                      {critical.length ? 'HOTLIST HIT' : 'WATCHLIST'} — {media.plate}
+                    </div>
+                    <div className="text-[10px] text-white/90 mt-0.5">{hits.map((h) => h.detail).join(' · ')}</div>
+                  </div>
+                )}
                 {/* Speed — big, color-coded */}
                 <div className="absolute top-3 left-3 flex flex-col">
                   <div className="flex items-baseline gap-1">
@@ -288,10 +422,23 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                     </span>
                     <span className="text-[11px] text-white/80 font-semibold">MPH</span>
                   </div>
-                  <div className="mt-1 flex items-center gap-1 text-[10px] text-white/80" style={{ textShadow: '0 1px 3px #000' }}>
-                    <Navigation className="w-3 h-3" style={{ transform: `rotate(${pos?.bearing ?? 0}deg)` }} />
-                    {pos ? compass(pos.bearing) : '—'}
+                  <div className="mt-1 flex items-center gap-2 text-[10px] text-white/80" style={{ textShadow: '0 1px 3px #000' }}>
+                    <span className="flex items-center gap-1"><Navigation className="w-3 h-3" style={{ transform: `rotate(${pos?.bearing ?? 0}deg)` }} />{pos ? compass(pos.bearing) : '—'}</span>
+                    <span className="tabular-nums" style={{ color: Math.abs(accelG) > 0.38 ? '#ef4444' : '#fff' }}>
+                      {accelG >= 0 ? '+' : ''}{accelG.toFixed(2)}g
+                    </span>
                   </div>
+                  {/* Live threat chips */}
+                  {threats.length > 0 && (
+                    <div className="mt-1.5 flex flex-col gap-1 items-start">
+                      {threats.map((th) => (
+                        <span key={th.key} className="text-[10px] font-bold tracking-wider px-1.5 py-0.5 border bg-black/70"
+                          style={{ color: severityColor(th.severity), borderColor: severityColor(th.severity) }}>
+                          ⚠ {th.label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {/* Coords + plate */}
                 <div className="absolute top-3 right-3 text-right text-[10px] font-mono text-white/85" style={{ textShadow: '0 1px 3px #000' }}>

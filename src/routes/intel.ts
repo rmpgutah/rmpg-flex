@@ -309,6 +309,21 @@ intel.post('/screen', operational, async (c) => {
   return c.json({ entity_type: entityType, entity_id: resolvedId, hits });
 });
 
+// Lightweight READ-ONLY plate screen for the forensic player's live hotlist
+// check — no notification side-effects (the POST /screen path spams on every
+// read). Returns stolen/watchlist/BOLO/owner-warrant hits for a plate.
+intel.get('/screen-plate', operational, async (c) => {
+  const db = getDb(c.env);
+  const plate = (c.req.query('plate') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!/^[A-Z0-9]{2,8}$/.test(plate)) return c.json({ plate, hits: [] });
+  try {
+    const { vehicleId, hits } = await screenVehicle(db, { plate });
+    return c.json({ plate, vehicle_id: vehicleId, hits });
+  } catch (err: any) {
+    return c.json({ plate, hits: [], error: err?.message }, 200);
+  }
+});
+
 // ─── Narrative link suggestions (Wave 1) ─────────────────────
 
 intel.get('/suggestions', operational, async (c) => {
