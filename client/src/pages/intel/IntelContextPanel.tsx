@@ -1,10 +1,11 @@
 // Right docked panel. Renders whatever is selected in IntelContext, flipping
 // between a compact Dossier Peek and an embedded Mini Graph. Collapsible.
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../hooks/useApi';
 import ConnectionsGraphPanel from '../../components/ConnectionsGraphPanel';
 import { useIntelContext } from './IntelContext';
+import { useWatchToggle } from './useWatchToggle';
 
 const SENTINELS = new Set(['', 'none', 'n/a', 'na', 'null', '0', 'unknown']);
 const real = (v: unknown) => v != null && !SENTINELS.has(String(v).trim().toLowerCase());
@@ -22,6 +23,7 @@ export default function IntelContextPanel() {
   const { selected, selectEntity, panelMode, setPanelMode, panelCollapsed, togglePanel } = useIntelContext();
   const [dossier, setDossier] = useState<DossierLite | null>(null);
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!selected || selected.type !== 'person' || panelMode !== 'dossier') { setDossier(null); return; }
@@ -66,6 +68,15 @@ export default function IntelContextPanel() {
             {dossier && (() => {
               const p = dossier.person;
               const name = [p.first_name, p.middle_name, p.last_name].filter(real).join(' ') || selected.label;
+              const WatchBtn = () => {
+                const { watched, toggle } = useWatchToggle('person', p.id, !!dossier.watched);
+                return (
+                  <button onClick={toggle}
+                    className={`flex-1 text-center font-mono text-[8px] tracking-wide border rounded-[2px] py-[6px] uppercase ${watched ? 'border-[#d4a017] text-[#d4a017]' : 'border-[#3a3a3a] text-[#888]'}`}>
+                    {watched ? '★ Watching' : '☆ Watch'}
+                  </button>
+                );
+              };
               return (
                 <div className="space-y-3">
                   <div>
@@ -119,8 +130,13 @@ export default function IntelContextPanel() {
                   )}
 
                   <div className="flex gap-[6px] pt-1">
-                    <Link to={`/intel/person/${p.id}`} className="flex-1 text-center font-mono text-[8px] tracking-wide text-[#d4a017] border border-[#3a3a3a] rounded-[2px] py-[6px] uppercase">Full Dossier</Link>
+                    <WatchBtn />
                     <button onClick={() => setPanelMode('graph')} className="flex-1 text-center font-mono text-[8px] tracking-wide text-[#d4a017] border border-[#3a3a3a] rounded-[2px] py-[6px] uppercase">Graph</button>
+                  </div>
+                  <div className="flex gap-[6px]">
+                    <Link to={`/intel/person/${p.id}`} className="flex-1 text-center font-mono text-[8px] tracking-wide text-[#d4a017] border border-[#3a3a3a] rounded-[2px] py-[6px] uppercase">Full Dossier</Link>
+                    <button onClick={() => navigate(`/intel/reports/new?from=person:${p.id}&label=${encodeURIComponent(name)}`)}
+                      className="flex-1 text-center font-mono text-[8px] tracking-wide text-[#22d3ee] border border-[#1f3a3a] rounded-[2px] py-[6px] uppercase">+ Report</button>
                   </div>
                 </div>
               );
