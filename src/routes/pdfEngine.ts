@@ -10,20 +10,11 @@ import type { Env } from '../types';
 import { requireRole } from '../middleware/auth';
 import { enqueueAndSend } from './email';
 import { buildSendPayload, parseAddrList, type SendInput } from '../utils/emailSend';
+import { bytesToBase64 } from '../utils/anthropic';
 
 const pdfEngine = new Hono<Env>();
 
 const MAX_PDF_BYTES = 3 * 1024 * 1024; // 3 MB raw — see design §Error handling
-
-// base64-encode bytes in chunks (avoids String.fromCharCode call-stack overflow).
-export function bytesToBase64(bytes: Uint8Array): string {
-  let bin = '';
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(bin);
-}
 
 // Build a safe attachment filename from the form type.
 export function sanitizeAttachmentName(formType: string): string {

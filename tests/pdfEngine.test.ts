@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { bytesToBase64, sanitizeAttachmentName } from '../src/routes/pdfEngine';
+import { bytesToBase64 } from '../src/utils/anthropic';
+import { sanitizeAttachmentName } from '../src/routes/pdfEngine';
 
 describe('bytesToBase64', () => {
   it('encodes bytes to base64 (matches btoa for small input)', () => {
