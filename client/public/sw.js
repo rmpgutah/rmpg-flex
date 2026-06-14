@@ -609,7 +609,9 @@
 //       honest capture status (no fake success:true), capture_id idempotency,
 //       guarded R2/JSON, real vehicle_count, schema reconciliation across
 //       capture/edge/clearpath/footage, client overlay/upload/dossier fixes.
-const CACHE_NAME = 'rmpg-flex-v956';
+// v957: Geospatial Intel Map — /intel/map Mapbox layers (sightings/calls/incidents/
+//       FI/warrants/trespass), geocode cache-first, click→dossier panel.
+const CACHE_NAME = 'rmpg-flex-v957';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
