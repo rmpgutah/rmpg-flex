@@ -3,6 +3,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { verifySignedResource } from '../utils/signedAccess';
+import { summarizeInspection } from '../utils/vehicleInspection';
 
 const fleet = new Hono<Env>();
 
@@ -1488,7 +1489,20 @@ fleet.post('/:id/inspections', async (c) => {
       inspectorId ?? null, body.inspector_name ?? null, mileage, checklist, body.notes ?? null,
     );
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_inspections WHERE id = ?', result.meta.last_row_id);
-    return c.json(mapInspectionRow(created), 201);
+
+    // ADVANCED: a critical-severity defect takes the vehicle OUT OF SERVICE
+    // automatically — derived server-side from the checklist (never trust a
+    // client flag). Best-effort: a failed status update must not fail the
+    // inspection write itself.
+    const summary = summarizeInspection(Array.isArray(body.items) ? (body.items as Parameters<typeof summarizeInspection>[0]) : []);
+    if (summary.oos) {
+      try {
+        await execute(db, `UPDATE fleet_vehicles SET status = 'out_of_service' WHERE id = ?`, vehicleId);
+      } catch (oosErr) {
+        console.warn('[fleet] OOS status update degraded:', (oosErr as Error)?.message);
+      }
+    }
+    return c.json({ ...mapInspectionRow(created), out_of_service: summary.oos, defect_count: summary.defects }, 201);
   } catch (err) { console.error('POST /fleet/:id/inspections failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
