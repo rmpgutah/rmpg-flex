@@ -602,9 +602,11 @@
 // v885: SW-update reload-loop fix — auto-reload capped to once per 5 min
 //       (sw.js byte-flap at the edge looped reloads every 1-3 min = "can't
 //       scroll") + per-path scroll restore across reloads.
-// v954: OCR trust layer + per-vehicle capture dossier (honest TrustBadge replaces
-//       self-reported %, derived trust gates) on top of main v953.
-const CACHE_NAME = 'rmpg-flex-v954';
+// v956: Patrol Scan — continuous "while driving" ALPR. FieldCameraPage gains a
+//       PATROL mode that auto-captures a frame every ~4s → /api/alpr/capture
+//       (sightings only, 5-min per-plate dedup), audible+visual+haptic alert on
+//       critical hits, Screen Wake Lock to stay awake while mounted.
+const CACHE_NAME = 'rmpg-flex-v956';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
