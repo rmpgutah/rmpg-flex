@@ -103,6 +103,7 @@ export default function NavMapView({
   const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [style, setStyle] = useState<'dark' | 'satellite' | 'streets'>(initialStyle);
+  const styleRef = useRef(style);
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   const [userPanned, setUserPanned] = useState(false);
   const positionMarkerRef = useRef<mapboxgl.Marker | null>(null);
@@ -122,6 +123,11 @@ export default function NavMapView({
   // Mapbox style URLs for the theme recolor (#96). Satellite/streets keep
   // their own URLs; only the 'dark' selection participates in day/night.
   const themeStyleUrls = { dark: MAPBOX_STYLE_DARK, light: MAPBOX_STYLE_LIGHT };
+
+  // Keep styleRef current so once-registered 'style.load' listeners (which
+  // close over `style` by value) re-skin with the live variant after a
+  // runtime setStyle() swap instead of the stale initial style.
+  useEffect(() => { styleRef.current = style; }, [style]);
 
   // ── Initialize mapbox + create map ─────────────────────────
   useEffect(() => {
@@ -167,7 +173,7 @@ export default function NavMapView({
         map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
 
         // Brand the basemap on every style (re-applies after setStyle swaps).
-        map.on('style.load', () => applyRmpgBasemap(map, { variant: basemapVariantFor(style) }));
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: basemapVariantFor(styleRef.current) }));
 
         // Track when user pans so we know to stop auto-recentering
         map.on('dragstart', () => setUserPanned(true));
@@ -419,7 +425,7 @@ export default function NavMapView({
         attributionControl: false,
         interactive: false,
       });
-      inset.on('style.load', () => applyRmpgBasemap(inset, { variant: basemapVariantFor(style) }));
+      inset.on('style.load', () => applyRmpgBasemap(inset, { variant: basemapVariantFor(styleRef.current) }));
       inset.on('load', () => {
         if (cancelled) { try { inset.remove(); } catch { /* ignore */ } return; }
         if (style === 'dark') {
