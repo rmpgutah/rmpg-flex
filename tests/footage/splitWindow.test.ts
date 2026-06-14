@@ -49,4 +49,24 @@ describe('detectGaps / orderedDownloaded', () => {
       { seq: 2, r2_key: 'k2' },
     ]);
   });
+
+  it('detectGaps returns [] for an empty input', () => {
+    expect(detectGaps([])).toEqual([]);
+  });
+
+  it('orderedDownloaded returns [] for an empty input', () => {
+    expect(orderedDownloaded([])).toEqual([]);
+  });
+
+  it('orderedDownloaded excludes a downloaded row with null r2_key (corrupted partial)', () => {
+    const withCorrupted = [
+      { seq: 0, status: 'downloaded', r2_key: 'k0' },
+      { seq: 1, status: 'downloaded', r2_key: null }, // corrupted partial — must be excluded
+      { seq: 2, status: 'downloaded', r2_key: 'k2' },
+    ];
+    expect(orderedDownloaded(withCorrupted)).toEqual([
+      { seq: 0, r2_key: 'k0' },
+      { seq: 2, r2_key: 'k2' },
+    ]);
+  });
 });

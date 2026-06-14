@@ -7,10 +7,10 @@ export function splitWindow(fromTs: number, toTs: number, maxSeconds: number): C
   if (!Number.isFinite(span) || span <= 0 || maxSeconds <= 0) return [];
   const step = maxSeconds * 1000;
   const out: ChunkSpec[] = [];
-  let seq = 0;
-  for (let start = fromTs; start < toTs; start += step) {
-    out.push({ seq, fromTs: start, toTs: Math.min(start + step, toTs) });
-    seq++;
+  for (let i = 0; ; i++) {
+    const start = fromTs + i * step;
+    if (start >= toTs) break;
+    out.push({ seq: i, fromTs: start, toTs: Math.min(start + step, toTs) });
   }
   return out;
 }
