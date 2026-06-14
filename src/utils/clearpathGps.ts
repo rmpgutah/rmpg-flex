@@ -139,6 +139,52 @@ export async function deleteConfigValue(db: DB, key: string): Promise<void> {
   catch { /* best-effort */ }
 }
 
+// ── Self-heal: a durable KV backup of the connection config ──────
+// The refresh token / user / account live in system_config (D1), but a stray
+// migration, manual edit, or accidental row delete could wipe them. We keep a
+// durable copy in KV (the encrypted token blob — never plaintext) and restore
+// the D1 rows from it on demand. `ensureCpgConfig` is cheap to call on every
+// read path: it only writes when D1 is actually missing the token.
+
+const CONFIG_BACKUP_KV_KEY = 'cpg:config_backup';
+
+interface CpgConfigBackup { refreshToken: string; userId: string | null; account: string | null }
+
+/** Persist a durable backup of the connection config to KV. `refreshToken`
+ *  must already be the encrypted (v1:…) blob — we never store it in the clear. */
+export async function backupConfig(env: EnvLike, backup: CpgConfigBackup): Promise<void> {
+  try { await env.KV.put(CONFIG_BACKUP_KV_KEY, JSON.stringify(backup)); } catch { /* KV optional */ }
+}
+
+export async function readConfigBackup(env: EnvLike): Promise<CpgConfigBackup | null> {
+  try { return (await env.KV.get(CONFIG_BACKUP_KV_KEY, 'json')) as CpgConfigBackup | null; }
+  catch { return null; }
+}
+
+export async function clearConfigBackup(env: EnvLike): Promise<void> {
+  try { await env.KV.delete(CONFIG_BACKUP_KV_KEY); } catch { /* */ }
+}
+
+/** Repair the D1 config rows from the KV backup (or env) when they've been
+ *  deleted. Returns true when a repair was performed. Idempotent + cheap: a
+ *  no-op when D1 already has the refresh token. */
+export async function ensureCpgConfig(db: DB, env: EnvLike): Promise<boolean> {
+  // If env supplies the token, D1 rows are optional — but still re-seed account/
+  // user for display. If D1 already has the token, nothing to do.
+  const hasD1Token = !!(await getConfigValue(db, KEYS.refreshToken));
+  if (hasD1Token) return false;
+  if (env.CPG_REFRESH_TOKEN) return false; // env override keeps working regardless
+  const backup = await readConfigBackup(env);
+  if (!backup?.refreshToken) return false;
+  try {
+    await setConfigValue(db, KEYS.refreshToken, backup.refreshToken);
+    if (backup.userId) await setConfigValue(db, KEYS.userId, backup.userId);
+    if (backup.account) await setConfigValue(db, KEYS.account, backup.account);
+    console.log('[cpg] config self-healed from KV backup');
+    return true;
+  } catch (err) { console.error('[cpg] config restore failed:', (err as Error)?.message); return false; }
+}
+
 // ── Auth: refresh token → cached access token ────────────────
 
 /** Exchange a ClearPath refresh token for a ~60-min access token via the
@@ -195,12 +241,20 @@ async function invalidateToken(env: EnvLike): Promise<void> {
  *  CPG_ENC_KEY when stored encrypted). Returns null when not configured. */
 export async function getApiConfig(db: DB, env: EnvLike): Promise<CpgClient | null> {
   let refreshToken = env.CPG_REFRESH_TOKEN || null;
+  let userId = env.CPG_USER_ID || (await getConfigValue(db, KEYS.userId));
+  let account = await getConfigValue(db, KEYS.account);
   if (!refreshToken) {
-    const stored = await getConfigValue(db, KEYS.refreshToken);
+    let stored = await getConfigValue(db, KEYS.refreshToken);
+    // Self-heal: if D1 lost the token but we have a durable KV backup, restore it.
+    if (!stored) {
+      if (await ensureCpgConfig(db, env)) {
+        stored = await getConfigValue(db, KEYS.refreshToken);
+        userId = userId || (await getConfigValue(db, KEYS.userId));
+        account = account || (await getConfigValue(db, KEYS.account));
+      }
+    }
     if (stored) refreshToken = isEncrypted(stored) ? await decryptSecret(stored, env.CPG_ENC_KEY) : stored;
   }
-  const userId = env.CPG_USER_ID || (await getConfigValue(db, KEYS.userId));
-  const account = await getConfigValue(db, KEYS.account);
   if (!refreshToken) return null;
   return { account, userId, getToken: makeTokenGetter(env, refreshToken, userId, account) };
 }

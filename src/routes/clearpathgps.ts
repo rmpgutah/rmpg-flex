@@ -23,6 +23,7 @@ import { encryptSecret, CpgCryptoError } from '../utils/cpgCrypto';
 import {
   getApiConfig, getConfigValue, setConfigValue, deleteConfigValue, CPG_KEYS,
   listDevices, testConnection,
+  ensureCpgConfig, backupConfig, clearConfigBackup, vehicleToCamera,
   CpgAuthError, CpgRateLimitError, CpgHttpError,
 } from '../utils/clearpathGps';
 
@@ -83,6 +84,7 @@ function clientErrorMessage(err: unknown): string {
 cpg.get('/status', async (c) => {
   const db = getDb(c.env);
   await ensureCpgSchema(db);
+  await ensureCpgConfig(db, c.env).catch(() => false); // self-heal config if D1 rows were wiped
   const client = await getApiConfig(db, c.env).catch(() => null);
   const pollInterval = parseInt((await getConfigValue(db, CPG_KEYS.pollInterval)) || '30', 10);
   const mediaPoll = parseInt((await getConfigValue(db, CPG_KEYS.mediaPollInterval)) || '300', 10);
@@ -136,6 +138,14 @@ const saveCreds = async (c: Context<Env>) => {
   await setConfigValue(db, CPG_KEYS.refreshToken, encrypted);
   if (userId) await setConfigValue(db, CPG_KEYS.userId, userId);
   if (accountId) await setConfigValue(db, CPG_KEYS.account, accountId);
+  // Durable KV backup (encrypted blob) so the config self-heals if the D1 rows
+  // are ever deleted. Re-read user/account so a partial save still backs up
+  // whatever is now configured.
+  await backupConfig(c.env, {
+    refreshToken: encrypted,
+    userId: userId || (await getConfigValue(db, CPG_KEYS.userId)),
+    account: accountId || (await getConfigValue(db, CPG_KEYS.account)),
+  });
   // A freshly-saved token invalidates any cached access token.
   try { await c.env.KV.delete('cpg:access_token'); } catch { /* */ }
   return c.json({ success: true });
@@ -153,6 +163,9 @@ cpg.delete('/credentials', adminOnly, async (c) => {
     await deleteConfigValue(db, k);
   }
   await setConfigValue(db, CPG_KEYS.enabled, 'false');
+  // Explicit clear = full removal, including the durable backup (so self-heal
+  // does NOT resurrect an intentionally-cleared connection).
+  await clearConfigBackup(c.env);
   try { await c.env.KV.delete('cpg:access_token'); } catch { /* */ }
   return c.json({ success: true });
 });
@@ -308,12 +321,65 @@ cpg.get('/media-status', async (c) => {
   });
 });
 
+/** Auto-create device→unit mappings for dashcam-equipped (media-enabled)
+ *  vehicles so the media sync has targets without the admin hand-mapping each
+ *  one. The camera id stored is the GPS-Insight assetId (the /v2.0/media key);
+ *  unit_id is left null for the admin to assign later. Idempotent. */
+async function autoMapMediaDevices(env: Env['Bindings'], db: D1Database): Promise<{ mapped: number; candidates: number }> {
+  const client = await getApiConfig(db, env).catch(() => null);
+  if (!client) return { mapped: 0, candidates: 0 };
+  const devices = await listDevices(env, client);
+  let candidates = devices.filter((d) => d.mediaEnabled);
+  if (!candidates.length) candidates = devices.filter((d) => d.assetId); // account clearly has dashcams; fall back to any asset
+  let mapped = 0;
+  for (const d of candidates) {
+    const cameraId = vehicleToCamera(d)?.id ?? null;
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM cpg_device_mappings WHERE cpg_device_id = ?', d.deviceId);
+    if (existing) {
+      await execute(db, `UPDATE cpg_device_mappings SET
+          cpg_camera_id = COALESCE(cpg_camera_id, ?), cpg_display_name = COALESCE(cpg_display_name, ?),
+          is_active = 1, updated_at = datetime('now') WHERE cpg_device_id = ?`,
+        cameraId, d.displayName || null, d.deviceId);
+    } else {
+      await execute(db, `INSERT INTO cpg_device_mappings
+          (cpg_device_id, cpg_display_name, cpg_serial_number, cpg_camera_id, unit_id, is_active, updated_at)
+          VALUES (?, ?, ?, ?, NULL, 1, datetime('now'))`,
+        d.deviceId, d.displayName || null, d.serialNumber || null, cameraId);
+      mapped++;
+    }
+  }
+  return { mapped, candidates: candidates.length };
+}
+
+// Discover dashcam-equipped vehicles and map them (admin one-click).
+cpg.post('/auto-map-devices', adminOnly, async (c) => {
+  const db = getDb(c.env);
+  await ensureCpgSchema(db);
+  try { return c.json({ success: true, ...(await autoMapMediaDevices(c.env, db)) }); }
+  catch (err) { return c.json({ success: false, error: clientErrorMessage(err) }, 200); }
+});
+
+// One-click: auto-map dashcam devices + turn media sync on (feeds the ALPR pipeline).
+cpg.post('/enable-media', adminOnly, async (c) => {
+  const db = getDb(c.env);
+  await ensureCpgSchema(db);
+  let mapResult = { mapped: 0, candidates: 0 };
+  try { mapResult = await autoMapMediaDevices(c.env, db); }
+  catch (err) { return c.json({ success: false, error: clientErrorMessage(err) }, 200); }
+  await setConfigValue(db, CPG_KEYS.mediaEnabled, 'true');
+  return c.json({ success: true, media_sync_enabled: true, ...mapResult });
+});
+
 const setMediaSettings = async (c: Context<Env>) => {
   const db = getDb(c.env);
   let body: { media_sync_enabled?: boolean; media_poll_interval_seconds?: number };
   try { body = await c.req.json(); } catch { body = {}; }
   if (body.media_sync_enabled !== undefined) {
     await setConfigValue(db, CPG_KEYS.mediaEnabled, body.media_sync_enabled ? 'true' : 'false');
+    // Enabling with no mappings would sync nothing — auto-map dashcam devices.
+    if (body.media_sync_enabled && (await activeMappingCount(db)) === 0) {
+      try { await autoMapMediaDevices(c.env, db); } catch { /* best-effort */ }
+    }
   }
   if (Number.isFinite(body.media_poll_interval_seconds)) {
     await setConfigValue(db, CPG_KEYS.mediaPollInterval, String(Math.max(60, Math.min(900, Number(body.media_poll_interval_seconds)))));

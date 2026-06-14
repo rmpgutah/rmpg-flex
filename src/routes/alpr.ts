@@ -434,17 +434,37 @@ alpr.get('/captures', operational, async (c) => {
   const caseId = c.req.query('case_id') || '';
   const callId = c.req.query('call_id') || '';
   const review = c.req.query('review');
-  const limit = Math.min(Number(c.req.query('limit')) || 25, 100);
+  // Gallery filters (compose into one WHERE):
+  const source = (c.req.query('source') || '').toLowerCase();   // dashcam | field | manual
+  const accepted = c.req.query('accepted');                      // '1' | '0'
+  const from = c.req.query('from');                              // ISO/SQL datetime lower bound
+  const to = c.req.query('to');                                  // upper bound
+  const gallery = c.req.query('gallery');                        // gallery mode → only rows with an image
+  const limit = Math.min(Number(c.req.query('limit')) || 25, 200);
   try {
     let rows;
     // Review queue = only rows still awaiting review. Keying on review_status
     // (not accepted=0) is essential: a REJECTED row is also accepted=0 and would
     // otherwise reappear in the queue forever.
     if (review) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE review_status = 'needs_review' ORDER BY created_at DESC LIMIT ?`, limit);
-    else if (plate) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE plate LIKE ? ORDER BY created_at DESC LIMIT ?`, `%${plate}%`, limit);
     else if (callId) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE call_id = ? ORDER BY created_at DESC LIMIT ?`, Number(callId), limit);
     else if (caseId) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE case_id = ? ORDER BY created_at DESC LIMIT ?`, caseId, limit);
-    else rows = await query<any>(db, `SELECT * FROM alpr_captures ORDER BY created_at DESC LIMIT ?`, limit);
+    else {
+      const where: string[] = []; const params: any[] = [];
+      if (plate) { where.push('plate LIKE ?'); params.push(`%${plate}%`); }
+      if (accepted === '1' || accepted === '0') { where.push('accepted = ?'); params.push(Number(accepted)); }
+      if (from) { where.push('created_at >= ?'); params.push(from); }
+      if (to) { where.push('created_at <= ?'); params.push(to); }
+      if (gallery) where.push("(image_key IS NOT NULL OR annotated_image_key IS NOT NULL)");
+      // source: dashcam captures carry a 'cpg_dashcam:' capture_id; field captures
+      // are call/field-photo linked; manual = everything else.
+      if (source === 'dashcam') where.push("capture_id LIKE 'cpg_dashcam:%'");
+      else if (source === 'field') where.push("(call_id IS NOT NULL OR field_photo_id IS NOT NULL) AND COALESCE(capture_id,'') NOT LIKE 'cpg_dashcam:%'");
+      else if (source === 'manual') where.push("call_id IS NULL AND field_photo_id IS NULL AND COALESCE(capture_id,'') NOT LIKE 'cpg_dashcam:%'");
+      const sql = `SELECT * FROM alpr_captures ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC LIMIT ?`;
+      params.push(limit);
+      rows = await query<any>(db, sql, ...params);
+    }
     return c.json(rows.map(shapeCapture));
   } catch (err: any) {
     return c.json({ error: err?.message, hint: 'migration 0108/0109 may not have reached live D1' }, 500);
@@ -589,8 +609,22 @@ function shapeCapture(row: any) {
   // capture-level damage isn't taken from an arbitrary secondary vehicle.
   const rawVehicles = Array.isArray(raw?.vehicles) ? raw.vehicles : [];
   const primaryRaw = rawVehicles.find((v: any) => v && v.plate && v.plate === row.plate) ?? rawVehicles[0] ?? null;
+  // Capture source for gallery filtering/badges.
+  const captureId: string = typeof row.capture_id === 'string' ? row.capture_id : '';
+  const source = raw?.source
+    || (captureId.startsWith('cpg_dashcam:') ? 'dashcam'
+      : (row.call_id != null || row.field_photo_id != null) ? 'field'
+      : 'manual');
+  // Detection geometry for the overlay (Roboflow path); empty for plate-only reads.
+  const detections = Array.isArray(raw?.detections) ? raw.detections
+    : Array.isArray(raw?.predictions) ? raw.predictions : [];
   return {
     ...row,
+    source,
+    engine: raw?.engine ?? null,
+    event_type: raw?.eventType ?? null,
+    device_name: raw?.deviceName ?? null,
+    detections,
     alerted: row.alerted === 1 || row.alerted === true,
     enrich_status: row.enrich_status ?? null,
     // Advanced scanner: condition/damage + the 0.85 acceptance gate.

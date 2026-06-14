@@ -88,12 +88,19 @@ export async function alprDashcamClip(
 
   // Fetch the dashcam still (a small JPEG, not the mp4) and read the plate on
   // Workers AI — free, no Roboflow credits. The pre-signed S3 url needs no auth.
+  // We ALSO persist the still to R2 so the capture stays viewable after the
+  // pre-signed S3 url expires (~1h) — the capture gallery serves it from there.
   let read: Awaited<ReturnType<typeof readPlateCloudflare>> = null;
+  let imageKey: string | null = null;
   try {
     const resp = await fetch(imageUrl, { signal: AbortSignal.timeout(30_000) });
     if (!resp.ok) throw new Error(`still fetch ${resp.status}`);
-    const bytes = new Uint8Array(await resp.arrayBuffer());
+    const buf = await resp.arrayBuffer();
+    const bytes = new Uint8Array(buf);
     const mediaType = resp.headers.get('content-type') || 'image/jpeg';
+    imageKey = `alpr-captures/cpg/${args.mapping.cpg_device_id}/${args.event.eventTimestamp}.jpg`;
+    try { await env.UPLOADS.put(imageKey, buf, { httpMetadata: { contentType: mediaType } }); }
+    catch (e) { console.error('[cpg-alpr] still R2 put failed:', (e as Error)?.message); imageKey = null; }
     read = await readPlateCloudflare(env, bytes, mediaType);
   } catch (err) {
     console.error('[cpg-alpr] workers-ai read failed:', (err as Error)?.message);
@@ -141,15 +148,23 @@ export async function alprDashcamClip(
   } catch (err) { console.error('[cpg-alpr] screen failed:', (err as Error)?.message); }
 
   // Capture-level row (best-effort; alpr_captures self-heals in the alpr route).
+  // image_key points at the R2-persisted still so the capture gallery can render
+  // it (and overlay the plate) long after the pre-signed S3 url expires.
   try {
     await execute(db,
-      `INSERT INTO alpr_captures (plate, state, confidence, plate_confidence, accepted, review_status,
-         lat, lng, location_text, captured_by, capture_id, raw_json, created_at)
-       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, datetime('now'))`,
-      plate, confidence, confidence, accepted ? 1 : 0, accepted ? 'accepted' : 'needs_review',
+      `INSERT INTO alpr_captures (plate, state, make, model, color, year, confidence, plate_confidence,
+         accepted, review_status, image_key, lat, lng, location_text, captured_by, capture_id, raw_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, datetime('now'))`,
+      plate, read?.state ?? null, read?.make ?? null, read?.model ?? null, read?.color ?? null, read?.year ?? null,
+      confidence, confidence, accepted ? 1 : 0, accepted ? 'accepted' : 'needs_review', imageKey,
       lat, lng, locationText,
       `cpg_dashcam:${args.mapping.cpg_device_id}:${args.event.eventTimestamp}`,
-      JSON.stringify({ device: args.mapping.cpg_device_id, eventTimestamp: args.event.eventTimestamp, imageUrl }));
+      JSON.stringify({
+        source: 'dashcam', engine: 'workers-ai',
+        device: args.mapping.cpg_device_id, deviceName, eventTimestamp: args.event.eventTimestamp,
+        eventType: args.event.mediaObject?.[0]?.eventType || null,
+        videoId: args.videoId, imageUrl,
+      }));
   } catch { /* non-fatal — background path */ }
 
   await markVideo('done');
