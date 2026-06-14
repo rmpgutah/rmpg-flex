@@ -602,7 +602,7 @@
 // v885: SW-update reload-loop fix — auto-reload capped to once per 5 min
 //       (sw.js byte-flap at the edge looped reloads every 1-3 min = "can't
 //       scroll") + per-path scroll restore across reloads.
-const CACHE_NAME = 'rmpg-flex-v932';
+const CACHE_NAME = 'rmpg-flex-v936';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
