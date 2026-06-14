@@ -10,7 +10,7 @@ import { useIntelContext } from './IntelContext';
 import { recordPath } from './intelTypes';
 import SearchBar from './search/SearchBar';
 import FacetSidebar from './search/FacetSidebar';
-import ResultCard from './search/ResultCard';
+import ResultGroup, { groupByType } from './search/ResultGroup';
 import { useSavedSearches } from './useSavedSearches';
 
 export default function IntelSearch() {
@@ -53,10 +53,13 @@ export default function IntelSearch() {
         <div className="flex-1 min-w-0 space-y-2">
           {loading && <div className="text-[11px] text-[#888]">Searching…</div>}
           {!loading && raw.trim().length >= 2 && clustered.length === 0 && <div className="text-[11px] text-[#888]">No results.</div>}
-          {clustered.map((c) => (
-            <ResultCard key={`${c.hit.type}:${c.hit.id}`} clustered={c}
+          {clustered.length > 0 && (
+            <div className="font-mono text-[9px] text-[#666] px-1">{clustered.length} result{clustered.length === 1 ? '' : 's'}</div>
+          )}
+          {groupByType(clustered).map(([type, items]) => (
+            <ResultGroup key={type} type={type} items={items}
               onSelect={selectEntity}
-              onOpen={(type, id) => navigate(recordPath({ type, id }))} />
+              onOpen={(t, id) => navigate(recordPath({ type: t, id }))} />
           ))}
           {raw.trim().length < 2 && (
             <div className="text-[11px] text-[#555] pt-6 text-center">
