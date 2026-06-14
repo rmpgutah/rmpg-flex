@@ -96,6 +96,14 @@ const ALPR_EXTRA_COLUMNS: Array<[string, string]> = [
   ['reviewed_by', 'INTEGER'], ['reviewed_at', 'TEXT'],
 ];
 
+// Structured per-observation damage/condition on each sighting (migration 0115).
+// Reconciled at runtime too, so the columns the enrich/accept writes target
+// exist even if 0115 never reached live D1 (deploy apply is best-effort).
+const SIGHTING_EXTRA_COLUMNS: Array<[string, string]> = [
+  ['condition', 'TEXT'], ['damage_observed', 'INTEGER'], ['damage_summary', 'TEXT'],
+  ['confidence', 'REAL'],
+];
+
 /** Create the table (with all columns) and reconcile any missing columns at
  *  runtime, so the route self-heals if migration 0108/0109 never reached D1. */
 async function ensureAlprSchema(db: ReturnType<typeof getDb>) {
@@ -118,6 +126,15 @@ async function ensureAlprSchema(db: ReturnType<typeof getDb>) {
       try { await execute(db, `ALTER TABLE alpr_captures ADD COLUMN ${name} ${type}`); }
       catch { /* lost a race or already present — fine */ }
     }
+  }
+  // vehicle_sightings is owned by migration 0100 — never CREATE it here, only
+  // reconcile the structured-damage columns the enrich/accept paths write.
+  for (const [name, type] of SIGHTING_EXTRA_COLUMNS) {
+    try {
+      if (!(await columnExists(db, 'vehicle_sightings', name))) {
+        await execute(db, `ALTER TABLE vehicle_sightings ADD COLUMN ${name} ${type}`);
+      }
+    } catch { /* table absent or lost a race — fine, best-effort */ }
   }
 }
 
@@ -249,10 +266,14 @@ async function enrichCapture(
         try {
           const base = `ALPR: ${[v.color, v.make, v.model, v.year].filter(Boolean).join(' ')}`.trim();
           const note = `${base === 'ALPR:' ? 'ALPR capture' : base}${damageNote(v)}`;
+          // Structured per-observation damage/condition + the read confidence,
+          // alongside the human note (queryable, not buried in free text).
           await execute(db,
-            `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            v.plate, v.state, recordId, args.locationText, args.lat, args.lng, note, args.userId);
+            `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, condition, damage_observed, damage_summary, confidence)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            v.plate, v.state, recordId, args.locationText, args.lat, args.lng, note, args.userId,
+            v.condition ?? null, v.damageObserved == null ? null : (v.damageObserved ? 1 : 0),
+            v.damageSummary ?? null, plateConf);
         } catch (err: any) { console.error('[alpr] enrich sighting failed:', err?.message); }
       }
 
@@ -571,10 +592,17 @@ alpr.post('/capture/:id/accept', operational, async (c) => {
           `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
            VALUES (?, ?, 'observed', 'ALPR (confirmed)', ?, datetime('now'))`, row.call_id, recordId, userId);
       }
+      // Carry the capture's damage/condition onto the confirmed sighting. On a
+      // plate CORRECTION the original read's damage belonged to the wrong plate —
+      // drop it (mirrors the attribute-drop above); confidence likewise.
       await execute(db,
-        `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by)
-         VALUES (?, ?, ?, ?, ?, ?, 'ALPR (confirmed)', ?)`,
-        plate, v.state, recordId, row.location_text ?? null, row.lat ?? null, row.lng ?? null, userId);
+        `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, condition, damage_observed, damage_summary, confidence)
+         VALUES (?, ?, ?, ?, ?, ?, 'ALPR (confirmed)', ?, ?, ?, ?, ?)`,
+        plate, v.state, recordId, row.location_text ?? null, row.lat ?? null, row.lng ?? null, userId,
+        corrected ? null : (row.condition ?? null),
+        corrected ? null : (row.damage_observed ?? null),
+        corrected ? null : (row.damage_summary ?? null),
+        corrected ? null : (row.plate_confidence ?? null));
     } catch (err: any) { console.error('[alpr] accept relink failed:', err?.message); }
   }
 
