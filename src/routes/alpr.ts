@@ -33,6 +33,7 @@ import {
   type AlprVehicle,
 } from '../utils/roboflowAlpr';
 import { readPlateCloudflare, type CloudflarePlateResult } from '../utils/cloudflarePlate';
+import { trustScore } from '../utils/plateTrust';
 
 const alpr = new Hono<Env>();
 
@@ -113,6 +114,22 @@ async function ensureAlprSchema(db: ReturnType<typeof getDb>) {
       catch { /* lost a race or already present — fine */ }
     }
   }
+  // vehicle_capture_photos: per-vehicle trust package + crop key store (migration 0118).
+  // Created here so the route self-heals on fresh deploys before the migration lands.
+  await execute(db, `CREATE TABLE IF NOT EXISTS vehicle_capture_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    capture_id INTEGER, vehicle_record_id INTEGER,
+    canonical_plate TEXT, raw_reads_json TEXT, variants_json TEXT,
+    read_count INTEGER DEFAULT 1, consensus_ratio REAL,
+    trust_score REAL, trust_basis TEXT,
+    full_r2_key TEXT, vehicle_r2_key TEXT, plate_r2_key TEXT,
+    vehicle_bbox_json TEXT, plate_bbox_json TEXT, source_type TEXT,
+    asserted INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')), created_by INTEGER
+  )`);
+  await execute(db, `CREATE INDEX IF NOT EXISTS idx_vcp_capture ON vehicle_capture_photos(capture_id)`);
+  await execute(db, `CREATE INDEX IF NOT EXISTS idx_vcp_plate ON vehicle_capture_photos(canonical_plate)`);
+
   // vehicle_sightings is owned by migration 0100 — never CREATE it here, only
   // reconcile the structured-damage columns the enrich/accept paths write.
   for (const [name, type] of SIGHTING_EXTRA_COLUMNS) {
@@ -206,9 +223,9 @@ interface FinalizeResult {
 }
 
 /** Finalize a capture from a single Cloudflare plate read: screen the plate
- *  (always — officer safety), apply the 0.85 acceptance gate, and only on an
+ *  (always — officer safety), derive trust, apply the 0.80/0.85 gates, and only on an
  *  accepted read create/enrich the authoritative vehicles_records + call link +
- *  sighting. Held (<0.85) reads create nothing as fact (POST /accept promotes).
+ *  sighting. Held (trust < ASSERT_GATE) reads create nothing as fact (POST /accept promotes).
  *  Stamps the alpr_captures row 'done'/'failed'; never throws. */
 async function finalizeCapture(
   env: Env['Bindings'],
@@ -216,7 +233,8 @@ async function finalizeCapture(
   args: {
     captureRowId: number; read: CloudflarePlateResult | null;
     callId: number | null; incidentId: number | null;
-    lat: number | null; lng: number | null; locationText: string | null; userId: number;
+    lat: number | null; lng: number | null; locationText: string | null;
+    userId: number; imageKey: string;
   },
 ): Promise<FinalizeResult> {
   const read = args.read;
@@ -225,9 +243,20 @@ async function finalizeCapture(
     accepted: false, plateConf: read?.confidence ?? null,
   };
   const plate = read?.plate ?? null;
-  const TH = acceptThreshold(env);
-  const accepted = !!plate && (out.plateConf ?? 0) >= TH;
-  out.accepted = accepted;
+
+  // Derive trust from the single Workers AI read. A single read is always hard-capped
+  // below 0.85 by trustScore (no corroboration), so the ASSERT_GATE (acceptThreshold)
+  // must be met by format + model confidence together. The PACKAGE_GATE is looser —
+  // we store the photo package for any marginally-useful read so crop uploads can
+  // be attached later for human review.
+  const reads = plate ? [plate] : [];
+  const trust = trustScore({ reads, modelPct: read?.confidence ?? undefined });
+  const PACKAGE_GATE = 0.80;
+  const ASSERT_GATE = acceptThreshold(env);
+  const canonical = trust.canonical || plate || '';
+  const asserted = !!plate && trust.trustScore >= ASSERT_GATE;
+  const packaged = !!plate && trust.trustScore >= PACKAGE_GATE;
+  out.accepted = asserted;
 
   try {
     if (!plate || !read) {
@@ -235,6 +264,7 @@ async function finalizeCapture(
       return out;
     }
 
+    // Screen UNCONDITIONALLY — officer safety regardless of confidence.
     const screen = await screenVehicle(db, { plate });
     out.hits.push(...screen.hits);
     const critical = screen.hits.filter((h) => h.severity === 'critical');
@@ -243,14 +273,17 @@ async function finalizeCapture(
         await execute(db,
           `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
            VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
-          `${accepted ? '' : 'UNCONFIRMED — verify plate: '}PLATE HIT: ${plate}`,
+          `${asserted ? '' : 'UNCONFIRMED — verify plate: '}PLATE HIT: ${plate}`,
           critical.map((h) => h.detail).join('; '), screen.vehicleId, args.userId);
       } catch (err: any) { console.error('[alpr] notify failed:', err?.message); }
     }
 
     let recordId: number | null = null;
-    if (accepted) {
-      const up = await upsertVehicleRecord(db, cfReadToVehicle(read), screen.vehicleId);
+    // Only write authoritative record attributes when asserted (trust >= ASSERT_GATE).
+    // When not asserted, collapse to the canonical plate but skip enrichment so variant
+    // spellings don't pollute the record.
+    if (asserted) {
+      const up = await upsertVehicleRecord(db, cfReadToVehicle({ ...read, plate: canonical }), screen.vehicleId);
       recordId = up?.id ?? screen.vehicleId ?? null;
       if (recordId) out.recordIds.push(recordId);
       if (recordId && args.callId != null) {
@@ -266,27 +299,54 @@ async function finalizeCapture(
         const sres = await execute(db,
           `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, confidence)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          plate, read.state, recordId, args.locationText, args.lat, args.lng, note, args.userId, out.plateConf);
+          canonical, read.state, recordId, args.locationText, args.lat, args.lng, note, args.userId, out.plateConf);
         out.sightingId = Number(sres.meta.last_row_id);
       } catch (err: any) { console.error('[alpr] sighting failed:', err?.message); }
+    } else if (screen.vehicleId) {
+      // Sub-threshold but existing record — use existing id so the photo package links
+      // to the right vehicle without asserting any attribute updates.
+      recordId = screen.vehicleId;
+    }
+
+    // Persist the vehicle_capture_photos package for any read that clears the lower gate.
+    // The Cloudflare path carries no bbox — all bbox columns are null.
+    let photoRowId: number | null = null;
+    if (packaged) {
+      try {
+        const vcpRes = await execute(db,
+          `INSERT INTO vehicle_capture_photos
+             (capture_id, vehicle_record_id, canonical_plate, raw_reads_json, variants_json,
+              read_count, consensus_ratio, trust_score, trust_basis, full_r2_key,
+              vehicle_bbox_json, plate_bbox_json, source_type, asserted, created_by)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          args.captureRowId, recordId, canonical, JSON.stringify(reads),
+          JSON.stringify(trust.variants), trust.readCount, trust.consensusRatio,
+          trust.trustScore, trust.basis, args.imageKey,
+          null, null,
+          'field', asserted ? 1 : 0, args.userId);
+        photoRowId = Number(vcpRes.meta.last_row_id);
+      } catch (err: any) { console.error('[alpr] vehicle_capture_photos insert failed:', err?.message); }
     }
 
     out.vehicles.push({
-      plate, state: read.state,
-      make: accepted ? read.make : null, model: accepted ? read.model : null,
-      year: accepted ? read.year : null, color: accepted ? read.color : null,
-      vehicle_type: accepted ? read.bodyStyle : null, confidence: out.plateConf,
+      plate, canonical_plate: canonical, state: read.state,
+      make: asserted ? read.make : null, model: asserted ? read.model : null,
+      year: asserted ? read.year : null, color: asserted ? read.color : null,
+      vehicle_type: asserted ? read.bodyStyle : null, confidence: out.plateConf,
+      trust_score: trust.trustScore, trust_basis: trust.basis,
       vehicle_record_id: recordId, vehicle_record_created: recordId != null,
       sighting_id: out.sightingId, hits: screen.hits,
+      photo_row_id: photoRowId,
+      vehicle_bbox: null, plate_bbox: null,
     });
 
     await execute(db,
       `UPDATE alpr_captures SET make=?, model=?, color=?, year=?, state=?, vehicle_type=?,
          plate_confidence=?, accepted=?, review_status=?, sighting_id=?, vehicle_record_ids=?,
          vehicle_count=1, enrich_status='done' WHERE id=?`,
-      accepted ? read.make : null, accepted ? read.model : null, accepted ? read.color : null,
-      accepted ? read.year : null, read.state, accepted ? read.bodyStyle : null,
-      out.plateConf, accepted ? 1 : 0, accepted ? 'accepted' : 'needs_review',
+      asserted ? read.make : null, asserted ? read.model : null, asserted ? read.color : null,
+      asserted ? read.year : null, read.state, asserted ? read.bodyStyle : null,
+      out.plateConf, asserted ? 1 : 0, asserted ? 'accepted' : 'needs_review',
       out.sightingId, JSON.stringify(out.recordIds), args.captureRowId);
   } catch (err: any) {
     console.error('[alpr] finalize failed:', err?.message);
@@ -388,7 +448,7 @@ alpr.post('/capture', operational, async (c) => {
   const captureRowId = Number(ins.meta.last_row_id);
 
   const fin = await finalizeCapture(c.env, db, {
-    captureRowId, read, callId, incidentId, lat, lng, locationText, userId,
+    captureRowId, read, callId, incidentId, lat, lng, locationText, userId, imageKey,
   });
 
   const hits = Array.from(new Map(fin.hits.map((h) => [h.detail, h])).values());
@@ -426,6 +486,20 @@ alpr.post('/capture', operational, async (c) => {
   });
 });
 
+// ── List vehicle_capture_photos packages (honest trust layer) ─
+// GET /packages?plate=&min_trust=  — newest-first, optional filters
+alpr.get('/packages', operational, async (c) => {
+  const db = getDb(c.env); await ensureAlprSchema(db);
+  const plate = c.req.query('plate');
+  const minTrust = c.req.query('min_trust');
+  const where: string[] = []; const args: unknown[] = [];
+  if (plate) { where.push('canonical_plate = ?'); args.push(plate); }
+  if (minTrust) { where.push('trust_score >= ?'); args.push(Number(minTrust)); }
+  const sql = `SELECT * FROM vehicle_capture_photos ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC LIMIT 200`;
+  const rows = await query(db, sql, ...args);
+  return c.json({ packages: rows });
+});
+
 // ── List recent captures ─────────────────────────────────────
 alpr.get('/captures', operational, async (c) => {
   const db = getDb(c.env);
@@ -461,7 +535,28 @@ alpr.get('/captures', operational, async (c) => {
       if (source === 'dashcam') where.push("capture_id LIKE 'cpg_dashcam:%'");
       else if (source === 'field') where.push("(call_id IS NOT NULL OR field_photo_id IS NOT NULL) AND COALESCE(capture_id,'') NOT LIKE 'cpg_dashcam:%'");
       else if (source === 'manual') where.push("call_id IS NULL AND field_photo_id IS NULL AND COALESCE(capture_id,'') NOT LIKE 'cpg_dashcam:%'");
-      const sql = `SELECT * FROM alpr_captures ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC LIMIT ?`;
+      // Left-join the most-recent vehicle_capture_photos package per capture so
+      // the gallery can render TrustBadge without losing event_type / alerted.
+      const baseWhere = where.length ? 'WHERE ' + where.join(' AND ') : '';
+      const sql = `
+        SELECT ac.*,
+               pkg.trust_score    AS pkg_trust_score,
+               pkg.trust_basis    AS pkg_trust_basis,
+               pkg.read_count     AS pkg_read_count,
+               pkg.canonical_plate AS pkg_canonical_plate,
+               pkg.asserted       AS pkg_asserted
+        FROM alpr_captures ac
+        LEFT JOIN (
+          SELECT vcp.*
+          FROM vehicle_capture_photos vcp
+          JOIN (
+            SELECT capture_id, MAX(created_at) AS mx
+            FROM vehicle_capture_photos
+            GROUP BY capture_id
+          ) latest ON vcp.capture_id = latest.capture_id AND vcp.created_at = latest.mx
+        ) pkg ON pkg.capture_id = ac.id
+        ${baseWhere}
+        ORDER BY ac.created_at DESC LIMIT ?`;
       params.push(limit);
       rows = await query<any>(db, sql, ...params);
     }
@@ -582,6 +677,51 @@ alpr.get('/image/*', operational, async (c) => {
   });
 });
 
+// ── Crop upload: attach vehicle/plate crop images to a package row ───────────
+// The capture handler returns photo_row_id per vehicle so the client can POST
+// the crops it extracted client-side (or a server crop job can POST later).
+alpr.post('/capture/:photoRowId/photos', operational, async (c) => {
+  const db = getDb(c.env);
+  await ensureAlprSchema(db);
+  const id = Number(c.req.param('photoRowId'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid photoRowId' }, 400);
+
+  let form: FormData;
+  try { form = await c.req.formData(); }
+  catch { return c.json({ error: 'Expected multipart/form-data' }, 400); }
+
+  const out: Record<string, string> = {};
+  for (const field of ['vehicle', 'plate'] as const) {
+    const entry = form.get(field);
+    const file = entry && typeof entry === 'object' && 'arrayBuffer' in (entry as object)
+      ? (entry as File) : null;
+    if (file) {
+      const key = `alpr/vehicles/${id}/${field}.jpg`;
+      await c.env.UPLOADS.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: 'image/jpeg' } });
+      out[`${field}_r2_key`] = key;
+    }
+  }
+
+  if (Object.keys(out).length === 0) return c.json({ error: 'No crop files provided (fields: vehicle, plate)' }, 400);
+
+  await execute(db,
+    `UPDATE vehicle_capture_photos SET vehicle_r2_key=COALESCE(?,vehicle_r2_key), plate_r2_key=COALESCE(?,plate_r2_key) WHERE id=?`,
+    out.vehicle_r2_key ?? null, out.plate_r2_key ?? null, id);
+
+  return c.json({ success: true, ...out });
+});
+
+// ── Vehicle dossier: all photo packages for a canonical plate ─────────────────
+alpr.get('/vehicle/:plate/dossier', operational, async (c) => {
+  const db = getDb(c.env);
+  await ensureAlprSchema(db);
+  const plate = (c.req.param('plate') ?? '').toUpperCase().replace(/[\s-]/g, '');
+  if (!plate || plate.length < 2) return c.json({ error: 'Invalid plate' }, 400);
+  const rows = await query<Record<string, unknown>>(db,
+    `SELECT * FROM vehicle_capture_photos WHERE canonical_plate = ? ORDER BY created_at DESC`, plate);
+  return c.json({ plate, packages: rows });
+});
+
 // ── helpers ──────────────────────────────────────────────────
 function num(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null;
@@ -661,6 +801,12 @@ function shapeCapture(row: any) {
       : [],
     image_url: imageUrlFor(row.image_key),
     annotated_image_url: imageUrlFor(row.annotated_image_key),
+    // Trust fields from the most-recent vehicle_capture_photos package (may be
+    // null when no package exists yet — client renders UNVERIFIED badge).
+    trust_score: row.pkg_trust_score ?? null,
+    trust_basis: row.pkg_trust_basis ?? null,
+    read_count: row.pkg_read_count ?? null,
+    canonical_plate: row.pkg_canonical_plate ?? null,
   };
 }
 

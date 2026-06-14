@@ -3,17 +3,20 @@
 // drawn over each still, plus a visual filter bar (source / confidence / hits /
 // plate / event type). Captures come from /alpr/captures?gallery=1 (dashcam +
 // field-camera + manual), images served auth-gated via authedImageUrl().
+// Trust fields (trust_score / trust_basis / read_count) are enriched server-side
+// from the most-recent vehicle_capture_photos package so we can render an honest
+// TrustBadge without losing event_type, alerted/HITS, or anything else.
 import { useEffect, useMemo, useState } from 'react';
 import { ScanSearch, RefreshCw, AlertTriangle } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import TrustBadge from './TrustBadge';
+import VehicleDossier from './VehicleDossier';
 import {
   captureSource, sourceLabel, confidenceBand, detectionBoxes, filterCaptures, eventTypeOptions,
   type GalleryCapture, type CaptureFilter, type CaptureSource, type ConfidenceBand,
 } from '../utils/alprOverlay';
 
 const GOLD = '#d4a017';
-
-function pct(n: number) { return `${(n * 100).toFixed(2)}%`; }
 
 /** One capture tile: image + overlay (box or plate chip) + meta footer. */
 function CaptureTile({ cap, onPlate }: { cap: GalleryCapture; onPlate?: (p: string) => void }) {
@@ -22,19 +25,27 @@ function CaptureTile({ cap, onPlate }: { cap: GalleryCapture; onPlate?: (p: stri
   const boxes = useMemo(() => detectionBoxes(cap.detections, nat?.w, nat?.h), [cap.detections, nat]);
   const band = confidenceBand(cap.confidence, cap.accepted);
   const source = captureSource(cap);
-  const conf = cap.confidence != null ? Math.round(cap.confidence * 100) : null;
   const boxColor = cap.alerted ? '#ef4444' : band === 'high' ? GOLD : '#9ca3af';
+
+  // Display plate: prefer canonical_plate (from the trust package) if available.
+  const displayPlate = (cap as any).canonical_plate || cap.plate;
+
+  const trust = {
+    trustScore: (cap as any).trust_score ?? 0,
+    readCount: (cap as any).read_count ?? 1,
+    basis: (cap as any).trust_basis ?? '',
+  };
 
   return (
     <div className="border border-[#232323] bg-[#0b0b0b] hover:border-[#3a3a3a] transition-colors">
       <button
         type="button"
-        onClick={() => cap.plate && onPlate?.(cap.plate)}
+        onClick={() => displayPlate && onPlate?.(displayPlate)}
         className="relative w-full block aspect-[4/3] bg-black overflow-hidden"
-        title={cap.plate || 'capture'}>
+        title={displayPlate || 'capture'}>
         {src ? (
           <img
-            src={authedImageUrl(src)} alt={cap.plate || 'ALPR capture'}
+            src={authedImageUrl(src)} alt={displayPlate || 'ALPR capture'}
             loading="lazy"
             onLoad={(e) => setNat({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
             className="w-full h-full object-cover" />
@@ -54,7 +65,7 @@ function CaptureTile({ cap, onPlate }: { cap: GalleryCapture; onPlate?: (p: stri
           </svg>
         )}
 
-        {/* Top badges: source + hit. */}
+        {/* Top badges: source + event type + hit. */}
         <div className="absolute top-1 left-1 flex items-center gap-1">
           <span className="text-[8px] font-bold tracking-wider px-1 py-[1px] bg-black/75 text-[#bbb] border border-[#333]">
             {sourceLabel(source)}
@@ -71,20 +82,16 @@ function CaptureTile({ cap, onPlate }: { cap: GalleryCapture; onPlate?: (p: stri
           </span>
         )}
 
-        {/* ALPR plate chip overlay — always present (the headline read). */}
+        {/* ALPR plate chip overlay — always present (the headline read).
+            Raw confidence % replaced by honest TrustBadge. */}
         <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/90 to-transparent">
           <div className="flex items-end justify-between gap-1">
             <span
               className="text-base leading-none tracking-[0.18em] font-semibold"
               style={{ color: cap.alerted ? '#fca5a5' : band === 'high' ? '#fff' : '#cbd5e1' }}>
-              {cap.plate || '—'}
+              {displayPlate || '—'}
             </span>
-            {conf != null && (
-              <span className="text-[9px] font-mono px-1 border"
-                style={{ color: boxColor, borderColor: boxColor }}>
-                {conf}%
-              </span>
-            )}
+            <TrustBadge trust={trust} />
           </div>
         </div>
       </button>
@@ -109,6 +116,12 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<CaptureFilter>({ source: 'all', band: 'all', hits: 'all' });
+  const [dossierPlate, setDossierPlate] = useState<string | null>(null);
+
+  const handlePlate = (plate: string) => {
+    setDossierPlate(plate);
+    onPlate?.(plate);
+  };
 
   const load = () => {
     setLoading(true); setErr(null);
@@ -182,8 +195,12 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-        {shown.map((cap) => <CaptureTile key={cap.id} cap={cap} onPlate={onPlate} />)}
+        {shown.map((cap) => <CaptureTile key={cap.id} cap={cap} onPlate={handlePlate} />)}
       </div>
+
+      {dossierPlate && (
+        <VehicleDossier plate={dossierPlate} onClose={() => setDossierPlate(null)} />
+      )}
     </div>
   );
 }
