@@ -1,5 +1,6 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import PlateLogPage from '../PlateLogPage';
 
 const apiFetch = vi.fn(async (path: string, init?: RequestInit) => {
@@ -10,9 +11,19 @@ const apiFetch = vi.fn(async (path: string, init?: RequestInit) => {
   };
   // The ALPR review queue (sub-85% holds) is empty in this test.
   if (path.includes('/alpr/captures')) return [];
+  // ClearPath panel status calls — return benign "not configured" shapes.
+  if (path.includes('/clearpathgps/status')) return { configured: false, enabled: false, active_mappings: 0 };
+  if (path.includes('/clearpathgps/media-status')) return { total_synced_clips: 0, last_media_sync: null };
   return [{ id: 1, plate: 'XYZ789', location_text: 'Main St', notes: null, created_at: '2026-06-12T10:00:00' }];
 });
-vi.mock('../../hooks/useApi', () => ({ apiFetch: (...a: any[]) => apiFetch(...(a as [string])) }));
+vi.mock('../../hooks/useApi', () => ({
+  apiFetch: (...a: any[]) => apiFetch(...(a as [string])),
+  apiPostForm: vi.fn(),
+  authedImageUrl: (u: string) => u,
+}));
+// SightingsMap pulls in Mapbox GL (no WebGL in jsdom) — stub it; the map isn't
+// under test here.
+vi.mock('../../components/SightingsMap', () => ({ default: () => null }));
 
 describe('PlateLogPage', () => {
   beforeEach(() => {
@@ -20,7 +31,7 @@ describe('PlateLogPage', () => {
   });
 
   it('logs a plate and renders the critical hit banner + recent sightings', async () => {
-    render(<PlateLogPage />);
+    render(<MemoryRouter><PlateLogPage /></MemoryRouter>);
     await waitFor(() => expect(screen.getByText('XYZ789')).toBeInTheDocument());
     fireEvent.change(screen.getByPlaceholderText('PLATE'), { target: { value: 'abc123' } });
     fireEvent.click(screen.getByText('LOG + CHECK'));
