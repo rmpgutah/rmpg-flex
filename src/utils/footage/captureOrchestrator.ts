@@ -1,9 +1,7 @@
 // src/utils/footage/captureOrchestrator.ts
 import type { Bindings } from '../../types';
 import { getDb, query, queryFirst, execute } from '../db';
-import { detectGaps } from './splitWindow';
 import { getClearPathSource } from './clearpathSource';
-import type { ChunkRow } from './types';
 
 const R2_PREFIX = 'flexcam/trips/';
 const MAX_DOWNLOADS_PER_RUN = 40;
@@ -45,6 +43,7 @@ export async function enqueueFootage(env: Bindings, args: EnqueueArgs): Promise<
   const source = await getClearPathSource(db, env);
   if (!source) return null;
 
+  // Idempotency is a non-atomic check-then-insert (TOCTOU); acceptable for the once-per-minute single-isolate cron + low API-route call volume.
   const dup = await queryFirst<{ id: number }>(db,
     `SELECT id FROM footage_requests WHERE asset_id=? AND from_ts=? AND to_ts=? AND reason=? LIMIT 1`,
     args.assetId, args.fromTs, args.toTs, args.reason).catch(() => null);
@@ -86,9 +85,7 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
      WHERE ch.status = 'requested' ORDER BY ch.request_id, ch.seq LIMIT ?`, MAX_DOWNLOADS_PER_RUN).catch(() => []);
 
   let downloaded = 0, missing = 0;
-  const touched = new Set<number>();
   for (const ch of pending) {
-    touched.add(ch.request_id);
     const st = await source.pollChunk(ch.asset_id, {
       seq: ch.seq, vendorId: ch.vendor_media_id, fromTs: ch.from_ts, toTs: ch.to_ts, channel: ch.channel,
     }).catch(() => ({ state: 'requested' as const }));
@@ -103,6 +100,7 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
         const alpr = ch.channel === 'inside' ? 'skipped' : 'pending';
         await execute(db, `UPDATE footage_chunks SET status='downloaded', r2_key=?, content_type=?, bytes=?, alpr_status=?, updated_at=datetime('now') WHERE id=?`,
           key, ct, bytes, alpr, ch.id);
+        // NOTE: stateless-cron two-step write — a Worker eviction between R2 put and this update can re-download + double-count chunks_done (informational only; R2 put is idempotent by key). Accepted, same as clearpathSync.
         await execute(db, `UPDATE footage_requests SET chunks_done = chunks_done + 1, bytes = bytes + ?, updated_at=datetime('now') WHERE id=?`, bytes, ch.request_id);
         downloaded++;
         if (alpr === 'pending') {
@@ -112,6 +110,11 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
             await execute(db, `UPDATE footage_chunks SET alpr_status='done' WHERE id=?`, ch.id);
           } catch (e) { console.error('[flexcam-alpr] failed:', (e as Error).message); }
         }
+      } else if (ch.attempts + 1 >= MAX_POLL_ATTEMPTS) {
+        await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
+        missing++;
+      } else {
+        await execute(db, `UPDATE footage_chunks SET attempts = attempts + 1, updated_at=datetime('now') WHERE id=?`, ch.id);
       }
     } else if (st.state === 'missing' || ch.attempts + 1 >= MAX_POLL_ATTEMPTS) {
       await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
@@ -121,14 +124,17 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
     }
   }
 
-  for (const reqId of touched) {
-    const rows = await query<ChunkRow>(db, `SELECT seq, status, r2_key FROM footage_chunks WHERE request_id=?`, reqId).catch(() => []);
-    if (!rows.length) continue;
-    const open = rows.some((r) => r.status === 'requested');
-    if (open) continue;
-    const status = detectGaps(rows).length ? 'partial' : 'complete';
-    await execute(db, `UPDATE footage_requests SET status=?, updated_at=datetime('now') WHERE id=?`, status, reqId);
-  }
+  // Close any request whose chunks are all resolved (none still 'requested').
+  // 'partial' if any chunk is 'missing', else 'complete'. Idempotent; catches
+  // requests whose last chunk resolved on an earlier tick (not just this batch).
+  await execute(db, `
+    UPDATE footage_requests
+    SET status = CASE WHEN EXISTS (
+          SELECT 1 FROM footage_chunks WHERE request_id = footage_requests.id AND status = 'missing'
+        ) THEN 'partial' ELSE 'complete' END,
+        updated_at = datetime('now')
+    WHERE status IN ('queued','fulfilling')
+      AND NOT EXISTS (SELECT 1 FROM footage_chunks WHERE request_id = footage_requests.id AND status = 'requested')`).catch(() => {});
   return { downloaded, missing };
 }
 

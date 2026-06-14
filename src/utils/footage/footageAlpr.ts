@@ -109,8 +109,9 @@ async function persistVehicle(
   // Always log a sighting (feeds /intel/plate-log). No GPS on a chunk → null.
   try {
     await execute(db,
+      // sighted_by=0 = automated FlexCam ingest (column is NOT NULL)
       `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, confidence)
-       VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?)`,
+       VALUES (?, ?, ?, ?, NULL, NULL, ?, 0, ?)`,
       plate, v.state, vehicleId, locationText,
       `FlexCam footage ${deviceId ?? ''}`.trim() + (accepted ? '' : ' (unconfirmed <0.85)'),
       v.confidence);
@@ -172,6 +173,7 @@ export async function alprFootageChunk(
   }
 
   if (!vehicles.length) return; // no plate read from the chunk — nothing to log
+  // NOTE: Phase 1 intentionally does not write an alpr_captures row for footage chunks (plates still land in vehicle_sightings / plate-log). Revisit if footage plates need to surface in the ALPR captures UI.
   const locationText = `FlexCam ${deviceId ?? ''}`.trim() || 'FlexCam footage';
   for (const v of vehicles) {
     await persistVehicle(db, v, deviceId, locationText);
