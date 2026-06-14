@@ -349,7 +349,9 @@ alpr.post('/capture', operational, async (c) => {
 
   if (fast.plate) {
     const v: AlprVehicle = { plate: fast.plate, state: fast.state, make: null, model: null,
-      color: null, year: null, vehicleType: null, plateType: null, confidence: null };
+      color: null, year: null, vehicleType: null, plateType: null, confidence: null,
+      condition: null, damageObserved: null, damageSummary: null, damageAreas: [],
+      aftermarket: null, confidences: {} };
     const screen = await screenVehicle(db, { plate: fast.plate });
     const up = await upsertVehicleRecord(db, v, screen.vehicleId);
     const recordId = up?.id ?? screen.vehicleId ?? null;
