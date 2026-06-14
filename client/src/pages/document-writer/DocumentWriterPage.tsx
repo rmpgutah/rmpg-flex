@@ -300,7 +300,10 @@ export default function DocumentWriterPage() {
       '.rlh-name{font-size:15pt;font-weight:700;letter-spacing:0.03em}.rlh-sub{font-size:9pt;color:#444}',
       `.body-cols{column-count:${columns};column-gap:24px}`,
       'h1{font-size:1.9em}h2{font-size:1.5em}h3{font-size:1.25em}h4{font-size:1.1em}p{margin:0 0 0.5em}a{color:#000}',
-      'table{border-collapse:collapse;width:100%}td,th{border:1px solid #333;padding:6px}img{max-width:100%}',
+      // table-layout:fixed + cell overflow:hidden stop multi-column rows (the
+      // signature block's unbreakable underscore "line" especially) from
+      // overflowing the page — they divide the width evenly and clip instead.
+      'table{border-collapse:collapse;width:100%;table-layout:fixed}td,th{border:1px solid #333;padding:6px;overflow:hidden}img{max-width:100%}',
       'blockquote{border-left:3px solid #000;padding-left:1em;font-style:italic}',
       'p.drop-cap::first-letter{float:left;font-size:3.4em;line-height:0.8;font-weight:700;padding-right:6px}',
       '.doc-page-break{break-after:page}.doc-section-break{break-after:column}',

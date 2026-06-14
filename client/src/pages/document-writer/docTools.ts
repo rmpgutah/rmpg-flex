@@ -323,7 +323,10 @@ export function buildStandaloneHtml(opts: {
     '.lh-name{font-size:16pt;font-weight:700;letter-spacing:.03em}.lh-sub{font-size:9pt;color:#555}',
     'h1{font-size:1.9em}h2{font-size:1.5em}h3{font-size:1.25em}h4{font-size:1.1em}',
     'p{margin:0 0 .55em}a{color:#0645ad}',
-    'table{border-collapse:collapse;width:100%;margin:8px 0}td,th{border:1px solid #333;padding:6px;text-align:left}',
+    // table-layout:fixed + cell overflow:hidden keep multi-column rows (esp.
+    // signature blocks, whose "line" is an unbreakable underscore run) from
+    // overflowing the printable page width — see sigBlockLayout.test.ts.
+    'table{border-collapse:collapse;width:100%;table-layout:fixed;margin:8px 0}td,th{border:1px solid #333;padding:6px;text-align:left;overflow:hidden}',
     'th{background:#f0f0f0}img{max-width:100%}',
     'blockquote{border-left:3px solid #888;padding-left:1em;font-style:italic;color:#333}',
     'ul,ol{margin:0 0 .55em 1.4em}hr{border:none;border-top:1px solid #ccc;margin:1em 0}',
