@@ -247,7 +247,12 @@ export async function runFullListLeg(
             console.warn(`[warrantSources.runScan.chunk] ${key} clear sweep failed:`, err instanceof Error ? err.message : String(err));
             return 0;
           });
-          await completeSourceCycle(db, key, now());
+          // Guard separately so a completion failure logs accurately (not as a
+          // misleading "fetchChunk failed" in the outer catch) and doesn't inflate
+          // the error count — the sweep is idempotent, so the next tick re-completes.
+          await completeSourceCycle(db, key, now()).catch((err) => {
+            console.warn(`[warrantSources.runScan.chunk] ${key} completeSourceCycle failed:`, err instanceof Error ? err.message : String(err));
+          });
         } else {
           // Mid-cycle / truncated → persist cursor, SKIP the clear-sweep so the
           // un-ingested tail (and prior chunks) are never wrongly cleared.
@@ -255,8 +260,10 @@ export async function runFullListLeg(
         }
       } catch (err) {
         errors++;
-        console.warn(`[warrantSources.runScan.chunk] ${key} fetchChunk failed:`, err instanceof Error ? err.message : String(err));
+        console.warn(`[warrantSources.runScan.chunk] ${key} chunk tick failed:`, err instanceof Error ? err.message : String(err));
       }
+      // checked:0 — the chunked leg walks the REMOTE roster, not the local persons
+      // list, so the per-person 'checked' metric doesn't apply here.
       out.push({ source_key: key, checked: 0, found, cleared, errors });
       continue;
     }
