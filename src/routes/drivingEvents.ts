@@ -12,7 +12,7 @@
 
 import { Hono, type Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst } from '../utils/db';
+import { getDb, query, queryFirst, execute } from '../utils/db';
 import { classifyDrivingEvent, fleetStatusFor } from '../utils/drivingEvents';
 import { getApiConfig, listMedia, type CpgMediaObject } from '../utils/clearpathGps';
 
@@ -196,6 +196,24 @@ drivingEvents.get('/plate-history', async (c: Context<Env>): Promise<Response> =
   } catch (err: any) {
     return c.json({ plate, count: 0, sightings: [], error: err?.message }, 200);
   }
+});
+
+// Chain-of-custody audit write for forensic actions (view/export/rescan).
+// Lives here (operational-gated) rather than under /api/audit (admin/manager only).
+drivingEvents.post('/audit-log', async (c: Context<Env>): Promise<Response> => {
+  const db = getDb(c.env);
+  let body: { action?: string; event_id?: number; details?: string };
+  try { body = await c.req.json(); } catch { return c.json({ ok: false }, 200); }
+  const action = (body.action || 'forensic_access').toString().slice(0, 64);
+  const userId = Number((c.get('user') as any)?.id) || (c.get('userId') as number) || null;
+  const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || null;
+  try {
+    await execute(db,
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+       VALUES (?, ?, 'dashcam_event', ?, ?, ?, datetime('now'))`,
+      userId, action, body.event_id ?? null, (body.details || '').toString().slice(0, 500), ip);
+  } catch { /* best-effort — never block the UI on an audit write */ }
+  return c.json({ ok: true });
 });
 
 // ── Single event (detail) ────────────────────────────────────

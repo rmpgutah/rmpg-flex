@@ -9,12 +9,14 @@
 // driving-analysis readout (distance, peak g-forces, event verdict).
 // ============================================================
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Gauge, Navigation, AlertTriangle, Activity, Car, MapPin, Loader2, ScanSearch, Route, Camera, Moon, ZoomIn, ShieldAlert, Layers } from 'lucide-react';
-import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import { X, Gauge, Navigation, AlertTriangle, Activity, Car, MapPin, Loader2, ScanSearch, Route, Camera, Moon, ZoomIn, ShieldAlert, Layers, FileText, RefreshCw } from 'lucide-react';
+import { apiFetch, apiPostForm, authedImageUrl } from '../hooks/useApi';
 import {
   instAccelG, activeThreats, severityColor, zoomTransform, evidenceStampLines, evidenceFilename,
   type Threat,
 } from '../utils/tacticalForensics';
+import { enhancePlateImage } from '../utils/alprImagePrep';
+import { exportForensicReport } from '../utils/forensicReportPdf';
 import {
   trackStats, normalizeTrack, positionAtTime, speedColor, compass, forensicVerdict,
   type GpsPoint, type TrackPoint,
@@ -225,21 +227,30 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     return Math.max(0, Math.min(100, (t / dur) * 100));
   }, [t, trackPts, media]);
 
-  // Evidence frame capture — annotated frame (boxes + plate) + a burned-in
-  // chain-of-custody stamp, downloaded as a JPG. The stream is same-origin
-  // (Worker proxy) so the canvas isn't tainted.
-  const captureEvidence = () => {
+  // Best-effort chain-of-custody audit write (never blocks the UI).
+  const logAudit = (action: string, details: string) => {
+    apiFetch('/api/driving-events/audit-log', { method: 'POST', body: JSON.stringify({ action, event_id: eventId, details }) }).catch(() => {});
+  };
+  const evidenceMeta = () => ({
+    eventType: media?.event_type || evType, address: media?.address || address,
+    timestamp: media?.event_timestamp, lat: pos?.latitude, lng: pos?.longitude,
+    speed: speedNow, plate: media?.plate, playbackTime: t, device: media ? String(media.id) : null,
+  });
+
+  // Compose the annotated frame (video + tracked boxes + plate + stamp) onto a
+  // canvas. Same-origin stream (Worker proxy) → untainted. Returns null on fail.
+  const composeFrameCanvas = (withStamp = true): HTMLCanvasElement | null => {
     const v = videoRef.current;
-    if (!v || !nat) return;
+    if (!v || !nat) return null;
     const W = nat.w, H = nat.h;
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    try { ctx.drawImage(v, 0, 0, W, H); } catch { return; }
+    if (!ctx) return null;
+    try { ctx.drawImage(v, 0, 0, W, H); } catch { return null; }
     ctx.lineWidth = Math.max(2, W / 380);
     for (const tr of tracks) {
-      ctx.strokeStyle = primary && tr.id === primary.id ? '#d4a017' : '#7dd3fc';
+      ctx.strokeStyle = primary && tr.id === primary.id ? (critical.length ? '#ef4444' : '#d4a017') : '#7dd3fc';
       ctx.strokeRect(tr.bbox[0], tr.bbox[1], tr.bbox[2], tr.bbox[3]);
     }
     if (primary && media?.plate) {
@@ -248,29 +259,75 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
       ctx.font = `bold ${Math.round(H * 0.03)}px monospace`; ctx.fillStyle = '#22d3ee';
       ctx.fillText(media.plate, px, Math.max(20, py - 8));
     }
-    const meta = {
-      eventType: media?.event_type || evType, address: media?.address || address,
-      timestamp: media?.event_timestamp, lat: pos?.latitude, lng: pos?.longitude,
-      speed: speedNow, plate: media?.plate, playbackTime: t,
-    };
-    const lines = evidenceStampLines(meta);
-    const fs = Math.max(12, Math.round(H * 0.022));
-    const stripH = fs * (lines.length + 0.6) + 12;
-    ctx.fillStyle = 'rgba(0,0,0,0.68)'; ctx.fillRect(0, H - stripH, W, stripH);
-    ctx.textBaseline = 'top';
-    lines.forEach((l, i) => {
-      ctx.font = `${i === 0 ? 'bold ' : ''}${fs}px sans-serif`;
-      ctx.fillStyle = i === 0 ? '#d4a017' : '#e5e5e5';
-      ctx.fillText(l, 12, H - stripH + 6 + i * fs * 1.18);
-    });
+    if (withStamp) {
+      const lines = evidenceStampLines(evidenceMeta());
+      const fs = Math.max(12, Math.round(H * 0.022));
+      const stripH = fs * (lines.length + 0.6) + 12;
+      ctx.fillStyle = 'rgba(0,0,0,0.68)'; ctx.fillRect(0, H - stripH, W, stripH);
+      ctx.textBaseline = 'top';
+      lines.forEach((l, i) => {
+        ctx.font = `${i === 0 ? 'bold ' : ''}${fs}px sans-serif`;
+        ctx.fillStyle = i === 0 ? '#d4a017' : '#e5e5e5';
+        ctx.fillText(l, 12, H - stripH + 6 + i * fs * 1.18);
+      });
+    }
+    return canvas;
+  };
+
+  // Evidence frame → JPG download + audit.
+  const captureEvidence = () => {
+    const canvas = composeFrameCanvas(true);
+    if (!canvas) return;
     canvas.toBlob((b) => {
       if (!b) return;
       const url = URL.createObjectURL(b);
-      const a = document.createElement('a'); a.href = url; a.download = evidenceFilename(meta); a.click();
+      const a = document.createElement('a'); a.href = url; a.download = evidenceFilename(evidenceMeta()); a.click();
       setTimeout(() => URL.revokeObjectURL(url), 3000);
     }, 'image/jpeg', 0.95);
+    logAudit('forensic_frame_capture', `t+${t.toFixed(1)}s${media?.plate ? ` plate ${media.plate}` : ''}`);
   };
   captureRef.current = captureEvidence;
+
+  // Forensic PDF report — annotated frame + telemetry + GPS plot + intel.
+  const exportReport = () => {
+    const canvas = composeFrameCanvas(false);
+    const frameDataUrl = canvas ? canvas.toDataURL('image/jpeg', 0.9) : null;
+    exportForensicReport({
+      eventType: evType, rawEventType: media?.event_type, address: media?.address || address,
+      timestamp: media?.event_timestamp, device: media ? String(media.id) : null,
+      lat: pos?.latitude, lng: pos?.longitude,
+      plate: media?.plate, plateConfidence: media?.plate_confidence, vehicleTag: vTag,
+      priorCount: prior?.count ?? null, priorDays: prior?.distinct_days ?? null,
+      hits, verdict, stats, trackPts, frameDataUrl,
+    });
+    logAudit('forensic_report_export', `${stats.maxSpeed.toFixed(0)}mph peak${media?.plate ? ` plate ${media.plate}` : ''}`);
+  };
+
+  // Best-frame plate re-scan — crop the primary vehicle, enhance, re-OCR via ALPR.
+  const [rescan, setRescan] = useState<{ busy: boolean; result: string | null }>({ busy: false, result: null });
+  const rescanPlate = async () => {
+    const canvas = composeFrameCanvas(false);
+    if (!canvas || !primary || !nat) { setRescan({ busy: false, result: 'No target vehicle in frame' }); return; }
+    setRescan({ busy: true, result: null });
+    try {
+      // crop the primary vehicle (padded) for a tighter, higher-res plate
+      const [bx, by, bw, bh] = clampBox([primary.bbox[0] - primary.bbox[2] * 0.1, primary.bbox[1] - primary.bbox[3] * 0.1, primary.bbox[2] * 1.2, primary.bbox[3] * 1.2], nat.w, nat.h);
+      const crop = document.createElement('canvas'); crop.width = bw; crop.height = bh;
+      crop.getContext('2d')!.drawImage(canvas, bx, by, bw, bh, 0, 0, bw, bh);
+      const raw: Blob = await new Promise((res) => crop.toBlob((b) => res(b as Blob), 'image/jpeg', 0.95));
+      const enhanced = await enhancePlateImage(raw, { targetWidth: 1280, maxWidth: 1600, contrast: true, sharpen: 1.0 });
+      const fd = new FormData();
+      fd.append('image', enhanced, 'rescan.jpg');
+      fd.append('capture_reason', 'forensic_rescan');
+      const r = await apiPostForm<{ capture?: { plate?: string | null; confidence?: number | null }; hits?: any[] }>('/alpr/capture', fd);
+      const got = r?.capture?.plate || null;
+      if (got) { setMedia((m) => (m ? { ...m, plate: got, plate_confidence: r.capture?.confidence ?? m.plate_confidence } : m)); screenedRef.current = ''; }
+      setRescan({ busy: false, result: got ? `Read: ${got}` : 'No plate resolved' });
+      logAudit('forensic_plate_rescan', got ? `read ${got}` : 'no read');
+    } catch (e) {
+      setRescan({ busy: false, result: 'Re-scan failed' });
+    }
+  };
 
   // Digital-zoom transform on the primary track.
   const zoom = useMemo(() => (zoomOn && primary ? zoomTransform(primary.bbox, natW, natH) : null), [zoomOn, primary, natW, natH]);
@@ -305,6 +362,14 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
               <button onClick={() => captureRef.current()} title="Capture evidence frame (c)"
                 className="p-1 border border-[#2a2a2a] text-rmpg-300 hover:border-[#d4a017]" aria-label="Capture evidence frame">
                 <Camera className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={rescanPlate} disabled={rescan.busy} title="Re-scan plate from the target vehicle (best-frame OCR)"
+                className="p-1 border border-[#2a2a2a] text-rmpg-300 hover:border-[#d4a017] disabled:opacity-50" aria-label="Re-scan plate">
+                {rescan.busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              </button>
+              <button onClick={exportReport} title="Export forensic PDF report"
+                className="text-[10px] font-semibold px-1.5 py-1 border border-[#2a2a2a] text-rmpg-300 hover:border-[#d4a017] flex items-center gap-1" aria-label="Export forensic report">
+                <FileText className="w-3.5 h-3.5" /> REPORT
               </button>
               <span className="w-px h-4 bg-[#2a2a2a]" />
             </>
@@ -570,6 +635,12 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
         </div>
       )}
 
+      {rescan.result && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/90 border border-[#d4a017] text-[#d4a017] text-[11px] font-mono tracking-wider flex items-center gap-2">
+          <ScanSearch className="w-3.5 h-3.5" /> PLATE RE-SCAN — {rescan.result}
+          <button onClick={() => setRescan({ busy: false, result: null })} className="text-rmpg-500 hover:text-white ml-1" aria-label="Dismiss">×</button>
+        </div>
+      )}
       {dossier && <PlateDossier plate={dossier} onClose={() => setDossier(null)} />}
     </div>
   );
