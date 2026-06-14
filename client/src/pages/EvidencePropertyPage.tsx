@@ -25,7 +25,6 @@ import { useAuth } from '../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import type { BodyCamVideo } from '../types';
-import EmailedDocuments from '../components/EmailedDocuments';
 import { parseTimestamp } from '../utils/dateUtils';
 
 // ─── Constants ─────────────────────────────────────────
@@ -813,9 +812,6 @@ export default function EvidencePropertyPage() {
                       <div className="text-[10px] text-rmpg-500">Item already {selected.status.replace(/_/g, ' ')}</div>
                     )}
                   </div>
-
-                  {/* Emailed Documents (outbound PDFs sent from this record) */}
-                  {selected && <EmailedDocuments recordType="evidence" recordId={selected.id} />}
                 </div>
               )}
 

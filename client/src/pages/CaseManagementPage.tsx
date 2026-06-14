@@ -21,7 +21,6 @@ import EmptyState from '../components/EmptyState';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import FileAttachments from '../components/FileAttachments';
-import EmailedDocuments from '../components/EmailedDocuments';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -1413,7 +1412,6 @@ export default function CaseManagementPage() {
               {/* File Attachments */}
               <div className="panel-beveled p-3 bg-surface-base">
                 <FileAttachments entityType="case" entityId={String(selected.id)} />
-                <EmailedDocuments recordType="case" recordId={selected.id} />
               </div>
             </div>
           </>

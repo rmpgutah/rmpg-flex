@@ -34,6 +34,7 @@ import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuC
 import { useMenuActions } from '../../utils/contextMenuActions';
 import EvidenceFormModal from '../../components/EvidenceFormModal';
 import FileAttachments from '../../components/FileAttachments';
+import EmailedDocuments from '../../components/EmailedDocuments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import RecordField from '../../components/records/RecordField';
@@ -795,6 +796,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         {/* ── File Attachments ─────────────────── */}
         <div className="panel-beveled p-3 bg-surface-base">
           <FileAttachments entityType="evidence" entityId={String(selectedEvidence.id)} />
+          <EmailedDocuments recordType="evidence" recordId={selectedEvidence.id} />
         </div>
       </div>
     </div>

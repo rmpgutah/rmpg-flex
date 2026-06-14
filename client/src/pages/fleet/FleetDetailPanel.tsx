@@ -31,6 +31,7 @@ import { formatMilitary } from './utils/fleetFormatters';
 import { generateFleetFuelReport } from './utils/fleetFuelReport';
 import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
+import EmailedDocuments from '../../components/EmailedDocuments';
 
 export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'dashcam' | 'fuel_cards';
 export type CostSubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
@@ -428,7 +429,13 @@ export default function FleetDetailPanel({
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto min-h-0 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
-        {activeTab === 'overview' && <FleetOverviewTab detail={detail} maintenance={maintenance} onEditMaintenance={onEditMaintenance} onDeleteMaintenance={onDeleteMaintenance} />}
+        {activeTab === 'overview' && (
+          <>
+            <FleetOverviewTab detail={detail} maintenance={maintenance} onEditMaintenance={onEditMaintenance} onDeleteMaintenance={onDeleteMaintenance} />
+            {/* Emailed Documents (outbound PDFs sent from this record) */}
+            <div className="p-2"><EmailedDocuments recordType="fleet" recordId={detail.id} /></div>
+          </>
+        )}
         {activeTab === 'fuel' && (
           <FleetFuelTab
             fuelLogs={fuelLogs}

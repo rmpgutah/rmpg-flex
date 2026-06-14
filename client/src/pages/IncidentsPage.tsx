@@ -38,7 +38,6 @@ import IconButton from '../components/IconButton';
 import IncidentFormModal, { type IncidentFormData } from '../components/IncidentFormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import FileAttachments from '../components/FileAttachments';
-import EmailedDocuments from '../components/EmailedDocuments';
 import LinkPersonModal from '../components/LinkPersonModal';
 import LinkVehicleModal from '../components/LinkVehicleModal';
 import EvidenceFormModal from '../components/EvidenceFormModal';
@@ -2179,7 +2178,6 @@ export default function IncidentsPage() {
             entityId={selectedIncident.id}
             readOnly={!isGodMode && !isAdmin && !['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)}
           />
-          <EmailedDocuments recordType="incident" recordId={selectedIncident.id} />
         </CollapsibleSection>
 
         {/* Linked Emails (autolinker + manual) */}
