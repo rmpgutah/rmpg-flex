@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizePlate, formatScore, consensus } from '../src/utils/plateTrust';
+import { normalizePlate, formatScore, consensus, trustScore } from '../src/utils/plateTrust';
 
 describe('normalizePlate', () => {
   it('uppercases and strips non-alphanumerics', () => {
@@ -33,5 +33,23 @@ describe('consensus', () => {
     expect(r.canonical).toBe('ABC123');
     expect(r.ratio).toBe(1);
     expect(r.readCount).toBe(1);
+  });
+});
+
+describe('trustScore', () => {
+  it('multi-frame agreement on a format-valid plate beats a lone model 100%', () => {
+    const strong = trustScore({ reads: ['5KJH345', '5KJH345', '5KJH345'], modelPct: 0.6 });
+    const lone = trustScore({ reads: ['5KJH345'], modelPct: 1.0 });
+    expect(strong.trustScore).toBeGreaterThan(lone.trustScore);
+  });
+  it('caps a single read below the 0.85 assert gate no matter the model %', () => {
+    const r = trustScore({ reads: ['5KJH345'], modelPct: 1.0 });
+    expect(r.trustScore).toBeLessThan(0.85);
+    expect(r.basis).toContain('single read');
+  });
+  it('surfaces the canonical plate and a human basis', () => {
+    const r = trustScore({ reads: ['KJH345', 'KJH345'], modelPct: 0.8 });
+    expect(r.canonical).toBe('KJH345');
+    expect(typeof r.basis).toBe('string');
   });
 });

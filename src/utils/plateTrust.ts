@@ -61,3 +61,49 @@ export function consensus(reads: string[]): ConsensusResult {
 
   return { canonical, ratio: bestArr.length / valid.length, readCount: valid.length, variants };
 }
+
+export interface TrustInput {
+  reads: string[];
+  modelPct?: number;
+}
+export interface TrustResult {
+  canonical: string;
+  trustScore: number;
+  basis: string;
+  consensusRatio: number;
+  readCount: number;
+  variants: { plate: string; count: number }[];
+  jurisdiction: string | null;
+}
+
+/** Derived trust. Consensus dominates; format validity is a strong factor; the
+ *  model's self-reported % is at most a small tiebreaker. A single read is hard-
+ *  capped below the assert gate (no corroboration). */
+export function trustScore(input: TrustInput): TrustResult {
+  const c = consensus(input.reads);
+  const fmt = formatScore(c.canonical);
+  const parts: string[] = [];
+
+  const consensusComponent = c.readCount <= 1 ? 0.45 : 0.45 + 0.30 * c.ratio;
+  if (c.readCount <= 1) parts.push('single read — unverified');
+  else parts.push(`${Math.round(c.ratio * c.readCount)}/${c.readCount} agree`);
+
+  const formatComponent = 0.20 * fmt.score;
+  if (fmt.jurisdiction) parts.push(`${fmt.jurisdiction} format valid`);
+  else parts.push('no known format');
+
+  const tiebreaker = 0.05 * (input.modelPct ?? 0);
+
+  let score = consensusComponent + formatComponent + tiebreaker;
+  if (c.readCount <= 1) score = Math.min(score, 0.84);
+
+  return {
+    canonical: c.canonical,
+    trustScore: Math.max(0, Math.min(1, Number(score.toFixed(3)))),
+    basis: parts.join(' · '),
+    consensusRatio: c.ratio,
+    readCount: c.readCount,
+    variants: c.variants,
+    jurisdiction: fmt.jurisdiction,
+  };
+}
