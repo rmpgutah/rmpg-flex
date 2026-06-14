@@ -16,10 +16,10 @@
 import type { Bindings } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from './db';
 import {
-  getCredentials, isEnabled, getConfigValue, setConfigValue, CPG_KEYS,
+  getApiConfig, isEnabled, getConfigValue, setConfigValue, CPG_KEYS,
   listCameras, listAllMedia,
   CpgRateLimitError,
-  type CpgCredentials, type CpgCamera, type CpgMediaEvent, type CpgMediaObject,
+  type CpgClient, type CpgCamera, type CpgMediaEvent, type CpgMediaObject,
 } from './clearpathGps';
 
 type DB = D1Database;
@@ -188,14 +188,15 @@ async function upsertEvent(db: DB, m: MappingRow, event: CpgMediaEvent): Promise
 // ── Per-device sync ──────────────────────────────────────────
 
 async function syncDevice(
-  env: Bindings, db: DB, creds: CpgCredentials, m: MappingRow, cameraId: number, budget: { left: number },
+  env: Bindings, db: DB, client: CpgClient, m: MappingRow, cameraId: number, budget: { left: number },
 ): Promise<number> {
   const now = Date.now();
   let fromMs = m.last_media_synced_at ? Date.parse(m.last_media_synced_at) : now - LOOKBACK_FIRST_SYNC_MS;
   const cap = now - 30 * 24 * 60 * 60 * 1000; // ClearPath retains ~30 days
   if (!Number.isFinite(fromMs) || fromMs < cap) fromMs = cap;
 
-  const events = await listAllMedia(creds, cameraId, fromMs, now);
+  // `cameraId` here is the GPS-Insight assetId (the media API key).
+  const events = await listAllMedia(env, client, cameraId, fromMs, now);
   let synced = 0;
   for (const event of events) {
     const eventRowId = await upsertEvent(db, m, event);
@@ -237,8 +238,8 @@ async function syncDevice(
 
 export async function syncClearpathMedia(env: Bindings): Promise<{ synced: number; errors: number; skipped?: string }> {
   const db = getDb(env);
-  const creds = await getCredentials(db, env).catch(() => null);
-  if (!creds) return { synced: 0, errors: 0, skipped: 'not_configured' };
+  const client = await getApiConfig(db, env).catch(() => null);
+  if (!client) return { synced: 0, errors: 0, skipped: 'not_configured' };
   if (!(await isEnabled(db))) return { synced: 0, errors: 0, skipped: 'disabled' };
   if ((await getConfigValue(db, CPG_KEYS.mediaEnabled)) !== 'true') return { synced: 0, errors: 0, skipped: 'media_disabled' };
   await ensureMediaSchema(db);
@@ -257,7 +258,7 @@ export async function syncClearpathMedia(env: Bindings): Promise<{ synced: numbe
 
   let cameras: CpgCamera[] | null = null;
   if (mappings.some((m) => !m.cpg_camera_id)) {
-    try { cameras = await listCameras(creds); } catch (err) { console.warn('[cpg-media] camera list failed:', (err as Error)?.message); }
+    try { cameras = await listCameras(env, client); } catch (err) { console.warn('[cpg-media] camera list failed:', (err as Error)?.message); }
   }
 
   const budget = { left: MAX_CLIPS_PER_RUN };
@@ -267,7 +268,7 @@ export async function syncClearpathMedia(env: Bindings): Promise<{ synced: numbe
     try {
       const cameraId = await resolveCameraId(db, m, cameras);
       if (!cameraId) continue;
-      synced += await syncDevice(env, db, creds, m, cameraId, budget);
+      synced += await syncDevice(env, db, client, m, cameraId, budget);
     } catch (err) {
       if (err instanceof CpgRateLimitError) {
         try { await env.KV.put(COOLDOWN_KV_KEY, String(Date.now() + err.retryAfterSeconds * 1000), { expirationTtl: Math.max(60, err.retryAfterSeconds) }); } catch { /* */ }

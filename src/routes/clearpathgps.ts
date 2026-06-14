@@ -21,7 +21,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { encryptSecret, CpgCryptoError } from '../utils/cpgCrypto';
 import {
-  getCredentials, getConfigValue, setConfigValue, deleteConfigValue, CPG_KEYS,
+  getApiConfig, getConfigValue, setConfigValue, deleteConfigValue, CPG_KEYS,
   listDevices, testConnection,
   CpgAuthError, CpgRateLimitError, CpgHttpError,
 } from '../utils/clearpathGps';
@@ -83,13 +83,13 @@ function clientErrorMessage(err: unknown): string {
 cpg.get('/status', async (c) => {
   const db = getDb(c.env);
   await ensureCpgSchema(db);
-  const creds = await getCredentials(db, c.env).catch(() => null);
+  const client = await getApiConfig(db, c.env).catch(() => null);
   const pollInterval = parseInt((await getConfigValue(db, CPG_KEYS.pollInterval)) || '30', 10);
   const mediaPoll = parseInt((await getConfigValue(db, CPG_KEYS.mediaPollInterval)) || '300', 10);
   return c.json({
-    configured: !!creds,
+    configured: !!client,
     enabled: await isTruthy(db, CPG_KEYS.enabled),
-    account: creds?.account ?? null,
+    account: client?.account ?? null,
     poll_interval_seconds: pollInterval,
     active_mappings: await activeMappingCount(db),
     last_sync: await getConfigValue(db, 'clearpathgps_last_sync'),
@@ -102,32 +102,42 @@ cpg.get('/status', async (c) => {
 cpg.get('/credentials', async (c) => {
   const db = getDb(c.env);
   const account = await getConfigValue(db, CPG_KEYS.account);
-  const user = await getConfigValue(db, CPG_KEYS.user);
-  const baseUrl = await getConfigValue(db, CPG_KEYS.baseUrl);
-  return c.json({ configured: !!(account && user), account, user, base_url: baseUrl }); // password NEVER returned
+  const userId = c.env.CPG_USER_ID || (await getConfigValue(db, CPG_KEYS.userId));
+  const hasToken = !!(c.env.CPG_REFRESH_TOKEN || (await getConfigValue(db, CPG_KEYS.refreshToken)));
+  // The refresh token is NEVER returned; we only report whether one is stored.
+  return c.json({
+    configured: hasToken,
+    account,
+    user_id: userId,
+    has_refresh_token: hasToken,
+    from_env: !!c.env.CPG_REFRESH_TOKEN,
+  });
 });
 
-// Save credentials (tab sends { email, password, account_id }). PUT and POST both accepted.
+// Save the ClearPath connection (tab sends { refresh_token, user_id, account_id }).
+// ClearPath uses a long-lived refresh token from a logged-in session, exchanged
+// server-side for short access tokens. PUT and POST both accepted.
 const saveCreds = async (c: Context<Env>) => {
   const db = getDb(c.env);
   await ensureCpgSchema(db);
-  let body: { email?: string; password?: string; account_id?: string | number; base_url?: string };
+  let body: { refresh_token?: string; user_id?: string | number; account_id?: string | number };
   try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body' }, 400); }
-  const email = (body.email ?? '').toString().trim();
-  const password = (body.password ?? '').toString();
+  const refreshToken = (body.refresh_token ?? '').toString().trim();
+  const userId = (body.user_id ?? '').toString().trim();
   const accountId = (body.account_id ?? '').toString().trim();
-  if (!email || !password || !accountId) {
-    return c.json({ error: 'email, password and account_id are required' }, 400);
+  if (!refreshToken) {
+    return c.json({ error: 'refresh_token is required' }, 400);
   }
   let encrypted: string;
-  try { encrypted = await encryptSecret(password, c.env.CPG_ENC_KEY); }
+  try { encrypted = await encryptSecret(refreshToken, c.env.CPG_ENC_KEY); }
   catch (err) {
     return c.json({ error: clientErrorMessage(err), hint: 'Set CPG_ENC_KEY (wrangler secret put CPG_ENC_KEY)' }, 503);
   }
-  await setConfigValue(db, CPG_KEYS.account, accountId);
-  await setConfigValue(db, CPG_KEYS.user, email);
-  await setConfigValue(db, CPG_KEYS.password, encrypted);
-  if (body.base_url) await setConfigValue(db, CPG_KEYS.baseUrl, body.base_url.toString().trim());
+  await setConfigValue(db, CPG_KEYS.refreshToken, encrypted);
+  if (userId) await setConfigValue(db, CPG_KEYS.userId, userId);
+  if (accountId) await setConfigValue(db, CPG_KEYS.account, accountId);
+  // A freshly-saved token invalidates any cached access token.
+  try { await c.env.KV.delete('cpg:access_token'); } catch { /* */ }
   return c.json({ success: true });
 };
 cpg.put('/credentials', adminOnly, saveCreds);
@@ -135,10 +145,15 @@ cpg.post('/credentials', adminOnly, saveCreds);
 
 cpg.delete('/credentials', adminOnly, async (c) => {
   const db = getDb(c.env);
-  for (const k of [CPG_KEYS.account, CPG_KEYS.user, CPG_KEYS.password, CPG_KEYS.baseUrl]) {
+  for (const k of [
+    CPG_KEYS.refreshToken, CPG_KEYS.userId, CPG_KEYS.account,
+    CPG_KEYS.legacyUser, CPG_KEYS.legacyPassword, CPG_KEYS.legacyBaseUrl,
+    CPG_KEYS.legacyClientId, CPG_KEYS.legacyClientSecret,
+  ]) {
     await deleteConfigValue(db, k);
   }
   await setConfigValue(db, CPG_KEYS.enabled, 'false');
+  try { await c.env.KV.delete('cpg:access_token'); } catch { /* */ }
   return c.json({ success: true });
 });
 
@@ -146,25 +161,25 @@ cpg.delete('/credentials', adminOnly, async (c) => {
 
 cpg.post('/test-connection', adminOnly, async (c) => {
   const db = getDb(c.env);
-  const creds = await getCredentials(db, c.env).catch((err) => { throw err; });
-  if (!creds) return c.json({ success: false, error: 'No credentials saved' });
+  const client = await getApiConfig(db, c.env).catch((err) => { throw err; });
+  if (!client) return c.json({ success: false, error: 'No API credentials saved' });
   try {
-    const deviceCount = await testConnection(creds);
+    const deviceCount = await testConnection(c.env, client);
     return c.json({ success: true, deviceCount });
   } catch (err) {
     return c.json({ success: false, error: clientErrorMessage(err) });
   }
 });
 
-// ClearPath's public API does not enumerate accounts; validate creds + echo
-// the configured account so the tab can confirm it.
+// The machine token is account-scoped server-side; validate creds + echo the
+// configured account so the tab can confirm it.
 cpg.post('/discover-accounts', adminOnly, async (c) => {
   const db = getDb(c.env);
-  const creds = await getCredentials(db, c.env).catch(() => null);
-  if (!creds) return c.json({ accounts: [], error: 'No credentials saved' });
+  const client = await getApiConfig(db, c.env).catch(() => null);
+  if (!client) return c.json({ accounts: [], error: 'No API credentials saved' });
   try {
-    await testConnection(creds);
-    return c.json({ accounts: [{ accountId: creds.account, description: 'Configured account' }] });
+    await testConnection(c.env, client);
+    return c.json({ accounts: [{ accountId: client.account, description: 'Configured account' }] });
   } catch (err) {
     return c.json({ accounts: [], error: clientErrorMessage(err) });
   }
@@ -205,10 +220,10 @@ cpg.post('/settings', adminOnly, setSettings);
 
 cpg.get('/devices', async (c) => {
   const db = getDb(c.env);
-  const creds = await getCredentials(db, c.env).catch(() => null);
-  if (!creds) return c.json({ devices: [], error: 'No credentials saved' });
+  const client = await getApiConfig(db, c.env).catch(() => null);
+  if (!client) return c.json({ devices: [], error: 'No API credentials saved' });
   try {
-    const devices = await listDevices(creds);
+    const devices = await listDevices(c.env, client);
     return c.json({ devices });
   } catch (err) {
     return c.json({ devices: [], error: clientErrorMessage(err) });

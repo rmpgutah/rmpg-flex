@@ -109,11 +109,11 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const [status, setStatus] = useState<CpgStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Credentials
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  // Credentials (ClearPath refresh token from a logged-in session)
+  const [refreshToken, setRefreshToken] = useState('');
+  const [userId, setUserId] = useState('');
   const [accountId, setAccountId] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Connection test
@@ -221,18 +221,18 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
   // ── Save credentials ──
   const handleSaveCredentials = async () => {
-    if (!email.trim() || !password.trim() || !String(accountId).trim()) return;
+    if (!refreshToken.trim()) return;
     setSaving(true);
     setTestResult(null);
     try {
       await apiFetch('/clearpathgps/credentials', {
         method: 'PUT',
-        body: JSON.stringify({ email, password, account_id: String(accountId) }),
+        body: JSON.stringify({ refresh_token: refreshToken.trim(), user_id: String(userId).trim(), account_id: String(accountId).trim() }),
       });
-      setEmail('');
-      setPassword('');
+      setRefreshToken('');
+      setUserId('');
       setAccountId('');
-      setShowPassword(false);
+      setShowSecret(false);
       await fetchStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save credentials');
@@ -280,7 +280,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
         const accounts = data.accounts || [];
         setDiscoveredAccounts(accounts);
         if (accounts.length === 0) {
-          setTestResult({ success: false, error: 'No accounts found for this email/password' });
+          setTestResult({ success: false, error: 'No accounts found for these API credentials' });
         }
       }
     } catch (err) {
@@ -535,46 +535,46 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
           API Credentials
         </div>
 
-        {/* Email */}
+        {/* Refresh Token */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Email</label>
-          <input id="ff-adminclearpathgpstab-0"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder={status?.configured ? 'Enter new email to replace...' : 'ClearPathGPS login email...'}
-            className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
-          />
-        </div>
-
-        {/* Password */}
-        <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Password</label>
+          <label className="text-[10px] text-rmpg-400">Refresh Token</label>
           <div className="relative">
-            <input id="ff-adminclearpathgpstab-1"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={status?.configured ? 'Enter new password to replace...' : 'ClearPathGPS password...'}
+            <input id="ff-adminclearpathgpstab-0"
+              type={showSecret ? 'text' : 'password'}
+              value={refreshToken}
+              onChange={(e) => setRefreshToken(e.target.value)}
+              placeholder={status?.configured ? 'Enter new Refresh Token to replace...' : 'ClearPath session refresh token...'}
               className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
             <button type="button"
-              onClick={() => setShowPassword(!showPassword)}
+              onClick={() => setShowSecret(!showSecret)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300"
             >
-              {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             </button>
           </div>
         </div>
 
-        {/* Account ID */}
+        {/* User ID */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Account ID</label>
+          <label className="text-[10px] text-rmpg-400">User ID <span className="text-rmpg-600">(optional)</span></label>
+          <input id="ff-adminclearpathgpstab-1"
+            type="text"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            placeholder={status?.configured ? 'Enter new User ID to replace...' : 'ClearPath userIdCp (e.g. 47647)...'}
+            className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
+          />
+        </div>
+
+        {/* Account ID (optional — derived server-side; for display/scoping) */}
+        <div className="space-y-1.5">
+          <label className="text-[10px] text-rmpg-400">Account ID <span className="text-rmpg-600">(optional)</span></label>
           <input id="ff-adminclearpathgpstab-2"
             type="text"
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
-            placeholder={status?.configured ? 'Enter new Account ID to replace...' : 'ClearPathGPS Account ID...'}
+            placeholder={status?.configured ? 'Enter new Account ID to replace...' : 'GPS-Insight account id (e.g. 3637)...'}
             className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
           />
         </div>
@@ -583,7 +583,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
         <div className="flex items-center gap-2">
           <button type="button"
             onClick={handleSaveCredentials}
-            disabled={saving || !email.trim() || !password.trim() || !String(accountId).trim()}
+            disabled={saving || !refreshToken.trim()}
             className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
@@ -1070,8 +1070,9 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
         <div className="flex items-center gap-2 text-[10px] text-rmpg-500 bg-surface-sunken p-3 rounded-sm">
           <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
           <div>
-            Enter your ClearPathGPS API credentials above to connect fleet GPS tracking.
-            Hardware GPS positions will replace browser geolocation for mapped units.
+            Connect by pasting a ClearPath session <strong>refresh token</strong> (from a logged-in portal session)
+            above; it's exchanged server-side for short-lived access tokens. Hardware GPS positions will replace
+            browser geolocation for mapped units.
           </div>
         </div>
       )}

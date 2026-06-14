@@ -64,10 +64,17 @@ export type Bindings = {
   // Optional override of the lean plate-only fast-scan workflow slug
   // (default 'rmpg-flex-plate-fast'). See src/utils/roboflowPlateFast.ts.
   ROBOFLOW_FAST_WORKFLOW_ID?: string;
-  // AES-GCM-256 key (base64, 32 bytes) encrypting the ClearPath password at
+  // AES-GCM-256 key (base64, 32 bytes) encrypting the ClearPath client_secret at
   // rest in system_config. Set via `wrangler secret put CPG_ENC_KEY`; unset →
   // ClearPath credential save/use returns a clear 503. See src/utils/cpgCrypto.ts.
   CPG_ENC_KEY?: string;
+  // ClearPath connection: a long-lived refresh token (from a logged-in session)
+  // exchanged server-side for short access tokens. Optional ops override of the
+  // admin-tab values; when set, takes precedence over system_config. Set via
+  // `wrangler secret put CPG_REFRESH_TOKEN` (+ optional CPG_USER_ID).
+  // See src/utils/clearpathGps.ts (getApiConfig).
+  CPG_REFRESH_TOKEN?: string;
+  CPG_USER_ID?: string;
 };
 
 export type Variables = {
