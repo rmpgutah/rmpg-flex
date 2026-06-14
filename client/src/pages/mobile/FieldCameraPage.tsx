@@ -20,22 +20,41 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Camera, Loader2, MapPin, RefreshCw, X, Check, ScanLine, Car, AlertTriangle } from 'lucide-react';
-import { apiPostForm, authedImageUrl } from '../../hooks/useApi';
+import { apiPostForm, apiFetch, authedImageUrl } from '../../hooks/useApi';
+import { downscaleImage } from '../../utils/downscaleImage';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/ToastProvider';
 
 type GpsFix = { lat: number; lng: number; accuracy: number } | null;
 
 interface ScanHit { kind?: string; severity: string; detail: string }
+interface DamageArea { panel: string | null; type: string | null; severity: string | null }
 interface ScanVehicle {
   plate: string | null; make: string | null; model: string | null; color: string | null;
   year: number | null; vehicle_type: string | null; confidence: number | null;
   vehicle_record_id: number | null; vehicle_record_created: boolean; hits: ScanHit[];
+  condition?: string | null; damage_observed?: boolean | null; damage_summary?: string | null;
+  damage_areas?: DamageArea[];
 }
 interface AlprScanResult {
-  success: boolean; call_id: number | null; field_photo_id: number | null;
+  success: boolean; id: number; call_id: number | null; field_photo_id: number | null;
   vehicle_count: number; vehicles: ScanVehicle[]; hits: ScanHit[];
+  enrich_status?: 'pending' | 'done' | 'failed';
+  accepted?: boolean | null; plate_confidence?: number | null;
+  condition?: string | null; damage_observed?: boolean | null; damage_summary?: string | null;
+  damage_areas?: DamageArea[];
   image_url: string | null; annotated_image_url: string | null;
+}
+
+/** Tailwind classes for a condition badge (clean→salvage). Pure for testing. */
+export function conditionBadgeClass(condition?: string | null): string {
+  switch ((condition || '').toLowerCase()) {
+    case 'clean': return 'bg-green-900/40 text-green-300 border-green-700';
+    case 'minor': return 'bg-yellow-900/30 text-yellow-300 border-yellow-700';
+    case 'moderate': return 'bg-orange-900/30 text-orange-300 border-orange-700';
+    case 'heavy': case 'salvage': return 'bg-red-900/40 text-red-300 border-red-700';
+    default: return 'bg-neutral-800 text-neutral-300 border-neutral-600';
+  }
 }
 
 // Draw the data overlay + watermark onto a canvas that already holds
@@ -237,6 +256,46 @@ export default function FieldCameraPage() {
     previewBlobRef.current = null;
   }, [preview]);
 
+  // Background enrichment lands a moment after the fast plate read — re-fetch the
+  // capture up to twice to fill make/model/color. Bounded; never loops forever.
+  const pollEnrichment = useCallback(async (id: number) => {
+    for (let i = 0; i < 2; i++) {
+      await new Promise((res) => setTimeout(res, 2500));
+      try {
+        const cap = await apiFetch<{
+          enrich_status?: string;
+          accepted?: boolean | null; plate_confidence?: number | null;
+          condition?: string | null; damage_observed?: boolean | null; damage_summary?: string | null;
+          damage_areas?: DamageArea[];
+          vehicles?: Array<ScanVehicle>;
+        }>(`/alpr/capture/${id}`);
+        if (cap.vehicles?.length || cap.enrich_status === 'done') {
+          setScan((prev) => (prev && prev.id === id
+            ? { ...prev, enrich_status: 'done',
+                accepted: cap.accepted ?? prev.accepted, plate_confidence: cap.plate_confidence ?? prev.plate_confidence,
+                condition: cap.condition ?? prev.condition, damage_observed: cap.damage_observed ?? prev.damage_observed,
+                damage_summary: cap.damage_summary ?? prev.damage_summary, damage_areas: cap.damage_areas ?? prev.damage_areas,
+                vehicles: cap.vehicles?.length ? cap.vehicles!.map((v) => {
+                  // Merge enriched attributes onto the matching fast vehicle so
+                  // the per-vehicle critical-hit display + record badge survive.
+                  const prevV = prev.vehicles.find((p) => p.plate && p.plate === v.plate);
+                  return {
+                    plate: v.plate, make: v.make, model: v.model, color: v.color, year: v.year,
+                    vehicle_type: v.vehicle_type, confidence: v.confidence,
+                    condition: v.condition, damage_observed: v.damage_observed, damage_summary: v.damage_summary,
+                    damage_areas: v.damage_areas,
+                    vehicle_record_id: prevV?.vehicle_record_id ?? null,
+                    vehicle_record_created: prevV?.vehicle_record_created ?? false,
+                    hits: prevV?.hits ?? [],
+                  };
+                }) : prev.vehicles }
+            : prev));
+        }
+        if (cap.enrich_status === 'done' || cap.enrich_status === 'failed') return;
+      } catch { /* transient — try once more */ }
+    }
+  }, []);
+
   const upload = useCallback(async () => {
     const blob = previewBlobRef.current;
     if (!blob || uploading) return;
@@ -250,17 +309,24 @@ export default function FieldCameraPage() {
       if (incidentId) form.append('incident_id', incidentId);
 
       if (alprMode) {
-        // Attaches to the call AND extracts every vehicle → creates/links records.
-        form.append('capture_reason', 'on_scene_alpr');
-        const r = await apiPostForm<AlprScanResult>('/alpr/capture', form);
+        // Downscale for a fast plate read; the full-res stamped blob still goes
+        // to the call's photo gallery via the field_photos row the server makes.
+        const alprBlob = await downscaleImage(blob, 1280, 0.8);
+        const alprForm = new FormData();
+        alprForm.append('photo', alprBlob, 'field-photo.jpg');
+        if (gps) { alprForm.append('lat', String(gps.lat)); alprForm.append('lng', String(gps.lng)); }
+        if (callId) alprForm.append('call_id', callId);
+        if (incidentId) alprForm.append('incident_id', incidentId);
+        alprForm.append('capture_reason', 'on_scene_alpr');
+        const r = await apiPostForm<AlprScanResult>('/alpr/capture', alprForm);
         setScan(r);
-        const created = r.vehicles.filter((v) => v.vehicle_record_created).length;
         addToast(
           r.vehicle_count
-            ? `ALPR: ${r.vehicle_count} vehicle(s), ${created} new record(s)`
+            ? 'ALPR: plate read — identifying vehicle…'
             : 'ALPR: no readable plate — photo saved to call',
           r.hits.some((h) => h.severity === 'critical') ? 'error' : 'success',
         );
+        if (r.enrich_status === 'pending') void pollEnrichment(r.id);
         // keep the preview + result on screen so the officer can review hits
       } else {
         await apiPostForm('/field-photos', form);
@@ -272,7 +338,7 @@ export default function FieldCameraPage() {
     } finally {
       setUploading(false);
     }
-  }, [gps, uploading, discard, addToast, alprMode, callId, incidentId]);
+  }, [gps, uploading, discard, addToast, alprMode, callId, incidentId, pollEnrichment]);
 
   const clearScan = useCallback(() => { setScan(null); discard(); }, [discard]);
 
@@ -324,19 +390,33 @@ export default function FieldCameraPage() {
         {scan && (
           <div className="absolute inset-0 z-10 bg-black/92 overflow-y-auto p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#d4a017] flex items-center gap-1">
-                <Car className="w-4 h-4" /> {scan.vehicle_count} vehicle(s)
-                {callId ? ` · linked to call #${callId}` : ''}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#d4a017] flex items-center gap-1">
+                  <Car className="w-4 h-4" /> {scan.vehicle_count} vehicle(s)
+                  {callId ? ` · linked to call #${callId}` : ''}
+                </span>
+                {scan.enrich_status === 'pending' && (
+                  <span className="text-[10px] text-[#888] flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Identifying…
+                  </span>
+                )}
+              </div>
               <button type="button" onClick={clearScan} className="text-[#888] p-1" aria-label="Done">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            {scan.hits.filter((h) => h.severity === 'critical').map((h) => (
-              <div key={h.detail} className="flex items-start gap-1.5 bg-red-950 border border-red-600 text-red-300 text-xs font-semibold px-2 py-1.5">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-px" /> {h.detail}
+            {scan.hits.filter((h) => h.severity === 'critical').map((h, i) => (
+              <div key={`c${i}-${h.detail}`} className="flex items-start gap-1.5 bg-red-950 border border-red-600 text-red-300 text-xs font-semibold px-2 py-1.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
+                <span>{scan.accepted === false ? 'UNCONFIRMED — verify plate: ' : ''}{h.detail}</span>
               </div>
             ))}
+            {scan.accepted === false && scan.enrich_status !== 'pending' && (
+              <div className="flex items-start gap-1.5 bg-yellow-950/60 border border-yellow-700 text-yellow-300 text-[11px] px-2 py-1.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
+                <span>Low-confidence read{scan.plate_confidence != null ? ` (${Math.round(scan.plate_confidence * 100)}%)` : ''} — held for review. Not recorded as confirmed until an officer verifies it.</span>
+              </div>
+            )}
             {scan.vehicle_count === 0 && (
               <div className="text-[11px] text-[#888] px-1 py-2">
                 No readable plate found. The photo was still saved to the call.
@@ -354,8 +434,27 @@ export default function FieldCameraPage() {
                   {[v.color, v.year, v.make, v.model].filter(Boolean).join(' ') || v.vehicle_type || '—'}
                   {v.confidence != null ? ` · ${Math.round(v.confidence * 100)}%` : ''}
                 </div>
-                {v.hits.filter((h) => h.severity === 'critical').map((h) => (
-                  <div key={h.detail} className="text-[11px] text-red-400 font-semibold mt-1">⚠ {h.detail}</div>
+                {(v.condition || v.damage_observed || (v.damage_areas && v.damage_areas.length > 0)) && (
+                  <div className="mt-1 space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      {v.condition && (
+                        <span className={`text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 border ${conditionBadgeClass(v.condition)}`}>
+                          {v.condition}
+                        </span>
+                      )}
+                      {v.damage_summary && <span className="text-[10px] text-[#aaa]">{v.damage_summary}</span>}
+                    </div>
+                    {v.damage_areas && v.damage_areas.length > 0 && (
+                      <ul className="text-[10px] text-[#888] pl-3 list-disc">
+                        {v.damage_areas.map((d, di) => (
+                          <li key={di}>{[d.severity, d.panel, d.type].filter(Boolean).join(' ')}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                {v.hits.filter((h) => h.severity === 'critical').map((h, hi) => (
+                  <div key={`vh${hi}-${h.detail}`} className="text-[11px] text-red-400 font-semibold mt-1">⚠ {h.detail}</div>
                 ))}
               </div>
             ))}

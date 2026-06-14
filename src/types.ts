@@ -61,6 +61,9 @@ export type Bindings = {
   // Optional override of the Roboflow serverless base origin
   // (default https://serverless.roboflow.com). For self-hosted inference.
   ROBOFLOW_API_URL?: string;
+  // Optional override of the lean plate-only fast-scan workflow slug
+  // (default 'rmpg-flex-plate-fast'). See src/utils/roboflowPlateFast.ts.
+  ROBOFLOW_FAST_WORKFLOW_ID?: string;
 };
 
 export type Variables = {
