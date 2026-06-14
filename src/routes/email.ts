@@ -845,6 +845,53 @@ email.get('/outbox', async (c) => {
   return c.json({ outbox: rows });
 });
 
+// Outbound PDFs/emails sent FROM a given record (case/incident/warrant/evidence).
+// Reads the durable outbox by the 0118 record-link columns and parses each
+// payload to a clean surface shape. Distinct from /links/by-entity, which lists
+// INBOUND emails (email_links, keyed by Graph message-id).
+email.get('/by-record', async (c) => {
+  const recordType = c.req.query('recordType');
+  const recordId = c.req.query('recordId');
+  if (!recordType || !recordId) return c.json({ items: [] });
+  if (!(await columnExists(c.env.DB, 'email_outbox', 'record_type'))) return c.json({ items: [] });
+
+  const rows = await query<{
+    id: number; owner_user_id: number; payload: string; status: string;
+    created_at: string; sent_at: string | null; last_error: string | null;
+    full_name: string | null; username: string | null;
+  }>(c.env.DB,
+    `SELECT o.id, o.owner_user_id, o.payload, o.status, o.created_at, o.sent_at, o.last_error,
+            u.full_name, u.username
+       FROM email_outbox o
+       LEFT JOIN users u ON u.id = o.owner_user_id
+      WHERE o.record_type = ? AND o.record_id = ?
+      ORDER BY o.id DESC LIMIT 100`,
+    recordType, Number(recordId));
+
+  const items = rows.map((r) => {
+    let to: string[] = []; let subject = ''; let attachmentName: string | null = null;
+    try {
+      const p = JSON.parse(r.payload) as {
+        message?: {
+          subject?: string;
+          toRecipients?: Array<{ emailAddress?: { address?: string } }>;
+          attachments?: Array<{ name?: string }>;
+        };
+      };
+      to = (p.message?.toRecipients || []).map((x) => x.emailAddress?.address || '').filter(Boolean);
+      subject = p.message?.subject || '';
+      attachmentName = p.message?.attachments?.[0]?.name || null;
+    } catch { /* leave defaults */ }
+    return {
+      outboxId: r.id, status: r.status, createdAt: r.created_at, sentAt: r.sent_at,
+      error: r.last_error, sentByUserId: r.owner_user_id,
+      sentBy: r.full_name || r.username || `user #${r.owner_user_id}`,
+      to, subject, attachmentName,
+    };
+  });
+  return c.json({ items });
+});
+
 // Cron-drained: pop up-to-N pending rows whose next_attempt_at has
 // passed, attempt Graph send, exponential-backoff on failure (1m → 5m
 // → 30m → fail after 5 attempts). Exported for src/index.ts.
