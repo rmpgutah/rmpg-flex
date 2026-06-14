@@ -300,7 +300,10 @@ export default function DocumentWriterPage() {
       '.rlh-name{font-size:15pt;font-weight:700;letter-spacing:0.03em}.rlh-sub{font-size:9pt;color:#444}',
       `.body-cols{column-count:${columns};column-gap:24px}`,
       'h1{font-size:1.9em}h2{font-size:1.5em}h3{font-size:1.25em}h4{font-size:1.1em}p{margin:0 0 0.5em}a{color:#000}',
-      'table{border-collapse:collapse;width:100%}td,th{border:1px solid #333;padding:6px}img{max-width:100%}',
+      // table-layout:fixed + cell overflow:hidden stop multi-column rows (the
+      // signature block's unbreakable underscore "line" especially) from
+      // overflowing the page — they divide the width evenly and clip instead.
+      'table{border-collapse:collapse;width:100%;table-layout:fixed}td,th{border:1px solid #333;padding:6px;overflow:hidden}img{max-width:100%}',
       'blockquote{border-left:3px solid #000;padding-left:1em;font-style:italic}',
       'p.drop-cap::first-letter{float:left;font-size:3.4em;line-height:0.8;font-weight:700;padding-right:6px}',
       '.doc-page-break{break-after:page}.doc-section-break{break-after:column}',
@@ -445,10 +448,11 @@ export default function DocumentWriterPage() {
       bodyHtml: editor.getHTML(),
       author,
       letterhead: docSettings.letterhead,
+      margins: docSettings.page.margins,
     });
     const safe = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'document';
     downloadFile(`${safe}.html`, html, 'text/html');
-  }, [editor, title, author, docSettings.properties.title, docSettings.letterhead]);
+  }, [editor, title, author, docSettings.properties.title, docSettings.letterhead, docSettings.page.margins]);
 
   // "New from current" — duplicate the document into a fresh, unsaved copy.
   const handleDuplicate = useCallback(() => {
@@ -605,13 +609,13 @@ export default function DocumentWriterPage() {
     if (!sel) { flashError('Select some text first.'); return; }
     if (target === 'file') {
       const safe = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'selection';
-      downloadFile(`${safe} - selection.html`, buildStandaloneHtml({ title: `${title} (selection)`, bodyHtml: sel.html, author }), 'text/html');
+      downloadFile(`${safe} - selection.html`, buildStandaloneHtml({ title: `${title} (selection)`, bodyHtml: sel.html, author, margins: docSettings.page.margins }), 'text/html');
       flashNotice('Exported the selection as HTML.');
     } else {
       try { await copyRich(sel.html); flashNotice('Copied the selection (rich text).'); }
       catch { flashError('Clipboard write blocked.'); }
     }
-  }, [editor, title, author, flashNotice, flashError]);
+  }, [editor, title, author, flashNotice, flashError, docSettings.page.margins]);
 
   // Clear the document back to a blank page (with confirm).
   const handleClearDocument = useCallback(() => {

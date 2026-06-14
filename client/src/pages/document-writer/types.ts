@@ -77,7 +77,10 @@ export const PAGE_SIZES: Record<PageSize, { width: number; height: number; css: 
 export const DEFAULT_PAGE_SETUP: PageSetup = {
   size: 'letter',
   orientation: 'portrait',
-  margins: { top: 72, right: 72, bottom: 72, left: 72 },
+  // 96px = 1in. Narrow 0.5in side margins so text fills further across the page
+  // (was 0.75in all round); 0.75in top/bottom keeps room for the letterhead and
+  // the page-number footer. Users can still pick Narrow/Standard/Legal presets.
+  margins: { top: 72, right: 48, bottom: 72, left: 48 },
 };
 
 /** Editor display theme — only affects the on-screen canvas, never print/PDF. */
