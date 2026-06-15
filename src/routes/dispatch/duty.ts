@@ -184,6 +184,29 @@ function rosterRow(r: Record<string, any>) {
   };
 }
 
+// The active-roster SELECT, shared by /roster (dispatch, full) and /onduty
+// (any officer, on-duty only). One pass: users × open time entry × claimed
+// unit (with GPS mirror) × assigned fleet vehicle.
+async function loadRoster(db: any) {
+  const rows = await query<Record<string, any>>(db, `
+    SELECT us.id AS officer_id, us.full_name, us.role,
+           te.id AS entry_id, te.clock_in,
+           un.id AS unit_id, un.call_sign, un.status AS unit_status,
+           un.current_call_id, un.latitude, un.longitude, un.gps_updated_at,
+           fv.id AS veh_id, fv.vehicle_number AS veh_number, fv.vehicle_name AS veh_name
+      FROM users us
+      LEFT JOIN time_entries te ON te.id = (
+        SELECT id FROM time_entries WHERE officer_id = us.id AND clock_out IS NULL
+         ORDER BY clock_in DESC LIMIT 1)
+      LEFT JOIN units un ON un.id = (
+        SELECT id FROM units WHERE officer_id = us.id
+         ORDER BY last_status_change DESC, id DESC LIMIT 1)
+      LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = un.id
+     WHERE COALESCE(us.status, 'active') NOT IN ('terminated', 'inactive')
+     ORDER BY (te.id IS NULL), us.full_name`);
+  return rows.map(rosterRow);
+}
+
 // GET /dispatch/duty/roster — every active officer's duty state in one call.
 // Dispatch-tier only: this is the supervision surface behind the iOS Duty
 // Roster screen (start/end on behalf + time corrections hang off these rows).
@@ -193,29 +216,42 @@ duty.get('/roster', async (c) => {
     if (!role || !ON_BEHALF_ROLES.has(role)) {
       return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
     }
-    const db = getDb(c.env);
-    // One pass: active users × their open time entry × claimed unit (with the
-    // GPS mirror — no breadcrumb scan) × the unit's assigned fleet vehicle.
-    const rows = await query<Record<string, any>>(db, `
-      SELECT us.id AS officer_id, us.full_name, us.role,
-             te.id AS entry_id, te.clock_in,
-             un.id AS unit_id, un.call_sign, un.status AS unit_status,
-             un.current_call_id, un.latitude, un.longitude, un.gps_updated_at,
-             fv.id AS veh_id, fv.vehicle_number AS veh_number, fv.vehicle_name AS veh_name
-        FROM users us
-        LEFT JOIN time_entries te ON te.id = (
-          SELECT id FROM time_entries WHERE officer_id = us.id AND clock_out IS NULL
-           ORDER BY clock_in DESC LIMIT 1)
-        LEFT JOIN units un ON un.id = (
-          SELECT id FROM units WHERE officer_id = us.id
-           ORDER BY last_status_change DESC, id DESC LIMIT 1)
-        LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = un.id
-       WHERE COALESCE(us.status, 'active') NOT IN ('terminated', 'inactive')
-       ORDER BY (te.id IS NULL), us.full_name`);
-    return c.json({ officers: rows.map(rosterRow) });
+    return c.json({ officers: await loadRoster(getDb(c.env)) });
   } catch (err) {
     console.error('GET /dispatch/duty/roster failed:', err);
     return c.json({ error: 'Failed to load duty roster', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /dispatch/duty/onduty — on-duty officers only, readable by ANY authed
+// officer (situational awareness / mutual aid). Reuses the roster shape but
+// filtered to on-shift; no dispatch-tier gate.
+duty.get('/onduty', async (c) => {
+  try {
+    const officers = (await loadRoster(getDb(c.env))).filter((o) => o.on_shift);
+    return c.json({ officers });
+  } catch (err) {
+    console.error('GET /dispatch/duty/onduty failed:', err);
+    return c.json({ error: 'Failed to load on-duty roster', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /dispatch/duty/timecard — the SESSION officer's own time entries (last
+// 60). Unlike /api/personnel/time (manager-gated), this is self-only: any
+// officer can read their own card.
+duty.get('/timecard', async (c) => {
+  try {
+    const officerId = resolveOfficerId(c);
+    if (!officerId) return c.json({ error: 'No officer in session', code: 'NO_OFFICER' }, 401);
+    const entries = await query<Record<string, any>>(getDb(c.env), `
+      SELECT id, clock_in, clock_out, total_hours, break_minutes, status, notes,
+             starting_mileage, ending_mileage
+        FROM time_entries WHERE officer_id = ?
+       ORDER BY clock_in DESC LIMIT 60`, officerId);
+    return c.json({ entries });
+  } catch (err) {
+    console.error('GET /dispatch/duty/timecard failed:', err);
+    return c.json({ error: 'Failed to load timecard', detail: (err as Error)?.message }, 500);
   }
 });
 

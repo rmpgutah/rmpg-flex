@@ -65,13 +65,7 @@ struct DutyRosterView: View {
                 if claims?.isDispatchTier == true {
                     rosterList
                 } else {
-                    VStack(spacing: 12) {
-                        Image(systemName: "lock.shield").font(.system(size: 40)).foregroundStyle(Theme.neutral)
-                        Text("DUTY ROSTER").font(.system(size: 14, weight: .bold))
-                        Text("Requires a dispatch-tier role (admin, manager, supervisor, or dispatcher). Log in from Settings and reopen this tab.")
-                            .font(.system(size: 12)).foregroundStyle(Theme.neutral)
-                            .multilineTextAlignment(.center).padding(.horizontal, 32)
-                    }
+                    OnDutyView()
                 }
             }
             .navigationTitle("DUTY ROSTER")

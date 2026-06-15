@@ -19,6 +19,17 @@ struct FieldOpsView: View {
     @State private var showEndSheet = false
     @State private var gpsPushedAt: Date?
     @State private var lastAlertedCallId: Int?
+    @State private var showPreTrip = false
+
+    private var assignedVehicle: [String: Any]? { duty["vehicle"] as? [String: Any] }
+    private var assignedVehicleId: Int? { assignedVehicle?["id"] as? Int }
+    private var assignedVehicleLabel: String {
+        guard let v = assignedVehicle else { return "Assigned vehicle" }
+        let num = v["vehicle_number"] as? String ?? "#\(v["id"] as? Int ?? 0)"
+        let mk = [v["make"] as? String, v["model"] as? String].compactMap { $0 }.joined(separator: " ")
+        return mk.isEmpty ? num : "\(num) — \(mk)"
+    }
+    private var currentEntryId: Int? { (duty["time_entry"] as? [String: Any])?["id"] as? Int }
 
     private var onShift: Bool { duty["on_shift"] as? Bool ?? false }
     private var unit: [String: Any]? { duty["unit"] as? [String: Any] }
@@ -130,6 +141,14 @@ struct FieldOpsView: View {
                     Task { await refresh() }
                 }
                 .presentationBackground(Theme.base)
+            }
+            .sheet(isPresented: $showPreTrip) {
+                if let vid = assignedVehicleId {
+                    PreTripInspectionSheet(vehicleId: vid, vehicleLabel: assignedVehicleLabel) { msg in
+                        status = msg
+                    }
+                    .presentationBackground(Theme.base)
+                }
             }
             .alert("SEND PANIC ALARM?", isPresented: $confirmPanic) {
                 Button("SEND PANIC", role: .destructive) { Task { await panic() } }
@@ -352,6 +371,25 @@ struct FieldOpsView: View {
                 lastAlertedCallId = nil
             }
         }
+        await maybePromptPreTrip()
+    }
+
+    // Auto-present the pre-trip ONCE per shift: on duty, a vehicle assigned, and
+    // no pre-trip logged today for it. Remembered per time-entry in UserDefaults
+    // so the 15s poll doesn't re-prompt after the officer defers or completes it.
+    @MainActor
+    private func maybePromptPreTrip() async {
+        guard onShift, let vid = assignedVehicleId, let entryId = currentEntryId, !showPreTrip else { return }
+        let key = "preTripPrompted.\(entryId)"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        guard let c = await ShiftNet.client() else { return }
+        let rows = (try? await c.requestJSON("GET", "api/fleet/\(vid)/inspections") as? [[String: Any]]) ?? []
+        if PreTripStatus.hasPreTrip(in: rows, onDay: PreTripStatus.today()) {
+            UserDefaults.standard.set(true, forKey: key)   // already done today — don't nag
+            return
+        }
+        UserDefaults.standard.set(true, forKey: key)
+        showPreTrip = true
     }
 
     @MainActor
