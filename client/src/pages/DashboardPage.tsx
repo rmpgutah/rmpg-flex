@@ -650,7 +650,7 @@ export default function DashboardPage() {
       <div className="panel-beveled bg-surface-base overflow-hidden shadow-lg shadow-black/20">
         <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
           {/* Blue accent line */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--spm-border), var(--spm-text-muted) 30%, var(--spm-text-muted) 70%, var(--spm-border))' }} />
           {!isMobile && <RmpgLogo height={68} />}
           {isMobile && <RmpgLogo height={36} iconOnly />}
           <div className="flex-1 min-w-0">
@@ -671,7 +671,7 @@ export default function DashboardPage() {
           </div>
           <div className="hidden md:flex items-center gap-3 text-[9px] font-mono text-rmpg-600 flex-shrink-0">
             <PrintButton />
-            <span className="border-l border-[#2b2b2b] pl-3">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            <span className="border-l border-rmpg-800 pl-3">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
           </div>
         </div>
       </div>
@@ -742,10 +742,10 @@ export default function DashboardPage() {
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`} role="region" aria-label="Calls by priority">
         {[
-          { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
-          { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
-          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
-          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: 'var(--text-muted)' },
+          { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: 'var(--stat-accent-red)' },
+          { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: 'var(--stat-accent-amber)' },
+          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: 'var(--spm-text-muted)' },
+          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: 'var(--pri-scheduled)' },
         ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
           <div
             key={key}
@@ -859,12 +859,12 @@ export default function DashboardPage() {
             </div>
             {/* Progress Bar */}
             <div className="space-y-1" role="progressbar" aria-valuenow={Math.round(shiftInfo.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Shift progress: ${Math.round(shiftInfo.progress * 100)}%`}>
-              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-[#2b2b2b] shadow-inner">
+              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-rmpg-800 shadow-inner">
                 <div
                   className="h-full transition-all duration-1000 ease-linear rounded-sm"
                   style={{
                     width: `${Math.round(shiftInfo.progress * 100)}%`,
-                    background: `linear-gradient(90deg, #1a1a1a, #888888 ${Math.round(shiftInfo.progress * 100)}%)`,
+                    background: `linear-gradient(90deg, var(--spm-border), var(--spm-text-muted) ${Math.round(shiftInfo.progress * 100)}%)`,
                     boxShadow: '0 0 6px rgba(136, 136, 136, 0.4)',
                   }}
                 />
@@ -876,7 +876,7 @@ export default function DashboardPage() {
               </div>
             </div>
             {/* Shift Indicator Dots */}
-            <div className="flex items-center gap-2 pt-2 border-t border-[#2b2b2b]">
+            <div className="flex items-center gap-2 pt-2 border-t border-rmpg-800">
               {[
                 { label: 'Day', hours: '06-14', active: shiftInfo.name === 'Day Shift' },
                 { label: 'Swing', hours: '14-22', active: shiftInfo.name === 'Swing Shift' },
@@ -905,8 +905,8 @@ export default function DashboardPage() {
               return (
                 <div className="space-y-3">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-sm bg-surface-sunken border border-[#2b2b2b] shadow-inner">
-                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? '#aaaaaa' : weather.weatherCode === 0 || weather.weatherCode === 1 ? '#fbbf24' : '#888888' }} />
+                    <div className="p-3 rounded-sm bg-surface-sunken border border-rmpg-800 shadow-inner">
+                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? 'var(--spm-text)' : weather.weatherCode === 0 || weather.weatherCode === 1 ? 'var(--stat-accent-amber-bright)' : 'var(--spm-text-muted)' }} />
                     </div>
                     <div>
                       <div className="text-3xl font-bold font-mono text-rmpg-100 tabular-nums" aria-label={`${weather.temperature} degrees Fahrenheit`}>{weather.temperature}<span className="text-lg text-rmpg-400 ml-0.5">&deg;F</span></div>
@@ -935,7 +935,7 @@ export default function DashboardPage() {
                     </div>
                   )}
                   {/* Weather Details */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-[#2b2b2b]">
+                  <div className="flex items-center gap-2 pt-2 border-t border-rmpg-800">
                     <span className="text-[9px] text-rmpg-500 font-mono tabular-nums">
                       Updated {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -1000,10 +1000,10 @@ export default function DashboardPage() {
           <div className="p-3">
             <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`} role="region" aria-label="Calls near me by priority">
               {[
-                { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
-                { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
-                { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
-                { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: 'var(--text-muted)' },
+                { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: 'var(--stat-accent-red)' },
+                { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: 'var(--stat-accent-amber)' },
+                { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: 'var(--spm-text-muted)' },
+                { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: 'var(--pri-scheduled)' },
               ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
                 <div
                   key={key}
@@ -1048,19 +1048,19 @@ export default function DashboardPage() {
                 <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{shiftStats.shift_name} Stats</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b2b2b]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-rmpg-800">
                   <div className="text-lg font-bold font-mono text-brand-400">{shiftStats.calls}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Calls</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b2b2b]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-rmpg-800">
                   <div className="text-lg font-bold font-mono text-amber-400">{shiftStats.incidents}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Incidents</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b2b2b]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-rmpg-800">
                   <div className="text-lg font-bold font-mono text-purple-400">{shiftStats.citations}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Citations</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b2b2b]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-rmpg-800">
                   <div className="text-lg font-bold font-mono text-green-400">{shiftStats.patrol_scans}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Patrols</div>
                 </div>
@@ -1108,22 +1108,22 @@ export default function DashboardPage() {
             <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="callsGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#888888" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#888888" stopOpacity={0.02} />
+                  <stop offset="5%" stopColor="var(--spm-text-muted)" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="var(--spm-text-muted)" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" />
               <XAxis
                 dataKey="label"
-                tick={{ fill: '#666666', fontSize: 9 }}
-                tickLine={{ stroke: '#222222' }}
-                axisLine={{ stroke: '#222222' }}
+                tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }}
+                tickLine={{ stroke: 'var(--spm-border)' }}
+                axisLine={{ stroke: 'var(--spm-border)' }}
                 interval={2}
               />
               <YAxis
-                tick={{ fill: '#666666', fontSize: 9 }}
-                tickLine={{ stroke: '#222222' }}
-                axisLine={{ stroke: '#222222' }}
+                tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }}
+                tickLine={{ stroke: 'var(--spm-border)' }}
+                axisLine={{ stroke: 'var(--spm-border)' }}
                 allowDecimals={false}
               />
               <Tooltip
@@ -1136,17 +1136,17 @@ export default function DashboardPage() {
                   boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                   padding: '8px 12px',
                 }}
-                labelStyle={{ color: '#888888', fontSize: '10px', marginBottom: '4px' }}
-                cursor={{ stroke: '#888888', strokeWidth: 1, strokeDasharray: '4 4' }}
+                labelStyle={{ color: 'var(--spm-text-muted)', fontSize: '10px', marginBottom: '4px' }}
+                cursor={{ stroke: 'var(--spm-text-muted)', strokeWidth: 1, strokeDasharray: '4 4' }}
               />
               <Area
                 type="monotone"
                 dataKey="count"
-                stroke="#888888"
+                stroke="var(--spm-text-muted)"
                 strokeWidth={2}
                 fill="url(#callsGradient)"
-                dot={{ fill: '#888888', r: 2, strokeWidth: 0 }}
-                activeDot={{ fill: '#aaaaaa', r: 5, strokeWidth: 2, stroke: '#ffffff' }}
+                dot={{ fill: 'var(--spm-text-muted)', r: 2, strokeWidth: 0 }}
+                activeDot={{ fill: 'var(--spm-text)', r: 5, strokeWidth: 2, stroke: 'var(--spm-text)' }}
                 animationDuration={800}
                 animationEasing="ease-out"
               />
@@ -1163,10 +1163,10 @@ export default function DashboardPage() {
             {(() => {
               const totalCalls = stats.calls_by_priority.P1 + stats.calls_by_priority.P2 + stats.calls_by_priority.P3 + stats.calls_by_priority.P4;
               const pieData = [
-                { name: 'P1 Emergency', value: stats.calls_by_priority.P1, fill: '#dc2626' },
-                { name: 'P2 Urgent', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
-                { name: 'P3 Routine', value: stats.calls_by_priority.P3, fill: '#888888' },
-                { name: 'P4 Scheduled', value: stats.calls_by_priority.P4, fill: '#555555' },
+                { name: 'P1 Emergency', value: stats.calls_by_priority.P1, fill: 'var(--stat-accent-red)' },
+                { name: 'P2 Urgent', value: stats.calls_by_priority.P2, fill: 'var(--stat-accent-amber)' },
+                { name: 'P3 Routine', value: stats.calls_by_priority.P3, fill: 'var(--spm-text-muted)' },
+                { name: 'P4 Scheduled', value: stats.calls_by_priority.P4, fill: 'var(--pri-scheduled)' },
               ].filter(d => d.value > 0);
 
               return totalCalls > 0 ? (
@@ -1209,12 +1209,12 @@ export default function DashboardPage() {
             })()}
 
             {/* Pie Legend */}
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 pt-2 border-t border-[#2b2b2b]">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 pt-2 border-t border-rmpg-800">
               {[
-                { key: 'P1', label: 'Emergency', color: '#dc2626', count: stats.calls_by_priority.P1 },
-                { key: 'P2', label: 'Urgent', color: '#f59e0b', count: stats.calls_by_priority.P2 },
-                { key: 'P3', label: 'Routine', color: '#888888', count: stats.calls_by_priority.P3 },
-                { key: 'P4', label: 'Scheduled', color: '#555555', count: stats.calls_by_priority.P4 },
+                { key: 'P1', label: 'Emergency', color: 'var(--stat-accent-red)', count: stats.calls_by_priority.P1 },
+                { key: 'P2', label: 'Urgent', color: 'var(--stat-accent-amber)', count: stats.calls_by_priority.P2 },
+                { key: 'P3', label: 'Routine', color: 'var(--spm-text-muted)', count: stats.calls_by_priority.P3 },
+                { key: 'P4', label: 'Scheduled', color: 'var(--pri-scheduled)', count: stats.calls_by_priority.P4 },
               ].map(({ key, label, color, count }) => (
                 <div key={key} className="flex items-center gap-1.5 py-0.5 px-1 rounded-sm hover:bg-surface-sunken transition-colors">
                   <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0 shadow-sm" style={{ backgroundColor: color }} />
@@ -1226,7 +1226,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick Actions — compact */}
-          <div className="border-t border-[#2b2b2b] px-3 py-2.5 space-y-1.5">
+          <div className="border-t border-rmpg-800 px-3 py-2.5 space-y-1.5">
             <h4 className="text-[9px] font-bold text-rmpg-500 uppercase tracking-widest select-none">Quick Actions</h4>
             <div className="grid grid-cols-2 gap-1.5">
               <button type="button" className={`toolbar-btn toolbar-btn-primary justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
@@ -1251,12 +1251,12 @@ export default function DashboardPage() {
       {hasPanel('adminExtras') && (
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Shift summary metrics">
         {[
-          { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: '#888888', path: '/dispatch' },
-          { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: '#22c55e', path: '/incidents' },
-          { icon: Radio, label: 'Units on Duty', value: `${stats.units_available}/${stats.units_total}`, color: '#22c55e', path: '/personnel' },
-          { icon: Clock, label: 'Avg Response', value: stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A', color: '#888888', path: '/reports' },
-          { icon: Gavel, label: 'Active Warrants', value: activeWarrants, color: '#f59e0b', path: '/warrants' },
-          { icon: AlertTriangle, label: 'Active BOLOs', value: stats.active_bolos, color: stats.active_bolos > 0 ? '#ef4444' : '#22c55e', path: '/communications' },
+          { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: 'var(--spm-text-muted)', path: '/dispatch' },
+          { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: 'var(--stat-accent-green)', path: '/incidents' },
+          { icon: Radio, label: 'Units on Duty', value: `${stats.units_available}/${stats.units_total}`, color: 'var(--stat-accent-green)', path: '/personnel' },
+          { icon: Clock, label: 'Avg Response', value: stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A', color: 'var(--spm-text-muted)', path: '/reports' },
+          { icon: Gavel, label: 'Active Warrants', value: activeWarrants, color: 'var(--stat-accent-amber)', path: '/warrants' },
+          { icon: AlertTriangle, label: 'Active BOLOs', value: stats.active_bolos, color: stats.active_bolos > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)', path: '/communications' },
         ].map(({ icon: Icon, label, value, color, path }) => (
           <div
             key={label}
@@ -1298,10 +1298,10 @@ export default function DashboardPage() {
           </div>
           <div className="relative w-16 h-16 mx-auto my-1">
             <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
-              <circle cx="18" cy="18" r="14" fill="none" stroke="#222222" strokeWidth="3" />
+              <circle cx="18" cy="18" r="14" fill="none" stroke="var(--spm-border)" strokeWidth="3" />
               <circle
                 cx="18" cy="18" r="14" fill="none"
-                stroke={stats.avg_response_time_minutes <= 5 ? '#22c55e' : stats.avg_response_time_minutes <= 10 ? '#f59e0b' : '#ef4444'}
+                stroke={stats.avg_response_time_minutes <= 5 ? 'var(--stat-accent-green)' : stats.avg_response_time_minutes <= 10 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-red-bright)'}
                 strokeWidth="3"
                 strokeDasharray={`${Math.min(100, (stats.avg_response_time_minutes / 15) * 100) * 0.88} 88`}
                 strokeLinecap="round"
@@ -1326,16 +1326,16 @@ export default function DashboardPage() {
             <PieChart>
               <Pie
                 data={[
-                  { name: 'P1', value: stats.calls_by_priority.P1, fill: '#dc2626' },
-                  { name: 'P2', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
-                  { name: 'P3', value: stats.calls_by_priority.P3, fill: '#888888' },
-                  { name: 'P4', value: stats.calls_by_priority.P4, fill: '#555555' },
+                  { name: 'P1', value: stats.calls_by_priority.P1, fill: 'var(--stat-accent-red)' },
+                  { name: 'P2', value: stats.calls_by_priority.P2, fill: 'var(--stat-accent-amber)' },
+                  { name: 'P3', value: stats.calls_by_priority.P3, fill: 'var(--spm-text-muted)' },
+                  { name: 'P4', value: stats.calls_by_priority.P4, fill: 'var(--pri-scheduled)' },
                 ].filter(d => d.value > 0)}
                 cx="50%" cy="50%" innerRadius={20} outerRadius={32}
                 paddingAngle={2} dataKey="value" stroke="none"
               >
                 {[
-                  { fill: '#dc2626' }, { fill: '#f59e0b' }, { fill: '#888888' }, { fill: '#555555' },
+                  { fill: 'var(--stat-accent-red)' }, { fill: 'var(--stat-accent-amber)' }, { fill: 'var(--spm-text-muted)' }, { fill: 'var(--pri-scheduled)' },
                 ].map((e, i) => <Cell key={i} fill={e.fill} />)}
               </Pie>
             </PieChart>
@@ -1355,7 +1355,7 @@ export default function DashboardPage() {
             <CheckCircle className="w-3 h-3 text-green-400" />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Clearance</span>
           </div>
-          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (clearanceRate?.rate || 0) >= 50 ? '#22c55e' : '#f59e0b' }}>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (clearanceRate?.rate || 0) >= 50 ? 'var(--stat-accent-green)' : 'var(--stat-accent-amber)' }}>
             {clearanceRate?.rate ?? 0}%
           </div>
           <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{clearanceRate?.cleared || 0}/{clearanceRate?.total || 0} cleared</div>
@@ -1390,10 +1390,10 @@ export default function DashboardPage() {
           aria-label={`Evidence pending: ${evidencePending?.pending ?? 0}`}
         >
           <div className="flex items-center gap-1.5 mb-1">
-            <Briefcase className="w-3 h-3" style={{ color: (evidencePending?.pending || 0) > 0 ? '#f59e0b' : '#22c55e' }} />
+            <Briefcase className="w-3 h-3" style={{ color: (evidencePending?.pending || 0) > 0 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }} />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Evidence</span>
           </div>
-          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (evidencePending?.pending || 0) > 0 ? '#f59e0b' : '#22c55e' }}>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (evidencePending?.pending || 0) > 0 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }}>
             {evidencePending?.pending ?? 0}
           </div>
           <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Pending</div>
@@ -1409,10 +1409,10 @@ export default function DashboardPage() {
           aria-label={`Overdue reports: ${overdueReports?.count ?? 0}`}
         >
           <div className="flex items-center gap-1.5 mb-1">
-            <AlertTriangle className="w-3 h-3" style={{ color: (overdueReports?.count || 0) > 0 ? '#ef4444' : '#22c55e' }} />
+            <AlertTriangle className="w-3 h-3" style={{ color: (overdueReports?.count || 0) > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)' }} />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Overdue</span>
           </div>
-          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (overdueReports?.count || 0) > 0 ? '#ef4444' : '#22c55e' }}>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (overdueReports?.count || 0) > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)' }}>
             {overdueReports?.count ?? 0}
           </div>
           <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Reports</div>
@@ -1544,12 +1544,12 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-lg font-bold font-mono text-green-400 tabular-nums">{psoStats.monthCompleted}<span className="text-[10px] text-rmpg-500 ml-1">/ {psoStats.monthCalls}</span></div>
                 </div>
-                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px]" style={{ borderLeftColor: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#666666' }}>
+                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px]" style={{ borderLeftColor: serveRate !== null && serveRate >= 70 ? 'var(--stat-accent-green)' : serveRate !== null ? 'var(--stat-accent-amber)' : 'var(--spm-text-muted)' }}>
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Target className="w-3 h-3" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : '#f59e0b' }} />
+                    <Target className="w-3 h-3" style={{ color: serveRate !== null && serveRate >= 70 ? 'var(--stat-accent-green)' : 'var(--stat-accent-amber)' }} />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Serve Rate</span>
                   </div>
-                  <div className="text-lg font-bold font-mono tabular-nums" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#666666' }}>
+                  <div className="text-lg font-bold font-mono tabular-nums" style={{ color: serveRate !== null && serveRate >= 70 ? 'var(--stat-accent-green)' : serveRate !== null ? 'var(--stat-accent-amber)' : 'var(--spm-text-muted)' }}>
                     {serveRate !== null ? `${serveRate}%` : 'N/A'}
                   </div>
                 </div>
@@ -1761,7 +1761,7 @@ export default function DashboardPage() {
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
               <table className="w-full text-xs" role="table" aria-label="Expiring credentials list">
                 <thead>
-                  <tr className="border-b border-[#2b2b2b]">
+                  <tr className="border-b border-rmpg-800">
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Officer</th>
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Credential</th>
                     {!isMobile && <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Expiry Date</th>}
@@ -1782,7 +1782,7 @@ export default function DashboardPage() {
                         <td className="px-3 py-2.5 text-rmpg-200 font-medium">{cred.officer_name || cred.user_name || '-'}</td>
                         <td className="px-3 py-2.5 text-rmpg-200">{cred.credential_type || cred.type || '-'}</td>
                         {!isMobile && <td className="px-3 py-2.5 text-rmpg-200 font-mono tabular-nums">{exp.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>}
-                        <td className="px-3 py-2.5 font-mono font-bold tabular-nums" style={{ color: isExpired ? '#ef4444' : isUrgent ? '#f59e0b' : '#22c55e' }}>
+                        <td className="px-3 py-2.5 font-mono font-bold tabular-nums" style={{ color: isExpired ? 'var(--stat-accent-red-bright)' : isUrgent ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }}>
                           {isExpired ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d`}
                         </td>
                         <td className="px-3 py-2.5">
@@ -1802,10 +1802,10 @@ export default function DashboardPage() {
       {/* Officer Activity Comparison */}
       {hasPanel('officerActivity') && officerActivity.length > 0 && (() => {
         const ROLE_COLORS: Record<string, string> = {
-          admin: '#ef4444',
-          supervisor: '#f59e0b',
-          manager: '#888888',
-          officer: '#22c55e',
+          admin: 'var(--stat-accent-red-bright)',
+          supervisor: 'var(--stat-accent-amber)',
+          manager: 'var(--spm-text-muted)',
+          officer: 'var(--stat-accent-green)',
         };
         const ROLE_ORDER = ['admin', 'supervisor', 'manager', 'officer'];
         const ROLE_LABELS: Record<string, string> = {
@@ -1826,7 +1826,7 @@ export default function DashboardPage() {
           badge: o.badge_number || '',
           actions: o.action_count,
           role: o.role,
-          fill: ROLE_COLORS[o.role] || '#666666',
+          fill: ROLE_COLORS[o.role] || 'var(--spm-text-muted)',
         }));
 
         return (
@@ -1843,13 +1843,13 @@ export default function DashboardPage() {
               </div>
               <ResponsiveContainer width="100%" height={Math.max(180, chartRows.length * 32)}>
                 <BarChart data={chartRows} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#222222" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: '#888888', fontSize: 10 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: 'var(--spm-text-muted)', fontSize: 10 }} allowDecimals={false} />
                   <YAxis
                     type="category"
                     dataKey="name"
                     width={140}
-                    tick={{ fill: '#aaaaaa', fontSize: 10 }}
+                    tick={{ fill: 'var(--spm-text)', fontSize: 10 }}
                   />
                   <Tooltip
                     contentStyle={{
