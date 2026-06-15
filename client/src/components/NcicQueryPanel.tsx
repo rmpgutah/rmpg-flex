@@ -35,7 +35,7 @@ import {
   type AddressLookupResults,
   type BackgroundRecord,
 } from '../utils/ncicFormatter';
-import { lookupAnyCode, type CodeHit } from '../constants/ncicCodes';
+import { lookupAnyCode, decode, type CodeHit } from '../constants/ncicCodes';
 import { playTone } from '../utils/dispatchTones';
 
 // ── Quick-query buttons shown on welcome screen ──────────────
@@ -230,12 +230,15 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         }
 
         case 'QV': {
-          // Vehicle query
+          // Vehicle query. If the operator typed an NCIC make code (e.g. TOYT),
+          // expand it to the make label so the server's `LIKE make` matches.
+          const qvExpanded = decode('VMA', queryText.trim());
+          const qvText = qvExpanded !== queryText.trim().toUpperCase() ? qvExpanded : queryText;
           const data = await apiFetch<{
             type: string;
             results: NcicVehicle[];
             query: string;
-          }>(`/records/ncic-query?type=vehicle&query=${encodeURIComponent(queryText)}`);
+          }>(`/records/ncic-query?type=vehicle&query=${encodeURIComponent(qvText)}`);
 
           if (!data.results || data.results.length === 0) {
             response = formatNoRecord('VEHICLE', queryText);
@@ -855,6 +858,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 ║  QS <name>     Query Skip Tracker        ║
 ║  QB <name>     Query Background Check    ║
 ║  QC <name>     Query Utah Courts (web)   ║
+║  QZ <code/term> Code Translation         ║
 ╚══════════════════════════════════════════╝`}</pre>
             </div>
           )}
@@ -886,7 +890,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             value={input}
             onChange={e => setInput(e.target.value.toUpperCase())}
             onKeyDown={handleKeyDown}
-            placeholder="QX SMITH, JOHN | QH NAME | QS NAME | QR NAME | QB NAME"
+            placeholder="QX SMITH, JOHN | QV PLATE | QZ TOYT | QH NAME"
             maxLength={210}
             spellCheck={false}
             autoComplete="off"
@@ -935,6 +939,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 ║  QS <name>     Query Skip Tracker        ║
 ║  QB <name>     Query Background Check    ║
 ║  QC <name>     Query Utah Courts (web)   ║
+║  QZ <code/term> Code Translation         ║
 ╚══════════════════════════════════════════╝`}</pre>
             </div>
           )}
@@ -969,7 +974,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             value={input}
             onChange={e => setInput(e.target.value.toUpperCase())}
             onKeyDown={handleKeyDown}
-            placeholder="QX SMITH, JOHN | QH NAME | QS NAME | QV PLATE | QB NAME"
+            placeholder="QX SMITH, JOHN | QV PLATE | QZ TOYT | QH NAME"
             maxLength={210}
             spellCheck={false}
             autoComplete="off"
