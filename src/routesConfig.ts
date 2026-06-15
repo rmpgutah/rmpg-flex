@@ -193,6 +193,7 @@ import offenderRegistry from './routes/offenderRegistry';
 import uploads from './routes/uploads';
 import companyDocuments from './routes/companyDocuments';
 import wallet from './routes/wallet';
+import jailRoster from './routes/jailRoster';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -557,6 +558,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // (code_violations + vehicle_tows tables) — 2026-06-09 404 sweep.
   { prefix: '/api/code-enforcement', router: codeEnforcement, auth: 'required' },
   { prefix: '/api/dar', router: dar, auth: 'required' },
+  { prefix: '/api/jail-roster', router: jailRoster, auth: 'required' },
   { prefix: '/api/evidence', router: evidence, auth: 'required' },
   { prefix: '/api/diagnostics', router: stubs, auth: 'public' },
   // Dedicated empty-state router (not `stubs`) so its catch-all `*`
