@@ -96,13 +96,54 @@ const HAIR = makeTable([
   ['XXX', 'Unknown'],
 ]);
 
+// ── Vehicle make (NCIC VMA) ─────────────────────────────────
+const VMA = makeTable([
+  ['ACUR', 'Acura'], ['AMER', 'AMC', 'American Motors'], ['AUDI', 'Audi'],
+  ['BMW', 'BMW'], ['BUIC', 'Buick'], ['CADI', 'Cadillac'],
+  ['CHEV', 'Chevrolet', 'Chevy'], ['CHRY', 'Chrysler'], ['DODG', 'Dodge'],
+  ['FIAT', 'Fiat'], ['FORD', 'Ford'], ['GENE', 'Genesis'], ['GEO', 'Geo'],
+  ['GMC', 'GMC'], ['HOND', 'Honda'], ['HUMM', 'Hummer'], ['HYUN', 'Hyundai'],
+  ['INFI', 'Infiniti'], ['ISU', 'Isuzu'], ['JAGU', 'Jaguar'], ['JEEP', 'Jeep'],
+  ['KIA', 'Kia'], ['LEXS', 'Lexus'], ['LINC', 'Lincoln'],
+  ['LndRover', 'Land Rover', 'Range Rover'], ['MAZD', 'Mazda'],
+  ['MERZ', 'Mercedes-Benz', 'Mercedes'], ['MERC', 'Mercury'], ['MINI', 'Mini'],
+  ['MITS', 'Mitsubishi'], ['NISS', 'Nissan'], ['OLDS', 'Oldsmobile'],
+  ['PLYM', 'Plymouth'], ['PONT', 'Pontiac'], ['PORS', 'Porsche'],
+  ['RAM', 'Ram'], ['SATL', 'Saturn'], ['SCIO', 'Scion'], ['SMRT', 'Smart'],
+  ['SUBA', 'Subaru'], ['SUZI', 'Suzuki'], ['TESL', 'Tesla'],
+  ['TOYT', 'Toyota'], ['VOLK', 'Volkswagen', 'VW'], ['VOLV', 'Volvo'],
+  ['HD', 'Harley-Davidson', 'Harley'],
+]);
+
+// ── Vehicle color (NCIC VCO) ────────────────────────────────
+const VCO = makeTable([
+  ['BGE', 'Beige'], ['BLK', 'Black'], ['BLU', 'Blue'], ['BRO', 'Brown'],
+  ['BRZ', 'Bronze'], ['CPR', 'Copper'], ['CRM', 'Cream', 'Ivory'],
+  ['DBL', 'Dark Blue', 'Navy'], ['DGR', 'Dark Green'], ['GLD', 'Gold'],
+  ['GRY', 'Gray', 'Grey', 'Charcoal', 'Dark Gray', 'Light Gray'],
+  ['GRN', 'Green'], ['LAV', 'Lavender'], ['LBL', 'Light Blue'],
+  ['LGR', 'Light Green'], ['MAR', 'Maroon', 'Burgundy', 'Dark Red'],
+  ['ONG', 'Orange'], ['PNK', 'Pink'], ['PLE', 'Purple'], ['RED', 'Red'],
+  ['SIL', 'Silver'], ['TAN', 'Tan'], ['TEL', 'Teal'], ['TRQ', 'Turquoise'],
+  ['WHI', 'White'], ['YEL', 'Yellow'], ['MUL', 'Multicolored', 'Multi-Color'],
+]);
+
+// ── Vehicle body style (NCIC VST) ───────────────────────────
+const VST = makeTable([
+  ['2D', '2-Door', 'Coupe (2-Door)'], ['4D', 'Sedan 4-Door', 'Sedan (4-Door)', 'Sedan'],
+  ['CP', 'Coupe'], ['CV', 'Convertible'], ['SW', 'Station Wagon', 'Wagon'],
+  ['HB', 'Hatchback'], ['UV', 'Utility', 'SUV', 'Crossover', 'ATV / UTV'],
+  ['PK', 'Pickup', 'Pickup Truck'], ['VN', 'Van', 'Minivan', 'Cargo Van'],
+  ['BU', 'Bus'], ['MC', 'Motorcycle', 'Scooter', 'Moped'],
+  ['TL', 'Trailer'], ['TK', 'Truck', 'Box Truck', 'Flatbed', 'Tow Truck', 'Dump Truck'],
+  ['TR', 'Truck Tractor', 'Semi Tractor'],
+]);
+
 // Registry of label-based domains. (OFFENSE is handled separately
 // because it returns a structured entry, not a single code.)
 const TABLES: Record<NcicDomain, CodeTable> = {
   RACE, ETHNICITY, SEX, EYE, HAIR,
-  // Vehicle + geographic tables are added in later tasks; declare
-  // empty placeholders so the type stays exhaustive until then.
-  VMA: makeTable([]), VCO: makeTable([]), VST: makeTable([]),
+  VMA, VCO, VST,
   STATE: makeTable([]), DL_CLASS: makeTable([]),
   DL_RESTRICTION: makeTable([]), DL_ENDORSEMENT: makeTable([]),
 };

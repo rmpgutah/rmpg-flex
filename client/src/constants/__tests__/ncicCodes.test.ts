@@ -66,10 +66,31 @@ describe('person descriptor codes', () => {
 
   it('decode resolves a label input back to the canonical label', () => {
     expect(decode('RACE', 'White')).toBe('White');
-    expect(decode('VMA', 'Toyota')).toBe('TOYOTA'); // empty placeholder table → fallback
+    expect(decode('VMA', 'Toyota')).toBe('Toyota'); // resolves via real VMA table
   });
 
   it('does not treat non-Hispanic substrings as Hispanic', () => {
     expect(formatRaceEthnicity('Platinum')).toEqual({ rac: 'PLATINUM', etn: null });
+  });
+});
+
+describe('vehicle codes', () => {
+  it('encodes makes to NCIC VMA codes', () => {
+    expect(encode('VMA', 'Toyota')).toBe('TOYT');
+    expect(encode('VMA', 'Chevrolet')).toBe('CHEV');
+    expect(encode('VMA', 'Ford')).toBe('FORD');
+    expect(encode('VMA', 'Honda')).toBe('HOND');
+    expect(encode('VMA', 'Mercedes-Benz')).toBe('MERZ');
+  });
+  it('fmtCoded renders vehicle make/color/style', () => {
+    expect(fmtCoded('VMA', 'Toyota')).toBe('TOYT (TOYOTA)');
+    expect(fmtCoded('VCO', 'Blue')).toBe('BLU (BLUE)');
+    expect(fmtCoded('VST', 'Sedan (4-Door)')).toBe('4D (SEDAN 4-DOOR)');
+    expect(fmtCoded('VST', 'Pickup Truck')).toBe('PK (PICKUP)');
+  });
+  it('maps compound colors', () => {
+    expect(encode('VCO', 'Dark Blue')).toBe('DBL');
+    expect(encode('VCO', 'Silver')).toBe('SIL');
+    expect(encode('VCO', 'Maroon')).toBe('MAR');
   });
 });
