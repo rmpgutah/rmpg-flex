@@ -611,7 +611,9 @@
 //       capture/edge/clearpath/footage, client overlay/upload/dossier fixes.
 // v957: Geospatial Intel Map — /intel/map Mapbox layers (sightings/calls/incidents/
 //       FI/warrants/trespass), geocode cache-first, click→dossier panel.
-const CACHE_NAME = 'rmpg-flex-v957';
+// v959: Central AI analyst — Claude dossier summary button in the intel context
+//       panel (reachable from search/map/watchlist). (v958 = open report-loop PR.)
+const CACHE_NAME = 'rmpg-flex-v959';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
