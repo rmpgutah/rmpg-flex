@@ -40,6 +40,39 @@ enum Theme {
         LinearGradient(colors: [groupHeadTop, groupHeadBottom], startPoint: .top, endPoint: .bottom)
     }
 
+    /// Named type roles at the Responder scale. Each is scaled by Dynamic Type
+    /// relative to a system text style, so it honors the officer's text-size +
+    /// accessibility settings while keeping our exact base size + weight (and
+    /// the monospaced Spillman feel where it matters). SwiftUI's plain
+    /// `.system(size:)` does NOT auto-scale — this layer is why the scale honors
+    /// Dynamic Type instead of being fixed pt values.
+    enum Typography {
+        static func scaled(_ size: CGFloat, _ weight: Font.Weight,
+                           relativeTo style: UIFont.TextStyle,
+                           monospaced: Bool = false) -> Font {
+            let s = UIFontMetrics(forTextStyle: style).scaledValue(for: size)
+            return .system(size: s, weight: weight, design: monospaced ? .monospaced : .default)
+        }
+        static var display: Font   { scaled(28, .heavy,    relativeTo: .largeTitle) }
+        static var title: Font     { scaled(22, .heavy,    relativeTo: .title1) }
+        static var headline: Font  { scaled(17, .semibold, relativeTo: .title3) }
+        static var body: Font      { scaled(16, .regular,  relativeTo: .body) }
+        static var label: Font     { scaled(13, .semibold, relativeTo: .subheadline) }
+        static var caption: Font   { scaled(12, .regular,  relativeTo: .caption1) }
+        static var mono: Font      { scaled(16, .regular,  relativeTo: .body, monospaced: true) }
+        static var monoLarge: Font { scaled(18, .semibold, relativeTo: .title3, monospaced: true) }
+    }
+
+    /// Layout spacing scale, replacing the scattered 6/8/9/10/12/14pt literals.
+    enum Spacing {
+        static let xs: CGFloat = 4
+        static let sm: CGFloat = 6
+        static let md: CGFloat = 8
+        static let lg: CGFloat = 12
+        static let xl: CGFloat = 16
+        static let xxl: CGFloat = 20
+    }
+
     /// Global UIKit appearance — steel-blue tab + nav bars with gold accents
     /// (SwiftUI has no direct API for bar backgrounds). Call once at app init.
     static func configureAppearance() {
