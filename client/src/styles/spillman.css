@@ -184,42 +184,64 @@
 .records-page [role="listitem"][aria-selected="true"] [class*="bg-purple-"] { background: #7e22ce !important; color: #ffffff !important; }
 .records-page [role="listitem"][aria-selected="true"] [class*="bg-rmpg-"] { background: #1e3f6b !important; color: #ffffff !important; }
 
-/* ── Detail identity band + caution banner ─────────────────── */
-/* Amber/gold caution surfaces → Spillman caution gradient (detail panel only) */
+/* ── Detail caution / officer-safety surfaces (theme-aware) ── */
+/* NIGHT (default): dark-tinted caution surfaces, light text */
 .records-page .records-detail [class*="bg-amber-9"],
 .records-page .records-detail [class*="bg-yellow-9"] {
-  background: linear-gradient(#fff4d6, #ffe9ad) !important;
-  border-color: #c79a2e !important;
+  background: rgba(212, 160, 23, 0.16) !important;
+  border-color: #8a6d12 !important;
 }
 .records-page .records-detail [class*="bg-amber-9"] *,
-.records-page .records-detail [class*="bg-yellow-9"] * { color: #6b4e10 !important; }
+.records-page .records-detail [class*="bg-yellow-9"] * { color: #f5d060 !important; }
 
-/* Red officer-safety surfaces → keep red but lighten for the light theme (detail panel only) */
 .records-page .records-detail [class*="bg-red-9"] {
-  background: #f6dada !important;
-  border-color: #b03030 !important;
+  background: rgba(176, 48, 48, 0.20) !important;
+  border-color: #7a2020 !important;
 }
-.records-page .records-detail [class*="bg-red-9"] * { color: #9a1c1c !important; }
+.records-page .records-detail [class*="bg-red-9"] * { color: #fca5a5 !important; }
 
 /* HIGH RISK / status pills sit on field surface in the identity band (detail panel only) */
 .records-page .records-detail [class*="bg-surface"][class*="rounded"] { background: var(--spm-field) !important; }
 
-/* ── Record-detail AlertBanner (caution banners) ───────────── */
+/* AlertBanner (caution banners) — NIGHT default */
 .records-page .alert-banner-critical {
-  background: #f6dada !important;
-  border: 1px solid #b03030 !important;
+  background: rgba(176, 48, 48, 0.20) !important;
+  border: 1px solid #7a2020 !important;
 }
 .records-page .alert-banner-warning {
-  background: linear-gradient(#fff4d6, #ffe9ad) !important;
-  border: 1px solid #c79a2e !important;
+  background: rgba(212, 160, 23, 0.16) !important;
+  border: 1px solid #8a6d12 !important;
 }
-/* dark-on-light text for both banner variants (the title is text-white inline-classed) */
-.records-page .alert-banner-critical .text-white { color: #7a1414 !important; }
-.records-page .alert-banner-warning .text-white { color: #6b4e10 !important; }
+.records-page .alert-banner-critical .text-white { color: #fca5a5 !important; }
+.records-page .alert-banner-warning .text-white { color: #f5d060 !important; }
 .records-page .alert-banner-row .text-rmpg-300 { color: var(--spm-text-muted) !important; }
 /* AlertBanner icon color softening */
 .records-page .alert-banner-critical svg { color: #b03030 !important; }
 .records-page .alert-banner-warning svg { color: #9a7b1e !important; }
+
+/* DAY (light grey theme): restore the warm light caution look */
+html.theme-light .records-page .records-detail [class*="bg-amber-9"],
+html.theme-light .records-page .records-detail [class*="bg-yellow-9"] {
+  background: linear-gradient(#fff4d6, #ffe9ad) !important;
+  border-color: #c79a2e !important;
+}
+html.theme-light .records-page .records-detail [class*="bg-amber-9"] *,
+html.theme-light .records-page .records-detail [class*="bg-yellow-9"] * { color: #6b4e10 !important; }
+html.theme-light .records-page .records-detail [class*="bg-red-9"] {
+  background: #f6dada !important;
+  border-color: #b03030 !important;
+}
+html.theme-light .records-page .records-detail [class*="bg-red-9"] * { color: #9a1c1c !important; }
+html.theme-light .records-page .alert-banner-critical {
+  background: #f6dada !important;
+  border: 1px solid #b03030 !important;
+}
+html.theme-light .records-page .alert-banner-warning {
+  background: linear-gradient(#fff4d6, #ffe9ad) !important;
+  border: 1px solid #c79a2e !important;
+}
+html.theme-light .records-page .alert-banner-critical .text-white { color: #7a1414 !important; }
+html.theme-light .records-page .alert-banner-warning .text-white { color: #6b4e10 !important; }
 
 /* ── Compact stats strip → Spillman chrome surface ──────────── */
 .records-page .records-stats { background: var(--spm-chrome) !important; color: var(--spm-text) !important; }

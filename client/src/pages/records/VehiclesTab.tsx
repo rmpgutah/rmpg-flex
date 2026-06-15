@@ -642,7 +642,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                     className={`flex-shrink-0 w-9 h-9 rounded-[2px] flex items-center justify-center text-[10px] font-bold font-mono ${posture.pulse ? 'animate-led-pulse' : ''}`}
                     style={ringed
                       ? toneStyle(posture.tone, true)
-                      : { background: '#1f1f1f', color: '#cfcfcf', border: '1px solid #3a3a3a' }}
+                      : { background: 'var(--surface-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-default)' }}
                   >
                     {v.license_plate.slice(0, 4) || '----'}
                   </div>
