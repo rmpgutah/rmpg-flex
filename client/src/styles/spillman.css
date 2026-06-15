@@ -191,3 +191,23 @@
 .spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-green-"] { background: #15803d !important; color: #ffffff !important; }
 .spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-purple-"] { background: #7e22ce !important; color: #ffffff !important; }
 .spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-rmpg-"] { background: #1e3f6b !important; color: #ffffff !important; }
+
+/* ── Detail identity band + caution banner ─────────────────── */
+/* Amber/gold caution surfaces → Spillman caution gradient */
+.spillman-theme [class*="bg-amber-9"],
+.spillman-theme [class*="bg-yellow-9"] {
+  background: linear-gradient(#fff4d6, #ffe9ad) !important;
+  border-color: #c79a2e !important;
+}
+.spillman-theme [class*="bg-amber-9"] *,
+.spillman-theme [class*="bg-yellow-9"] * { color: #6b4e10 !important; }
+
+/* Red officer-safety surfaces → keep red but lighten for the light theme */
+.spillman-theme [class*="bg-red-9"] {
+  background: #f6dada !important;
+  border-color: #b03030 !important;
+}
+.spillman-theme [class*="bg-red-9"] * { color: #9a1c1c !important; }
+
+/* HIGH RISK / status pills sit on white in the identity band */
+.spillman-theme [class*="bg-surface"][class*="rounded"] { background: #ffffff !important; }
