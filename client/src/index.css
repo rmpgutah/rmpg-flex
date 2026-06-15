@@ -234,7 +234,10 @@
 
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  /* End on transform:none (not translateY(0)) so animation-fill-mode:both does
+     not leave every animated element a containing block for position:fixed
+     descendants. See the page-fade-in note below for the full rationale. */
+  to { opacity: 1; transform: none; }
 }
 
 @keyframes slide-in-right {
@@ -4091,7 +4094,16 @@ html:not(.theme-light) {
    ═══════════════════════════════════════════════════════════════ */
 @keyframes page-fade-in {
   from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  /* End on transform:none — NOT translateY(0). With animation-fill-mode:both
+     the final keyframe persists forever, and translateY(0) computes to
+     matrix(1,0,0,1,0,0): a non-none transform STILL establishes a containing
+     block for position:fixed descendants. That trapped every fixed modal
+     (.fixed.inset-0.z-50) inside this scrollable, below-the-nav content area
+     instead of the viewport, so tall modals slid their title bar under the
+     sticky top nav and the window-chrome buttons (minimize/maximize/close)
+     became partly/fully unclickable. transform:none clears the containing
+     block at rest while still animating the 4px slide-in. */
+  to { opacity: 1; transform: none; }
 }
 .animate-page-enter {
   animation: page-fade-in 0.2s ease-out both;

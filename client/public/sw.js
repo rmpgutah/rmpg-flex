@@ -630,7 +630,14 @@
 // v978: button-health diagnostic — opt-in read-only click-area scanner
 //       (Ctrl+Alt+B or ?btnaudit=1) that names any visible-but-unclickable
 //       control and what is covering it. No behavior change to the app.
-const CACHE_NAME = 'rmpg-flex-v978';
+// v979: FIX modal window-chrome buttons (minimize/maximize/close) being
+//       partly/fully unclickable. page-fade-in / fade-in keyframes ended on
+//       transform:translateY(0); with animation-fill-mode:both that identity
+//       transform persisted and made the page content wrapper a containing
+//       block for position:fixed, trapping every modal inside the below-the-nav
+//       scroll area so tall modals slid their title bar under the sticky nav.
+//       Keyframes now end on transform:none. Worst on short MDT viewports.
+const CACHE_NAME = 'rmpg-flex-v979';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
