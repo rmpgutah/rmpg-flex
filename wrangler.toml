@@ -78,6 +78,10 @@ class_name = "VoiceHubDO"
 name = "ALERT_HUB"
 class_name = "AlertHubDO"
 
+[[durable_objects.bindings]]
+name = "DEEP_RESEARCH"
+class_name = "DeepResearchDO"
+
 [[migrations]]
 tag = "v1"
 # new_sqlite_classes (not new_classes) — free-plan compatible.
@@ -151,6 +155,10 @@ new_sqlite_classes = ["VoiceHubDO"]
 [[migrations]]
 tag = "v3-alerthub"
 new_sqlite_classes = ["AlertHubDO"]
+
+[[migrations]]
+tag = "v4-deepresearch"
+new_sqlite_classes = ["DeepResearchDO"]
 
 # ─── Workers AI ────────────────────────────────────────────
 # Used by /api/serve-intake/scan-document + /api/serve-intake/upload
