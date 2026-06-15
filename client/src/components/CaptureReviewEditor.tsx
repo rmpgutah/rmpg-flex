@@ -104,7 +104,7 @@ export default function CaptureReviewEditor({
           {/* Plate — the headline correction. */}
           <div>
             <label className={LABEL}>Plate{capture.plate_confidence != null && (
-              <span className="text-yellow-500 ml-1">{Math.round(capture.plate_confidence * 100)}% read</span>
+              <span className="text-yellow-500 ml-1">{Math.round(capture.plate_confidence * 100)}% trust</span>
             )}</label>
             <input
               value={form.plate}
