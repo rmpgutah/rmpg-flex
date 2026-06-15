@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { splitUdcName, mapUdcListResult, mapUdcDetail } from '../src/utils/screening/udcApi';
+import { udcAdapter } from '../src/utils/screening/udcAdapter';
 
 describe('splitUdcName', () => {
   it('parses "LAST, FIRST MIDDLE" into parts', () => {
@@ -42,5 +43,20 @@ describe('mapUdcDetail', () => {
   });
   it('returns null when no offender number is present', () => {
     expect(mapUdcDetail({ results: {} })).toBeNull();
+  });
+});
+
+describe('udcAdapter.scoreMatch', () => {
+  const person = { id: 1, first_name: 'Jerome', last_name: 'Perez', dob: '1978-03-12' };
+  it('confidently matches same surname + forename + DOB age', () => {
+    const cand = udcAdapter.normalize({ offenderNumber: 128142, offenderName: 'PEREZ, JEROME JUNIOR', dateOfBirth: '1978-03-12' });
+    const m = udcAdapter.scoreMatch(person as never, cand);
+    expect(m.isConfident).toBe(true);
+    expect(m.matchedFields).toContain('surname');
+  });
+  it('does not match a different surname', () => {
+    const cand = udcAdapter.normalize({ offenderNumber: 999, offenderName: 'JONES, JEROME', dateOfBirth: '1978-03-12' });
+    const m = udcAdapter.scoreMatch(person as never, cand);
+    expect(m.score).toBe(0);
   });
 });

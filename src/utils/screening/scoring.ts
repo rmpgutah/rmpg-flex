@@ -72,3 +72,5 @@ export function scoreSanctionMatch(personSurname: string, personForename: string
   score = Math.min(score, 1);
   return { score, matchedFields: matched, isConfident: score >= threshold };
 }
+
+export { splitUdcName } from './udcApi';
