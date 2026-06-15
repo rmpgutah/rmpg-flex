@@ -98,6 +98,7 @@ export interface BusinessTabState {
   setSearchQuery: (q: string) => void;
   showArchived: boolean;
   loading: boolean;
+  fetchBusinesses: () => Promise<void>;
   setDeleteTarget: (t: { type: string; id: string; label: string } | null) => void;
   handleArchive: (type: string, id: string) => Promise<void>;
   handleUnarchive: (type: string, id: string) => Promise<void>;
@@ -185,6 +186,7 @@ export function useBusinessTab(props: {
   return {
     businesses, filteredBusinesses, selectedBusiness, setSelectedBusiness,
     searchQuery, setSearchQuery, showArchived, loading,
+    fetchBusinesses,
     setDeleteTarget,
     handleArchive: handleArchiveRecord as any,
     handleUnarchive: handleUnarchiveRecord as any,

@@ -108,7 +108,7 @@ export interface PropertiesTabProps {
   setProperties: React.Dispatch<React.SetStateAction<Property[]>>;
   loadingProperties: boolean;
   setLoadingProperties: React.Dispatch<React.SetStateAction<boolean>>;
-  setDeleteTarget: React.Dispatch<React.SetStateAction<{ type: 'person' | 'vehicle' | 'property' | 'evidence'; id: string; label: string } | null>>;
+  setDeleteTarget: React.Dispatch<React.SetStateAction<{ type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence'; id: string; label: string } | null>>;
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
   handleArchiveRecord: (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => Promise<void>;

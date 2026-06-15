@@ -630,7 +630,9 @@
 // v978: theme sweep — DashboardPage hex → tokens (day/night flush).
 // v979: record icon tiles — steel-blue glyph tiles (person/vehicle/building) +
 //       type-based icons + corner condition tabs across Records lists & heroes.
-const CACHE_NAME = 'rmpg-flex-v979';
+// v980: Business unified onto canonical `businesses` table (CRUD repointed +
+//       archive/unarchive/delete routes + delete endpoint wired).
+const CACHE_NAME = 'rmpg-flex-v980';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

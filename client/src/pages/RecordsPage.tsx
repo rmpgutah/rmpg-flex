@@ -112,7 +112,7 @@ export default function RecordsPage() {
   const [newEvidenceTrigger, setNewEvidenceTrigger] = useState(0);
 
   // Delete confirmation
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'person' | 'vehicle' | 'property' | 'evidence'; id: string; label: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence'; id: string; label: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   // ── Fetchers ─────────────────────────────────────────
@@ -210,6 +210,7 @@ export default function RecordsPage() {
         person: `/records/persons/${deleteTarget.id}`,
         vehicle: `/records/vehicles/${deleteTarget.id}`,
         property: `/records/properties/${deleteTarget.id}`,
+        business: `/records/businesses/${deleteTarget.id}`,
         evidence: `/records/evidence/${deleteTarget.id}`,
       };
       await apiFetch(endpointMap[deleteTarget.type], { method: 'DELETE' });
@@ -220,6 +221,8 @@ export default function RecordsPage() {
         await fetchVehicles({ silent: true });
       } else if (deleteTarget.type === 'property') {
         await fetchProperties({ silent: true });
+      } else if (deleteTarget.type === 'business') {
+        await businessState.fetchBusinesses();
       } else if (deleteTarget.type === 'evidence') {
         await fetchEvidence({ silent: true });
       }
@@ -239,6 +242,7 @@ export default function RecordsPage() {
       if (type === 'persons') { await fetchPersons(); }
       else if (type === 'vehicles') { await fetchVehicles(); }
       else if (type === 'properties') { await fetchProperties(); }
+      else if (type === 'businesses') { await businessState.fetchBusinesses(); }
       else if (type === 'evidence') { await fetchEvidence(); }
       addToast('Record archived', 'success');
     } catch (err) {
@@ -252,6 +256,7 @@ export default function RecordsPage() {
       if (type === 'persons') { await fetchPersons(); }
       else if (type === 'vehicles') { await fetchVehicles(); }
       else if (type === 'properties') { await fetchProperties(); }
+      else if (type === 'businesses') { await businessState.fetchBusinesses(); }
       else if (type === 'evidence') { await fetchEvidence(); }
       addToast('Record unarchived', 'success');
     } catch (err) {
