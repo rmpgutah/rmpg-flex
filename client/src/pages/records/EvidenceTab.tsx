@@ -307,6 +307,11 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
                   )}
                   <div className="flex items-center gap-1">
                     {(!showArchived || user?.role === 'admin') && (
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setEditingEvidence(ev); setEvidenceModalOpen(true); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Edit">
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
+                    {(!showArchived || user?.role === 'admin') && (
                       <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'evidence', id: ev.id, label: ev.evidence_number }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -813,11 +818,11 @@ export default function EvidenceTab(props: EvidenceTabProps) {
   // Keyboard shortcut: Escape to deselect
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { /* close detail panel if open */ }
+      if (e.key === 'Escape') { state.setSelectedEvidence(null); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [state]);
+  }, [state.setSelectedEvidence]);
 
   if (props.loadingEvidence) return null;
 

@@ -617,7 +617,7 @@
 //       persons-only) + prune-dead-tabs; also wires business selection into the
 //       detail panel (was unreachable: hasSelection had no business clause so the
 //       right panel never opened) + real business tab count.
-const CACHE_NAME = 'rmpg-flex-v964';
+const CACHE_NAME = 'rmpg-flex-v965';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
