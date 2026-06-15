@@ -70,4 +70,36 @@ describe('SpillmanStatusGrid', () => {
     expect(order[0]).toContain('Fire');
     expect(order[1]).toContain('Theft');
   });
+
+  it('row is draggable when onDragStartRow is provided', () => {
+    const onDragStartRow = vi.fn();
+    const onDropRow = vi.fn();
+    renderGrid({ onDragStartRow, onDropRow });
+    const tr = screen.getByText('Fire').closest('tr');
+    expect(tr).toHaveAttribute('draggable');
+  });
+
+  it('fires onDragStartRow with the row on dragstart', () => {
+    const onDragStartRow = vi.fn();
+    const onDropRow = vi.fn();
+    renderGrid({ onDragStartRow, onDropRow });
+    const tr = screen.getByText('Fire').closest('tr')!;
+    fireEvent.dragStart(tr);
+    expect(onDragStartRow).toHaveBeenCalledWith(rows[0], expect.anything());
+  });
+
+  it('fires onDropRow with the row on drop', () => {
+    const onDragStartRow = vi.fn();
+    const onDropRow = vi.fn();
+    renderGrid({ onDragStartRow, onDropRow });
+    const tr = screen.getByText('Fire').closest('tr')!;
+    fireEvent.drop(tr);
+    expect(onDropRow).toHaveBeenCalledWith(rows[0], expect.anything());
+  });
+
+  it('row is NOT draggable when onDragStartRow is omitted', () => {
+    renderGrid();
+    const tr = screen.getByText('Fire').closest('tr');
+    expect(tr).not.toHaveAttribute('draggable');
+  });
 });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export interface MenuItem { label: string; onClick?: () => void; }
 export interface MenuSpec { name: string; items: MenuItem[]; }
@@ -7,8 +7,22 @@ export interface MenuSpec { name: string; items: MenuItem[]; }
  *  a (disabled-feeling) label but never open an empty dropdown. */
 export default function SpillmanMenuBar({ menus }: { menus: MenuSpec[] }) {
   const [open, setOpen] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = () => setOpen(null);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
   return (
-    <div className="spm-menubar" role="menubar" onMouseLeave={() => setOpen(null)}>
+    <div
+      className="spm-menubar"
+      role="menubar"
+      onMouseLeave={() => setOpen(null)}
+      onKeyDown={(e) => { if (e.key === 'Escape') setOpen(null); }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
       {menus.map(({ name, items }) => {
         const live = items.filter((i) => typeof i.onClick === 'function');
         const has = live.length > 0;

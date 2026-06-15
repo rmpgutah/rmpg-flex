@@ -29,4 +29,28 @@ describe('SpillmanMenuBar (generic)', () => {
     expect(onNew).toHaveBeenCalledOnce();
     expect(screen.queryByRole('menu')).toBeNull();
   });
+
+  it('dismisses open menu on Escape keydown', () => {
+    const menus: MenuSpec[] = [{ name: 'File', items: [{ label: 'New', onClick: vi.fn() }] }];
+    render(<SpillmanMenuBar menus={menus} />);
+    fireEvent.click(screen.getByText('File'));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    const menubar = screen.getByRole('menubar');
+    fireEvent.keyDown(menubar, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('dismisses open menu on click outside', () => {
+    const menus: MenuSpec[] = [{ name: 'File', items: [{ label: 'New', onClick: vi.fn() }] }];
+    render(
+      <div>
+        <SpillmanMenuBar menus={menus} />
+        <button type="button">Outside</button>
+      </div>,
+    );
+    fireEvent.click(screen.getByText('File'));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByText('Outside'));
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
 });

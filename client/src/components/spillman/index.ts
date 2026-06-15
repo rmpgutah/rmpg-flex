@@ -1,7 +1,7 @@
 export { default as SpillmanWindow } from './SpillmanWindow';
 export type { SpillmanWindowProps } from './SpillmanWindow';
 export { default as SpillmanToolbar } from './SpillmanToolbar';
-export type { ToolbarButton } from './SpillmanToolbar';
+export type { ToolbarButton, SpillmanToolbarProps } from './SpillmanToolbar';
 export { default as SpillmanMenuBar } from './SpillmanMenuBar';
 export type { MenuItem, MenuSpec } from './SpillmanMenuBar';
 export { default as SpillmanGroupBox } from './SpillmanGroupBox';

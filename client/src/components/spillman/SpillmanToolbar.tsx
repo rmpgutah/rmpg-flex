@@ -10,7 +10,7 @@ export interface ToolbarButton {
   primary?: boolean;
 }
 
-interface SpillmanToolbarProps {
+export interface SpillmanToolbarProps {
   buttons: ToolbarButton[];
   leading?: React.ReactNode;
   ariaLabel: string;

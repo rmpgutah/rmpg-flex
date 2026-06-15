@@ -23,6 +23,7 @@ export interface SpillmanStatusGridProps<T extends Record<string, any>> {
   onSelect?: (row: T) => void;
   onActivate?: (row: T) => void;
   onContextMenu?: (row: T, e: React.MouseEvent) => void;
+  onDragStartRow?: (row: T, e: React.DragEvent) => void;
   onDropRow?: (row: T, e: React.DragEvent) => void;
 }
 
@@ -34,7 +35,7 @@ export default function SpillmanStatusGrid<T extends Record<string, any>>(
   const {
     title, badge, columns, rows, rowKey, rowColor, renderCell,
     selectedKey, sortKey, sortDir = 'asc', onSort,
-    onSelect, onActivate, onContextMenu, onDropRow,
+    onSelect, onActivate, onContextMenu, onDragStartRow, onDropRow,
   } = props;
 
   const ordered = sortKey ? sortGridRows(rows, sortKey, sortDir) : rows;
@@ -73,6 +74,8 @@ export default function SpillmanStatusGrid<T extends Record<string, any>>(
                 onClick={onSelect ? () => onSelect(row) : undefined}
                 onDoubleClick={onActivate ? () => onActivate(row) : undefined}
                 onContextMenu={onContextMenu ? (e) => onContextMenu(row, e) : undefined}
+                draggable={onDragStartRow ? true : undefined}
+                onDragStart={onDragStartRow ? (e) => onDragStartRow(row, e) : undefined}
                 onDragOver={onDropRow ? (e) => e.preventDefault() : undefined}
                 onDrop={onDropRow ? (e) => onDropRow(row, e) : undefined}
               >
