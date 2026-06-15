@@ -21,6 +21,15 @@ html.theme-dark,
   --text-primary: #e6edf5; --text-secondary: #c3d0de; --text-muted: #8fa3b8;
   --brand-gold: #d4a017; --brand-blue: #5a85b8;
 
+  /* StatsCard accent glow colors — semantic status hues are CONSTANT across
+     themes (a "success green" stays green in day + night); the default/"blue"
+     accent is the neutral muted-text token so it inverts with the theme. */
+  --stat-accent-default: var(--spm-text-muted);
+  --stat-accent-red: #dc2626;
+  --stat-accent-green: #22c55e;
+  --stat-accent-amber: #f59e0b;
+  --stat-accent-purple: #a855f7;
+
   --rmpg-50-rgb: 237 241 246; --rmpg-100-rgb: 214 221 230; --rmpg-200-rgb: 184 195 208;
   --rmpg-300-rgb: 150 165 184; --rmpg-400-rgb: 122 140 162; --rmpg-500-rgb: 92 110 132;
   --rmpg-600-rgb: 60 80 102;  --rmpg-700-rgb: 30 43 58;    --rmpg-800-rgb: 21 33 46;

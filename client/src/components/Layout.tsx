@@ -975,7 +975,7 @@ export default function Layout() {
             <button type="button"
               onClick={handleNameSetupSave}
               disabled={setupSaving || !setupFirstName.trim() || !setupLastName.trim()}
-              className="btn-primary w-full justify-center transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+              className="btn-primary w-full justify-center transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
             >
               {setupSaving ? 'Saving...' : 'Continue'}
             </button>
@@ -1052,7 +1052,7 @@ export default function Layout() {
 
           {/* Left — Logo + FLEX branding */}
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2 transition-opacity duration-150 hover:opacity-90 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none rounded-sm" title="Rocky Mountain Protective Group — Dashboard" aria-label="Go to Dashboard">
+            <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2 transition-opacity duration-150 hover:opacity-90 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none rounded-sm" title="Rocky Mountain Protective Group — Dashboard" aria-label="Go to Dashboard">
               <RmpgLogo height={44} />
               {/* 2: Tighter line-height on app name for compact branding */}
               <div className="flex flex-col" style={{ lineHeight: 1.1 }}>
@@ -1071,7 +1071,7 @@ export default function Layout() {
               {POPOUT_PAGES[location.pathname] && (
                 <button type="button"
                   onClick={() => openPageWindow(location.pathname)}
-                  className="toolbar-btn ml-1 transition-colors duration-150 hover:text-brand-400 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none active:scale-[0.97]"
+                  className="toolbar-btn ml-1 transition-colors duration-150 hover:text-brand-400 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none active:scale-[0.97]"
                   title="Open in new window"
                   aria-label="Open current page in new window"
                   style={{ padding: '2px 4px' }}
@@ -1089,7 +1089,7 @@ export default function Layout() {
               {/* 4: Active Calls indicator with count highlight on non-zero */}
               <button type="button"
                 onClick={() => navigate('/dispatch')}
-                className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-all duration-150 bg-surface-sunken hover:bg-rmpg-800 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-all duration-150 bg-surface-sunken hover:bg-rmpg-800 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
                 aria-label={`Active calls: ${activeCallCount}. Click to open dispatch.`}
               >
                 <Phone style={{ width: 9, height: 9 }} className={activeCallCount > 0 ? 'text-red-500' : 'text-rmpg-500'} />
@@ -1101,7 +1101,7 @@ export default function Layout() {
               {activeBOLOs > 0 && (
                 <button type="button"
                   onClick={() => navigate('/communications')}
-                  className="flex items-center gap-1 px-2 py-0.5 cursor-pointer transition-all duration-150 hover:brightness-125 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                  className="flex items-center gap-1 px-2 py-0.5 cursor-pointer transition-all duration-150 hover:brightness-125 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
                   style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b', boxShadow: '0 0 8px rgba(220, 38, 38, 0.2)' }}
                   aria-label={`${activeBOLOs} active BOLOs. Click to open communications.`}
                 >
@@ -1180,7 +1180,7 @@ export default function Layout() {
               {/* Search */}
               <button type="button"
                 onClick={() => setShowCommandPalette(true)}
-                className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
                 title="Search (Ctrl+K)"
                 aria-label="Global search"
                 style={{ padding: '2px 6px' }}
@@ -1202,7 +1202,7 @@ export default function Layout() {
             <div className="relative" ref={profileDropdownRef}>
               <button type="button"
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                className={`flex items-center gap-2 px-2 py-1 transition-all duration-150 border focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none active:scale-[0.97] ${
+                className={`flex items-center gap-2 px-2 py-1 transition-all duration-150 border focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none active:scale-[0.97] ${
                   profileDropdownOpen
                     ? 'bg-rmpg-700 border-rmpg-600'
                     : 'bg-transparent border-transparent hover:bg-rmpg-800 hover:border-rmpg-700'
@@ -1275,20 +1275,20 @@ export default function Layout() {
                   </div>
 
                   {/* Menu items */}
-                  <button type="button" role="menuitem" onClick={() => openProfileModal('profile')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={() => openProfileModal('profile')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                     <span className="menu-item-icon"><User style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Edit Profile</span>
                   </button>
-                  <button type="button" role="menuitem" onClick={() => openProfileModal('password')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={() => openProfileModal('password')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                     <span className="menu-item-icon"><Lock style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Change Password</span>
                   </button>
-                  <button type="button" role="menuitem" onClick={() => openProfileModal('sessions')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={() => openProfileModal('sessions')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                     <span className="menu-item-icon"><Shield style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Active Sessions</span>
                   </button>
                   {isAdmin && (
-                    <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                    <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                       <span className="menu-item-icon"><Settings style={{ width: 12, height: 12 }} /></span>
                       <span className="menu-item-label">System Settings</span>
                     </button>
@@ -1297,7 +1297,7 @@ export default function Layout() {
                   <div className="menu-separator" />
 
                   {/* 9: Sign Out button with red hover bg for destructive emphasis */}
-                  <button type="button" role="menuitem" onClick={handleSignOutClick} className="menu-item w-full transition-colors duration-150 hover:bg-red-900/20 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={handleSignOutClick} className="menu-item w-full transition-colors duration-150 hover:bg-red-900/20 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                     <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#ef4444' }} /></span>
                     <span className="menu-item-label" style={{ color: '#ef4444' }}>Sign Out</span>
                   </button>
@@ -1723,7 +1723,7 @@ export default function Layout() {
           <div className="bg-surface-base border border-border-default rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default bg-surface-overlay">
               <h3 className="text-sm font-semibold text-white flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
-              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto scrollbar-dark">
               <div className="space-y-1.5">
