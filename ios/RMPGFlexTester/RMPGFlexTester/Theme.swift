@@ -1,30 +1,55 @@
 import SwiftUI
 import UIKit
 
-// Spillman Flex / Motorola pure-black theme tokens (mirrors client design tokens).
+// Spillman Flex steel-blue (NIGHT) theme tokens — mirrors the desktop's night
+// palette in client/src/styles/theme-palettes.css. Night-only on iOS by design
+// (a bright screen in a patrol vehicle at night is a safety downside).
 enum Theme {
-    static let base = Color(hex: 0x0a0a0a)
-    static let raised = Color(hex: 0x141414)
-    static let sunken = Color(hex: 0x050505)
-    static let deep = Color(hex: 0x000000)
+    // Surfaces
+    static let base = Color(hex: 0x0d1722)
+    static let raised = Color(hex: 0x15212e)
+    static let sunken = Color(hex: 0x0a1018)
+    static let deep = Color(hex: 0x060b10)
+    // Brand + accents
     static let gold = Color(hex: 0xd4a017)
-    static let neutral = Color(hex: 0x888888)
-    static let border = Color(hex: 0x222222)
-    static let borderSubtle = Color(hex: 0x1a1a1a)
-    static let red = Color(hex: 0xcc3333)
-    static let orange = Color(hex: 0xcc7a1d)
-    static let green = Color(hex: 0x3a9c4a)
+    static let blue = Color(hex: 0x5a85b8)
+    static let blueBright = Color(hex: 0x7db4ec)
+    static let select = Color(hex: 0x316ac5)
+    // Text
+    static let textPrimary = Color(hex: 0xe6edf5)
+    static let textSecondary = Color(hex: 0xc3d0de)
+    static let neutral = Color(hex: 0x8fa3b8)   // --text-muted
+    // Borders
+    static let border = Color(hex: 0x2a3a4d)
+    static let borderSubtle = Color(hex: 0x1e2b3a)
+    static let borderStrong = Color(hex: 0x3a4f66)
+    static let borderPanel = Color(hex: 0x243a52)
+    // Severity hues (themed bright; mirror --sev-*)
+    static let red = Color(hex: 0xef4444)
+    static let orange = Color(hex: 0xf59e0b)
+    static let green = Color(hex: 0x22c55e)
+    // Spillman group-box / toolbar gradient stops (--spm-group-head)
+    static let groupHeadTop = Color(hex: 0x1d2d3f)
+    static let groupHeadBottom = Color(hex: 0x16222f)
     static let radius: CGFloat = 2
 
-    /// Global UIKit appearance — tab bar + nav bar in pure black with gold
-    /// accents (SwiftUI has no direct API for bar backgrounds). Call once
-    /// at app init.
+    /// Steel-blue group-box / toolbar gradient (top → bottom).
+    static var groupHead: LinearGradient {
+        LinearGradient(colors: [groupHeadTop, groupHeadBottom], startPoint: .top, endPoint: .bottom)
+    }
+
+    /// Global UIKit appearance — steel-blue tab + nav bars with gold accents
+    /// (SwiftUI has no direct API for bar backgrounds). Call once at app init.
     static func configureAppearance() {
+        let panel = UIColor(hex: 0x15212e)
+        let hairline = UIColor(hex: 0x2a3a4d)
+        let goldUI = UIColor(hex: 0xd4a017)
+        let neutralUI = UIColor(hex: 0x8fa3b8)
+
         let tab = UITabBarAppearance()
         tab.configureWithOpaqueBackground()
-        tab.backgroundColor = UIColor(red: 0, green: 0, blue: 0, alpha: 1)
-        let goldUI = UIColor(red: 0xd4 / 255, green: 0xa0 / 255, blue: 0x17 / 255, alpha: 1)
-        let neutralUI = UIColor(red: 0x88 / 255, green: 0x88 / 255, blue: 0x88 / 255, alpha: 1)
+        tab.backgroundColor = panel
+        tab.shadowColor = hairline
         for item in [tab.stackedLayoutAppearance, tab.inlineLayoutAppearance, tab.compactInlineLayoutAppearance] {
             item.selected.iconColor = goldUI
             item.selected.titleTextAttributes = [.foregroundColor: goldUI,
@@ -38,8 +63,8 @@ enum Theme {
 
         let nav = UINavigationBarAppearance()
         nav.configureWithOpaqueBackground()
-        nav.backgroundColor = UIColor(red: 0x0a / 255, green: 0x0a / 255, blue: 0x0a / 255, alpha: 1)
-        nav.shadowColor = UIColor(red: 0x22 / 255, green: 0x22 / 255, blue: 0x22 / 255, alpha: 1)
+        nav.backgroundColor = panel
+        nav.shadowColor = hairline
         nav.titleTextAttributes = [.foregroundColor: goldUI,
                                    .font: UIFont.monospacedSystemFont(ofSize: 14, weight: .semibold)]
         nav.largeTitleTextAttributes = [.foregroundColor: goldUI]
@@ -55,6 +80,17 @@ extension Color {
             red: Double((hex >> 16) & 0xff) / 255,
             green: Double((hex >> 8) & 0xff) / 255,
             blue: Double(hex & 0xff) / 255
+        )
+    }
+}
+
+extension UIColor {
+    convenience init(hex: UInt32) {
+        self.init(
+            red: CGFloat((hex >> 16) & 0xff) / 255,
+            green: CGFloat((hex >> 8) & 0xff) / 255,
+            blue: CGFloat(hex & 0xff) / 255,
+            alpha: 1
         )
     }
 }
@@ -88,14 +124,14 @@ struct RaisedButtonStyle: ButtonStyle {
     }
 }
 
-/// Card surface: raised panel with hairline border, 2px radius.
+/// Card surface: raised steel-blue panel with a panel-border hairline, 2px radius.
 struct ThemeCard: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.raised)
-            .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderSubtle, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderPanel, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
     }
 }
@@ -127,5 +163,22 @@ struct SectionHeader: View {
                 .foregroundStyle(Theme.gold)
             Rectangle().fill(Theme.border).frame(height: 1)
         }
+    }
+}
+
+/// Spillman group-box header: a steel-blue gradient bar with a gold uppercase
+/// title and a bottom rule — the literal desktop group-box look. Available for
+/// panels that want it (broad adoption is R2/R3 layout work).
+struct SpmGroupHeader: View {
+    let title: String
+    var body: some View {
+        Text(title.uppercased())
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(Theme.gold)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Theme.groupHead)
+            .overlay(Rectangle().fill(Theme.borderStrong).frame(height: 1), alignment: .bottom)
     }
 }
