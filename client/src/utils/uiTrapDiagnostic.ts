@@ -175,14 +175,6 @@ export async function captureUiTrap(notes?: string): Promise<void> {
   // Always persist locally first — uploads can fail, the data must survive
   persistToLocal(payload);
 
-  // Use window.alert because the React UI may be frozen — this is the
-  // most reliable confirmation gesture that always works.
-  const top = payload.fixedOverlays[0];
-  const summary = top
-    ? `Captured. Top overlay:\n${top.tag}.${top.className.slice(0, 60)}\nz-index: ${top.zIndex}\nbody.overflow: ${payload.bodyOverflow}\n\nUploaded to dispatch logs. Press F5 to recover the app.`
-    : `Captured (no fixed overlay >100×100 found).\nbody.overflow: ${payload.bodyOverflow}\nactive: ${payload.activeElement?.tag}\n\nPress F5 to recover.`;
-  window.alert(summary);
-
   // Fire-and-forget upload — already persisted locally
   uploadPayload(payload).then((ok) => {
     if (ok) {
@@ -210,6 +202,102 @@ export async function flushPendingPayloads(): Promise<void> {
   } catch { /* ignore */ }
 }
 
+// ── UI recovery: un-trap a frozen page ───────────────────────
+/**
+ * Best-effort un-trap of a frozen UI: reset scroll/overflow locks and neutralize
+ * orphaned full-screen click-blocking overlays (a stuck modal backdrop that
+ * never unmounted is the leading cause of "buttons stopped working"). It does
+ * NOT touch legitimate open dialogs/menus — only big fixed overlays that carry
+ * no dialog semantics (no role, no aria-modal, no aria-label). Neutralizes by
+ * setting pointer-events:none (non-destructive — preserves DOM/state) rather
+ * than removing nodes.
+ */
+export function attemptTrapRecovery(): string[] {
+  const actions: string[] = [];
+  try {
+    // 1) Release scroll/overflow locks (common "can't interact/scroll" cause)
+    for (const el of [document.body, document.documentElement]) {
+      if (el && el.style.overflow && el.style.overflow !== 'visible') {
+        el.style.overflow = '';
+        actions.push(`reset ${el.tagName.toLowerCase()} overflow lock`);
+      }
+    }
+    // 2) Neutralize orphaned full-screen click-blocking overlays
+    const vw = window.innerWidth, vh = window.innerHeight;
+    for (const el of Array.from(document.querySelectorAll('*'))) {
+      const he = el as HTMLElement;
+      const s = getComputedStyle(he);
+      if (s.position !== 'fixed') continue;
+      if (s.pointerEvents === 'none') continue;
+      const r = he.getBoundingClientRect();
+      const coversViewport = r.width >= vw * 0.8 && r.height >= vh * 0.8;
+      if (!coversViewport) continue;
+      // Skip legitimate dialogs/menus and anything with a11y semantics or content meaning.
+      const role = he.getAttribute('role');
+      if (role === 'dialog' || role === 'menu' || role === 'alertdialog' || role === 'listbox') continue;
+      if (he.getAttribute('aria-modal') === 'true') continue;
+      if (he.getAttribute('aria-label')) continue;
+      // Skip app shell / known roots that should keep pointer events.
+      if (he.id === 'root' || he.id === 'pre-splash') continue;
+      if (he.querySelector('[role="dialog"],[aria-modal="true"]')) continue; // backdrop hosting a real dialog — leave it
+      // Looks like an orphaned blocker — neutralize its click-trap.
+      he.style.pointerEvents = 'none';
+      actions.push(`neutralized fixed overlay z=${s.zIndex || '?'} ${(he.className || '').toString().slice(0, 60)}`);
+    }
+  } catch {
+    /* best effort */
+  }
+  return actions;
+}
+
+/**
+ * Show a brief on-screen toast confirming diagnostic capture + recovery.
+ * Inline-styled, pointer-events:none, high z-index — visible even when the
+ * app CSS is broken. Auto-removes after 4 s.
+ */
+function showRecoveryToast(actions: string[]): void {
+  try {
+    const blocked = actions.filter((a) => a.startsWith('neutralized'));
+    const overflows = actions.filter((a) => a.startsWith('reset'));
+    const parts: string[] = ['UI diagnostic captured'];
+    if (blocked.length > 0) {
+      parts.push(`recovered ${blocked.length} blocker${blocked.length > 1 ? 's' : ''}`);
+    }
+    if (overflows.length > 0) {
+      parts.push(`cleared ${overflows.length} overflow lock${overflows.length > 1 ? 's' : ''}`);
+    }
+    if (blocked.length === 0 && overflows.length === 0) {
+      parts.push('no blocker found — try reload if still frozen');
+    }
+
+    const div = document.createElement('div');
+    div.textContent = parts.join(' · ');
+    Object.assign(div.style, {
+      position: 'fixed',
+      top: '16px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: '2147483647',
+      background: '#1a1a1a',
+      color: '#d4a017',
+      border: '1px solid #d4a017',
+      borderRadius: '2px',
+      padding: '8px 16px',
+      fontSize: '13px',
+      fontFamily: 'monospace',
+      pointerEvents: 'none',
+      whiteSpace: 'nowrap',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.8)',
+    });
+    document.body.appendChild(div);
+    setTimeout(() => {
+      try { document.body.removeChild(div); } catch { /* already removed */ }
+    }, 4000);
+  } catch {
+    /* best effort — don't let the toast crash after we've just recovered */
+  }
+}
+
 // ── Install global keystroke + error capture ─────────────────
 let installed = false;
 export function installUiTrapHotkey(): void {
@@ -224,12 +312,15 @@ export function installUiTrapHotkey(): void {
     captureError(`unhandledrejection: ${String(e.reason).slice(0, 300)}`);
   });
 
-  // Ctrl+Alt+D — Diagnostic. Reachable even when click handlers are dead.
+  // Ctrl+Alt+D — Diagnostic + recovery. Reachable even when click handlers are dead.
   window.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.altKey && (e.key === 'd' || e.key === 'D')) {
       e.preventDefault();
       e.stopPropagation();
+      // Capture FIRST so evidence reflects the trapped state, then recover.
       void captureUiTrap('triggered_by_user_ctrl_alt_d');
+      const actions = attemptTrapRecovery();
+      showRecoveryToast(actions);
     }
   }, true /* capture phase — runs before React listeners */);
 
