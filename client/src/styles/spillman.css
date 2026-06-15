@@ -140,3 +140,29 @@
   color: #1a1a1a;
 }
 .spillman-theme .spm-menu-item:hover { background: var(--spm-select); color: #fff; }
+
+/* ── Record form section tabs ──────────────────────────────── */
+.spillman-theme .spm-form-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px 4px 0 4px;
+  background: var(--spm-chrome);
+  border-bottom: 1px solid var(--spm-border);
+  overflow-x: auto;
+}
+.spillman-theme .spm-form-tab {
+  padding: 4px 10px;
+  font-size: 11px;
+  border: 1px solid var(--spm-border);
+  border-bottom: none;
+  background: #cbc8bc;
+  color: #33312b;
+  border-radius: 3px 3px 0 0;
+  white-space: nowrap;
+}
+.spillman-theme .spm-form-tab.on {
+  background: var(--spm-form);
+  font-weight: 600;
+  position: relative;
+  top: 1px;
+}

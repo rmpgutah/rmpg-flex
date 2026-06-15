@@ -43,6 +43,8 @@ import { useEvidenceTab, EvidenceTabList, EvidenceTabDetail } from './records/Ev
 import { useBusinessTab, BusinessTabList, BusinessTabDetail } from './records/BusinessTab';
 import SpillmanRecordTabs from './records/spillman/SpillmanRecordTabs';
 import SpillmanMenuBar from './records/spillman/SpillmanMenuBar';
+import SpillmanFormTabs from './records/spillman/SpillmanFormTabs';
+import { RECORD_FORM_SECTIONS } from './records/spillman/recordFormSections';
 
 // ============================================================
 // Constants
@@ -597,6 +599,10 @@ export default function RecordsPage() {
           <X className="w-3.5 h-3.5" />
         </button>
       </PanelTitleBar>
+
+      {hasSelection && RECORD_FORM_SECTIONS[activeTab as keyof typeof RECORD_FORM_SECTIONS]?.length > 0 && (
+        <SpillmanFormTabs sections={RECORD_FORM_SECTIONS[activeTab as keyof typeof RECORD_FORM_SECTIONS]} />
+      )}
 
       {/* Active TabDetail Content */}
       <div className="flex-1 overflow-hidden scrollbar-dark">
