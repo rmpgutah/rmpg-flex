@@ -115,6 +115,14 @@ export default {
           950: 'rgb(var(--rmpg-950-rgb) / <alpha-value>)',
         },
 
+        border: {
+          DEFAULT: 'var(--border-default)',
+          default: 'var(--border-default)',
+          subtle:  'var(--border-subtle)',
+          strong:  'var(--border-strong)',
+          panel:   'var(--border-panel)',
+        },
+
         dispatch: {
           emergency: '#dc2626',    // Safety red (not brand)
           urgent:    '#d4a017',    // Brand gold
