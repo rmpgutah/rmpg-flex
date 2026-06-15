@@ -578,7 +578,7 @@ export function formatAddressResponse(results: AddressLookupResults, searchTerm:
     lines.push(`  ═══ PERSONS AT ADDRESS — ${results.persons.length} ═══`);
     for (const p of results.persons) {
       lines.push(`  NAM/${pad(p.last_name, 20)},${pad(p.first_name, 15)}`);
-      lines.push(`  DOB/${ncicDate(p.date_of_birth)}  SEX/${pad(p.sex, 1)}  RAC/${pad(p.race, 1)}`);
+      lines.push(`  DOB/${ncicDate(p.date_of_birth)}  SEX/${fmtCoded('SEX', p.sex)}  RAC/${formatRaceEthnicity(p.race).rac}`);
       if (p.phone) lines.push(`  TEL/${p.phone.toUpperCase()}`);
       if (p.active_warrants && p.active_warrants > 0) {
         hasWarnings = true;
@@ -807,7 +807,7 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
     lines.push(`  ═══ DRIVER'S LICENSE — ${results.dlSubjects.length} RECORD(S) ═══`);
     for (const s of results.dlSubjects) {
       lines.push(`  OLN/${pad(s.dl_number, 15)}  OLS/${fmtCoded('STATE', s.dl_state) || pad(s.dl_state, 2)}  STS/${pad(s.dl_status, 8)}`);
-      lines.push(`  CLS/${pad(s.dl_class, 4)}  EXP/${ncicDate(s.dl_expiration)}`);
+      lines.push(`  CLS/${fmtCoded('DL_CLASS', s.dl_class) || pad(s.dl_class, 4)}  EXP/${ncicDate(s.dl_expiration)}`);
       if (s.addresses && s.addresses.length > 0) {
         const a = s.addresses[0];
         lines.push(`  ADR/${(a.address || '').toUpperCase()}`);

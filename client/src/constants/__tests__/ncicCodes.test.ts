@@ -135,6 +135,10 @@ describe('offense codes', () => {
     expect(fmtOffense('Jaywalking On Mars')).toBe('JAYWALKING ON MARS');
     expect(fmtOffense('')).toBe('');
   });
+  it('does not let generic THEFT shadow IDENTITY THEFT', () => {
+    expect(lookupOffense('Identity Theft')?.utahStatute).toBe('76-6-1102');
+    expect(lookupOffense('Identity Theft')?.severity).toBe('F3');
+  });
 });
 
 describe('lookupAnyCode (QZ decoder)', () => {
