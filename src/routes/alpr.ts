@@ -534,6 +534,8 @@ alpr.post('/capture', operational, async (c) => {
     } catch (err: any) { console.error('[alpr] field_photos insert failed:', err?.message); }
   }
 
+  const fieldPhotoLinked = !attachToCall || fieldPhotoId != null;
+
   // ── Read the plate on Cloudflare Workers AI (free — no Roboflow credits) ──
   // One vision call returns plate + state + make/model/color + confidence, so the
   // old two-stage fast→enrich collapses into a single read. The photo is already
@@ -590,6 +592,12 @@ alpr.post('/capture', operational, async (c) => {
   return c.json({
     success: finalized,
     status: fin.status,
+    image_stored: imageStored,
+    field_photo_linked: fieldPhotoLinked,
+    warnings: [
+      ...(imageStored ? [] : ['Image upload failed — capture saved without a stored photo.']),
+      ...(fieldPhotoLinked ? [] : ['Photo could not be attached to the call gallery.']),
+    ],
     id: captureRowId,
     call_id: callId,
     incident_id: incidentId,
