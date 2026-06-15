@@ -35,7 +35,7 @@ import SecurityKeyManager from './security/SecurityKeyManager';
 import BackupCodesDisplay from './security/BackupCodesDisplay';
 import SecurityStatusCard from './security/SecurityStatusCard';
 import TwoFactorSetupWizard from './security/TwoFactorSetupWizard';
-import { applyThemePreference, normalizeThemePreference, writeThemeOverride, resolveCurrentTheme } from '../utils/theme';
+import { applyThemePreference, normalizeThemePreference, writeThemeOverride, resolveCurrentTheme, readThemeOverride } from '../utils/theme';
 
 interface UserPreferences {
   notify_dispatch_email: number;
@@ -1002,7 +1002,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-rmpg-200">Theme</span>
                         <select id="ff-userprofilemodal-13"
-                          value={(() => { try { const o = JSON.parse(localStorage.getItem('rmpg_theme_override') || 'null'); return o && o.active ? (o.theme === 'light' ? 'light' : 'dark') : 'auto'; } catch { return 'auto'; } })()}
+                          value={(() => { const o = readThemeOverride(); return o?.active ? o.theme : 'auto'; })()}
                           onChange={e => {
                             const v = e.target.value;
                             if (v === 'auto') {
