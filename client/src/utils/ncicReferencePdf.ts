@@ -77,7 +77,6 @@ export function chunkColumns<T>(items: T[], cols: number): T[][] {
 /** Pick a sensible column count for a table by its row count. */
 export function colsForTable(rowCount: number): number {
   if (rowCount > 120) return 4; // VMA (~175)
-  if (rowCount > 60) return 3;
   if (rowCount > 18) return 3;
   return 2;
 }
@@ -223,8 +222,16 @@ function renderCodeTable(
   const maxRows = Math.max(...columns.map((c) => c.length), 0);
 
   for (let r = 0; r < maxRows; r++) {
+    const yBefore = y;
     y = ensureSpace(doc, y, rowH);
-    // If a page break happened, redraw the section title context lightly.
+    if (y < yBefore) {
+      // A page break occurred — draw a light continuation label.
+      doc.setFontSize(8);
+      setText(doc, GREY);
+      doc.text(`${title} (continued)`, MARGIN, y);
+      setText(doc, BLACK);
+      y += 14;
+    }
     for (let c = 0; c < cols; c++) {
       const entry = columns[c][r];
       if (!entry) continue;
@@ -342,7 +349,7 @@ export function generateNcicReferencePdf(
   }
 
   // Final section — Utah offense codes
-  renderOffenseTable(doc, y);
+  y = renderOffenseTable(doc, y);
 
   // Footers + page numbers
   stampFooters(doc);
