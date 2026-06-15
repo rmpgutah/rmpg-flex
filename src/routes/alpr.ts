@@ -311,6 +311,11 @@ async function finalizeCapture(
   const asserted = !!plate && trust.trustScore >= ASSERT_GATE;
   const packaged = !!plate && trust.trustScore >= PACKAGE_GATE;
   out.accepted = asserted;
+  // Persist DERIVED trust as the capture confidence — never the vision model's
+  // self-report (Llama 3.2 11B emits 1.0). Mirrors the dashcam captureTrust fix so
+  // alpr_captures.confidence/plate_confidence mean "derived trust" system-wide; the
+  // raw model % is preserved in raw_json for forensics.
+  out.plateConf = plate ? trust.trustScore : null;
 
   try {
     if (!plate || !read) {
@@ -412,12 +417,12 @@ async function finalizeCapture(
     await execute(db,
       `UPDATE alpr_captures SET make=?, model=?, color=?, year=?, state=?, vehicle_type=?,
          condition=?, damage_observed=?, damage_summary=?,
-         plate_confidence=?, accepted=?, review_status=?, sighting_id=?, vehicle_record_ids=?,
+         confidence=?, plate_confidence=?, accepted=?, review_status=?, sighting_id=?, vehicle_record_ids=?,
          vehicle_count=1, enrich_status='done' WHERE id=?`,
       read.make, read.model, read.color,
       read.year, read.state, read.bodyStyle,
       read.condition, damageObserved ? 1 : 0, read.damageSummary,
-      out.plateConf, asserted ? 1 : 0, asserted ? 'accepted' : 'needs_review',
+      out.plateConf, out.plateConf, asserted ? 1 : 0, asserted ? 'accepted' : 'needs_review',
       out.sightingId, JSON.stringify(out.recordIds), args.captureRowId);
   } catch (err: any) {
     console.error('[alpr] finalize failed:', err?.message);
@@ -556,7 +561,9 @@ alpr.post('/capture', operational, async (c) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')` +
     captureConflictClause(hasCaptureUniqueIndex, captureId),
     null, captureId, strOrNull(params.case_id), plate, read?.state ?? null,
-    read?.confidence ?? null, read?.confidence ?? null, 'pending', imageKey,
+    // confidence/plate_confidence start NULL (pending) — finalizeCapture fills them
+    // with DERIVED trust, never the model self-report. raw_json keeps the raw read.
+    null, null, 'pending', imageKey,
     JSON.stringify({ engine: read?.model_id ?? 'workers-ai', plate, read }),
     lat, lng, locationText, userId,
     callId, incidentId, fieldPhotoId, plate ? 1 : 0, JSON.stringify([]));
