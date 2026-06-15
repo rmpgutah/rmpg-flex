@@ -76,7 +76,7 @@
 }
 .spillman-theme .collapsible-section-header {
   background: linear-gradient(#eef3f9, #cfdcec) !important;
-  border-bottom: 1px solid var(--spm-border);
+  border-bottom: 1px solid var(--spm-border) !important;
   color: #22405e !important;
 }
 .spillman-theme .collapsible-section-header * { color: #22405e !important; }
