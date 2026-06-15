@@ -892,6 +892,62 @@ email.get('/by-record', async (c) => {
   return c.json({ items });
 });
 
+// Outbound-email audit log for AdminPage (AdminEmailAuditTab).
+// Derived from the durable email_outbox (the only place every send is
+// recorded) JOINed to users — email_audit_log exists in schema but is
+// never written, so reading it would always be empty. Returns a BARE
+// ARRAY of AuditRow, role-gated to admin/manager/supervisor.
+// Optional ?status=sent|failed filter.
+email.get('/audit', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+  const statusFilter = c.req.query('status'); // 'sent' | 'failed' | undefined
+  let where = '';
+  if (statusFilter === 'sent') where = "WHERE o.status = 'sent'";
+  else if (statusFilter === 'failed') where = "WHERE o.status != 'sent'";
+
+  const rows = await query<{
+    id: number; owner_user_id: number; payload: string; status: string;
+    created_at: string; sent_at: string | null; last_error: string | null;
+    username: string | null;
+  }>(c.env.DB,
+    `SELECT o.id, o.owner_user_id, o.payload, o.status, o.created_at, o.sent_at, o.last_error,
+            u.username
+       FROM email_outbox o
+       LEFT JOIN users u ON u.id = o.owner_user_id
+       ${where}
+      ORDER BY o.id DESC LIMIT 200`,
+  ).catch(() => [] as any[]); // table may not exist yet on a fresh DB
+
+  const audit = rows.map((r) => {
+    let to: string[] = []; let cc: string[] = []; let subject = '';
+    try {
+      const p = JSON.parse(r.payload) as {
+        message?: {
+          subject?: string;
+          toRecipients?: Array<{ emailAddress?: { address?: string } }>;
+          ccRecipients?: Array<{ emailAddress?: { address?: string } }>;
+        };
+      };
+      to = (p.message?.toRecipients || []).map((x) => x.emailAddress?.address || '').filter(Boolean);
+      cc = (p.message?.ccRecipients || []).map((x) => x.emailAddress?.address || '').filter(Boolean);
+      subject = p.message?.subject || '';
+    } catch { /* leave defaults */ }
+    return {
+      id: r.id,
+      sent_by: r.owner_user_id,
+      sent_by_username: r.username,
+      to_addresses: JSON.stringify(to),
+      cc_addresses: cc.length ? JSON.stringify(cc) : null,
+      subject,
+      template_id: null,
+      graph_message_id: null,
+      status: (r.status === 'sent' ? 'sent' : 'failed') as 'sent' | 'failed',
+      error: r.last_error,
+      sent_at: r.sent_at || r.created_at,
+    };
+  });
+  return c.json(audit);
+});
+
 // Cron-drained: pop up-to-N pending rows whose next_attempt_at has
 // passed, attempt Graph send, exponential-backoff on failure (1m → 5m
 // → 30m → fail after 5 attempts). Exported for src/index.ts.
