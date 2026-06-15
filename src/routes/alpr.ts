@@ -386,10 +386,13 @@ async function finalizeCapture(
     }
 
     out.vehicles.push({
+      // Observed attributes surfaced regardless of assertion (F1); the authoritative
+      // record write above stays gated by `asserted`, and `vehicle_record_created`
+      // tells the client whether this was recorded as fact vs. observed-only.
       plate, canonical_plate: canonical, state: read.state,
-      make: asserted ? read.make : null, model: asserted ? read.model : null,
-      year: asserted ? read.year : null, color: asserted ? read.color : null,
-      vehicle_type: asserted ? read.bodyStyle : null, confidence: out.plateConf,
+      make: read.make, model: read.model,
+      year: read.year, color: read.color,
+      vehicle_type: read.bodyStyle, confidence: out.plateConf,
       trust_score: trust.trustScore, trust_basis: trust.basis,
       vehicle_record_id: recordId, vehicle_record_created: recordId != null,
       sighting_id: out.sightingId, hits: screen.hits,
@@ -417,6 +420,34 @@ async function finalizeCapture(
     try { await execute(db, `UPDATE alpr_captures SET enrich_status='failed', accepted=0, review_status='needs_review' WHERE id=?`, args.captureRowId); } catch { /* */ }
   }
   return out;
+}
+
+/** Screen + (re)create the authoritative vehicles_records + call link + sighting
+ *  for a human-confirmed capture. Shared by POST /capture/:id/verify and the bulk
+ *  endpoint so the confirm path lives in ONE place. Returns the screen hits. */
+async function persistConfirmedVehicle(
+  db: ReturnType<typeof getDb>,
+  row: any,
+  v: AlprVehicle,
+  userId: number,
+  noteTag: string,
+): Promise<Array<{ kind: string; severity: string; detail: string }>> {
+  const plate = v.plate;
+  if (!plate) return [];
+  const screen = await screenVehicle(db, { plate });
+  const up = await upsertVehicleRecord(db, v, screen.vehicleId);
+  const recordId = up?.id ?? screen.vehicleId ?? null;
+  if (recordId && row.call_id != null) {
+    await execute(db,
+      `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
+       VALUES (?, ?, 'observed', ?, ?, datetime('now'))`, row.call_id, recordId, noteTag, userId);
+  }
+  await execute(db,
+    `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, condition, damage_observed, damage_summary, confidence)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    plate, v.state, recordId, row.location_text ?? null, row.lat ?? null, row.lng ?? null, noteTag, userId,
+    v.condition, row.damage_observed ?? null, v.damageSummary, v.confidence);
+  return screen.hits;
 }
 
 // ── Health: is the integration configured? ───────────────────
@@ -553,12 +584,16 @@ alpr.post('/capture', operational, async (c) => {
     vehicle_count: vehicleCount,
     vehicles: fin.vehicles,
     capture: {
+      // Surface the AI-OBSERVED attributes immediately, even on a held (<0.85)
+      // read — the officer should see the full read on the scan card. Honesty is
+      // preserved by `accepted`/`reviewStatus` (and the client's "held for review"
+      // note), not by blanking what the model saw. Mirrors the capture-row write.
       plate, state: read?.state ?? null,
-      make: fin.accepted ? read?.make ?? null : null,
-      model: fin.accepted ? read?.model ?? null : null,
-      color: fin.accepted ? read?.color ?? null : null,
-      year: fin.accepted ? read?.year ?? null : null,
-      vehicleType: fin.accepted ? read?.bodyStyle ?? null : null,
+      make: read?.make ?? null,
+      model: read?.model ?? null,
+      color: read?.color ?? null,
+      year: read?.year ?? null,
+      vehicleType: read?.bodyStyle ?? null,
       confidence: fin.plateConf, riskScore: null,
       reviewStatus: fin.accepted ? 'accepted' : (plate ? 'needs_review' : 'no_plate'),
       alerted: hits.some((h) => h.severity === 'critical'),
@@ -811,8 +846,6 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
     // change with NO replacement attribute we drop the stale OCR value (it
     // belonged to the misread plate) — mirrors the original /accept rule.
     try {
-      const screen = await screenVehicle(db, { plate });
-      hits = screen.hits;
       const keep = (col: string, key: keyof typeof values) =>
         key in values ? (values as any)[key] : (plateChanged ? null : (row[col] ?? null));
       const v: AlprVehicle = {
@@ -828,19 +861,7 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
         damageSummary: keep('damage_summary', 'damage_summary'), damageAreas: [],
         aftermarket: null, confidences: {},
       };
-      const up = await upsertVehicleRecord(db, v, screen.vehicleId);
-      const recordId = up?.id ?? screen.vehicleId ?? null;
-      if (recordId && row.call_id != null) {
-        await execute(db,
-          `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
-           VALUES (?, ?, 'observed', 'ALPR (verified)', ?, datetime('now'))`, row.call_id, recordId, userId);
-      }
-      await execute(db,
-        `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, condition, damage_observed, damage_summary, confidence)
-         VALUES (?, ?, ?, ?, ?, ?, 'ALPR (verified)', ?, ?, ?, ?, ?)`,
-        plate, v.state, recordId, row.location_text ?? null, row.lat ?? null, row.lng ?? null, userId,
-        v.condition, row.damage_observed ?? null, v.damageSummary,
-        plateChanged ? null : (row.plate_confidence ?? null));
+      hits = await persistConfirmedVehicle(db, row, v, userId, 'ALPR (verified)');
     } catch (err: any) { console.error('[alpr] verify relink failed:', err?.message); }
     await execute(db,
       `UPDATE alpr_captures SET accepted=1, review_status='confirmed', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
@@ -849,20 +870,92 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
     await execute(db, `UPDATE alpr_captures SET reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`, userId, id);
   }
 
-  // Audit the change function (best-effort; never blocks the edit).
-  if (wasDecided || action !== 'confirm') {
-    try {
-      const diff = describeEdit(row, values);
-      const detail = [`${action}`, reason, diff].filter(Boolean).join(' — ');
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-         VALUES (?, 'ALPR_VERIFY', 'alpr_capture', ?, ?, datetime('now'))`,
-        userId, id, detail.slice(0, 500));
-    } catch (auditErr: any) { console.warn('[alpr] audit_log insert failed:', auditErr?.message); }
-  }
+  // Audit EVERY verify so the per-capture history is a complete trail (the
+  // `wasDecided` rows are the audited "change function"). Best-effort.
+  try {
+    const diff = describeEdit(row, values);
+    const detail = [`${action}`, reason, diff].filter(Boolean).join(' — ');
+    await execute(db,
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+       VALUES (?, 'ALPR_VERIFY', 'alpr_capture', ?, ?, datetime('now'))`,
+      userId, id, detail.slice(0, 500));
+  } catch (auditErr: any) { console.warn('[alpr] audit_log insert failed:', auditErr?.message); }
 
   const updated = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
   return c.json({ success: true, hits, ...shapeCapture(updated) });
+});
+
+// ── Bulk confirm/reject the review queue ─────────────────────
+// Clears many low-confidence reads at once (no per-field edits — bulk accepts the
+// AI's read as-is). Confirm screens + records each; reject marks each rejected.
+// Returns per-id results + the union of critical hits so a STOLEN read in the
+// batch is never silently swept.
+alpr.post('/captures/bulk', operational, async (c) => {
+  const db = getDb(c.env);
+  await ensureAlprSchema(db);
+  const userId = Number(c.var.user?.id ?? 0);
+  let body: any = {};
+  try { body = await c.req.json(); } catch { /* */ }
+  const action: 'confirm' | 'reject' = body.action === 'reject' ? 'reject' : 'confirm';
+  const ids: number[] = Array.isArray(body.ids)
+    ? body.ids.map((x: any) => Number(x)).filter((n: number) => Number.isInteger(n)).slice(0, 200)
+    : [];
+  if (!ids.length) return c.json({ error: 'No capture ids supplied.' }, 400);
+
+  const results: Array<{ id: number; ok: boolean; status: string }> = [];
+  const allHits: Array<{ kind: string; severity: string; detail: string; plate: string }> = [];
+  for (const id of ids) {
+    try {
+      const row = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
+      if (!row) { results.push({ id, ok: false, status: 'not_found' }); continue; }
+      if (action === 'reject') {
+        await execute(db,
+          `UPDATE alpr_captures SET accepted=0, review_status='rejected', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+          userId, id);
+        results.push({ id, ok: true, status: 'rejected' });
+      } else if (row.plate) {
+        const v: AlprVehicle = {
+          plate: row.plate, state: row.state ?? null, make: row.make ?? null, model: row.model ?? null,
+          color: row.color ?? null, year: row.year ?? null, vehicleType: row.vehicle_type ?? null,
+          plateType: null, confidence: row.plate_confidence ?? null,
+          condition: row.condition ?? null, damageObserved: null,
+          damageSummary: row.damage_summary ?? null, damageAreas: [], aftermarket: null, confidences: {},
+        };
+        const hits = await persistConfirmedVehicle(db, row, v, userId, 'ALPR (bulk verified)');
+        for (const h of hits.filter((x) => x.severity === 'critical')) allHits.push({ ...h, plate: row.plate });
+        await execute(db,
+          `UPDATE alpr_captures SET accepted=1, review_status='confirmed', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+          userId, id);
+        results.push({ id, ok: true, status: 'confirmed' });
+      } else {
+        results.push({ id, ok: false, status: 'no_plate' });
+      }
+    } catch (err: any) {
+      console.error('[alpr] bulk item failed:', id, err?.message);
+      results.push({ id, ok: false, status: 'error' });
+    }
+  }
+  // One audit row for the batch.
+  try {
+    const okCount = results.filter((r) => r.ok).length;
+    await execute(db,
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+       VALUES (?, 'ALPR_BULK_VERIFY', 'alpr_capture', 0, ?, datetime('now'))`,
+      userId, `${action} ${okCount}/${ids.length}`.slice(0, 500));
+  } catch { /* best-effort */ }
+  return c.json({ success: true, action, results, hits: allHits });
+});
+
+// ── Per-capture verify/edit history (the audited "change function") ─
+alpr.get('/capture/:id/history', operational, async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  const rows = await query<any>(db,
+    `SELECT al.id, al.user_id, al.action, al.details, al.created_at, u.full_name AS user_name
+       FROM audit_log al LEFT JOIN users u ON al.user_id = u.id
+      WHERE al.entity_type = 'alpr_capture' AND al.entity_id = ?
+      ORDER BY al.created_at DESC LIMIT 100`, id);
+  return c.json(Array.isArray(rows) ? rows : []);
 });
 
 // ── Stream a stored image back from R2 (prefix-validated) ────

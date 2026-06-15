@@ -5,8 +5,8 @@
 // Save / Reject via POST /alpr/capture/:id/verify. Re-editing an already-decided
 // capture requires a reason (the "change function"). Modal on desktop, full sheet
 // on mobile (same fixed-overlay pattern as VehicleDossier).
-import { useMemo, useState } from 'react';
-import { X, ShieldCheck, Save, Ban } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { X, ShieldCheck, Save, Ban, History } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import {
   formFromCapture, plateError, buildVerifyBody, CONDITIONS,
@@ -24,6 +24,7 @@ export interface EditableCapture {
 }
 
 interface VerifyResponse { success?: boolean; hits?: Array<{ severity: string; detail: string }>; error?: string }
+interface HistoryRow { id: number; action: string; details: string | null; created_at: string; user_name: string | null }
 
 const FIELD = 'bg-[#050505] border border-[#222222] px-2 py-1.5 text-[12px] text-gray-200 focus:border-[#d4a017] outline-none w-full';
 const LABEL = 'text-[9px] uppercase tracking-wider text-[#888888] mb-0.5 block';
@@ -40,6 +41,14 @@ export default function CaptureReviewEditor({
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState<null | 'confirm' | 'save' | 'reject'>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryRow[] | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => {
+    apiFetch<HistoryRow[]>(`/alpr/capture/${capture.id}/history`)
+      .then((r) => setHistory(Array.isArray(r) ? r : []))
+      .catch(() => setHistory([]));
+  }, [capture.id]);
 
   const wasDecided = capture.review_status === 'confirmed' || capture.review_status === 'rejected';
   const img = capture.annotated_image_url || capture.image_url;
@@ -151,6 +160,30 @@ export default function CaptureReviewEditor({
           )}
 
           {err && <div className="text-[11px] text-red-300 border border-red-700 bg-red-950/40 px-2 py-1">{err}</div>}
+
+          {/* Verify/edit history — the audited "change function" made visible. */}
+          {history && history.length > 0 && (
+            <div className="border border-[#1a1a1a]">
+              <button type="button" onClick={() => setShowHistory((v) => !v)}
+                className="w-full px-2 py-1 flex items-center justify-between text-[9px] uppercase tracking-wider text-[#888888] hover:text-[#aaa]">
+                <span className="flex items-center gap-1"><History className="w-3 h-3" /> History ({history.length})</span>
+                <span>{showHistory ? '−' : '+'}</span>
+              </button>
+              {showHistory && (
+                <ul className="border-t border-[#1a1a1a] divide-y divide-[#141414]">
+                  {history.map((h) => (
+                    <li key={h.id} className="px-2 py-1 text-[10px]">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[#d4a017]">{h.user_name || 'Officer'}</span>
+                        <span className="text-[#666]">{String(h.created_at).slice(5, 16)}</span>
+                      </div>
+                      {h.details && <div className="text-[#999] mt-0.5 break-words">{h.details}</div>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center gap-2 pt-1">
             <button type="button" disabled={!!busy} onClick={() => submit('confirm')}
