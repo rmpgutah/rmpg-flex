@@ -116,6 +116,10 @@ function CdocSearchPanel() {
             {loading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search style={{ width: 11, height: 11 }} />}
           </IconButton>
         </div>
+        <div className="mt-1.5 text-[9px] leading-snug text-rmpg-400">
+          Live Colorado DOC search is CAPTCHA-protected and can't be queried automatically — results come from RMPG's local cache.{' '}
+          <a href="https://www.doc.state.co.us/oss/" target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:text-brand-300 underline">Official CDOC portal →</a>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">

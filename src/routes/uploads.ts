@@ -389,9 +389,11 @@ uploads.delete('/:fileId', async (c) => {
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
 
-    const user = c.get('user') as { id: number; role: string } | undefined;
+    // This router is mounted auth:'public', so the global authMiddleware never
+    // runs and c.get('user') is always undefined here — use the role from
+    // resolveAuth()'s verified JWT instead, or the admin override never fires.
     const ADMIN_ROLES = new Set(['admin', 'manager', 'supervisor']);
-    if (att.uploaded_by !== userId && !ADMIN_ROLES.has(user?.role ?? '')) {
+    if (att.uploaded_by !== userId && !ADMIN_ROLES.has(auth.role)) {
       return c.json({ error: 'Not authorized to delete this file', code: 'FORBIDDEN' }, 403);
     }
 

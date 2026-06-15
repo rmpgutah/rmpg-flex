@@ -2271,8 +2271,8 @@ personnel.get('/:id/dispatch-stats', async (c) => {
     const [callStats, unitInfo, recentCalls, tripStats] = await Promise.all([
       queryFirst<Record<string, unknown>>(db, `
         SELECT COUNT(*) as total_calls,
-          SUM(CASE WHEN priority = 1 THEN 1 ELSE 0 END) as priority1_calls,
-          SUM(CASE WHEN priority = 2 THEN 1 ELSE 0 END) as priority2_calls,
+          SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as priority1_calls,
+          SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as priority2_calls,
           SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed_calls,
           SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_calls,
           AVG(CASE WHEN starting_mileage IS NOT NULL AND ending_mileage IS NOT NULL

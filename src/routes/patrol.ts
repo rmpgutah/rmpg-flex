@@ -757,7 +757,10 @@ pt.get('/time-tracking', async (c) => {
     const db = getDb(c.env);
     const officerId = c.req.query('officer_id');
     const days = Math.min(parseInt(c.req.query('days') || '7', 10) || 7, 90);
-    const args: any[] = [days];
+    // NEGATIVE offset: datetime('now', '-7 days') looks back 7 days. Binding a
+    // positive value built datetime('now','7 days') (7 days in the FUTURE), which
+    // matched no rows. Sibling /coverage-heatmap + /efficiency already use -days.
+    const args: any[] = [-days];
     let officerFilter = '';
     if (officerId) { officerFilter = ' AND officer_id = ?'; args.push(parseInt(officerId, 10)); }
     const rows = await query<any>(

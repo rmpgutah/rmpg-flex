@@ -40,6 +40,20 @@ properties.post('/', async (c) => {
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
+// GET /records/properties/export — MUST be registered BEFORE '/:id'. Hono's
+// SmartRouter falls back to the order-sensitive TrieRouter on the static-vs-param
+// overlap, so '/:id' (registered first) would otherwise shadow this with id='export'.
+properties.get('/export', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, 'SELECT p.*, c.name as client_name FROM properties p LEFT JOIN clients c ON p.client_id = c.id ORDER BY p.name LIMIT 50000');
+    if (rows.length === 0) return c.json([]);
+    const keys = Object.keys(rows[0] as object);
+    const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=properties_export.csv' });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
 // GET /records/properties/:id
 properties.get('/:id', async (c) => {
   try {
@@ -115,18 +129,6 @@ properties.post('/:id/unarchive', async (c) => {
     await execute(db, 'UPDATE properties SET archived_at = NULL WHERE id = ?', id);
     return c.json({ success: true, archived: false });
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
-});
-
-// GET /records/properties/export
-properties.get('/export', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, 'SELECT p.*, c.name as client_name FROM properties p LEFT JOIN clients c ON p.client_id = c.id ORDER BY p.name LIMIT 50000');
-    if (rows.length === 0) return c.json([]);
-    const keys = Object.keys(rows[0] as object);
-    const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
-    return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=properties_export.csv' });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 export default properties;

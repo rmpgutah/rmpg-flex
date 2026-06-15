@@ -194,6 +194,13 @@ import uploads from './routes/uploads';
 import companyDocuments from './routes/companyDocuments';
 import wallet from './routes/wallet';
 import jailRoster from './routes/jailRoster';
+// Full-trip dashcam footage (FlexCamPage). Handler existed but the mount was
+// dropped in a squash merge, 404ing the entire page.
+import flexcam from './routes/flexcam';
+// Colorado DOC offender search (cache-backed; live source is CAPTCHA-gated).
+import coloradoDoc from './routes/coloradoDoc';
+// Server-side Mapbox proxy backing client/src/utils/mapboxServices.ts.
+import mapbox from './routes/mapbox';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -477,6 +484,11 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // registry mount is /api/offender-registry. Mount at both so the client SPA
   // doesn't fall through to the legacy proxy (returning 500).
   { prefix: '/api/sex-offender-registry', router: offenderRegistry, auth: 'required' },
+  // Colorado DOC offender search — cache-backed (D1 colorado_doc_offenders) +
+  // admin import. Live CDOC search is CAPTCHA-gated so the router returns honest
+  // live_search_available:false metadata rather than a silent empty result.
+  { prefix: '/api/colorado-doc', router: coloradoDoc, auth: 'required',
+    note: 'CDOC search/offender/stats from local cache + admin /import; live source is CAPTCHA-gated' },
 
   // ── File uploads (attachments) ──────────────────────────────
   // General-purpose file upload/download. R2-backed (UPLOADS bucket);
@@ -490,6 +502,14 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // table (migration 0078). Ported from legacy Express handler.
   { prefix: '/api/company-documents', router: companyDocuments, auth: 'required',
     note: 'Agency document library: list/create/update/delete + CSV export for TrainingDocsPage' },
+
+  // ── Mapbox server-side proxy ───────────────────────────────
+  // Backs client/src/utils/mapboxServices.ts (geocode/directions/isochrone/
+  // matrix/optimization/map-matching/tilequery/static-map/token-status). The
+  // /api/mapbox prefix was never mounted, so every helper 404'd. 503s gracefully
+  // when MAPBOX_ACCESS_TOKEN is unset. Mounted before the bare /api routers.
+  { prefix: '/api/mapbox', router: mapbox, auth: 'required',
+    note: 'Server-side Mapbox proxy; 503 when MAPBOX_ACCESS_TOKEN secret is unset' },
 
   // ── Bare /api mounts (router owns sub-paths) ───────────────
   // Each entry here mounts at the bare /api prefix so the router can
@@ -543,6 +563,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
   { prefix: '/api/clearpathgps', router: clearpathgps, auth: 'required' },
+  // Full-trip dashcam footage requests + custody + court-package (FlexCamPage).
+  // The router declares its own requireRole gates for privileged ops (unlock).
+  { prefix: '/api/flexcam', router: flexcam, auth: 'required',
+    note: 'Full-trip dashcam footage: /footage, /footage/:id/custody, /footage/:id/court-package, /request. Mount was dropped in a squash merge — page was fully 404.' },
   { prefix: '/api/driving-events', router: drivingEvents, auth: 'required' },
   { prefix: '/api/microbilt', router: microbilt, auth: 'required',
     note: 'DL search (local dl_records/persons + live MicroBilt API when creds configured) + dl/stats + status. Was a stub mount — the DL SEARCH page 404d.' },

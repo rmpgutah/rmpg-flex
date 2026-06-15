@@ -282,6 +282,12 @@ export default function ColoradoDocPage() {
             </div>
           </form>
 
+          {/* Honest source notice — live CDOC search is CAPTCHA-gated */}
+          <div className="mx-2 px-3 py-2 bg-amber-900/15 border border-amber-700/30 rounded-sm text-[10px] leading-snug text-amber-300/90">
+            Live Colorado DOC search is CAPTCHA-protected and can't be queried automatically. Results come from RMPG's local cache; use the{' '}
+            <a href="https://www.doc.state.co.us/oss/" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-200">official CDOC portal</a>{' '}for a live lookup.
+          </div>
+
           {/* Error */}
           {error && (
             <div className="mx-2 px-3 py-2 bg-red-900/20 border border-red-700/30 rounded-sm flex items-center gap-2 text-red-400 text-xs">
