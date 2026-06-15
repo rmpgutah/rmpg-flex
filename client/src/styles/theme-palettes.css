@@ -45,6 +45,18 @@ html.theme-dark,
   --spm-toolbar-hover: linear-gradient(#24344a, #1a2736);
   --spm-toolbar-active: linear-gradient(#14202e, #0e1822);
   --spm-toolbar-primary: linear-gradient(#2e4a66, #1e3450);
+
+  /* App chrome tokens — NIGHT (dark steel-blue) */
+  --toolbar-gradient-start: #15212e; --toolbar-gradient-end: #1d2d3f;
+  --grid-header-bg: #0a1018; --grid-row-alt: #111c28;
+  --field-label-color: #d4a017;
+  --surface-panel: #15212e; --surface-panel-alt: #101a26; --surface-hover: #1a2736;
+  --info-text: #c3d0de; --info-bg: rgba(90, 133, 184, 0.12); --info-border: rgba(90, 133, 184, 0.24);
+  --desktop-shell-start: #0d1722; --desktop-shell-end: #15212e;
+  --desktop-shell-raised-start: #15212e; --desktop-shell-raised-end: #1d2d3f;
+  --desktop-shell-border: #2a3a4d; --desktop-shell-accent: #5a85b8;
+  --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.4);
+  --desktop-shell-subtle-text: #8fa3b8; --desktop-shell-icon: #8fa3b8;
 }
 
 /* ---- DAY (light grey Spillman; scale INVERTED) ---- */
@@ -85,6 +97,18 @@ html.theme-light {
   --spm-toolbar-hover: linear-gradient(#ffffff, #dad7c9);
   --spm-toolbar-active: linear-gradient(#c8c5b8, #dedad0);
   --spm-toolbar-primary: linear-gradient(#dfe8f6, #b9d2ee);
+
+  /* App chrome tokens — DAY (light grey Spillman) */
+  --toolbar-gradient-start: #ffffff; --toolbar-gradient-end: #e8e6da;
+  --grid-header-bg: #d6d3c8; --grid-row-alt: #f6f5ef;
+  --field-label-color: #936c0a;
+  --surface-panel: #ece9dd; --surface-panel-alt: #f7f9fb; --surface-hover: #e9f0fa;
+  --info-text: #2e4a66; --info-bg: rgba(46, 74, 102, 0.10); --info-border: rgba(46, 74, 102, 0.22);
+  --desktop-shell-start: #d6d3c8; --desktop-shell-end: #c9c5b8;
+  --desktop-shell-raised-start: #ece9dd; --desktop-shell-raised-end: #d6d3c8;
+  --desktop-shell-border: #9a958a; --desktop-shell-accent: #2e4a66;
+  --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.15);
+  --desktop-shell-subtle-text: #555555; --desktop-shell-icon: #555555;
 }
 
 /* ---- LEGACY BLACK (kill-switch; pure-black pre-refactor) ---- */
@@ -120,6 +144,18 @@ html.theme-legacy-black {
   --spm-toolbar-hover: linear-gradient(#222222, #141414);
   --spm-toolbar-active: linear-gradient(#0b0b0b, #000000);
   --spm-toolbar-primary: linear-gradient(#2a2a2a, #141414);
+
+  /* App chrome tokens — LEGACY BLACK (original pure-black) */
+  --toolbar-gradient-start: #0b0b0b; --toolbar-gradient-end: #101010;
+  --grid-header-bg: #050505; --grid-row-alt: #0d0d0d;
+  --field-label-color: #d4a017;
+  --surface-panel: #101010; --surface-panel-alt: #0c0c0c; --surface-hover: #161616;
+  --info-text: #d0d0d0; --info-bg: rgba(150, 150, 150, 0.12); --info-border: rgba(150, 150, 150, 0.24);
+  --desktop-shell-start: #000000; --desktop-shell-end: #0e0e0e;
+  --desktop-shell-raised-start: #050505; --desktop-shell-raised-end: #111111;
+  --desktop-shell-border: #202020; --desktop-shell-accent: #7d7d7d;
+  --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.25);
+  --desktop-shell-subtle-text: #b7b7b7; --desktop-shell-icon: #8c8c8c;
 }
 
 /* ---- TACTICAL DARK (force-dark scope; always NIGHT regardless of html.theme-*) ---- */

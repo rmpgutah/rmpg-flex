@@ -11,28 +11,8 @@
 
 /* --- Theme Custom Properties ─────────────────────────────── */
 :root {
-  /* Surface, border, text, and brand-color vars are now owned by
+  /* Surface, border, text, brand-color, and app-chrome vars are now owned by
      client/src/styles/theme-palettes.css (imported above). */
-  --toolbar-gradient-start: #0b0b0b;
-  --toolbar-gradient-end: #101010;
-  --grid-header-bg: #050505;
-  --grid-row-alt: #0d0d0d;
-  --field-label-color: #d4a017;
-  --surface-panel: #101010;
-  --surface-panel-alt: #0c0c0c;
-  --surface-hover: #161616;
-  --info-text: #d0d0d0;
-  --info-bg: rgba(150, 150, 150, 0.12);
-  --info-border: rgba(150, 150, 150, 0.24);
-  --desktop-shell-start: #000000;
-  --desktop-shell-end: #0e0e0e;
-  --desktop-shell-raised-start: #050505;
-  --desktop-shell-raised-end: #111111;
-  --desktop-shell-border: #202020;
-  --desktop-shell-accent: #7d7d7d;
-  --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.25);
-  --desktop-shell-subtle-text: #b7b7b7;
-  --desktop-shell-icon: #8c8c8c;
   /* Spillman module-bar (F-key nav) — beveled-tile states. Translucent so the
      sunken/raised look adapts to any shell background (black or legacy blue). */
   --toolbar-nav-text: #9a9a9a;
@@ -4037,30 +4017,12 @@ html.font-large { font-size: 19px; }
    pure-black default).
    ============================================================ */
 html.theme-light {
-  /* --surface-*, --border-*, --text-*, --brand-blue/gold are now in theme-palettes.css */
-  --toolbar-gradient-start: #2a75c2;
-  --toolbar-gradient-end: #3a8fd9;
-  --grid-header-bg: #102f55;
-  --grid-row-alt: #123560;
-  --surface-panel: #102f55;
-  --surface-panel-alt: #0d2644;
-  --surface-hover: #163d70;
-  --info-text: #c4d3e6;
-  --info-bg: rgba(42, 117, 194, 0.18);
-  --info-border: rgba(58, 117, 194, 0.36);
-  --desktop-shell-start: #0d2a4d;
-  --desktop-shell-end: #153a6a;
-  --desktop-shell-raised-start: #0d2a4d;
-  --desktop-shell-raised-end: #153a6a;
-  --desktop-shell-border: #2a5a9e;
-  --desktop-shell-accent: #3a75c2;
-  --desktop-shell-accent-shadow: rgba(42, 90, 158, 0.28);
-  --desktop-shell-subtle-text: #9bb4d0;
-  --desktop-shell-icon: #9bb4d0;
-  --bevel-highlight: #4a7bbf;
-  --titlebar-gradient: linear-gradient(180deg, #2a5a9e 0%, #1e4a8a 50%, #153a6a 100%);
-  color-scheme: dark;  /* still white-on-dark; blue is just hue-shifted */
-  background-color: #0d2a4d;
+  /* --surface-*, --border-*, --text-*, --brand-blue/gold, and app-chrome vars
+     are now in theme-palettes.css (imported at top of this file). */
+  --bevel-highlight: #c3cdd8;
+  --titlebar-gradient: linear-gradient(180deg, #ece9dd 0%, #d6d3c8 50%, #c9c5b8 100%);
+  color-scheme: light;
+  background-color: #ece9dd;
 }
 
 html.theme-dark,
