@@ -167,3 +167,25 @@ html.theme-legacy-black {
 /* as a custom property) so native controls/scrollbars in the subtree render dark even   */
 /* when the page root is html.theme-light.                                               */
 .tactical-dark { color-scheme: dark; }
+
+/* ── Spillman CAD fixed palette (theme-invariant) ──────────────────
+   Call priority colors are fixed by Spillman spec and the unit-status
+   colors live only on the dark CAD console, so they do NOT invert with
+   day/night. Defined globally here; consumed by spillman-kit.css and the
+   spillmanColors helper. */
+:root {
+  --spm-pri-1: #e24b4a;  /* red       */
+  --spm-pri-2: #ef9f27;  /* orange    */
+  --spm-pri-3: #e6c020;  /* yellow    */
+  --spm-pri-4: #97c459;  /* light grn */
+  --spm-pri-5: #2e9e54;  /* med green */
+  --spm-pri-6: #85b7eb;  /* light blu */
+  --spm-pri-7: #378add;  /* med blue  */
+  --spm-pri-8: #1f5fa5;  /* dark blue */
+  --spm-pri-9: #9b7fe0;  /* purple    */
+
+  --spm-stat-avail: #1d9e55;  /* available  */
+  --spm-stat-enrt:  #ef9f27;  /* en route   */
+  --spm-stat-busy:  #e24b4a;  /* busy / OOS */
+  --spm-stat-xbsy:  #85b7eb;  /* extra busy */
+}
