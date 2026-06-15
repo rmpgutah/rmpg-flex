@@ -44,7 +44,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_arrest_jailbase_source ON arrest_records(j
 -- placeholders so the admin UI lists them for Phase 2 parser work.
 INSERT OR IGNORE INTO jail_roster_config (county, display_name, roster_url, roster_type, state, enabled, scrape_interval_minutes) VALUES
   ('salt_lake', 'Salt Lake County Jail', 'https://iml.saltlakecounty.gov/IML', 'custom', 'UT', 1, 240),
+  ('utah',      'Utah County Jail',      'https://sheriff.utahcounty.gov/api/search', 'custom', 'UT', 1, 240),
   ('davis',     'Davis County Jail',     'https://www.daviscountyutah.gov/sheriff/inmate-roster', 'custom', 'UT', 0, 240),
   ('weber',     'Weber County Jail',     'https://www.webercountyutah.gov/sheriff/roster', 'custom', 'UT', 0, 240),
-  ('utah',      'Utah County Jail',      'https://sheriff.utahcounty.gov', 'custom', 'UT', 0, 240),
   ('tooele',    'Tooele County Jail',    'https://inmate.tooelecountysheriff.org/roster', 'custom', 'UT', 0, 240);

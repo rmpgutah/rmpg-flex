@@ -17,8 +17,16 @@ export interface RosterEntry {
   middle_name: string;
   gender: string;
   booking_date: string;
+  date_of_birth?: string;
   charges: string[];
   bail_amount: string;
+}
+
+// ISO timestamp -> 'YYYY-MM-DD' (empty on bad input).
+function isoDate(v: unknown): string {
+  if (typeof v !== 'string' || !v) return '';
+  const t = v.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : '';
 }
 
 export interface CountyParser {
@@ -104,11 +112,54 @@ export const saltLakeParser: CountyParser = {
   },
 };
 
+// ── Utah County (sheriff.utahcounty.gov JSON API) ───────────
+// /api/search/name/<letter> returns all inmates whose name matches; status 'A'
+// = currently in custody. Verified live 2026-06-15. JSON (no HTML parsing).
+export const utahCountyParser: CountyParser = {
+  async scrape(): Promise<RosterEntry[]> {
+    const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+    const seen = new Set<string>();
+    const entries: RosterEntry[] = [];
+
+    for (const letter of letters) {
+      let data: unknown;
+      try {
+        const res = await fetch(`https://sheriff.utahcounty.gov/api/search/name/${letter}`, {
+          headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        if (!res.ok) continue;
+        data = await res.json();
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(data)) continue;
+
+      for (const raw of data as Array<Record<string, unknown>>) {
+        if (String(raw.status ?? '').toUpperCase() !== 'A') continue; // active only
+        const id = String(raw.id ?? raw.zid ?? '');
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const rawName = String(raw.name ?? '').trim();
+        const { first, middle, last } = splitName(rawName);
+        entries.push({
+          roster_id: id, full_name: rawName.replace(/\s+/g, ' ').trim(),
+          first_name: first, last_name: last, middle_name: middle,
+          gender: '', booking_date: isoDate(raw.date_in), date_of_birth: isoDate(raw.dob),
+          charges: [], bail_amount: '',
+        });
+      }
+    }
+    return entries;
+  },
+};
+
 // Parser registry — county key -> parser. The orchestrator looks counties up
 // here; a county in jail_roster_config with no registered parser is skipped
 // (auto-disabled by the orchestrator) rather than crashing.
 export const COUNTY_PARSERS: Record<string, CountyParser> = {
   salt_lake: saltLakeParser,
+  utah: utahCountyParser,
 };
 
 export function getAvailableParsers(): string[] {

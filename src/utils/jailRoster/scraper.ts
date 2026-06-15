@@ -74,15 +74,16 @@ async function upsertEntries(db: D1Database, cfg: CountyConfig, entries: RosterE
       return db.prepare(
         `INSERT INTO arrest_records
            (jailbase_id, source_id, source_name, full_name, first_name, last_name, middle_name,
-            booking_date, charges, gender, bail_amount, county, state, status, entry_source, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 'scraper', datetime('now'), datetime('now'))
+            booking_date, date_of_birth, charges, gender, bail_amount, county, state, status, entry_source, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 'scraper', datetime('now'), datetime('now'))
          ON CONFLICT(jailbase_id, source_id) DO UPDATE SET
-           full_name=excluded.full_name, booking_date=excluded.booking_date, charges=excluded.charges,
-           gender=excluded.gender, bail_amount=excluded.bail_amount, state=excluded.state,
-           status='active', updated_at=datetime('now')`
+           full_name=excluded.full_name, booking_date=excluded.booking_date,
+           date_of_birth=COALESCE(NULLIF(excluded.date_of_birth,''), arrest_records.date_of_birth),
+           charges=excluded.charges, gender=excluded.gender, bail_amount=excluded.bail_amount,
+           state=excluded.state, status='active', updated_at=datetime('now')`
       ).bind(
         jailbaseId, cfg.county, cfg.display_name, e.full_name, e.first_name, e.last_name, e.middle_name,
-        e.booking_date, JSON.stringify(e.charges), e.gender, bail, cfg.county, cfg.state
+        e.booking_date, e.date_of_birth ?? '', JSON.stringify(e.charges), e.gender, bail, cfg.county, cfg.state
       );
     });
     if (stmts.length) { await db.batch(stmts); written += stmts.length; }
