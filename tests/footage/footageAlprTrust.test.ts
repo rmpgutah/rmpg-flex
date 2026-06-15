@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveFootageTrust } from '../src/utils/footage/footageAlpr';
+import { deriveFootageTrust } from '../../src/utils/footage/footageAlpr';
 
 describe('deriveFootageTrust', () => {
   it('hard-caps a single read below the 0.85 accept gate even at model 0.99', () => {

@@ -118,9 +118,12 @@ async function upsertVehicleByPlate(db: DB, v: AlprVehicle): Promise<number | nu
 /** Derive honest trust for one footage read. A footage chunk yields a single
  *  Roboflow read per vehicle, so trustScore hard-caps it below the accept gate
  *  (no corroboration). Never gate/store the raw model self-report. */
-export function deriveFootageTrust(plate: string | null, modelPct: number | null | undefined) {
+export function deriveFootageTrust(
+  plate: string | null,
+  modelPct: number | null | undefined,
+): { trustScore: number; accepted: boolean } {
   const t = trustScore({ reads: plate ? [plate] : [], modelPct: modelPct ?? undefined });
-  return { trustScore: t.trustScore, accepted: !!plate && t.trustScore >= ALPR_ACCEPT_CONFIDENCE };
+  return { trustScore: t.trustScore, accepted: !!plate && t.trustScore >= ALPR_ACCEPT_CONFIDENCE }; // 0.85 gate baked in
 }
 
 /** Persist one detected vehicle the same way the event path does: screen
