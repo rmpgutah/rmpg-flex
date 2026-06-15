@@ -228,7 +228,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
 
       {/* Add Schedule Button */}
       <div className="flex justify-end">
-        <button type="button" onClick={onAddSchedule} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+        <button type="button" onClick={onAddSchedule} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
           <Plus className="w-3 h-3" />
           Add Schedule
         </button>

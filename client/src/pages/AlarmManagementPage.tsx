@@ -136,7 +136,7 @@ export default function AlarmManagementPage() {
             <div className="mt-3"><label className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label><textarea id="ff-alarmmanagementpage-11" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={3} /></div>
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setFormOpen(false)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
-              <button onClick={handleSave} disabled={formSubmitting || !formData.account_number || !formData.account_name || !formData.address} className="toolbar-btn-primary px-4" style={{ height: 28 }}>{formSubmitting ? 'Saving...' : 'Save'}</button>
+              <button onClick={handleSave} disabled={formSubmitting || !formData.account_number || !formData.account_name || !formData.address} className="toolbar-btn toolbar-btn-primary px-4" style={{ height: 28 }}>{formSubmitting ? 'Saving...' : 'Save'}</button>
             </div>
           </div>
         </div>
@@ -149,7 +149,7 @@ export default function AlarmManagementPage() {
             <p className="text-xs text-rmpg-400 mb-4">This permanently removes this alarm account. This cannot be undone.</p>
             <div className="flex justify-end gap-3">
               <button onClick={() => setDeleteId(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
-              <button onClick={handleDelete} className="toolbar-btn-primary px-4 text-red-400 border-red-800" style={{ height: 28, borderColor: '#991b1b' }}>Delete</button>
+              <button onClick={handleDelete} className="toolbar-btn toolbar-btn-primary px-4 text-red-400 border-red-800" style={{ height: 28, borderColor: '#991b1b' }}>Delete</button>
             </div>
           </div>
         </div>

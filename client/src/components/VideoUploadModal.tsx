@@ -541,7 +541,7 @@ export default function VideoUploadModal({
                 <button
                   type="submit"
                   disabled={!file || !title || !cameraId || phase === 'done'}
-                  className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5"
+                  className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5"
                 >
                   <Upload className="w-3 h-3" />
                   {phase === 'error' ? 'Retry Upload' : 'Upload Video'}

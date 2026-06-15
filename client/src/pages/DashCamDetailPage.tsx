@@ -1181,7 +1181,7 @@ export default function DashCamDetailPage() {
             {video.burned_file_path && (
               <a href={`${apiBase}/fleet/dashcam-videos/${video.id}/download-burned?token=${encodeURIComponent(token)}`}
                 download
-                className="toolbar-btn-primary text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline">
+                className="toolbar-btn toolbar-btn-primary text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline">
                 <Download className="w-3.5 h-3.5" /> Download Burned
               </a>
             )}

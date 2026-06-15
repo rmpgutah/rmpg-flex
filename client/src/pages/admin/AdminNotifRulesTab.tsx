@@ -238,7 +238,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
             <input id="ff-adminnotifrulestab-0" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search rules..." aria-label="Search notification rules" autoComplete="off" className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]" />
           </div>
-          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+          <button type="button" onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[10px] flex items-center gap-1">
             <Plus className="w-3 h-3" />
             New Rule
           </button>
@@ -375,7 +375,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">
               <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
-              <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+              <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn toolbar-btn-primary text-[10px] flex items-center gap-1">
                 {submitting && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />}
                 {editing ? 'Update' : 'Create'}
               </button>

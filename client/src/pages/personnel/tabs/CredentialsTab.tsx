@@ -92,7 +92,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
           <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Credentials</h2>
           <span className="text-[11px] font-mono text-rmpg-500">({credentials.length})</span>
         </div>
-        <button type="button" onClick={onAddCredential} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+        <button type="button" onClick={onAddCredential} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
           <Plus className="w-3 h-3" />
           Add Credential
         </button>

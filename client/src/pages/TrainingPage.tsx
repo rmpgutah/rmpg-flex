@@ -258,7 +258,7 @@ export default function TrainingPage() {
               </button>
               <button type="button"
                 onClick={() => { setEditRecord(null); setShowRecordModal(true); }}
-                className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
+                className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
               >
                 <Plus className="w-3 h-3" />
                 Add Record
@@ -277,7 +277,7 @@ export default function TrainingPage() {
             aria-selected={activeTab === key}
             onClick={() => setActiveTab(key)}
             className={`text-[10px] px-3 py-1.5 flex items-center gap-1.5 transition-colors duration-150 ${
-              activeTab === key ? 'toolbar-btn-primary' : 'toolbar-btn'
+              activeTab === key ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
             }`}
           >
             <Icon className="w-3 h-3" aria-hidden="true" />
@@ -403,7 +403,7 @@ export default function TrainingPage() {
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => setShowBulkAssign(false)} className="toolbar-btn text-[10px] px-3 py-1.5">Cancel</button>
               <button type="button" onClick={handleBulkAssign} disabled={bulkSaving || !bulkCourseName || bulkOfficerIds.length === 0}
-                className="toolbar-btn-primary text-[10px] px-3 py-1.5 disabled:opacity-50">
+                className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 disabled:opacity-50">
                 {bulkSaving ? 'Assigning...' : `Assign to ${bulkOfficerIds.length} Officer(s)`}
               </button>
             </div>
@@ -1005,7 +1005,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
           {requirements.length} Training Requirements
         </span>
         {isAdmin && (
-          <button type="button" onClick={onAdd} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
+          <button type="button" onClick={onAdd} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
             <Plus className="w-3 h-3" />
             Add Requirement
           </button>
@@ -1468,7 +1468,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
           <button type="button"
             onClick={handleSubmit}
             disabled={!form.officer_id || !form.course_name}
-            className="toolbar-btn-primary text-[10px] px-4 py-1.5"
+            className="toolbar-btn toolbar-btn-primary text-[10px] px-4 py-1.5"
           >
             {isEdit ? 'Save Changes' : 'Add Record'}
           </button>
@@ -1576,7 +1576,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
                   key={role}
                   onClick={() => toggleRole(role)}
                   className={`text-[10px] px-2 py-1 capitalize ${
-                    form.required_for_roles.includes(role) ? 'toolbar-btn-primary' : 'toolbar-btn'
+                    form.required_for_roles.includes(role) ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
                   }`}
                 >
                   {role.replace(/_/g, ' ')}
@@ -1630,7 +1630,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
           <button type="button"
             onClick={handleSubmit}
             disabled={!form.course_name}
-            className="toolbar-btn-primary text-[10px] px-4 py-1.5"
+            className="toolbar-btn toolbar-btn-primary text-[10px] px-4 py-1.5"
           >
             {isEdit ? 'Save Changes' : 'Add Requirement'}
           </button>

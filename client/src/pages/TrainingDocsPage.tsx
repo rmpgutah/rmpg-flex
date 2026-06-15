@@ -198,7 +198,7 @@ export default function TrainingDocsPage() {
           {isAdmin && (
             <button type="button"
               onClick={() => { setEditDoc(null); setShowModal(true); }}
-              className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
+              className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
             >
               <Plus className="w-3 h-3" />
               Add Document
@@ -216,7 +216,7 @@ export default function TrainingDocsPage() {
             aria-selected={category === cat.key}
             onClick={() => setCategory(cat.key)}
             className={`text-[10px] px-2.5 py-1 transition-colors duration-150 ${
-              category === cat.key ? 'toolbar-btn-primary' : 'toolbar-btn'
+              category === cat.key ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
             }`}
           >
             {cat.label}
@@ -508,7 +508,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
               <button type="button"
                 onClick={() => setContentType('file')}
                 className={`flex-1 text-[10px] px-3 py-1.5 flex items-center justify-center gap-1.5 ${
-                  contentType === 'file' ? 'toolbar-btn-primary' : 'toolbar-btn'
+                  contentType === 'file' ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
                 }`}
               >
                 <Upload className="w-3 h-3" />
@@ -517,7 +517,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
               <button type="button"
                 onClick={() => setContentType('link')}
                 className={`flex-1 text-[10px] px-3 py-1.5 flex items-center justify-center gap-1.5 ${
-                  contentType === 'link' ? 'toolbar-btn-primary' : 'toolbar-btn'
+                  contentType === 'link' ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
                 }`}
               >
                 <LinkIcon className="w-3 h-3" />
@@ -591,7 +591,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
           <button type="button"
             onClick={handleSave}
             disabled={saving}
-            className="toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center gap-1"
+            className="toolbar-btn toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center gap-1"
           >
             {saving && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />}
             {isEdit ? 'Save Changes' : 'Add Document'}

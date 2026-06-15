@@ -129,7 +129,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
           <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Equipment</h2>
           <span className="text-[11px] font-mono text-rmpg-500">({equipment.length})</span>
         </div>
-        <button type="button" onClick={onAddEquipment} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+        <button type="button" onClick={onAddEquipment} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
           <Plus className="w-3 h-3" />
           Issue Equipment
         </button>
@@ -167,7 +167,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
             key={t.value}
             onClick={() => setTypeFilter(t.value)}
             className={`text-[10px] px-2.5 py-1 ${
-              typeFilter === t.value ? 'toolbar-btn-primary' : 'toolbar-btn'
+              typeFilter === t.value ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
             }`}
           >
             {t.label}

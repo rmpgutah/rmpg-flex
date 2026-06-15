@@ -1985,7 +1985,7 @@ export default function WarrantsPage() {
                   <option value="quashed">Quashed</option>
                   <option value="expired">Expired</option>
                 </select>
-                <button type="button" onClick={handleBatchUpdate} disabled={!batchStatus || batchSubmitting} className="toolbar-btn-primary text-[10px] px-2 py-0.5 disabled:opacity-40">
+                <button type="button" onClick={handleBatchUpdate} disabled={!batchStatus || batchSubmitting} className="toolbar-btn toolbar-btn-primary text-[10px] px-2 py-0.5 disabled:opacity-40">
                   {batchSubmitting ? 'Updating...' : 'Apply'}
                 </button>
                 <span className="mx-1 text-rmpg-600">|</span>
@@ -2479,7 +2479,7 @@ export default function WarrantsPage() {
                 <button
                   type="button"
                   onClick={() => handlePrintWarrantPdf(selectedWarrant.id)}
-                  className="toolbar-btn-primary w-full mt-3 flex items-center justify-center gap-2"
+                  className="toolbar-btn toolbar-btn-primary w-full mt-3 flex items-center justify-center gap-2"
                 >
                   <Printer className="w-3 h-3" /> Print PDF
                 </button>

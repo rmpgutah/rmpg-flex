@@ -271,7 +271,7 @@ export default function DashCameraTab({
                 key={f.value}
                 onClick={() => setEventTypeFilter(f.value)}
                 className={`text-[10px] px-2.5 py-1 ${
-                  eventTypeFilter === f.value ? 'toolbar-btn-primary' : 'toolbar-btn'
+                  eventTypeFilter === f.value ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
                 }`}
               >
                 {f.label}

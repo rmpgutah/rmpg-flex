@@ -117,7 +117,7 @@ export default function TasksPage() {
             <p className="text-xs text-rmpg-400 mb-4">This permanently removes the task and all comments.</p>
             <div className="flex justify-end gap-3">
               <button onClick={() => setDeleteId(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
-              <button onClick={handleDelete} className="toolbar-btn-primary px-4" style={{ height: 28, borderColor: '#991b1b', color: '#f87171' }}>Delete</button>
+              <button onClick={handleDelete} className="toolbar-btn toolbar-btn-primary px-4" style={{ height: 28, borderColor: '#991b1b', color: '#f87171' }}>Delete</button>
             </div>
           </div>
         </div>
