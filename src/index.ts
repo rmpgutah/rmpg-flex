@@ -411,6 +411,15 @@ export default {
         console.error('Multi-source warrant scheduled scan failed:', err);
       }),
     );
+    // Jail roster scrape — picks the single most-overdue enabled county and
+    // scrapes its public roster into arrest_records. No-op until a county is
+    // enabled in jail_roster_config (Admin > Jail Roster).
+    ctx.waitUntil(
+      import('./utils/jailRoster/scraper')
+        .then(({ runDueScrapes }) => runDueScrapes(env.DB))
+        .then((r) => { if (r.ran) console.log(`[jail-roster] scraped ${r.ran}`); })
+        .catch((err) => console.error('[jail-roster] scrape failed:', err)),
+    );
     // Utah Sex Offender Registry poll — pulls from an agency-authorized
     // feed (system_config sor_feed_url/key) into utah_sex_offenders.
     // No-op until a feed is provisioned; never scrapes the public site.
