@@ -1,0 +1,8 @@
+# Files declared theme-clean (no disallowed hardcoded hex). CI fails if any of
+# these reintroduce raw hex (brand gold #d4a017 is always allowed).
+# Add a file here only after it passes `node scripts/theme-hex-audit.mjs --check`.
+client/src/components/PanelTitleBar.tsx
+client/src/components/IconButton.tsx
+client/src/pages/dashboard/SpmGroup.tsx
+client/src/pages/dashboard/DashboardViewSelector.tsx
+client/src/pages/dashboard/dashboardViews.ts
