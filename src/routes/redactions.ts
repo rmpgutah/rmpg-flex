@@ -47,9 +47,15 @@ redactions.post('/', async (c): Promise<Response> => {
   let meta: any = {};
   try { meta = JSON.parse(String(form.get('metadata') ?? '{}')); } catch { /* tolerate */ }
 
-  const r2Key = `redactions/${crypto.randomUUID()}.mp4`;
+  // Honor the actual export format (Chrome records MP4/H.264; other browsers may
+  // fall back to WebM) instead of blindly stamping .mp4 on a WebM blob.
+  const fileName = typeof (file as { name?: unknown }).name === 'string' ? (file as { name: string }).name.toLowerCase() : '';
+  const isWebm = (file.type || '').toLowerCase().includes('webm') || fileName.endsWith('.webm') || meta.format === 'webm';
+  const fmt = isWebm ? { ext: 'webm', contentType: 'video/webm' } : { ext: 'mp4', contentType: 'video/mp4' };
+
+  const r2Key = `redactions/${crypto.randomUUID()}.${fmt.ext}`;
   try {
-    await c.env.UPLOADS.put(r2Key, await file.arrayBuffer(), { httpMetadata: { contentType: 'video/mp4' } });
+    await c.env.UPLOADS.put(r2Key, await file.arrayBuffer(), { httpMetadata: { contentType: fmt.contentType } });
   } catch (err: any) {
     return c.json({ error: `storage failed: ${err?.message ?? 'unknown'}` }, 502);
   }
@@ -95,7 +101,9 @@ redactions.get('/:id/download', async (c): Promise<Response> => {
   if (!row) return c.json({ error: 'Not found' }, 404);
   const obj = await c.env.UPLOADS.get(row.r2_key);
   if (!obj) return c.json({ error: 'File missing from storage' }, 404);
-  return new Response(obj.body, { headers: { 'Content-Type': 'video/mp4', 'Content-Disposition': `attachment; filename="redacted-${c.req.param('id')}.mp4"` } });
+  const ext = row.r2_key.toLowerCase().endsWith('.webm') ? 'webm' : 'mp4';
+  const contentType = obj.httpMetadata?.contentType || (ext === 'webm' ? 'video/webm' : 'video/mp4');
+  return new Response(obj.body, { headers: { 'Content-Type': contentType, 'Content-Disposition': `attachment; filename="redacted-${c.req.param('id')}.${ext}"` } });
 });
 
 export default redactions;

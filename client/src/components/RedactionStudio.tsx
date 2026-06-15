@@ -55,20 +55,21 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
     const v = videoRef.current; if (!v) return;
     setRender({ busy: true, frac: 0, phase: 'frames' }); setErr(null);
     try {
-      const blob = await renderRedacted(v, regions, {
-        fps: 12, stamp: stampLines,
+      const { blob, ext } = await renderRedacted(v, regions, {
+        stamp: stampLines,
         onProgress: (frac, phase) => setRender({ busy: true, frac, phase }),
       });
+      const fileName = `redacted-${eventId}.${ext}`;
       const kinds = Array.from(new Set(regions.filter((r) => r.enabled).map((r) => (r.kind === 'plate' ? 'license_plate' : r.kind))));
       const fd = new FormData();
-      fd.append('video', blob, `redacted-${eventId}.mp4`);
-      fd.append('metadata', JSON.stringify({ event_id: eventId, kinds, region_count: regions.filter((r) => r.enabled).length, style, regions: regions }));
+      fd.append('video', blob, fileName);
+      fd.append('metadata', JSON.stringify({ event_id: eventId, kinds, region_count: regions.filter((r) => r.enabled).length, style, format: ext, regions: regions }));
       await apiPostForm('/redactions', fd).catch((e) => {
         console.warn('[redaction] custody upload failed:', e);
         setErr('Exported & downloaded OK — but the custody copy upload failed. Re-export to retry.');
       });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = `redacted-${eventId}.mp4`; a.click();
+      const a = document.createElement('a'); a.href = url; a.download = fileName; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
     } catch (e: any) { setErr(e?.message || 'Export failed'); }
     setRender(null);
