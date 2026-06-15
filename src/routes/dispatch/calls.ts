@@ -1070,15 +1070,21 @@ calls.post('/:id/action', requireRole(...WRITE_ROLES), async (c): Promise<Respon
     const sets: string[] = [];
     const vals: unknown[] = [];
     for (const [k, v] of Object.entries(plan.updates)) { sets.push(`${k} = ?`); vals.push(v); }
-    if (plan.narrative) {
-      sets.push(`narrative = TRIM(COALESCE(narrative, '') || ?)`);
-      vals.push(`\n[${new Date().toISOString()}] ${plan.narrative}`);
-    }
+    // narrative lives on calls_for_service_ext, NOT the base table: base is at the
+    // D1 100-col cap and has no `narrative` column, so writing/reading it there 500s
+    // the whole action. Appended to the ext 1:1 row below (mirrors the ext write flow).
     if ('status' in plan.updates) sets.push(`status_changed_at = datetime('now')`);
     for (const t of plan.setTimes) sets.push(`${t} = COALESCE(${t}, datetime('now'))`);
     sets.push(`updated_at = datetime('now')`);
     vals.push(id);
     await execute(db, `UPDATE calls_for_service SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+
+    if (plan.narrative) {
+      await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
+      await execute(db,
+        `UPDATE calls_for_service_ext SET narrative = TRIM(COALESCE(narrative, '') || ?) WHERE id = ?`,
+        `\n[${new Date().toISOString()}] ${plan.narrative}`, id);
+    }
 
     // Entity link — best-effort; the call_links schema may differ on live, and a
     // failed link must never fail the action (it's still logged below).
@@ -1110,7 +1116,10 @@ calls.post('/:id/action', requireRole(...WRITE_ROLES), async (c): Promise<Respon
     }
 
     const updated = await queryFirst<Record<string, unknown>>(db,
-      'SELECT id, status, priority, disposition, unit_call_signs, narrative FROM calls_for_service WHERE id = ?', id);
+      `SELECT c.id, c.status, c.priority, c.disposition, c.unit_call_signs, e.narrative
+         FROM calls_for_service c
+         LEFT JOIN calls_for_service_ext e ON e.id = c.id
+        WHERE c.id = ?`, id);
     return c.json({ success: true, action: action ?? verb, narrative: plan.narrative, call: updated });
   } catch (err) {
     console.error('POST /dispatch/calls/:id/action failed:', err);
