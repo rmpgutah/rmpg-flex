@@ -2,6 +2,7 @@ export type ThemePreference = 'dark' | 'light';
 
 export const THEME_STORAGE_KEY = 'rmpg_theme_preference';
 export const LEGACY_FLAG_KEY = 'rmpg_theme_legacy';
+export const THEME_OVERRIDE_KEY = 'rmpg_theme_override';
 
 /** When set, restore the pre-refactor pure-black palette (prod kill-switch). */
 export function isLegacyBlackForced(): boolean {
@@ -132,6 +133,42 @@ export function applyThemePreference(
   return theme;
 }
 
+import { DEFAULT_SCHEDULE, resolveEffectiveTheme, type ThemeOverride } from './themeSchedule';
+
+/** Read the manual theme override ({theme,active}); null if absent/invalid. */
+export function readThemeOverride(): ThemeOverride | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(THEME_OVERRIDE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && (parsed.theme === 'dark' || parsed.theme === 'light')) {
+      return { theme: parsed.theme, active: !!parsed.active };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist (or clear, when null) the manual theme override. */
+export function writeThemeOverride(override: ThemeOverride | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (override === null) localStorage.removeItem(THEME_OVERRIDE_KEY);
+    else localStorage.setItem(THEME_OVERRIDE_KEY, JSON.stringify(override));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+/** Effective theme right now: legacy → active override → time schedule. Mirrors the index.html boot script. */
+export function resolveCurrentTheme(): ThemePreference {
+  if (isLegacyBlackForced()) return 'dark';
+  const hour = new Date().getHours();
+  return resolveEffectiveTheme(hour, DEFAULT_SCHEDULE, readThemeOverride());
+}
+
 export function bootstrapThemePreference(): ThemePreference {
-  return applyThemePreference(getStoredThemePreference());
+  return applyThemePreference(resolveCurrentTheme(), { persist: false });
 }
