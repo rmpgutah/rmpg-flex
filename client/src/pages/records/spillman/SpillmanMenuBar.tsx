@@ -5,11 +5,19 @@ interface Props {
   onPrint?: () => void;
   onExport?: () => void;
   onFind?: () => void;
+  onDuplicates?: () => void;
+  onRefresh?: () => void;
+  onToggleArchive?: () => void;
+  onClose?: () => void;
+  onShortcuts?: () => void;
 }
 
 interface MenuItem { label: string; onClick?: () => void; }
 
-export default function SpillmanMenuBar({ onNew, onPrint, onExport, onFind }: Props) {
+export default function SpillmanMenuBar({
+  onNew, onPrint, onExport, onFind,
+  onDuplicates, onRefresh, onToggleArchive, onClose, onShortcuts,
+}: Props) {
   const [open, setOpen] = useState<string | null>(null);
 
   const menus: Record<string, MenuItem[]> = {
@@ -17,13 +25,27 @@ export default function SpillmanMenuBar({ onNew, onPrint, onExport, onFind }: Pr
       { label: 'New', onClick: onNew },
       { label: 'Print', onClick: onPrint },
       { label: 'Export', onClick: onExport },
+      { label: 'Close', onClick: onClose },
     ],
-    Edit: [{ label: 'Find', onClick: onFind }],
-    View: [],
-    Record: [],
-    Tools: [],
-    Window: [],
-    Help: [],
+    Edit: [
+      { label: 'Find', onClick: onFind },
+      { label: 'Find Duplicates', onClick: onDuplicates },
+    ],
+    View: [
+      { label: 'Refresh', onClick: onRefresh },
+      { label: 'Toggle Archived', onClick: onToggleArchive },
+    ],
+    Record: [
+      { label: 'New', onClick: onNew },
+      { label: 'Print Record', onClick: onPrint },
+    ],
+    Tools: [
+      { label: 'Export', onClick: onExport },
+      { label: 'Find Duplicates', onClick: onDuplicates },
+    ],
+    Help: [
+      { label: 'Keyboard Shortcuts', onClick: onShortcuts },
+    ],
   };
 
   return (

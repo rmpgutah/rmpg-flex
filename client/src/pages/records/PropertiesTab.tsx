@@ -413,6 +413,30 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
                   </span>
                 )}
               </div>
+              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                <div className="flex items-center gap-1">
+                  {(!showArchived || user?.role === 'admin') && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); openEditProperty(prop); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Edit">
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  )}
+                  {(!showArchived || user?.role === 'admin') && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'property', id: prop.id, label: prop.name }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                  {(!showArchived || user?.role === 'admin') && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleArchive('properties', prop.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Archive">
+                      <Archive className="w-3 h-3" />
+                    </button>
+                  )}
+                  {showArchived && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleUnarchive('properties', prop.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors" title="Unarchive">
+                      <RotateCcw className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         ))}

@@ -4,11 +4,12 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import SpillmanMenuBar from '../SpillmanMenuBar';
 
 describe('SpillmanMenuBar', () => {
-  it('renders the standard Spillman menus', () => {
+  it('renders the standard Spillman menus (Window removed — SPA has no window management)', () => {
     render(<SpillmanMenuBar />);
-    ['File', 'Edit', 'View', 'Record', 'Tools', 'Window', 'Help'].forEach((m) => {
+    ['File', 'Edit', 'View', 'Record', 'Tools', 'Help'].forEach((m) => {
       expect(screen.getByText(m)).toBeInTheDocument();
     });
+    expect(screen.queryByText('Window')).not.toBeInTheDocument();
   });
 
   it('fires onNew when the File menu New action is clicked', () => {

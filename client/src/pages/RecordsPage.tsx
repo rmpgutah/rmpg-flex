@@ -29,7 +29,7 @@ import SplitPanel from '../components/SplitPanel';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import PrintRecordButton from '../components/PrintRecordButton';
-import ExportButton from '../components/ExportButton';
+import ExportButton, { downloadExport } from '../components/ExportButton';
 import LinkRecordModal from '../components/LinkRecordModal';
 import PersonDuplicatesModal from '../components/PersonDuplicatesModal';
 import type { Person, Vehicle, Property, RecordEntityType } from '../types';
@@ -459,6 +459,28 @@ export default function RecordsPage() {
           el?.focus();
         }}
         onPrint={() => window.print()}
+        onDuplicates={() => setShowDuplicatesModal(true)}
+        onRefresh={() => { fetchPersons(); fetchVehicles(); fetchProperties(); fetchEvidence(); }}
+        onToggleArchive={() => setShowArchived(v => !v)}
+        onClose={closeSelection}
+        onShortcuts={() => addToast('Shortcuts: type to search records · Esc closes the open panel', 'info')}
+        onExport={() => {
+          const exportConfigs: Record<string, { url: string; filename: string }> = {
+            persons:    { url: `/records/persons/export?format=csv&archived=${showArchived}`,    filename: 'persons_export.csv' },
+            vehicles:   { url: `/records/vehicles/export?format=csv&archived=${showArchived}`,   filename: 'vehicles_export.csv' },
+            properties: { url: `/records/properties/export?format=csv&archived=${showArchived}`, filename: 'properties_export.csv' },
+            evidence:   { url: `/records/evidence/export?format=csv&archived=${showArchived}`,   filename: 'evidence_export.csv' },
+          };
+          const cfg = exportConfigs[activeTab];
+          if (cfg) {
+            downloadExport(cfg.url, cfg.filename).catch((err) => {
+              console.error('[RecordsPage] menu export failed:', err);
+              addToast('Export failed — check your connection and try again', 'error');
+            });
+          } else {
+            addToast('Export is not available for this record type', 'info');
+          }
+        }}
       />
 
       {/* Tab Row — Spillman silver record-type tabs + archive toggle */}
@@ -483,7 +505,7 @@ export default function RecordsPage() {
       </div>
 
       {/* Compact Stats Strip */}
-      <div className={`records-stats ${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`} style={{ background: '#050505' }}>
+      <div className={`records-stats ${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`}>
         <div className="flex items-center gap-1">
           <UserCircle className="w-2.5 h-2.5 text-brand-400" />
           <span className="text-rmpg-400">P:</span>

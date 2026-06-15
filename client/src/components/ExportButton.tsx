@@ -7,6 +7,33 @@ import { useState, useRef, useEffect } from 'react';
 import { Download, Printer, ChevronDown, Loader2, Check } from 'lucide-react';
 import ProgressBar from './ui/ProgressBar';
 
+/**
+ * Shared authed CSV download helper — reusable outside ExportButton.
+ * Reads the JWT from localStorage, fetches the given URL with Bearer auth,
+ * and triggers a browser download of the response blob.
+ */
+export async function downloadExport(exportUrl: string, filename: string): Promise<void> {
+  const token = localStorage.getItem('rmpg_token');
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const url = exportUrl.startsWith('/api') ? exportUrl : `/api${exportUrl}`;
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    throw new Error(`Export failed with status ${res.status}`);
+  }
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(blobUrl);
+}
+
 interface ExportButtonProps {
   exportUrl: string;        // e.g. '/dispatch/calls/export?format=csv'
   exportFilename: string;   // e.g. 'calls_export.csv'
@@ -59,31 +86,8 @@ export default function ExportButton({
     setIsOpen(false);
 
     try {
-      const token = localStorage.getItem('rmpg_token');
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const url = exportUrl.startsWith('/api') ? exportUrl : `/api${exportUrl}`;
-      const res = await fetch(url, { headers });
-
-      if (!res.ok) {
-        throw new Error(`Export failed with status ${res.status}`);
-      }
-
-      const blob = await res.blob();
+      await downloadExport(exportUrl, exportFilename);
       setExportPhase('ready');
-
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.setAttribute('download', exportFilename);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-
       // Show "Download ready" briefly before resetting
       await new Promise(r => setTimeout(r, 1200));
     } catch (err) {
