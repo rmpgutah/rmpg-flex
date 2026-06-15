@@ -613,7 +613,9 @@
 //       FI/warrants/trespass), geocode cache-first, click→dossier panel.
 // v958: Intel report loop — linked entities + dissemination log + external share
 //       on report detail; dossier auto-links its subject into a new report.
-const CACHE_NAME = 'rmpg-flex-v958';
+// v959: Spillman Records skin follow-up — fix stats-strip legibility regression,
+//       working Find/Print menu items, robust form-tab key.
+const CACHE_NAME = 'rmpg-flex-v959';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
