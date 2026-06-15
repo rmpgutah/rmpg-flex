@@ -162,9 +162,9 @@ export const DASHCAM_EVENT_COLORS: Record<string, string> = {
 
 export const CHART_TOOLTIP_STYLE = {
   contentStyle: {
-    backgroundColor: '#0a0a0a',
-    border: '1px solid #2e2e2e',
-    color: '#e0e0e0',
+    backgroundColor: 'var(--surface-base)',
+    border: '1px solid var(--border-default)',
+    color: 'var(--text-primary)',
     fontSize: 10,
     fontFamily: 'Consolas, monospace',
   },
