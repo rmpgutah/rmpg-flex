@@ -127,8 +127,8 @@ export default function CommandCenterPage() {
             <div className="h-[calc(100%-24px)]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.calls_by_hour ?? []}>
-                  <XAxis dataKey="hour" tick={{ fontSize: 9, fill: '#6b7280' }} tickFormatter={(h: number) => `${h}:00`} />
-                  <YAxis tick={{ fontSize: 9, fill: '#6b7280' }} width={25} />
+                  <XAxis dataKey="hour" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} tickFormatter={(h: number) => `${h}:00`} />
+                  <YAxis tick={{ fontSize: 9, fill: 'var(--text-muted)' }} width={25} />
                   <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                     {(data.calls_by_hour ?? []).map((entry, index) => (
                       <Cell key={index} fill={entry.count > 5 ? '#ef4444' : entry.count > 3 ? '#f59e0b' : '#888888'} />
@@ -170,7 +170,7 @@ export default function CommandCenterPage() {
                     borderLeft: `3px solid ${
                       call.priority === 'P1' ? '#ef4444' : call.priority === 'P2' ? '#f59e0b' : call.priority === 'P3' ? '#888888' : '#6b7280'
                     }`,
-                    background: call.priority === 'P1' ? 'rgba(239,68,68,0.06)' : '#0a0a0a',
+                    background: call.priority === 'P1' ? 'rgba(239,68,68,0.06)' : 'var(--surface-base)',
                   }}
                 >
                   <div className="flex-1 min-w-0">
@@ -216,7 +216,7 @@ export default function CommandCenterPage() {
                     <div
                       key={unit.id}
                       className="flex items-center gap-1.5 px-2 py-1 panel-beveled"
-                      style={{ background: '#0a0a0a' }}
+                      style={{ background: 'var(--surface-base)' }}
                     >
                       <span className="rounded-full flex-shrink-0" style={{ width: 6, height: 6, background: color, boxShadow: `0 0 4px ${color}` }} />
                       <div className="min-w-0">
