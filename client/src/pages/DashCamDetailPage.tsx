@@ -435,7 +435,7 @@ export default function DashCamDetailPage() {
     map.on('load', () => {
       // Marker
       const marker = new mapboxgl.Marker({
-        color: '#888888',
+        color: 'var(--text-muted)',
       })
         .setLngLat([centerLng, centerLat])
         .addTo(map);
@@ -457,7 +457,7 @@ export default function DashCamDetailPage() {
           type: 'line',
           source: 'gps-track',
           paint: {
-            'line-color': '#888888',
+            'line-color': 'var(--text-muted)',
             'line-opacity': 0.5,
             'line-width': 2,
           },
@@ -1006,7 +1006,7 @@ export default function DashCamDetailPage() {
               isOpen={sections.gps} onToggle={() => toggleSection('gps')}>
               <div ref={mapContainerRef}
                 className="w-full rounded-sm"
-                style={{ height: 200, background: '#050505' }}>
+                style={{ height: 200, background: 'var(--surface-deep)' }}>
                 {!mapboxgl?.accessToken && (
                   <div className="flex items-center justify-center h-full">
                     <span className="text-[9px] text-rmpg-500">Maps unavailable</span>
@@ -1149,7 +1149,7 @@ export default function DashCamDetailPage() {
           </div>
 
           {/* ── Panel Bottom Actions ── */}
-          <div className="border-t border-[#181818] p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
+          <div className="border-t border-border-subtle p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
             {/* File info */}
             <div className="flex items-center justify-between text-[9px] text-rmpg-500 font-mono mb-1">
               <span>{formatSize(video.file_size)}</span>
