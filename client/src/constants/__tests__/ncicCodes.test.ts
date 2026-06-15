@@ -110,6 +110,42 @@ describe('vehicle codes', () => {
     expect(encode('VCO', 'Silver')).toBe('SIL');
     expect(encode('VCO', 'Maroon')).toBe('MAR');
   });
+
+  // ── New VCO color codes (NIEM 5.0 VCOCodeSimpleType) ─────
+  it('decodes newly added NIEM VCO color codes', () => {
+    expect(fmtCoded('VCO', 'AME')).toBe('AME (AMETHYST)');
+    expect(fmtCoded('VCO', 'CAM')).toBe('CAM (CAMOUFLAGE)');
+    expect(fmtCoded('VCO', 'COM')).toBe('COM (CHROME)');
+    expect(fmtCoded('VCO', 'MVE')).toBe('MVE (MAUVE)');
+    expect(fmtCoded('VCO', 'TPE')).toBe('TPE (TAUPE)');
+  });
+  it('encodes new VCO aliases', () => {
+    expect(encode('VCO', 'Camo')).toBe('CAM');
+    expect(encode('VCO', 'Taupe')).toBe('TPE');
+    expect(encode('VCO', 'Mauve')).toBe('MVE');
+    expect(encode('VCO', 'TEL')).toBe('TEA');  // TEL kept as alias for TEA (Teal)
+  });
+
+  // ── New VST body style codes (NIEM 4.2 VSTCodeSimpleType) ─
+  it('decodes newly added NIEM VST body style codes', () => {
+    expect(fmtCoded('VST', 'AM')).toBe('AM (AMBULANCE)');
+    expect(fmtCoded('VST', 'MH')).toBe('MH (MOTOR HOME)');
+    expect(fmtCoded('VST', 'SM')).toBe('SM (SNOWMOBILE)');
+    expect(fmtCoded('VST', 'FB')).toBe('FB (FLATBED)');
+    expect(fmtCoded('VST', 'DP')).toBe('DP (DUMP TRUCK)');
+    expect(fmtCoded('VST', 'LM')).toBe('LM (LIMOUSINE)');
+    expect(fmtCoded('VST', 'TN')).toBe('TN (TANKER)');
+    expect(fmtCoded('VST', 'TT')).toBe('TT (TOW TRUCK)');
+  });
+  it('encodes new VST aliases', () => {
+    expect(encode('VST', 'Motorhome')).toBe('MH');
+    expect(encode('VST', 'Snowmobile')).toBe('SM');
+    expect(encode('VST', 'Limo')).toBe('LM');
+    expect(encode('VST', 'Flatbed')).toBe('FB');
+    expect(encode('VST', 'Dump Truck')).toBe('DP');
+    expect(encode('VST', 'Tanker')).toBe('TN');
+    expect(encode('VST', 'Ambulance')).toBe('AM');
+  });
 });
 
 describe('geographic + DL codes', () => {
@@ -126,6 +162,39 @@ describe('geographic + DL codes', () => {
   it('renders CDL endorsements', () => {
     expect(fmtCoded('DL_ENDORSEMENT', 'H')).toBe('H (HAZARDOUS MATERIALS)');
     expect(fmtCoded('DL_ENDORSEMENT', 'P')).toBe('P (PASSENGER)');
+  });
+
+  // ── New Canadian province codes (NLETS / ISO 3166-2:CA) ──
+  it('decodes all newly added Canadian provinces/territories', () => {
+    expect(fmtCoded('STATE', 'SK')).toBe('SK (SASKATCHEWAN)');
+    expect(fmtCoded('STATE', 'NB')).toBe('NB (NEW BRUNSWICK)');
+    expect(fmtCoded('STATE', 'NL')).toBe('NL (NEWFOUNDLAND AND LABRADOR)');
+    expect(fmtCoded('STATE', 'NS')).toBe('NS (NOVA SCOTIA)');
+    expect(fmtCoded('STATE', 'NT')).toBe('NT (NORTHWEST TERRITORIES)');
+    expect(fmtCoded('STATE', 'NU')).toBe('NU (NUNAVUT)');
+    expect(fmtCoded('STATE', 'PE')).toBe('PE (PRINCE EDWARD ISLAND)');
+    expect(fmtCoded('STATE', 'YT')).toBe('YT (YUKON)');
+  });
+  it('encodes Canadian province names to codes', () => {
+    expect(encode('STATE', 'Saskatchewan')).toBe('SK');
+    expect(encode('STATE', 'Yukon')).toBe('YT');
+    expect(encode('STATE', 'PEI')).toBe('PE');  // alias
+  });
+
+  // ── New DL restriction codes (AAMVA A–Z) ─────────────────
+  it('decodes AAMVA DL restriction codes A–Z', () => {
+    expect(fmtCoded('DL_RESTRICTION', 'A')).toBe('A (CORRECTIVE LENSES)');
+    expect(fmtCoded('DL_RESTRICTION', 'G')).toBe('G (DAYLIGHT ONLY)');
+    expect(fmtCoded('DL_RESTRICTION', 'K')).toBe('K (CDL INTRASTATE ONLY)');
+    expect(fmtCoded('DL_RESTRICTION', 'M')).toBe('M (NO CLASS A BUS)');
+    expect(fmtCoded('DL_RESTRICTION', 'T')).toBe('T (IGNITION INTERLOCK)');
+    expect(fmtCoded('DL_RESTRICTION', 'V')).toBe('V (MEDICAL VARIANCE)');
+  });
+  it('encodes DL restriction aliases', () => {
+    expect(encode('DL_RESTRICTION', 'IID Required')).toBe('T');
+    expect(encode('DL_RESTRICTION', 'Automatic Transmission Only')).toBe('E');
+    expect(encode('DL_RESTRICTION', 'No Air Brakes')).toBe('L');
+    expect(encode('DL_RESTRICTION', 'Daylight Only')).toBe('G');
   });
 });
 

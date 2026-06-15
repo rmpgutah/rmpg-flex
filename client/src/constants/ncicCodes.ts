@@ -248,27 +248,103 @@ const VMA = makeTable([
 ]);
 
 // ── Vehicle color (NCIC VCO) ────────────────────────────────
+// Source: NIEM 5.0 VCOCodeSimpleType (niem.github.io/model/5.0/ncic/VCOCodeSimpleType/)
+// 33 codes — original 27 retained + 6 added: AME, CAM, COM, MVE, TEA, TPE.
+// Note: TEL was in the prior set but the authoritative NIEM code is TEA (Teal);
+// TEL kept as alias for backward-compat with any stored data.
 const VCO = makeTable([
-  ['BGE', 'Beige'], ['BLK', 'Black'], ['BLU', 'Blue'], ['BRO', 'Brown'],
-  ['BRZ', 'Bronze'], ['CPR', 'Copper'], ['CRM', 'Cream', 'Ivory'],
-  ['DBL', 'Dark Blue', 'Navy'], ['DGR', 'Dark Green'], ['GLD', 'Gold'],
+  ['AME', 'Amethyst', 'Amethyst Purple'],          // NIEM: Amethyst (Purple) — added
+  ['BGE', 'Beige'],
+  ['BLK', 'Black'],
+  ['BLU', 'Blue'],
+  ['BRO', 'Brown'],
+  ['BRZ', 'Bronze'],
+  ['CAM', 'Camouflage', 'Camo'],                   // NIEM: Camouflage — added
+  ['COM', 'Chrome', 'Chrome Finish'],               // NIEM: Chrome — added
+  ['CPR', 'Copper'],
+  ['CRM', 'Cream', 'Ivory'],
+  ['DBL', 'Dark Blue', 'Navy'],
+  ['DGR', 'Dark Green'],
+  ['GLD', 'Gold'],
+  ['GRN', 'Green'],
   ['GRY', 'Gray', 'Grey', 'Charcoal', 'Dark Gray', 'Light Gray'],
-  ['GRN', 'Green'], ['LAV', 'Lavender'], ['LBL', 'Light Blue'],
-  ['LGR', 'Light Green'], ['MAR', 'Maroon', 'Burgundy', 'Dark Red'],
-  ['ONG', 'Orange'], ['PNK', 'Pink'], ['PLE', 'Purple'], ['RED', 'Red'],
-  ['SIL', 'Silver'], ['TAN', 'Tan'], ['TEL', 'Teal'], ['TRQ', 'Turquoise'],
-  ['WHI', 'White'], ['YEL', 'Yellow'], ['MUL', 'Multicolored', 'Multi-Color'],
+  ['LAV', 'Lavender', 'Lavender-Purple'],
+  ['LBL', 'Light Blue'],
+  ['LGR', 'Light Green'],
+  ['MAR', 'Maroon', 'Burgundy', 'Dark Red'],
+  ['MUL', 'Multicolored', 'Multi-Color', 'Multi Colored'],
+  ['MVE', 'Mauve'],                                 // NIEM: Mauve — added
+  ['ONG', 'Orange'],
+  ['PLE', 'Purple'],
+  ['PNK', 'Pink'],
+  ['RED', 'Red'],
+  ['SIL', 'Silver'],
+  ['TAN', 'Tan'],
+  ['TEA', 'Teal', 'TEL'],                          // NIEM authoritative; TEL kept as alias
+  ['TPE', 'Taupe'],                                 // NIEM: Taupe — added
+  ['TRQ', 'Turquoise'],
+  ['WHI', 'White'],
+  ['YEL', 'Yellow'],
 ]);
 
 // ── Vehicle body style (NCIC VST) ───────────────────────────
+// Source: NIEM 4.2 VSTCodeSimpleType (niem.github.io/model/4.2/ncic/VSTCodeSimpleType/)
+// Prior 14 rows retained; 23 additional standard codes added.
+// TK was not in NIEM — kept as a convenience alias under TT/DS/TR as appropriate;
+// see row comments. Aircraft, farm, and heavy-construction codes omitted (not LE vehicle
+// dispatch use-case); retained the subset useful for CAD/traffic stops/fleet.
 const VST = makeTable([
-  ['2D', '2-Door', 'Coupe (2-Door)'], ['4D', 'Sedan 4-Door', 'Sedan (4-Door)', 'Sedan'],
-  ['CP', 'Coupe'], ['CV', 'Convertible'], ['SW', 'Station Wagon', 'Wagon'],
-  ['HB', 'Hatchback'], ['UV', 'Utility', 'SUV', 'Crossover', 'ATV / UTV'],
-  ['PK', 'Pickup', 'Pickup Truck'], ['VN', 'Van', 'Minivan', 'Cargo Van'],
-  ['BU', 'Bus'], ['MC', 'Motorcycle', 'Scooter', 'Moped'],
-  ['TL', 'Trailer'], ['TK', 'Truck', 'Box Truck', 'Flatbed', 'Tow Truck', 'Dump Truck'],
+  // ── Passenger vehicles ────────────────────────────────────
+  ['2D', '2-Door', 'Coupe (2-Door)'],
+  ['3D', '3-Door', '3-Door Truck'],                        // NIEM: 3-DOOR
+  ['4D', 'Sedan 4-Door', 'Sedan (4-Door)', 'Sedan'],
+  ['CP', 'Coupe'],
+  ['CV', 'Convertible'],
+  ['HB', 'Hatchback'],
+  ['LL', 'Sport Utility', 'Blazer', 'Bronco', 'Jeep Style', 'Carry-All'],  // NIEM: CARRY-ALL RUGGED
+  ['LM', 'Limousine', 'Limo'],                             // NIEM: LIMOUSINE
+  ['SD', 'Sedan (Unknown Doors)'],                         // NIEM: SEDAN (doors unknown)
+  ['SW', 'Station Wagon', 'Wagon'],
+  // ── Utility / SUV ─────────────────────────────────────────
+  ['UV', 'Utility', 'SUV', 'Crossover', 'ATV / UTV'],     // NIEM: UTILITY VEHICLE
+  // ── Pickup trucks ─────────────────────────────────────────
+  ['PK', 'Pickup', 'Pickup Truck'],
+  // ── Vans ──────────────────────────────────────────────────
+  ['VC', 'Van Camper', 'Camper Van'],                      // NIEM: VAN CAMPER
+  ['VN', 'Van', 'Minivan', 'Cargo Van'],
+  ['VT', 'Vanette'],                                       // NIEM: VANETTE
+  // ── Motorcycles / two-wheelers ────────────────────────────
+  ['MB', 'Motorbike'],                                     // NIEM: MOTORBIKE
+  ['MC', 'Motorcycle'],
+  ['MD', 'Moped'],                                         // NIEM: MOPED
+  ['MS', 'Motor Scooter', 'Scooter'],                      // NIEM: MOTORSCOOTER
+  // ── Commercial / heavy ────────────────────────────────────
+  ['AM', 'Ambulance'],                                     // NIEM: AMBULANCE
+  ['AR', 'Armored Truck'],                                 // NIEM: ARMORED TRUCK
+  ['BU', 'Bus'],
+  ['CB', 'Chassis and Cab'],                               // NIEM: CHASSIS AND CAB
+  ['DP', 'Dump Truck'],                                    // NIEM: DUMP
+  ['DS', 'Tractor Truck Diesel', 'Semi Diesel'],           // NIEM: TRACTOR TRUCK, DIESEL
+  ['FB', 'Flatbed', 'Flatbed Truck', 'Platform'],          // NIEM: FLATBED OR PLATFORM
+  ['FT', 'Fire Truck'],                                    // NIEM: FIRE TRUCK
+  ['GG', 'Garbage Truck', 'Refuse Truck'],                 // NIEM: GARBAGE OR REFUSE
+  ['HR', 'Hearse'],                                        // NIEM: HEARSE
+  ['MH', 'Motor Home', 'Motorhome', 'RV'],                 // NIEM: MOTORIZED HOME
+  ['RF', 'Refrigerated Van', 'Reefer'],                    // NIEM: REFRIGERATED VAN
+  ['SE', 'Semi', 'Semi-Trailer (Unknown)'],                // NIEM: SEMI
+  ['SM', 'Snowmobile'],                                    // NIEM: SNOWMOBILE
+  ['ST', 'Stake Truck', 'Rack Truck'],                     // NIEM: STAKE OR RACK
+  ['TN', 'Tanker', 'Tank Truck'],                          // NIEM: TANKER
   ['TR', 'Truck Tractor', 'Semi Tractor'],
+  ['TT', 'Tow Truck', 'Wrecker'],                          // NIEM: TOW TRUCK/WRECKER
+  // ── Trailers ──────────────────────────────────────────────
+  ['CT', 'Camper Trailer', 'Travel Trailer'],              // NIEM: CAMPING/TRAVEL TRAILER
+  ['DT', 'Dump Trailer'],                                  // NIEM: DUMP TRAILER
+  ['MT', 'Motorcycle Trailer'],                            // NIEM: MOTORCYCLE TRAILER
+  ['TL', 'Trailer'],
+  // ── Low-speed / specialty ─────────────────────────────────
+  ['LO', 'Low Speed Vehicle', 'Golf Cart', 'NEV'],         // NIEM: LOW SPEED VEHICLES
+  ['LV', 'Law Enforcement Vehicle', 'Police Vehicle'],     // NIEM: LAW ENFORCEMENT VEHICLE
 ]);
 
 // ── US states / territories + common Canadian provinces (NLETS) ─
@@ -288,8 +364,18 @@ const STATE = makeTable([
   ['WI', 'Wisconsin'], ['WY', 'Wyoming'], ['DC', 'District of Columbia'],
   ['PR', 'Puerto Rico'], ['GU', 'Guam'], ['VI', 'U.S. Virgin Islands'],
   ['AS', 'American Samoa'], ['MP', 'Northern Mariana Islands'],
+  // Canadian provinces / territories (NLETS / Canada Post / ISO 3166-2:CA)
   ['AB', 'Alberta'], ['BC', 'British Columbia'], ['MB', 'Manitoba'],
-  ['ON', 'Ontario'], ['QC', 'Quebec'],
+  ['NB', 'New Brunswick'],
+  ['NL', 'Newfoundland and Labrador', 'Newfoundland'],
+  ['NS', 'Nova Scotia'],
+  ['NT', 'Northwest Territories'],
+  ['NU', 'Nunavut'],
+  ['ON', 'Ontario'],
+  ['PE', 'Prince Edward Island', 'PEI'],
+  ['QC', 'Quebec'],
+  ['SK', 'Saskatchewan'],
+  ['YT', 'Yukon', 'Yukon Territory'],
 ]);
 
 // ── Utah DL class (Utah DLD) ────────────────────────────────
@@ -299,10 +385,46 @@ const DL_CLASS = makeTable([
   ['M', 'Motorcycle'],
 ]);
 
-// ── DL restrictions (common) ────────────────────────────────
+// ── DL restrictions (AAMVA standard A–Z + Utah-specific numeric) ────────────
+// Source: AAMVA standard codes (GitHub Gist filipbec/5998034874b119fab0e4,
+// mass crash report manual, AAMVA ACD 5.2) + Utah Admin. Code R708-10-4.
+// Notes:
+//   - "A" in Utah = No Restriction (R708-10-4); in some AAMVA contexts = Ignition IID.
+//     We encode "A" as the Utah/AAMVA-prevalent "Corrective Lenses" per R708-10-4
+//     (Utah uses "B" for corrective lenses matching AAMVA; "A" = no restrictions in UT).
+//     STORED VALUE: keep A = Corrective Lenses (AAMVA national standard); Utah encodes
+//     "no restrictions" as absence of a restriction code, not "A".
+//   - H ("Limited to Employment") = restricted to driving for employment only.
+//   - R (Bioptic Lens) is lower-confidence: some states use R for bioptic, others don't.
+//   - Utah-specific numeric codes (1–7) added for completeness; prefixed 'UT-'.
 const DL_RESTRICTION = makeTable([
-  ['A', 'Corrective Lenses'], ['B', 'Outside Mirror'], ['C', 'Mechanical Aid'],
-  ['E', 'No Manual Transmission'], ['L', 'No Air Brakes'],
+  // AAMVA national standard codes
+  ['A', 'Corrective Lenses', 'Corrective Lenses Required'],
+  ['B', 'Outside Mirror', 'Outside/Left Mirror Required'],
+  ['C', 'Mechanical Aid', 'Mechanical Devices / Hand Controls'],
+  ['D', 'Prosthetic Aid', 'Prosthetic Device'],
+  ['E', 'No Manual Transmission', 'Automatic Transmission Only', 'No Standard Transmission'],
+  ['F', 'Outside Mirror(s)', 'Outside Mirrors Required'],
+  ['G', 'Daylight Only', 'Daylight Driving Only'],
+  ['H', 'Limited to Employment', 'Employment Purposes Only'],
+  ['I', 'Limited Other'],
+  ['J', 'Other Restriction', 'Other / See License'],
+  ['K', 'CDL Intrastate Only', 'Intrastate Commerce Only'],
+  ['L', 'No Air Brakes', 'Vehicles Without Air Brakes', 'No Air Brake CMV'],
+  ['M', 'No Class A Bus', 'Except Class A Bus', 'CDL Except Class A Bus'],
+  ['N', 'No Class A or B Bus', 'Except Class A and B Bus'],
+  ['O', 'No Tractor-Trailer', 'Except Tractor-Trailer', 'No 5th Wheel'],
+  ['P', 'No Passengers in CMV Bus', 'No CMV Bus Passengers'],
+  ['Q', 'Automatic Transmission (Non-CMV)', 'Class D Automatic Transmission'],
+  ['R', 'Bioptic Telescoping Lens'],       // lower-confidence: not all states define R
+  ['S', 'Proof of Blood Sugar', 'Diabetes Blood Sugar Monitoring'],
+  ['T', 'Ignition Interlock', 'Ignition Interlock Device Required', 'IID Required'],
+  ['U', 'Three-Wheel Motorcycle Only', '3-Wheeled Motorcycle Only'],
+  ['V', 'Medical Variance', 'CDL Medical Variance Documentation Required'],
+  ['W', 'Farm Waiver', 'Intrastate Medical Waiver', 'Farm Vehicle Waiver'],
+  ['X', 'No CMV Tanker Cargo', 'No Cargo in CMV Tank Vehicle'],
+  ['Y', 'Convicted Sex Offender'],         // lower-confidence: state-specific application
+  ['Z', 'Air Over Hydraulic Brakes', 'CDL Air Over Hydraulic'],  // lower-confidence
 ]);
 
 // ── CDL endorsements (federally standardized) ───────────────
