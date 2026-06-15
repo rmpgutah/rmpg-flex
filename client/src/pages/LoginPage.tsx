@@ -411,14 +411,14 @@ export default function LoginPage() {
 
   // ── Info row item ──────────────────────────────
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid #0c0c0c' }}>
+    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
       <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>{label}</span>
       <span className="text-[9px] font-mono" style={{ color: '#888888' }}>{value}</span>
     </div>
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #0b0b0b 0%, #141414 100%)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'var(--surface-sunken)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
       {/* Animated grid background */}
       <div className="login-grid-bg" />
 
@@ -1333,12 +1333,12 @@ export default function LoginPage() {
           <div
             className="text-center py-1.5 px-3"
             style={{
-              background: '#0b0b0b',
+              background: 'var(--surface-base)',
               border: '1px solid #2b2b2b',
               borderTop: '2px solid #333333',
             }}
           >
-            <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: '#333333' }}>
+            <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: 'var(--text-muted)' }}>
               Internal Use Only
             </p>
             <p className="text-[7px] mt-0.5 uppercase tracking-wider" style={{ color: '#666666' }}>
@@ -1349,12 +1349,12 @@ export default function LoginPage() {
 
         {/* Footer with clock */}
         <div className="text-center mt-2 flex items-center justify-center gap-3" aria-label="Application footer">
-          <p className="text-[7px] sm:text-[8px] tracking-wide" style={{ color: '#2e2e2e' }}>
+          <p className="text-[7px] sm:text-[8px] tracking-wide" style={{ color: 'var(--text-muted)' }}>
             RMPG Flex v{APP_VERSION} | Rocky Mountain Protective Group, LLC
           </p>
           <div className="flex items-center gap-1" role="timer" aria-label="Current Mountain Time">
-            <Clock className="w-2.5 h-2.5" style={{ color: '#2e2e2e' }} aria-hidden="true" />
-            <time className="text-[8px] font-mono tabular-nums" style={{ color: '#383838' }}>{clock} MT</time>
+            <Clock className="w-2.5 h-2.5" style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
+            <time className="text-[8px] font-mono tabular-nums" style={{ color: 'var(--text-muted)' }}>{clock} MT</time>
           </div>
         </div>
       </div>

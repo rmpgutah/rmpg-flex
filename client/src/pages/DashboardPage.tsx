@@ -754,7 +754,7 @@ export default function DashboardPage() {
           { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
           { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
           { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
-          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: '#555555' },
+          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: '#8fa3b8' },
         ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
           <div
             key={key}
@@ -1047,10 +1047,10 @@ export default function DashboardPage() {
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: '#0a0a0a',
-                  border: '1px solid #3a3a3a',
+                  backgroundColor: 'var(--surface-raised)',
+                  border: '1px solid var(--border-strong)',
                   borderRadius: '2px',
-                  color: '#cccccc',
+                  color: 'var(--text-primary)',
                   fontSize: '11px',
                   boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                   padding: '8px 12px',
@@ -1107,10 +1107,10 @@ export default function DashboardPage() {
                     </Pie>
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: '#0a0a0a',
-                        border: '1px solid #3a3a3a',
+                        backgroundColor: 'var(--surface-raised)',
+                        border: '1px solid var(--border-strong)',
                         borderRadius: '2px',
-                        color: '#cccccc',
+                        color: 'var(--text-primary)',
                         fontSize: '11px',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                         padding: '8px 12px',
@@ -1757,10 +1757,10 @@ export default function DashboardPage() {
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: '#0a0a0a',
-                      border: '1px solid #3a3a3a',
+                      backgroundColor: 'var(--surface-raised)',
+                      border: '1px solid var(--border-strong)',
                       borderRadius: '2px',
-                      color: '#e0e0e0',
+                      color: 'var(--text-primary)',
                       fontSize: '11px',
                       boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                       padding: '8px 12px',

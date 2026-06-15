@@ -927,8 +927,8 @@ export default function Layout() {
           <div
             className="w-full max-w-sm mx-4 p-6 space-y-4"
             style={{
-              background: '#0a0a0a',
-              border: '1px solid #2b2b2b',
+              background: 'var(--surface-raised)',
+              border: '1px solid var(--border-default)',
               borderTop: '3px solid #888888',
               boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
               WebkitAppRegion: 'no-drag',
@@ -1179,7 +1179,7 @@ export default function Layout() {
 
               {/* Search */}
               <button type="button"
-                onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
+                onClick={() => setShowCommandPalette(true)}
                 className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
                 title="Search (Ctrl+K)"
                 aria-label="Global search"
@@ -1255,7 +1255,7 @@ export default function Layout() {
                   style={{ minWidth: 220, zIndex: 9995, boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)' }}
                 >
                   {/* User info header */}
-                  <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'rgba(10,10,10, 0.5)' }}>
+                  <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'var(--surface-sunken)' }}>
                     <div className="text-xs font-bold text-white">
                       {user?.first_name} {user?.last_name}
                     </div>
@@ -1346,8 +1346,8 @@ export default function Layout() {
           isConnected={isConnected}
           onlineCount={presence.count}
           onLogout={logout}
-          onSearch={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
-          onShowShortcuts={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))}
+          onSearch={() => setShowCommandPalette(true)}
+          onShowShortcuts={() => setShowShortcutHelp(true)}
           onRefreshData={fetchHeaderStats}
         />
 
@@ -1621,7 +1621,7 @@ export default function Layout() {
           id="main-content"
           className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
           key={location.pathname}
-          style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}
+          style={{ background: 'var(--surface-sunken)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}
           // Persist scroll per-path so SW-update reloads (and any other full
           // page reload) put the operator back where they were instead of
           // snapping to the top — the 2026-06-11 "can't scroll" reload loop
@@ -1720,8 +1720,8 @@ export default function Layout() {
       {showShortcutHelp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowShortcutHelp(false)}>
           {/* 14: Keyboard shortcuts modal with blue top accent */}
-          <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c]">
+          <div className="bg-surface-base border border-border-default rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default bg-surface-overlay">
               <h3 className="text-sm font-semibold text-white flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
               <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
             </div>
@@ -1731,11 +1731,11 @@ export default function Layout() {
                 {TOOLBAR_NAV.filter(i => i.shortcut).map(item => (
                   <div key={item.shortcut} className="flex items-center justify-between py-1">
                     <span className="text-xs text-rmpg-200">{item.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-brand-400 rounded-sm">{item.shortcut}</kbd>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-surface-overlay border border-border-default text-brand-400 rounded-sm">{item.shortcut}</kbd>
                   </div>
                 ))}
               </div>
-              <div className="border-t border-[#2b2b2b] pt-3 space-y-1.5">
+              <div className="border-t border-border-default pt-3 space-y-1.5">
                 <div className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider mb-2">Global</div>
                 {[
                   { label: 'Command Palette', keys: navigator.platform.includes('Mac') ? 'Cmd+K' : 'Ctrl+K' },
@@ -1747,7 +1747,7 @@ export default function Layout() {
                 ].map(s => (
                   <div key={s.label} className="flex items-center justify-between py-1">
                     <span className="text-xs text-rmpg-200">{s.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-brand-400 rounded-sm">{s.keys}</kbd>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-surface-overlay border border-border-default text-brand-400 rounded-sm">{s.keys}</kbd>
                   </div>
                 ))}
               </div>
