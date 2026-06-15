@@ -3,7 +3,7 @@ import { UserCircle, Eye, EyeOff, Upload, X, CreditCard, AlertTriangle } from 'l
 import FormModal from './FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
 import type { Person } from '../types';
-import { apiUploadFiles } from '../hooks/useApi';
+import { apiUploadFiles, authedImageUrl } from '../hooks/useApi';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
@@ -899,7 +899,7 @@ export default function PersonFormModal({
                 {(idImagePreview || form.id_image_url) ? (
                   <>
                     <img
-                      src={idImagePreview || form.id_image_url}
+                      src={idImagePreview || authedImageUrl(form.id_image_url)}
                       alt="ID"
                       className="w-full h-full object-cover"
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}

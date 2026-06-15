@@ -36,7 +36,7 @@ import PrintButton from '../components/PrintButton';
 import ActivityFeed from '../components/ActivityFeed';
 import FormModal from '../components/FormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { apiFetch, apiUploadFiles } from '../hooks/useApi';
+import { apiFetch, apiUploadFiles, authedImageUrl } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -1287,7 +1287,7 @@ export default function CommunicationsPage() {
                   <p className="text-sm text-rmpg-200 mb-3 leading-relaxed">{bolo.description}</p>
                   {bolo.photo_url && (
                     <div className="mb-3">
-                      <img src={`/api/uploads/${bolo.photo_url}`} alt="BOLO Photo" className="max-w-[200px] max-h-[200px] object-cover border border-rmpg-600 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => window.open(`/api/uploads/${bolo.photo_url}`, '_blank', 'noopener,noreferrer')} />
+                      <img src={authedImageUrl(`/api/uploads/${bolo.photo_url}`)} alt="BOLO Photo" className="max-w-[200px] max-h-[200px] object-cover border border-rmpg-600 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => window.open(authedImageUrl(`/api/uploads/${bolo.photo_url}`), '_blank', 'noopener,noreferrer')} />
                     </div>
                   )}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">

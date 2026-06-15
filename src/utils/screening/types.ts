@@ -68,7 +68,7 @@ export interface ScreeningHitRow {
 
 export interface ScreeningAdapter {
   sourceKey: string;
-  kind: 'notice' | 'sanction' | 'sex_offender';
+  kind: 'notice' | 'sanction' | 'sex_offender' | 'custody';
   label: string;
   supportsSearch: boolean;
   supportsWatch: boolean;

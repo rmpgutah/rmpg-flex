@@ -187,11 +187,27 @@ function WatchlistTab() {
 function SourcesTab({ sources }: { sources: SourceInfo[] }) {
   const [status, setStatus] = useState<{ state: Record<string, unknown>[]; pendingCount: number } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [sorMsg, setSorMsg] = useState<string | null>(null);
   const load = useCallback(() => {
     apiFetch<{ state: Record<string, unknown>[]; pendingCount: number }>('/screening/status').then(setStatus).catch(() => {});
   }, []);
   useEffect(load, [load]);
   const byKey = new Map((status?.state ?? []).map((s) => [String(s.source_key), s]));
+
+  const runSorImport = useCallback(async () => {
+    setSorMsg(null);
+    setBusy('__sor__');
+    try {
+      const r = await apiFetch<{ success: boolean; message?: string; error?: string }>(
+        '/sor-sources/icrimewatch/scan?mode=incremental', { method: 'POST' });
+      setSorMsg(r.success ? (r.message ?? 'SOR scan started') : (r.error ?? 'Failed'));
+    } catch (err) {
+      // apiFetch throws Error.message = server's error text (e.g. the 503
+      // "FIRECRAWL_API_KEY not configured"), so an admin sees WHY it failed.
+      setSorMsg(err instanceof Error ? err.message : 'SOR scan failed to start');
+    }
+    finally { setBusy(null); }
+  }, []);
 
   // Manual scrape FORCES the run (bypasses the per-source 6-month cadence).
   const scrapeNow = async (key: string) => {
@@ -214,7 +230,14 @@ function SourcesTab({ sources }: { sources: SourceInfo[] }) {
     <div className="space-y-2 text-[11px]">
       <div className="flex items-center justify-between">
         <div className="text-[#d4a017]">Pending review: {status?.pendingCount ?? 0}</div>
-        <div className="text-[#888] text-[9px]">New sources scrape immediately, then re-scrape on their interval (default 180d ≈ 6 months).</div>
+        <div className="flex items-center gap-3">
+          {sorMsg && <span className={`text-[9px] ${sorMsg.toLowerCase().includes('fail') || sorMsg.toLowerCase().includes('not configured') ? 'text-[#e87558]' : 'text-[#d4a017]'}`}>{sorMsg}</span>}
+          <button onClick={runSorImport} disabled={busy === '__sor__'}
+            className="px-2 py-[1px] border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1305] disabled:opacity-50">
+            {busy === '__sor__' ? '…' : 'Run SOR import'}
+          </button>
+          <div className="text-[#888] text-[9px]">New sources scrape immediately, then re-scrape on their interval (default 180d ≈ 6 months).</div>
+        </div>
       </div>
       <table className="w-full">
         <thead><tr className="text-[9px] text-[#888]">
