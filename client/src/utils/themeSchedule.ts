@@ -20,6 +20,10 @@ export const DEFAULT_SCHEDULE: ThemeSchedule = { nightStartHour: 18, dayStartHou
  * [nightStartHour .. 24) ∪ [0 .. dayStartHour); day runs
  * [dayStartHour .. nightStartHour). Handles the midnight wrap because the two
  * night ranges are unioned explicitly.
+ *
+ * @remarks
+ * Assumes dayStartHour < nightStartHour (the daytime window does not wrap
+ * midnight); DEFAULT_SCHEDULE satisfies this.
  */
 export function resolveScheduledTheme(localHour: number, schedule: ThemeSchedule): ThemePreference {
   const { nightStartHour, dayStartHour } = schedule;
