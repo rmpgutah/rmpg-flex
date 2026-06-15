@@ -94,3 +94,20 @@ describe('vehicle codes', () => {
     expect(encode('VCO', 'Maroon')).toBe('MAR');
   });
 });
+
+describe('geographic + DL codes', () => {
+  it('decodes state codes to names and back', () => {
+    expect(fmtCoded('STATE', 'UT')).toBe('UT (UTAH)');
+    expect(encode('STATE', 'Utah')).toBe('UT');
+    expect(fmtCoded('STATE', 'CA')).toBe('CA (CALIFORNIA)');
+  });
+  it('renders Utah DL classes', () => {
+    expect(fmtCoded('DL_CLASS', 'D')).toBe('D (OPERATOR)');
+    expect(fmtCoded('DL_CLASS', 'M')).toBe('M (MOTORCYCLE)');
+    expect(encode('DL_CLASS', 'CDL-A')).toBe('A');
+  });
+  it('renders CDL endorsements', () => {
+    expect(fmtCoded('DL_ENDORSEMENT', 'H')).toBe('H (HAZARDOUS MATERIALS)');
+    expect(fmtCoded('DL_ENDORSEMENT', 'P')).toBe('P (PASSENGER)');
+  });
+});

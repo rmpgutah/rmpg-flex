@@ -139,13 +139,52 @@ const VST = makeTable([
   ['TR', 'Truck Tractor', 'Semi Tractor'],
 ]);
 
+// ── US states / territories + common Canadian provinces (NLETS) ─
+const STATE = makeTable([
+  ['AL', 'Alabama'], ['AK', 'Alaska'], ['AZ', 'Arizona'], ['AR', 'Arkansas'],
+  ['CA', 'California'], ['CO', 'Colorado'], ['CT', 'Connecticut'], ['DE', 'Delaware'],
+  ['FL', 'Florida'], ['GA', 'Georgia'], ['HI', 'Hawaii'], ['ID', 'Idaho'],
+  ['IL', 'Illinois'], ['IN', 'Indiana'], ['IA', 'Iowa'], ['KS', 'Kansas'],
+  ['KY', 'Kentucky'], ['LA', 'Louisiana'], ['ME', 'Maine'], ['MD', 'Maryland'],
+  ['MA', 'Massachusetts'], ['MI', 'Michigan'], ['MN', 'Minnesota'], ['MS', 'Mississippi'],
+  ['MO', 'Missouri'], ['MT', 'Montana'], ['NE', 'Nebraska'], ['NV', 'Nevada'],
+  ['NH', 'New Hampshire'], ['NJ', 'New Jersey'], ['NM', 'New Mexico'], ['NY', 'New York'],
+  ['NC', 'North Carolina'], ['ND', 'North Dakota'], ['OH', 'Ohio'], ['OK', 'Oklahoma'],
+  ['OR', 'Oregon'], ['PA', 'Pennsylvania'], ['RI', 'Rhode Island'], ['SC', 'South Carolina'],
+  ['SD', 'South Dakota'], ['TN', 'Tennessee'], ['TX', 'Texas'], ['UT', 'Utah'],
+  ['VT', 'Vermont'], ['VA', 'Virginia'], ['WA', 'Washington'], ['WV', 'West Virginia'],
+  ['WI', 'Wisconsin'], ['WY', 'Wyoming'], ['DC', 'District of Columbia'],
+  ['PR', 'Puerto Rico'], ['GU', 'Guam'], ['VI', 'U.S. Virgin Islands'],
+  ['AS', 'American Samoa'], ['MP', 'Northern Mariana Islands'],
+  ['AB', 'Alberta'], ['BC', 'British Columbia'], ['MB', 'Manitoba'],
+  ['ON', 'Ontario'], ['QC', 'Quebec'],
+]);
+
+// ── Utah DL class (Utah DLD) ────────────────────────────────
+const DL_CLASS = makeTable([
+  ['A', 'Commercial A', 'CDL-A'], ['B', 'Commercial B', 'CDL-B'],
+  ['C', 'Commercial C', 'CDL-C'], ['D', 'Operator', 'Standard', 'Class D'],
+  ['M', 'Motorcycle'],
+]);
+
+// ── DL restrictions (common) ────────────────────────────────
+const DL_RESTRICTION = makeTable([
+  ['A', 'Corrective Lenses'], ['B', 'Outside Mirror'], ['C', 'Mechanical Aid'],
+  ['E', 'No Manual Transmission'], ['L', 'No Air Brakes'],
+]);
+
+// ── CDL endorsements (federally standardized) ───────────────
+const DL_ENDORSEMENT = makeTable([
+  ['H', 'Hazardous Materials'], ['N', 'Tank Vehicles'], ['P', 'Passenger'],
+  ['S', 'School Bus'], ['T', 'Double/Triple Trailers'], ['X', 'Hazmat + Tank'],
+]);
+
 // Registry of label-based domains. (OFFENSE is handled separately
 // because it returns a structured entry, not a single code.)
 const TABLES: Record<NcicDomain, CodeTable> = {
   RACE, ETHNICITY, SEX, EYE, HAIR,
   VMA, VCO, VST,
-  STATE: makeTable([]), DL_CLASS: makeTable([]),
-  DL_RESTRICTION: makeTable([]), DL_ENDORSEMENT: makeTable([]),
+  STATE, DL_CLASS, DL_RESTRICTION, DL_ENDORSEMENT,
 };
 
 // ── Core helpers (pure) ─────────────────────────────────────
