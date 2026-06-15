@@ -634,7 +634,9 @@
 //       archive/unarchive/delete routes + delete endpoint wired).
 // v983: Deep Research — stop the job poller spamming 404s after a job is
 //       deleted/gone (loadDetail now stops on 404 + clears the stale selection).
-const CACHE_NAME = 'rmpg-flex-v983';
+// v984: Admin → Integrations — "Test" button live-probes the Anthropic (Claude)
+//       key (valid + funded vs $0-credit/invalid) via POST /admin/third-party-keys/:key/test.
+const CACHE_NAME = 'rmpg-flex-v984';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

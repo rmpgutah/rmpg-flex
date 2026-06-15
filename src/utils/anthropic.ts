@@ -97,6 +97,28 @@ export async function callClaude(apiKey: string, opts: ClaudeCallOpts): Promise<
   return claudeResponseText(await res.json());
 }
 
+/**
+ * Pure: turn a callClaude() error message ("Anthropic 401: ...") into an HTTP
+ * status + an admin-friendly hint, so the "Test Claude key" check can tell a bad
+ * key from a $0-credit account from a transient server error. Falls back to the
+ * raw (truncated) message when the shape is unrecognized.
+ */
+export function diagnoseAnthropicError(message: string): { status: number | null; hint: string } {
+  const m = /Anthropic (\d{3}):/.exec(message);
+  const status = m ? Number(m[1]) : null;
+  const lower = message.toLowerCase();
+  const lowCredit = /(credit|balance|fund|billing|quota)/.test(lower);
+  let hint: string;
+  if (status === 401) hint = 'Invalid API key';
+  else if (status === 403) hint = 'Key lacks permission for this model';
+  else if (status === 429) hint = lowCredit ? 'Out of credit / quota' : 'Rate limited — try again shortly';
+  else if ((status === 400 || status === 402) && lowCredit) hint = 'Out of credit — fund the Anthropic account';
+  else if (status === 400) hint = 'Bad request — check the configured model id';
+  else if (status !== null && status >= 500) hint = 'Anthropic server error — retry later';
+  else hint = message.slice(0, 200);
+  return { status, hint };
+}
+
 /** Bytes → base64 (Workers/Node-safe, chunked to avoid call-stack limits). */
 export function bytesToBase64(bytes: Uint8Array): string {
   let bin = '';
