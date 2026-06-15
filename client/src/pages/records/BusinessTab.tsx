@@ -16,6 +16,8 @@ import RecordField from '../../components/records/RecordField';
 import FieldGrid from '../../components/records/FieldGrid';
 import RecordBadge from '../../components/records/RecordBadge';
 import RecordHero from '../../components/records/RecordHero';
+import RecordAvatar from '../../components/records/RecordAvatar';
+import { businessIcon } from '../../components/records/recordIcons';
 import PrintRecordButton from '../../components/PrintRecordButton';
 import FormSection from '../../components/records/FormSection';
 import FormField from '../../components/records/FormField';
@@ -288,9 +290,13 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
             onContextMenu={(e) => openMenu(e, buildBusinessMenu(b))}
             className={`px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150 ${selectedBusiness?.id === b.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`}`}>
             <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center text-xs font-bold bg-purple-900/30 text-purple-400 border border-purple-700/50">
-                {(b.name || '')[0]?.toUpperCase() || '?'}
-              </div>
+              {/* Functionality glyph (industry → store/factory/scale/…) on the
+                  standard blue tile, matching persons / vehicles / properties. */}
+              <RecordAvatar
+                name={b.name || 'business'}
+                icon={businessIcon(b)}
+                size={36}
+              />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-white truncate">{b.name}</span>
@@ -354,6 +360,7 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
       <div className="border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
         <RecordHero
           name={b.name || 'BUSINESS'}
+          icon={businessIcon(b)}
           subtitle={
             <span className="flex flex-col gap-0.5">
               {b.dba_name && <span className="text-amber-400">DBA: {b.dba_name}</span>}
