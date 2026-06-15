@@ -235,7 +235,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       style={{
         background: call.status === 'on_hold'
           ? 'rgba(180, 130, 0, 0.08)'
-          : isSelected ? undefined : '#0a0a0a',
+          : isSelected ? undefined : 'var(--surface-base)',
         borderLeftColor: call.status === 'on_hold' ? '#f59e0b' : undefined,
         scrollSnapAlign: 'start',
         WebkitTouchCallout: 'none',
@@ -422,7 +422,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{call.pso_service_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
         )}
         {call.case_number && (
-          <span className="text-[9px] font-mono text-gray-300 bg-[#141414] border border-[#2e2e2e] px-1">
+          <span className="text-[9px] font-mono text-gray-300 bg-surface-raised border border-[#2e2e2e] px-1">
             {call.case_number}
           </span>
         )}

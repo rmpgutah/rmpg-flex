@@ -3201,7 +3201,7 @@ export default function DispatchPage() {
                   minWidth: '220px',
                   maxHeight: '280px',
                   overflowY: 'auto',
-                  background: '#141414',
+                  background: 'var(--surface-raised)',
                   border: '1px solid #2a2a2a',
                   borderRadius: '2px',
                   boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
@@ -3229,7 +3229,7 @@ export default function DispatchPage() {
                       }}
                       className="w-full flex flex-col items-start px-3 py-2 text-left transition-colors"
                       style={{ fontSize: '11px', color: '#aaaaaa', background: 'transparent', border: 'none', borderRadius: 0 }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2e2e2e'; }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                     >
                       <span className="font-bold text-white" style={{ fontSize: '11px' }}>{tpl.name || formatIncidentType(tpl.incident_type)}</span>
@@ -3272,7 +3272,7 @@ export default function DispatchPage() {
         />
 
         {/* Operational Status Strip — consolidated single row */}
-        <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2.5 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: '#050505' }}>
+        <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2.5 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: 'var(--surface-deep)' }}>
           {(() => {
             const workingCalls = calls.filter(c => !['cleared', 'closed', 'cancelled'].includes(c.status));
             const p1Count = workingCalls.filter(c => c.priority === 'P1').length;
@@ -3425,7 +3425,7 @@ export default function DispatchPage() {
 
         {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
-          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2 flex-shrink-0" style={{ background: '#0c0c0c80' }}>
+          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2 flex-shrink-0" style={{ background: 'rgba(var(--surface-base-rgb), 0.5)' }}>
             {callTypeStats.map(({ type, count }) => {
               const total = callTypeStats.reduce((sum, s) => sum + s.count, 0);
               const pct = total > 0 ? (count / total * 100) : 0;
@@ -3453,7 +3453,7 @@ export default function DispatchPage() {
 
         {/* Feature 14: Disposition Statistics (collapsed by default) */}
         {dispositionStats.length > 0 && filterTab === 'cleared' && (
-          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2 flex-wrap text-[8px] font-mono flex-shrink-0" style={{ background: '#0c0c0c80' }}>
+          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2 flex-wrap text-[8px] font-mono flex-shrink-0" style={{ background: 'rgba(var(--surface-base-rgb), 0.5)' }}>
             <span className="text-rmpg-500 font-bold">DISPS:</span>
             {dispositionStats.slice(0, 5).map(d => (
               <span key={d.disposition} className="text-rmpg-400">
@@ -3465,7 +3465,7 @@ export default function DispatchPage() {
 
         {/* Active filter tags */}
         {(priorityFilter || typeFilter || signalFilter) && (
-          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-1.5 flex-shrink-0" style={{ background: '#0a0a0a' }}>
+          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-1.5 flex-shrink-0" style={{ background: 'var(--surface-base)' }}>
             <span className="text-[8px] text-rmpg-500 font-semibold uppercase tracking-wider mr-0.5">Filters:</span>
             {priorityFilter && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm"
@@ -3725,7 +3725,7 @@ export default function DispatchPage() {
                   )}
                 </div>
                 {/* Row 2: Action buttons — separate row to prevent cramping */}
-                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#2b2b2b] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: '#050505' }}>
+                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#2b2b2b] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: 'var(--surface-deep)' }}>
                   {isEditing ? (
                     // While editing, the in-form values aren't yet on selectedCall,
                     // so a print right now would generate a PDF missing whatever
@@ -4019,7 +4019,7 @@ export default function DispatchPage() {
 
               {/* Call Duration + Response Time + Safety Summary — always visible above tabs */}
               {!isEditing && (
-                <div className="px-4 py-1.5 flex items-center gap-3 flex-shrink-0 flex-wrap" style={{ background: '#050505', borderBottom: '1px solid #2b2b2b' }}>
+                <div className="px-4 py-1.5 flex items-center gap-3 flex-shrink-0 flex-wrap" style={{ background: 'var(--surface-deep)', borderBottom: '1px solid #2b2b2b' }}>
                   {/* Call duration — running timer */}
                   <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
                     <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
@@ -4084,7 +4084,7 @@ export default function DispatchPage() {
               )}
 
               {/* Detail Tabs */}
-              <div className="flex border-b border-[#2b2b2b] flex-shrink-0" style={{ background: '#050505' }}>
+              <div className="flex border-b border-[#2b2b2b] flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
                 {(['info', 'persons', 'timeline', 'notes', 'documents', 'attachments', 'flags', 'audit'] as const).map(tab => {
                   const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', documents: 'Documents', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
                   const icons: Record<string, React.ReactNode> = {
@@ -4369,7 +4369,7 @@ export default function DispatchPage() {
                         ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
                           <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
                             <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#222222', border: '2px solid #0c0c0c', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
+                            <span className="text-rmpg-500 text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
                             {editingTimestamp === ts.field ? (
                               <div className="flex items-center gap-1">
                                 <input
@@ -5765,7 +5765,7 @@ export default function DispatchPage() {
                           (entry.action || '').includes('note') ? '#666666' :
                           '#888888';
                         return (
-                        <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#18181820] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid #2b2b2b' }}>
+                        <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#18181820] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid var(--border-default)' }}>
                           {/* Step connector dot */}
                           <div className="absolute -left-[5px] top-[7px] w-2 h-2 rounded-full flex-shrink-0" style={{ background: actionColor, border: '2px solid #0c0c0c' }} />
                           <span className="text-[#888888] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }} title={entry.created_at ? timeAgo(entry.created_at) : ''}>
@@ -5787,7 +5787,7 @@ export default function DispatchPage() {
                             </div>
                           ) : (
                             <>
-                              <span className="text-[#e5e7eb] flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
+                              <span className="text-rmpg-200 flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
                               <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
                                 <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[#d4a017] text-[#888888] transition-colors" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
@@ -5829,7 +5829,7 @@ export default function DispatchPage() {
                       </div>
                     ) : (
                       (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
-                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#18181820]" style={{ borderLeft: '2px solid #88888840' }}>
+                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#18181820]" style={{ borderLeft: '2px solid var(--border-default)' }}>
                         <span className="text-[#888888] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
                         <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
                         {editingNoteId === note.id ? (
@@ -5847,7 +5847,7 @@ export default function DispatchPage() {
                           </div>
                         ) : (
                           <>
-                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
+                            <span className="text-rmpg-200 leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
                             {(canEditNote(note) || isAdminOrManager) && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
                                 {canEditNote(note) && (
@@ -6117,10 +6117,10 @@ export default function DispatchPage() {
           onClick={() => setShowShortcutHelp(false)}
         >
           <div
-            className="bg-[#0a0a0a] border border-[#2e2e2e] rounded-sm max-w-2xl w-[92%] max-h-[85vh] overflow-auto scrollbar-dark"
+            className="bg-surface-base border border-[#2e2e2e] rounded-sm max-w-2xl w-[92%] max-h-[85vh] overflow-auto scrollbar-dark"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-[#2e2e2e] sticky top-0 bg-[#0a0a0a]">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-[#2e2e2e] sticky top-0 bg-surface-base">
               <div className="flex items-center gap-2 text-[#d4a017] text-xs font-bold uppercase tracking-wider">
                 <Terminal className="w-3.5 h-3.5" /> Keyboard Shortcuts
               </div>
@@ -6171,7 +6171,7 @@ export default function DispatchPage() {
         >
           <div
             className="py-1 min-w-[190px] rounded-sm"
-            style={{ background: '#141414', border: '1px solid #2a2a2a', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
+            style={{ background: 'var(--surface-raised)', border: '1px solid #2a2a2a', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
             onMouseLeave={() => setContextMenu(null)}
           >
             {contextMenu.call.status === 'pending' && (
@@ -6864,7 +6864,7 @@ export default function DispatchPage() {
       {showHandoffNotes && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
           <div className="bg-surface-raised w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid #2a2a2a', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: '#050505' }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: 'var(--surface-deep)' }}>
               <div className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-brand-400" />
                 <h3 className="text-sm font-bold text-white">Shift Handoff Notes</h3>
@@ -6900,7 +6900,7 @@ export default function DispatchPage() {
       {/* DISPATCH STATUS BAR — Fixed bottom footer                   */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none fixed bottom-0 left-0 right-0 z-[40]"
-        style={{ background: '#050505', borderColor: '#141414', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
+        style={{ background: 'var(--surface-deep)', borderColor: 'var(--surface-raised)', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
         {/* Left: Call metrics */}
         <div className="flex items-center gap-3 text-[9px] tabular-nums">
           <span className="text-rmpg-500 uppercase tracking-wider font-bold">CAD</span>
