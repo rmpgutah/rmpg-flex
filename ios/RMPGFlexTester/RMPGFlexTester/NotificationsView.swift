@@ -66,7 +66,7 @@ struct NotificationsView: View {
                     HStack {
                         Text(title)
                             .font(.system(size: 13, weight: read ? .regular : .semibold))
-                            .foregroundStyle(read ? Color(hex: 0xbbbbbb) : .white)
+                            .foregroundStyle(read ? Theme.textSecondary : .white)
                         Spacer()
                         if !priority.isEmpty && priority != "normal" && priority != "low" {
                             Text(priority.uppercased())
