@@ -246,3 +246,106 @@ html.theme-light .records-page .alert-banner-warning .text-white { color: #6b4e1
 /* ── Compact stats strip → Spillman chrome surface ──────────── */
 .records-page .records-stats { background: var(--spm-chrome) !important; color: var(--spm-text) !important; }
 .records-page .records-stats .text-white { color: var(--spm-text) !important; }
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║  Spillman Dashboard screen skin (.dashboard-page)         ║
+   ║  Reuses --spm-* day/night vars, same technique as Records ║
+   ╚══════════════════════════════════════════════════════════╝ */
+.dashboard-page { background: var(--spm-form); color: var(--spm-text); }
+
+/* Recolor the existing token-based surfaces wholesale */
+.dashboard-page [class*="bg-surface-base"],
+.dashboard-page [class*="bg-surface-deep"],
+.dashboard-page [class*="bg-surface-sunken"],
+.dashboard-page [class*="bg-rmpg-9"] { background-color: var(--spm-form) !important; }
+.dashboard-page [class*="bg-surface-raised"],
+.dashboard-page [class*="bg-surface-overlay"],
+.dashboard-page [class*="bg-rmpg-8"],
+.dashboard-page [class*="bg-rmpg-7"] { background-color: var(--spm-field) !important; }
+.dashboard-page [class*="border-rmpg-"] { border-color: var(--spm-border) !important; }
+.dashboard-page .text-white { color: var(--spm-text) !important; }
+.dashboard-page [class*="text-rmpg-3"],
+.dashboard-page [class*="text-rmpg-4"],
+.dashboard-page [class*="text-rmpg-5"] { color: var(--spm-text-muted) !important; }
+.dashboard-page [class*="text-brand-4"],
+.dashboard-page [class*="text-brand-5"] { color: var(--spm-accent) !important; }
+
+/* ── Screen title bar ── */
+.dashboard-page .spm-screen-title {
+  background: linear-gradient(#5a7ea6, #2e4a66);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #2e4a66;
+}
+
+/* ── Screen toolbar ── */
+.dashboard-page .spm-screen-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  background: var(--spm-chrome);
+  border: 1px solid var(--spm-border);
+  border-top: none;
+  padding: 4px 6px;
+}
+.dashboard-page .spm-toolbtn {
+  background: var(--spm-toolbar);
+  border: 1px solid var(--spm-border);
+  color: var(--spm-text);
+  font-size: 11px;
+  padding: 3px 9px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.dashboard-page .spm-toolbtn:hover { background: var(--spm-toolbar-hover); }
+.dashboard-page .spm-toolbtn:active { background: var(--spm-toolbar-active); }
+.dashboard-page .spm-toolbtn.spacer { margin-left: auto; }
+
+/* ── View segmented control ── */
+.dashboard-page .spm-view-seg { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
+.dashboard-page .spm-view-seg-label { font-size: 11px; color: var(--spm-text); }
+.dashboard-page .spm-view-seg-btn {
+  background: var(--spm-toolbar);
+  border: 1px solid var(--spm-border);
+  color: var(--spm-text);
+  font-size: 11px;
+  padding: 3px 11px;
+  cursor: pointer;
+}
+.dashboard-page .spm-view-seg-btn:hover { background: var(--spm-toolbar-hover); }
+.dashboard-page .spm-view-seg-btn.on {
+  background: var(--spm-select);
+  color: #ffffff;
+  font-weight: 600;
+  border-color: #2e4a66;
+}
+
+/* ── Group boxes ── */
+.dashboard-page .spm-group {
+  border: 1px solid var(--spm-border);
+  background: var(--spm-field);
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-page .spm-group-head {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  padding: 2px 7px;
+  border-bottom: 1px solid var(--spm-border);
+}
+.dashboard-page .spm-group-head.tone-steel { background: linear-gradient(#5a7ea6, #2e4a66); }
+.dashboard-page .spm-group-head.tone-red   { background: linear-gradient(#a23b3b, #6e1f1f); }
+.dashboard-page .spm-group-head.tone-gold  { background: linear-gradient(#c08a2e, #8a5e15); }
+.dashboard-page .spm-group-body { padding: 6px 7px; }
