@@ -37,3 +37,21 @@ and day (light grey) automatically. Palette source of truth:
 2. Replace the page's hex with tokens above; test in BOTH themes (toggle Night/Day in the header).
 3. Add the now-clean file path to `docs/theme-cleaned-files.txt`.
 4. `node scripts/theme-hex-audit.mjs --check` must pass.
+
+## Semantic severity tokens (status/priority colors)
+Operational pages (Dispatch, etc.) use many status/severity hues. Map them by MEANING onto the **themed** `--sev-*` set (defined per-theme in `theme-palettes.css` — brighter on dark night, darker on light day, so they stay legible in BOTH):
+
+| Meaning | Token | `-soft` companion (pale text / subtle) |
+|---|---|---|
+| critical / P1 / red | `--sev-critical` | `--sev-critical-soft` |
+| high / orange | `--sev-high` | — |
+| warn / P2 / amber | `--sev-warn` | `--sev-warn-soft` |
+| caution / yellow | `--sev-caution` | — |
+| ok / available / green | `--sev-ok` | `--sev-ok-soft` |
+| info / blue | `--sev-info` | — |
+| special / enroute / purple | `--sev-special` | `--sev-special-soft` |
+
+- Solid use: `style={{ color: 'var(--sev-critical)' }}` or `className="text-[var(--sev-critical)]"`.
+- Tinted background: `color-mix(in srgb, var(--sev-critical) 18%, transparent)` (Tailwind `bg-[#hex]/20` opacity doesn't compose with a `var()`).
+- Neutral greys (borders, muted text) are NOT severity — use `--spm-border` / `--spm-text-muted` (those invert too).
+- **Don't** keep raw Tailwind hex (`#ef4444`) for semantics — on the light day surface the bright/pale shades wash out. Collapse to `--sev-*` by meaning.
