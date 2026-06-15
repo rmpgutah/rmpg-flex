@@ -62,7 +62,7 @@ export default function QAPage() {
     )},
   ];
 
-  if (loading) return <div className="p-6 text-[#888888]">Loading QA records...</div>;
+  if (loading) return <div className="p-6 text-rmpg-400">Loading QA records...</div>;
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="QUALITY ASSURANCE" icon={CheckCircle}>
@@ -88,7 +88,7 @@ export default function QAPage() {
       />
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
-          <div className="bg-surface-raised border border-[#333] p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
+          <div className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Review' : 'New Review'}</h3>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">

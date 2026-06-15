@@ -64,7 +64,7 @@ export default function AlertsPage() {
     )},
   ];
 
-  if (loading) return <div className="p-6 text-[#888888]">Loading notification system...</div>;
+  if (loading) return <div className="p-6 text-rmpg-400">Loading notification system...</div>;
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="MASS NOTIFICATION" icon={Megaphone}>
@@ -92,7 +92,7 @@ export default function AlertsPage() {
       />
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
-          <div className="bg-surface-raised border border-[#333] p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
+          <div className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Template' : 'New Template'}</h3>
             <div className="space-y-3">
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Name <span className="text-red-500">*</span></label>

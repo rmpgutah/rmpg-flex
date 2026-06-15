@@ -85,7 +85,7 @@ export default function GangIntelPage() {
     )},
   ];
 
-  if (loading) return <div className="p-6 text-[#888888]">Loading gang intelligence...</div>;
+  if (loading) return <div className="p-6 text-rmpg-400">Loading gang intelligence...</div>;
 
   return (
     <div className="p-4 space-y-4">
@@ -140,7 +140,7 @@ export default function GangIntelPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setDeleteId(null)}>
           <div className="bg-surface-raised border border-red-800 p-6 max-w-sm w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-red-400 mb-2">Delete Member</h3>
-            <p className="text-xs text-[#888888] mb-4">This permanently removes this member record. This cannot be undone.</p>
+            <p className="text-xs text-rmpg-400 mb-4">This permanently removes this member record. This cannot be undone.</p>
             <div className="flex justify-end gap-3">
               <button onClick={() => setDeleteId(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
               <button onClick={handleDelete} className="toolbar-btn toolbar-btn-primary px-4 text-red-400 border-red-800" style={{ height: 28, borderColor: '#991b1b' }}>Delete</button>
