@@ -158,21 +158,66 @@ function WatchlistTab() {
 
 function SourcesTab({ sources }: { sources: SourceInfo[] }) {
   const [status, setStatus] = useState<{ state: Record<string, unknown>[]; pendingCount: number } | null>(null);
-  useEffect(() => { apiFetch<{ state: Record<string, unknown>[]; pendingCount: number }>('/screening/status').then(setStatus).catch(() => {}); }, []);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = useCallback(() => {
+    apiFetch<{ state: Record<string, unknown>[]; pendingCount: number }>('/screening/status').then(setStatus).catch(() => {});
+  }, []);
+  useEffect(load, [load]);
   const byKey = new Map((status?.state ?? []).map((s) => [String(s.source_key), s]));
+
+  // Manual scrape FORCES the run (bypasses the per-source 6-month cadence).
+  const scrapeNow = async (key: string) => {
+    setBusy(key);
+    try { await apiFetch(`/screening/scan?source=${encodeURIComponent(key)}`, { method: 'POST' }); }
+    finally { setBusy(null); setTimeout(load, 1500); }
+  };
+  // Edit the re-scan cadence (days). New sources default to 180 (~6 months).
+  const editInterval = async (key: string, current: number) => {
+    const input = window.prompt(`Re-scan this source every how many days?\n(180 = ~6 months; new sources scrape immediately, then on this cadence)`, String(current || 180));
+    if (input == null) return;
+    const days = Number(input);
+    if (!Number.isFinite(days) || days < 1 || days > 3650) { window.alert('Enter a number of days between 1 and 3650.'); return; }
+    setBusy(key);
+    try { await apiFetch(`/screening/sources/${encodeURIComponent(key)}/interval`, { method: 'POST', body: JSON.stringify({ days: Math.round(days) }) }); }
+    finally { setBusy(null); setTimeout(load, 300); }
+  };
+
   return (
     <div className="space-y-2 text-[11px]">
-      <div className="text-[#d4a017]">Pending review: {status?.pendingCount ?? 0}</div>
+      <div className="flex items-center justify-between">
+        <div className="text-[#d4a017]">Pending review: {status?.pendingCount ?? 0}</div>
+        <div className="text-[#888] text-[9px]">New sources scrape immediately, then re-scrape on their interval (default 180d ≈ 6 months).</div>
+      </div>
       <table className="w-full">
-        <thead><tr className="text-[9px] text-[#888]"><th className="text-left py-[3px]">SOURCE</th><th className="text-left">ENABLED</th><th className="text-left">LAST RUN</th><th className="text-left">ITEMS</th></tr></thead>
+        <thead><tr className="text-[9px] text-[#888]">
+          <th className="text-left py-[3px]">SOURCE</th><th className="text-left">ENABLED</th>
+          <th className="text-left">INTERVAL</th><th className="text-left">LAST RUN</th>
+          <th className="text-left">NEXT RUN</th><th className="text-left">ITEMS</th><th className="text-right">ACTIONS</th>
+        </tr></thead>
         <tbody>
           {sources.map((s) => {
             const st = byKey.get(s.sourceKey);
+            const interval = Number(st?.scan_interval_days ?? 180);
+            const next = st?.next_run_at ? String(st.next_run_at) : 'due now';
             return (
               <tr key={s.sourceKey} className="border-t border-[#121212]">
                 <td className="py-[2px]">{s.label}</td>
                 <td>{st && Number(st.enabled) === 0 ? 'no' : 'yes'}</td>
-                <td>{String(st?.last_run_at ?? '—')}</td><td>{String(st?.items_count ?? '—')}</td>
+                <td>
+                  <button onClick={() => editInterval(s.sourceKey, interval)} disabled={busy === s.sourceKey}
+                    className="text-[#d4a017] hover:underline disabled:opacity-50" title="Change re-scan cadence">
+                    {interval}d
+                  </button>
+                </td>
+                <td>{String(st?.last_run_at ?? '—')}</td>
+                <td className={next === 'due now' ? 'text-[#d4a017]' : ''}>{next}</td>
+                <td>{String(st?.items_count ?? '—')}</td>
+                <td className="text-right">
+                  <button onClick={() => scrapeNow(s.sourceKey)} disabled={busy === s.sourceKey}
+                    className="px-2 py-[1px] border border-[#232323] text-[#d4a017] hover:bg-[#0b0b0b] disabled:opacity-50">
+                    {busy === s.sourceKey ? '…' : 'Scrape now'}
+                  </button>
+                </td>
               </tr>
             );
           })}
