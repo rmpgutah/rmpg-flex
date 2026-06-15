@@ -47,19 +47,22 @@ html.theme-light {
   --text-primary: #1a1a1a; --text-secondary: #33312b; --text-muted: #555555;
   --brand-gold: #936c0a; --brand-blue: #2e4a66;
 
-  --rmpg-50-rgb: 26 26 26;   --rmpg-100-rgb: 51 49 43;   --rmpg-200-rgb: 85 85 85;
-  --rmpg-300-rgb: 90 90 90;  --rmpg-400-rgb: 85 85 85;   --rmpg-500-rgb: 110 110 110;
-  --rmpg-600-rgb: 154 149 138; --rmpg-700-rgb: 214 211 200; --rmpg-800-rgb: 236 233 221;
+  /* rmpg — DAY: small idx = dark text (monotonic, all legible on light), large idx = light surfaces */
+  --rmpg-50-rgb: 26 26 26;   --rmpg-100-rgb: 40 40 40;   --rmpg-200-rgb: 55 55 55;
+  --rmpg-300-rgb: 70 70 70;  --rmpg-400-rgb: 85 85 85;   --rmpg-500-rgb: 100 100 100;
+  --rmpg-600-rgb: 150 146 136; --rmpg-700-rgb: 214 211 200; --rmpg-800-rgb: 236 233 221;
   --rmpg-900-rgb: 247 249 251; --rmpg-950-rgb: 255 255 255;
-  --brand-50-rgb: 26 26 26;  --brand-100-rgb: 51 49 43;  --brand-200-rgb: 85 85 85;
-  --brand-300-rgb: 90 90 90; --brand-400-rgb: 85 85 85;  --brand-500-rgb: 110 110 110;
-  --brand-600-rgb: 154 149 138; --brand-700-rgb: 214 211 200; --brand-800-rgb: 236 233 221;
+  --brand-50-rgb: 26 26 26;  --brand-100-rgb: 40 40 40;  --brand-200-rgb: 55 55 55;
+  --brand-300-rgb: 70 70 70; --brand-400-rgb: 85 85 85;  --brand-500-rgb: 100 100 100;
+  --brand-600-rgb: 150 146 136; --brand-700-rgb: 214 211 200; --brand-800-rgb: 236 233 221;
   --brand-900-rgb: 247 249 251;
-  --blue-50-rgb: 26 26 26;   --blue-100-rgb: 51 49 43;   --blue-200-rgb: 85 85 85;
-  --blue-300-rgb: 90 90 90;  --blue-400-rgb: 46 74 102;  --blue-500-rgb: 49 106 197;
-  --blue-600-rgb: 154 149 138; --blue-700-rgb: 214 211 200; --blue-800-rgb: 236 233 221;
+  /* blue token renders NEUTRAL (mirrors rmpg) — the steel accent lives in --brand-blue / --spm-* */
+  --blue-50-rgb: 26 26 26;   --blue-100-rgb: 40 40 40;   --blue-200-rgb: 55 55 55;
+  --blue-300-rgb: 70 70 70;  --blue-400-rgb: 85 85 85;   --blue-500-rgb: 100 100 100;
+  --blue-600-rgb: 150 146 136; --blue-700-rgb: 214 211 200; --blue-800-rgb: 236 233 221;
   --blue-900-rgb: 247 249 251;
-  --brand-gold-300-rgb: 147 108 10; --brand-gold-400-rgb: 147 108 10; --brand-gold-500-rgb: 147 108 10;
+  /* gold — DAY: distinct darkening steps for hierarchy, all legible on light */
+  --brand-gold-300-rgb: 176 130 30; --brand-gold-400-rgb: 160 116 18; --brand-gold-500-rgb: 147 108 10;
   --brand-gold-600-rgb: 120 88 8;   --brand-gold-700-rgb: 100 73 7;
 }
 

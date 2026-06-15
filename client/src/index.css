@@ -1,7 +1,7 @@
+@import './styles/theme-palettes.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@import './styles/theme-palettes.css';
 
 /* ============================================================
    RMPG Flex - Custom Styles
