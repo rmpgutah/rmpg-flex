@@ -3249,7 +3249,7 @@ export default function DispatchPage() {
               borderColor: 'var(--sev-special)',
               borderBottomColor: 'var(--spm-border)',
               borderRightColor: 'var(--spm-border)',
-              color: 'var(--spm-text)',
+              color: '#fff',
             }}
           >
             <Shield style={{ width: 10, height: 10 }} />
