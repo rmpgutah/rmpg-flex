@@ -15,7 +15,7 @@ interface CpgStatus {
   configured: boolean; enabled: boolean; active_mappings: number;
   media_sync_enabled?: boolean; last_media_sync?: string | null;
 }
-interface MediaStatus { total_synced_clips: number; last_media_sync: string | null }
+interface MediaStatus { total_synced_clips: number; total_dashcam_reads?: number; last_media_sync: string | null }
 
 export default function ClearPathDashcamPanel({ dashcamCount }: { dashcamCount: number }) {
   const navigate = useNavigate();
@@ -49,7 +49,10 @@ export default function ClearPathDashcamPanel({ dashcamCount }: { dashcamCount: 
       <div className="grid grid-cols-3 divide-x divide-[#1a1a1a]">
         <Stat icon={<Camera className="w-3 h-3" />} value={configured ? status!.active_mappings : '—'} label="cameras" />
         <Stat value={media ? media.total_synced_clips : '—'} label="clips" />
-        <Stat value={dashcamCount} label="reads" />
+        {/* Real dashcam ALPR reads come from alpr_captures (media-status), not the
+            recent-sightings window (`dashcamCount`) which read 0 even with hundreds
+            of captures. Fall back to the prop if the server field is absent. */}
+        <Stat value={media?.total_dashcam_reads ?? dashcamCount} label="reads" />
       </div>
       {lastSync && <div className="px-2 py-1 text-[9px] text-[#666666] border-t border-[#1a1a1a]">Last sync: {String(lastSync).replace('T', ' ').slice(0, 16)}</div>}
       {!configured && (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
@@ -7,7 +8,7 @@ import JailFormModal, { JailFormData } from '../components/JailFormModal';
 import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
 import type { ContextMenuItem } from '../context/ContextMenuContext';
-import { Building2, Users, DoorOpen, ClipboardList, Plus, Pencil, Trash2, Eye } from 'lucide-react';
+import { Building2, Users, DoorOpen, ClipboardList, Plus, Pencil, Trash2, Eye, Database, ArrowRight } from 'lucide-react';
 
 interface Inmate {
   id: number; booking_number: string; last_name: string; first_name: string;
@@ -15,9 +16,14 @@ interface Inmate {
 }
 
 export default function JailPage() {
+  const navigate = useNavigate();
   const [inmates, setInmates] = useState<Inmate[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ total: 0, housed: 0, booked: 0 });
+  // Count of scraped county-roster bookings (live in arrest_records, surfaced on
+  // the Arrest Records page). This screen manages the manual `inmates` table, so
+  // the scraped roster would otherwise be invisible from here.
+  const [rosterCount, setRosterCount] = useState(0);
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<Inmate | undefined>(undefined);
   const [formSubmitting, setFormSubmitting] = useState(false);
@@ -40,9 +46,16 @@ export default function JailPage() {
     } catch { /* ignore */ }
   }, []);
 
+  const fetchRosterCount = useCallback(async () => {
+    try {
+      const r = await apiFetch<{ population_summary?: { total_records?: number }; active_bookings?: number }>('/jail-roster/statistics');
+      setRosterCount(r?.population_summary?.total_records ?? r?.active_bookings ?? 0);
+    } catch { /* scraper not provisioned — leave at 0 */ }
+  }, []);
+
   useEffect(() => {
-    Promise.all([fetchInmates(), fetchStats()]).finally(() => setLoading(false));
-  }, [fetchInmates, fetchStats]);
+    Promise.all([fetchInmates(), fetchStats(), fetchRosterCount()]).finally(() => setLoading(false));
+  }, [fetchInmates, fetchStats, fetchRosterCount]);
 
   const openNew = () => { setEditingRecord(undefined); setFormError(null); setFormOpen(true); };
   const openEdit = (rec: Inmate) => { setEditingRecord(rec); setFormError(null); setFormOpen(true); };
@@ -113,6 +126,29 @@ export default function JailPage() {
         <StatsCard icon={DoorOpen} label="Currently Housed" value={stats.housed} />
         <StatsCard icon={ClipboardList} label="Booked (Intake)" value={stats.booked} />
       </div>
+
+      {rosterCount > 0 && (
+        <button
+          type="button"
+          onClick={() => navigate('/arrest-records')}
+          className="w-full flex items-center gap-3 text-left bg-brand-900/15 border border-brand-700/40 hover:bg-brand-900/25 px-3 py-2 transition-colors"
+          style={{ borderRadius: 2 }}
+          title="Scraped county jail rosters (Salt Lake, etc.) live in Arrest Records">
+          <Database size={16} className="text-brand-400 shrink-0" />
+          <div className="flex-1">
+            <div className="text-[12px] font-semibold text-rmpg-100">
+              {rosterCount.toLocaleString()} scraped county-roster booking{rosterCount === 1 ? '' : 's'} available
+            </div>
+            <div className="text-[10px] text-rmpg-400">
+              This screen lists manually-booked inmates. View the auto-scraped county jail rosters in Arrest Records.
+            </div>
+          </div>
+          <span className="flex items-center gap-1 text-[11px] font-semibold text-brand-400 shrink-0">
+            View Arrest Roster <ArrowRight size={13} />
+          </span>
+        </button>
+      )}
+
       <DataTable
         columns={columns}
         data={inmates}

@@ -317,6 +317,15 @@ cpg.get('/media-status', async (c) => {
       db, "SELECT COUNT(*) AS n, COALESCE(SUM(file_size),0) AS b FROM dashcam_videos WHERE source = 'clearpathgps'");
     if (r) totals = { total_synced_clips: r.n ?? 0, total_synced_bytes: r.b ?? 0 };
   } catch { /* table may predate Phase B */ }
+  // Dashcam ALPR reads landed in alpr_captures (capture_id 'cpg_dashcam:*'). The
+  // plate-log panel's "reads" tile previously counted only the recent-sightings
+  // window (→ 0 even with hundreds of captures); surface the real total here.
+  let total_dashcam_reads = 0;
+  try {
+    const r = await queryFirst<{ n: number }>(
+      db, "SELECT COUNT(*) AS n FROM alpr_captures WHERE capture_id LIKE 'cpg_dashcam%'");
+    total_dashcam_reads = r?.n ?? 0;
+  } catch { /* alpr_captures may not exist yet */ }
   let devices: unknown[] = [];
   let syncErrors = 0;
   try {
@@ -334,6 +343,7 @@ cpg.get('/media-status', async (c) => {
     media_poll_interval_seconds: parseInt((await getConfigValue(db, CPG_KEYS.mediaPollInterval)) || '300', 10),
     last_media_sync: await getConfigValue(db, 'clearpathgps_last_media_sync'),
     ...totals,
+    total_dashcam_reads,
     sync_errors: syncErrors,
     devices,
   });
