@@ -211,3 +211,17 @@
 
 /* HIGH RISK / status pills sit on white in the identity band */
 .spillman-theme [class*="bg-surface"][class*="rounded"] { background: #ffffff !important; }
+
+/* ── Record-detail AlertBanner (caution banners) ───────────── */
+.spillman-theme .alert-banner-critical {
+  background: #f6dada !important;
+  border: 1px solid #b03030 !important;
+}
+.spillman-theme .alert-banner-warning {
+  background: linear-gradient(#fff4d6, #ffe9ad) !important;
+  border: 1px solid #c79a2e !important;
+}
+/* dark-on-light text for both banner variants (the title is text-white inline-classed) */
+.spillman-theme .alert-banner-critical .text-white { color: #7a1414 !important; }
+.spillman-theme .alert-banner-warning .text-white { color: #6b4e10 !important; }
+.spillman-theme .alert-banner-row .text-rmpg-300 { color: #555555 !important; }
