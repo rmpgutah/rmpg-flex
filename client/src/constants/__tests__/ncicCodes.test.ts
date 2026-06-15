@@ -112,7 +112,7 @@ describe('geographic + DL codes', () => {
   });
 });
 
-import { lookupOffense, fmtOffense } from '../ncicCodes';
+import { lookupOffense, fmtOffense, lookupAnyCode } from '../ncicCodes';
 
 describe('offense codes', () => {
   it('looks up an exact offense', () => {
@@ -134,5 +134,23 @@ describe('offense codes', () => {
   it('fmtOffense returns the raw charge when unmatched', () => {
     expect(fmtOffense('Jaywalking On Mars')).toBe('JAYWALKING ON MARS');
     expect(fmtOffense('')).toBe('');
+  });
+});
+
+describe('lookupAnyCode (QZ decoder)', () => {
+  it('finds a make by label', () => {
+    const hits = lookupAnyCode('Toyota');
+    expect(hits).toContainEqual({ domain: 'VMA', code: 'TOYT', label: 'Toyota' });
+  });
+  it('finds a make by code', () => {
+    const hits = lookupAnyCode('TOYT');
+    expect(hits).toContainEqual({ domain: 'VMA', code: 'TOYT', label: 'Toyota' });
+  });
+  it('finds a single-letter code across domains', () => {
+    const hits = lookupAnyCode('W');
+    expect(hits).toContainEqual({ domain: 'RACE', code: 'W', label: 'White' });
+  });
+  it('returns empty for nonsense', () => {
+    expect(lookupAnyCode('zzzqq')).toEqual([]);
   });
 });

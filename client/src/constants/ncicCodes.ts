@@ -337,3 +337,30 @@ export function fmtOffense(charge: string | null | undefined): string {
   const e = lookupOffense(base);
   return e ? `${base} (${e.utahStatute} · ${e.severity} · NCIC ${e.ncicCode})` : base;
 }
+
+export interface CodeHit { domain: NcicDomain; code: string; label: string; }
+
+/** Search every code table by label OR code, both directions. Powers `QZ`. */
+export function lookupAnyCode(term: string | null | undefined): CodeHit[] {
+  const t = (term ?? '').trim();
+  if (!t) return [];
+  const lower = t.toLowerCase();
+  const upper = t.toUpperCase();
+  const hits: CodeHit[] = [];
+  const seen = new Set<string>();
+  (Object.keys(TABLES) as NcicDomain[]).forEach((domain) => {
+    const table = TABLES[domain];
+    // by code
+    if (table.toLabel.has(upper)) {
+      const key = `${domain}:${upper}`;
+      if (!seen.has(key)) { seen.add(key); hits.push({ domain, code: upper, label: table.toLabel.get(upper)! }); }
+    }
+    // by label/alias
+    const code = table.toCode.get(lower);
+    if (code) {
+      const key = `${domain}:${code}`;
+      if (!seen.has(key)) { seen.add(key); hits.push({ domain, code, label: table.toLabel.get(code)! }); }
+    }
+  });
+  return hits;
+}
