@@ -6,6 +6,14 @@ import type { NormBox } from './regions';
 
 const TFJS_URL = 'https://esm.sh/@tensorflow/tfjs@4.22.0';
 const BLAZEFACE_URL = 'https://esm.sh/@tensorflow-models/blazeface@0.1.0?deps=@tensorflow/tfjs-core@4.22.0';
+// Self-hosted BlazeFace weights (client/public/models/blazeface/{model.json,
+// group1-shard1of1.bin}). blazeface.load() WITHOUT modelUrl defaults to
+// https://tfhub.dev/... which is NOT in our CSP connect-src, so the weight
+// fetch was silently blocked and faces never auto-detected (plates worked
+// because coco-ssd pulls from storage.googleapis.com, which IS allowed).
+// Passing modelUrl routes load() down loadGraphModel(modelUrl) — a same-origin
+// ('self') request — so there is no third-party CDN at evidence-creation time.
+const FACE_MODEL_URL = '/models/blazeface/model.json';
 
 let modelPromise: Promise<unknown | null> | null = null;
 
@@ -16,7 +24,7 @@ export function loadFaceDetector(): Promise<unknown | null> {
         const tf: any = await import(/* @vite-ignore */ TFJS_URL);
         await tf.ready();
         const blazeface: any = await import(/* @vite-ignore */ BLAZEFACE_URL);
-        return await blazeface.load();
+        return await blazeface.load({ modelUrl: FACE_MODEL_URL });
       } catch (e) {
         console.warn('[redaction] face model load failed', e);
         return null;
