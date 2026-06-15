@@ -10,6 +10,6 @@ describe('confirmReviewStatus', () => {
   });
   it('warning only on failure', () => {
     expect(confirmWarning(true)).toBeUndefined();
-    expect(confirmWarning(false)).toMatch(/not (be )?created|not saved|retry/i);
+    expect(confirmWarning(false)).toMatch(/could not be|not created|retry/i);
   });
 });

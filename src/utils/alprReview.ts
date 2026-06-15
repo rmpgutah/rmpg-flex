@@ -7,5 +7,5 @@ export function confirmReviewStatus(persisted: boolean): 'confirmed' | 'confirme
 }
 
 export function confirmWarning(persisted: boolean): string | undefined {
-  return persisted ? undefined : 'Vehicle record was not created — review and retry.';
+  return persisted ? undefined : 'Vehicle record or sighting could not be fully linked — review and retry.';
 }

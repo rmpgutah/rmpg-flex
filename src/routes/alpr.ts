@@ -955,12 +955,19 @@ alpr.post('/captures/bulk', operational, async (c) => {
           condition: row.condition ?? null, damageObserved: null,
           damageSummary: row.damage_summary ?? null, damageAreas: [], aftermarket: null, confidences: {},
         };
-        const hits = await persistConfirmedVehicle(db, row, v, userId, 'ALPR (bulk verified)');
+        let persisted = true;
+        let hits: Array<{ kind: string; severity: string; detail: string }> = [];
+        try {
+          hits = await persistConfirmedVehicle(db, row, v, userId, 'ALPR (bulk verified)');
+        } catch (persistErr: any) {
+          console.error('[alpr] bulk persist failed:', id, persistErr?.message);
+          persisted = false;
+        }
         for (const h of hits.filter((x) => x.severity === 'critical')) allHits.push({ ...h, plate: row.plate });
         await execute(db,
-          `UPDATE alpr_captures SET accepted=1, review_status='confirmed', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
-          userId, id);
-        results.push({ id, ok: true, status: 'confirmed' });
+          `UPDATE alpr_captures SET accepted=1, review_status=?, reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+          confirmReviewStatus(persisted), userId, id);
+        results.push({ id, ok: persisted, status: confirmReviewStatus(persisted) });
       } else {
         results.push({ id, ok: false, status: 'no_plate' });
       }

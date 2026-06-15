@@ -56,6 +56,18 @@ interface ReviewItem {
   year?: number | null; vehicle_type?: string | null; review_status?: string | null;
 }
 
+const REVIEW_STATUS_LABELS: Record<string, string> = {
+  confirmed: 'Confirmed',
+  confirmed_unlinked: 'Confirmed (record not linked)',
+  needs_review: 'Needs review',
+  no_plate: 'No plate',
+  rejected: 'Rejected',
+};
+
+function reviewStatusLabel(status: string): string {
+  return REVIEW_STATUS_LABELS[status] ?? status;
+}
+
 /** Tailwind classes for a condition badge (clean→salvage). */
 function conditionBadgeClass(condition?: string | null): string {
   switch ((condition || '').toLowerCase()) {
@@ -325,7 +337,7 @@ export default function PlateLogPage() {
                   </div>
                 )}
                 {scan.capture.reviewStatus && scan.accepted !== false && (
-                  <div className="text-[10px] text-[#888888] mt-1">Review: {scan.capture.reviewStatus}</div>
+                  <div className="text-[10px] text-[#888888] mt-1">Review: {reviewStatusLabel(scan.capture.reviewStatus)}</div>
                 )}
                 {!scan.hits.length && (
                   <div className="text-[11px] text-[#888888] mt-1">No hits — sighting logged.</div>
