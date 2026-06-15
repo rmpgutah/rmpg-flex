@@ -212,6 +212,16 @@ stubs.get('/export/csv', (c) => {
 
 // ── Diagnostics (mounted at /api/diagnostics) ────
 stubs.post('/ui-trap', async (c) => {
+  try {
+    const raw = await c.req.text();
+    if (raw && raw.length <= 60000) {
+      const key = `uitrap:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+      // 30-day TTL; prefix `uitrap:` so captures are listable for analysis.
+      await c.env.KV.put(key, raw, { expirationTtl: 60 * 60 * 24 * 30 });
+    }
+  } catch {
+    // Never let diagnostics storage failure affect the (already-struggling) client.
+  }
   return c.json({ received: true });
 });
 
