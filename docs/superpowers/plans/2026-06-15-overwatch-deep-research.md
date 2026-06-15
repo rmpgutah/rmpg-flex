@@ -741,8 +741,11 @@ There is no Worker integration-test harness in this repo (CLAUDE.md: "typecheck 
 // multi-minute run never blows a single request's CPU/subrequest budget and is
 // resumable. The same alarm reschedules scheduled monitors. SQLite-backed
 // (new_sqlite_classes) — free-plan compatible, like WelfareWatchDO.
-import type { Env } from '../types';
-import { execute, query, queryFirst } from '../utils/db';
+// A DO constructor receives the RAW bindings object — that is the `Bindings`
+// type. `Env` in this codebase is the Hono context wrapper ({ Bindings,
+// Variables }) used by routes, NOT what a DO gets.
+import type { Bindings } from '../types';
+import { execute } from '../utils/db';
 import { firecrawlSearch, firecrawlScrape, FirecrawlConfigError } from '../utils/firecrawl';
 import {
   runResearchLLM, parseAngles, mergeAngles, parseFindings, parseVerdict,
@@ -771,8 +774,8 @@ function nowIso(): string { return new Date().toISOString(); }
 
 export class DeepResearchDO {
   state: DurableObjectState;
-  env: Env;
-  constructor(state: DurableObjectState, env: Env) { this.state = state; this.env = env; }
+  env: Bindings;
+  constructor(state: DurableObjectState, env: Bindings) { this.state = state; this.env = env; }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -811,7 +814,9 @@ export class DeepResearchDO {
         default: return;
       }
       await this.state.storage.put('s', st);
-      if (st.stage !== 'done') await this.state.storage.setAlarm(Date.now() + STAGE_GAP_MS);
+      // Stage methods mutate st.stage by reference; tsc narrows it away from
+      // 'done' after the switch, so widen back to Stage for the guard.
+      if ((st.stage as Stage) !== 'done') await this.state.storage.setAlarm(Date.now() + STAGE_GAP_MS);
     } catch (e: any) {
       const msg = e instanceof FirecrawlConfigError ? 'FIRECRAWL_API_KEY not set' : String(e?.message || e).slice(0, 300);
       await this.update({ status: 'error', error: msg, stage_detail: `Failed at ${st.stage}` });
