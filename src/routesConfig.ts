@@ -145,6 +145,7 @@ import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import stubs from './routes/stubs';
+import voicePersona from './routes/voicePersona';
 import firecrawlTools from './routes/firecrawlTools';
 import webResearch from './routes/webResearch';
 import pdfEngine from './routes/pdfEngine';
@@ -567,7 +568,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/pdf-artifacts', router: stubs, auth: 'required' },
   { prefix: '/api/pdf-engine', router: pdfEngine, auth: 'required' },
   { prefix: '/api/updates', router: stubs, auth: 'public' },
-  { prefix: '/api/voice-persona', router: stubs, auth: 'required' },
+  { prefix: '/api/voice-persona', router: voicePersona, auth: 'required' },
 
   // Microsoft 365 email integration. Mount as 'public' so the OAuth
   // callback (which Microsoft redirects to without a JWT) is reachable;
