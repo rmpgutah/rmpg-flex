@@ -39,7 +39,12 @@ screening.get('/search', requireRole(...READ_ROLES), async (c) => {
       ageMin: num(c.req.query('ageMin')), ageMax: num(c.req.query('ageMax')),
       page: num(c.req.query('page')),
     });
-    return c.json({ data: results });
+    // Coverage tells the client WHY a result set is empty so a blank
+    // registry can never read as a clearance (false-clear guard).
+    const coverage = adapter.coverage
+      ? await adapter.coverage(c.env).catch(() => undefined)
+      : undefined;
+    return c.json({ data: results, coverage });
   } catch (err) { console.error('[screening/search]', err); return c.json({ data: [], error: 'search failed' }, 500); }
 });
 
