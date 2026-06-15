@@ -4,7 +4,7 @@ import {
   Phone, Users, FileText, Clock, AlertTriangle, Plus, Activity, Shield, Loader2,
   Radio, MapPin, Eye, ArrowRight, TrendingUp, Gavel, Briefcase, Target,
   CheckCircle, XCircle, Sun, Cloud, CloudRain, CloudSnow, CloudLightning,
-  CloudDrizzle, CloudFog, Snowflake, Timer, Navigation, RefreshCw,
+  CloudDrizzle, CloudFog, Snowflake, Navigation, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -739,6 +739,37 @@ export default function DashboardPage() {
         />
       </div>
 
+      {/* Priority Breakdown — Clickable beveled panels with LED dots */}
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`} role="region" aria-label="Calls by priority">
+        {[
+          { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
+          { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
+          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
+          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: 'var(--text-muted)' },
+        ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
+          <div
+            key={key}
+            onClick={() => navigate('/dispatch')}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/dispatch'); }}
+            tabIndex={0}
+            role="button"
+            className={`flex items-center gap-3 ${isMobile ? 'p-3 min-h-[56px]' : 'p-2'} panel-beveled border-l-4 ${border} cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 group bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+            title={`View ${key} calls in Dispatch`}
+            aria-label={`${label}: ${count} calls`}
+          >
+            <span className={`led-dot ${led} ${count > 0 && key === 'P1' ? 'animate-led-pulse' : ''}`} />
+            <div className="flex-1 min-w-0">
+              <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono tabular-nums`} style={{ color: valueColor }}>{count}</div>
+              <div className={`${isMobile ? 'text-[11px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide`}>{isMobile ? label : labelFull}</div>
+            </div>
+            <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200" aria-hidden="true" />
+          </div>
+        ))}
+      </div>
+      </div>
+      </SpmGroup>
+      )}
+
       {/* Secondary Stats Row — expanded to 5 cols 2026-05-24 to add Warrant Poll card */}
       {hasPanel('statusSummary') && (
       <SpmGroup title="Status Summary">
@@ -804,37 +835,6 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-      </div>
-      </SpmGroup>
-      )}
-
-      {/* Priority Breakdown — Clickable beveled panels with LED dots */}
-      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`} role="region" aria-label="Calls by priority">
-        {[
-          { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
-          { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
-          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
-          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: 'var(--text-muted)' },
-        ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
-          <div
-            key={key}
-            onClick={() => navigate('/dispatch')}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/dispatch'); }}
-            tabIndex={0}
-            role="button"
-            className={`flex items-center gap-3 ${isMobile ? 'p-3 min-h-[56px]' : 'p-2'} panel-beveled border-l-4 ${border} cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 group bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
-            title={`View ${key} calls in Dispatch`}
-            aria-label={`${label}: ${count} calls`}
-          >
-            <span className={`led-dot ${led} ${count > 0 && key === 'P1' ? 'animate-led-pulse' : ''}`} />
-            <div className="flex-1 min-w-0">
-              <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono tabular-nums`} style={{ color: valueColor }}>{count}</div>
-              <div className={`${isMobile ? 'text-[11px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide`}>{isMobile ? label : labelFull}</div>
-            </div>
-            <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200" aria-hidden="true" />
-          </div>
-        ))}
-      </div>
       </div>
       </SpmGroup>
       )}
