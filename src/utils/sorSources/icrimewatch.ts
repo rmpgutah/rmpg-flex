@@ -8,6 +8,7 @@ const AGENCY = '54438';
 const BASE = 'https://www.icrimewatch.net';
 const MAX_PER_RUN = 2_000;
 const PER_PAGE_DELAY_MS = 1_200;
+const INCREMENTAL_STOP_STREAK = 25;
 
 export function buildSearchUrl(lastName?: string): string {
   return lastName
@@ -63,6 +64,9 @@ export async function runIcrimewatchScan(env: Bindings, opts: IcwScanOpts = {}):
   try {
     const searchHtml = await firecrawlScrapeHtml(env, buildSearchUrl(opts.lastName));
     const ids = extractOfndrIds(searchHtml).slice(0, MAX_PER_RUN);
+    if (ids.length === 0) {
+      throw new Error('Search page returned no OfndrID links — possible block or empty registry');
+    }
     let unchangedStreak = 0;
     for (const id of ids) {
       seen++;
@@ -70,12 +74,12 @@ export async function runIcrimewatchScan(env: Bindings, opts: IcwScanOpts = {}):
         const detailHtml = await firecrawlScrapeHtml(env, buildDetailUrl(id));
         const row = parseIcrimewatchDetail(detailHtml, id);
         if (!row.last_name && !row.first_name) continue;
-        if (opts.mode === 'incremental') {
-          const known = await queryFirst<{ id: number }>(db, 'SELECT id FROM utah_sex_offenders WHERE registry_id = ?', id);
-          if (known) { unchangedStreak++; if (unchangedStreak >= 25) break; } else { unchangedStreak = 0; }
-        }
         await upsertRow(db, row);
         upserted++;
+        if (opts.mode === 'incremental') {
+          const known = await queryFirst<{ id: number }>(db, 'SELECT id FROM utah_sex_offenders WHERE registry_id = ?', id);
+          if (known) { unchangedStreak++; if (unchangedStreak >= INCREMENTAL_STOP_STREAK) break; } else { unchangedStreak = 0; }
+        }
       } catch (err) { console.warn(`[icw] OfndrID ${id} failed:`, err); }
       await sleep(PER_PAGE_DELAY_MS);
     }

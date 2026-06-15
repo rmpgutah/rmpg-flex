@@ -117,13 +117,6 @@ export function parseIcrimewatchDetail(html: string, ofndrId: string): SorScrape
   const fullName = lineAfterLabel(lines, 'Name:').replace(/\s+/g, ' ').trim();
   // SOR renders "First [Middle] LAST" — surname is trailing ALL-CAPS token(s)
   const tokens = fullName.split(/\s+/).filter(Boolean);
-  // Find the last run of all-caps tokens (starting from the end)
-  let lastStartIdx = tokens.length > 0 ? tokens.length - 1 : 0;
-  while (lastStartIdx > 0 && /^[A-Z'-]+$/.test(tokens[lastStartIdx])) {
-    lastStartIdx--;
-  }
-  // lastStartIdx now points to the last non-caps token before the caps run
-  // We want the caps run: from lastStartIdx+1 to end
   const capsStart = tokens.findIndex((t, i) => i > 0 && /^[A-Z'-]+$/.test(t));
   const last_name = capsStart >= 0 ? tokens.slice(capsStart).join(' ') : (tokens[tokens.length - 1] ?? '');
   const given = capsStart >= 0 ? tokens.slice(0, capsStart) : tokens.slice(0, -1);

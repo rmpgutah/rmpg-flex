@@ -4,7 +4,7 @@ import { FirecrawlConfigError, buildScrapePayload } from '../src/utils/browserFe
 describe('buildScrapePayload', () => {
   it('requests rendered html with stealth proxy', () => {
     const p = buildScrapePayload('https://www.icrimewatch.net/offenderdetails.php?OfndrID=1&AgencyID=54438');
-    expect(p.url).toContain('offenderdetails.php');
+    expect(p.url).toBe('https://www.icrimewatch.net/offenderdetails.php?OfndrID=1&AgencyID=54438');
     expect(p.formats).toContain('html');
     expect(p.proxy).toBe('stealth');
   });

@@ -23,7 +23,16 @@ describe('parseIcrimewatchDetail', () => {
     expect(d.status).toMatch(/active/i);
   });
   it('captures a photo url when present', () => {
-    expect(rec.photo_url).toMatch(/^https?:\/\//);
+    expect(rec.photo_url).toMatch(/\/pictures\/\d+\/\d+/);
+  });
+});
+
+describe('parseIcrimewatchDetail — robustness', () => {
+  it('returns empty fields without throwing on a challenge/garbage page', () => {
+    const rec = parseIcrimewatchDetail('<html><body>Access Denied</body></html>', '999');
+    expect(rec.last_name).toBe('');
+    expect(rec.first_name).toBe('');
+    expect(() => parseIcrimewatchDetail('', '0')).not.toThrow();
   });
 });
 
