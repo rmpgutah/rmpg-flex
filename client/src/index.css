@@ -1757,6 +1757,9 @@ body.fx-noise::after {
     gap: 6px;
     white-space: nowrap;
   }
+  /* White is intentional here: --spm-select is constant steel-blue (#316ac5) in
+     all themes (night/day/legacy), so white-on-select stays legible. Do NOT
+     "tokenize" this #ffffff to a theme text var — it would go dark on the blue. */
   .menu-item:hover {
     background: var(--spm-select);
     color: #ffffff;
