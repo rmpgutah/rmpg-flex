@@ -55,15 +55,22 @@ redactions.post('/', async (c): Promise<Response> => {
   }
 
   const kinds: string = Array.isArray(meta.kinds) ? meta.kinds.join(',') : (typeof meta.kinds === 'string' ? meta.kinds : '');
-  const res = await execute(db,
-    `INSERT INTO video_redactions
-       (source_event_id, r2_key, kinds, region_count, style, regions_json, redacted_by,
-        status, requested_at, completed_at, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, datetime('now'), ?)`,
-    Number(meta.event_id) || null, r2Key, kinds, Number(meta.region_count) || 0,
-    typeof meta.style === 'string' ? meta.style : null,
-    typeof meta.regions_json === 'string' ? meta.regions_json : (meta.regions ? JSON.stringify(meta.regions) : null),
-    userId, meta.requested_at ?? null, typeof meta.notes === 'string' ? meta.notes : null);
+  let res: Awaited<ReturnType<typeof execute>>;
+  try {
+    res = await execute(db,
+      `INSERT INTO video_redactions
+         (source_event_id, r2_key, kinds, region_count, style, regions_json, redacted_by,
+          status, requested_at, completed_at, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, datetime('now'), ?)`,
+      Number(meta.event_id) || null, r2Key, kinds, Number(meta.region_count) || 0,
+      typeof meta.style === 'string' ? meta.style : null,
+      typeof meta.regions_json === 'string' ? meta.regions_json : (meta.regions ? JSON.stringify(meta.regions) : null),
+      userId, meta.requested_at ?? null, typeof meta.notes === 'string' ? meta.notes : null);
+  } catch (err: any) {
+    // Custody row failed — don't leave the MP4 orphaned in R2 with no record.
+    try { await c.env.UPLOADS.delete(r2Key); } catch { /* best-effort */ }
+    return c.json({ error: 'custody record failed: ' + (err?.message ?? 'unknown') }, 502);
+  }
 
   return c.json({ success: true, id: Number(res.meta.last_row_id), r2_key: r2Key,
     download_url: `/api/redactions/${Number(res.meta.last_row_id)}/download` });
