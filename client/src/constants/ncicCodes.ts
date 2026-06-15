@@ -540,7 +540,7 @@ const OFFENSE: Array<[keyword: string, entry: OffenseEntry]> = [
 
   // ── Violent — Kidnapping / Custodial ────────────────────────
   ['AGGRAVATED KIDNAPPING',  { utahStatute: '76-5-302',  ncicCode: '1099', severity: 'F1' }],
-  ['CHILD ABDUCTION',        { utahStatute: '76-5-301.1',ncicCode: '1099', severity: 'F3' }],
+  ['CHILD ABDUCTION',        { utahStatute: '76-5-301.1',ncicCode: '1099', severity: 'F1' }],
   ['CUSTODIAL INTERFERENCE', { utahStatute: '76-5-303',  ncicCode: '1099', severity: 'F3' }],
   ['KIDNAPPING',             { utahStatute: '76-5-301',  ncicCode: '1099', severity: 'F2' }],
 
@@ -556,7 +556,7 @@ const OFFENSE: Array<[keyword: string, entry: OffenseEntry]> = [
   ['UNLAWFUL SEXUAL ACTIVITY WITH A MINOR',{ utahStatute: '76-5-401',ncicCode: '1122', severity: 'F3' }],
   ['FORCIBLE SEXUAL ABUSE',            { utahStatute: '76-5-404',   ncicCode: '1199', severity: 'F2' }],
   ['SEXUAL EXPLOITATION OF A MINOR',   { utahStatute: '76-5b-201',  ncicCode: '3699', severity: 'F2' }],
-  ['VOYEURISM',                        { utahStatute: '76-9-702.7', ncicCode: '3699', severity: 'MB' }],
+  ['VOYEURISM',                        { utahStatute: '76-9-702.7', ncicCode: '3699', severity: 'MA' }],
   ['SEXUAL BATTERY',                   { utahStatute: '76-9-702.1', ncicCode: '1199', severity: 'MA' }],
 
   // ── Violent — Domestic Violence / Child Abuse / Neglect ─────
@@ -650,7 +650,7 @@ const OFFENSE: Array<[keyword: string, entry: OffenseEntry]> = [
   ['PATRONIZING A PROSTITUTE',    { utahStatute: '76-10-1303', ncicCode: '4009', severity: 'MB' }],
   ['SOLICITATION OF PROSTITUTION',{ utahStatute: '76-10-1302', ncicCode: '4003', severity: 'MB' }],
   ['MONEY LAUNDERING',            { utahStatute: '76-10-1902', ncicCode: '2699', severity: 'F2' }],
-  ['GAMBLING',                    { utahStatute: '76-10-1102', ncicCode: '3905', severity: 'MB' }],
+  ['GAMBLING',                    { utahStatute: '76-9-1402',  ncicCode: '3905', severity: 'MB' }],
   ['TOBACCO TO MINOR',            { utahStatute: '76-10-104',  ncicCode: '5399', severity: 'INF' }],
   ['VAPE TO MINOR',               { utahStatute: '76-10-104',  ncicCode: '5399', severity: 'INF' }],
 
@@ -678,15 +678,15 @@ const OFFENSE: Array<[keyword: string, entry: OffenseEntry]> = [
   ['DRIVING UNDER THE INFLUENCE', { utahStatute: '41-6a-502', ncicCode: '5404', severity: 'MB' }],
   ['IMPAIRED DRIVING',            { utahStatute: '41-6a-502', ncicCode: '5404', severity: 'MB' }],
   ['HIT AND RUN WITH INJURY',     { utahStatute: '41-6a-401.3',ncicCode: '5401', severity: 'F3' }],
-  ['HIT AND RUN',                 { utahStatute: '41-6a-401.7',ncicCode: '5401', severity: 'MC' }],
+  ['HIT AND RUN',                 { utahStatute: '41-6a-401.7',ncicCode: '5401', severity: 'MB' }],
   ['ELUDING OFFICER',             { utahStatute: '41-6a-210', ncicCode: '5499', severity: 'F3' }],
   ['FAILURE TO STOP',             { utahStatute: '41-6a-210', ncicCode: '5499', severity: 'F3' }],
   ['ELUDING',                     { utahStatute: '41-6a-210', ncicCode: '5499', severity: 'F3' }],
   ['RECKLESS DRIVING',            { utahStatute: '41-6a-528', ncicCode: '5499', severity: 'MC' }],
   ['DRIVING ON REVOKED',          { utahStatute: '53-3-227',  ncicCode: '5499', severity: 'MB' }],
   ['DRIVING ON SUSPENDED',        { utahStatute: '53-3-227',  ncicCode: '5499', severity: 'MC' }],
-  ['DRIVING WITHOUT A LICENSE',   { utahStatute: '53-3-202',  ncicCode: '5499', severity: 'MC' }],
-  ['NO DRIVER LICENSE',           { utahStatute: '53-3-202',  ncicCode: '5499', severity: 'MC' }],
+  ['DRIVING WITHOUT A LICENSE',   { utahStatute: '53-3-202',  ncicCode: '5499', severity: 'INF' }],
+  ['NO DRIVER LICENSE',           { utahStatute: '53-3-202',  ncicCode: '5499', severity: 'INF' }],
   ['OPEN CONTAINER',              { utahStatute: '41-6a-526', ncicCode: '5499', severity: 'INF' }],
   ['SPEEDING',                    { utahStatute: '41-6a-601', ncicCode: '5499', severity: 'INF' }],
   ['FOLLOWING TOO CLOSE',         { utahStatute: '41-6a-711', ncicCode: '5499', severity: 'INF' }],

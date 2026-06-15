@@ -281,7 +281,7 @@ describe('offense codes', () => {
   it('hit and run with injury resolves before plain hit and run', () => {
     expect(lookupOffense('Hit and Run with Injury')?.ncicCode).toBe('5401');
     expect(lookupOffense('Hit and Run with Injury')?.severity).toBe('F3');
-    expect(lookupOffense('Hit and Run')?.severity).toBe('MC');
+    expect(lookupOffense('Hit and Run')?.severity).toBe('MB'); // 41-6a-401.7: property-damage-only hit and run = class B misdemeanor
   });
 
   it('stalking resolves to 76-5-106.5', () => {
