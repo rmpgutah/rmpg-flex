@@ -4,6 +4,7 @@
 // isolation without booting the full app + its Durable Objects.
 import { Hono } from 'hono';
 import alpr from '../src/routes/alpr';
+import redactions from '../src/routes/redactions';
 
 const app = new Hono<{ Bindings: Record<string, unknown>; Variables: { user: { id: number; role: string; username: string }; userId: number } }>();
 app.use('*', async (c, next) => {
@@ -13,5 +14,6 @@ app.use('*', async (c, next) => {
   await next();
 });
 app.route('/api/alpr', alpr);
+app.route('/api/redactions', redactions);
 
 export default app;
