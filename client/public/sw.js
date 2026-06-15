@@ -619,9 +619,9 @@
 //       right panel never opened) + real business tab count.
 // v964: system-wide theme — desktop-shell/toolbar/grid chrome vars follow
 //       day/night; day color-scheme light; warm day hover.
-// v973: dashcam redaction export — replace broken @ffmpeg.wasm worker encoder
-//       with native MediaRecorder (canvas.captureStream + requestFrame); MP4 on
-//       Chrome, WebM fallback. Fixes "Export failed".
+// v973: Redaction Studio — self-host BlazeFace weights at /models/blazeface/*
+//       (load() modelUrl) so face auto-detect no longer hits tfhub.dev (CSP-
+//       blocked); surface a warning when the face model fails to load.
 const CACHE_NAME = 'rmpg-flex-v973';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [

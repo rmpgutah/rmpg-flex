@@ -106,6 +106,7 @@ import clients from './routes/clients';
 import cloudflare from './routes/cloudflare';
 import connections from './routes/connections';
 import crm from './routes/crm';
+import deepResearch from './routes/deepResearch';
 import crisisResponse from './routes/crisisResponse';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
@@ -341,6 +342,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Crisis response: CIT deployments, mental health holds, mobile crisis team coordination' },
   { prefix: '/api/crm', router: crm, auth: 'required',
     note: 'CRM stub — dashboard, leads, proposals, reports, firecrawl, scraper admin, competitor monitor. All GETs return empty/null-safe shapes; mutations 201-OK as no-ops. Full CRM backend is Phase 2.' },
+  { prefix: '/api/deep-research', router: deepResearch, auth: 'required' },
   { prefix: '/api/dl-records', router: dlRecords, auth: 'required',
     note: 'Local DL store CRUD over dl_records + dl_addresses. /verify + /ocr-scan (external APIs) stay on legacy — proxy routes only the bare path + numeric :id here.' },
   { prefix: '/api/cloudflare', router: cloudflare, auth: 'required',

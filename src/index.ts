@@ -23,6 +23,7 @@ import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
 import { handleWebSocket } from './routes/ws';
 import { emitAlert } from './utils/alertHub';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
+import { DeepResearchDO } from './durable-objects/DeepResearchDO';
 import { doCallbackToken, timingSafeEqual } from './utils/signedAccess';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { AlertHubDO } from './durable-objects/AlertHubDO';
@@ -42,7 +43,7 @@ import { ROUTE_REGISTRY } from './routesConfig';
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
 // [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
-export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer };
+export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer, DeepResearchDO };
 
 // Exported so sub-routers that need to dispatch internal subrequests
 // (e.g. src/routes/offline.ts replaying queued offline writes through
@@ -338,6 +339,13 @@ export default {
           .then(({ sweepWatchlist }) => sweepWatchlist(env.DB))
           .then((n) => { if (n) console.log(`[watchlist] ${n} alert(s) raised`); })
           .catch((err) => console.error('[watchlist] sweep failed:', err)),
+      );
+      // Deep Research monitors — re-run jobs whose monitor interval is due.
+      ctx.waitUntil(
+        import('./utils/deepResearchMonitor')
+          .then(({ sweepDeepResearchMonitors }) => sweepDeepResearchMonitors(env))
+          .then((n) => { if (n) console.log(`[deep-research] re-ran ${n} monitor(s)`); })
+          .catch((err) => console.error('[deep-research] monitor sweep failed:', err)),
       );
       // Intel cross-hit coverage sweep — screens persons/vehicles
       // created in the last 2 minutes regardless of entry path; critical
