@@ -7,3 +7,4 @@ client/src/pages/dashboard/SpmGroup.tsx
 client/src/pages/dashboard/DashboardViewSelector.tsx
 client/src/pages/dashboard/dashboardViews.ts
 client/src/components/StatsCard.tsx
+client/src/pages/DashboardPage.tsx

@@ -26,8 +26,10 @@ html.theme-dark,
      accent is the neutral muted-text token so it inverts with the theme. */
   --stat-accent-default: var(--spm-text-muted);
   --stat-accent-red: #dc2626;
+  --stat-accent-red-bright: #ef4444;
   --stat-accent-green: #22c55e;
   --stat-accent-amber: #f59e0b;
+  --stat-accent-amber-bright: #fbbf24;
   --stat-accent-purple: #a855f7;
 
   --rmpg-50-rgb: 237 241 246; --rmpg-100-rgb: 214 221 230; --rmpg-200-rgb: 184 195 208;
