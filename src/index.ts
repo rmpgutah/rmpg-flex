@@ -404,6 +404,15 @@ export default {
           .then(({ maybeRunFootagePoll }) => maybeRunFootagePoll(env))
           .catch((err) => console.error('[flexcam] poll error:', (err as Error)?.message)),
       );
+      // Jail roster detail enrichment (Salt Lake) — fetches each scraped
+      // inmate's full IML profile document (booking date, charges, bond) in a
+      // small, polite batch. KV-locked + no-ops cheaply when the backlog is empty.
+      ctx.waitUntil(
+        import('./utils/jailRoster/scraper')
+          .then(({ maybeEnrichSaltLakeDetails }) => maybeEnrichSaltLakeDetails(env))
+          .then((r) => { if (r && r.enriched) console.log(`[jail-roster] enriched ${r.enriched}/${r.attempted} (remaining ${r.remaining})`); })
+          .catch((err) => console.error('[jail-roster] enrich failed:', (err as Error)?.message)),
+      );
       return;
     }
     ctx.waitUntil(

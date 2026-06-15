@@ -5,12 +5,23 @@
 // jail_roster_sync_log. runDueScrapes() is the cron entry point.
 // ============================================================
 
-import type { D1Database } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
 import { query, queryFirst, execute } from '../db';
-import { COUNTY_PARSERS, getAvailableParsers, type RosterEntry } from './parsers';
+import {
+  COUNTY_PARSERS, getAvailableParsers, type RosterEntry,
+  openSaltLakeSession, fetchSaltLakeDetail,
+} from './parsers';
 
 const CIRCUIT_THRESHOLD = 5;   // consecutive errors before the breaker trips
 const UPSERT_CHUNK = 40;        // bookings per D1 batch
+
+// Detail-enrichment tuning (Salt Lake). Steady + polite: a small batch per
+// per-minute cron tick with a short delay between profile fetches, so the full
+// roster fills in over ~30 min without hammering the county server.
+const ENRICH_BATCH = 20;
+const ENRICH_DELAY_MS = 600;
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export interface CountyConfig {
   county: string; display_name: string; roster_url: string; roster_type: string;
@@ -71,19 +82,35 @@ async function upsertEntries(db: D1Database, cfg: CountyConfig, entries: RosterE
     const stmts = chunk.map((e) => {
       const jailbaseId = `roster-${cfg.county}-${e.roster_id}`;
       const bail = e.bail_amount ? parseFloat(e.bail_amount.replace(/[$,]/g, '')) || 0 : 0;
+      // raw_record carries the detail tokens (sysID/imgSysID) so the enrichment
+      // pass can fetch the full profile document. detail_at (added by enrichment)
+      // marks a row as already scraped; we preserve it across re-scrapes.
+      const rawRecord = JSON.stringify({ sysID: e.sys_id ?? '', imgSysID: e.img_sys_id ?? '' });
       return db.prepare(
         `INSERT INTO arrest_records
            (jailbase_id, source_id, source_name, full_name, first_name, last_name, middle_name,
-            booking_date, date_of_birth, charges, gender, bail_amount, county, state, status, entry_source, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 'scraper', datetime('now'), datetime('now'))
+            booking_date, date_of_birth, charges, gender, bail_amount, county, state, status, entry_source, raw_record, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 'scraper', ?, datetime('now'), datetime('now'))
          ON CONFLICT(jailbase_id, source_id) DO UPDATE SET
-           full_name=excluded.full_name, booking_date=excluded.booking_date,
+           full_name=excluded.full_name,
+           -- Listing carries no date/charges/bond; never overwrite enriched
+           -- detail with the listing's empty values.
+           booking_date=COALESCE(NULLIF(excluded.booking_date,''), arrest_records.booking_date),
            date_of_birth=COALESCE(NULLIF(excluded.date_of_birth,''), arrest_records.date_of_birth),
-           charges=excluded.charges, gender=excluded.gender, bail_amount=excluded.bail_amount,
-           state=excluded.state, status='active', updated_at=datetime('now')`
+           charges=CASE WHEN excluded.charges IN ('[]','') THEN arrest_records.charges ELSE excluded.charges END,
+           gender=COALESCE(NULLIF(excluded.gender,''), arrest_records.gender),
+           bail_amount=CASE WHEN excluded.bail_amount=0 THEN arrest_records.bail_amount ELSE excluded.bail_amount END,
+           state=excluded.state, status='active',
+           -- Refresh the detail tokens but keep detail_at (don't force re-scrape).
+           raw_record=json_set(
+             json_set(COALESCE(NULLIF(arrest_records.raw_record,''),'{}'),
+               '$.sysID', json_extract(excluded.raw_record,'$.sysID')),
+               '$.imgSysID', json_extract(excluded.raw_record,'$.imgSysID')),
+           updated_at=datetime('now')`
       ).bind(
         jailbaseId, cfg.county, cfg.display_name, e.full_name, e.first_name, e.last_name, e.middle_name,
-        e.booking_date, e.date_of_birth ?? '', JSON.stringify(e.charges), e.gender, bail, cfg.county, cfg.state
+        e.booking_date, e.date_of_birth ?? '', JSON.stringify(e.charges), e.gender, bail, cfg.county, cfg.state,
+        rawRecord
       );
     });
     if (stmts.length) { await db.batch(stmts); written += stmts.length; }
@@ -233,4 +260,95 @@ export async function runDueScrapes(db: D1Database): Promise<{ ran: string | nul
   if (!due) return { ran: null };
   await scrapeCounty(db, due.county);
   return { ran: due.county };
+}
+
+// ── Salt Lake detail enrichment ─────────────────────────────
+// The listing scrape stores only name + booking # + the detail tokens. This
+// pass fetches each inmate's full profile document (booking date, charges,
+// bond) and writes it back. Bounded per call (ENRICH_BATCH) + polite delay so
+// the per-minute cron drains the backlog steadily without hammering IML.
+
+// Rows scraped from Salt Lake that still need their profile document fetched
+// (have a sysID token, not yet stamped detail_at).
+const PENDING_DETAIL_WHERE =
+  `source_id='salt_lake' AND entry_source='scraper'
+     AND json_extract(raw_record,'$.sysID') IS NOT NULL
+     AND json_extract(raw_record,'$.sysID') <> ''
+     AND json_extract(raw_record,'$.detail_at') IS NULL`;
+
+export async function countPendingSaltLakeDetails(db: D1Database): Promise<number> {
+  const r = await queryFirst<{ n: number }>(db,
+    `SELECT COUNT(*) n FROM arrest_records WHERE ${PENDING_DETAIL_WHERE}`);
+  return r?.n ?? 0;
+}
+
+export async function enrichSaltLakeDetails(
+  db: D1Database, limit = ENRICH_BATCH,
+): Promise<{ enriched: number; attempted: number; remaining: number }> {
+  const due = await query<{ id: number; raw_record: string }>(db,
+    `SELECT id, raw_record FROM arrest_records
+      WHERE ${PENDING_DETAIL_WHERE}
+      ORDER BY id DESC LIMIT ?`, limit);
+  if (!due.length) return { enriched: 0, attempted: 0, remaining: 0 };
+
+  let cookie: string;
+  try {
+    cookie = await openSaltLakeSession();
+  } catch {
+    return { enriched: 0, attempted: 0, remaining: await countPendingSaltLakeDetails(db) };
+  }
+
+  let enriched = 0;
+  let attempted = 0;
+  for (const row of due) {
+    let sysID = '', imgSysID = '';
+    try { const r = JSON.parse(row.raw_record || '{}'); sysID = r.sysID || ''; imgSysID = r.imgSysID || ''; } catch { /* skip */ }
+    if (!sysID) continue;
+    attempted++;
+
+    const detail = await fetchSaltLakeDetail(cookie, sysID, imgSysID);
+    // Always stamp detail_at so a blank/gone record isn't retried forever.
+    const detailAt = new Date().toISOString();
+    if (detail) {
+      const raw = JSON.stringify({ sysID, imgSysID, detail_at: detailAt, detail });
+      await execute(db,
+        `UPDATE arrest_records SET
+           booking_date=COALESCE(NULLIF(?,''), booking_date),
+           charges=CASE WHEN ?='[]' THEN charges ELSE ? END,
+           bail_amount=CASE WHEN ?=0 THEN bail_amount ELSE ? END,
+           raw_record=?, updated_at=datetime('now')
+         WHERE id=?`,
+        detail.booking_date,
+        JSON.stringify(detail.charges), JSON.stringify(detail.charges),
+        detail.bail_amount, detail.bail_amount,
+        raw, row.id);
+      enriched++;
+    } else {
+      const raw = JSON.stringify({ sysID, imgSysID, detail_at: detailAt });
+      await execute(db,
+        `UPDATE arrest_records SET raw_record=?, updated_at=datetime('now') WHERE id=?`,
+        raw, row.id);
+    }
+    if (attempted < due.length) await sleep(ENRICH_DELAY_MS);
+  }
+
+  return { enriched, attempted, remaining: await countPendingSaltLakeDetails(db) };
+}
+
+// Cron-friendly wrapper: KV-locked (prevents overlapping per-minute ticks) and
+// cheap when there's nothing to do. No-ops without a KV binding.
+export async function maybeEnrichSaltLakeDetails(
+  env: { DB: D1Database; KV?: KVNamespace },
+): Promise<{ enriched: number; attempted: number; remaining: number } | null> {
+  if (await countPendingSaltLakeDetails(env.DB) === 0) return null;
+  const LOCK = 'jail_enrich_lock_salt_lake';
+  if (env.KV) {
+    if (await env.KV.get(LOCK)) return null;           // a tick is already running
+    await env.KV.put(LOCK, '1', { expirationTtl: 120 });
+  }
+  try {
+    return await enrichSaltLakeDetails(env.DB);
+  } finally {
+    if (env.KV) await env.KV.delete(LOCK).catch(() => {});
+  }
 }
