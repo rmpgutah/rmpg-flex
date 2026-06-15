@@ -20,6 +20,23 @@ export interface RosterEntry {
   date_of_birth?: string;
   charges: string[];
   bail_amount: string;
+  // Source-system detail tokens. For Salt Lake's IML these identify the inmate's
+  // full profile document so the orchestrator can fetch + scrape it later (the
+  // listing only carries name + booking #). Stored in arrest_records.raw_record.
+  sys_id?: string;
+  img_sys_id?: string;
+}
+
+// Full per-inmate detail scraped from a county's profile/print document — the
+// rich data the search listing omits (booking date, charges, bond). Captured
+// into arrest_records columns + raw_record. Fields are '' / [] / 0 when absent.
+export interface InmateDetail {
+  booking_date: string;        // ISO 'YYYY-MM-DD'
+  charges: string[];           // 'CODE — DESCRIPTION'
+  bail_amount: number;         // summed bond amounts
+  so_number: string;
+  housing: string;             // 'LOCATION / BLOCK / CELL / BED'
+  projected_release: string;   // ISO 'YYYY-MM-DD'
 }
 
 // ISO timestamp -> 'YYYY-MM-DD' (empty on bad input).
@@ -27,6 +44,14 @@ function isoDate(v: unknown): string {
   if (typeof v !== 'string' || !v) return '';
   const t = v.slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : '';
+}
+
+// 'MM/DD/YYYY' (the IML profile date format) -> ISO 'YYYY-MM-DD' (empty if no match).
+export function mdyToIso(s: string | null | undefined): string {
+  const m = (s ?? '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!m) return '';
+  const [, mm, dd, yyyy] = m;
+  return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
 }
 
 export interface CountyParser {
@@ -88,6 +113,7 @@ export const saltLakeParser: CountyParser = {
       let m: RegExpExecArray | null;
       while ((m = rowRegex.exec(html)) !== null) {
         const sysId = m[1];
+        const imgSysId = m[2];
         const cells: string[] = [];
         const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
         let td: RegExpExecArray | null;
@@ -105,12 +131,154 @@ export const saltLakeParser: CountyParser = {
           roster_id: key, full_name: rawName.replace(/\s+/g, ' ').trim(),
           first_name: first, last_name: last, middle_name: middle,
           gender: '', booking_date: '', charges: [], bail_amount: '',
+          // Detail tokens for the per-inmate profile fetch (enrichment phase).
+          sys_id: sysId, img_sys_id: imgSysId,
         });
       }
     }
     return entries;
   },
 };
+
+// ── Salt Lake County — full inmate detail document ──────────
+// IML serves each inmate's full record as a print-styled profile page
+// (flow_action=edit), NOT a downloadable PDF. Reaching it requires, in one
+// session: (1) a JSESSIONID cookie, (2) a Referer header, and (3) at least one
+// prior search to "arm" the edit flow (verified live 2026-06-15). sysIDs are
+// stable across sessions, so the listing stores them and this enriches later.
+const IML_BASE = 'https://iml.saltlakecounty.gov/IML';
+
+function jsessionid(res: Response): string {
+  const h = res.headers as unknown as { getSetCookie?: () => string[] };
+  const raw = typeof h.getSetCookie === 'function'
+    ? h.getSetCookie().join('; ')
+    : (res.headers.get('set-cookie') || '');
+  const m = raw.match(/JSESSIONID=[^;]+/);
+  return m ? m[0] : '';
+}
+
+async function imlPost(cookie: string, fields: Record<string, string>): Promise<string> {
+  const res = await fetch(IML_BASE, {
+    method: 'POST',
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Referer: IML_BASE,
+      ...(cookie ? { Cookie: cookie } : {}),
+    },
+    body: new URLSearchParams(fields).toString(),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`IML HTTP ${res.status}`);
+  return res.text();
+}
+
+// Open an IML session and arm the detail flow with one warmup search, returning
+// the session cookie to reuse across detail fetches.
+export async function openSaltLakeSession(): Promise<string> {
+  const res = await fetch(IML_BASE, {
+    headers: { 'User-Agent': USER_AGENT },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  const cookie = jsessionid(res);
+  await res.text().catch(() => '');
+  // A search (any letter) is required before flow_action=edit returns data.
+  await imlPost(cookie, {
+    flow_action: 'searchbyname', quantity: '500',
+    systemUser_firstName: '', systemUser_lastName: 'a',
+    systemUser_includereleasedinmate: 'N', systemUser_includereleasedinmate2: 'N',
+    currentStart: '1',
+  });
+  return cookie;
+}
+
+// Fetch + parse one inmate's full profile document. Returns null when the
+// document is blank (session lost / inmate released / sysID rotated).
+export async function fetchSaltLakeDetail(
+  cookie: string, sysID: string, imgSysID: string,
+): Promise<InmateDetail | null> {
+  let html: string;
+  try {
+    html = await imlPost(cookie, { flow_action: 'edit', sysID, imgSysID });
+  } catch {
+    return null;
+  }
+  const detail = parseInmateProfile(html);
+  if (!detail.booking_date && detail.charges.length === 0 && !detail.so_number && !detail.housing) {
+    return null; // empty template — nothing scraped
+  }
+  return detail;
+}
+
+// Pull the value cell that follows a labelled (class="bodysmallbold") cell.
+function profileField(html: string, label: string): string {
+  const esc = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(
+    `class="bodysmallbold"[^>]*>[\\s\\S]*?${esc}[\\s\\S]*?<\\/td>\\s*<td[^>]*class="bodysmall"[^>]*>([\\s\\S]*?)<\\/td>`,
+    'i',
+  );
+  const m = html.match(re);
+  return m ? cellText(m[1]) : '';
+}
+
+// Extract the rows of a labelled section's table as arrays of cell text.
+function sectionRows(html: string, startLabel: string, endLabel: string): string[][] {
+  const start = html.search(new RegExp(startLabel, 'i'));
+  if (start === -1) return [];
+  const tail = html.slice(start);
+  const endIdx = endLabel ? tail.slice(startLabel.length).search(new RegExp(endLabel, 'i')) : -1;
+  const seg = endIdx === -1 ? tail : tail.slice(0, startLabel.length + endIdx);
+  const rows: string[][] = [];
+  const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let tr: RegExpExecArray | null;
+  while ((tr = trRe.exec(seg)) !== null) {
+    const cells: string[] = [];
+    const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+    let td: RegExpExecArray | null;
+    while ((td = tdRe.exec(tr[1])) !== null) cells.push(cellText(td[1]));
+    if (cells.some((c) => c)) rows.push(cells);
+  }
+  return rows;
+}
+
+// PURE parser for an IML inmate profile document. Unit-tested against a live
+// fixture. Charge cols: [Case#, OffenseDate, Code, Description, Grade, Degree].
+// Bond cols (after dropping empties): [Amount, Status, SetDate].
+export function parseInmateProfile(html: string): InmateDetail {
+  const booking_date = mdyToIso(profileField(html, 'Booking Date:'));
+  const so_number = profileField(html, 'SO#:');
+  const projected_release = mdyToIso(profileField(html, 'Projected Release Date:'));
+
+  const housing = [
+    profileField(html, 'Current Location:'),
+    profileField(html, 'Current Housing Block:'),
+    profileField(html, 'Current Housing Cell:'),
+    profileField(html, 'Current Housing Bed:'),
+  ].map((s) => s.trim()).filter(Boolean).join(' / ');
+
+  const charges: string[] = [];
+  for (const cells of sectionRows(html, 'Charge Information', 'Copyright')) {
+    if (cells.length < 4) continue;                       // &nbsp; / spacer rows
+    const code = (cells[2] || '').trim();
+    const desc = (cells[3] || '').trim();
+    if (!code && !desc) continue;
+    if (/^code$/i.test(code) || /offense date/i.test(cells[1] || '')) continue; // header
+    charges.push(code && desc ? `${code} — ${desc}` : (desc || code));
+  }
+
+  let bail_amount = 0;
+  for (const cells of sectionRows(html, 'Bond Information', 'Charge Information')) {
+    // The amount is the cell holding a decimal money value (e.g. "¤ 1,000.00").
+    // Case # is a bare integer and the Set Date has no ".dd", so neither matches
+    // — this avoids summing case numbers as dollars. One amount per row.
+    for (const c of cells) {
+      const m = c.match(/[\d,]+\.\d{2}/);
+      if (m) { bail_amount += parseFloat(m[0].replace(/,/g, '')); break; }
+    }
+  }
+
+  return { booking_date, charges, bail_amount, so_number, housing, projected_release };
+}
 
 // ── Utah County (sheriff.utahcounty.gov JSON API) ───────────
 // /api/search/name/<letter> returns all inmates whose name matches; status 'A'

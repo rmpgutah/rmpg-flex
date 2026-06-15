@@ -13,6 +13,7 @@ import { requireRole } from '../middleware/auth';
 import {
   ensureJailRosterSchema, getStatus, getStatistics, getCountyConfigs,
   scrapeCounty, resetCountyErrors, updateCountyConfig,
+  enrichSaltLakeDetails, countPendingSaltLakeDetails,
 } from '../utils/jailRoster/scraper';
 
 const jailRoster = new Hono<Env>();
@@ -94,6 +95,38 @@ jailRoster.post('/sync/:county', requireRole('admin', 'manager', 'supervisor'), 
   } catch (err) {
     console.error('jail-roster sync failed:', err);
     return c.json({ error: 'Sync failed' }, 500);
+  }
+});
+
+// POST /enrich/:county — fetch full profile documents for a batch of scraped
+// inmates now (booking date, charges, bond). Salt Lake only today; the
+// per-minute cron also drains this automatically. (supervisor+)
+jailRoster.post('/enrich/:county', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+  try {
+    const county = c.req.param('county');
+    if (!validCounty(county)) return c.json({ error: 'Invalid county identifier' }, 400);
+    if (county !== 'salt_lake') return c.json({ error: 'Detail enrichment is only available for salt_lake' }, 400);
+    const db = getDb(c.env);
+    await ensureJailRosterSchema(db);
+    const result = await enrichSaltLakeDetails(db);
+    return c.json({ success: true, ...result });
+  } catch (err) {
+    console.error('jail-roster enrich failed:', err);
+    return c.json({ error: 'Enrichment failed' }, 500);
+  }
+});
+
+// GET /pending-details/:county — how many scraped rows still need a profile fetch.
+jailRoster.get('/pending-details/:county', async (c) => {
+  try {
+    const county = c.req.param('county');
+    if (!validCounty(county)) return c.json({ error: 'Invalid county identifier' }, 400);
+    const db = getDb(c.env);
+    await ensureJailRosterSchema(db);
+    return c.json({ county, pending: county === 'salt_lake' ? await countPendingSaltLakeDetails(db) : 0 });
+  } catch (err) {
+    console.error('jail-roster pending-details failed:', err);
+    return c.json({ error: 'Failed to count pending details' }, 500);
   }
 });
 
