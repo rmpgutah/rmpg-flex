@@ -9,7 +9,6 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
-import { safeDateTimeStr } from '../../utils/dateUtils';
 
 interface JobRow {
   id: string; subject: string; subject_type: string; status: string; progress: number;

@@ -2,7 +2,9 @@
 // Worker-safe Firecrawl v1 REST client (no `firecrawl` npm SDK — it pulls
 // node:* deps that break on Workers, same constraint as roboflowAlpr.ts).
 // Verified live 2026-06-15: POST /v1/search → { success, data:[{url,title,
-// description,markdown?}], id }. With scrapeOptions, markdown is inline.
+// description,markdown?}], id } — on the current API tier search does NOT inline
+// markdown even with scrapeOptions, so callers backfill via /v1/scrape →
+// { success, data:{ markdown, metadata } } (parseScrapeResponse reads data.markdown).
 
 const FIRECRAWL_BASE = 'https://api.firecrawl.dev/v1';
 
