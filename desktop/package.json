@@ -109,7 +109,7 @@
   "devDependencies": {
     "@electron/rebuild": "^4.0.4",
     "electron": "^40.10.2",
-    "electron-builder": "^26.15.2"
+    "electron-builder": "^26.15.3"
   },
   "overrides": {
     "@xmldom/xmldom": "0.8.13",
