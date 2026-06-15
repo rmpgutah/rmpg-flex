@@ -41,6 +41,10 @@ import { useVehiclesTab, VehiclesTabList, VehiclesTabDetail, mapDbVehicle } from
 import { usePropertiesTab, PropertiesTabList, PropertiesTabDetail, mapDbProperty } from './records/PropertiesTab';
 import { useEvidenceTab, EvidenceTabList, EvidenceTabDetail } from './records/EvidenceTab';
 import { useBusinessTab, BusinessTabList, BusinessTabDetail } from './records/BusinessTab';
+import SpillmanRecordTabs from './records/spillman/SpillmanRecordTabs';
+import SpillmanMenuBar from './records/spillman/SpillmanMenuBar';
+import SpillmanFormTabs from './records/spillman/SpillmanFormTabs';
+import { RECORD_FORM_SECTIONS } from './records/spillman/recordFormSections';
 
 // ============================================================
 // Constants
@@ -437,33 +441,29 @@ export default function RecordsPage() {
         )}
       </PanelTitleBar>
 
-      {/* Tab Row */}
-      <div className={`${isMobile ? 'px-2' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-1 tab-scroll ${isMobile ? 'overflow-x-auto' : ''}`} role="tablist" aria-label="Record type tabs">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button type="button"
-              key={tab.id}
-              role="tab"
-              aria-selected={activeTab === tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`
-                flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 whitespace-nowrap relative
-                ${activeTab === tab.id
-                  ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700 shadow-sm'
-                  : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 border border-transparent'
-                }
-              `}
-            >
-              <Icon className={`w-3.5 h-3.5 ${activeTab === tab.id ? 'text-brand-400' : ''}`} />
-              {tab.label}
-              <span className={`text-[9px] font-mono tabular-nums ${activeTab === tab.id ? 'text-brand-400' : 'text-rmpg-500'}`}>({tab.count})</span>
-              {activeTab === tab.id && <span className="absolute bottom-0 left-1 right-1 h-[2px] bg-brand-500" />}
-            </button>
-          );
-        })}
-        {/* Archive Toggle */}
-        <button type="button"
+      <SpillmanMenuBar
+        onNew={() => {
+          if (activeTab === 'persons') setNewPersonTrigger(t => t + 1);
+          else if (activeTab === 'vehicles') setNewVehicleTrigger(t => t + 1);
+          else if (activeTab === 'properties') setNewPropertyTrigger(t => t + 1);
+          else if (activeTab === 'businesses') businessState.setShowFormModal(true);
+          else if (activeTab === 'evidence') setNewEvidenceTrigger(t => t + 1);
+        }}
+        onFind={() => {
+          const el = document.querySelector<HTMLInputElement>('.spillman-theme input[type="search"]');
+          el?.focus();
+        }}
+      />
+
+      {/* Tab Row — Spillman silver record-type tabs + archive toggle */}
+      <div className="flex items-stretch border-b border-rmpg-600">
+        <SpillmanRecordTabs
+          tabs={tabs.map(t => ({ id: t.id, label: t.label, count: t.count }))}
+          activeTab={activeTab}
+          onSelect={(id) => setActiveTab(id)}
+        />
+        <button
+          type="button"
           onClick={() => setShowArchived(!showArchived)}
           className={`ml-auto flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border whitespace-nowrap ${
             showArchived
@@ -600,8 +600,15 @@ export default function RecordsPage() {
         </button>
       </PanelTitleBar>
 
+      {hasSelection && RECORD_FORM_SECTIONS[activeTab as keyof typeof RECORD_FORM_SECTIONS]?.length > 0 && (
+        <SpillmanFormTabs
+          key={`${activeTab}-${personsState.selectedPerson?.id ?? 'none'}`}
+          sections={RECORD_FORM_SECTIONS[activeTab as keyof typeof RECORD_FORM_SECTIONS]}
+        />
+      )}
+
       {/* Active TabDetail Content */}
-      <div className="flex-1 overflow-hidden scrollbar-dark">
+      <div className="records-detail flex-1 overflow-hidden scrollbar-dark">
         {activeTab === 'persons' && <PersonsTabDetail state={personsState} />}
         {activeTab === 'vehicles' && <VehiclesTabDetail state={vehiclesState} />}
         {activeTab === 'properties' && <PropertiesTabDetail state={propertiesState} />}
@@ -628,7 +635,7 @@ export default function RecordsPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full animate-fade-in">
+    <div className="spillman-theme flex flex-col h-full animate-fade-in">
       <SplitPanel
         left={leftPanel}
         right={rightPanel}

@@ -31,7 +31,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
         return (
           <div
             key={`${alert.type}-${alert.entity_id || index}`}
-            className="w-full flex items-center gap-3 px-3 py-2"
+            className={`alert-banner-row ${isCritical ? 'alert-banner-critical' : 'alert-banner-warning'} w-full flex items-center gap-3 px-3 py-2`}
             style={{
               background: isCritical
                 ? 'rgba(220, 38, 38, 0.3)'
