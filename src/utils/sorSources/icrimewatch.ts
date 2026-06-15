@@ -9,6 +9,15 @@ const BASE = 'https://www.icrimewatch.net';
 const MAX_PER_RUN = 2_000;
 const PER_PAGE_DELAY_MS = 1_200;
 const INCREMENTAL_STOP_STREAK = 25;
+// Cron cadence — a statewide scrape is heavy and every Firecrawl call is
+// billable, so the 4-hourly cron only actually scrapes every N days. The
+// admin "Run SOR import" route bypasses this (it calls runIcrimewatchScan
+// directly). Throttle state lives in KV (no system_config composite-unique
+// write gotcha). Override via KV key 'icw:scan-interval-days'.
+const SCAN_INTERVAL_DAYS = 7;
+const KV_LAST_SCAN = 'icw:last-scan';
+const KV_INTERVAL = 'icw:scan-interval-days';
+const DAY_MS = 86_400_000;
 
 export function buildSearchUrl(lastName?: string): string {
   return lastName
@@ -93,5 +102,38 @@ export async function runIcrimewatchScan(env: Bindings, opts: IcwScanOpts = {}):
       VALUES ('error', ?, ?, ?)`, seen, upserted, `icrimewatch: ${msg.slice(0, 180)}`).catch(() => {});
     return { configured: true, seen, upserted, error: msg };
   }
+}
+
+/** Pure cadence gate — due when never run, unparseable, or interval elapsed. */
+export function isIcwScanDue(lastIso: string | null, nowMs: number, intervalDays = SCAN_INTERVAL_DAYS): boolean {
+  if (!lastIso) return true;
+  const t = Date.parse(lastIso);
+  if (!Number.isFinite(t)) return true;
+  return nowMs - t >= intervalDays * DAY_MS;
+}
+
+/**
+ * Cron entry point: run an incremental scrape only when the per-source cadence
+ * is due, then stamp KV. No-op (skipped) when not due. Honors the spec's
+ * "gated by its own cadence" requirement so the 4-hourly cron doesn't hit the
+ * billable Firecrawl API every tick. Stamps only on a configured run so an
+ * unset FIRECRAWL_API_KEY doesn't consume the interval.
+ */
+export async function maybeRunIcrimewatchScanScheduled(
+  env: Bindings,
+  nowMs: number,
+): Promise<IcwScanResult & { skipped?: boolean }> {
+  const last = await env.KV.get(KV_LAST_SCAN).catch(() => null);
+  const intervalRaw = await env.KV.get(KV_INTERVAL).catch(() => null);
+  const interval = Number(intervalRaw);
+  const days = Number.isFinite(interval) && interval > 0 ? interval : SCAN_INTERVAL_DAYS;
+  if (!isIcwScanDue(last, nowMs, days)) {
+    return { configured: true, seen: 0, upserted: 0, skipped: true };
+  }
+  const result = await runIcrimewatchScan(env, { mode: 'incremental' });
+  if (result.configured) {
+    await env.KV.put(KV_LAST_SCAN, new Date(nowMs).toISOString()).catch(() => {});
+  }
+  return result;
 }
 
