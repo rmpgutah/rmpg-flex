@@ -31,7 +31,7 @@ RMPG Flex is a **police CAD/RMS** (Computer-Aided Dispatch / Records Management 
 | Frontend | React 18 + TypeScript + Vite 6 + Tailwind (built to `client/dist/`, deployed to Cloudflare Pages project `rmpg-flex`) |
 | Maps | **Mapbox GL JS** (overrides the legacy "Google Maps only" rule, which was anti-fragmentation for the VPS — see `[[project-mapbox-decision]]` memory) |
 | Edge | Python edge runner for Flex Dashcam AI (`edge/`, Jetson target) — independent of the Worker |
-| Styling | Spillman Flex / Motorola Solutions pure-black theme — `#000000` base, `#d4a017` gold, zero blue |
+| Styling | Spillman Flex day/night theme — **night (default)** = dark steel-blue Spillman (`surface-base #0d1722`), **day** = light-grey Spillman, auto-switching on a shift schedule (06:00–18:00 local). Colors come from CSS-variable-backed Tailwind tokens in [`client/src/styles/theme-palettes.css`](client/src/styles/theme-palettes.css) (the single source of palette truth) — **never hardcode hex**. Brand gold stays `#d4a017`. "Zero blue" is no longer a rule — steel-blue is the new identity. (The old pure-black `#000000` default is now a legacy kill-switch only — see Design tokens below.) |
 
 ## Repository Layout
 
@@ -211,7 +211,10 @@ export default function SomePage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="SECTION TITLE" icon={SomeIcon} />
-      {/* Surface tokens: bg-surface-base #000000, raised #0b0b0b, sunken #000000 */}
+      {/* Surfaces are theme-variable-backed — use the rmpg/brand/surface Tailwind tokens
+          (e.g. bg-surface-base, bg-surface-raised, text-brand-400). They re-theme automatically
+          between night and day; never hardcode hex. Night vs day values live in
+          client/src/styles/theme-palettes.css. */}
     </div>
   );
 }
@@ -222,11 +225,19 @@ export default function SomePage() {
 ### Icon-only buttons
 Use `<IconButton aria-label="...">` from `client/src/components/IconButton.tsx`. The `aria-label` is a required TS prop — that's the only enforcement; no ESLint a11y plugin runs in `client/`.
 
-### Design tokens (Spillman / Motorola pure-black)
-- Surfaces: `#000000` base, `#0b0b0b` raised, `#000000` sunken, `#000000` deep (base/sunken/deep are all true `#000` in the pure-black theme; `raised` `#0b0b0b` + `overlay` `#030303` are the only non-black surfaces. The old `#0a0a0a`/`#141414`/`#050505` scale was the retired steel-blue theme.)
-- Brand gold: `#d4a017`. Neutral gray: `#888888`. **Zero blue anywhere.**
-- Borders: `#232323` default, `#121212` subtle, `#3a3a3a` strong (`strong` was bumped from the old steel-blue `#2e2e2e` to `#3a3a3a` in the 2026-04-08 pure-black redesign for visibility on the `#000` base — `:root` in `client/src/index.css` is the source of truth)
+### Design tokens (Spillman day/night theme)
+The app has a **system-wide day/night theme** (PR #1277 + #1279). **Night is the default** (dark steel-blue Spillman); **day** is a light-grey Spillman skin. The two auto-switch on a shift schedule (06:00–18:00 local = day). **Do not hardcode hex** — every surface/brand/border color is a CSS variable, and the same Tailwind token re-themes between night and day by swapping the variable.
+
+- **Palette source of truth:** [`client/src/styles/theme-palettes.css`](client/src/styles/theme-palettes.css). Three blocks — night (`:root, html.theme-dark, .tactical-dark`, steel-blue), day (`html.theme-light`, light grey, scale inverted), and the legacy kill-switch (`html.theme-legacy-black`, pure-black restore). The `rmpg-*`/`brand-*`/`surface-*`/`blue-*` Tailwind tokens in `client/tailwind.config.js` are `rgb(var(--x-rgb)/<alpha-value>)`, so a component using `bg-rmpg-700`/`text-brand-400` re-themes with zero code changes.
+- **Brand gold stays `#d4a017`.** Neutral gray `#888888`. **"Zero blue" is no longer a rule** — steel-blue is the new identity.
+- **Theme engine** — all resolve identically as `legacy → active override → schedule`:
+  - [`client/src/utils/themeSchedule.ts`](client/src/utils/themeSchedule.ts) (pure `resolveScheduledTheme`/`resolveEffectiveTheme`, unit-tested) + [`theme.ts`](client/src/utils/theme.ts) (`resolveCurrentTheme`, `readThemeOverride`/`writeThemeOverride`, `isLegacyBlackForced`).
+  - `UserPreferencesContext` controller re-applies every 60s + on focus/visibility.
+  - The inline pre-paint boot script in `client/index.html` (resolves the same way to avoid FOUC).
+  - **Keys:** localStorage `rmpg_theme_override` = `{theme:'dark'|'light', active:boolean}` is the source of truth (manual pick = `active:true`, Auto = `active:false`). **`rmpg_theme_legacy='1'` is a kill-switch** that restores the old pure-black theme instantly, no deploy.
+- **Tactical surfaces stay dark always** via the `.tactical-dark` class — live **Map / dashcam & body-cam HUDs / MDT / turn-by-turn Nav** (a bright map at night blinds a driver), regardless of day/night.
 - Radius: **2 px everywhere** — never `rounded-lg`. Global Tailwind override at the end of `client/src/index.css` enforces this with `!important`.
+- ⚠️ Phase 2/3 tail: ~12k raw-hex values still live in individual components (`docs/theme-hex-audit-baseline.txt` sizes it). Shared surfaces re-theme; per-page hardcoded hex does not. When you touch a page, prefer migrating its hex to tokens.
 - Tables: header `font-semibold` 9 px, `py-[3px]`; rows 11 px, `py-[2px]`. No pill badges.
 
 ## Testing & CI
