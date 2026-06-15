@@ -60,7 +60,7 @@ export default function MapSidebar({
       className={`flex flex-col panel-beveled transition-all duration-200 overflow-hidden ${sidebarOpen ? 'shadow-lg' : ''}`}
       style={{
         width: sidebarOpen ? 'clamp(220px, 20vw, 300px)' : 36,
-        background: '#0b0b0b',
+        background: 'var(--surface-raised)',
         flexShrink: 0,
       }}
       aria-label="Map sidebar"
@@ -79,7 +79,7 @@ export default function MapSidebar({
       {sidebarOpen && (
         <>
           {/* Compact status counters */}
-          <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#050505' }}>
+          <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: 'var(--surface-sunken)' }}>
             {([
               { label: 'AVL', count: unitsByStatus['available'] || 0, color: '#22c55e' },
               { label: 'DSP', count: unitsByStatus['dispatched'] || 0, color: '#f59e0b' },

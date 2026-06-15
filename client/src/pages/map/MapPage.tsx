@@ -3789,7 +3789,7 @@ export default function MapPage() {
                 )}
               </div>
               {showAddressResults && addressResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-[#0a0a0a]/95 border border-[#2e2e2e] shadow-md backdrop-blur-md overflow-y-auto scrollbar-dark" style={{ borderRadius: 2, maxHeight: 260 }} role="listbox">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-surface-overlay/95 border border-border-default shadow-md backdrop-blur-md overflow-y-auto scrollbar-dark" style={{ borderRadius: 2, maxHeight: 260 }} role="listbox">
                   {addressResults.map((r) => (
                     <button
                       key={r.place_id}
@@ -3797,7 +3797,7 @@ export default function MapPage() {
                       onMouseDown={(e) => e.preventDefault()}
                       onTouchStart={(e) => e.preventDefault()}
                       onClick={() => handleAddressSelect(r.center, r.description)}
-                      className="w-full text-left px-4 py-3 text-[12px] text-white/80 hover:bg-white/10 hover:text-white transition-colors border-b border-white/10 last:border-0 flex items-center gap-2"
+                      className="w-full text-left px-4 py-3 text-[12px] text-white/80 hover:bg-rmpg-700/50 hover:text-white transition-colors border-b border-white/10 last:border-0 flex items-center gap-2"
                       style={{ minHeight: 44 }}
                     >
                       <MapPin className="w-4 h-4 text-gray-400 shrink-0" />
@@ -3858,7 +3858,7 @@ export default function MapPage() {
                 )}
               </div>
               {showAddressResults && addressResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-[#0a0a0a]/95 border border-[#2e2e2e] shadow-md backdrop-blur-md overflow-y-auto scrollbar-dark" style={{ borderRadius: 2, maxHeight: 240 }} role="listbox">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-surface-overlay/95 border border-border-default shadow-md backdrop-blur-md overflow-y-auto scrollbar-dark" style={{ borderRadius: 2, maxHeight: 240 }} role="listbox">
                   {addressResults.map((r) => (
                     <button
                       key={r.place_id}
@@ -3876,7 +3876,7 @@ export default function MapPage() {
               )}
               {/* Navigate / Dispatch action panel for a selected address */}
               {selectedAddr && !showAddressResults && !navActive && (
-                <div className="absolute top-full left-0 mt-1 bg-[#0a0a0a]/95 border border-[#2e2e2e] shadow-md backdrop-blur-md p-2 space-y-1.5" style={{ borderRadius: 2, width: 240 }}>
+                <div className="absolute top-full left-0 mt-1 bg-surface-overlay/95 border border-border-default shadow-md backdrop-blur-md p-2 space-y-1.5" style={{ borderRadius: 2, width: 240 }}>
                   <div className="text-[9px] text-rmpg-300 truncate flex items-center gap-1">
                     <MapPin className="w-3 h-3 text-brand-400 shrink-0" />
                     <span className="truncate">{selectedAddr.label}</span>
@@ -3898,7 +3898,7 @@ export default function MapPage() {
                     </button>
                   </div>
                   {showDispatchHere && (
-                    <div className="space-y-1 pt-1 border-t border-[#1a1a1a]">
+                    <div className="space-y-1 pt-1 border-t border-border-subtle">
                       <input id="ff-mappage-2"
                         value={dispatchIncidentType}
                         onChange={(e) => setDispatchIncidentType(e.target.value)}
