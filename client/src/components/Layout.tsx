@@ -121,7 +121,7 @@ import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
 import LocationGate from './LocationGate';
 import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
-import { applyThemePreference } from '../utils/theme';
+import { applyThemePreference, writeThemeOverride } from '../utils/theme';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -1160,9 +1160,11 @@ export default function Layout() {
                 onClick={() => {
                   const html = document.documentElement;
                   const isLight = html.classList.contains('theme-light');
-                  applyThemePreference(isLight ? 'dark' : 'light');
-                  // Persist via API
-                  apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: isLight ? 'dark' : 'light' }) }).catch(() => {});
+                  const next = isLight ? 'dark' : 'light';
+                  writeThemeOverride({ theme: next, active: true });
+                  applyThemePreference(next);
+                  // Persist via API (best-effort mirror)
+                  apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: next }) }).catch(() => {});
                 }}
                 className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97]"
                 title="Toggle Light/Dark Theme"
