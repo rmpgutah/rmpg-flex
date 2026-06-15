@@ -460,16 +460,10 @@ export default function RecordsPage() {
         }}
         onPrint={() => window.print()}
         onDuplicates={() => setShowDuplicatesModal(true)}
-        onRefresh={() => {
-          if (activeTab === 'persons') fetchPersons();
-          else if (activeTab === 'vehicles') fetchVehicles();
-          else if (activeTab === 'properties') fetchProperties();
-          else if (activeTab === 'evidence') fetchEvidence();
-          else fetchPersons(); // businesses: no exposed reload, no-harm fallback
-        }}
+        onRefresh={() => { fetchPersons(); fetchVehicles(); fetchProperties(); fetchEvidence(); }}
         onToggleArchive={() => setShowArchived(v => !v)}
         onClose={closeSelection}
-        onShortcuts={() => addToast('Shortcuts: / search · Esc close · N new', 'info')}
+        onShortcuts={() => addToast('Shortcuts: type to search records · Esc closes the open panel', 'info')}
         onExport={() => {
           const exportConfigs: Record<string, { url: string; filename: string }> = {
             persons:    { url: `/records/persons/export?format=csv&archived=${showArchived}`,    filename: 'persons_export.csv' },
