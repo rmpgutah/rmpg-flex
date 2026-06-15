@@ -1810,6 +1810,12 @@ const API_ROUTES: RouteRule[] = [
   // ── Prefixes with rewrite handlers but no proxy route ─────────────
   // These have real handlers in routesConfig.ts but were falling through
   // to legacy because the proxy never routed them.
+  // Firecrawl-backed routes: FIRECRAWL_API_KEY is set on env.API
+  // (rmpg-flex-api) only, so these MUST route there — falling through to
+  // env.LEGACY (rmpg-flex, no key) returns 503 "FIRECRAWL_API_KEY not
+  // configured" / NO_KEY. (firecrawl-tools above already routes to env.API.)
+  { kind: 'prefix', value: '/api/sor-sources' },
+  { kind: 'prefix', value: '/api/deep-research' },
   { kind: 'prefix', value: '/api/cases' },
   { kind: 'prefix', value: '/api/citations' },
   { kind: 'prefix', value: '/api/court' },
