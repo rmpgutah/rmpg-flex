@@ -1,6 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@import './styles/theme-palettes.css';
 
 /* ============================================================
    RMPG Flex - Custom Styles
@@ -10,29 +11,8 @@
 
 /* --- Theme Custom Properties ─────────────────────────────── */
 :root {
-  /* Dark Mode (default) — main's pure-black Spillman palette. */
-  --surface-base: #000000;
-  --surface-raised: #0b0b0b;
-  --surface-sunken: #000000;
-  --surface-overlay: #030303;
-  --surface-deep: #000000;
-  /* RGB channels (space-separated) for Tailwind's <alpha-value> substitution.
-     Needed so bg-surface-sunken/50 etc. work. Keep in sync with the hex
-     values above — same colors, different encoding. */
-  --surface-base-rgb: 0 0 0;
-  --surface-raised-rgb: 11 11 11;
-  --surface-sunken-rgb: 0 0 0;
-  --surface-overlay-rgb: 3 3 3;
-  --surface-deep-rgb: 0 0 0;
-  --border-default: #232323;
-  --border-subtle: #121212;
-  --border-strong: #3a3a3a;
-  --border-panel: #262626;
-  --text-primary: #f2f2f2;
-  --text-secondary: #cfcfcf;
-  --text-muted: #8a8a8a;
-  --brand-blue: #9a9a9a;
-  --brand-gold: #d4a017;
+  /* Surface, border, text, and brand-color vars are now owned by
+     client/src/styles/theme-palettes.css (imported above). */
   --toolbar-gradient-start: #0b0b0b;
   --toolbar-gradient-end: #101010;
   --grid-header-bg: #050505;
@@ -4057,26 +4037,7 @@ html.font-large { font-size: 19px; }
    pure-black default).
    ============================================================ */
 html.theme-light {
-  --surface-base: #0d2a4d;
-  --surface-raised: #153a6a;
-  --surface-sunken: #081e3d;
-  --surface-overlay: #061630;
-  --surface-deep: #041022;
-  /* Light-mode RGB channels for Tailwind's <alpha-value> — same colors as
-     the hex values above, different encoding. */
-  --surface-base-rgb: 13 42 77;
-  --surface-raised-rgb: 21 58 106;
-  --surface-sunken-rgb: 8 30 61;
-  --surface-overlay-rgb: 6 22 48;
-  --surface-deep-rgb: 4 16 34;
-  --border-default: #2a5a9e;
-  --border-subtle: #234d87;
-  --border-strong: #3a75c2;
-  --border-panel: #2a5a9e;
-  --text-primary: #e5e7eb;
-  --text-secondary: #c4d3e6;
-  --text-muted: #9bb4d0;
-  --brand-blue: #2a75c2;
+  /* --surface-*, --border-*, --text-*, --brand-blue/gold are now in theme-palettes.css */
   --toolbar-gradient-start: #2a75c2;
   --toolbar-gradient-end: #3a8fd9;
   --grid-header-bg: #102f55;
@@ -4107,25 +4068,6 @@ html:not(.theme-light) {
   color-scheme: dark;
   background-color: #000000;
 }
-
-html.theme-light .bg-surface-base { background: var(--surface-base) !important; }
-html.theme-light .bg-surface-raised { background: var(--surface-raised) !important; }
-html.theme-light .bg-surface-sunken { background: var(--surface-sunken) !important; }
-html.theme-light .bg-surface-base.text-white,
-html.theme-light .bg-surface-raised.text-white,
-html.theme-light .bg-surface-sunken.text-white,
-html.theme-light .panel-beveled.text-white,
-html.theme-light .panel-surface.text-white,
-html.theme-light .panel-surface.text-white {
-  color: var(--text-primary) !important;
-}
-html.theme-light .text-rmpg-300 { color: var(--text-secondary) !important; }
-html.theme-light .text-rmpg-400 { color: var(--text-secondary) !important; }
-html.theme-light .text-rmpg-500 { color: var(--text-muted) !important; }
-html.theme-light .border-rmpg-700 { border-color: var(--border-default) !important; }
-html.theme-light .border-rmpg-800 { border-color: var(--border-subtle) !important; }
-html.theme-light .panel-beveled { background: var(--surface-raised) !important; border-color: var(--border-default) !important; }
-html.theme-light .panel-surface { background: var(--surface-raised) !important; }
 
 /* ============================================================
    Feature 39: Enhanced Print Stylesheet for Detail Views

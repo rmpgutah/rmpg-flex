@@ -1,0 +1,88 @@
+/* ============================================================
+   Spillman day/night palettes — single source of palette truth.
+   NIGHT (dark steel-blue) is the default (:root + html.theme-dark).
+   DAY (light grey) is html.theme-light. The rmpg/brand/blue scales
+   INVERT between themes (a dark-surface shade at night becomes a
+   light surface in day). Channels are "R G B" for Tailwind's
+   rgb(var(--x) / <alpha-value>) opacity support.
+   theme-legacy-black restores the pre-refactor pure-black palette.
+   ============================================================ */
+
+/* ---- NIGHT (default) ---- */
+:root,
+html.theme-dark {
+  --surface-base: #0d1722;  --surface-base-rgb: 13 23 34;
+  --surface-raised: #15212e; --surface-raised-rgb: 21 33 46;
+  --surface-sunken: #0a1018; --surface-sunken-rgb: 10 16 24;
+  --surface-overlay: #060b10; --surface-overlay-rgb: 6 11 16;
+  --surface-deep: #060b10;   --surface-deep-rgb: 6 11 16;
+  --border-default: #2a3a4d; --border-subtle: #1e2b3a; --border-strong: #3a4f66; --border-panel: #243a52;
+  --text-primary: #e6edf5; --text-secondary: #c3d0de; --text-muted: #8fa3b8;
+  --brand-gold: #d4a017; --brand-blue: #5a85b8;
+
+  --rmpg-50-rgb: 237 241 246; --rmpg-100-rgb: 214 221 230; --rmpg-200-rgb: 184 195 208;
+  --rmpg-300-rgb: 150 165 184; --rmpg-400-rgb: 122 140 162; --rmpg-500-rgb: 92 110 132;
+  --rmpg-600-rgb: 60 80 102;  --rmpg-700-rgb: 30 43 58;    --rmpg-800-rgb: 21 33 46;
+  --rmpg-900-rgb: 13 23 34;   --rmpg-950-rgb: 6 11 16;
+  --brand-50-rgb: 242 244 247; --brand-100-rgb: 221 226 232; --brand-200-rgb: 191 199 209;
+  --brand-300-rgb: 158 169 183; --brand-400-rgb: 127 140 158; --brand-500-rgb: 102 116 134;
+  --brand-600-rgb: 76 90 108;  --brand-700-rgb: 52 66 82;    --brand-800-rgb: 31 43 56;
+  --brand-900-rgb: 14 22 32;
+  --blue-50-rgb: 241 244 247; --blue-100-rgb: 217 223 230; --blue-200-rgb: 189 199 209;
+  --blue-300-rgb: 161 173 187; --blue-400-rgb: 122 140 162; --blue-500-rgb: 92 110 132;
+  --blue-600-rgb: 60 80 102;  --blue-700-rgb: 30 43 58;     --blue-800-rgb: 21 33 46;
+  --blue-900-rgb: 13 23 34;
+  --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
+  --brand-gold-600-rgb: 184 136 15; --brand-gold-700-rgb: 147 108 10;
+}
+
+/* ---- DAY (light grey Spillman; scale INVERTED) ---- */
+html.theme-light {
+  --surface-base: #ece9dd;  --surface-base-rgb: 236 233 221;
+  --surface-raised: #ffffff; --surface-raised-rgb: 255 255 255;
+  --surface-sunken: #d6d3c8; --surface-sunken-rgb: 214 211 200;
+  --surface-overlay: #ffffff; --surface-overlay-rgb: 255 255 255;
+  --surface-deep: #c9c5b8;   --surface-deep-rgb: 201 197 184;
+  --border-default: #9a958a; --border-subtle: #c3cdd8; --border-strong: #6f7b8a; --border-panel: #9a958a;
+  --text-primary: #1a1a1a; --text-secondary: #33312b; --text-muted: #555555;
+  --brand-gold: #936c0a; --brand-blue: #2e4a66;
+
+  --rmpg-50-rgb: 26 26 26;   --rmpg-100-rgb: 51 49 43;   --rmpg-200-rgb: 85 85 85;
+  --rmpg-300-rgb: 90 90 90;  --rmpg-400-rgb: 85 85 85;   --rmpg-500-rgb: 110 110 110;
+  --rmpg-600-rgb: 154 149 138; --rmpg-700-rgb: 214 211 200; --rmpg-800-rgb: 236 233 221;
+  --rmpg-900-rgb: 247 249 251; --rmpg-950-rgb: 255 255 255;
+  --brand-50-rgb: 26 26 26;  --brand-100-rgb: 51 49 43;  --brand-200-rgb: 85 85 85;
+  --brand-300-rgb: 90 90 90; --brand-400-rgb: 85 85 85;  --brand-500-rgb: 110 110 110;
+  --brand-600-rgb: 154 149 138; --brand-700-rgb: 214 211 200; --brand-800-rgb: 236 233 221;
+  --brand-900-rgb: 247 249 251;
+  --blue-50-rgb: 26 26 26;   --blue-100-rgb: 51 49 43;   --blue-200-rgb: 85 85 85;
+  --blue-300-rgb: 90 90 90;  --blue-400-rgb: 46 74 102;  --blue-500-rgb: 49 106 197;
+  --blue-600-rgb: 154 149 138; --blue-700-rgb: 214 211 200; --blue-800-rgb: 236 233 221;
+  --blue-900-rgb: 247 249 251;
+  --brand-gold-300-rgb: 147 108 10; --brand-gold-400-rgb: 147 108 10; --brand-gold-500-rgb: 147 108 10;
+  --brand-gold-600-rgb: 120 88 8;   --brand-gold-700-rgb: 100 73 7;
+}
+
+/* ---- LEGACY BLACK (kill-switch; pure-black pre-refactor) ---- */
+html.theme-legacy-black {
+  --surface-base: #000000; --surface-base-rgb: 0 0 0;
+  --surface-raised: #0b0b0b; --surface-raised-rgb: 11 11 11;
+  --surface-sunken: #000000; --surface-sunken-rgb: 0 0 0;
+  --surface-overlay: #030303; --surface-overlay-rgb: 3 3 3;
+  --surface-deep: #000000; --surface-deep-rgb: 0 0 0;
+  --border-default: #232323; --border-subtle: #121212; --border-strong: #3a3a3a; --border-panel: #262626;
+  --text-primary: #f2f2f2; --text-secondary: #cfcfcf; --text-muted: #8a8a8a;
+  --brand-blue: #9a9a9a; --brand-gold: #d4a017;
+  --rmpg-50-rgb: 237 237 237; --rmpg-100-rgb: 214 214 214; --rmpg-200-rgb: 184 184 184;
+  --rmpg-300-rgb: 150 150 150; --rmpg-400-rgb: 117 117 117; --rmpg-500-rgb: 90 90 90;
+  --rmpg-600-rgb: 67 67 67; --rmpg-700-rgb: 45 45 45; --rmpg-800-rgb: 27 27 27;
+  --rmpg-900-rgb: 13 13 13; --rmpg-950-rgb: 3 3 3;
+  --brand-50-rgb: 242 242 242; --brand-100-rgb: 221 221 221; --brand-200-rgb: 191 191 191;
+  --brand-300-rgb: 158 158 158; --brand-400-rgb: 127 127 127; --brand-500-rgb: 102 102 102;
+  --brand-600-rgb: 76 76 76; --brand-700-rgb: 52 52 52; --brand-800-rgb: 31 31 31; --brand-900-rgb: 14 14 14;
+  --blue-50-rgb: 241 241 241; --blue-100-rgb: 217 217 217; --blue-200-rgb: 189 189 189;
+  --blue-300-rgb: 161 161 161; --blue-400-rgb: 200 200 200; --blue-500-rgb: 154 154 154;
+  --blue-600-rgb: 115 115 115; --blue-700-rgb: 79 79 79; --blue-800-rgb: 46 46 46; --blue-900-rgb: 20 20 20;
+  --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
+  --brand-gold-600-rgb: 184 136 15; --brand-gold-700-rgb: 147 108 10;
+}
