@@ -242,7 +242,9 @@ export default function AdminGodModeTab() {
 
   const handleForceCloseAll = async () => {
     try {
-      const r = await apiFetch<any>('/admin/calls/force-close-all', {
+      // Mounted at /api/dispatch/calls in the Worker (calls.post('/force-close-all')).
+      // The old /admin/calls/force-close-all had no route — this button 404'd.
+      const r = await apiFetch<any>('/dispatch/calls/force-close-all', {
         method: 'POST', body: JSON.stringify({ disposition: closeDisposition }),
       });
       showResult('success', `Force-closed ${r.closed} open calls`);
