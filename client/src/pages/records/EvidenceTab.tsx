@@ -554,6 +554,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
       <div className="border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
         <RecordHero
           name={selectedEvidence.evidence_number || 'EVIDENCE'}
+          icon={Package}
           subtitle={
             <span className="flex items-center gap-2 flex-wrap">
               <span className="uppercase font-semibold text-purple-300">{(selectedEvidence.evidence_type || 'physical').replace(/_/g, ' ')}</span>

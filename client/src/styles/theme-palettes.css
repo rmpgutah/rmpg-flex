@@ -20,6 +20,10 @@ html.theme-dark,
   --border-default: #2a3a4d; --border-subtle: #1e2b3a; --border-strong: #3a4f66; --border-panel: #243a52;
   --text-primary: #e6edf5; --text-secondary: #c3d0de; --text-muted: #8fa3b8;
   --brand-gold: #d4a017; --brand-blue: #5a85b8;
+  /* Record-icon tile — steel-blue accent for no-photo glyph tiles (persons/vehicles/properties/business).
+     Replaces the old per-list "black box + dull initials" look with one legible, on-system blue. */
+  --record-tile-bg: #17304a; --record-tile-border: #34618f; --record-tile-fg: #7db4ec;
+  --record-tile-bg-muted: #15212e; --record-tile-border-muted: #2a3a4d; --record-tile-fg-muted: #6b7d92;
 
   /* StatsCard accent glow colors — semantic status hues are CONSTANT across
      themes (a "success green" stays green in day + night); the default/"blue"
@@ -95,6 +99,9 @@ html.theme-light {
   --border-default: #9a958a; --border-subtle: #c3cdd8; --border-strong: #6f7b8a; --border-panel: #9a958a;
   --text-primary: #1a1a1a; --text-secondary: #33312b; --text-muted: #555555;
   --brand-gold: #936c0a; --brand-blue: #2e4a66;
+  /* Record-icon tile — day (light-grey) steel-blue on white surfaces. */
+  --record-tile-bg: #dceaf7; --record-tile-border: #5b86b6; --record-tile-fg: #2c659f;
+  --record-tile-bg-muted: #e7e4d9; --record-tile-border-muted: #9a958a; --record-tile-fg-muted: #6f7b8a;
 
   /* rmpg — DAY: small idx = dark text (monotonic, all legible on light), large idx = light surfaces */
   --rmpg-50-rgb: 26 26 26;   --rmpg-100-rgb: 40 40 40;   --rmpg-200-rgb: 55 55 55;
@@ -155,6 +162,9 @@ html.theme-legacy-black {
   --border-default: #232323; --border-subtle: #121212; --border-strong: #3a3a3a; --border-panel: #262626;
   --text-primary: #f2f2f2; --text-secondary: #cfcfcf; --text-muted: #8a8a8a;
   --brand-blue: #9a9a9a; --brand-gold: #d4a017;
+  /* Record-icon tile — legacy pure-black keeps a restrained dark steel-blue accent. */
+  --record-tile-bg: #14202c; --record-tile-border: #2f5070; --record-tile-fg: #6f9fce;
+  --record-tile-bg-muted: #141414; --record-tile-border-muted: #2d2d2d; --record-tile-fg-muted: #8a8a8a;
   --rmpg-50-rgb: 237 237 237; --rmpg-100-rgb: 214 214 214; --rmpg-200-rgb: 184 184 184;
   --rmpg-300-rgb: 150 150 150; --rmpg-400-rgb: 117 117 117; --rmpg-500-rgb: 90 90 90;
   --rmpg-600-rgb: 67 67 67; --rmpg-700-rgb: 45 45 45; --rmpg-800-rgb: 27 27 27;

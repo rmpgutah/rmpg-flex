@@ -16,6 +16,8 @@ import RecordField from '../../components/records/RecordField';
 import FieldGrid from '../../components/records/FieldGrid';
 import RecordBadge from '../../components/records/RecordBadge';
 import RecordHero from '../../components/records/RecordHero';
+import RecordAvatar from '../../components/records/RecordAvatar';
+import { propertyIcon } from '../../components/records/recordIcons';
 import type { Property, RecordEntityType } from '../../types';
 import type { PropertyFormData } from '../../components/PropertyFormModal';
 
@@ -380,11 +382,15 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
             aria-selected={selectedProperty?.id === prop.id}
           >
             <div className="flex items-start gap-3">
-              <div className={`flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center border ${
-                prop.is_active ? 'bg-brand-900/30 text-brand-400 border-brand-700/50' : 'bg-rmpg-800 text-rmpg-500 border-rmpg-600'
-              }`}>
-                <Building2 className="w-4 h-4" />
-              </div>
+              {/* Building-type glyph (residential→home, retail→store, …) on the
+                  standard blue tile; muted/grey when the property is inactive. */}
+              <RecordAvatar
+                name={prop.name || 'property'}
+                icon={propertyIcon(prop)}
+                muted={!prop.is_active}
+                cornerBadge={prop.hazard_notes ? { code: 'HAZARD', tone: 'red', pulse: false } : null}
+                size={36}
+              />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <h4 className="text-sm font-bold text-white truncate">{prop.name}</h4>
@@ -483,6 +489,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         <RecordHero
           name={selectedProperty.name || propertyAddress || 'PROPERTY'}
           subtitle={<span className="flex items-center gap-1.5"><MapPin className="w-3 h-3 text-rmpg-400" />{propertyAddress}</span>}
+          icon={propertyIcon(selectedProperty)}
           flags={propertyPosturalFlags}
           tone="gold"
         >
