@@ -340,6 +340,13 @@ export default {
           .then((n) => { if (n) console.log(`[watchlist] ${n} alert(s) raised`); })
           .catch((err) => console.error('[watchlist] sweep failed:', err)),
       );
+      // Deep Research monitors — re-run jobs whose monitor interval is due.
+      ctx.waitUntil(
+        import('./utils/deepResearchMonitor')
+          .then(({ sweepDeepResearchMonitors }) => sweepDeepResearchMonitors(env))
+          .then((n) => { if (n) console.log(`[deep-research] re-ran ${n} monitor(s)`); })
+          .catch((err) => console.error('[deep-research] monitor sweep failed:', err)),
+      );
       // Intel cross-hit coverage sweep — screens persons/vehicles
       // created in the last 2 minutes regardless of entry path; critical
       // hits raise anomaly_alerts (dispatch banner). Cheap when idle.

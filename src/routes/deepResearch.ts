@@ -64,7 +64,7 @@ deepResearch.get('/jobs', async (c): Promise<Response> => {
 
 deepResearch.get('/jobs/:id', async (c): Promise<Response> => {
   const id = c.req.param('id');
-  const job = await queryFirst(c.env.DB, `SELECT * FROM deep_research_jobs WHERE id = ?`, id);
+  const job = await queryFirst(c.env.DB, `SELECT * FROM deep_research_jobs WHERE id = ? AND (org_id = ? OR org_id IS NULL)`, id, orgId(c));
   if (!job) return c.json({ error: 'not found' }, 404);
   const sources = await query(c.env.DB, `SELECT id, run_no, url, title, description, angle, scraped FROM research_sources WHERE job_id = ? ORDER BY run_no DESC, id ASC`, id);
   const findings = await query(c.env.DB, `SELECT id, run_no, finding_type, title, detail, confidence, trust, verdict, source_urls_json, status, entity_ref_type, entity_ref_id, is_delta FROM research_findings WHERE job_id = ? ORDER BY run_no DESC, trust DESC`, id);
@@ -73,7 +73,7 @@ deepResearch.get('/jobs/:id', async (c): Promise<Response> => {
 
 deepResearch.post('/jobs/:id/rerun', async (c): Promise<Response> => {
   const id = c.req.param('id');
-  const job = await queryFirst<any>(c.env.DB, `SELECT * FROM deep_research_jobs WHERE id = ?`, id);
+  const job = await queryFirst<any>(c.env.DB, `SELECT * FROM deep_research_jobs WHERE id = ? AND (org_id = ? OR org_id IS NULL)`, id, orgId(c));
   if (!job) return c.json({ error: 'not found' }, 404);
   const runNo = (job.run_count || 1) + 1;
   await execute(c.env.DB, `UPDATE deep_research_jobs SET status='queued', progress=0, run_count=?, updated_at=datetime('now') WHERE id=?`, runNo, id);
@@ -87,6 +87,8 @@ deepResearch.post('/jobs/:id/rerun', async (c): Promise<Response> => {
 
 deepResearch.put('/jobs/:id/monitor', async (c): Promise<Response> => {
   const id = c.req.param('id');
+  const owned = await queryFirst(c.env.DB, `SELECT id FROM deep_research_jobs WHERE id = ? AND (org_id = ? OR org_id IS NULL)`, id, orgId(c));
+  if (!owned) return c.json({ error: 'not found' }, 404);
   const body = await c.req.json().catch(() => ({} as any));
   const days = Number.isFinite(body.monitor_interval_days) && body.monitor_interval_days > 0 ? Math.floor(body.monitor_interval_days) : null;
   const next = days ? new Date(Date.now() + days * 86400000).toISOString() : null;
@@ -96,6 +98,8 @@ deepResearch.put('/jobs/:id/monitor', async (c): Promise<Response> => {
 
 deepResearch.delete('/jobs/:id', async (c): Promise<Response> => {
   const id = c.req.param('id');
+  const owned = await queryFirst(c.env.DB, `SELECT id FROM deep_research_jobs WHERE id = ? AND (org_id = ? OR org_id IS NULL)`, id, orgId(c));
+  if (!owned) return c.json({ error: 'not found' }, 404);
   await execute(c.env.DB, `DELETE FROM research_findings WHERE job_id = ?`, id);
   await execute(c.env.DB, `DELETE FROM research_sources WHERE job_id = ?`, id);
   await execute(c.env.DB, `DELETE FROM research_runs WHERE job_id = ?`, id);
@@ -108,7 +112,8 @@ deepResearch.post('/findings/:id/confirm', async (c): Promise<Response> => {
   const body = await c.req.json().catch(() => ({} as any));
   const refType = body.entity_ref_type ? String(body.entity_ref_type) : null;
   const refId = Number.isFinite(body.entity_ref_id) ? Math.floor(body.entity_ref_id) : null;
-  await execute(c.env.DB, `UPDATE research_findings SET status='confirmed', entity_ref_type=?, entity_ref_id=? WHERE id=?`, refType, refId, id);
+  const r = await execute(c.env.DB, `UPDATE research_findings SET status='confirmed', entity_ref_type=?, entity_ref_id=? WHERE id=? AND (org_id=? OR org_id IS NULL)`, refType, refId, id, orgId(c));
+  if (!r.meta.changes) return c.json({ error: 'not found' }, 404);
   await execute(c.env.DB,
     `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?,?,?,?,?, datetime('now'))`,
     actorId(c), 'deep_research.confirm_finding', 'research_finding', id, JSON.stringify({ refType, refId }));
@@ -117,7 +122,8 @@ deepResearch.post('/findings/:id/confirm', async (c): Promise<Response> => {
 
 deepResearch.post('/findings/:id/dismiss', async (c): Promise<Response> => {
   const id = c.req.param('id');
-  await execute(c.env.DB, `UPDATE research_findings SET status='dismissed' WHERE id=?`, id);
+  const r = await execute(c.env.DB, `UPDATE research_findings SET status='dismissed' WHERE id=? AND (org_id=? OR org_id IS NULL)`, id, orgId(c));
+  if (!r.meta.changes) return c.json({ error: 'not found' }, 404);
   return c.json({ ok: true });
 });
 
