@@ -66,7 +66,7 @@ interface CpgMapping {
   cpg_device_id: string;
   cpg_display_name: string | null;
   cpg_serial_number: string | null;
-  unit_id: number;
+  unit_id: number | null;
   call_sign: string | null;
   unit_status: string | null;
   officer_name: string | null;
@@ -365,6 +365,30 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     }
   };
 
+  // ── Assign a unit to an existing (unlinked) mapping ──
+  const handleBindUnit = async (m: CpgMapping, unitId: number) => {
+    try {
+      await apiFetch('/clearpathgps/mappings', {
+        method: 'POST',
+        body: JSON.stringify({
+          cpg_device_id: m.cpg_device_id,
+          cpg_display_name: m.cpg_display_name,
+          cpg_serial_number: m.cpg_serial_number,
+          unit_id: unitId,
+        }),
+      });
+      await fetchMappings();
+    } catch (e) { setError('Failed to assign unit.'); }
+  };
+
+  // ── Backfill past events for a newly-linked mapping ──
+  const handleRelinkPast = async (mappingId: number) => {
+    try {
+      const r = await apiFetch<{ relinked_events: number }>(`/clearpathgps/mappings/${mappingId}/relink`, { method: 'POST' });
+      setActionResult(`Linked ${r.relinked_events} past event(s) to the unit.`);
+    } catch (e) { setError('Relink failed.'); }
+  };
+
   // ── Toggle history backfill ──
   const handleToggleBackfill = async () => {
     const newVal = !historyBackfill;
@@ -548,8 +572,8 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   // Set document title
   useEffect(() => { document.title = 'Admin - GPS \u2014 RMPG Flex'; }, []);
 
-  // Units that are not already mapped
-  const mappedUnitIds = new Set(mappings.map(m => m.unit_id));
+  // Units that are not already mapped (exclude null unit_id from the blocked set)
+  const mappedUnitIds = new Set(mappings.map(m => m.unit_id).filter((id): id is number => id != null));
   const availableUnits = units.filter(u => !mappedUnitIds.has(u.id));
 
   if (loading) return <LoadingSpinner />;
@@ -832,8 +856,43 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                       <Truck className="w-3 h-3 text-brand-400 shrink-0" />
                       <span className="text-rmpg-200 font-medium">{m.cpg_display_name || m.cpg_device_id}</span>
                       <span className="text-rmpg-600">→</span>
-                      <span className="text-brand-400 font-mono font-medium">{m.call_sign || `Unit #${m.unit_id}`}</span>
-                      {m.officer_name && <span className="text-rmpg-500 text-[10px]">({m.officer_name})</span>}
+                      {m.unit_id == null ? (
+                        <>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-amber-500/20 text-amber-300 border border-amber-500/40 whitespace-nowrap">
+                            Not linked to a unit
+                          </span>
+                          <select
+                            defaultValue=""
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleBindUnit(m, parseInt(e.target.value, 10));
+                                e.target.value = '';
+                              }
+                            }}
+                            className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                          >
+                            <option value="">Assign unit…</option>
+                            {availableUnits.map(u => (
+                              <option key={u.id} value={u.id}>
+                                {u.call_sign} {u.officer_name ? `(${u.officer_name})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-brand-400 font-mono font-medium">{m.call_sign || `Unit #${m.unit_id}`}</span>
+                          {m.officer_name && <span className="text-rmpg-500 text-[10px]">({m.officer_name})</span>}
+                          <button
+                            type="button"
+                            onClick={() => handleRelinkPast(m.id)}
+                            className="text-[9px] px-1.5 py-0.5 rounded-sm bg-surface-sunken border border-rmpg-600 text-rmpg-400 hover:text-rmpg-200 hover:border-rmpg-500 transition-colors whitespace-nowrap"
+                            title="Backfill past events to this unit"
+                          >
+                            Link past events
+                          </button>
+                        </>
+                      )}
                       {m.ignition_state && (
                         <span className={`text-[9px] px-1 py-0.5 rounded-sm ${
                           m.ignition_state === 'on' ? 'text-green-400 bg-green-950/30' : 'text-rmpg-500 bg-surface-sunken'
