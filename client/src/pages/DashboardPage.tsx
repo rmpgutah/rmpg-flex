@@ -1638,6 +1638,7 @@ export default function DashboardPage() {
       })()}
 
       {/* Activity Feed + Operational Alerts Row */}
+      {(hasPanel('recentActivity') || hasPanel('activeUnits')) && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Activity Feed */}
         {hasPanel('recentActivity') && (
@@ -1741,6 +1742,7 @@ export default function DashboardPage() {
         </SpmGroup>
         )}
       </div>
+      )}
 
       {/* Credential Alerts */}
       {hasPanel('alertsReminders') && (
