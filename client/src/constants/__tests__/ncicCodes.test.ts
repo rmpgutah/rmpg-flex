@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   encode, decode, fmtCoded, formatRaceEthnicity,
   normalizeHeight, normalizeWeight,
+  getReferenceTables, getReferenceOffenses,
 } from '../ncicCodes';
 
 describe('person descriptor codes', () => {
@@ -322,5 +323,46 @@ describe('lookupAnyCode (QZ decoder)', () => {
   });
   it('returns empty for nonsense', () => {
     expect(lookupAnyCode('zzzqq')).toEqual([]);
+  });
+});
+
+describe('render-ready reference data (PDF source of truth)', () => {
+  it('getReferenceTables returns all 12 code tables with non-empty titles', () => {
+    const tables = getReferenceTables();
+    expect(tables).toHaveLength(12);
+    for (const t of tables) {
+      expect(t.title.trim().length).toBeGreaterThan(0);
+      expect(t.entries.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('getReferenceTables RACE table contains White (W) and is code-sorted', () => {
+    const race = getReferenceTables().find((t) => t.key === 'RACE');
+    expect(race).toBeDefined();
+    expect(race!.entries).toContainEqual({ code: 'W', label: 'White' });
+    const codes = race!.entries.map((e) => e.code);
+    expect([...codes].sort((a, b) => a.localeCompare(b))).toEqual(codes);
+  });
+
+  it('getReferenceTables VMA table is the large make table (>100 entries)', () => {
+    const vma = getReferenceTables().find((t) => t.key === 'VMA');
+    expect(vma).toBeDefined();
+    expect(vma!.entries.length).toBeGreaterThan(100);
+  });
+
+  it('getReferenceOffenses returns >100 rows with 4-digit NCIC codes', () => {
+    const offenses = getReferenceOffenses();
+    expect(offenses.length).toBeGreaterThan(100);
+    const theft = offenses.filter((o) => o.offense.includes('THEFT'));
+    expect(theft.length).toBeGreaterThan(0);
+    for (const t of theft) {
+      expect(t.ncicCode).toMatch(/^\d{4}$/);
+    }
+    // Every row carries a statute, severity, and 4-digit NCIC classification.
+    for (const o of offenses) {
+      expect(o.utahStatute.length).toBeGreaterThan(0);
+      expect(o.severity.length).toBeGreaterThan(0);
+      expect(o.ncicCode).toMatch(/^\d{4}$/);
+    }
   });
 });

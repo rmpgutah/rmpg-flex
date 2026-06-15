@@ -713,6 +713,53 @@ export function fmtOffense(charge: string | null | undefined): string {
   return e ? `${base} (${e.utahStatute} · ${e.severity} · NCIC ${e.ncicCode})` : base;
 }
 
+// ── Render-ready reference data (single source of truth for the PDF) ─────────
+// These expose the private TABLES + OFFENSE data in a flat, ordered shape so the
+// printable Operator Reference Guide (utils/ncicReferencePdf.ts) never has to
+// duplicate the code tables.
+
+export interface ReferenceTable {
+  key: NcicDomain;
+  title: string;
+  entries: Array<{ code: string; label: string }>;
+}
+
+export interface ReferenceOffense {
+  offense: string;
+  utahStatute: string;
+  severity: string;
+  ncicCode: string;
+}
+
+const DOMAIN_TITLE: Record<NcicDomain, string> = {
+  RACE: 'Race (RAC)', ETHNICITY: 'Ethnicity (ETN)', SEX: 'Sex (SEX)',
+  EYE: 'Eye Color (EYE)', HAIR: 'Hair Color (HAI)',
+  VMA: 'Vehicle Make (VMA)', VCO: 'Vehicle Color (VCO)', VST: 'Vehicle Body Style (VST)',
+  STATE: 'State / Province (OLS/LIS)', DL_CLASS: 'DL Class (CLS)',
+  DL_RESTRICTION: 'DL Restrictions (RST)', DL_ENDORSEMENT: 'DL Endorsements (END)',
+};
+
+/** All code tables as ordered, render-ready reference data (single source of truth). */
+export function getReferenceTables(): ReferenceTable[] {
+  return (Object.keys(TABLES) as NcicDomain[]).map((key) => ({
+    key,
+    title: DOMAIN_TITLE[key],
+    entries: Array.from(TABLES[key].toLabel.entries())
+      .map(([code, label]) => ({ code, label }))
+      .sort((a, b) => a.code.localeCompare(b.code)),
+  }));
+}
+
+/** The curated Utah offense table as render-ready rows (declaration order = specific-first). */
+export function getReferenceOffenses(): ReferenceOffense[] {
+  return OFFENSE.map(([offense, e]) => ({
+    offense,
+    utahStatute: e.utahStatute,
+    severity: e.severity,
+    ncicCode: e.ncicCode,
+  }));
+}
+
 export interface CodeHit { domain: NcicDomain; code: string; label: string; }
 
 /** Search every code table by label OR code, both directions. Powers `QZ`. */
