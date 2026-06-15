@@ -25,28 +25,32 @@ export async function scanClip(video: HTMLVideoElement, opts: ScanOpts = {}): Pr
 
   const [vehModel, faceModel] = await Promise.all([loadVehicleDetector(), loadFaceDetector()]);
   const wasPaused = video.paused; video.pause();
-  const samples: DetectorSample[] = [];
+  try {
+    const samples: DetectorSample[] = [];
 
-  let t = 0;
-  for (; t <= duration; t += interval) {
-    await seekTo(video, t);
-    if (vehModel) {
-      const dets = await detectVehicles(vehModel, video, 16);
-      for (const d of dets) {
-        if (d.cls === 'person') {
-          if (opts.includePeople) samples.push({ kind: 'person', box: normBox(d.bbox as NormBox, W, H), t });
-        } else {
-          const pr = clampBox(plateRegion(d.bbox as NormBox), W, H);
-          samples.push({ kind: 'plate', box: normBox(pr as NormBox, W, H), t });
+    let t = 0;
+    for (; t <= duration; t += interval) {
+      await seekTo(video, t);
+      if (vehModel) {
+        const dets = await detectVehicles(vehModel, video, 16);
+        for (const d of dets) {
+          // d.bbox is pixel-space Box; normBox() divides it to fractional NormBox (cast is shape-only).
+          if (d.cls === 'person') {
+            if (opts.includePeople) samples.push({ kind: 'person', box: normBox(d.bbox as NormBox, W, H), t });
+          } else {
+            const pr = clampBox(plateRegion(d.bbox as NormBox), W, H);
+            samples.push({ kind: 'plate', box: normBox(pr as NormBox, W, H), t });
+          }
         }
       }
+      if (faceModel) {
+        const faces = await detectFaces(faceModel, video);
+        for (const f of faces) samples.push({ kind: 'face', box: f, t });
+      }
+      opts.onProgress?.(Math.min(1, t / duration));
     }
-    if (faceModel) {
-      const faces = await detectFaces(faceModel, video);
-      for (const f of faces) samples.push({ kind: 'face', box: f, t });
-    }
-    opts.onProgress?.(Math.min(1, t / duration));
+    return mergeSamples(samples, { scanInterval: interval });
+  } finally {
+    if (!wasPaused) video.play().catch(() => {});
   }
-  if (!wasPaused) video.play().catch(() => {});
-  return mergeSamples(samples, { scanInterval: interval });
 }

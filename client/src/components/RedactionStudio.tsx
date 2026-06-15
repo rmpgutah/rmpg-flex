@@ -63,7 +63,10 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
       const fd = new FormData();
       fd.append('video', blob, `redacted-${eventId}.mp4`);
       fd.append('metadata', JSON.stringify({ event_id: eventId, kinds, region_count: regions.filter((r) => r.enabled).length, style, regions: regions }));
-      await apiPostForm('/redactions', fd).catch(() => {});
+      await apiPostForm('/redactions', fd).catch((e) => {
+        console.warn('[redaction] custody upload failed:', e);
+        setErr('Exported & downloaded OK — but the custody copy upload failed. Re-export to retry.');
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = `redacted-${eventId}.mp4`; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
@@ -113,7 +116,7 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
           {(['plate', 'face', 'person', 'manual'] as RedactionKind[]).map((k) => counts[k] ? (
             <label key={k} className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 inline-block" style={{ background: KIND_COLOR[k] }} /> Blur all {k}s <span className="text-rmpg-500">({counts[k]})</span></span>
-              <input type="checkbox" defaultChecked onChange={(e) => toggleKind(k, e.target.checked)} />
+              <input type="checkbox" checked={regions.some((r) => r.kind === k && r.enabled)} onChange={(e) => toggleKind(k, e.target.checked)} />
             </label>
           ) : null)}
 

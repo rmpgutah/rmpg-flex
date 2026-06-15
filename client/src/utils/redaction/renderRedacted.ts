@@ -58,28 +58,32 @@ export async function renderRedacted(
   });
 
   const wasPaused = video.paused; video.pause();
-  const total = Math.max(1, Math.floor(duration * fps));
-  for (let i = 0; i < total; i++) {
-    if (opts.signal?.aborted) throw new Error('Redaction cancelled.');
-    const t = i / fps;
-    await seekTo(video, t);
-    ctx.drawImage(video, 0, 0, W, H);
-    for (const r of activeRegionsAt(regions, t)) {
-      applyRegionEffect(ctx, denormBox(interpBox(r, t), W, H), r.style, r.strength);
+  try {
+    const total = Math.max(1, Math.floor(duration * fps));
+    for (let i = 0; i < total; i++) {
+      if (opts.signal?.aborted) throw new Error('Redaction cancelled.');
+      const t = i / fps;
+      await seekTo(video, t);
+      ctx.drawImage(video, 0, 0, W, H);
+      for (const r of activeRegionsAt(regions, t)) {
+        applyRegionEffect(ctx, denormBox(interpBox(r, t), W, H), r.style, r.strength);
+      }
+      drawStamp(ctx, opts.stamp ?? [], W, H);
+      const blob: Blob = await new Promise((res) => canvas.toBlob((b) => res(b as Blob), 'image/png'));
+      await ffmpeg.writeFile(`f${String(i).padStart(5, '0')}.png`, await fetchFile(blob));
+      opts.onProgress?.(i / total, 'frames');
     }
-    drawStamp(ctx, opts.stamp ?? [], W, H);
-    const blob: Blob = await new Promise((res) => canvas.toBlob((b) => res(b as Blob), 'image/png'));
-    await ffmpeg.writeFile(`f${String(i).padStart(5, '0')}.png`, await fetchFile(blob));
-    opts.onProgress?.(i / total, 'frames');
-  }
-  if (!wasPaused) video.play().catch(() => {});
 
-  opts.onProgress?.(0, 'encode');
-  await ffmpeg.exec([
-    '-framerate', String(fps), '-i', 'f%05d.png',
-    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', 'out.mp4',
-  ]);
-  const data = await ffmpeg.readFile('out.mp4');
-  opts.onProgress?.(1, 'encode');
-  return new Blob([(data as Uint8Array).buffer as ArrayBuffer], { type: 'video/mp4' });
+    opts.onProgress?.(0, 'encode');
+    // NOTE: video-only output — muxing the original clip's audio is deferred (MVP).
+    await ffmpeg.exec([
+      '-framerate', String(fps), '-i', 'f%05d.png',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', 'out.mp4',
+    ]);
+    const data = await ffmpeg.readFile('out.mp4');
+    opts.onProgress?.(1, 'encode');
+    return new Blob([(data as Uint8Array).buffer as ArrayBuffer], { type: 'video/mp4' });
+  } finally {
+    if (!wasPaused) video.play().catch(() => {});
+  }
 }
