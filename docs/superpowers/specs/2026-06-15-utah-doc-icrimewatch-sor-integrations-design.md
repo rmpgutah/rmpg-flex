@@ -110,6 +110,7 @@ A new screening adapter, no new framework.
     release_date_and_type TEXT,
     case_manager_name TEXT,
     case_manager_email TEXT,
+    detail_json TEXT,           -- complete api.utah.gov detail response, verbatim
     person_id INTEGER,
     source TEXT DEFAULT 'UDC_API',
     last_seen_at TEXT,
@@ -117,6 +118,12 @@ A new screening adapter, no new framework.
     created_at TEXT DEFAULT (datetime('now'))
   );
   ```
+  The named columns capture every field the UDC detail endpoint returns today
+  (offenderNumber, offenderName, dateOfBirth, location, housingFacility,
+  releaseDateAndType, caseManagerName, caseManagerEmail); `detail_json` stores
+  the full raw response so any field UDC adds later is preserved without a
+  schema change. Capture **all provided data** — nothing from the response is
+  discarded.
   Apply directly to live D1 `785de7ae` after merge (deploy migrate step is
   `continue-on-error`).
 - **Background:** the existing `runScreeningScans` loop picks up `utah-doc`
@@ -146,8 +153,8 @@ schema (`migrations/0096_utah_sex_offenders.sql`).
   - `runIcrimewatchScan(env, { mode })` where `mode = 'incremental' | 'full' | 'name'`.
   - **Enumeration:** walk `results.php?SubmitAllSearch=1&AgencyID=54438` paged
     (and/or alphabetic last-name sweep) → collect `OfndrID`s → for each, scrape
-    `offenderdetails.php?OfndrID={id}&AgencyID=54438` → parse labeled fields →
-    build a row shaped like `utahSorPoller`'s `SorRow` → upsert into
+    `offenderdetails.php?OfndrID={id}&AgencyID=54438` → parse **all** labeled
+    fields → build a row shaped like `utahSorPoller`'s `SorRow` → upsert into
     `utah_sex_offenders` via the **existing** `importSorRows`-style upsert
     (reuse / lift the upsert helper so there is one writer).
   - Politeness: per-page delay, max-records-per-run cap, incremental mode that
@@ -155,6 +162,27 @@ schema (`migrations/0096_utah_sex_offenders.sql`).
   - Logs each run to `utah_sor_runs` (existing table) with `source='ICRIMEWATCH'`.
   - Photo URL captured into `utah_sex_offenders.photo_url` (the
     `docs.watchsystems.com/offices/54438/...jpg` link).
+- **Capture ALL provided data (per operator request).** The detail page carries
+  more than the flat `utah_sex_offenders` columns hold. The flat columns stay
+  the fast search/match index; **everything else is preserved verbatim in a new
+  `detail_json` column** (one JSON blob per offender) so nothing is dropped and
+  the UI can render the full record. The parser populates, at minimum:
+  - flat columns (existing): registry_id (= OfndrID), first/middle/last name,
+    date_of_birth, sex, race, height, weight, hair_color, eye_color,
+    scars_marks, address/city/state/zip, registration_status (= "Status"),
+    photo_url, plus the **single primary** offense in `offense`.
+  - `detail_json` (new, complete structure):
+    - `status`, `age`, full `aliases[]` (all listed aliases, not just one)
+    - `offenses[]` — every offense row: `{ description (statute + degree),
+      dateConvicted, convictionState, releaseDate, counts }`
+    - `otherKnownAddresses[]` — the "Other Known Addresses" tab
+    - `vehicles[]` — the "Vehicles" tab (year/make/model/plate when present)
+    - `professionalLicenses[]` — the EIN / business-license lines
+    - `photoUrl`, `sourceUrl` (the canonical detail URL), `scrapedAt`
+  - **Migration:** `ALTER TABLE utah_sex_offenders ADD COLUMN detail_json TEXT`
+    (well under the 100-column cap; not a watched table). Idempotent — wrap in
+    the boot/runtime `columnExists()` reconciler and apply directly to live
+    `785de7ae` after merge.
 - **Parser** `src/utils/sorSources/parseIcrimewatch.ts` — pure HTML→`SorRow`
   function (the labeled-field table is stable). Unit-tested against a saved
   fixture of the Camden Clark detail page (`tests/parseIcrimewatch.test.ts`).
@@ -197,11 +225,18 @@ schema (`migrations/0096_utah_sex_offenders.sql`).
 
 ## Secrets / config
 
-- `FIRECRAWL_API_KEY` — `wrangler secret put FIRECRAWL_API_KEY` (and `.dev.vars`
-  for local). Unset → `/api/sor-sources` returns 503; everything else degrades
-  to local-table reads.
+- **`FIRECRAWL_API_KEY` — required for the SOR scrape, and we ARE using it**
+  (operator decision). Added to `src/types.ts` `Bindings` as
+  `FIRECRAWL_API_KEY?: string` (mirrors `ROBOFLOW_API_KEY`), read only from
+  `c.env`, never hard-coded. Setup (key value never enters chat/transcript):
+  - **Prod:** `wrangler secret put FIRECRAWL_API_KEY` (prompts hidden).
+  - **Local:** put the real `fc-…` key in `.dev.vars` (already scaffolded with
+    a placeholder; gitignored).
+  - Get a key at https://www.firecrawl.dev/app/api-keys.
+  - Unset → `/api/sor-sources` returns 503; everything else degrades to
+    local-table reads (the SOR coverage guard still prevents false clears).
 - Optional `FIRECRAWL_API_URL` override (defaults to Firecrawl prod base).
-- No secret needed for Utah DOC (open public API).
+- No secret needed for Utah DOC (open public `api.utah.gov` API).
 
 ## Error handling & resilience
 
