@@ -31,6 +31,9 @@ html.theme-dark,
   --stat-accent-amber: #f59e0b;
   --stat-accent-amber-bright: #fbbf24;
   --stat-accent-purple: #a855f7;
+  /* Priority neutrals: P3 routine uses --spm-text-muted; P4 scheduled is a
+     dimmer step so the two read distinctly (esp. as adjacent pie slices). */
+  --pri-scheduled: #5c6672;
 
   --rmpg-50-rgb: 237 241 246; --rmpg-100-rgb: 214 221 230; --rmpg-200-rgb: 184 195 208;
   --rmpg-300-rgb: 150 165 184; --rmpg-400-rgb: 122 140 162; --rmpg-500-rgb: 92 110 132;

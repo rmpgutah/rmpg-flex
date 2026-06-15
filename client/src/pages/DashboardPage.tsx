@@ -745,7 +745,7 @@ export default function DashboardPage() {
           { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: 'var(--stat-accent-red)' },
           { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: 'var(--stat-accent-amber)' },
           { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: 'var(--spm-text-muted)' },
-          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: 'var(--text-muted)' },
+          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: 'var(--pri-scheduled)' },
         ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
           <div
             key={key}
@@ -1003,7 +1003,7 @@ export default function DashboardPage() {
                 { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: 'var(--stat-accent-red)' },
                 { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: 'var(--stat-accent-amber)' },
                 { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: 'var(--spm-text-muted)' },
-                { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: 'var(--text-muted)' },
+                { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: 'var(--pri-scheduled)' },
               ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
                 <div
                   key={key}
@@ -1166,7 +1166,7 @@ export default function DashboardPage() {
                 { name: 'P1 Emergency', value: stats.calls_by_priority.P1, fill: 'var(--stat-accent-red)' },
                 { name: 'P2 Urgent', value: stats.calls_by_priority.P2, fill: 'var(--stat-accent-amber)' },
                 { name: 'P3 Routine', value: stats.calls_by_priority.P3, fill: 'var(--spm-text-muted)' },
-                { name: 'P4 Scheduled', value: stats.calls_by_priority.P4, fill: 'var(--spm-text-muted)' },
+                { name: 'P4 Scheduled', value: stats.calls_by_priority.P4, fill: 'var(--pri-scheduled)' },
               ].filter(d => d.value > 0);
 
               return totalCalls > 0 ? (
@@ -1214,7 +1214,7 @@ export default function DashboardPage() {
                 { key: 'P1', label: 'Emergency', color: 'var(--stat-accent-red)', count: stats.calls_by_priority.P1 },
                 { key: 'P2', label: 'Urgent', color: 'var(--stat-accent-amber)', count: stats.calls_by_priority.P2 },
                 { key: 'P3', label: 'Routine', color: 'var(--spm-text-muted)', count: stats.calls_by_priority.P3 },
-                { key: 'P4', label: 'Scheduled', color: 'var(--spm-text-muted)', count: stats.calls_by_priority.P4 },
+                { key: 'P4', label: 'Scheduled', color: 'var(--pri-scheduled)', count: stats.calls_by_priority.P4 },
               ].map(({ key, label, color, count }) => (
                 <div key={key} className="flex items-center gap-1.5 py-0.5 px-1 rounded-sm hover:bg-surface-sunken transition-colors">
                   <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0 shadow-sm" style={{ backgroundColor: color }} />
@@ -1329,7 +1329,7 @@ export default function DashboardPage() {
                   { name: 'P1', value: stats.calls_by_priority.P1, fill: 'var(--stat-accent-red)' },
                   { name: 'P2', value: stats.calls_by_priority.P2, fill: 'var(--stat-accent-amber)' },
                   { name: 'P3', value: stats.calls_by_priority.P3, fill: 'var(--spm-text-muted)' },
-                  { name: 'P4', value: stats.calls_by_priority.P4, fill: 'var(--spm-text-muted)' },
+                  { name: 'P4', value: stats.calls_by_priority.P4, fill: 'var(--pri-scheduled)' },
                 ].filter(d => d.value > 0)}
                 cx="50%" cy="50%" innerRadius={20} outerRadius={32}
                 paddingAngle={2} dataKey="value" stroke="none"
