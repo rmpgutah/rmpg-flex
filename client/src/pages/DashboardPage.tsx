@@ -1112,7 +1112,7 @@ export default function DashboardPage() {
                   <stop offset="95%" stopColor="var(--spm-text-muted)" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-raised)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" />
               <XAxis
                 dataKey="label"
                 tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }}
@@ -1335,7 +1335,7 @@ export default function DashboardPage() {
                 paddingAngle={2} dataKey="value" stroke="none"
               >
                 {[
-                  { fill: 'var(--stat-accent-red)' }, { fill: 'var(--stat-accent-amber)' }, { fill: 'var(--spm-text-muted)' }, { fill: 'var(--spm-text-muted)' },
+                  { fill: 'var(--stat-accent-red)' }, { fill: 'var(--stat-accent-amber)' }, { fill: 'var(--spm-text-muted)' }, { fill: 'var(--pri-scheduled)' },
                 ].map((e, i) => <Cell key={i} fill={e.fill} />)}
               </Pie>
             </PieChart>
