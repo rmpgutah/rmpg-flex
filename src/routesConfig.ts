@@ -98,6 +98,7 @@ import cases from './routes/cases';
 import accreditation from './routes/accreditation';
 import alarms from './routes/alarms';
 import alpr from './routes/alpr';
+import redactionsRouter from './routes/redactions';
 import citations from './routes/citations';
 import clearpathgps from './routes/clearpathgps';
 import drivingEvents from './routes/drivingEvents';
@@ -402,6 +403,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
   { prefix: '/api/alpr', router: alpr, auth: 'required',
     note: 'ALPR plate read on Cloudflare Workers AI (free, no external key) → intel plate log' },
+  { prefix: '/api/redactions', router: redactionsRouter, auth: 'required',
+    note: 'In-video redaction custody store: persist client-redacted MP4 to R2 + video_redactions chain-of-custody row' },
   { prefix: '/api/arrests', router: arrests, auth: 'required',
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
   { prefix: '/api/assets', router: assets, auth: 'required',

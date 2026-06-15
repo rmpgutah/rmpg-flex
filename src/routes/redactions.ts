@@ -1,0 +1,94 @@
+// src/routes/redactions.ts
+// Chain-of-custody store for in-browser video redaction exports. The redacted
+// MP4 is produced client-side (canvas + ffmpeg.wasm); this route only persists
+// the finished file to R2 and a video_redactions custody row. Mirrors the
+// best-effort + runtime-reconcile patterns in src/routes/alpr.ts.
+import { Hono } from 'hono';
+import type { Env } from '../types';
+import { getDb, execute, query, queryFirst, columnExists } from '../utils/db';
+
+const redactions = new Hono<Env>();
+
+const EXTRA_COLUMNS: Array<[string, string]> = [
+  ['regions_json', 'TEXT'], ['kinds', 'TEXT'], ['style', 'TEXT'],
+  ['region_count', 'INTEGER'], ['status', 'TEXT'], ['notes', 'TEXT'],
+  ['requested_at', 'TEXT'], ['completed_at', 'TEXT'],
+];
+
+async function ensureSchema(db: ReturnType<typeof getDb>): Promise<void> {
+  await execute(db, `CREATE TABLE IF NOT EXISTS video_redactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, source_event_id INTEGER, r2_key TEXT NOT NULL,
+    kinds TEXT, region_count INTEGER NOT NULL DEFAULT 0, style TEXT, regions_json TEXT,
+    redacted_by INTEGER, status TEXT NOT NULL DEFAULT 'completed', requested_at TEXT,
+    completed_at TEXT, notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+  for (const [name, type] of EXTRA_COLUMNS) {
+    if (!(await columnExists(db, 'video_redactions', name))) {
+      try { await execute(db, `ALTER TABLE video_redactions ADD COLUMN ${name} ${type}`); }
+      catch { /* race / already present */ }
+    }
+  }
+}
+
+// POST /api/redactions — multipart: `video` (MP4 blob) + `metadata` (JSON string).
+redactions.post('/', async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  const userId = (c.get('userId') as number) ?? null;
+  await ensureSchema(db);
+
+  let form: FormData;
+  try { form = await c.req.formData(); }
+  catch { return c.json({ error: 'Expected multipart/form-data with a `video` file' }, 400); }
+
+  const fileEntry = form.get('video');
+  const file = fileEntry && typeof fileEntry === 'object' && 'arrayBuffer' in (fileEntry as object)
+    ? (fileEntry as File) : null;
+  if (!file) return c.json({ error: 'Missing redacted video (field: video)' }, 400);
+
+  let meta: any = {};
+  try { meta = JSON.parse(String(form.get('metadata') ?? '{}')); } catch { /* tolerate */ }
+
+  const r2Key = `redactions/${crypto.randomUUID()}.mp4`;
+  try {
+    await c.env.UPLOADS.put(r2Key, await file.arrayBuffer(), { httpMetadata: { contentType: 'video/mp4' } });
+  } catch (err: any) {
+    return c.json({ error: `storage failed: ${err?.message ?? 'unknown'}` }, 502);
+  }
+
+  const kinds: string = Array.isArray(meta.kinds) ? meta.kinds.join(',') : (typeof meta.kinds === 'string' ? meta.kinds : '');
+  const res = await execute(db,
+    `INSERT INTO video_redactions
+       (source_event_id, r2_key, kinds, region_count, style, regions_json, redacted_by,
+        status, requested_at, completed_at, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, datetime('now'), ?)`,
+    Number(meta.event_id) || null, r2Key, kinds, Number(meta.region_count) || 0,
+    typeof meta.style === 'string' ? meta.style : null,
+    typeof meta.regions_json === 'string' ? meta.regions_json : (meta.regions ? JSON.stringify(meta.regions) : null),
+    userId, meta.requested_at ?? null, typeof meta.notes === 'string' ? meta.notes : null);
+
+  return c.json({ success: true, id: Number(res.meta.last_row_id), r2_key: r2Key,
+    download_url: `/api/redactions/${Number(res.meta.last_row_id)}/download` });
+});
+
+// GET /api/redactions?event_id= — custody records (newest first).
+redactions.get('/', async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  await ensureSchema(db);
+  const eventId = c.req.query('event_id');
+  const rows = eventId
+    ? await query<any>(db, `SELECT id, source_event_id, r2_key, kinds, region_count, style, redacted_by, status, created_at FROM video_redactions WHERE source_event_id = ? ORDER BY id DESC LIMIT 100`, Number(eventId))
+    : await query<any>(db, `SELECT id, source_event_id, r2_key, kinds, region_count, style, redacted_by, status, created_at FROM video_redactions ORDER BY id DESC LIMIT 100`);
+  return c.json({ redactions: rows });
+});
+
+// GET /api/redactions/:id/download — stream the redacted MP4 from R2.
+redactions.get('/:id/download', async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  await ensureSchema(db);
+  const row = await queryFirst<{ r2_key: string }>(db, `SELECT r2_key FROM video_redactions WHERE id = ?`, Number(c.req.param('id')));
+  if (!row) return c.json({ error: 'Not found' }, 404);
+  const obj = await c.env.UPLOADS.get(row.r2_key);
+  if (!obj) return c.json({ error: 'File missing from storage' }, 404);
+  return new Response(obj.body, { headers: { 'Content-Type': 'video/mp4', 'Content-Disposition': `attachment; filename="redacted-${c.req.param('id')}.mp4"` } });
+});
+
+export default redactions;
