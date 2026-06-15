@@ -2,8 +2,17 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseJsonLoose, parseAngles, parseFindings, parseVerdict,
-  deriveTrust, numberCitations, mergeAngles,
+  deriveTrust, numberCitations, mergeAngles, runResearchLLM,
 } from '../src/utils/researchEngine';
+
+// env stub: no Anthropic key (DB.first → null) so the Claude rung is skipped and
+// we exercise the Workers AI fallback's response coercion.
+function stubEnv(aiRun: (...a: any[]) => Promise<any>): any {
+  return {
+    DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) },
+    AI: { run: aiRun },
+  };
+}
 
 describe('parseJsonLoose', () => {
   it('parses fenced json (the open_ai@v4 fence bug)', () => {
@@ -58,6 +67,35 @@ describe('deriveTrust', () => {
   it('consensus raises, uncertain halves-ish', () => {
     expect(deriveTrust({ confidence: 0.8, sourceCount: 3, verdict: 'supported' })).toBeGreaterThan(0.8);
     expect(deriveTrust({ confidence: 0.8, sourceCount: 1, verdict: 'uncertain' })).toBeLessThan(0.6);
+  });
+});
+
+describe('runResearchLLM Workers AI response coercion', () => {
+  it('stringifies an array response so JSON-eliciting stages survive (the expand crash)', async () => {
+    // Live @cf/meta/llama-3.3-70b returns `response` as a PARSED array when the
+    // prompt asks for JSON — not a string. Regression for "Angle expansion
+    // produced no angles (LLM engine unavailable?)".
+    const env = stubEnv(async () => ({ response: ['Criminal history', 'Business ties'] }));
+    const text = await runResearchLLM(env, { user: 'plan angles' });
+    expect(parseAngles(text, 6)).toEqual(['Criminal history', 'Business ties']);
+  });
+
+  it('stringifies an object response so extract findings survive', async () => {
+    const env = stubEnv(async () => ({
+      response: { findings: [{ finding_type: 'fact', title: 'T', detail: 'D', confidence: 0.5, source_urls: [] }] },
+    }));
+    const text = await runResearchLLM(env, { user: 'extract' });
+    expect(parseFindings(text)).toHaveLength(1);
+  });
+
+  it('passes a plain string response through unchanged', async () => {
+    const env = stubEnv(async () => ({ response: 'hello report' }));
+    expect(await runResearchLLM(env, { user: 'synthesize' })).toBe('hello report');
+  });
+
+  it('returns empty string for a missing/null response', async () => {
+    const env = stubEnv(async () => ({}));
+    expect(await runResearchLLM(env, { user: 'x' })).toBe('');
   });
 });
 
