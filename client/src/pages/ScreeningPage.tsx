@@ -201,7 +201,11 @@ function SourcesTab({ sources }: { sources: SourceInfo[] }) {
       const r = await apiFetch<{ success: boolean; message?: string; error?: string }>(
         '/sor-sources/icrimewatch/scan?mode=incremental', { method: 'POST' });
       setSorMsg(r.success ? (r.message ?? 'SOR scan started') : (r.error ?? 'Failed'));
-    } catch { setSorMsg('SOR scan failed to start'); }
+    } catch (err) {
+      // apiFetch throws Error.message = server's error text (e.g. the 503
+      // "FIRECRAWL_API_KEY not configured"), so an admin sees WHY it failed.
+      setSorMsg(err instanceof Error ? err.message : 'SOR scan failed to start');
+    }
     finally { setBusy(null); }
   }, []);
 
