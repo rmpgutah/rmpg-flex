@@ -627,7 +627,10 @@
 // v975: NCIC/NLETS data codes — coded terminal output + QZ decoder + code-aware QV.
 // v976: NCIC comprehensive code tables + printable operator reference guide PDF.
 // v977: theme consistency PR0 — global chrome tokens + light-mode menu fix.
-const CACHE_NAME = 'rmpg-flex-v977';
+// v978: button-health diagnostic — opt-in read-only click-area scanner
+//       (Ctrl+Alt+B or ?btnaudit=1) that names any visible-but-unclickable
+//       control and what is covering it. No behavior change to the app.
+const CACHE_NAME = 'rmpg-flex-v978';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
