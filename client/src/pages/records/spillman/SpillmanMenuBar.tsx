@@ -28,14 +28,16 @@ export default function SpillmanMenuBar({ onNew, onPrint, onExport, onFind }: Pr
 
   return (
     <div className="spm-menubar" role="menubar" onMouseLeave={() => setOpen(null)}>
-      {Object.keys(menus).map((name) => (
+      {Object.keys(menus).map((name) => {
+        const hasItems = menus[name].length > 0;
+        return (
         <div key={name} className="spm-menu">
           <button
             type="button"
             className="spm-menu-label"
-            aria-haspopup="true"
-            aria-expanded={open === name}
-            onClick={() => setOpen(open === name ? null : name)}
+            aria-haspopup={hasItems ? 'true' : undefined}
+            aria-expanded={hasItems ? open === name : undefined}
+            onClick={() => { if (hasItems) setOpen(open === name ? null : name); }}
           >
             {name}
           </button>
@@ -55,7 +57,8 @@ export default function SpillmanMenuBar({ onNew, onPrint, onExport, onFind }: Pr
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

@@ -448,7 +448,7 @@ export default function RecordsPage() {
           else if (activeTab === 'evidence') setNewEvidenceTrigger(t => t + 1);
         }}
         onFind={() => {
-          const el = document.querySelector<HTMLInputElement>('.spillman-theme input[type="search"], .spillman-theme input[placeholder]');
+          const el = document.querySelector<HTMLInputElement>('.spillman-theme input[type="search"]');
           el?.focus();
         }}
       />
