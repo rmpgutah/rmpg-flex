@@ -1,0 +1,21 @@
+name: Theme Hex Guard
+on:
+  pull_request:
+    paths:
+      - 'client/src/**'
+      - 'docs/theme-cleaned-files.txt'
+      - 'scripts/theme-hex-audit.mjs'
+  push:
+    branches: [main]
+jobs:
+  theme-hex-ratchet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Reports the global hex total (informational) and FAILS only if a file
+      # listed in docs/theme-cleaned-files.txt reintroduces disallowed hex.
+      - name: Theme hex ratchet
+        run: node scripts/theme-hex-audit.mjs --check

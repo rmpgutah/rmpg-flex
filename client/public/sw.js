@@ -626,7 +626,8 @@
 //       + global spillman-kit.css imported in main.tsx.
 // v975: NCIC/NLETS data codes — coded terminal output + QZ decoder + code-aware QV.
 // v976: NCIC comprehensive code tables + printable operator reference guide PDF.
-const CACHE_NAME = 'rmpg-flex-v976';
+// v977: theme consistency PR0 — global chrome tokens + light-mode menu fix.
+const CACHE_NAME = 'rmpg-flex-v977';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
