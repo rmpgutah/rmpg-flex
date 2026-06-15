@@ -1474,9 +1474,9 @@ records.get('/ncic-query', async (c) => {
           SELECT v.*, p.first_name AS owner_first_name, p.last_name AS owner_last_name
           FROM vehicles_records v
           LEFT JOIN persons p ON v.owner_person_id = p.id
-          WHERE v.plate_number LIKE ? OR v.vin LIKE ?
+          WHERE v.plate_number LIKE ? OR v.vin LIKE ? OR v.make LIKE ? OR v.model LIKE ?
           ORDER BY v.plate_number LIMIT 10
-        `, like, like));
+        `, like, like, like, like));
         return c.json({ type, results, query: q });
       }
       case 'phone': {
