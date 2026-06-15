@@ -104,6 +104,8 @@ export default function PlateLogPage() {
   const [reviewBusy, setReviewBusy] = useState<number | null>(null);
   const [reviewMsg, setReviewMsg] = useState<{ text: string; kind: 'ok' | 'warn' | 'err' } | null>(null);
   const [editing, setEditing] = useState<EditableCapture | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<SightingSourceKey | 'all'>('all');
   const [dossierPlate, setDossierPlate] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
@@ -147,6 +149,29 @@ export default function PlateLogPage() {
     } catch (e: any) {
       setReviewMsg({ text: `Action failed: ${e?.message || 'error'} — please retry.`, kind: 'err' });
     } finally { setReviewBusy(null); }
+  };
+  const toggleSel = (id: number) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const bulkAction = async (action: 'confirm' | 'reject') => {
+    const ids = [...selected];
+    if (!ids.length || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const res = await apiFetch<{ results?: Array<{ ok: boolean }>; hits?: Array<{ severity: string; detail: string; plate: string }> }>(
+        '/alpr/captures/bulk', { method: 'POST', body: JSON.stringify({ ids, action }) });
+      const ok = (res?.results || []).filter((r) => r.ok).length;
+      const crit = (res?.hits || []).filter((h) => h.severity === 'critical');
+      setReviewMsg(crit.length
+        ? { text: `${action === 'confirm' ? 'Confirmed' : 'Rejected'} ${ok} — HITS: ${crit.map((h) => `${h.plate} ${h.detail}`).join('; ')}`, kind: 'warn' }
+        : { text: `${action === 'confirm' ? 'Confirmed' : 'Rejected'} ${ok} capture${ok === 1 ? '' : 's'}.`, kind: 'ok' });
+      setSelected(new Set());
+      loadReview(); loadRecent();
+    } catch (e: any) {
+      setReviewMsg({ text: `Bulk ${action} failed: ${e?.message || 'error'} — please retry.`, kind: 'err' });
+    } finally { setBulkBusy(false); }
   };
   useEffect(loadRecent, []);
   useEffect(loadReview, []);
@@ -359,12 +384,34 @@ export default function PlateLogPage() {
       )}
       {reviewQueue.length > 0 && (
         <div className="bg-[#141414] border border-yellow-800">
-          <div className="px-2 py-[3px] text-[9px] font-semibold text-yellow-400 border-b border-yellow-900 flex items-center justify-between">
-            <span>NEEDS REVIEW · low-confidence (&lt;85%)</span>
+          <div className="px-2 py-[3px] text-[9px] font-semibold text-yellow-400 border-b border-yellow-900 flex items-center justify-between gap-2">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox"
+                checked={selected.size > 0 && selected.size === reviewQueue.length}
+                ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < reviewQueue.length; }}
+                onChange={(e) => setSelected(e.target.checked ? new Set(reviewQueue.map((q) => q.id)) : new Set())}
+                className="accent-[#d4a017]" />
+              <span>NEEDS REVIEW · low-confidence (&lt;85%)</span>
+            </label>
             <span>{reviewQueue.length}</span>
           </div>
+          {selected.size > 0 && (
+            <div className="px-2 py-1.5 border-b border-yellow-900 bg-[#1a1400] flex items-center gap-2">
+              <span className="text-[10px] text-[#d4a017] font-semibold flex-1">{selected.size} selected</span>
+              <button type="button" disabled={bulkBusy} onClick={() => bulkAction('confirm')}
+                className="text-[10px] font-bold uppercase px-2 py-1 border border-green-700 text-green-400 hover:bg-green-950 disabled:opacity-40">
+                {bulkBusy ? '…' : `Confirm ${selected.size}`}
+              </button>
+              <button type="button" disabled={bulkBusy} onClick={() => bulkAction('reject')}
+                className="text-[10px] font-bold uppercase px-2 py-1 border border-red-800 text-red-400 hover:bg-red-950 disabled:opacity-40">
+                {bulkBusy ? '…' : `Reject ${selected.size}`}
+              </button>
+            </div>
+          )}
           {reviewQueue.map((q) => (
-            <div key={q.id} className="px-2 py-1.5 border-b border-[#1a1a1a] last:border-b-0 flex items-center gap-2">
+            <div key={q.id} className={`px-2 py-1.5 border-b border-[#1a1a1a] last:border-b-0 flex items-center gap-2 ${selected.has(q.id) ? 'bg-[#15110055]' : ''}`}>
+              <input type="checkbox" checked={selected.has(q.id)} onChange={() => toggleSel(q.id)}
+                className="accent-[#d4a017] shrink-0" aria-label={`Select ${q.plate || 'capture'}`} />
               {q.image_url && (
                 <img src={authedImageUrl(q.image_url)} alt="" className="w-10 h-10 object-cover border border-[#222] shrink-0" />
               )}
