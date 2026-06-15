@@ -368,6 +368,9 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   // ── Assign a unit to an existing (unlinked) mapping ──
   const handleBindUnit = async (m: CpgMapping, unitId: number) => {
     try {
+      // POST replaces the mapping row server-side (DELETE + INSERT → new id); the UI
+      // re-fetches so the list stays consistent. /relink keys on cpg_device_id, not
+      // the mapping id, so relink remains valid across the replacement.
       await apiFetch('/clearpathgps/mappings', {
         method: 'POST',
         body: JSON.stringify({

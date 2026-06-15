@@ -185,13 +185,19 @@ export default function PlateLogPage() {
     if (!ids.length || bulkBusy) return;
     setBulkBusy(true);
     try {
-      const res = await apiFetch<{ results?: Array<{ ok: boolean }>; hits?: Array<{ severity: string; detail: string; plate: string }> }>(
+      const res = await apiFetch<{ results?: Array<{ ok: boolean; status?: string }>; hits?: Array<{ severity: string; detail: string; plate: string }> }>(
         '/alpr/captures/bulk', { method: 'POST', body: JSON.stringify({ ids, action }) });
-      const ok = (res?.results || []).filter((r) => r.ok).length;
+      const results = res?.results || [];
+      const ok = results.filter((r) => r.ok).length;
+      const notLinked = results.filter((r) => !r.ok || r.status === 'confirmed_unlinked').length;
       const crit = (res?.hits || []).filter((h) => h.severity === 'critical');
+      const baseText = `${action === 'confirm' ? 'Confirmed' : 'Rejected'} ${ok} capture${ok === 1 ? '' : 's'}`;
+      const linkSuffix = action === 'confirm' && notLinked > 0 ? ` (${notLinked} not linked — review & retry)` : '';
       setReviewMsg(crit.length
-        ? { text: `${action === 'confirm' ? 'Confirmed' : 'Rejected'} ${ok} — HITS: ${crit.map((h) => `${h.plate} ${h.detail}`).join('; ')}`, kind: 'warn' }
-        : { text: `${action === 'confirm' ? 'Confirmed' : 'Rejected'} ${ok} capture${ok === 1 ? '' : 's'}.`, kind: 'ok' });
+        ? { text: `${action === 'confirm' ? 'Confirmed' : 'Rejected'} ${ok} — HITS: ${crit.map((h) => `${h.plate} ${h.detail}`).join('; ')}${linkSuffix}`, kind: 'warn' }
+        : notLinked > 0
+          ? { text: `${baseText}${linkSuffix}`, kind: 'warn' }
+          : { text: `${baseText}.`, kind: 'ok' });
       setSelected(new Set());
       loadReview(); loadRecent();
     } catch (e: any) {
