@@ -1,3 +1,5 @@
+import { DEFAULT_SCHEDULE, resolveEffectiveTheme, type ThemeOverride } from './themeSchedule';
+
 export type ThemePreference = 'dark' | 'light';
 
 export const THEME_STORAGE_KEY = 'rmpg_theme_preference';
@@ -132,8 +134,6 @@ export function applyThemePreference(
 
   return theme;
 }
-
-import { DEFAULT_SCHEDULE, resolveEffectiveTheme, type ThemeOverride } from './themeSchedule';
 
 /** Read the manual theme override ({theme,active}); null if absent/invalid. */
 export function readThemeOverride(): ThemeOverride | null {

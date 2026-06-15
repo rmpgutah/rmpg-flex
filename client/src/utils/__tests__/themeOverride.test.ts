@@ -22,6 +22,10 @@ describe('theme override storage', () => {
     writeThemeOverride(null);
     expect(readThemeOverride()).toBeNull();
   });
+  it('round-trips an inactive override', () => {
+    writeThemeOverride({ theme: 'dark', active: false });
+    expect(readThemeOverride()).toEqual({ theme: 'dark', active: false });
+  });
 });
 
 describe('resolveCurrentTheme', () => {
