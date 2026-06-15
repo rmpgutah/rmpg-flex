@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
+import { resolveSourceKey } from '../utils/screeningSource';
 
 function parseFields(raw: string | null | undefined): string[] {
   try { const v = JSON.parse(raw || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
@@ -10,6 +11,7 @@ interface SourceInfo { sourceKey: string; label: string; kind: string; supportsS
 interface Candidate { sourceKey: string; externalId: string; displayName: string; summary: string; photoUrl?: string; country?: string; listType?: string; dob?: string | null; }
 interface Hit { id: number; source_key: string; person_id: number | null; display_name: string; summary: string; match_score: number; matched_fields: string; status: string; }
 interface Coverage { available: boolean; rowCount?: number; configured?: boolean; severity: 'ok' | 'warning'; message?: string; }
+interface SourceCoverage extends Coverage { sourceKey: string; label: string; }
 
 type Tab = 'search' | 'review' | 'watchlist' | 'sources';
 
@@ -18,31 +20,43 @@ export function ScreeningWorkspace() {
   const canReview = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
   const [tab, setTab] = useState<Tab>('search');
   const [sources, setSources] = useState<SourceInfo[]>([]);
-  const [source, setSource] = useState('interpol-red');
+  // Manual-entry combobox: free text resolved to a source key (or 'all') on search.
+  const [sourceText, setSourceText] = useState('All sources');
+  const [sourceError, setSourceError] = useState<string | null>(null);
   const [name, setName] = useState(''); const [forename, setForename] = useState(''); const [nationality, setNationality] = useState('');
   const [results, setResults] = useState<Candidate[]>([]);
   const [coverage, setCoverage] = useState<Coverage | null>(null);
+  const [coverages, setCoverages] = useState<SourceCoverage[]>([]);
   const [searched, setSearched] = useState(false);
   const [hits, setHits] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => { apiFetch<{ data: SourceInfo[] }>('/screening/sources').then((r) => setSources(r.data)).catch(() => {}); }, []);
 
+  const labelFor = useCallback((key: string) => sources.find((s) => s.sourceKey === key)?.label ?? key, [sources]);
+
   const search = useCallback(async () => {
+    const resolved = resolveSourceKey(sourceText, sources);
+    if (!resolved) {
+      setSourceError('Unknown registry — choose from the list or type "All sources".');
+      return;
+    }
+    setSourceError(null);
     setLoading(true);
     try {
-      const qs = new URLSearchParams({ source });
+      const qs = new URLSearchParams({ source: resolved });
       if (name) qs.set('name', name);
       if (forename) qs.set('forename', forename);
       if (nationality) qs.set('nationality', nationality);
-      const r = await apiFetch<{ data: Candidate[]; coverage?: Coverage }>(`/screening/search?${qs}`);
+      const r = await apiFetch<{ data: Candidate[]; coverage?: Coverage; coverages?: SourceCoverage[] }>(`/screening/search?${qs}`);
       setResults(r.data ?? []);
       setCoverage(r.coverage ?? null);
-    } catch { setResults([]); setCoverage(null); } finally { setSearched(true); setLoading(false); }
-  }, [source, name, forename, nationality]);
+      setCoverages(r.coverages ?? []);
+    } catch { setResults([]); setCoverage(null); setCoverages([]); } finally { setSearched(true); setLoading(false); }
+  }, [sourceText, sources, name, forename, nationality]);
 
-  // Reset stale results/coverage when the operator switches source.
-  useEffect(() => { setResults([]); setCoverage(null); setSearched(false); }, [source]);
+  // Reset stale results/coverage when the operator changes the source entry.
+  useEffect(() => { setResults([]); setCoverage(null); setCoverages([]); setSearched(false); }, [sourceText]);
 
   const loadHits = useCallback(() => {
     apiFetch<{ data: Hit[] }>('/screening/hits?status=pending').then((r) => setHits(r.data ?? [])).catch(() => setHits([]));
@@ -68,36 +82,50 @@ export function ScreeningWorkspace() {
       {tab === 'search' && (
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
-            <select value={source} onChange={(e) => setSource(e.target.value)} className="bg-black border border-[#232323] px-2 py-1 text-[11px]">
-              {sources.filter((s) => s.supportsSearch).map((s) => <option key={s.sourceKey} value={s.sourceKey}>{s.label}</option>)}
-            </select>
+            {/* Manual-entry combobox: pick a registry OR type one (incl. "All sources"). */}
+            <input list="screening-source-list" placeholder="Registry (or type — e.g. All sources)" value={sourceText}
+              onChange={(e) => setSourceText(e.target.value)} className="bg-black border border-[#232323] px-2 py-1 text-[11px] min-w-[16rem]" />
+            <datalist id="screening-source-list">
+              <option value="All sources" />
+              {sources.filter((s) => s.supportsSearch).map((s) => <option key={s.sourceKey} value={s.label} />)}
+            </datalist>
             <input placeholder="Surname" value={name} onChange={(e) => setName(e.target.value)} className="bg-black border border-[#232323] px-2 py-1 text-[11px]" />
             <input placeholder="Forename" value={forename} onChange={(e) => setForename(e.target.value)} className="bg-black border border-[#232323] px-2 py-1 text-[11px]" />
             <input placeholder="Nationality" value={nationality} onChange={(e) => setNationality(e.target.value)} className="bg-black border border-[#232323] px-2 py-1 text-[11px]" />
             <button onClick={search} className="px-3 py-1 border border-[#d4a017] text-[#d4a017] text-[11px]">SEARCH</button>
           </div>
+          {sourceError && <div className="text-[#e87558] text-[11px]">{sourceError}</div>}
           {/* False-clear guard: an empty local registry must never read as
-              "not an offender." Show WHY there are no records to match. */}
+              "not an offender." Show WHY there are no records to match.
+              Single-source search uses `coverage`; an all-sources fan-out
+              returns one warning per empty registry in `coverages`. */}
           {coverage && !coverage.available && (
             <div className="border border-[#d4a017] bg-[#1a1305] text-[#e8c558] text-[11px] px-3 py-2 flex gap-2">
               <span aria-hidden className="text-[#d4a017] font-semibold">⚠</span>
               <span><span className="font-semibold uppercase">Not a clearance — registry empty.</span> {coverage.message}</span>
             </div>
           )}
+          {coverages.map((cov) => (
+            <div key={cov.sourceKey} className="border border-[#d4a017] bg-[#1a1305] text-[#e8c558] text-[11px] px-3 py-2 flex gap-2">
+              <span aria-hidden className="text-[#d4a017] font-semibold">⚠</span>
+              <span><span className="font-semibold uppercase">{cov.label} — not a clearance.</span> {cov.message}</span>
+            </div>
+          ))}
           {loading ? <div className="text-[#888] text-[11px]">Searching…</div> : (
             <table className="w-full text-[11px]">
-              <thead><tr className="text-[9px] text-[#888]"><th className="text-left py-[3px]">NAME</th><th className="text-left">SUMMARY</th><th className="text-left">COUNTRY</th><th className="text-left">DOB</th></tr></thead>
+              <thead><tr className="text-[9px] text-[#888]"><th className="text-left py-[3px]">NAME</th><th className="text-left">SOURCE</th><th className="text-left">SUMMARY</th><th className="text-left">COUNTRY</th><th className="text-left">DOB</th></tr></thead>
               <tbody>
                 {results.map((r) => (
                   <tr key={`${r.sourceKey}-${r.externalId}`} className="border-t border-[#121212]">
                     <td className="py-[2px] flex items-center gap-2">{r.photoUrl && <img src={r.photoUrl} alt="" className="w-6 h-6 object-cover" />}{r.displayName}</td>
+                    <td className="text-[#888]">{labelFor(r.sourceKey)}</td>
                     <td>{r.summary}</td><td>{r.country ?? '—'}</td><td>{r.dob ?? '—'}</td>
                   </tr>
                 ))}
                 {searched && !results.length && (
-                  <tr><td colSpan={4} className="py-2">
-                    {coverage && !coverage.available
-                      ? <span className="text-[#e8c558]">No records loaded for this source — result is inconclusive, not a clearance.</span>
+                  <tr><td colSpan={5} className="py-2">
+                    {(coverage && !coverage.available) || coverages.length
+                      ? <span className="text-[#e8c558]">No records loaded for {coverages.length ? 'one or more registries' : 'this source'} — result is inconclusive, not a clearance.</span>
                       : <span className="text-[#888]">No matches found.</span>}
                   </td></tr>
                 )}

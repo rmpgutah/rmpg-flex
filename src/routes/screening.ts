@@ -27,18 +27,40 @@ screening.get('/sources', requireRole(...READ_ROLES), async (c) => {
 });
 
 // GET /api/screening/search?source=&name=&forename=&nationality=&ageMin=&ageMax=&sexId=&page=
+// `source=all` fans out across every searchable registry (manual entry).
 screening.get('/search', requireRole(...READ_ROLES), async (c) => {
   const sourceKey = c.req.query('source') ?? '';
+  const num = (v: string | undefined) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
+  const params = {
+    name: c.req.query('name'), forename: c.req.query('forename'),
+    nationality: c.req.query('nationality'), sexId: c.req.query('sexId'),
+    ageMin: num(c.req.query('ageMin')), ageMax: num(c.req.query('ageMax')),
+    page: num(c.req.query('page')),
+  };
+
+  // All-sources fan-out. Each adapter is isolated: one failing/empty registry
+  // never sinks the others. Per-source coverage warnings are preserved so an
+  // empty registry in the set can never read as a clearance (false-clear guard).
+  if (sourceKey === 'all') {
+    const adapters = getAdapters().filter((a) => a.supportsSearch);
+    const settled = await Promise.all(adapters.map(async (a) => {
+      const results = await a.searchAdHoc(c.env, params).catch((err) => {
+        console.error(`[screening/search:all] ${a.sourceKey}`, err); return [];
+      });
+      const cov = a.coverage ? await a.coverage(c.env).catch(() => undefined) : undefined;
+      return { a, results, cov };
+    }));
+    const data = settled.flatMap((s) => s.results);
+    const coverages = settled
+      .filter((s) => s.cov && !s.cov.available)
+      .map((s) => ({ sourceKey: s.a.sourceKey, label: s.a.label, ...s.cov! }));
+    return c.json({ data, coverages });
+  }
+
   const adapter = getAdapter(sourceKey);
   if (!adapter || !adapter.supportsSearch) return c.json({ data: [], error: 'unknown or non-searchable source' }, 400);
   try {
-    const num = (v: string | undefined) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
-    const results = await adapter.searchAdHoc(c.env, {
-      name: c.req.query('name'), forename: c.req.query('forename'),
-      nationality: c.req.query('nationality'), sexId: c.req.query('sexId'),
-      ageMin: num(c.req.query('ageMin')), ageMax: num(c.req.query('ageMax')),
-      page: num(c.req.query('page')),
-    });
+    const results = await adapter.searchAdHoc(c.env, params);
     // Coverage tells the client WHY a result set is empty so a blank
     // registry can never read as a clearance (false-clear guard).
     const coverage = adapter.coverage
