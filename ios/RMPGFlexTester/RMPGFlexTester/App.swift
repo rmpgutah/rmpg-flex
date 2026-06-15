@@ -89,6 +89,9 @@ struct MoreHubView: View {
                       icon: "car.2.fill", badge: 0, destination: AnyView(FleetReadinessView())),
             ]),
             HubSection(id: "reports", header: "Reports & Records", entries: [
+                Entry(id: "timecard", title: "My Timecard",
+                      subtitle: "Your hours this week · recent shifts",
+                      icon: "clock.badge.checkmark", badge: 0, destination: AnyView(MyTimecardView())),
                 Entry(id: "dar", title: "Daily Activity Report",
                       subtitle: "Auto-compiled shift report · review + sign",
                       icon: "doc.text.below.ecg.fill", badge: 0, destination: AnyView(DailyActivityReportView())),
