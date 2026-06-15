@@ -624,7 +624,8 @@
 //       blocked); surface a warning when the face model fails to load.
 // v974: Spillman chrome kit (P0) — new client/src/components/spillman/* bundle
 //       + global spillman-kit.css imported in main.tsx.
-const CACHE_NAME = 'rmpg-flex-v974';
+// v975: NCIC/NLETS data codes — coded terminal output + QZ decoder + code-aware QV.
+const CACHE_NAME = 'rmpg-flex-v975';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
