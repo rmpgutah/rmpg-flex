@@ -146,6 +146,7 @@ import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import stubs from './routes/stubs';
 import voicePersona from './routes/voicePersona';
+import mobileCfs, { cfsQr } from './routes/mobileCfs';
 import firecrawlTools from './routes/firecrawlTools';
 import webResearch from './routes/webResearch';
 import pdfEngine from './routes/pdfEngine';
@@ -551,7 +552,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // Each of these is called by the client SPA but has no real handler on
   // either the rewrite or legacy worker. Mounting stubs so pages render
   // their empty/error state instead of 404ing.
-  { prefix: '/api/cfs', router: stubs, auth: 'required' },
+  { prefix: '/api/cfs', router: cfsQr, auth: 'required' },
   // Code enforcement graduated from stubs to a real D1-backed router
   // (code_violations + vehicle_tows tables) — 2026-06-09 404 sweep.
   { prefix: '/api/code-enforcement', router: codeEnforcement, auth: 'required' },
@@ -564,7 +565,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // a graceful not-configured. Swap for real handlers when a key exists.
   { prefix: '/api/firecrawl-tools', router: firecrawlTools, auth: 'required' },
   { prefix: '/api/web-research', router: webResearch, auth: 'required' },
-  { prefix: '/api/mobile', router: stubs, auth: 'public' },
+  { prefix: '/api/mobile', router: mobileCfs, auth: 'public' },
   { prefix: '/api/pdf-artifacts', router: stubs, auth: 'required' },
   { prefix: '/api/pdf-engine', router: pdfEngine, auth: 'required' },
   { prefix: '/api/updates', router: stubs, auth: 'public' },

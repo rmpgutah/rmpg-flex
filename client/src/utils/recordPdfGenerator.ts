@@ -3260,12 +3260,10 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // crowding the date/time row (caught 2026-05-04).
   // Mobile-PSO QR badge is gated OFF until the mobile-PSO backend subsystem
   // (POST /api/cfs/:id/qr-token + the /api/mobile/cfs/* challenge/auth/status/
-  // narrative/pso routes from legacy mobileCfs.ts) is ported to the rewrite.
-  // Until then the endpoint 404s; firing the request only produced console
-  // noise — the PDF already degrades gracefully without the QR. Flip this to
-  // true once that backend lands to re-enable the "SCAN FOR MOBILE PSO" badge;
-  // no other change is needed here.
-  const MOBILE_PSO_QR_ENABLED: boolean = false;
+  // narrative/pso routes from legacy mobileCfs.ts) is LIVE in the Worker
+  // (src/routes/mobileCfs.ts). The Worker can't rasterize a QR, so the endpoint
+  // returns { token, url } and we render the PNG here with the bundled qrcode lib.
+  const MOBILE_PSO_QR_ENABLED: boolean = true;
   if (MOBILE_PSO_QR_ENABLED && data.incident_type === 'pso_client_request' && data.id) {
     try {
       const resp = await fetch(`/api/cfs/${data.id}/qr-token`, {
@@ -3276,7 +3274,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         },
       });
       if (resp.ok) {
-        const { qr_png_base64 } = await resp.json();
+        const { url } = await resp.json();
+        const qr_png_base64 = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 1, scale: 6 });
         const pageW = doc.internal.pageSize.getWidth();
         const pageH = doc.internal.pageSize.getHeight();
         const qrSize = 12; // mm — compact corner badge
