@@ -107,3 +107,46 @@ given source, that's recorded (not silently dropped).
 - One feature branch → PR (per repo flow); bump `client/public/sw.js`
   `CACHE_NAME` (currently `v957` → `v958`).
 - No migration. After merge, no live D1 DDL needed (columns already exist).
+
+## Addendum (2026-06-14) — "build all" follow-on (same PR #1269)
+
+Three additions layered onto the same branch so one merge deploys everything:
+
+1. **Maximize AI capture (F1).** The immediate `POST /capture` response and the
+   per-vehicle array no longer blank the AI-observed `make/model/color/year/
+   vehicle_type` on a held (<0.85) read — the officer sees the full read on the
+   scan card instantly. `accepted`/`reviewStatus` + `vehicle_record_created`
+   keep the assertion state honest; the authoritative `vehicles_records` write
+   stays gated. (The capture-row retention fix from the base PR already did this
+   for stored rows; this extends it to the live response.)
+
+2. **Bulk review actions (F2).** `POST /alpr/captures/bulk` `{ ids[], action:
+   confirm|reject }` (≤200/call). Confirm screens + records each via the shared
+   `persistConfirmedVehicle` helper (extracted so the confirm path lives in ONE
+   place — `/verify` and bulk both call it); returns per-id results + the union
+   of critical hits so a STOLEN read is never swept silently. One batch
+   `audit_log` row. UI: checkboxes + select-all + a Confirm/Reject N bar on the
+   NEEDS REVIEW queue.
+
+3. **Verify history (F3).** `GET /alpr/capture/:id/history` reads `audit_log`
+   (`entity_type='alpr_capture'`) joined to `users`. `/verify` now audits EVERY
+   action (not just re-edits) so the trail is complete. UI: a collapsible
+   History section in `CaptureReviewEditor` showing who/when/what/why.
+
+No new migration (reuses `audit_log`). Shipped as a fresh PR after #1269
+squash-merged; rebased onto the new main; SW `v958` → `v959`.
+
+### F4 — Condition/damage inference on the Workers AI path
+
+The realistic version of deferred "item B" (NOT the Jetson/LoRA detour — Workers
+AI LoRA is text-only). Added `vehicle_condition` + `vehicle_damage` to the
+`license_plate` OCR profile (`PLATE_FIELDS`), so the SAME single vision call
+(`llama-3.2-11b-vision`) returns condition + a damage note. `cloudflarePlate.ts`
+maps them (`normalizeCondition` → clean|minor|moderate|heavy|salvage; "none"
+damage → null; damage-present-but-no-condition → minor) onto
+`CloudflarePlateResult`. Persisted onto the capture row in BOTH the field/manual
+(`finalizeCapture`) and dashcam (`clearpathAlpr.ts`) paths, and surfaced on the
+live `POST /capture` response. The review editor + gallery already render/edit
+condition+damage, so the UI lights up with no client change. No migration
+(`alpr_captures` condition/damage columns already exist; dashcam reconciler
+extended). Unit-tested in `tests/cloudflarePlate.test.ts`.

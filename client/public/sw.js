@@ -613,9 +613,6 @@
 //       FI/warrants/trespass), geocode cache-first, click→dossier panel.
 // v958: Intel report loop — linked entities + dissemination log + external share
 //       on report detail; dossier auto-links its subject into a new report.
-// v959: Screening false-clear guard — empty Utah SOR registry now renders an
-//       amber "Not a clearance — registry empty" caution instead of a silent
-//       "No results"; /screening/search returns source `coverage`.
 const CACHE_NAME = 'rmpg-flex-v959';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [

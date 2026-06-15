@@ -50,6 +50,8 @@ export const PLATE_FIELDS: OcrField[] = [
   { key: 'vehicle_color', desc: '' },
   { key: 'vehicle_year', desc: '' },
   { key: 'vehicle_body', desc: 'sedan | suv | pickup | van | motorcycle | truck | other' },
+  { key: 'vehicle_condition', desc: 'overall body condition: clean | minor | moderate | heavy | salvage (clean = no visible damage)' },
+  { key: 'vehicle_damage', desc: 'brief note of any VISIBLE damage and where (e.g. "dented rear bumper", "cracked windshield"); empty if none visible' },
 ];
 
 export type OcrProfileId = 'id_card' | 'license_plate' | 'serve_document';
