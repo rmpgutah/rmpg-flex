@@ -254,3 +254,86 @@ export function normalizeWeight(value: string | number | null | undefined): stri
   if (!m) return '';
   return String(Number(m[1])).padStart(3, '0');
 }
+
+// ── Curated Utah offense table ──────────────────────────────
+// { utahStatute, ncicCode (NCIC Uniform Offense Classification),
+//   severity (Utah class: F1/F2/F3 felony, MA/MB/MC misdemeanor,
+//   INF infraction) }. Curated common set — NOT the full manual.
+// Order matters: more-specific keys come first so substring
+// matching resolves "retail theft" before generic "theft".
+
+export interface OffenseEntry { utahStatute: string; ncicCode: string; severity: string; }
+
+const OFFENSE: Array<[keyword: string, entry: OffenseEntry]> = [
+  // Violent
+  ['MURDER',                { utahStatute: '76-5-203', ncicCode: '0901', severity: 'F1' }],
+  ['MANSLAUGHTER',          { utahStatute: '76-5-205', ncicCode: '0999', severity: 'F2' }],
+  ['AGGRAVATED ROBBERY',    { utahStatute: '76-6-302', ncicCode: '1201', severity: 'F1' }],
+  ['ROBBERY',               { utahStatute: '76-6-301', ncicCode: '1201', severity: 'F2' }],
+  ['AGGRAVATED ASSAULT',    { utahStatute: '76-5-103', ncicCode: '1305', severity: 'F3' }],
+  ['ASSAULT',               { utahStatute: '76-5-102', ncicCode: '1313', severity: 'MB' }],
+  ['AGGRAVATED KIDNAPPING', { utahStatute: '76-5-302', ncicCode: '1099', severity: 'F1' }],
+  ['KIDNAPPING',            { utahStatute: '76-5-301', ncicCode: '1099', severity: 'F2' }],
+  ['RAPE',                  { utahStatute: '76-5-402', ncicCode: '1199', severity: 'F1' }],
+  ['SEXUAL ASSAULT',        { utahStatute: '76-5-404', ncicCode: '1199', severity: 'MA' }],
+  ['CHILD ABUSE',           { utahStatute: '76-5-109', ncicCode: '1399', severity: 'F3' }],
+  ['DOMESTIC VIOLENCE',     { utahStatute: '77-36-1',  ncicCode: '1313', severity: 'MB' }],
+  // Property
+  ['AGGRAVATED BURGLARY',   { utahStatute: '76-6-203', ncicCode: '2299', severity: 'F1' }],
+  ['BURGLARY',              { utahStatute: '76-6-202', ncicCode: '2299', severity: 'F3' }],
+  ['RETAIL THEFT',          { utahStatute: '76-6-602', ncicCode: '2308', severity: 'MB' }],
+  ['SHOPLIFTING',           { utahStatute: '76-6-602', ncicCode: '2308', severity: 'MB' }],
+  ['AUTO THEFT',            { utahStatute: '76-6-404', ncicCode: '2404', severity: 'F2' }],
+  ['VEHICLE THEFT',         { utahStatute: '76-6-404', ncicCode: '2404', severity: 'F2' }],
+  ['THEFT BY DECEPTION',    { utahStatute: '76-6-405', ncicCode: '2603', severity: 'MB' }],
+  ['THEFT',                 { utahStatute: '76-6-404', ncicCode: '2399', severity: 'MB' }],
+  ['CRIMINAL MISCHIEF',     { utahStatute: '76-6-106', ncicCode: '2999', severity: 'MB' }],
+  ['ARSON',                 { utahStatute: '76-6-102', ncicCode: '2001', severity: 'F2' }],
+  ['FORGERY',               { utahStatute: '76-6-501', ncicCode: '2501', severity: 'F3' }],
+  ['IDENTITY THEFT',        { utahStatute: '76-6-1102', ncicCode: '2604', severity: 'F3' }],
+  ['FRAUD',                 { utahStatute: '76-6-405', ncicCode: '2603', severity: 'MA' }],
+  ['POSSESSION OF STOLEN',  { utahStatute: '76-6-408', ncicCode: '2810', severity: 'MA' }],
+  ['TRESPASS',              { utahStatute: '76-6-206', ncicCode: '5707', severity: 'MB' }],
+  // Drugs
+  ['DISTRIBUTION OF CONTROLLED', { utahStatute: '58-37-8(1)', ncicCode: '3599', severity: 'F2' }],
+  ['POSSESSION WITH INTENT',     { utahStatute: '58-37-8(1)', ncicCode: '3599', severity: 'F2' }],
+  ['POSSESSION OF MARIJUANA',    { utahStatute: '58-37-8(2)', ncicCode: '3562', severity: 'MB' }],
+  ['POSSESSION OF CONTROLLED',   { utahStatute: '58-37-8(2)', ncicCode: '3599', severity: 'MA' }],
+  ['DRUG PARAPHERNALIA',         { utahStatute: '58-37a-5',  ncicCode: '3550', severity: 'MB' }],
+  // Weapons
+  ['FELON IN POSSESSION', { utahStatute: '76-10-503', ncicCode: '5215', severity: 'F2' }],
+  ['CONCEALED WEAPON',    { utahStatute: '76-10-504', ncicCode: '5212', severity: 'MB' }],
+  ['DISCHARGE OF FIREARM',{ utahStatute: '76-10-508', ncicCode: '5212', severity: 'F3' }],
+  // Public order / justice
+  ['DISORDERLY CONDUCT',  { utahStatute: '76-9-102',  ncicCode: '5315', severity: 'INF' }],
+  ['PUBLIC INTOXICATION', { utahStatute: '76-9-701',  ncicCode: '5012', severity: 'INF' }],
+  ['INTOXICATION',        { utahStatute: '76-9-701',  ncicCode: '5012', severity: 'INF' }],
+  ['RESISTING ARREST',    { utahStatute: '76-8-305',  ncicCode: '4801', severity: 'MA' }],
+  ['OBSTRUCTING',         { utahStatute: '76-8-306',  ncicCode: '4801', severity: 'MB' }],
+  ['FAILURE TO APPEAR',   { utahStatute: '77-7-22',   ncicCode: '5011', severity: 'MB' }],
+  // Traffic
+  ['DUI',                 { utahStatute: '41-6a-502', ncicCode: '5404', severity: 'MB' }],
+  ['DRIVING UNDER THE INFLUENCE', { utahStatute: '41-6a-502', ncicCode: '5404', severity: 'MB' }],
+  ['RECKLESS DRIVING',    { utahStatute: '41-6a-528', ncicCode: '5401', severity: 'MC' }],
+  ['DRIVING ON SUSPENDED',{ utahStatute: '53-3-227',  ncicCode: '5402', severity: 'MC' }],
+  ['ELUDING',             { utahStatute: '41-6a-210', ncicCode: '5499', severity: 'F3' }],
+  ['NO INSURANCE',        { utahStatute: '41-12a-301', ncicCode: '5499', severity: 'INF' }],
+];
+
+/** Match a free-text charge to a curated offense entry (specific-first). */
+export function lookupOffense(charge: string | null | undefined): OffenseEntry | null {
+  const c = (charge ?? '').toUpperCase().trim();
+  if (!c) return null;
+  for (const [keyword, entry] of OFFENSE) {
+    if (c.includes(keyword)) return entry;
+  }
+  return null;
+}
+
+/** "CHARGE (statute · severity · NCIC code)"; raw uppercased charge if unmatched. */
+export function fmtOffense(charge: string | null | undefined): string {
+  const base = (charge ?? '').toUpperCase().trim();
+  if (!base) return '';
+  const e = lookupOffense(base);
+  return e ? `${base} (${e.utahStatute} · ${e.severity} · NCIC ${e.ncicCode})` : base;
+}

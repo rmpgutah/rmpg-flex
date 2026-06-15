@@ -111,3 +111,28 @@ describe('geographic + DL codes', () => {
     expect(fmtCoded('DL_ENDORSEMENT', 'P')).toBe('P (PASSENGER)');
   });
 });
+
+import { lookupOffense, fmtOffense } from '../ncicCodes';
+
+describe('offense codes', () => {
+  it('looks up an exact offense', () => {
+    const e = lookupOffense('Theft');
+    expect(e?.utahStatute).toBe('76-6-404');
+    expect(e?.severity).toBeTruthy();
+    expect(e?.ncicCode).toMatch(/^\d{4}$/);
+  });
+  it('matches by keyword inside a longer charge string', () => {
+    expect(lookupOffense('DUI - First Offense')?.utahStatute).toBe('41-6a-502');
+    expect(lookupOffense('AGGRAVATED ASSAULT W/ WEAPON')?.utahStatute).toBe('76-5-103');
+  });
+  it('prefers the more specific offense', () => {
+    expect(lookupOffense('Retail Theft')?.utahStatute).toBe('76-6-602');
+  });
+  it('fmtOffense annotates with statute, severity and NCIC code', () => {
+    expect(fmtOffense('Theft')).toMatch(/^THEFT \(76-6-404 · .+ · NCIC \d{4}\)$/);
+  });
+  it('fmtOffense returns the raw charge when unmatched', () => {
+    expect(fmtOffense('Jaywalking On Mars')).toBe('JAYWALKING ON MARS');
+    expect(fmtOffense('')).toBe('');
+  });
+});
