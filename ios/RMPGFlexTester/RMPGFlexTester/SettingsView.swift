@@ -1,9 +1,6 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var cfAccountId = KeychainStore.load(key: "cfAccountId") ?? ""
-    @State private var cfDatabaseId = KeychainStore.load(key: "cfDatabaseId") ?? AppConfig.liveDatabaseId
-    @State private var cfToken = KeychainStore.load(key: "cfToken") ?? ""
     @State private var rmpgUser = KeychainStore.load(key: "rmpgUser") ?? ""
     @State private var rmpgPass = KeychainStore.load(key: "rmpgPass") ?? ""
     @State private var verifierToken = KeychainStore.load(key: "verifierToken") ?? ""
@@ -13,16 +10,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("CLOUDFLARE (D1 CONSOLE / DATA VIEWER)") {
-                    TextField("Account ID", text: $cfAccountId)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
-                    TextField("Database ID", text: $cfDatabaseId)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
-                    SecureField("API Token (D1 read/write scope)", text: $cfToken)
-                    Button("Test D1 (SELECT 1)") { Task { await testD1() } }
-                        .disabled(busy)
-                }
-                Section("RMPG FLEX (SMOKE TESTS)") {
+                Section("RMPG FLEX LOGIN") {
                     TextField("Username", text: $rmpgUser)
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
                     SecureField("Password", text: $rmpgPass)
@@ -50,26 +38,10 @@ struct SettingsView: View {
     }
 
     private func save() {
-        KeychainStore.save(cfAccountId.trimmingCharacters(in: .whitespaces), key: "cfAccountId")
-        KeychainStore.save(cfDatabaseId.trimmingCharacters(in: .whitespaces), key: "cfDatabaseId")
-        KeychainStore.save(cfToken.trimmingCharacters(in: .whitespaces), key: "cfToken")
         KeychainStore.save(rmpgUser.trimmingCharacters(in: .whitespaces), key: "rmpgUser")
         KeychainStore.save(rmpgPass, key: "rmpgPass")
         KeychainStore.save(verifierToken.trimmingCharacters(in: .whitespacesAndNewlines), key: "verifierToken")
         status = "Saved."
-    }
-
-    @MainActor
-    private func testD1() async {
-        save()
-        guard let client = AppConfig.d1Client() else { status = "Missing account ID or token."; return }
-        busy = true; defer { busy = false }
-        do {
-            _ = try await client.query("SELECT 1 AS ok")
-            status = "✓ D1 reachable — credentials valid."
-        } catch {
-            status = "✗ \(error.localizedDescription)"
-        }
     }
 
     @MainActor
