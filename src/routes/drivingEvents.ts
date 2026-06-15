@@ -301,8 +301,9 @@ drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
     image_key: string | null; plate: string | null; confidence: number | null;
     state: string | null; make: string | null; model: string | null; color: string | null;
     year: number | null; raw_json: string | null;
+    accepted: number | null; review_status: string | null;
   }>(db,
-    "SELECT image_key, plate, confidence, state, make, model, color, year, raw_json FROM alpr_captures WHERE capture_id = ? LIMIT 1",
+    "SELECT image_key, plate, confidence, state, make, model, color, year, raw_json, accepted, review_status FROM alpr_captures WHERE capture_id = ? LIMIT 1",
     `cpg_dashcam:${event.cpg_device_id}:${event.cpg_media_timestamp}`).catch(() => null);
   // Null out the model's "not visible / unknown" non-answers so the tag stays clean.
   const cleanAttr = (s: string | null): string | null => {
@@ -324,7 +325,10 @@ drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
     event_timestamp: event.event_timestamp,
     still_url: cap?.image_key ? `/api/alpr/image/${cap.image_key}` : null,
     plate: cap?.plate ?? null,
-    plate_confidence: cap?.confidence ?? null,
+    plate_confidence: cap?.confidence ?? null,   // DERIVED trust (not the model self-report) since the clearpathAlpr fix
+    // Honesty signals so the overlay never presents an unconfirmed read as a positive ID.
+    plate_accepted: cap ? (cap.accepted === 1) : null,
+    plate_review_status: cap?.review_status ?? null,   // 'accepted' | 'confirmed' | 'needs_review' | 'no_plate'
     vehicle: cap ? { state: cleanAttr(cap.state), make: cleanAttr(cap.make), model: cleanAttr(cap.model), color: cleanAttr(cap.color), year: cap.year } : null,
     detections,
   });

@@ -37,6 +37,7 @@ interface MediaResp {
   id: number; has_video: boolean; stream_url: string | null; duration_sec: number | null;
   gps: GpsPoint[]; address: string | null; event_type: string | null; event_timestamp: string | null;
   still_url: string | null; plate: string | null; plate_confidence: number | null;
+  plate_accepted?: boolean | null; plate_review_status?: string | null;
   vehicle: VehicleAttrs | null; detections?: unknown[];
 }
 
@@ -189,6 +190,14 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
   const accelG = useMemo(() => instAccelG(gps, t), [gps, t]);
   const threats: Threat[] = useMemo(() => activeThreats({ speed: speedNow, turnRate, accelG, postedLimit: null }), [speedNow, turnRate, accelG]);
   const critical = useMemo(() => hits.filter((h) => h.severity === 'critical'), [hits]);
+  // A plate read is only a positive ID once it clears the derived-trust accept gate
+  // (or a human confirmed it). Until then it is an UNCONFIRMED observation — never
+  // paint it on a tracked box or screen it as a fact without saying so. (Guards
+  // against the old "fabricated 100%" overlay where any read read as certain.)
+  const plateConfirmed = useMemo(
+    () => media?.plate_accepted === true || media?.plate_review_status === 'accepted' || media?.plate_review_status === 'confirmed',
+    [media?.plate_accepted, media?.plate_review_status],
+  );
   const vTag = useMemo(() => vehicleTag(media?.vehicle ?? null), [media]);
   const roadPath = useMemo(() => videoPredictivePath(turnRate, speedNow, natW, natH), [turnRate, speedNow, natW, natH]);
   const roadFill = useMemo(() => {
@@ -503,14 +512,28 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                       const tagY = Math.max(26, y - 8);
                       return (
                         <g>
-                          {/* licence-plate sub-box */}
-                          <rect x={px} y={py} width={pw} height={ph} fill="none" stroke="#22d3ee" strokeWidth={3} vectorEffect="non-scaling-stroke" />
-                          {media.plate && (
-                            <>
-                              <rect x={px} y={py - 26} width={Math.max(80, media.plate.length * 15)} height={24} fill="rgba(0,0,0,0.78)" stroke="#22d3ee" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-                              <text x={px + 5} y={py - 8} fontSize={19} fill="#22d3ee" fontFamily="monospace" letterSpacing="2">{media.plate}</text>
-                            </>
-                          )}
+                          {/* licence-plate sub-box — cyan when the read is a confirmed ID,
+                              amber + dashed when it is an UNCONFIRMED observation so the
+                              overlay never asserts an unverified plate as fact. */}
+                          {(() => {
+                            const lpCol = plateConfirmed ? '#22d3ee' : '#f59e0b';
+                            const label = plateConfirmed ? (media.plate ?? '') : (media.plate ? `? ${media.plate}` : '');
+                            return (
+                              <>
+                                <rect x={px} y={py} width={pw} height={ph} fill="none" stroke={lpCol} strokeWidth={3}
+                                  strokeDasharray={plateConfirmed ? undefined : '8 5'} vectorEffect="non-scaling-stroke" />
+                                {media.plate && (
+                                  <>
+                                    <rect x={px} y={py - 26} width={Math.max(80, label.length * 15)} height={24} fill="rgba(0,0,0,0.78)" stroke={lpCol} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+                                    <text x={px + 5} y={py - 8} fontSize={19} fill={lpCol} fontFamily="monospace" letterSpacing="2">{label}</text>
+                                    {!plateConfirmed && (
+                                      <text x={px + 5} y={py + ph + 16} fontSize={11} fill="#f59e0b" fontFamily="sans-serif" letterSpacing="1">UNCONFIRMED</text>
+                                    )}
+                                  </>
+                                )}
+                              </>
+                            );
+                          })()}
                           {vTag && (
                             <>
                               <rect x={x} y={tagY - 22} width={tagW} height={22} fill="rgba(0,0,0,0.8)" stroke="#d4a017" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
@@ -539,6 +562,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                     <div className={`flex items-center gap-1.5 justify-center text-[11px] font-bold tracking-wider ${critical.length ? 'text-red-300' : 'text-[#d4a017]'}`}>
                       <ShieldAlert className="w-4 h-4" />
                       {critical.length ? 'HOTLIST HIT' : 'WATCHLIST'} — {media.plate}
+                      {!plateConfirmed && <span className="text-[9px] font-bold text-amber-300 ml-1">· VERIFY PLATE (unconfirmed read)</span>}
                     </div>
                     <div className="text-[10px] text-white/90 mt-0.5">{hits.map((h) => h.detail).join(' · ')}</div>
                   </div>
@@ -585,8 +609,15 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                   {pos && <div>{pos.latitude.toFixed(5)}, {pos.longitude.toFixed(5)}</div>}
                   <div className="text-white/60">{media.event_timestamp || ''}</div>
                   {media.plate && (
-                    <div className="mt-1 inline-block px-1.5 py-0.5 bg-black/70 border border-[#d4a017] text-[#d4a017] tracking-[0.15em] text-sm">
-                      {media.plate}{media.plate_confidence != null && <span className="text-[8px] ml-1">{Math.round(media.plate_confidence * 100)}%</span>}
+                    <div className="mt-1 flex flex-col items-end gap-0.5">
+                      <div className={`inline-block px-1.5 py-0.5 bg-black/70 border tracking-[0.15em] text-sm ${plateConfirmed ? 'border-[#d4a017] text-[#d4a017]' : 'border-amber-600 text-amber-400'}`}>
+                        {media.plate}{media.plate_confidence != null && <span className="text-[8px] ml-1">{Math.round(media.plate_confidence * 100)}% trust</span>}
+                      </div>
+                      {!plateConfirmed && (
+                        <span className="text-[8px] font-bold tracking-wider px-1 py-0.5 bg-amber-950/80 border border-amber-600 text-amber-300">
+                          UNCONFIRMED · NEEDS REVIEW
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

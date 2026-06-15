@@ -45,6 +45,41 @@ export function validatePlate(raw: string | null | undefined): string | null {
   return norm;
 }
 
+export interface CaptureTrust {
+  /** Calibrated, DERIVED plate confidence to persist + display (never the model's
+   *  self-report). Null when there is no plate. */
+  plateConfidence: number | null;
+  /** True only when derived trust clears the 0.85 accept gate. A single dashcam
+   *  read is hard-capped at 0.84 by trustScore, so a lone read never auto-accepts. */
+  accepted: boolean;
+  /** 'accepted' | 'needs_review' | 'no_plate' — consistent with plateConfidence. */
+  reviewStatus: 'accepted' | 'needs_review' | 'no_plate';
+  /** The model's RAW self-reported confidence, kept for forensics (raw_json) only —
+   *  it is demoted to a tiebreaker inside trustScore and is NEVER the stored signal. */
+  modelConfidence: number | null;
+}
+
+/** Decide what a dashcam capture should PERSIST + DISPLAY from a single plate read.
+ *  This is the seam that fixes the "false 100%" bug: instead of trusting the vision
+ *  model's self-reported confidence (Llama 3.2 11B routinely emits 1.0), we store
+ *  the derived `trustScore` — consensus + format validity, model % demoted to a
+ *  0.05 tiebreaker, lone reads hard-capped below the accept gate. Pure, exported
+ *  for tests. */
+export function captureTrust(plate: string | null, modelConfidence: number | null): CaptureTrust {
+  const modelConf = typeof modelConfidence === 'number' ? modelConfidence : null;
+  if (!plate) {
+    return { plateConfidence: null, accepted: false, reviewStatus: 'no_plate', modelConfidence: modelConf };
+  }
+  const trust = trustScore({ reads: [plate], modelPct: modelConf ?? undefined });
+  const accepted = trust.trustScore >= ALPR_ACCEPT_CONFIDENCE;
+  return {
+    plateConfidence: trust.trustScore,
+    accepted,
+    reviewStatus: accepted ? 'accepted' : 'needs_review',
+    modelConfidence: modelConf,
+  };
+}
+
 /** Best https still-image URL for the outside camera of an event:
  *  a full IMAGE object's accessUrl first, else any outside thumbnail. null if none. */
 export function pickAlprImageUrl(event: CpgMediaEvent): string | null {
@@ -157,14 +192,18 @@ export async function alprDashcamClip(
     return;
   }
   const plate = validatePlate(read?.plate);   // null for "NOTVISIBLE"/junk → recorded as a no-plate still
-  const confidence = read?.confidence ?? null;
+  const modelConfidence = read?.confidence ?? null;   // the vision model's SELF-REPORT (untrusted)
   const { lat, lng } = eventLatLng(args.event);
-  // Gate the master-record upsert on DERIVED trust, not the model's self-reported
-  // confidence (which plateTrust.ts distrusts). trustScore() hard-caps a single
-  // read at 0.84, so no lone dashcam read can auto-upsert a vehicles_records
-  // master row — matching the on-scene ASSERT_GATE behavior.
-  const trust = plate ? trustScore({ reads: [plate], modelPct: confidence ?? undefined }) : null;
-  const accepted = !!plate && !!trust && trust.trustScore >= ALPR_ACCEPT_CONFIDENCE;
+  // Derive what we PERSIST + DISPLAY from the read. captureTrust() distrusts the
+  // model's self-reported confidence (which is routinely a fabricated 1.0) and
+  // returns the calibrated trustScore instead. trustScore() hard-caps a single
+  // read at 0.84, so no lone dashcam read can auto-accept or auto-upsert a
+  // vehicles_records master row — matching the on-scene ASSERT_GATE behavior.
+  // `plateConfidence` is what goes into the capture's confidence columns and the
+  // forensic overlay; the raw model % survives only in raw_json for forensics.
+  const ct = captureTrust(plate, modelConfidence);
+  const confidence = ct.plateConfidence;   // derived trust, NOT the model self-report
+  const accepted = ct.accepted;
   const deviceName = args.mapping.cpg_display_name || args.mapping.cpg_device_id;
   const locationText = args.event.address || `${deviceName} dashcam`;
 
@@ -212,7 +251,7 @@ export async function alprDashcamClip(
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, datetime('now'))`,
       plate, read?.state ?? null, read?.make ?? null, read?.model ?? null, read?.color ?? null, read?.year ?? null,
       read?.condition ?? null, damageObserved ? 1 : 0, read?.damageSummary ?? null,
-      confidence, confidence, accepted ? 1 : 0, !plate ? 'no_plate' : accepted ? 'accepted' : 'needs_review', imageKey,
+      confidence, confidence, accepted ? 1 : 0, ct.reviewStatus, imageKey,
       lat, lng, locationText,
       `cpg_dashcam:${args.mapping.cpg_device_id}:${args.event.eventTimestamp}`,
       JSON.stringify({
@@ -220,6 +259,9 @@ export async function alprDashcamClip(
         device: args.mapping.cpg_device_id, deviceName, eventTimestamp: args.event.eventTimestamp,
         eventType: args.event.mediaObject?.[0]?.eventType || null,
         videoId: args.videoId, imageUrl,
+        // Forensics: the model's RAW self-reported confidence (demoted to a
+        // tiebreaker by trustScore) vs. the derived trust we actually persist.
+        modelConfidence: ct.modelConfidence, derivedTrust: ct.plateConfidence,
       }));
   } catch (err) { console.error('[cpg-alpr] capture insert failed:', (err as Error)?.message); }
 
