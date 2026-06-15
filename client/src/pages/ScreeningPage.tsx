@@ -9,6 +9,7 @@ function parseFields(raw: string | null | undefined): string[] {
 interface SourceInfo { sourceKey: string; label: string; kind: string; supportsSearch: boolean; }
 interface Candidate { sourceKey: string; externalId: string; displayName: string; summary: string; photoUrl?: string; country?: string; listType?: string; dob?: string | null; }
 interface Hit { id: number; source_key: string; person_id: number | null; display_name: string; summary: string; match_score: number; matched_fields: string; status: string; }
+interface Coverage { available: boolean; rowCount?: number; configured?: boolean; severity: 'ok' | 'warning'; message?: string; }
 
 type Tab = 'search' | 'review' | 'watchlist' | 'sources';
 
@@ -20,6 +21,8 @@ export function ScreeningWorkspace() {
   const [source, setSource] = useState('interpol-red');
   const [name, setName] = useState(''); const [forename, setForename] = useState(''); const [nationality, setNationality] = useState('');
   const [results, setResults] = useState<Candidate[]>([]);
+  const [coverage, setCoverage] = useState<Coverage | null>(null);
+  const [searched, setSearched] = useState(false);
   const [hits, setHits] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -32,10 +35,14 @@ export function ScreeningWorkspace() {
       if (name) qs.set('name', name);
       if (forename) qs.set('forename', forename);
       if (nationality) qs.set('nationality', nationality);
-      const r = await apiFetch<{ data: Candidate[] }>(`/screening/search?${qs}`);
+      const r = await apiFetch<{ data: Candidate[]; coverage?: Coverage }>(`/screening/search?${qs}`);
       setResults(r.data ?? []);
-    } catch { setResults([]); } finally { setLoading(false); }
+      setCoverage(r.coverage ?? null);
+    } catch { setResults([]); setCoverage(null); } finally { setSearched(true); setLoading(false); }
   }, [source, name, forename, nationality]);
+
+  // Reset stale results/coverage when the operator switches source.
+  useEffect(() => { setResults([]); setCoverage(null); setSearched(false); }, [source]);
 
   const loadHits = useCallback(() => {
     apiFetch<{ data: Hit[] }>('/screening/hits?status=pending').then((r) => setHits(r.data ?? [])).catch(() => setHits([]));
@@ -69,6 +76,14 @@ export function ScreeningWorkspace() {
             <input placeholder="Nationality" value={nationality} onChange={(e) => setNationality(e.target.value)} className="bg-black border border-[#232323] px-2 py-1 text-[11px]" />
             <button onClick={search} className="px-3 py-1 border border-[#d4a017] text-[#d4a017] text-[11px]">SEARCH</button>
           </div>
+          {/* False-clear guard: an empty local registry must never read as
+              "not an offender." Show WHY there are no records to match. */}
+          {coverage && !coverage.available && (
+            <div className="border border-[#d4a017] bg-[#1a1305] text-[#e8c558] text-[11px] px-3 py-2 flex gap-2">
+              <span aria-hidden className="text-[#d4a017] font-semibold">⚠</span>
+              <span><span className="font-semibold uppercase">Not a clearance — registry empty.</span> {coverage.message}</span>
+            </div>
+          )}
           {loading ? <div className="text-[#888] text-[11px]">Searching…</div> : (
             <table className="w-full text-[11px]">
               <thead><tr className="text-[9px] text-[#888]"><th className="text-left py-[3px]">NAME</th><th className="text-left">SUMMARY</th><th className="text-left">COUNTRY</th><th className="text-left">DOB</th></tr></thead>
@@ -79,7 +94,13 @@ export function ScreeningWorkspace() {
                     <td>{r.summary}</td><td>{r.country ?? '—'}</td><td>{r.dob ?? '—'}</td>
                   </tr>
                 ))}
-                {!results.length && <tr><td colSpan={4} className="text-[#888] py-2">No results.</td></tr>}
+                {searched && !results.length && (
+                  <tr><td colSpan={4} className="py-2">
+                    {coverage && !coverage.available
+                      ? <span className="text-[#e8c558]">No records loaded for this source — result is inconclusive, not a clearance.</span>
+                      : <span className="text-[#888]">No matches found.</span>}
+                  </td></tr>
+                )}
               </tbody>
             </table>
           )}

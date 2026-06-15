@@ -1,4 +1,5 @@
 import type { Bindings } from '../../types';
+import type { SourceCoverage } from './coverage';
 
 export interface PersonRow {
   id: number;
@@ -76,4 +77,11 @@ export interface ScreeningAdapter {
   scoreMatch(person: PersonRow, candidate: NormalizedCandidate): MatchResult;
   normalize(raw: unknown): NormalizedCandidate;
   confirmHit(env: Bindings, hit: ScreeningHitRow): Promise<{ promotedRef: string }>;
+  /**
+   * Optional. For local-table-backed sources, reports whether searchable
+   * data is actually loaded so an empty result is never mistaken for a
+   * clearance. Omit for live-API sources (INTERPOL/OFAC) which are always
+   * "covered" when reachable.
+   */
+  coverage?(env: Bindings): Promise<SourceCoverage>;
 }
