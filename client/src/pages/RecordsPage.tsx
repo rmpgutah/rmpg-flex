@@ -450,9 +450,10 @@ export default function RecordsPage() {
           else if (activeTab === 'evidence') setNewEvidenceTrigger(t => t + 1);
         }}
         onFind={() => {
-          const el = document.querySelector<HTMLInputElement>('.spillman-theme input[type="search"]');
+          const el = document.querySelector<HTMLInputElement>('.spillman-theme input[type="search"], .spillman-theme input[type="text"]');
           el?.focus();
         }}
+        onPrint={() => window.print()}
       />
 
       {/* Tab Row — Spillman silver record-type tabs + archive toggle */}
@@ -477,7 +478,7 @@ export default function RecordsPage() {
       </div>
 
       {/* Compact Stats Strip */}
-      <div className={`${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`} style={{ background: '#050505' }}>
+      <div className={`records-stats ${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`} style={{ background: '#050505' }}>
         <div className="flex items-center gap-1">
           <UserCircle className="w-2.5 h-2.5 text-brand-400" />
           <span className="text-rmpg-400">P:</span>
@@ -602,7 +603,7 @@ export default function RecordsPage() {
 
       {hasSelection && RECORD_FORM_SECTIONS[activeTab as keyof typeof RECORD_FORM_SECTIONS]?.length > 0 && (
         <SpillmanFormTabs
-          key={`${activeTab}-${personsState.selectedPerson?.id ?? 'none'}`}
+          key={`${activeTab}-${personsState.selectedPerson?.id ?? vehiclesState.selectedVehicle?.id ?? propertiesState.selectedProperty?.id ?? evidenceState.selectedEvidence?.id ?? 'none'}`}
           sections={RECORD_FORM_SECTIONS[activeTab as keyof typeof RECORD_FORM_SECTIONS]}
         />
       )}

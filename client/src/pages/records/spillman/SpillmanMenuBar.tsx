@@ -29,7 +29,8 @@ export default function SpillmanMenuBar({ onNew, onPrint, onExport, onFind }: Pr
   return (
     <div className="spm-menubar" role="menubar" onMouseLeave={() => setOpen(null)}>
       {Object.keys(menus).map((name) => {
-        const hasItems = menus[name].length > 0;
+        const items = menus[name].filter((item) => typeof item.onClick === 'function');
+        const hasItems = items.length > 0;
         return (
         <div key={name} className="spm-menu">
           <button
@@ -41,9 +42,9 @@ export default function SpillmanMenuBar({ onNew, onPrint, onExport, onFind }: Pr
           >
             {name}
           </button>
-          {open === name && menus[name].length > 0 && (
+          {open === name && hasItems && (
             <div className="spm-menu-dropdown" role="menu">
-              {menus[name].map((item) => (
+              {items.map((item) => (
                 <button
                   key={item.label}
                   type="button"
