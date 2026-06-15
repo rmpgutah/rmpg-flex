@@ -741,7 +741,7 @@ export default function AdminPage() {
             <RmpgLogo height={64} />
             <div className="flex-1 min-w-0">
               <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: 'var(--text-secondary)', letterSpacing: '0.12em' }}>System Administration</h1>
-              <p className="text-[9px] tracking-wide mt-0.5 text-rmpg-600">Rocky Mountain Protective Group, LLC</p>
+              <p className="text-[9px] tracking-wide mt-0.5 text-rmpg-500">Rocky Mountain Protective Group, LLC</p>
             </div>
           </div>
         </div>

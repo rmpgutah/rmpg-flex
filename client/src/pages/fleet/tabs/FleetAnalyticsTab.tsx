@@ -1104,7 +1104,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       className={`px-2 py-1 text-[9px] font-mono rounded-[2px] border transition-colors duration-150
                         ${isSelected
                           ? 'bg-[#888888] border-[#888888] text-white'
-                          : 'bg-surface-sunken border-rmpg-700 text-rmpg-400 hover:text-white hover:border-[#2a2a2a]'
+                          : 'bg-surface-sunken border-rmpg-700 text-rmpg-400 hover:text-white hover:border-rmpg-600'
                         }`}
                     >
                       {v.vehicle_number}
