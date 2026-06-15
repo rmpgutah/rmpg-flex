@@ -34,6 +34,11 @@ html.theme-dark {
   --blue-900-rgb: 13 23 34;
   --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
   --brand-gold-600-rgb: 184 136 15; --brand-gold-700-rgb: 147 108 10;
+
+  /* Records chrome tokens — NIGHT (dark steel-blue) */
+  --spm-chrome: #15212e; --spm-form: #0d1722; --spm-field: #101a26;
+  --spm-border: #2a3a4d; --spm-field-border: #2a3a4d; --spm-accent: #5a85b8;
+  --spm-select: #316ac5; --spm-text: #e6edf5; --spm-text-muted: #8fa3b8;
 }
 
 /* ---- DAY (light grey Spillman; scale INVERTED) ---- */
@@ -64,6 +69,11 @@ html.theme-light {
   /* gold — DAY: distinct darkening steps for hierarchy, all legible on light */
   --brand-gold-300-rgb: 176 130 30; --brand-gold-400-rgb: 160 116 18; --brand-gold-500-rgb: 147 108 10;
   --brand-gold-600-rgb: 120 88 8;   --brand-gold-700-rgb: 100 73 7;
+
+  /* Records chrome tokens — DAY (current light Spillman look) */
+  --spm-chrome: #d6d3c8; --spm-form: #ece9dd; --spm-field: #f7f9fb;
+  --spm-border: #9a958a; --spm-field-border: #c3cdd8; --spm-accent: #2e4a66;
+  --spm-select: #316ac5; --spm-text: #1a1a1a; --spm-text-muted: #555555;
 }
 
 /* ---- LEGACY BLACK (kill-switch; pure-black pre-refactor) ---- */
@@ -89,4 +99,9 @@ html.theme-legacy-black {
   --blue-600-rgb: 115 115 115; --blue-700-rgb: 79 79 79; --blue-800-rgb: 46 46 46; --blue-900-rgb: 20 20 20;
   --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
   --brand-gold-600-rgb: 184 136 15; --brand-gold-700-rgb: 147 108 10;
+
+  /* Records chrome tokens — LEGACY BLACK (dark neutrals) */
+  --spm-chrome: #0b0b0b; --spm-form: #000000; --spm-field: #0d0d0d;
+  --spm-border: #232323; --spm-field-border: #232323; --spm-accent: #9a9a9a;
+  --spm-select: #316ac5; --spm-text: #f2f2f2; --spm-text-muted: #8a8a8a;
 }

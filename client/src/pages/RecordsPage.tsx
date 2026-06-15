@@ -450,7 +450,7 @@ export default function RecordsPage() {
           else if (activeTab === 'evidence') setNewEvidenceTrigger(t => t + 1);
         }}
         onFind={() => {
-          const el = document.querySelector<HTMLInputElement>('.spillman-theme input[type="search"], .spillman-theme input[type="text"]');
+          const el = document.querySelector<HTMLInputElement>('.records-page input[type="search"], .records-page input[type="text"]');
           el?.focus();
         }}
         onPrint={() => window.print()}
@@ -636,7 +636,7 @@ export default function RecordsPage() {
   }, []);
 
   return (
-    <div className="spillman-theme flex flex-col h-full animate-fade-in">
+    <div className="records-page flex flex-col h-full animate-fade-in">
       <SplitPanel
         left={leftPanel}
         right={rightPanel}

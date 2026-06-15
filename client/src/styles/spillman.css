@@ -1,68 +1,60 @@
-/* Spillman Flex grey/steel-blue theme — scoped to .spillman-theme.
-   Reusable layer: the --spm-* tokens can later drive an app-wide rollout. */
-.spillman-theme {
-  --spm-chrome: #d6d3c8;
-  --spm-form: #ece9dd;
-  --spm-field: #f7f9fb;
-  --spm-border: #9a958a;
-  --spm-field-border: #c3cdd8;
-  --spm-accent: #2e4a66;
-  --spm-select: #316ac5;
-  --spm-text: #1a1a1a;
-  --spm-text-muted: #555555;
-}
+/* Spillman Flex grey/steel-blue theme — tokens now live in theme-palettes.css.
+   --spm-* vars invert with the global day/night switcher.
+   Scoped to .records-page (the Records page root); the old .spillman-theme
+   wrapper is removed so colors come from shared theme vars, not a hardcoded
+   light token block. */
 
 /* ── Base surface + text recolor ───────────────────────────── */
-.spillman-theme { background: var(--spm-form); color: var(--spm-text); }
+.records-page { background: var(--spm-form); color: var(--spm-text); }
 
-/* rmpg / surface / brand background families → light Spillman surfaces.
+/* rmpg / surface / brand background families → Spillman surfaces.
    Substring attribute selectors absorb the /alpha utility variants too. */
-.spillman-theme [class*="bg-rmpg-9"],
-.spillman-theme [class*="bg-surface-base"],
-.spillman-theme [class*="bg-surface-deep"],
-.spillman-theme [class*="bg-surface-sunken"] { background-color: var(--spm-form) !important; }
+.records-page [class*="bg-rmpg-9"],
+.records-page [class*="bg-surface-base"],
+.records-page [class*="bg-surface-deep"],
+.records-page [class*="bg-surface-sunken"] { background-color: var(--spm-form) !important; }
 
-.spillman-theme [class*="bg-rmpg-8"],
-.spillman-theme [class*="bg-rmpg-7"],
-.spillman-theme [class*="bg-surface-raised"],
-.spillman-theme [class*="bg-surface-overlay"] { background-color: #ffffff !important; }
+.records-page [class*="bg-rmpg-8"],
+.records-page [class*="bg-rmpg-7"],
+.records-page [class*="bg-surface-raised"],
+.records-page [class*="bg-surface-overlay"] { background-color: var(--spm-field) !important; }
 
 /* Borders → structural Spillman grey */
-.spillman-theme [class*="border-rmpg-"] { border-color: var(--spm-border) !important; }
+.records-page [class*="border-rmpg-"] { border-color: var(--spm-border) !important; }
 
-/* Text → dark on light; brand/amber accents → steel-blue */
-.spillman-theme .text-white { color: #15202b !important; }
-.spillman-theme [class*="text-rmpg-3"],
-.spillman-theme [class*="text-rmpg-4"],
-.spillman-theme [class*="text-rmpg-5"] { color: var(--spm-text-muted) !important; }
-.spillman-theme [class*="text-brand-4"],
-.spillman-theme [class*="text-brand-5"] { color: var(--spm-accent) !important; }
+/* Text → theme-correct; brand/amber accents → steel-blue */
+.records-page .text-white { color: var(--spm-text) !important; }
+.records-page [class*="text-rmpg-3"],
+.records-page [class*="text-rmpg-4"],
+.records-page [class*="text-rmpg-5"] { color: var(--spm-text-muted) !important; }
+.records-page [class*="text-brand-4"],
+.records-page [class*="text-brand-5"] { color: var(--spm-accent) !important; }
 
-/* Scrollbars → light */
-.spillman-theme .scrollbar-dark::-webkit-scrollbar-track { background: #d8d4c8 !important; }
-.spillman-theme .scrollbar-dark::-webkit-scrollbar-thumb { background: #b3ae9e !important; }
+/* Scrollbars → themed */
+.records-page .scrollbar-dark::-webkit-scrollbar-track { background: var(--spm-chrome) !important; }
+.records-page .scrollbar-dark::-webkit-scrollbar-thumb { background: var(--spm-border) !important; }
 
-/* Window title bar → steel-blue gradient */
-.spillman-theme .panel-title-bar {
+/* Window title bar → steel-blue gradient (kept as decorative chrome) */
+.records-page .panel-title-bar {
   background: linear-gradient(#5a7ea6, #2e4a66) !important;
   border-color: #2e4a66 !important;
   color: #ffffff !important;
 }
-.spillman-theme .panel-title-bar .title-icon,
-.spillman-theme .panel-title-bar span { color: #ffffff !important; }
+.records-page .panel-title-bar .title-icon,
+.records-page .panel-title-bar span { color: #ffffff !important; }
 
-/* Toolbar buttons → classic raised */
-.spillman-theme .toolbar-btn {
+/* Toolbar buttons → classic raised (kept as decorative chrome) */
+.records-page .toolbar-btn {
   background: linear-gradient(#ffffff, #e8e6da) !important;
-  border: 1px solid #b3ae9e !important;
-  color: #1a1a1a !important;
+  border: 1px solid var(--spm-border) !important;
+  color: var(--spm-text) !important;
 }
-.spillman-theme .toolbar-btn:hover { background: linear-gradient(#ffffff, #dad7c9) !important; }
-.spillman-theme .toolbar-btn:active {
+.records-page .toolbar-btn:hover { background: linear-gradient(#ffffff, #dad7c9) !important; }
+.records-page .toolbar-btn:active {
   background: linear-gradient(#c8c5b8, #dedad0) !important;
-  border-color: #9a958a !important;
+  border-color: var(--spm-border) !important;
 }
-.spillman-theme .toolbar-btn-primary {
+.records-page .toolbar-btn-primary {
   background: linear-gradient(#dfe8f6, #b9d2ee) !important;
   border-color: #6f93bd !important;
   color: #16314f !important;
@@ -70,79 +62,79 @@
 }
 
 /* ── Group boxes (CollapsibleSection) ──────────────────────── */
-.spillman-theme .collapsible-section {
+.records-page .collapsible-section {
   border: 1px solid var(--spm-border) !important;
-  background: #ffffff !important;
+  background: var(--spm-field) !important;
 }
-.spillman-theme .collapsible-section-header {
+.records-page .collapsible-section-header {
   background: linear-gradient(#eef3f9, #cfdcec) !important;
   border-bottom: 1px solid var(--spm-border) !important;
-  color: #22405e !important;
+  color: var(--spm-accent) !important;
 }
-.spillman-theme .collapsible-section-header * { color: #22405e !important; }
+.records-page .collapsible-section-header * { color: var(--spm-accent) !important; }
 
 /* ── Record-type tab strip ─────────────────────────────────── */
-.spillman-theme .spm-record-tabs {
+.records-page .spm-record-tabs {
   display: flex;
   background: var(--spm-chrome);
   border-bottom: 1px solid var(--spm-border);
   font-size: 11px;
   overflow-x: auto;
 }
-.spillman-theme .spm-record-tab {
+.records-page .spm-record-tab {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 5px 12px;
-  border-right: 1px solid #b3ae9e;
-  color: #33312b;
+  border-right: 1px solid var(--spm-border);
+  color: var(--spm-text);
   white-space: nowrap;
 }
-.spillman-theme .spm-record-tab.on {
-  background: #ffffff;
+.records-page .spm-record-tab.on {
+  background: var(--spm-field);
   font-weight: 600;
   border-bottom: 2px solid var(--spm-accent);
 }
-.spillman-theme .spm-record-tab-count { color: var(--spm-text-muted); }
-.spillman-theme .spm-record-tab.on .spm-record-tab-count { color: var(--spm-accent); }
+.records-page .spm-record-tab-count { color: var(--spm-text-muted); }
+.records-page .spm-record-tab.on .spm-record-tab-count { color: var(--spm-accent); }
 
 /* ── Menu bar ──────────────────────────────────────────────── */
-.spillman-theme .spm-menubar {
+.records-page .spm-menubar {
   display: flex;
-  background: #f1efe2;
-  border-bottom: 1px solid #aca899;
+  background: var(--spm-chrome);
+  border-bottom: 1px solid var(--spm-border);
   font-size: 12px;
   position: relative;
   z-index: 20;
 }
-.spillman-theme .spm-menu-label {
+.records-page .spm-menu-label {
   padding: 3px 10px;
-  color: #1a1a1a;
+  color: var(--spm-text);
 }
-.spillman-theme .spm-menu-label:hover,
-.spillman-theme .spm-menu-label[aria-expanded="true"] { background: #cdd2dd; }
-.spillman-theme .spm-menu { position: relative; }
-.spillman-theme .spm-menu-dropdown {
+.records-page .spm-menu-label:hover,
+.records-page .spm-menu-label[aria-expanded="true"] { background: var(--spm-field-border); }
+.records-page .spm-menu { position: relative; }
+.records-page .spm-menu-dropdown {
   position: absolute;
   top: 100%;
   left: 0;
   min-width: 140px;
-  background: #f6f5ef;
-  border: 1px solid #9a958a;
+  background: var(--spm-form);
+  border: 1px solid var(--spm-border);
   box-shadow: 2px 2px 6px rgba(0,0,0,.3);
   display: flex;
   flex-direction: column;
 }
-.spillman-theme .spm-menu-item {
+.records-page .spm-menu-item {
   text-align: left;
   padding: 4px 14px;
   font-size: 12px;
-  color: #1a1a1a;
+  color: var(--spm-text);
 }
-.spillman-theme .spm-menu-item:hover { background: var(--spm-select); color: #fff; }
+.records-page .spm-menu-item:hover { background: var(--spm-select); color: #fff; }
 
 /* ── Record form section tabs ──────────────────────────────── */
-.spillman-theme .spm-form-tabs {
+.records-page .spm-form-tabs {
   display: flex;
   gap: 2px;
   padding: 3px 4px 0 4px;
@@ -150,85 +142,85 @@
   border-bottom: 1px solid var(--spm-border);
   overflow-x: auto;
 }
-.spillman-theme .spm-form-tab {
+.records-page .spm-form-tab {
   padding: 4px 10px;
   font-size: 11px;
   border: 1px solid var(--spm-border);
   border-bottom: none;
-  background: #cbc8bc;
-  color: #33312b;
+  background: var(--spm-chrome);
+  color: var(--spm-text);
   border-radius: 3px 3px 0 0;
   white-space: nowrap;
 }
-.spillman-theme .spm-form-tab.on {
+.records-page .spm-form-tab.on {
   background: var(--spm-form);
   font-weight: 600;
   position: relative;
   top: 1px;
 }
 
-/* ── Left results list → silver rows, steel-blue selection ─── */
-.spillman-theme [role="listitem"] {
-  border-bottom: 1px solid #eceadf !important;
+/* ── Left results list → themed rows, steel-blue selection ─── */
+.records-page [role="listitem"] {
+  border-bottom: 1px solid var(--spm-border) !important;
   color: var(--spm-text) !important;
 }
-.spillman-theme [role="listitem"]:nth-child(even) { background: #f6f5ef !important; }
-.spillman-theme [role="listitem"]:hover { background: #e9f0fa !important; }
-.spillman-theme [role="listitem"][aria-selected="true"] {
+.records-page [role="listitem"]:nth-child(even) { background: var(--spm-field) !important; }
+.records-page [role="listitem"]:hover { background: var(--spm-field-border) !important; }
+.records-page [role="listitem"][aria-selected="true"] {
   background: var(--spm-select) !important;
   border-left-color: #1e3f6b !important;
 }
-.spillman-theme [role="listitem"][aria-selected="true"],
-.spillman-theme [role="listitem"][aria-selected="true"] * {
+.records-page [role="listitem"][aria-selected="true"],
+.records-page [role="listitem"][aria-selected="true"] * {
   color: #ffffff !important;
 }
 /* Colored badges on the selected (steel-blue) row → solid saturated tile + white text.
    Keeps each badge legible and preserves its color-coded meaning instead of
    collapsing to white-on-white or white-on-yellow. */
-.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-red-"] { background: #b91c1c !important; color: #ffffff !important; }
-.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-amber-"],
-.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-yellow-"] { background: #b45309 !important; color: #ffffff !important; }
-.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-green-"] { background: #15803d !important; color: #ffffff !important; }
-.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-purple-"] { background: #7e22ce !important; color: #ffffff !important; }
-.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-rmpg-"] { background: #1e3f6b !important; color: #ffffff !important; }
+.records-page [role="listitem"][aria-selected="true"] [class*="bg-red-"] { background: #b91c1c !important; color: #ffffff !important; }
+.records-page [role="listitem"][aria-selected="true"] [class*="bg-amber-"],
+.records-page [role="listitem"][aria-selected="true"] [class*="bg-yellow-"] { background: #b45309 !important; color: #ffffff !important; }
+.records-page [role="listitem"][aria-selected="true"] [class*="bg-green-"] { background: #15803d !important; color: #ffffff !important; }
+.records-page [role="listitem"][aria-selected="true"] [class*="bg-purple-"] { background: #7e22ce !important; color: #ffffff !important; }
+.records-page [role="listitem"][aria-selected="true"] [class*="bg-rmpg-"] { background: #1e3f6b !important; color: #ffffff !important; }
 
 /* ── Detail identity band + caution banner ─────────────────── */
 /* Amber/gold caution surfaces → Spillman caution gradient (detail panel only) */
-.spillman-theme .records-detail [class*="bg-amber-9"],
-.spillman-theme .records-detail [class*="bg-yellow-9"] {
+.records-detail [class*="bg-amber-9"],
+.records-detail [class*="bg-yellow-9"] {
   background: linear-gradient(#fff4d6, #ffe9ad) !important;
   border-color: #c79a2e !important;
 }
-.spillman-theme .records-detail [class*="bg-amber-9"] *,
-.spillman-theme .records-detail [class*="bg-yellow-9"] * { color: #6b4e10 !important; }
+.records-detail [class*="bg-amber-9"] *,
+.records-detail [class*="bg-yellow-9"] * { color: #6b4e10 !important; }
 
 /* Red officer-safety surfaces → keep red but lighten for the light theme (detail panel only) */
-.spillman-theme .records-detail [class*="bg-red-9"] {
+.records-detail [class*="bg-red-9"] {
   background: #f6dada !important;
   border-color: #b03030 !important;
 }
-.spillman-theme .records-detail [class*="bg-red-9"] * { color: #9a1c1c !important; }
+.records-detail [class*="bg-red-9"] * { color: #9a1c1c !important; }
 
-/* HIGH RISK / status pills sit on white in the identity band (detail panel only) */
-.spillman-theme .records-detail [class*="bg-surface"][class*="rounded"] { background: #ffffff !important; }
+/* HIGH RISK / status pills sit on field surface in the identity band (detail panel only) */
+.records-detail [class*="bg-surface"][class*="rounded"] { background: var(--spm-field) !important; }
 
 /* ── Record-detail AlertBanner (caution banners) ───────────── */
-.spillman-theme .alert-banner-critical {
+.records-page .alert-banner-critical {
   background: #f6dada !important;
   border: 1px solid #b03030 !important;
 }
-.spillman-theme .alert-banner-warning {
+.records-page .alert-banner-warning {
   background: linear-gradient(#fff4d6, #ffe9ad) !important;
   border: 1px solid #c79a2e !important;
 }
 /* dark-on-light text for both banner variants (the title is text-white inline-classed) */
-.spillman-theme .alert-banner-critical .text-white { color: #7a1414 !important; }
-.spillman-theme .alert-banner-warning .text-white { color: #6b4e10 !important; }
-.spillman-theme .alert-banner-row .text-rmpg-300 { color: #555555 !important; }
+.records-page .alert-banner-critical .text-white { color: #7a1414 !important; }
+.records-page .alert-banner-warning .text-white { color: #6b4e10 !important; }
+.records-page .alert-banner-row .text-rmpg-300 { color: var(--spm-text-muted) !important; }
 /* AlertBanner icon color softening */
-.spillman-theme .alert-banner-critical svg { color: #b03030 !important; }
-.spillman-theme .alert-banner-warning svg { color: #9a7b1e !important; }
+.records-page .alert-banner-critical svg { color: #b03030 !important; }
+.records-page .alert-banner-warning svg { color: #9a7b1e !important; }
 
-/* ── Compact stats strip → light Spillman surface ──────────── */
-.spillman-theme .records-stats { background: var(--spm-chrome) !important; color: var(--spm-text) !important; }
-.spillman-theme .records-stats .text-white { color: #15202b !important; }
+/* ── Compact stats strip → Spillman chrome surface ──────────── */
+.records-page .records-stats { background: var(--spm-chrome) !important; color: var(--spm-text) !important; }
+.records-page .records-stats .text-white { color: var(--spm-text) !important; }
