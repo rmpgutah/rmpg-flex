@@ -45,19 +45,19 @@
 
 /* Toolbar buttons → classic raised (kept as decorative chrome) */
 .records-page .toolbar-btn {
-  background: linear-gradient(#ffffff, #e8e6da) !important;
+  background: var(--spm-toolbar) !important;
   border: 1px solid var(--spm-border) !important;
   color: var(--spm-text) !important;
 }
-.records-page .toolbar-btn:hover { background: linear-gradient(#ffffff, #dad7c9) !important; }
+.records-page .toolbar-btn:hover { background: var(--spm-toolbar-hover) !important; }
 .records-page .toolbar-btn:active {
-  background: linear-gradient(#c8c5b8, #dedad0) !important;
+  background: var(--spm-toolbar-active) !important;
   border-color: var(--spm-border) !important;
 }
 .records-page .toolbar-btn-primary {
-  background: linear-gradient(#dfe8f6, #b9d2ee) !important;
-  border-color: #6f93bd !important;
-  color: #16314f !important;
+  background: var(--spm-toolbar-primary) !important;
+  border-color: var(--spm-border) !important;
+  color: var(--spm-text) !important;
   font-weight: 600 !important;
 }
 
@@ -67,7 +67,7 @@
   background: var(--spm-field) !important;
 }
 .records-page .collapsible-section-header {
-  background: linear-gradient(#eef3f9, #cfdcec) !important;
+  background: var(--spm-group-head) !important;
   border-bottom: 1px solid var(--spm-border) !important;
   color: var(--spm-accent) !important;
 }
