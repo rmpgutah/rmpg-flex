@@ -33,7 +33,7 @@ struct FieldOpsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 10) {
-                    HStack(spacing: 6) { OfflineStatusPill(); Spacer(); MDTStatusPill() }
+                    HStack(spacing: 6) { OfflineStatusPill(); GPSStatusPill(); Spacer(); MDTStatusPill() }
                     dutyCard
                     if onShift { statusCard }
                     NavigationLink {
