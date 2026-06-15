@@ -62,6 +62,20 @@ describe('VIEW_PANELS', () => {
     expect(VIEW_PANELS.patrol).toContain('callsNearMe');
     expect(VIEW_PANELS.patrol).not.toContain('officerActivity');
   });
+  it('callAnalytics shows for dispatch and admin, not patrol', () => {
+    expect(VIEW_PANELS.dispatch).toContain('callAnalytics');
+    expect(VIEW_PANELS.admin).toContain('callAnalytics');
+    expect(VIEW_PANELS.patrol).not.toContain('callAnalytics');
+  });
+  it('adminExtras is admin-only', () => {
+    expect(VIEW_PANELS.admin).toContain('adminExtras');
+    expect(VIEW_PANELS.dispatch).not.toContain('adminExtras');
+    expect(VIEW_PANELS.patrol).not.toContain('adminExtras');
+  });
+  it('patrol stays light — excludes all analytics/admin extras', () => {
+    ['callAnalytics', 'adminExtras', 'officerActivity', 'statusSummary', 'alertsReminders']
+      .forEach((p) => expect(VIEW_PANELS.patrol).not.toContain(p as any));
+  });
 });
 
 describe('resolveDashboardView', () => {

@@ -1098,6 +1098,7 @@ export default function DashboardPage() {
       )}
 
       {/* Main Content Grid */}
+      {hasPanel('callAnalytics') && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics">
         {/* Calls by Hour — Area Chart with Gradient */}
         <div className="lg:col-span-2 panel-beveled bg-surface-base shadow-md shadow-black/10">
@@ -1244,8 +1245,10 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Shift Summary Row */}
+      {hasPanel('adminExtras') && (
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Shift summary metrics">
         {[
           { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: '#888888', path: '/dispatch' },
@@ -1272,10 +1275,12 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════
           Features 31-43: Analytics Dashboard Widgets
           ═══════════════════════════════════════════════════════ */}
+      {hasPanel('adminExtras') && (
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Analytics widgets">
         {/* Feature 31: Response Time Gauge */}
         <div
@@ -1413,8 +1418,10 @@ export default function DashboardPage() {
           <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Reports</div>
         </div>
       </div>
+      )}
 
       {/* Feature 33: Shift Performance Comparison + Feature 42: Upcoming Court */}
+      {hasPanel('adminExtras') && (
       <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 lg:grid-cols-2 gap-3'}`}>
         {/* Feature 33: Shift Performance Comparison */}
         {shiftComparison?.shifts && (
@@ -1486,6 +1493,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Feature 35: Trending Incidents + Feature 36: Officer Status Board + Feature 37: Call Volume Sparkline */}
       {/* (Feature 36 is already represented by the Officers on Duty in Operational Status) */}
@@ -1494,7 +1502,7 @@ export default function DashboardPage() {
       {/* Feature 35: Trending Incidents Indicator — shown inline with shift summary above */}
 
       {/* PSO Operations Panel */}
-      {psoStats && (psoStats.activeCalls > 0 || psoStats.monthCalls > 0) && (() => {
+      {hasPanel('adminExtras') && psoStats && (psoStats.activeCalls > 0 || psoStats.monthCalls > 0) && (() => {
         const serveRate = psoStats.serveResults.total > 0
           ? Math.round((psoStats.serveResults.served / psoStats.serveResults.total) * 100)
           : null;
@@ -1735,6 +1743,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Credential Alerts */}
+      {hasPanel('alertsReminders') && (
       <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Credential alerts">
         <PanelTitleBar title="CREDENTIAL ALERTS" icon={Shield} />
         <div className="p-3">
@@ -1786,6 +1795,7 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* Officer Activity Comparison */}
       {hasPanel('officerActivity') && officerActivity.length > 0 && (() => {
