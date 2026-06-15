@@ -608,7 +608,7 @@ export default function RecordsPage() {
       )}
 
       {/* Active TabDetail Content */}
-      <div className="flex-1 overflow-hidden scrollbar-dark">
+      <div className="records-detail flex-1 overflow-hidden scrollbar-dark">
         {activeTab === 'persons' && <PersonsTabDetail state={personsState} />}
         {activeTab === 'vehicles' && <VehiclesTabDetail state={vehiclesState} />}
         {activeTab === 'properties' && <PropertiesTabDetail state={propertiesState} />}
