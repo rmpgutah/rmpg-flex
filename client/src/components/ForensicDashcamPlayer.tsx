@@ -9,8 +9,10 @@
 // driving-analysis readout (distance, peak g-forces, event verdict).
 // ============================================================
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Gauge, Navigation, AlertTriangle, Activity, Car, MapPin, Loader2, ScanSearch, Route, Camera, Moon, ZoomIn, ShieldAlert, Layers, FileText, RefreshCw, Siren, Radio, CheckCircle2 } from 'lucide-react';
+import { X, Gauge, Navigation, AlertTriangle, Activity, Car, MapPin, Loader2, ScanSearch, Route, Camera, ZoomIn, ShieldAlert, Layers, FileText, RefreshCw, Siren, Radio, CheckCircle2, Sparkles, Maximize2 } from 'lucide-react';
 import { apiFetch, apiPostForm, authedImageUrl } from '../hooks/useApi';
+import PlateMagnifier from './PlateMagnifier';
+import { ENHANCE_PRESETS, presetByKey, nextPresetKey, cssFilterFor } from '../utils/imageEnhance';
 import {
   instAccelG, activeThreats, severityColor, zoomTransform, evidenceStampLines, evidenceFilename,
   type Threat,
@@ -66,7 +68,8 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
   const [detStatus, setDetStatus] = useState<DetectorStatus>('idle');
   const [tracks, setTracks] = useState<Track[]>([]);
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
-  const [nightVision, setNightVision] = useState(false);     // low-light enhancement
+  const [enhanceKey, setEnhanceKey] = useState('none');      // live enhancement preset (whole-frame CSS filter)
+  const [magnifierOn, setMagnifierOn] = useState(true);      // live Plate Magnifier inset
   const [zoomOn, setZoomOn] = useState(false);               // digital PTZ on primary
   const [rate, setRate] = useState(1);                       // playback speed
   const [hits, setHits] = useState<Array<{ kind?: string; severity: string; detail: string }>>([]);
@@ -78,6 +81,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
   const trackerRef = useRef<TrackerState>(emptyTrackerState());
   const screenedRef = useRef<string>('');                    // last plate screened (dedupe)
   const captureRef = useRef<() => void>(() => {});           // latest evidence-capture fn (avoids stale closure)
+  const magCanvasRef = useRef<HTMLCanvasElement | null>(null); // latest enhanced plate crop (drives OCR re-scan)
 
   useEffect(() => {
     let alive = true;
@@ -101,7 +105,8 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
         case 'ArrowLeft': case 'j': if (v) v.currentTime = Math.max(0, v.currentTime - (e.shiftKey ? 1 : 0.1)); break;
         case '>': case '.': setRate((r) => Math.min(2, +(r + 0.25).toFixed(2))); break;
         case '<': case ',': setRate((r) => Math.max(0.25, +(r - 0.25).toFixed(2))); break;
-        case 'n': setNightVision((x) => !x); break;
+        case 'n': setEnhanceKey((k) => nextPresetKey(k)); break;
+        case 'm': setMagnifierOn((x) => !x); break;
         case 'z': setZoomOn((x) => !x); break;
         case 'a': setAiOn((x) => !x); break;
         case 'c': captureRef.current(); break;
@@ -142,6 +147,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     let cancelled = false;
     let model: unknown = null;
     let busy = false;
+    let lastDetT = -1;                 // last video.currentTime we ran detection on
     trackerRef.current = emptyTrackerState();
     setDetStatus('loading');
     loadVehicleDetector().then((m) => {
@@ -151,15 +157,22 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
       if (!m) return;
       const tick = async () => {
         const v = videoRef.current;
-        // Only burn GPU while actually visible + playing (tab-hidden / paused → idle).
-        if (!cancelled && v && !v.paused && !v.ended && !document.hidden && !busy) {
-          busy = true;
-          const found = await detectVehicles(model, v, 12);
-          if (!cancelled) {
-            trackerRef.current = stepTracker(trackerRef.current, found, { iouThresh: 0.3, smooth: 0.5, maxMissed: 8, trailLen: 14 });
-            setTracks(visibleTracks(trackerRef.current, 3));
+        // Detect while PLAYING (continuously) AND while PAUSED on a new frame
+        // (seek/step) — forensic plate reading happens paused on the best frame, so
+        // the boxes must lock onto the frozen image instead of disappearing. When
+        // paused on an unchanged frame we skip (no re-detect, no coasting drift).
+        if (!cancelled && v && !v.ended && !document.hidden && !busy && v.readyState >= 2) {
+          const newFrame = v.currentTime !== lastDetT;
+          if (!v.paused || newFrame) {
+            busy = true;
+            lastDetT = v.currentTime;
+            const found = await detectVehicles(model, v, 12);
+            if (!cancelled) {
+              trackerRef.current = stepTracker(trackerRef.current, found, { iouThresh: 0.3, smooth: 0.5, maxMissed: 8, trailLen: 14 });
+              setTracks(visibleTracks(trackerRef.current, 3));
+            }
+            busy = false;
           }
-          busy = false;
         }
         if (!cancelled) detLoopRef.current = window.setTimeout(tick, 110);
       };
@@ -329,23 +342,38 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
   // Best-frame plate re-scan — crop the primary vehicle, enhance, re-OCR via ALPR.
   const [rescan, setRescan] = useState<{ busy: boolean; result: string | null }>({ busy: false, result: null });
   const rescanPlate = async () => {
-    const canvas = composeFrameCanvas(false);
-    if (!canvas || !primary || !nat) { setRescan({ busy: false, result: 'No target vehicle in frame' }); return; }
+    if (!primary || !nat) { setRescan({ busy: false, result: 'No target vehicle in frame' }); return; }
     setRescan({ busy: true, result: null });
     try {
-      // crop the primary vehicle (padded) for a tighter, higher-res plate
-      const [bx, by, bw, bh] = clampBox([primary.bbox[0] - primary.bbox[2] * 0.1, primary.bbox[1] - primary.bbox[3] * 0.1, primary.bbox[2] * 1.2, primary.bbox[3] * 1.2], nat.w, nat.h);
-      const crop = document.createElement('canvas'); crop.width = bw; crop.height = bh;
-      crop.getContext('2d')!.drawImage(canvas, bx, by, bw, bh, 0, 0, bw, bh);
-      const raw: Blob = await new Promise((res) => crop.toBlob((b) => res(b as Blob), 'image/jpeg', 0.95));
-      const enhanced = await enhancePlateImage(raw, { targetWidth: 1280, maxWidth: 1600, contrast: true, sharpen: 1.0 });
+      // "What you see is what gets OCR'd": when the Plate Magnifier is live, send the
+      // exact ENHANCED plate crop you're looking at (preset filter baked in). Else fall
+      // back to a fresh vehicle crop + the default OCR enhancement.
+      let ocrImage: Blob | null = null;
+      const mag = magCanvasRef.current;
+      if (magnifierOn && enhanceKey !== 'none' && mag && mag.width > 1) {
+        ocrImage = await new Promise<Blob | null>((res) => mag.toBlob((b) => res(b), 'image/jpeg', 0.95));
+      }
+      if (!ocrImage) {
+        const canvas = composeFrameCanvas(false);
+        if (!canvas) { setRescan({ busy: false, result: 'Frame not ready' }); return; }
+        const [bx, by, bw, bh] = clampBox([primary.bbox[0] - primary.bbox[2] * 0.1, primary.bbox[1] - primary.bbox[3] * 0.1, primary.bbox[2] * 1.2, primary.bbox[3] * 1.2], nat.w, nat.h);
+        const crop = document.createElement('canvas'); crop.width = bw; crop.height = bh;
+        crop.getContext('2d')!.drawImage(canvas, bx, by, bw, bh, 0, 0, bw, bh);
+        const raw: Blob = await new Promise((res) => crop.toBlob((b) => res(b as Blob), 'image/jpeg', 0.95));
+        ocrImage = await enhancePlateImage(raw, { targetWidth: 1280, maxWidth: 1600, contrast: true, sharpen: 1.0 });
+      }
       const fd = new FormData();
-      fd.append('image', enhanced, 'rescan.jpg');
+      fd.append('image', ocrImage, 'rescan.jpg');
       fd.append('capture_reason', 'forensic_rescan');
       const r = await apiPostForm<{ capture?: { plate?: string | null; confidence?: number | null }; hits?: any[] }>('/alpr/capture', fd);
       const got = r?.capture?.plate || null;
-      if (got) { setMedia((m) => (m ? { ...m, plate: got, plate_confidence: r.capture?.confidence ?? m.plate_confidence } : m)); screenedRef.current = ''; }
-      setRescan({ busy: false, result: got ? `Read: ${got}` : 'No plate resolved' });
+      // A fresh single re-OCR is never auto-confirmed — surface it as needs_review so
+      // it can't masquerade as a positive ID (consistent with the #1278 honesty fix).
+      if (got) {
+        setMedia((m) => (m ? { ...m, plate: got, plate_confidence: r.capture?.confidence ?? m.plate_confidence, plate_accepted: false, plate_review_status: 'needs_review' } : m));
+        screenedRef.current = '';
+      }
+      setRescan({ busy: false, result: got ? `Read: ${got} (verify)` : 'No plate resolved' });
       logAudit('forensic_plate_rescan', got ? `read ${got}` : 'no read');
     } catch (e) {
       setRescan({ busy: false, result: 'Re-scan failed' });
@@ -389,7 +417,12 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
 
   // Digital-zoom transform on the primary track.
   const zoom = useMemo(() => (zoomOn && primary ? zoomTransform(primary.bbox, natW, natH) : null), [zoomOn, primary, natW, natH]);
-  const videoFilter = nightVision ? 'brightness(1.7) contrast(1.35) saturate(1.15)' : undefined;
+  // Live enhancement: the selected preset's CSS filter on the whole <video>, plus
+  // the pixel pipeline the Plate Magnifier runs on the cropped plate region.
+  const preset = useMemo(() => presetByKey(enhanceKey) ?? ENHANCE_PRESETS[0], [enhanceKey]);
+  const videoFilter = useMemo(() => cssFilterFor(preset) || undefined, [preset]);
+  // Plate region (natural px) of the primary vehicle — fed to the magnifier + OCR.
+  const plateBox = useMemo(() => (primary ? clampBox(plateRegion(primary.bbox), natW, natH) : null), [primary, natW, natH]);
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col" role="dialog" aria-label="Forensic dashcam player">
@@ -409,9 +442,15 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                 className="text-[10px] font-mono px-1.5 py-1 border border-[#2a2a2a] text-rmpg-300 hover:border-[#d4a017] tabular-nums" title="Playback speed ( < / > )">
                 {rate.toFixed(2)}×
               </button>
-              <button onClick={() => setNightVision((x) => !x)} title="Low-light enhance (n)"
-                className={`p-1 border ${nightVision ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`} aria-label="Toggle low-light enhancement">
-                <Moon className="w-3.5 h-3.5" />
+              <button onClick={() => setEnhanceKey((k) => nextPresetKey(k))} title="Cycle image enhancement (n)"
+                className={`flex items-center gap-1 text-[10px] font-semibold px-1.5 py-1 border ${enhanceKey !== 'none' ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`}
+                aria-label="Cycle image enhancement preset">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span className="tracking-wider uppercase">{preset.label}</span>
+              </button>
+              <button onClick={() => setMagnifierOn((x) => !x)} title="Plate magnifier (m)"
+                className={`p-1 border ${magnifierOn ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`} aria-label="Toggle plate magnifier">
+                <Maximize2 className="w-3.5 h-3.5" />
               </button>
               <button onClick={() => setZoomOn((x) => !x)} title="Digital zoom on target (z)"
                 className={`p-1 border ${zoomOn ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`} aria-label="Toggle digital zoom">
@@ -474,10 +513,10 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                   className="block max-h-full max-w-full" />
 
                 {/* Detection + predictive-path overlay (drawn in natural px). */}
-                {nat && gps.length > 1 && (
+                {nat && (
                   <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox={`0 0 ${natW} ${natH}`} preserveAspectRatio="none">
-                    {/* Predicted road path ahead */}
-                    {roadFill && (
+                    {/* Predicted road path ahead — GPS-derived, so only when a track exists. */}
+                    {gps.length > 1 && roadFill && (
                       <>
                         <path d={roadFill} fill="rgba(212,160,23,0.10)" />
                         <polyline points={roadPath.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}
@@ -550,6 +589,22 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
               <img src={authedImageUrl(media.still_url)} alt="Dashcam still" className="max-h-full max-w-full object-contain" />
             ) : (
               <div className="text-rmpg-500 text-sm">No video or still available for this event.</div>
+            )}
+
+            {/* Live Plate Magnifier — crops the target's plate region and runs the
+                enhancement pipeline on it in real time (works paused; independent of
+                GPS). Mounted in the OUTER container so the digital-zoom transform on
+                the inner video doesn't also scale the inset. */}
+            {media.has_video && magnifierOn && aiOn && plateBox && (
+              <PlateMagnifier
+                videoRef={videoRef}
+                region={plateBox}
+                pipeline={preset.pipeline}
+                plate={media.plate}
+                confidence={media.plate_confidence}
+                confirmed={plateConfirmed}
+                onCanvas={(cv) => { magCanvasRef.current = cv; }}
+              />
             )}
 
             {/* HUD overlay (pointer-events-none so video controls still work) */}
