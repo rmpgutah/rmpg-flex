@@ -130,6 +130,7 @@ import court from './routes/court';
 import dlRecords from './routes/dlRecords';
 import microbilt from './routes/microbilt';
 import screening from './routes/screening';
+import sorSources from './routes/sorSources';
 import serve from './routes/serve';
 
 import settings from './routes/settings';
@@ -369,6 +370,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/recruitment', router: recruitment, auth: 'required',
     note: 'Recruitment & hiring: applicant pipeline, testing, oral boards, onboarding workflow' },
   { prefix: '/api/screening', router: screening, auth: 'required' },
+  { prefix: '/api/sor-sources', router: sorSources, auth: 'required' },
   { prefix: '/api/serve', router: serve, auth: 'required',
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
   // Alias — ServePage calls /api/process-server/* but the handlers live
