@@ -43,6 +43,9 @@ interface AlprResult {
   condition?: string | null; damage_observed?: boolean | null; damage_summary?: string | null;
   damage_areas?: DamageArea[];
   image_url: string; annotated_image_url: string | null;
+  /** Non-fatal warnings from image upload / field-photo attach (Worker returns these
+   *  when a secondary write failed but the capture itself succeeded). */
+  warnings?: string[];
 }
 
 /** A held (sub-85%) capture awaiting officer review. Carries the AI-observed
@@ -146,16 +149,26 @@ export default function PlateLogPage() {
   const reviewAction = async (id: number, action: 'accept' | 'reject') => {
     setReviewBusy(id);
     try {
-      const res = await apiFetch<{ hits?: Array<{ severity: string; detail: string }> }>(
+      const res = await apiFetch<{ hits?: Array<{ severity: string; detail: string }>; warning?: string }>(
         `/alpr/capture/${id}/${action}`, { method: 'POST', body: JSON.stringify({}) });
       if (action === 'accept') {
         // Confirming re-screens the plate — a STOLEN/watchlist hit MUST be shown.
         const crit = (res?.hits || []).filter((h) => h.severity === 'critical');
-        setReviewMsg(crit.length
-          ? { text: `Confirmed — HIT: ${crit.map((h) => h.detail).join('; ')}`, kind: 'warn' }
-          : { text: 'Confirmed.', kind: 'ok' });
+        if (crit.length) {
+          setReviewMsg({ text: `Confirmed — HIT: ${crit.map((h) => h.detail).join('; ')}`, kind: 'warn' });
+        } else if (res?.warning) {
+          // Authoritative DB write failed (e.g. vehicle record upsert) but the
+          // capture status was updated — surface so the officer can follow up.
+          setReviewMsg({ text: `Confirmed (with warning): ${res.warning}`, kind: 'warn' });
+        } else {
+          setReviewMsg({ text: 'Confirmed.', kind: 'ok' });
+        }
       } else {
-        setReviewMsg({ text: 'Rejected.', kind: 'ok' });
+        if (res?.warning) {
+          setReviewMsg({ text: `Rejected (with warning): ${res.warning}`, kind: 'warn' });
+        } else {
+          setReviewMsg({ text: 'Rejected.', kind: 'ok' });
+        }
       }
       loadReview(); loadRecent();
     } catch (e: any) {
@@ -234,6 +247,11 @@ export default function PlateLogPage() {
       setScan(r); setResult(null);
       if (r.capture.plate) setPlate(r.capture.plate);
       loadRecent();
+      // Surface non-fatal warnings (e.g. image upload / field-photo attach failed
+      // but the capture itself was recorded successfully).
+      if (r.warnings?.length) {
+        setReviewMsg({ text: `Capture saved — warning: ${r.warnings.join(' · ')}`, kind: 'warn' });
+      }
       // Background enrichment fills make/model/color a moment later — re-fetch
       // the capture up to twice. Bounded; never loops forever.
       if (r.enrich_status === 'pending') {
