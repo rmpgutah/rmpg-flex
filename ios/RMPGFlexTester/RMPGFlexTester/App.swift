@@ -8,8 +8,6 @@ struct RMPGFlexTesterApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                // Auth gate: the app opens to the branded LoginView (Face ID /
-                // password) and only reveals the field surfaces once signed in.
                 if session.isAuthenticated {
                     MainTabView()
                 } else {
@@ -24,39 +22,47 @@ struct RMPGFlexTesterApp: App {
     }
 }
 
-// The signed-in app shell: 5 tabs. Four officer-facing surfaces plus a themed
-// "More" hub for the secondary surfaces — kept at 5 so iOS never folds tabs
-// into its unthemeable stock "More" list.
+// The signed-in app shell: 5 tabs with live badges. Field Ops badges the active
+// call count; More badges unread notifications. Counts come from LiveCounts
+// (polled app-wide) so badges stay fresh regardless of the visible tab.
 struct MainTabView: View {
+    @ObservedObject private var counts = LiveCounts.shared
+
     var body: some View {
         TabView {
             DashboardView()
                 .tabItem { Label("Home", systemImage: "house.fill") }
             FieldOpsView()
                 .tabItem { Label("Field Ops", systemImage: "shield.lefthalf.filled") }
+                .badge(counts.activeCalls)
             IDScanView()
                 .tabItem { Label("ID Scan", systemImage: "person.text.rectangle") }
             FieldToolkitView()
                 .tabItem { Label("Toolkit", systemImage: "square.grid.3x3.fill") }
             MoreHubView()
                 .tabItem { Label("More", systemImage: "ellipsis.circle.fill") }
+                .badge(counts.unread)
         }
         .tint(Theme.gold)
-        .task { MDTLink.shared.startPolling(); _ = OfflineSync.shared }
+        .task {
+            MDTLink.shared.startPolling()
+            LiveCounts.shared.startPolling()
+            _ = OfflineSync.shared
+        }
     }
 }
 
-// Themed hub for the non-primary officer surfaces, grouped into labeled
-// sections. (Replaces the old SystemHubView, whose dev/test consoles were
-// removed in Phase 1.)
+// Themed hub for the non-primary officer surfaces, grouped into labeled sections.
 struct MoreHubView: View {
     @EnvironmentObject var session: AuthSession
+    @ObservedObject private var counts = LiveCounts.shared
 
     private struct Entry: Identifiable {
         let id: String
         let title: String
         let subtitle: String
         let icon: String
+        let badge: Int
         let destination: AnyView
     }
     private struct HubSection: Identifiable {
@@ -65,38 +71,41 @@ struct MoreHubView: View {
         let entries: [Entry]
     }
 
-    private let sections: [HubSection] = [
-        HubSection(id: "patrol", header: "Patrol", entries: [
-            Entry(id: "roster", title: "Duty Roster",
-                  subtitle: "On/off duty · time entries",
-                  icon: "person.3.fill", destination: AnyView(DutyRosterView())),
-            Entry(id: "alerts", title: "Live Alerts",
-                  subtitle: "Calls · BOLOs · watchlist hits — one ranked feed",
-                  icon: "bell.badge.waveform.fill", destination: AnyView(AlertsFeedView())),
-            Entry(id: "watchlist", title: "Watchlist",
-                  subtitle: "Subjects you're watching · alerts on new activity",
-                  icon: "binoculars.fill", destination: AnyView(WatchlistView())),
-            Entry(id: "fleet", title: "Fleet Readiness",
-                  subtitle: "Out-of-service · maintenance · inspection-overdue · ready",
-                  icon: "car.2.fill", destination: AnyView(FleetReadinessView())),
-        ]),
-        HubSection(id: "reports", header: "Reports & Records", entries: [
-            Entry(id: "dar", title: "Daily Activity Report",
-                  subtitle: "Auto-compiled shift report · review + sign",
-                  icon: "doc.text.below.ecg.fill", destination: AnyView(DailyActivityReportView())),
-            Entry(id: "recorder", title: "Recorder",
-                  subtitle: "Record interaction audio for evidence",
-                  icon: "mic.fill", destination: AnyView(RecorderView())),
-        ]),
-        HubSection(id: "account", header: "Account", entries: [
-            Entry(id: "myid", title: "My Officer ID",
-                  subtitle: "Your digital badge + live verification QR",
-                  icon: "person.text.rectangle.fill", destination: AnyView(WalletIDView())),
-            Entry(id: "settings", title: "Settings",
-                  subtitle: "RMPG login · Verifier token",
-                  icon: "gearshape", destination: AnyView(SettingsView())),
-        ]),
-    ]
+    // Built per-render so the Live Alerts row can carry the current unread count.
+    private var sections: [HubSection] {
+        [
+            HubSection(id: "patrol", header: "Patrol", entries: [
+                Entry(id: "roster", title: "Duty Roster",
+                      subtitle: "On/off duty · time entries",
+                      icon: "person.3.fill", badge: 0, destination: AnyView(DutyRosterView())),
+                Entry(id: "alerts", title: "Live Alerts",
+                      subtitle: "Calls · BOLOs · watchlist hits — one ranked feed",
+                      icon: "bell.badge.waveform.fill", badge: counts.unread, destination: AnyView(AlertsFeedView())),
+                Entry(id: "watchlist", title: "Watchlist",
+                      subtitle: "Subjects you're watching · alerts on new activity",
+                      icon: "binoculars.fill", badge: 0, destination: AnyView(WatchlistView())),
+                Entry(id: "fleet", title: "Fleet Readiness",
+                      subtitle: "Out-of-service · maintenance · inspection-overdue · ready",
+                      icon: "car.2.fill", badge: 0, destination: AnyView(FleetReadinessView())),
+            ]),
+            HubSection(id: "reports", header: "Reports & Records", entries: [
+                Entry(id: "dar", title: "Daily Activity Report",
+                      subtitle: "Auto-compiled shift report · review + sign",
+                      icon: "doc.text.below.ecg.fill", badge: 0, destination: AnyView(DailyActivityReportView())),
+                Entry(id: "recorder", title: "Recorder",
+                      subtitle: "Record interaction audio for evidence",
+                      icon: "mic.fill", badge: 0, destination: AnyView(RecorderView())),
+            ]),
+            HubSection(id: "account", header: "Account", entries: [
+                Entry(id: "myid", title: "My Officer ID",
+                      subtitle: "Your digital badge + live verification QR",
+                      icon: "person.text.rectangle.fill", badge: 0, destination: AnyView(WalletIDView())),
+                Entry(id: "settings", title: "Settings",
+                      subtitle: "RMPG login · Verifier token",
+                      icon: "gearshape", badge: 0, destination: AnyView(SettingsView())),
+            ]),
+        ]
+    }
 
     var body: some View {
         NavigationStack {
@@ -125,6 +134,12 @@ struct MoreHubView: View {
                                                 .lineLimit(1)
                                         }
                                         Spacer()
+                                        if e.badge > 0 {
+                                            Text("\(e.badge)")
+                                                .font(.system(size: 9, weight: .heavy)).foregroundStyle(.black)
+                                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                                .background(Theme.red).clipShape(Capsule())
+                                        }
                                         Image(systemName: "chevron.right")
                                             .font(.system(size: 11, weight: .semibold))
                                             .foregroundStyle(Theme.neutral)
@@ -135,8 +150,6 @@ struct MoreHubView: View {
                         }
                     }
 
-                    // Session controls — Lock keeps credentials (Face ID re-entry);
-                    // Sign out wipes them.
                     VStack(spacing: 6) {
                         Button { session.lock() } label: {
                             Label("Lock", systemImage: "lock.fill")
