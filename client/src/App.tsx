@@ -12,6 +12,7 @@ import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import WebUpdateBanner from './components/WebUpdateBanner';
+import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
 import DownloadsPage from './pages/DownloadsPage';
@@ -601,6 +602,7 @@ export default function App() {
                   <WebUpdateBanner />
                   <MDTBridge />
                   <AndroidUpdateChecker />
+                  <ButtonHealthOverlay />
                   <AppRoutes />
                 </ErrorBoundary>
               </ContextMenuProvider>
