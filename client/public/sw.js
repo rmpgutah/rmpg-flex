@@ -622,7 +622,9 @@
 // v973: Redaction Studio — self-host BlazeFace weights at /models/blazeface/*
 //       (load() modelUrl) so face auto-detect no longer hits tfhub.dev (CSP-
 //       blocked); surface a warning when the face model fails to load.
-const CACHE_NAME = 'rmpg-flex-v973';
+// v974: Spillman chrome kit (P0) — new client/src/components/spillman/* bundle
+//       + global spillman-kit.css imported in main.tsx.
+const CACHE_NAME = 'rmpg-flex-v974';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
