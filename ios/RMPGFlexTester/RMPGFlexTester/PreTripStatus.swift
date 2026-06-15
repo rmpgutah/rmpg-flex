@@ -13,10 +13,15 @@ enum PreTripStatus {
         return false
     }
 
-    /// Today's calendar day as yyyy-MM-dd in the device's local time zone.
+    /// Today's calendar day as yyyy-MM-dd in **UTC** — matches how the sheet
+    /// writes `inspection_date` (`ISO8601DateFormatter().string(from:)` emits a
+    /// UTC `…Z` stamp), so the `prefix(10)` day comparison in `hasPreTrip` lines
+    /// up. Using local time here would misfire across the UTC midnight boundary
+    /// on evening/night shifts.
     static func today(now: Date = Date()) -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: now)
     }
