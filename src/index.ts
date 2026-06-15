@@ -411,6 +411,15 @@ export default {
         .then((r) => { if (r.configured) console.log(`[sor] seen=${r.seen} upserted=${r.upserted}${r.error ? ` err=${r.error}` : ''}`); })
         .catch((err) => console.error('[sor] poll failed:', err)),
     );
+    // iCrimeWatch statewide SOR scrape (agency 54438) via Firecrawl into
+    // utah_sex_offenders. Incremental + cadence-gated inside the scanner;
+    // no-op (configured:false) when FIRECRAWL_API_KEY is unset.
+    ctx.waitUntil(
+      import('./utils/sorSources/icrimewatch')
+        .then(({ runIcrimewatchScan }) => runIcrimewatchScan(env, { mode: 'incremental' }))
+        .then((r) => { if (r.configured) console.log(`[icw] seen=${r.seen} upserted=${r.upserted}${r.error ? ` err=${r.error}` : ''}`); })
+        .catch((err) => console.error('[icw] cron failed:', err)),
+    );
     // Person-screening framework (INTERPOL / OFAC / Utah SOR). Watch-listed
     // persons only; OFAC dataset is bulk-refreshed inside the orchestrator.
     ctx.waitUntil(
