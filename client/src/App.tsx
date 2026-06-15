@@ -118,6 +118,7 @@ const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
 const IntelReportsPage = lazyRetry(() => import('./pages/intel/IntelReportsPage'));
 const IntelReportDetailPage = lazyRetry(() => import('./pages/intel/IntelReportDetailPage'));
+const NewIntelReportPage = lazyRetry(() => import('./pages/intel/NewIntelReportPage'));
 const IntelSourcesPage = lazyRetry(() => import('./pages/intel/IntelSourcesPage'));
 const PersonDossierPage = lazyRetry(() => import('./pages/PersonDossierPage'));
 const IntelPortalLayout = lazyRetry(() => import('./pages/intel/IntelPortalLayout'));
@@ -125,7 +126,7 @@ const IntelDashboard = lazyRetry(() => import('./pages/intel/IntelDashboard'));
 const WatchlistSection = lazyRetry(() => import('./pages/intel/WatchlistSection'));
 const AlertsSection = lazyRetry(() => import('./pages/intel/AlertsSection'));
 const ReviewQueues = lazyRetry(() => import('./pages/intel/ReviewQueues'));
-const IntelComingSoon = lazyRetry(() => import('./pages/intel/IntelComingSoon'));
+const IntelMapPage = lazyRetry(() => import('./pages/intel/IntelMapPage'));
 const IntelAiAnalyst = lazyRetry(() => import('./pages/intel/IntelAiAnalyst'));
 const BoloBoard = lazyRetry(() => import('./pages/intel/BoloBoard'));
 const IntelSearch = lazyRetry(() => import('./pages/intel/IntelSearch'));
@@ -488,9 +489,10 @@ function AppRoutes() {
               <Route path="jail" element={<RouteErrorBoundary><JailRecordsPage /></RouteErrorBoundary>} />
               <Route path="plate-log" element={<RouteErrorBoundary><PlateLogPage /></RouteErrorBoundary>} />
               <Route path="queues" element={<RouteErrorBoundary><ReviewQueues /></RouteErrorBoundary>} />
-              <Route path="map" element={<RouteErrorBoundary><IntelComingSoon title="Map / Geospatial Intel" phase="Phase · Map" /></RouteErrorBoundary>} />
+              <Route path="map" element={<RouteErrorBoundary><IntelMapPage /></RouteErrorBoundary>} />
               <Route path="ai" element={<RouteErrorBoundary><IntelAiAnalyst /></RouteErrorBoundary>} />
               <Route path="reports" element={<RouteErrorBoundary><IntelReportsPage /></RouteErrorBoundary>} />
+              <Route path="reports/new" element={<RouteErrorBoundary><NewIntelReportPage /></RouteErrorBoundary>} />
               <Route path="reports/:id" element={<RouteErrorBoundary><IntelReportDetailPage /></RouteErrorBoundary>} />
               <Route path="sources" element={<RouteErrorBoundary><IntelSourcesPage /></RouteErrorBoundary>} />
               <Route path="quick-capture" element={<RouteErrorBoundary><QuickCapturePage /></RouteErrorBoundary>} />

@@ -605,8 +605,15 @@
 // v954: OCR trust layer + per-vehicle capture dossier (honest TrustBadge replaces
 //       self-reported %, derived trust gates) on top of main v953.
 // v955: FlexCam Phase 2 evidence UI (lock badge + custody + court-package) on top of main v954.
-// v956: Spillman Flex grey/steel-blue Records skin (scoped CSS layer, no data changes).
-const CACHE_NAME = 'rmpg-flex-v956';
+// v956: ALPR full audit & harden — /edge stolen-hit notifications + sightings,
+//       honest capture status (no fake success:true), capture_id idempotency,
+//       guarded R2/JSON, real vehicle_count, schema reconciliation across
+//       capture/edge/clearpath/footage, client overlay/upload/dossier fixes.
+// v957: Geospatial Intel Map — /intel/map Mapbox layers (sightings/calls/incidents/
+//       FI/warrants/trespass), geocode cache-first, click→dossier panel.
+// v958: Intel report loop — linked entities + dissemination log + external share
+//       on report detail; dossier auto-links its subject into a new report.
+const CACHE_NAME = 'rmpg-flex-v958';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

@@ -6,11 +6,12 @@
 // Trust fields (trust_score / trust_basis / read_count) are enriched server-side
 // from the most-recent vehicle_capture_photos package so we can render an honest
 // TrustBadge without losing event_type, alerted/HITS, or anything else.
-import { useEffect, useMemo, useState } from 'react';
-import { ScanSearch, RefreshCw, AlertTriangle } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ScanSearch, RefreshCw, AlertTriangle, ShieldCheck, Pencil } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import TrustBadge from './TrustBadge';
 import VehicleDossier from './VehicleDossier';
+import CaptureReviewEditor, { type EditableCapture } from './CaptureReviewEditor';
 import {
   captureSource, sourceLabel, confidenceBand, detectionBoxes, filterCaptures, eventTypeOptions,
   type GalleryCapture, type CaptureFilter, type CaptureSource, type ConfidenceBand,
@@ -19,9 +20,12 @@ import {
 const GOLD = '#d4a017';
 
 /** One capture tile: image + overlay (box or plate chip) + meta footer. */
-function CaptureTile({ cap, onPlate }: { cap: GalleryCapture; onPlate?: (p: string) => void }) {
+function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: (p: string) => void; onEdit?: (c: GalleryCapture) => void }) {
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
+  const [imgError, setImgError] = useState(false);
   const src = cap.image_url || cap.annotated_image_url;
+  // Reset the error state if the underlying image source changes.
+  useEffect(() => { setImgError(false); }, [src]);
   const boxes = useMemo(() => detectionBoxes(cap.detections, nat?.w, nat?.h), [cap.detections, nat]);
   const band = confidenceBand(cap.confidence, cap.accepted);
   const source = captureSource(cap);
@@ -29,6 +33,7 @@ function CaptureTile({ cap, onPlate }: { cap: GalleryCapture; onPlate?: (p: stri
 
   // Display plate: prefer canonical_plate (from the trust package) if available.
   const displayPlate = (cap as any).canonical_plate || cap.plate;
+  const reviewStatus = (cap as any).review_status as string | null | undefined;
 
   const trust = {
     trustScore: (cap as any).trust_score ?? 0,
@@ -43,11 +48,12 @@ function CaptureTile({ cap, onPlate }: { cap: GalleryCapture; onPlate?: (p: stri
         onClick={() => displayPlate && onPlate?.(displayPlate)}
         className="relative w-full block aspect-[4/3] bg-black overflow-hidden"
         title={displayPlate || 'capture'}>
-        {src ? (
+        {src && !imgError ? (
           <img
             src={authedImageUrl(src)} alt={displayPlate || 'ALPR capture'}
             loading="lazy"
             onLoad={(e) => setNat({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+            onError={() => setImgError(true)}
             className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-[#444]">
@@ -99,6 +105,22 @@ function CaptureTile({ cap, onPlate }: { cap: GalleryCapture; onPlate?: (p: stri
         <span className="truncate">{cap.state ? `${cap.state} · ` : ''}{cap.device_name || cap.location_text || '—'}</span>
         <span className="shrink-0">{cap.created_at ? new Date(cap.created_at.replace(' ', 'T') + 'Z').toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</span>
       </div>
+      {/* Human-verification row — distinct from the OCR TrustBadge above. */}
+      <div className="px-1.5 pb-1 flex items-center justify-between gap-1">
+        {reviewStatus === 'confirmed' ? (
+          <span className="text-[8px] font-bold tracking-wider px-1 py-[1px] border border-green-700 text-green-400 flex items-center gap-0.5">
+            <ShieldCheck className="w-2.5 h-2.5" /> VERIFIED
+          </span>
+        ) : reviewStatus === 'rejected' ? (
+          <span className="text-[8px] font-bold tracking-wider px-1 py-[1px] border border-red-800 text-red-400">REJECTED</span>
+        ) : (
+          <span className="text-[8px] font-bold tracking-wider px-1 py-[1px] border border-[#333] text-[#888]">UNVERIFIED</span>
+        )}
+        <button type="button" onClick={() => onEdit?.(cap)}
+          className="text-[8px] font-bold tracking-wider px-1.5 py-[1px] border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1400] flex items-center gap-0.5">
+          <Pencil className="w-2.5 h-2.5" /> EDIT
+        </button>
+      </div>
     </div>
   );
 }
@@ -117,20 +139,31 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<CaptureFilter>({ source: 'all', band: 'all', hits: 'all' });
   const [dossierPlate, setDossierPlate] = useState<string | null>(null);
+  const [editing, setEditing] = useState<EditableCapture | null>(null);
+  const [toast, setToast] = useState<{ text: string; kind: 'ok' | 'warn' | 'err' } | null>(null);
 
   const handlePlate = (plate: string) => {
     setDossierPlate(plate);
     onPlate?.(plate);
   };
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true); setErr(null);
-    apiFetch<GalleryCapture[]>('/alpr/captures?gallery=1&limit=120')
+    return apiFetch<GalleryCapture[]>('/alpr/captures?gallery=1&limit=120')
       .then((r) => setCaps(Array.isArray(r) ? r : []))
       .catch((e) => setErr(e?.message || 'Failed to load captures'))
       .finally(() => setLoading(false));
-  };
-  useEffect(load, []);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setErr(null);
+    apiFetch<GalleryCapture[]>('/alpr/captures?gallery=1&limit=120')
+      .then((r) => { if (!cancelled) setCaps(Array.isArray(r) ? r : []); })
+      .catch((e) => { if (!cancelled) setErr(e?.message || 'Failed to load captures'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   const eventTypes = useMemo(() => eventTypeOptions(caps), [caps]);
   const shown = useMemo(() => filterCaptures(caps, filter), [caps, filter]);
@@ -142,7 +175,7 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
       <div className="border border-[#232323] bg-[#0b0b0b] p-2 space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-[9px] font-semibold text-[#d4a017] tracking-wider">CAPTURE GALLERY</span>
-          <button onClick={load} className="text-[9px] text-[#888] hover:text-white flex items-center gap-1">
+          <button onClick={load} aria-label="Refresh captures" title="Refresh captures" className="text-[9px] text-[#888] hover:text-white flex items-center gap-1">
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> {shown.length}/{caps.length}
           </button>
         </div>
@@ -194,12 +227,32 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
         </div>
       )}
 
+      {toast && (
+        <div className={`text-[11px] px-2 py-1.5 border flex items-center justify-between ${
+          toast.kind === 'err' ? 'border-red-700 bg-red-950/50 text-red-300'
+          : toast.kind === 'warn' ? 'border-yellow-700 bg-yellow-950/50 text-yellow-200'
+          : 'border-[#2e2e2e] bg-[#141414] text-[#aaaaaa]'}`}>
+          <span>{toast.text}</span>
+          <button type="button" onClick={() => setToast(null)} className="text-current opacity-70 ml-2" aria-label="Dismiss">×</button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-        {shown.map((cap) => <CaptureTile key={cap.id} cap={cap} onPlate={handlePlate} />)}
+        {shown.map((cap) => (
+          <CaptureTile key={cap.id} cap={cap} onPlate={handlePlate}
+            onEdit={(c) => setEditing(c as unknown as EditableCapture)} />
+        ))}
       </div>
 
       {dossierPlate && (
         <VehicleDossier plate={dossierPlate} onClose={() => setDossierPlate(null)} />
+      )}
+      {editing && (
+        <CaptureReviewEditor
+          capture={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(m) => { setToast(m); load(); }}
+        />
       )}
     </div>
   );

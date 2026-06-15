@@ -124,6 +124,7 @@ import MapExportMenu from './components/MapExportMenu';
 import { generateMapSituationReport } from '../../utils/mapSituationReportPdf';
 import { useAuth } from '../../context/AuthContext';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
+import { applyRmpgBasemap, type BasemapVariant } from '../../utils/mapboxBasemap';
 
 // ============================================================
 // Constants
@@ -233,6 +234,7 @@ export default function MapPage() {
   const [mobileSheetTab, setMobileSheetTab] = useState<'layers' | 'units' | 'calls'>('layers');
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<mapboxgl.Map | null>(null);
+  const basemapVariantRef = useRef<BasemapVariant>('dark');
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
   const heatmapLayerRef = useRef<any | null>(null);
@@ -358,6 +360,12 @@ export default function MapPage() {
   const serverDefaultStyle = (userPrefs?.default_map_style || 'dark') as MapStyleId;
   const [mapStyle, setMapStyle] = usePersistedTab('rmpg_map_style', serverDefaultStyle, ['dark', 'satellite', 'hybrid', 'streets', 'terrain', 'night_nav'] as const);
   const [showMapStyles, setShowMapStyles] = useState(false);
+
+  // Branded basemap variant derived from the current style (drives applyRmpgBasemap).
+  const basemapVariant: BasemapVariant =
+    isSatelliteStyle(mapStyle) ? 'satellite'
+    : isLightMapStyle(mapStyle) ? 'light'
+    : 'dark';
 
   // Live-apply: when map preferences change (Settings page, or another tab),
   // update style / base layers / overlay defaults in place — no reload.
@@ -1357,6 +1365,9 @@ export default function MapPage() {
       mapInstanceRef.current = map;
       registerMapInstance(map);
 
+      // Re-skin every (re)loaded style into the RMPG pure-black/gold theme.
+      map.on('style.load', () => applyRmpgBasemap(map, { variant: basemapVariantRef.current }));
+
       // WebGL context-loss recovery. On a long shift the GPU can reclaim the
       // map's WebGL context (Toughbook GPU pressure, device sleep/wake, driver
       // reset), blanking the map until a full reload. We watch for that and
@@ -1555,6 +1566,9 @@ export default function MapPage() {
       updateMapStyle(map, url);
     }
   }, [mapStyle, mapLoaded]);
+
+  // Keep the long-lived style.load listener reading the current branded variant.
+  useEffect(() => { basemapVariantRef.current = basemapVariant; }, [basemapVariant]);
 
   // ============================================================
   // Update Markers
