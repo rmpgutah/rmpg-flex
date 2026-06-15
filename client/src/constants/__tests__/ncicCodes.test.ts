@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   encode, decode, fmtCoded, formatRaceEthnicity,
   normalizeHeight, normalizeWeight,
+  getReferenceTables, getReferenceOffenses,
 } from '../ncicCodes';
 
 describe('person descriptor codes', () => {
@@ -82,6 +83,23 @@ describe('vehicle codes', () => {
     expect(encode('VMA', 'Honda')).toBe('HOND');
     expect(encode('VMA', 'Mercedes-Benz')).toBe('MERZ');
   });
+  it('encodes newly added VMA codes from NIEM AutoCodeSimpleType', () => {
+    // Verified against NIEM 5.0 AutoCodeSimpleType / MotorcycleCodeSimpleType
+    expect(encode('VMA', 'Kawasaki')).toBe('KAWK');
+    expect(encode('VMA', 'Yamaha')).toBe('YAMA');
+    expect(encode('VMA', 'Harley')).toBe('HD');        // alias
+    expect(encode('VMA', 'Freightliner')).toBe('FRHT');
+    expect(encode('VMA', 'Peterbilt')).toBe('PTRB');
+    expect(encode('VMA', 'Alfa Romeo')).toBe('ALFA');
+    expect(encode('VMA', 'Kenworth')).toBe('KW');
+  });
+  it('decodes newly added VMA codes back to canonical labels', () => {
+    expect(decode('VMA', 'KAWK')).toBe('Kawasaki');
+    expect(decode('VMA', 'YAMA')).toBe('Yamaha');
+    expect(decode('VMA', 'ALFA')).toBe('Alfa Romeo');
+    expect(decode('VMA', 'FERR')).toBe('Ferrari');
+    expect(decode('VMA', 'FRHT')).toBe('Freightliner');
+  });
   it('fmtCoded renders vehicle make/color/style', () => {
     expect(fmtCoded('VMA', 'Toyota')).toBe('TOYT (TOYOTA)');
     expect(fmtCoded('VCO', 'Blue')).toBe('BLU (BLUE)');
@@ -92,6 +110,42 @@ describe('vehicle codes', () => {
     expect(encode('VCO', 'Dark Blue')).toBe('DBL');
     expect(encode('VCO', 'Silver')).toBe('SIL');
     expect(encode('VCO', 'Maroon')).toBe('MAR');
+  });
+
+  // ── New VCO color codes (NIEM 5.0 VCOCodeSimpleType) ─────
+  it('decodes newly added NIEM VCO color codes', () => {
+    expect(fmtCoded('VCO', 'AME')).toBe('AME (AMETHYST)');
+    expect(fmtCoded('VCO', 'CAM')).toBe('CAM (CAMOUFLAGE)');
+    expect(fmtCoded('VCO', 'COM')).toBe('COM (CHROME)');
+    expect(fmtCoded('VCO', 'MVE')).toBe('MVE (MAUVE)');
+    expect(fmtCoded('VCO', 'TPE')).toBe('TPE (TAUPE)');
+  });
+  it('encodes new VCO aliases', () => {
+    expect(encode('VCO', 'Camo')).toBe('CAM');
+    expect(encode('VCO', 'Taupe')).toBe('TPE');
+    expect(encode('VCO', 'Mauve')).toBe('MVE');
+    expect(encode('VCO', 'TEL')).toBe('TEA');  // TEL kept as alias for TEA (Teal)
+  });
+
+  // ── New VST body style codes (NIEM 4.2 VSTCodeSimpleType) ─
+  it('decodes newly added NIEM VST body style codes', () => {
+    expect(fmtCoded('VST', 'AM')).toBe('AM (AMBULANCE)');
+    expect(fmtCoded('VST', 'MH')).toBe('MH (MOTOR HOME)');
+    expect(fmtCoded('VST', 'SM')).toBe('SM (SNOWMOBILE)');
+    expect(fmtCoded('VST', 'FB')).toBe('FB (FLATBED)');
+    expect(fmtCoded('VST', 'DP')).toBe('DP (DUMP TRUCK)');
+    expect(fmtCoded('VST', 'LM')).toBe('LM (LIMOUSINE)');
+    expect(fmtCoded('VST', 'TN')).toBe('TN (TANKER)');
+    expect(fmtCoded('VST', 'TT')).toBe('TT (TOW TRUCK)');
+  });
+  it('encodes new VST aliases', () => {
+    expect(encode('VST', 'Motorhome')).toBe('MH');
+    expect(encode('VST', 'Snowmobile')).toBe('SM');
+    expect(encode('VST', 'Limo')).toBe('LM');
+    expect(encode('VST', 'Flatbed')).toBe('FB');
+    expect(encode('VST', 'Dump Truck')).toBe('DP');
+    expect(encode('VST', 'Tanker')).toBe('TN');
+    expect(encode('VST', 'Ambulance')).toBe('AM');
   });
 });
 
@@ -109,6 +163,39 @@ describe('geographic + DL codes', () => {
   it('renders CDL endorsements', () => {
     expect(fmtCoded('DL_ENDORSEMENT', 'H')).toBe('H (HAZARDOUS MATERIALS)');
     expect(fmtCoded('DL_ENDORSEMENT', 'P')).toBe('P (PASSENGER)');
+  });
+
+  // ── New Canadian province codes (NLETS / ISO 3166-2:CA) ──
+  it('decodes all newly added Canadian provinces/territories', () => {
+    expect(fmtCoded('STATE', 'SK')).toBe('SK (SASKATCHEWAN)');
+    expect(fmtCoded('STATE', 'NB')).toBe('NB (NEW BRUNSWICK)');
+    expect(fmtCoded('STATE', 'NL')).toBe('NL (NEWFOUNDLAND AND LABRADOR)');
+    expect(fmtCoded('STATE', 'NS')).toBe('NS (NOVA SCOTIA)');
+    expect(fmtCoded('STATE', 'NT')).toBe('NT (NORTHWEST TERRITORIES)');
+    expect(fmtCoded('STATE', 'NU')).toBe('NU (NUNAVUT)');
+    expect(fmtCoded('STATE', 'PE')).toBe('PE (PRINCE EDWARD ISLAND)');
+    expect(fmtCoded('STATE', 'YT')).toBe('YT (YUKON)');
+  });
+  it('encodes Canadian province names to codes', () => {
+    expect(encode('STATE', 'Saskatchewan')).toBe('SK');
+    expect(encode('STATE', 'Yukon')).toBe('YT');
+    expect(encode('STATE', 'PEI')).toBe('PE');  // alias
+  });
+
+  // ── New DL restriction codes (AAMVA A–Z) ─────────────────
+  it('decodes AAMVA DL restriction codes A–Z', () => {
+    expect(fmtCoded('DL_RESTRICTION', 'A')).toBe('A (CORRECTIVE LENSES)');
+    expect(fmtCoded('DL_RESTRICTION', 'G')).toBe('G (DAYLIGHT ONLY)');
+    expect(fmtCoded('DL_RESTRICTION', 'K')).toBe('K (CDL INTRASTATE ONLY)');
+    expect(fmtCoded('DL_RESTRICTION', 'M')).toBe('M (NO CLASS A BUS)');
+    expect(fmtCoded('DL_RESTRICTION', 'T')).toBe('T (IGNITION INTERLOCK)');
+    expect(fmtCoded('DL_RESTRICTION', 'V')).toBe('V (MEDICAL VARIANCE)');
+  });
+  it('encodes DL restriction aliases', () => {
+    expect(encode('DL_RESTRICTION', 'IID Required')).toBe('T');
+    expect(encode('DL_RESTRICTION', 'Automatic Transmission Only')).toBe('E');
+    expect(encode('DL_RESTRICTION', 'No Air Brakes')).toBe('L');
+    expect(encode('DL_RESTRICTION', 'Daylight Only')).toBe('G');
   });
 });
 
@@ -139,6 +226,86 @@ describe('offense codes', () => {
     expect(lookupOffense('Identity Theft')?.utahStatute).toBe('76-6-1102');
     expect(lookupOffense('Identity Theft')?.severity).toBe('F3');
   });
+
+  // ── New comprehensive coverage tests ──────────────────────────
+
+  it('aggravated robbery resolves to the agg-robbery statute not generic robbery', () => {
+    expect(lookupOffense('Aggravated Robbery')?.utahStatute).toBe('76-6-302');
+    expect(lookupOffense('Aggravated Robbery')?.severity).toBe('F1');
+    // plain robbery falls back to second-degree statue
+    expect(lookupOffense('Robbery')?.utahStatute).toBe('76-6-301');
+    expect(lookupOffense('Robbery')?.severity).toBe('F2');
+  });
+
+  it('aggravated burglary resolves before generic burglary', () => {
+    expect(lookupOffense('Aggravated Burglary')?.utahStatute).toBe('76-6-203');
+    expect(lookupOffense('Aggravated Burglary')?.severity).toBe('F1');
+    expect(lookupOffense('Burglary of a Vehicle')?.utahStatute).toBe('76-6-204');
+    expect(lookupOffense('Burglary')?.utahStatute).toBe('76-6-202');
+  });
+
+  it('sexual offense entries resolve correctly', () => {
+    expect(lookupOffense('Rape')?.utahStatute).toBe('76-5-402');
+    expect(lookupOffense('Rape')?.severity).toBe('F1');
+    expect(lookupOffense('Forcible Sodomy')?.utahStatute).toBe('76-5-403');
+    expect(lookupOffense('Sexual Abuse of a Child')?.utahStatute).toBe('76-5-404.1');
+    expect(lookupOffense('Unlawful Sexual Activity with a Minor')?.utahStatute).toBe('76-5-401');
+    // RAPE OF A CHILD more specific than RAPE
+    expect(lookupOffense('Rape of a Child')?.utahStatute).toBe('76-5-402.1');
+  });
+
+  it('controlled substance distribution entry resolves with correct severity', () => {
+    expect(lookupOffense('Distribution of Controlled Substance')?.utahStatute).toBe('58-37-8(1)(a)');
+    expect(lookupOffense('Distribution of Controlled Substance')?.severity).toBe('F2');
+    expect(lookupOffense('Possession with Intent to Distribute')?.utahStatute).toBe('58-37-8(1)(a)');
+    // generic possession is class A misdemeanor baseline
+    expect(lookupOffense('Possession of Controlled Substance')?.severity).toBe('MA');
+  });
+
+  it('drug paraphernalia resolves to 58-37a-5', () => {
+    expect(lookupOffense('Drug Paraphernalia Possession')?.utahStatute).toBe('58-37a-5');
+  });
+
+  it('weapons offenses resolve to correct statutes', () => {
+    expect(lookupOffense('Felon in Possession of a Firearm')?.utahStatute).toBe('76-10-503');
+    expect(lookupOffense('Felon in Possession of a Firearm')?.severity).toBe('F2');
+    expect(lookupOffense('Discharge of Firearm from Vehicle')?.utahStatute).toBe('76-10-508');
+    expect(lookupOffense('Concealed Weapon without Permit')?.utahStatute).toBe('76-10-504');
+  });
+
+  it('eluding resolves before generic failure to stop', () => {
+    expect(lookupOffense('Eluding Officer')?.utahStatute).toBe('41-6a-210');
+    expect(lookupOffense('Eluding')?.utahStatute).toBe('41-6a-210');
+    expect(lookupOffense('Eluding')?.severity).toBe('F3');
+  });
+
+  it('hit and run with injury resolves before plain hit and run', () => {
+    expect(lookupOffense('Hit and Run with Injury')?.ncicCode).toBe('5401');
+    expect(lookupOffense('Hit and Run with Injury')?.severity).toBe('F3');
+    expect(lookupOffense('Hit and Run')?.severity).toBe('MB'); // 41-6a-401.7: property-damage-only hit and run = class B misdemeanor
+  });
+
+  it('stalking resolves to 76-5-106.5', () => {
+    expect(lookupOffense('Stalking')?.utahStatute).toBe('76-5-106.5');
+    expect(lookupOffense('Stalking')?.ncicCode).toBe('1316');
+  });
+
+  it('communications fraud resolves before generic fraud', () => {
+    expect(lookupOffense('Communications Fraud')?.utahStatute).toBe('76-10-1801');
+    expect(lookupOffense('Communications Fraud')?.severity).toBe('F2');
+    // plain fraud falls back to the generic fraud entry
+    expect(lookupOffense('Fraud')?.utahStatute).toBe('76-6-405');
+  });
+
+  it('money laundering resolves correctly', () => {
+    expect(lookupOffense('Money Laundering')?.utahStatute).toBe('76-10-1902');
+    expect(lookupOffense('Money Laundering')?.severity).toBe('F2');
+  });
+
+  it('escape resolves to 76-8-309', () => {
+    expect(lookupOffense('Escape from Custody')?.utahStatute).toBe('76-8-309');
+    expect(lookupOffense('Escape from Custody')?.ncicCode).toBe('4901');
+  });
 });
 
 describe('lookupAnyCode (QZ decoder)', () => {
@@ -156,5 +323,46 @@ describe('lookupAnyCode (QZ decoder)', () => {
   });
   it('returns empty for nonsense', () => {
     expect(lookupAnyCode('zzzqq')).toEqual([]);
+  });
+});
+
+describe('render-ready reference data (PDF source of truth)', () => {
+  it('getReferenceTables returns all 12 code tables with non-empty titles', () => {
+    const tables = getReferenceTables();
+    expect(tables).toHaveLength(12);
+    for (const t of tables) {
+      expect(t.title.trim().length).toBeGreaterThan(0);
+      expect(t.entries.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('getReferenceTables RACE table contains White (W) and is code-sorted', () => {
+    const race = getReferenceTables().find((t) => t.key === 'RACE');
+    expect(race).toBeDefined();
+    expect(race!.entries).toContainEqual({ code: 'W', label: 'White' });
+    const codes = race!.entries.map((e) => e.code);
+    expect([...codes].sort((a, b) => a.localeCompare(b))).toEqual(codes);
+  });
+
+  it('getReferenceTables VMA table is the large make table (>100 entries)', () => {
+    const vma = getReferenceTables().find((t) => t.key === 'VMA');
+    expect(vma).toBeDefined();
+    expect(vma!.entries.length).toBeGreaterThan(100);
+  });
+
+  it('getReferenceOffenses returns >100 rows with 4-digit NCIC codes', () => {
+    const offenses = getReferenceOffenses();
+    expect(offenses.length).toBeGreaterThan(100);
+    const theft = offenses.filter((o) => o.offense.includes('THEFT'));
+    expect(theft.length).toBeGreaterThan(0);
+    for (const t of theft) {
+      expect(t.ncicCode).toMatch(/^\d{4}$/);
+    }
+    // Every row carries a statute, severity, and 4-digit NCIC classification.
+    for (const o of offenses) {
+      expect(o.utahStatute.length).toBeGreaterThan(0);
+      expect(o.severity.length).toBeGreaterThan(0);
+      expect(o.ncicCode).toMatch(/^\d{4}$/);
+    }
   });
 });
