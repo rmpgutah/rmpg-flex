@@ -29,8 +29,8 @@ export const ROLE_HEX: Record<string, string> = {
 export const ChartTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: '#050505', border: '1px solid #222222', padding: '6px 10px', borderRadius: 2 }}>
-      <div style={{ color: '#e0e0e0', fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold' }}>
+    <div style={{ background: 'var(--surface-deep)', border: '1px solid var(--border-default)', padding: '6px 10px', borderRadius: 2 }}>
+      <div style={{ color: 'var(--text-primary)', fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold' }}>
         {payload[0].name}: {payload[0].value}
       </div>
     </div>
@@ -166,8 +166,8 @@ export function TrainingStatusCard({ training }: { training: TrainingRecord[] })
         <div className="h-[120px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={trainingBarData} layout="vertical" margin={{ left: 60, right: 10, top: 0, bottom: 0 }}>
-              <XAxis type="number" tick={{ fill: '#999999', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="name" tick={{ fill: '#cccccc', fontSize: 10 }} axisLine={false} tickLine={false} width={55} />
+              <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} axisLine={false} tickLine={false} width={55} />
               <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
               <Bar dataKey="value" radius={[0, 2, 2, 0]}>
                 {trainingBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}
@@ -215,8 +215,8 @@ export function HoursTrendCard({ timeEntries }: { timeEntries: TimeEntry[] }) {
                 <stop offset="95%" stopColor="#d4a017" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <XAxis dataKey="date" tick={{ fill: '#999999', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#999999', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} width={30} />
+            <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} width={30} />
             <Tooltip content={<ChartTooltip />} />
             <Area type="monotone" dataKey="hours" name="Hours" stroke="#d4a017" fill="url(#hoursGrad)" strokeWidth={2} />
           </AreaChart>

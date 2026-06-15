@@ -1327,7 +1327,7 @@ export default function CourtTrackerPage() {
                   onKeyDown={e => e.key === 'Enter' && handleSearchCitations()}
                   placeholder="Search by citation number, name, or statute..." aria-label="Search by citation number, name, or statute..."
                   className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
-                <button type="button" onClick={handleSearchCitations} disabled={citationSearching} className="toolbar-btn-primary text-[10px] px-3">
+                <button type="button" onClick={handleSearchCitations} disabled={citationSearching} className="toolbar-btn toolbar-btn-primary text-[10px] px-3">
                   {citationSearching ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search style={{ width: 11, height: 11 }} />}
                   Search
                 </button>
@@ -1341,7 +1341,7 @@ export default function CourtTrackerPage() {
                         <div className="text-[10px] text-rmpg-300">{c.person_name || 'Unknown'} -- {c.statute_citation || c.violation_description || ''}</div>
                         <div className="text-[9px] text-rmpg-500">{c.court_date ? `Court: ${c.court_date}` : 'No court date'} {c.court_name ? `at ${c.court_name}` : ''}</div>
                       </div>
-                      <button type="button" onClick={() => handleCreateFromCitation(c.id)} disabled={creatingFromCitation} className="toolbar-btn-primary text-[10px] px-2 py-1 flex-shrink-0">
+                      <button type="button" onClick={() => handleCreateFromCitation(c.id)} disabled={creatingFromCitation} className="toolbar-btn toolbar-btn-primary text-[10px] px-2 py-1 flex-shrink-0">
                         {creatingFromCitation ? '...' : 'Create Event'}
                       </button>
                     </div>
