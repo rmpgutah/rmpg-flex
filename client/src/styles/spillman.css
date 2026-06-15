@@ -68,3 +68,15 @@
   color: #16314f !important;
   font-weight: 600 !important;
 }
+
+/* ── Group boxes (CollapsibleSection) ──────────────────────── */
+.spillman-theme .collapsible-section {
+  border: 1px solid var(--spm-border) !important;
+  background: #ffffff !important;
+}
+.spillman-theme .collapsible-section-header {
+  background: linear-gradient(#eef3f9, #cfdcec) !important;
+  border-bottom: 1px solid var(--spm-border);
+  color: #22405e !important;
+}
+.spillman-theme .collapsible-section-header * { color: #22405e !important; }

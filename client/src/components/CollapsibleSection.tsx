@@ -12,6 +12,7 @@
 import React, { useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { BADGE_TONES, type BadgeTone } from './records/recordVisuals';
+import { sectionAnchorId } from '../utils/sectionAnchor';
 
 interface CollapsibleSectionProps {
   title: string;
@@ -47,7 +48,8 @@ function CollapsibleSection({
 
   return (
     <div
-      className={`relative border border-[#2b2b2b] overflow-hidden ${className}`}
+      data-section-anchor={typeof title === 'string' ? sectionAnchorId(title) : undefined}
+      className={`collapsible-section relative border border-[#2b2b2b] overflow-hidden ${className}`}
       style={{ background: '#050505' }}
     >
       {/* Left severity rail — subtle gold by default, hot color when accented. */}
@@ -61,7 +63,7 @@ function CollapsibleSection({
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
         aria-label={`${title} section${count !== undefined ? ` (${count})` : ''}`}
-        className="w-full flex items-center justify-between px-2.5 py-1.5 hover:brightness-125 transition-all"
+        className="collapsible-section-header w-full flex items-center justify-between px-2.5 py-1.5 hover:brightness-125 transition-all"
         style={{
           background: 'linear-gradient(180deg, #2b2b2b 0%, #1f1f1f 100%)',
           borderBottom: isOpen ? '1px solid #0c0c0c' : 'none',
