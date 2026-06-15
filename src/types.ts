@@ -28,8 +28,16 @@ export type Bindings = {
   // the geocode route also hands it to the client. Absent → ETA falls back to
   // a straight-line estimate and the client geocoder falls back to Nominatim.
   MAPBOX_ACCESS_TOKEN?: string;
+  // Firecrawl API key (secret, optional). When set, /api/deep-research runs
+  // real web search+scrape; unset → the route returns 503. Set via
+  // `wrangler secret put FIRECRAWL_API_KEY` (local dev: .dev.vars).
+  FIRECRAWL_API_KEY?: string;
   // WelfareWatchDO namespace — DI-4 automated escalation timer
   WELFARE_WATCH: DurableObjectNamespace;
+  // DeepResearchDO namespace — one instance per research job; alarm-driven
+  // pipeline (expand → search → extract → verify → synthesize) + scheduled
+  // monitors. See src/durable-objects/DeepResearchDO.ts.
+  DEEP_RESEARCH: DurableObjectNamespace;
   // VoiceHubDO namespace — one instance per radio channel / panic
   // incident; the single shared hub that relays + records live voice.
   // See src/durable-objects/VoiceHubDO.ts.
