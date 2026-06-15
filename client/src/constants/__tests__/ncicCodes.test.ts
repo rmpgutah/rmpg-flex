@@ -1,0 +1,63 @@
+import { describe, it, expect } from 'vitest';
+import {
+  encode, decode, fmtCoded, formatRaceEthnicity,
+  normalizeHeight, normalizeWeight,
+} from '../ncicCodes';
+
+describe('person descriptor codes', () => {
+  it('encodes stored race labels to NCIC codes', () => {
+    expect(encode('RACE', 'White')).toBe('W');
+    expect(encode('RACE', 'Black')).toBe('B');
+    expect(encode('RACE', 'Native American')).toBe('I');
+    expect(encode('RACE', 'Asian')).toBe('A');
+    expect(encode('RACE', 'Pacific Islander')).toBe('A');
+  });
+
+  it('decodes a code back to its canonical label', () => {
+    expect(decode('RACE', 'W')).toBe('White');
+    expect(decode('SEX', 'M')).toBe('Male');
+  });
+
+  it('fmtCoded renders "CODE (LABEL)"', () => {
+    expect(fmtCoded('RACE', 'White')).toBe('W (WHITE)');
+    expect(fmtCoded('SEX', 'Female')).toBe('F (FEMALE)');
+    expect(fmtCoded('EYE', 'Brown')).toBe('BRO (BROWN)');
+    expect(fmtCoded('HAIR', 'Blonde')).toBe('BLN (BLOND)');
+  });
+
+  it('fmtCoded accepts a value already in code form', () => {
+    expect(fmtCoded('RACE', 'W')).toBe('W (WHITE)');
+  });
+
+  it('fmtCoded returns empty string for empty input', () => {
+    expect(fmtCoded('RACE', '')).toBe('');
+    expect(fmtCoded('RACE', undefined as unknown as string)).toBe('');
+  });
+
+  it('falls back to the raw uppercased value when there is no code', () => {
+    expect(fmtCoded('EYE', 'Amber')).toBe('AMBER');
+    expect(encode('RACE', 'Klingon')).toBe('KLINGON');
+  });
+
+  it('treats Hispanic as ethnicity, not race', () => {
+    expect(formatRaceEthnicity('Hispanic')).toEqual({ rac: 'U (UNKNOWN)', etn: 'H (HISPANIC)' });
+    expect(formatRaceEthnicity('White')).toEqual({ rac: 'W (WHITE)', etn: null });
+    expect(formatRaceEthnicity('')).toEqual({ rac: '', etn: null });
+  });
+
+  it('normalizes height to NCIC 3-digit feet-inches', () => {
+    expect(normalizeHeight(`5'10"`)).toBe('510');
+    expect(normalizeHeight('510')).toBe('510');
+    expect(normalizeHeight('70in')).toBe('510');
+    expect(normalizeHeight('6 ft 0 in')).toBe('600');
+    expect(normalizeHeight('')).toBe('');
+  });
+
+  it('normalizes weight to NCIC 3-digit pounds', () => {
+    expect(normalizeWeight('180')).toBe('180');
+    expect(normalizeWeight('90')).toBe('090');
+    expect(normalizeWeight('180 lbs')).toBe('180');
+    expect(normalizeWeight(180)).toBe('180');
+    expect(normalizeWeight('')).toBe('');
+  });
+});
