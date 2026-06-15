@@ -166,3 +166,21 @@
   position: relative;
   top: 1px;
 }
+
+/* ── Left results list → silver rows, steel-blue selection ─── */
+.spillman-theme [role="listitem"] {
+  border-bottom: 1px solid #eceadf !important;
+  color: var(--spm-text) !important;
+}
+.spillman-theme [role="listitem"]:nth-child(even) { background: #f6f5ef !important; }
+.spillman-theme [role="listitem"]:hover { background: #e9f0fa !important; }
+.spillman-theme [role="listitem"][aria-selected="true"] {
+  background: var(--spm-select) !important;
+  border-left-color: #1e3f6b !important;
+}
+.spillman-theme [role="listitem"][aria-selected="true"],
+.spillman-theme [role="listitem"][aria-selected="true"] * {
+  color: #ffffff !important;
+}
+/* keep status badges legible on the blue selection */
+.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-red-9"] { background: #b91c1c !important; }
