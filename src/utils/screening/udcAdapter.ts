@@ -2,8 +2,8 @@ import type { Bindings } from '../../types';
 import type {
   ScreeningAdapter, NormalizedCandidate, PersonRow, SearchParams, MatchResult, ScreeningHitRow,
 } from './types';
-import { scoreNameMatch, ageFromDob, splitUdcName } from './scoring';
-import { mapUdcListResult, udcSearchByName, udcGetDetail } from './udcApi';
+import { scoreNameMatch, ageFromDob } from './scoring';
+import { mapUdcListResult, udcSearchByName, udcGetDetail, splitUdcName } from './udcApi';
 import { getDb, queryFirst, execute } from '../db';
 
 export const udcAdapter: ScreeningAdapter = {
@@ -74,7 +74,7 @@ export const udcAdapter: ScreeningAdapter = {
 
   // Live-API source: covered whenever reachable. No empty-local-table
   // false-clear concern (search hits api.utah.gov directly).
-  async coverage() {
+  async coverage(_env: Bindings) {
     return { available: true, severity: 'ok' as const };
   },
 };
