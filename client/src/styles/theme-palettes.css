@@ -84,6 +84,7 @@ html.theme-legacy-black {
   --brand-300-rgb: 158 158 158; --brand-400-rgb: 127 127 127; --brand-500-rgb: 102 102 102;
   --brand-600-rgb: 76 76 76; --brand-700-rgb: 52 52 52; --brand-800-rgb: 31 31 31; --brand-900-rgb: 14 14 14;
   --blue-50-rgb: 241 241 241; --blue-100-rgb: 217 217 217; --blue-200-rgb: 189 189 189;
+  /* blue-400 intentionally lighter than 300 — mirrors original tailwind.config anomaly for exact legacy restore */
   --blue-300-rgb: 161 161 161; --blue-400-rgb: 200 200 200; --blue-500-rgb: 154 154 154;
   --blue-600-rgb: 115 115 115; --blue-700-rgb: 79 79 79; --blue-800-rgb: 46 46 46; --blue-900-rgb: 20 20 20;
   --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
