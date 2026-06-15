@@ -140,7 +140,7 @@ export function fmtCoded(domain: NcicDomain, value: string | null | undefined): 
 export function formatRaceEthnicity(rawRace: string | null | undefined): { rac: string; etn: string | null } {
   const v = (rawRace ?? '').trim();
   if (!v) return { rac: '', etn: null };
-  if (/hispanic|latin[oax]?/i.test(v)) {
+  if (/^(hispanic|latin)/i.test(v)) {
     return { rac: fmtCoded('RACE', 'U'), etn: fmtCoded('ETHNICITY', 'Hispanic') };
   }
   return { rac: fmtCoded('RACE', v), etn: null };
@@ -151,18 +151,15 @@ export function normalizeHeight(value: string | number | null | undefined): stri
   if (value == null || value === '') return '';
   const s = String(value).trim();
   // Already NCIC form: 3 digits, feet 4-7, inches 00-11.
-  if (/^[4-7]\d{2}$/.test(s)) {
-    const inches = Number(s.slice(1));
-    if (inches <= 11) return s;
-  }
-  // feet'inches"  or  "6 ft 0 in"
-  const fi = s.match(/(\d)\D+(\d{1,2})/);
+  if (/^[4-7]\d{2}$/.test(s) && Number(s.slice(1)) <= 11) return s;
+  // feet+inches with an explicit separator: 5'10", 6 ft 11 in, 5 feet 10
+  const fi = s.match(/^(\d)\s*(?:ft|feet|')\s*(\d{1,2})\s*(?:in|inches|''|")?\.?$/i);
   if (fi) {
     const ft = Number(fi[1]); const inch = Number(fi[2]);
     if (ft >= 1 && ft <= 7 && inch <= 11) return `${ft}${String(inch).padStart(2, '0')}`;
   }
   // total inches (e.g. "70in", "70")
-  const totalIn = s.match(/^(\d{2,3})\s*(?:in|")?$/i);
+  const totalIn = s.match(/^(\d{2,3})\s*(?:in|inches|")?$/i);
   if (totalIn) {
     const t = Number(totalIn[1]);
     if (t >= 36 && t <= 95) return `${Math.floor(t / 12)}${String(t % 12).padStart(2, '0')}`;
@@ -170,10 +167,10 @@ export function normalizeHeight(value: string | number | null | undefined): stri
   return '';
 }
 
-/** Weight → NCIC 3-digit pounds. "" if unparseable. */
+/** Weight → NCIC 3-digit pounds. "" if unparseable or out of range. */
 export function normalizeWeight(value: string | number | null | undefined): string {
   if (value == null || value === '') return '';
-  const m = String(value).match(/\d{1,3}/);
+  const m = String(value).trim().match(/^(\d{1,3})(?:\s*(?:lbs?|pounds?|kg))?$/i);
   if (!m) return '';
-  return String(Number(m[0])).padStart(3, '0');
+  return String(Number(m[1])).padStart(3, '0');
 }

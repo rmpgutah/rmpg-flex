@@ -50,6 +50,8 @@ describe('person descriptor codes', () => {
     expect(normalizeHeight('510')).toBe('510');
     expect(normalizeHeight('70in')).toBe('510');
     expect(normalizeHeight('6 ft 0 in')).toBe('600');
+    expect(normalizeHeight('5 ft 10 in')).toBe('510');
+    expect(normalizeHeight('6 ft 11 in')).toBe('611');
     expect(normalizeHeight('')).toBe('');
   });
 
@@ -59,5 +61,15 @@ describe('person descriptor codes', () => {
     expect(normalizeWeight('180 lbs')).toBe('180');
     expect(normalizeWeight(180)).toBe('180');
     expect(normalizeWeight('')).toBe('');
+    expect(normalizeWeight('1234')).toBe('');
+  });
+
+  it('decode resolves a label input back to the canonical label', () => {
+    expect(decode('RACE', 'White')).toBe('White');
+    expect(decode('VMA', 'Toyota')).toBe('TOYOTA'); // empty placeholder table → fallback
+  });
+
+  it('does not treat non-Hispanic substrings as Hispanic', () => {
+    expect(formatRaceEthnicity('Platinum')).toEqual({ rac: 'PLATINUM', etn: null });
   });
 });
