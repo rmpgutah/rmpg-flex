@@ -210,7 +210,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
   // paint it on a tracked box or screen it as a fact without saying so. (Guards
   // against the old "fabricated 100%" overlay where any read read as certain.)
   const plateConfirmed = useMemo(
-    () => media?.plate_accepted === true || media?.plate_review_status === 'accepted' || media?.plate_review_status === 'confirmed',
+    () => media?.plate_accepted === true || media?.plate_review_status === 'accepted' || media?.plate_review_status === 'confirmed' || media?.plate_review_status === 'confirmed_unlinked',
     [media?.plate_accepted, media?.plate_review_status],
   );
   const vTag = useMemo(() => vehicleTag(media?.vehicle ?? null), [media]);

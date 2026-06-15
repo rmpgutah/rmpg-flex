@@ -50,7 +50,7 @@ export default function CaptureReviewEditor({
       .catch(() => setHistory([]));
   }, [capture.id]);
 
-  const wasDecided = capture.review_status === 'confirmed' || capture.review_status === 'rejected';
+  const wasDecided = capture.review_status === 'confirmed' || capture.review_status === 'confirmed_unlinked' || capture.review_status === 'rejected';
   const img = capture.annotated_image_url || capture.image_url;
   const pErr = plateError(form.plate);
   const set = (k: keyof CaptureEditForm, v: string) => setForm((f) => ({ ...f, [k]: v }));

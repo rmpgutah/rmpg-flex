@@ -107,7 +107,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
       </div>
       {/* Human-verification row — distinct from the OCR TrustBadge above. */}
       <div className="px-1.5 pb-1 flex items-center justify-between gap-1">
-        {reviewStatus === 'confirmed' ? (
+        {(reviewStatus === 'confirmed' || reviewStatus === 'confirmed_unlinked') ? (
           <span className="text-[8px] font-bold tracking-wider px-1 py-[1px] border border-green-700 text-green-400 flex items-center gap-0.5">
             <ShieldCheck className="w-2.5 h-2.5" /> VERIFIED
           </span>
