@@ -10,7 +10,8 @@
 
 /* ---- NIGHT (default) ---- */
 :root,
-html.theme-dark {
+html.theme-dark,
+.tactical-dark {
   --surface-base: #0d1722;  --surface-base-rgb: 13 23 34;
   --surface-raised: #15212e; --surface-raised-rgb: 21 33 46;
   --surface-sunken: #0a1018; --surface-sunken-rgb: 10 16 24;
@@ -125,39 +126,8 @@ html.theme-legacy-black {
 /* Apply as a className to live-map wrappers, HUD overlays, and the MDT view so         */
 /* operators are never blinded by a bright UI at night. The Mapbox GL canvas itself is  */
 /* unaffected — only the app-chrome inside/around the canvas inherits these vars.        */
-.tactical-dark {
-  color-scheme: dark;
-  --surface-base: #0d1722;  --surface-base-rgb: 13 23 34;
-  --surface-raised: #15212e; --surface-raised-rgb: 21 33 46;
-  --surface-sunken: #0a1018; --surface-sunken-rgb: 10 16 24;
-  --surface-overlay: #060b10; --surface-overlay-rgb: 6 11 16;
-  --surface-deep: #060b10;   --surface-deep-rgb: 6 11 16;
-  --border-default: #2a3a4d; --border-subtle: #1e2b3a; --border-strong: #3a4f66; --border-panel: #243a52;
-  --text-primary: #e6edf5; --text-secondary: #c3d0de; --text-muted: #8fa3b8;
-  --brand-gold: #d4a017; --brand-blue: #5a85b8;
-
-  --rmpg-50-rgb: 237 241 246; --rmpg-100-rgb: 214 221 230; --rmpg-200-rgb: 184 195 208;
-  --rmpg-300-rgb: 150 165 184; --rmpg-400-rgb: 122 140 162; --rmpg-500-rgb: 92 110 132;
-  --rmpg-600-rgb: 60 80 102;  --rmpg-700-rgb: 30 43 58;    --rmpg-800-rgb: 21 33 46;
-  --rmpg-900-rgb: 13 23 34;   --rmpg-950-rgb: 6 11 16;
-  --brand-50-rgb: 242 244 247; --brand-100-rgb: 221 226 232; --brand-200-rgb: 191 199 209;
-  --brand-300-rgb: 158 169 183; --brand-400-rgb: 127 140 158; --brand-500-rgb: 102 116 134;
-  --brand-600-rgb: 76 90 108;  --brand-700-rgb: 52 66 82;    --brand-800-rgb: 31 43 56;
-  --brand-900-rgb: 14 22 32;
-  --blue-50-rgb: 241 244 247; --blue-100-rgb: 217 223 230; --blue-200-rgb: 189 199 209;
-  --blue-300-rgb: 161 173 187; --blue-400-rgb: 122 140 162; --blue-500-rgb: 92 110 132;
-  --blue-600-rgb: 60 80 102;  --blue-700-rgb: 30 43 58;     --blue-800-rgb: 21 33 46;
-  --blue-900-rgb: 13 23 34;
-  --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
-  --brand-gold-600-rgb: 184 136 15; --brand-gold-700-rgb: 147 108 10;
-
-  /* Records chrome tokens — NIGHT (dark steel-blue) */
-  --spm-chrome: #15212e; --spm-form: #0d1722; --spm-field: #101a26;
-  --spm-border: #2a3a4d; --spm-field-border: #2a3a4d; --spm-accent: #5a85b8;
-  --spm-select: #316ac5; --spm-text: #e6edf5; --spm-text-muted: #8fa3b8;
-  --spm-group-head: linear-gradient(#1d2d3f, #16222f);
-  --spm-toolbar: linear-gradient(#1d2d3f, #16222f);
-  --spm-toolbar-hover: linear-gradient(#24344a, #1a2736);
-  --spm-toolbar-active: linear-gradient(#14202e, #0e1822);
-  --spm-toolbar-primary: linear-gradient(#2e4a66, #1e3450);
-}
+/* The night palette vars are provided by the shared `:root, html.theme-dark, .tactical-dark` */
+/* selector above — no duplication needed here. color-scheme must be set directly (not  */
+/* as a custom property) so native controls/scrollbars in the subtree render dark even   */
+/* when the page root is html.theme-light.                                               */
+.tactical-dark { color-scheme: dark; }

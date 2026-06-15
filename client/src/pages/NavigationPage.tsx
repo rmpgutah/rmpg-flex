@@ -1879,7 +1879,7 @@ export default function NavigationPage() {
   }, [activeRoute, routeProgress]);
 
   return viewMode === 'modules' ? (
-    <div className="fixed inset-0 bg-surface-deep overflow-hidden" style={{ zIndex: 40 }}>
+    <div className="tactical-dark fixed inset-0 bg-surface-deep overflow-hidden" style={{ zIndex: 40 }}>
       {/* Drive/Modules toggle stays available here so the MODULES view is never
           a one-way trip — tap Drive to return to the follow-me map. */}
       <div
@@ -1895,7 +1895,7 @@ export default function NavigationPage() {
       </div>
     </div>
   ) : (
-    <div ref={rootRef} className="fixed inset-0 bg-surface-deep overflow-hidden">
+    <div ref={rootRef} className="tactical-dark fixed inset-0 bg-surface-deep overflow-hidden">
       {/* Map (or dark backdrop on failure) */}
       <div ref={mapContainerRef} className="absolute inset-0" />
       {mapError && (
