@@ -35,6 +35,7 @@ import {
 import { readPlateCloudflare, type CloudflarePlateResult } from '../utils/cloudflarePlate';
 import { trustScore } from '../utils/plateTrust';
 import { verifyEdgeSignature } from '../utils/edgeHmac';
+import { normalizeCaptureEdit, describeEdit } from '../utils/alprEdit';
 
 const alpr = new Hono<Env>();
 
@@ -396,12 +397,18 @@ async function finalizeCapture(
       vehicle_bbox: null, plate_bbox: null,
     });
 
+    // Persist the AI-OBSERVED attributes onto the capture row UNCONDITIONALLY —
+    // they describe THIS photo, so a reviewer (and the edit/verify editor) sees
+    // what the model read even on a held (<0.85) capture. The `asserted` gate
+    // still governs only the authoritative vehicles_records + sighting writes
+    // above; the capture row is observation, not assertion. (Mirrors the dashcam
+    // path in clearpathAlpr.ts, which already retains observed attributes.)
     await execute(db,
       `UPDATE alpr_captures SET make=?, model=?, color=?, year=?, state=?, vehicle_type=?,
          plate_confidence=?, accepted=?, review_status=?, sighting_id=?, vehicle_record_ids=?,
          vehicle_count=1, enrich_status='done' WHERE id=?`,
-      asserted ? read.make : null, asserted ? read.model : null, asserted ? read.color : null,
-      asserted ? read.year : null, read.state, asserted ? read.bodyStyle : null,
+      read.make, read.model, read.color,
+      read.year, read.state, read.bodyStyle,
       out.plateConf, asserted ? 1 : 0, asserted ? 'accepted' : 'needs_review',
       out.sightingId, JSON.stringify(out.recordIds), args.captureRowId);
   } catch (err: any) {
@@ -746,6 +753,116 @@ alpr.post('/capture/:id/reject', operational, async (c) => {
     `UPDATE alpr_captures SET accepted=0, review_status='rejected', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
     userId, id);
   return c.json({ success: true });
+});
+
+// ── Advanced review: edit + (re-)verify a capture ────────────
+// One endpoint for the full editor on BOTH surfaces (review queue + gallery).
+// Persists any supplied field edits, then applies the action:
+//   confirm → screen + (re)create authoritative record/link/sighting, accepted=1
+//   reject  → review_status='rejected', accepted=0
+//   save    → persist edits only, leave review_status untouched
+// Operates on ANY status (re-edit/re-verify). Editing a row that was already
+// confirmed/rejected requires `reason` and writes an audit_log entry.
+alpr.post('/capture/:id/verify', operational, async (c) => {
+  const db = getDb(c.env);
+  await ensureAlprSchema(db);
+  const id = Number(c.req.param('id'));
+  const userId = Number(c.var.user?.id ?? 0);
+  const row = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
+  if (!row) return c.json({ error: 'Not found' }, 404);
+
+  let body: any = {};
+  try { body = await c.req.json(); } catch { /* empty body = no edits, default action */ }
+  const action: 'confirm' | 'reject' | 'save' =
+    body.action === 'reject' ? 'reject' : body.action === 'save' ? 'save' : 'confirm';
+
+  // Normalize + validate the supplied edits (only present keys are touched).
+  const maxYear = new Date().getFullYear() + 2;
+  const { values, errors } = normalizeCaptureEdit(body, { maxYear });
+  if (errors.length) return c.json({ error: errors[0].message, errors }, 400);
+
+  // Re-editing an already-decided row is an audited "change function".
+  const wasDecided = row.review_status === 'confirmed' || row.review_status === 'rejected';
+  const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+  if (wasDecided && !reason) {
+    return c.json({ error: 'A reason is required to change an already-reviewed capture.' }, 400);
+  }
+
+  const plateChanged = values.plate != null && values.plate !== row.plate;
+
+  // Apply field edits to the capture row first (the editor's source of truth).
+  const sets: string[] = []; const params: any[] = [];
+  for (const [col, val] of Object.entries(values)) { sets.push(`${col} = ?`); params.push(val); }
+  if (sets.length) {
+    await execute(db, `UPDATE alpr_captures SET ${sets.join(', ')} WHERE id = ?`, ...params, id);
+  }
+
+  const plate: string | null = (values.plate ?? row.plate) ?? null;
+
+  let hits: Array<{ kind: string; severity: string; detail: string }> = [];
+
+  if (action === 'reject') {
+    await execute(db,
+      `UPDATE alpr_captures SET accepted=0, review_status='rejected', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+      userId, id);
+  } else if (action === 'confirm' && plate) {
+    // (Re)create the authoritative record + link + sighting using the EFFECTIVE
+    // (edited) attributes. A human-supplied attribute is trusted; on a plate
+    // change with NO replacement attribute we drop the stale OCR value (it
+    // belonged to the misread plate) — mirrors the original /accept rule.
+    try {
+      const screen = await screenVehicle(db, { plate });
+      hits = screen.hits;
+      const keep = (col: string, key: keyof typeof values) =>
+        key in values ? (values as any)[key] : (plateChanged ? null : (row[col] ?? null));
+      const v: AlprVehicle = {
+        plate,
+        state: keep('state', 'state'),
+        make: keep('make', 'make'),
+        model: keep('model', 'model'),
+        color: keep('color', 'color'),
+        year: keep('year', 'year'),
+        vehicleType: keep('vehicle_type', 'vehicle_type'),
+        plateType: null, confidence: plateChanged ? null : (row.plate_confidence ?? null),
+        condition: keep('condition', 'condition'), damageObserved: null,
+        damageSummary: keep('damage_summary', 'damage_summary'), damageAreas: [],
+        aftermarket: null, confidences: {},
+      };
+      const up = await upsertVehicleRecord(db, v, screen.vehicleId);
+      const recordId = up?.id ?? screen.vehicleId ?? null;
+      if (recordId && row.call_id != null) {
+        await execute(db,
+          `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
+           VALUES (?, ?, 'observed', 'ALPR (verified)', ?, datetime('now'))`, row.call_id, recordId, userId);
+      }
+      await execute(db,
+        `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, condition, damage_observed, damage_summary, confidence)
+         VALUES (?, ?, ?, ?, ?, ?, 'ALPR (verified)', ?, ?, ?, ?, ?)`,
+        plate, v.state, recordId, row.location_text ?? null, row.lat ?? null, row.lng ?? null, userId,
+        v.condition, row.damage_observed ?? null, v.damageSummary,
+        plateChanged ? null : (row.plate_confidence ?? null));
+    } catch (err: any) { console.error('[alpr] verify relink failed:', err?.message); }
+    await execute(db,
+      `UPDATE alpr_captures SET accepted=1, review_status='confirmed', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+      userId, id);
+  } else if (action === 'save') {
+    await execute(db, `UPDATE alpr_captures SET reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`, userId, id);
+  }
+
+  // Audit the change function (best-effort; never blocks the edit).
+  if (wasDecided || action !== 'confirm') {
+    try {
+      const diff = describeEdit(row, values);
+      const detail = [`${action}`, reason, diff].filter(Boolean).join(' — ');
+      await execute(db,
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+         VALUES (?, 'ALPR_VERIFY', 'alpr_capture', ?, ?, datetime('now'))`,
+        userId, id, detail.slice(0, 500));
+    } catch (auditErr: any) { console.warn('[alpr] audit_log insert failed:', auditErr?.message); }
+  }
+
+  const updated = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
+  return c.json({ success: true, hits, ...shapeCapture(updated) });
 });
 
 // ── Stream a stored image back from R2 (prefix-validated) ────
