@@ -35,7 +35,7 @@ import SecurityKeyManager from './security/SecurityKeyManager';
 import BackupCodesDisplay from './security/BackupCodesDisplay';
 import SecurityStatusCard from './security/SecurityStatusCard';
 import TwoFactorSetupWizard from './security/TwoFactorSetupWizard';
-import { applyThemePreference, normalizeThemePreference } from '../utils/theme';
+import { applyThemePreference, normalizeThemePreference, writeThemeOverride, resolveCurrentTheme, readThemeOverride } from '../utils/theme';
 
 interface UserPreferences {
   notify_dispatch_email: number;
@@ -1002,16 +1002,24 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-rmpg-200">Theme</span>
                         <select id="ff-userprofilemodal-13"
-                          value={prefs.theme_preference || 'dark'}
+                          value={(() => { const o = readThemeOverride(); return o?.active ? o.theme : 'auto'; })()}
                           onChange={e => {
-                            const theme = normalizeThemePreference(e.target.value);
-                            setPrefs({ ...prefs, theme_preference: theme });
-                            applyThemePreference(theme);
+                            const v = e.target.value;
+                            if (v === 'auto') {
+                              writeThemeOverride({ theme: 'dark', active: false });
+                              applyThemePreference(resolveCurrentTheme(), { persist: false });
+                            } else {
+                              const theme = normalizeThemePreference(v);
+                              writeThemeOverride({ theme, active: true });
+                              setPrefs({ ...prefs, theme_preference: theme });
+                              applyThemePreference(theme);
+                            }
                           }}
                           className="input-dark text-[10px] py-0.5 px-1 w-24"
                         >
-                          <option value="dark">Dark</option>
-                          <option value="light">Light</option>
+                          <option value="auto">Auto (shift)</option>
+                          <option value="dark">Night</option>
+                          <option value="light">Day</option>
                         </select>
                       </div>
                       {/* Time Zone is fixed to Mountain Time (Utah) for all users —

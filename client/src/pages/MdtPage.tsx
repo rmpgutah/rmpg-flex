@@ -570,7 +570,7 @@ export default function MdtPage() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden animate-fade-in">
+    <div className="tactical-dark h-full flex flex-col bg-surface-base text-white overflow-hidden animate-fade-in">
       {/* DI-3: Premise alert auto-push modal — listens for premise_alert_for_unit WS event */}
       <PremiseAlertModal />
       {/* DI-4: Welfare-check ack modal — listens for welfare_check WS event */}

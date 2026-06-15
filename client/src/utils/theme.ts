@@ -1,28 +1,31 @@
+import { DEFAULT_SCHEDULE, resolveEffectiveTheme, type ThemeOverride } from './themeSchedule';
+
 export type ThemePreference = 'dark' | 'light';
 
 export const THEME_STORAGE_KEY = 'rmpg_theme_preference';
+export const LEGACY_FLAG_KEY = 'rmpg_theme_legacy';
+export const THEME_OVERRIDE_KEY = 'rmpg_theme_override';
 
-// "Light Mode" here is a saturated-blue variant of the dark theme — NOT a
-// true white-background light mode. See client/src/index.css for the full
-// palette under html.theme-light. These chrome/body colors match the
-// --surface-base values exactly.
+/** When set, restore the pre-refactor pure-black palette (prod kill-switch). */
+export function isLegacyBlackForced(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(LEGACY_FLAG_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+// Night (dark) = steel-blue-charcoal base. Day (light) = Spillman chrome silver.
 const THEME_CHROME_COLORS: Record<ThemePreference, string> = {
-  dark: '#000000',
-  light: '#0d2a4d',
+  dark: '#0d1722',   // night — steel-blue-charcoal base
+  light: '#d6d3c8',  // day — Spillman chrome silver
 };
 
 const THEME_BODY_BACKGROUNDS: Record<ThemePreference, string> = {
-  dark: '#0a0a0a',
-  light: '#0d2a4d',
+  dark: '#0d1722',
+  light: '#ece9dd',
 };
-
-// Both themes render as dark-on-dark (white text on a dark surface, just with
-// a different hue: pure black vs saturated blue). Platform chrome — browser
-// scrollbars, form-control defaults, native status-bar icons — should always
-// use dark-mode settings so icons remain light-on-dark and stay readable.
-// Do NOT derive these from the ThemePreference value.
-const PLATFORM_COLOR_SCHEME = 'dark' as const;
-const APPLE_STATUS_BAR_STYLE = 'black-translucent' as const;
 
 function getMetaTag(name: string): HTMLMetaElement {
   let tag = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
@@ -35,7 +38,8 @@ function getMetaTag(name: string): HTMLMetaElement {
 }
 
 export function normalizeThemePreference(value: string | null | undefined): ThemePreference {
-  return value === 'light' ? 'light' : 'dark';
+  if (value === 'light' || value === 'day') return 'light';
+  return 'dark';
 }
 
 export function getStoredThemePreference(): ThemePreference {
@@ -52,12 +56,12 @@ export function getThemeChromeColor(theme: ThemePreference): string {
 }
 
 function updateThemeMeta(theme: ThemePreference) {
+  const legacy = isLegacyBlackForced();
   const themeColor = getMetaTag('theme-color');
-  themeColor.setAttribute('content', THEME_CHROME_COLORS[theme]);
+  themeColor.setAttribute('content', legacy ? '#000000' : THEME_CHROME_COLORS[theme]);
 
-  // Both themes are dark-on-dark — status bar always uses light icons.
   const appleStatusBar = getMetaTag('apple-mobile-web-app-status-bar-style');
-  appleStatusBar.setAttribute('content', APPLE_STATUS_BAR_STYLE);
+  appleStatusBar.setAttribute('content', theme === 'light' && !legacy ? 'default' : 'black-translucent');
 }
 
 async function syncNativeStatusBar(theme: ThemePreference) {
@@ -74,12 +78,14 @@ async function syncNativeStatusBar(theme: ThemePreference) {
 
   try {
     const { StatusBar, Style } = await import('@capacitor/status-bar');
-    // Both themes are dark-on-dark — status bar icons/text are always light.
-    // Style.Light = light icons (for dark backgrounds).
-    await StatusBar.setStyle({ style: Style.Light });
+    // Day (light) surface needs dark icons; night/legacy surfaces need light icons.
+    // Capacitor Style.Dark = dark icons (for light backgrounds); Style.Light = light icons.
+    const legacy = isLegacyBlackForced();
+    const lightSurface = theme === 'light' && !legacy;
+    await StatusBar.setStyle({ style: lightSurface ? Style.Dark : Style.Light });
 
     if (cap.getPlatform?.() === 'android') {
-      await StatusBar.setBackgroundColor({ color: THEME_CHROME_COLORS[theme] });
+      await StatusBar.setBackgroundColor({ color: legacy ? '#000000' : THEME_CHROME_COLORS[theme] });
     }
   } catch (error) {
     console.warn('[theme] Failed to sync native status bar', error);
@@ -96,17 +102,20 @@ export function applyThemePreference(
   const html = document.documentElement;
   const body = document.body;
 
-  html.classList.remove('theme-dark', 'theme-light');
+  const legacy = isLegacyBlackForced();
+  html.classList.remove('theme-dark', 'theme-light', 'theme-legacy-black');
   html.classList.add(`theme-${theme}`);
-  // Pin color-scheme to dark in both modes — saturated-blue "Light Mode" is
-  // still a dark surface, so native form controls and scrollbars should use
-  // dark-mode defaults to stay readable.
-  html.style.colorScheme = PLATFORM_COLOR_SCHEME;
-  html.style.backgroundColor = THEME_CHROME_COLORS[theme];
+  if (legacy) html.classList.add('theme-legacy-black');
+
+  // Day (light) is a genuinely light surface → native controls/status bar use
+  // light mode (dark icons). Night stays dark. Legacy black stays dark.
+  const effectiveScheme: 'dark' | 'light' = theme === 'light' && !legacy ? 'light' : 'dark';
+  html.style.colorScheme = effectiveScheme;
+  html.style.backgroundColor = legacy ? '#000000' : THEME_CHROME_COLORS[theme];
 
   if (body) {
-    body.style.colorScheme = PLATFORM_COLOR_SCHEME;
-    body.style.backgroundColor = THEME_BODY_BACKGROUNDS[theme];
+    body.style.colorScheme = effectiveScheme;
+    body.style.backgroundColor = legacy ? '#0a0a0a' : THEME_BODY_BACKGROUNDS[theme];
   }
 
   updateThemeMeta(theme);
@@ -126,6 +135,40 @@ export function applyThemePreference(
   return theme;
 }
 
+/** Read the manual theme override ({theme,active}); null if absent/invalid. */
+export function readThemeOverride(): ThemeOverride | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(THEME_OVERRIDE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && (parsed.theme === 'dark' || parsed.theme === 'light')) {
+      return { theme: parsed.theme, active: !!parsed.active };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist (or clear, when null) the manual theme override. */
+export function writeThemeOverride(override: ThemeOverride | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (override === null) localStorage.removeItem(THEME_OVERRIDE_KEY);
+    else localStorage.setItem(THEME_OVERRIDE_KEY, JSON.stringify(override));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+/** Effective theme right now: legacy → active override → time schedule. Mirrors the index.html boot script. */
+export function resolveCurrentTheme(): ThemePreference {
+  if (isLegacyBlackForced()) return 'dark';
+  const hour = new Date().getHours();
+  return resolveEffectiveTheme(hour, DEFAULT_SCHEDULE, readThemeOverride());
+}
+
 export function bootstrapThemePreference(): ThemePreference {
-  return applyThemePreference(getStoredThemePreference());
+  return applyThemePreference(resolveCurrentTheme(), { persist: false });
 }
