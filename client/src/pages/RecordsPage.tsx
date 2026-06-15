@@ -41,6 +41,7 @@ import { useVehiclesTab, VehiclesTabList, VehiclesTabDetail, mapDbVehicle } from
 import { usePropertiesTab, PropertiesTabList, PropertiesTabDetail, mapDbProperty } from './records/PropertiesTab';
 import { useEvidenceTab, EvidenceTabList, EvidenceTabDetail } from './records/EvidenceTab';
 import { useBusinessTab, BusinessTabList, BusinessTabDetail } from './records/BusinessTab';
+import SpillmanRecordTabs from './records/spillman/SpillmanRecordTabs';
 
 // ============================================================
 // Constants
@@ -437,38 +438,20 @@ export default function RecordsPage() {
         )}
       </PanelTitleBar>
 
-      {/* Tab Row */}
-      <div className={`${isMobile ? 'px-2' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-1 tab-scroll ${isMobile ? 'overflow-x-auto' : ''}`} role="tablist" aria-label="Record type tabs">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button type="button"
-              key={tab.id}
-              role="tab"
-              aria-selected={activeTab === tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`
-                flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 whitespace-nowrap relative
-                ${activeTab === tab.id
-                  ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700 shadow-sm'
-                  : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 border border-transparent'
-                }
-              `}
-            >
-              <Icon className={`w-3.5 h-3.5 ${activeTab === tab.id ? 'text-brand-400' : ''}`} />
-              {tab.label}
-              <span className={`text-[9px] font-mono tabular-nums ${activeTab === tab.id ? 'text-brand-400' : 'text-rmpg-500'}`}>({tab.count})</span>
-              {activeTab === tab.id && <span className="absolute bottom-0 left-1 right-1 h-[2px] bg-brand-500" />}
-            </button>
-          );
-        })}
-        {/* Archive Toggle */}
-        <button type="button"
+      {/* Tab Row — Spillman silver record-type tabs + archive toggle */}
+      <div className="flex items-stretch border-b border-rmpg-600">
+        <SpillmanRecordTabs
+          tabs={tabs.map(t => ({ id: t.id, label: t.label, count: t.count }))}
+          activeTab={activeTab}
+          onSelect={(id) => setActiveTab(id)}
+        />
+        <button
+          type="button"
           onClick={() => setShowArchived(!showArchived)}
-          className={`ml-auto flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border whitespace-nowrap ${
+          className={`ml-auto flex items-center gap-1 px-2 text-[9px] font-bold uppercase tracking-wider transition-colors border whitespace-nowrap ${
             showArchived
-              ? 'bg-amber-900/40 text-amber-400 border-amber-700/50 hover:bg-amber-900/60'
-              : 'bg-rmpg-700/50 text-rmpg-500 border-rmpg-600 hover:text-rmpg-300 hover:bg-rmpg-700'
+              ? 'bg-amber-900/40 text-amber-400 border-amber-700/50'
+              : 'bg-rmpg-700/50 text-rmpg-500 border-rmpg-600'
           }`}
         >
           <Archive className="w-2.5 h-2.5" />

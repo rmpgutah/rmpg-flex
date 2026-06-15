@@ -80,3 +80,28 @@
   color: #22405e !important;
 }
 .spillman-theme .collapsible-section-header * { color: #22405e !important; }
+
+/* ── Record-type tab strip ─────────────────────────────────── */
+.spillman-theme .spm-record-tabs {
+  display: flex;
+  background: var(--spm-chrome);
+  border-bottom: 1px solid var(--spm-border);
+  font-size: 11px;
+  overflow-x: auto;
+}
+.spillman-theme .spm-record-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-right: 1px solid #b3ae9e;
+  color: #33312b;
+  white-space: nowrap;
+}
+.spillman-theme .spm-record-tab.on {
+  background: #ffffff;
+  font-weight: 600;
+  border-bottom: 2px solid var(--spm-accent);
+}
+.spillman-theme .spm-record-tab-count { color: var(--spm-text-muted); }
+.spillman-theme .spm-record-tab.on .spm-record-tab-count { color: var(--spm-accent); }
