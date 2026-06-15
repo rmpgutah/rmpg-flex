@@ -1,6 +1,6 @@
 # RMPGFlexTester (iOS)
 
-Native iPhone field app + test console for the live RMPG Flex Cloudflare stack.
+Native iPhone field app for the live RMPG Flex Cloudflare stack.
 
 **Shell**: 5 tabs — **Home**, **Field Ops**, **ID Scan**, **Toolkit**, and **More**.
 The **More** hub groups the secondary officer surfaces into labeled sections:

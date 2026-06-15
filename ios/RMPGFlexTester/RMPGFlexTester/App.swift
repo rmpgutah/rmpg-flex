@@ -65,40 +65,38 @@ struct MoreHubView: View {
         let entries: [Entry]
     }
 
-    private var sections: [HubSection] {
-        [
-            HubSection(id: "patrol", header: "Patrol", entries: [
-                Entry(id: "roster", title: "Duty Roster",
-                      subtitle: "On/off duty · time entries",
-                      icon: "person.3.fill", destination: AnyView(DutyRosterView())),
-                Entry(id: "alerts", title: "Live Alerts",
-                      subtitle: "Calls · BOLOs · watchlist hits — one ranked feed",
-                      icon: "bell.badge.waveform.fill", destination: AnyView(AlertsFeedView())),
-                Entry(id: "watchlist", title: "Watchlist",
-                      subtitle: "Subjects you're watching · alerts on new activity",
-                      icon: "binoculars.fill", destination: AnyView(WatchlistView())),
-                Entry(id: "fleet", title: "Fleet Readiness",
-                      subtitle: "Out-of-service · maintenance · inspection-overdue · ready",
-                      icon: "car.2.fill", destination: AnyView(FleetReadinessView())),
-            ]),
-            HubSection(id: "reports", header: "Reports & Records", entries: [
-                Entry(id: "dar", title: "Daily Activity Report",
-                      subtitle: "Auto-compiled shift report · review + sign",
-                      icon: "doc.text.below.ecg.fill", destination: AnyView(DailyActivityReportView())),
-                Entry(id: "recorder", title: "Recorder",
-                      subtitle: "Record interaction audio for evidence",
-                      icon: "mic.fill", destination: AnyView(RecorderView())),
-            ]),
-            HubSection(id: "account", header: "Account", entries: [
-                Entry(id: "myid", title: "My Officer ID",
-                      subtitle: "Your digital badge + live verification QR",
-                      icon: "person.text.rectangle.fill", destination: AnyView(WalletIDView())),
-                Entry(id: "settings", title: "Settings",
-                      subtitle: "RMPG login · Verifier token",
-                      icon: "gearshape", destination: AnyView(SettingsView())),
-            ]),
-        ]
-    }
+    private let sections: [HubSection] = [
+        HubSection(id: "patrol", header: "Patrol", entries: [
+            Entry(id: "roster", title: "Duty Roster",
+                  subtitle: "On/off duty · time entries",
+                  icon: "person.3.fill", destination: AnyView(DutyRosterView())),
+            Entry(id: "alerts", title: "Live Alerts",
+                  subtitle: "Calls · BOLOs · watchlist hits — one ranked feed",
+                  icon: "bell.badge.waveform.fill", destination: AnyView(AlertsFeedView())),
+            Entry(id: "watchlist", title: "Watchlist",
+                  subtitle: "Subjects you're watching · alerts on new activity",
+                  icon: "binoculars.fill", destination: AnyView(WatchlistView())),
+            Entry(id: "fleet", title: "Fleet Readiness",
+                  subtitle: "Out-of-service · maintenance · inspection-overdue · ready",
+                  icon: "car.2.fill", destination: AnyView(FleetReadinessView())),
+        ]),
+        HubSection(id: "reports", header: "Reports & Records", entries: [
+            Entry(id: "dar", title: "Daily Activity Report",
+                  subtitle: "Auto-compiled shift report · review + sign",
+                  icon: "doc.text.below.ecg.fill", destination: AnyView(DailyActivityReportView())),
+            Entry(id: "recorder", title: "Recorder",
+                  subtitle: "Record interaction audio for evidence",
+                  icon: "mic.fill", destination: AnyView(RecorderView())),
+        ]),
+        HubSection(id: "account", header: "Account", entries: [
+            Entry(id: "myid", title: "My Officer ID",
+                  subtitle: "Your digital badge + live verification QR",
+                  icon: "person.text.rectangle.fill", destination: AnyView(WalletIDView())),
+            Entry(id: "settings", title: "Settings",
+                  subtitle: "RMPG login · Verifier token",
+                  icon: "gearshape", destination: AnyView(SettingsView())),
+        ]),
+    ]
 
     var body: some View {
         NavigationStack {
@@ -106,10 +104,7 @@ struct MoreHubView: View {
                 VStack(spacing: 14) {
                     ForEach(sections) { section in
                         VStack(spacing: 6) {
-                            HStack {
-                                SectionHeader(title: section.header)
-                                Spacer()
-                            }
+                            SectionHeader(title: section.header)
                             ForEach(section.entries) { e in
                                 NavigationLink {
                                     e.destination
