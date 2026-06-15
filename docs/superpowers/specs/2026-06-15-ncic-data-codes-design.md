@@ -23,8 +23,8 @@ output (rendering) and input (operator queries), without losing readability.
   and a curated offense/charge table.
 - **Input:** code-aware — a code decoder command + code-tolerant query parsing.
 - **Offense table depth:** curated common set (~40–60 offenses), each with Utah Code §
-  + NCIC offense category + severity class; extensible; explicitly **not** the full
-  ~1,000-entry NCIC offense manual.
+  + NCIC offense category numeric code + Utah severity class; extensible; explicitly
+  **not** the full ~1,000-entry NCIC offense manual.
 - **Hispanic handling:** accurate — Hispanic is an **ethnicity**, not an NCIC race.
   Render `RAC/U (UNKNOWN)` on the race line plus a separate `ETN/H (HISPANIC)` line.
 
@@ -75,9 +75,11 @@ Domains:
   - `DL_RESTRICTION` — Utah restriction codes (corrective lenses, etc.).
   - `DL_ENDORSEMENT` — Utah endorsement codes (H/N/P/S/T/X).
 - **Offense (curated)**
-  - `OFFENSE` — `Record<canonicalOffenseLabel, { utahStatute, ncicCategory, severity }>`
-    for ~40–60 common offenses. Severity uses Utah classes (F1/F2/F3, MA/MB/MC,
-    infraction). Documented as a curated, extensible subset.
+  - `OFFENSE` — `Record<canonicalOffenseLabel, { utahStatute, ncicCode, severity }>`
+    for ~40–60 common offenses. Each entry carries: the **Utah Code citation**
+    (e.g. `76-6-404`), the **NCIC offense category code** (the 4-digit NCIC Uniform
+    Offense Classification, e.g. `2305` larceny), and the **Utah severity class**
+    (F1/F2/F3, MA/MB/MC, infraction). Documented as a curated, extensible subset.
 
 Helpers (all pure, exported):
 - `encode(domain, label): string` — label → code (else uppercased input).
@@ -97,7 +99,9 @@ descriptor/vehicle/DL fields:
 - `formatVehicleResponse` + vehicle-derived lines: `VMA/`, `VCO/`, `VST/`.
 - `OLS/` / `LIS/` state fields via `STATE`.
 - Offense lines (`CHG/`, criminal-history `OFL/`): when a charge label matches the
-  `OFFENSE` table, append `(<UtahStatute> · <severity>)`.
+  `OFFENSE` table, append `(<UtahStatute> · <severity> · NCIC <ncicCode>)` —
+  e.g. `CHG/THEFT (76-6-404 · MA · NCIC 2305)`. Unmatched charges render the raw
+  label unchanged.
 
 No change to `getNcicLineClass` or `renderColorizedResponse` — the existing `XYZ/`
 mnemonic regex already two-tone-renders `W (WHITE)` correctly, and a new `ETN/` line
