@@ -35,6 +35,7 @@ import {
   type AddressLookupResults,
   type BackgroundRecord,
 } from '../utils/ncicFormatter';
+import { lookupAnyCode, type CodeHit } from '../constants/ncicCodes';
 import { playTone } from '../utils/dispatchTones';
 
 // ── Quick-query buttons shown on welcome screen ──────────────
@@ -103,6 +104,30 @@ function renderColorizedResponse(text: string): React.ReactNode {
       </React.Fragment>
     );
   });
+}
+
+const QZ_DOMAIN_LABEL: Record<string, string> = {
+  RACE: 'RACE', ETHNICITY: 'ETHNICITY', SEX: 'SEX', EYE: 'EYE COLOR',
+  HAIR: 'HAIR COLOR', VMA: 'VEHICLE MAKE', VCO: 'VEHICLE COLOR',
+  VST: 'VEHICLE STYLE', STATE: 'STATE', DL_CLASS: 'DL CLASS',
+  DL_RESTRICTION: 'DL RESTRICTION', DL_ENDORSEMENT: 'DL ENDORSEMENT',
+};
+
+/** Build the NCIC-style text block for a QZ code-translation query. */
+function formatCodeDecode(term: string, hits: CodeHit[]): string {
+  const hdr = [
+    '*** NCIC RESPONSE ***',
+    `ORI/RMPGFLEX01  MKE/QZ  QRY/CODE TRANSLATION`,
+    '─'.repeat(60),
+    '',
+    `  CODE TRANSLATION: ${term.toUpperCase()}`,
+    `  ${'─'.repeat(56)}`,
+  ];
+  if (hits.length === 0) {
+    return [...hdr, '', '  NO MATCHING CODE FOUND', '', '─'.repeat(60), '*** END OF RECORD ***'].join('\n');
+  }
+  const body = hits.map(h => `  ${QZ_DOMAIN_LABEL[h.domain] || h.domain}: ${h.code} (${h.label.toUpperCase()})`);
+  return [...hdr, '', ...body, '', `  SUMMARY: ${hits.length} CODE(S) FOUND`, '─'.repeat(60), '*** END OF RECORD ***'].join('\n');
 }
 
 export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded }: NcicQueryPanelProps) {
@@ -739,8 +764,17 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           break;
         }
 
+        case 'QZ': {
+          // Code translation / decoder — no backend call
+          const hits = lookupAnyCode(queryText);
+          response = formatCodeDecode(queryText, hits);
+          hasHit = hits.length > 0;
+          playTone(hits.length > 0 ? 'info' : 'error');
+          break;
+        }
+
         default:
-          response = `UNKNOWN QUERY TYPE: ${verb}\nValid: QX (cross-ref), QH/QP (person), QV (vehicle), QW (warrant), QT (phone), QA (address), QD (DL), QO (OFAC), QR (arrests), QS (skip tracer), QC (courts), QB (background)`;
+          response = `UNKNOWN QUERY TYPE: ${verb}\nValid: QX (cross-ref), QH/QP (person), QV (vehicle), QW (warrant), QT (phone), QA (address), QD (DL), QO (OFAC), QR (arrests), QS (skip tracer), QC (courts), QB (background), QZ (code decode)`;
       }
 
       setEntries(prev => [...prev, {
