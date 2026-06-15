@@ -18,7 +18,8 @@ final class LiveCounts: ObservableObject {
         polling = true
         Task { [weak self] in
             while !Task.isCancelled {
-                await self?.refresh()
+                guard let self else { return }
+                await self.refresh()
                 try? await Task.sleep(for: .seconds(15))
             }
         }
@@ -26,6 +27,8 @@ final class LiveCounts: ObservableObject {
 
     func refresh() async {
         guard let c = await authedClient() else { return }
+        // On a failed fetch (dead zone / 5xx / WAF) keep the last-known counts
+        // rather than flashing to zero — the poller retries on the next tick.
         if let calls = try? await c.requestJSON("GET", "api/dispatch/calls?status=active") {
             activeCalls = CountParse.rowCount(calls)
         }

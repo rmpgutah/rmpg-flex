@@ -40,7 +40,7 @@ struct DashboardView: View {
             .background(Theme.base)
             .navigationTitle("HOME")
             .navigationBarTitleDisplayMode(.inline)
-            .refreshable { await refresh() }
+            .refreshable { await refresh(); await counts.refresh() }
             .task {
                 await refresh(); loading = false
                 while !Task.isCancelled {
@@ -49,7 +49,7 @@ struct DashboardView: View {
                 }
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { Task { await refresh() } }
+                if phase == .active { Task { await refresh(); await counts.refresh() } }
             }
             .alert("SEND PANIC ALARM?", isPresented: $confirmPanic) {
                 Button("SEND PANIC", role: .destructive) { Task { await panic() } }
@@ -229,7 +229,6 @@ struct DashboardView: View {
                 } else { callSign = nil; unitStatus = ""; myCallNumber = nil; activeCallStartedAt = nil }
             }
         }
-        await counts.refresh()
     }
 
     @MainActor

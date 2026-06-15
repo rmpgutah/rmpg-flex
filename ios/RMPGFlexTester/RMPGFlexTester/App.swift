@@ -71,7 +71,7 @@ struct MoreHubView: View {
         let entries: [Entry]
     }
 
-    // Built per-render so the Live Alerts row can carry the current unread count.
+    // Computed so the Live Alerts badge reflects the current counts.unread each render.
     private var sections: [HubSection] {
         [
             HubSection(id: "patrol", header: "Patrol", entries: [
