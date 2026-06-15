@@ -228,3 +228,7 @@
 /* AlertBanner icon color softening */
 .spillman-theme .alert-banner-critical svg { color: #b03030 !important; }
 .spillman-theme .alert-banner-warning svg { color: #9a7b1e !important; }
+
+/* ── Compact stats strip → light Spillman surface ──────────── */
+.spillman-theme .records-stats { background: var(--spm-chrome) !important; color: var(--spm-text) !important; }
+.spillman-theme .records-stats .text-white { color: #15202b !important; }
