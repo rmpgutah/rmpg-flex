@@ -619,7 +619,7 @@
 //       right panel never opened) + real business tab count.
 // v964: system-wide theme — desktop-shell/toolbar/grid chrome vars follow
 //       day/night; day color-scheme light; warm day hover.
-const CACHE_NAME = 'rmpg-flex-v969';
+const CACHE_NAME = 'rmpg-flex-v970';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

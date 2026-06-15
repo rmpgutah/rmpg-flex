@@ -9,6 +9,7 @@
 // ============================================================
 
 import type { Detection } from './drivingPrediction';
+import { filterDetections } from './detectionFilter';
 
 // Vehicles for ALPR + a pedestrian class for officer-safety coverage.
 const VEHICLE_CLASSES = new Set(['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'person']);
@@ -41,15 +42,18 @@ export function loadVehicleDetector(): Promise<unknown | null> {
   return modelPromise;
 }
 
-/** Detect vehicles in the current video frame (natural px bboxes). [] on any issue. */
-export async function detectVehicles(model: unknown, video: HTMLVideoElement, maxDet = 10, minScore = 0.4): Promise<Detection[]> {
+/** Detect vehicles/people in the current video frame (natural px bboxes), with a
+ *  night-safe plausibility gate (drops glare/light false-positives: low score,
+ *  sky-band centres, specks, frame-fills, slivers). [] on any issue. */
+export async function detectVehicles(model: unknown, video: HTMLVideoElement, maxDet = 10, minScore = 0.5): Promise<Detection[]> {
   const m = model as { detect?: (v: HTMLVideoElement, n: number) => Promise<Array<{ bbox: number[]; class: string; score: number }>> };
   if (!m?.detect || video.readyState < 2 || !video.videoWidth) return [];
   try {
     const preds = await m.detect(video, maxDet);
-    return preds
-      .filter((p) => VEHICLE_CLASSES.has(p.class) && p.score >= minScore)
+    const dets = preds
+      .filter((p) => VEHICLE_CLASSES.has(p.class))
       .map((p) => ({ bbox: [p.bbox[0], p.bbox[1], p.bbox[2], p.bbox[3]] as Detection['bbox'], score: p.score, cls: p.class }));
+    return filterDetections(dets, video.videoWidth, video.videoHeight, { minScore });
   } catch {
     return [];
   }

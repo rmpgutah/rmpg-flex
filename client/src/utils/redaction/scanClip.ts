@@ -32,7 +32,9 @@ export async function scanClip(video: HTMLVideoElement, opts: ScanOpts = {}): Pr
     for (; t <= duration; t += interval) {
       await seekTo(video, t);
       if (vehModel) {
-        const dets = await detectVehicles(vehModel, video, 16);
+        // Stricter score for redaction than the live overlay — over-redaction
+        // noise (56 bogus "plate" regions at night) is worse than a missed far box.
+        const dets = await detectVehicles(vehModel, video, 16, 0.55);
         for (const d of dets) {
           // d.bbox is pixel-space Box; normBox() divides it to fractional NormBox (cast is shape-only).
           if (d.cls === 'person') {
