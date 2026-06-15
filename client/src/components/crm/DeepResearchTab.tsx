@@ -61,8 +61,21 @@ export default function DeepResearchTab() {
   }, [loadJobs]);
 
   const loadDetail = useCallback(async (id: string) => {
-    try { setDetail(await apiFetch<JobDetail>(`/deep-research/jobs/${id}`)); } catch { /* ignore */ }
-  }, []);
+    try { setDetail(await apiFetch<JobDetail>(`/deep-research/jobs/${id}`)); }
+    catch (e: any) {
+      // Job is gone (deleted, or not in this org). The poll loop's stop-condition
+      // reads d.job.status, which a failed fetch never updates — so without this
+      // the interval would re-poll a missing id forever (the 404 console spam).
+      // Stop polling, drop the stale selection, and refresh the list.
+      if (e?.status === 404) {
+        if (pollRef.current) clearInterval(pollRef.current);
+        setActiveId((cur) => (cur === id ? null : cur));
+        setDetail(null);
+        loadJobs();
+      }
+      /* other errors (transient network) → ignore, next tick retries */
+    }
+  }, [loadJobs]);
 
   // Poll the active job while it's running.
   useEffect(() => {

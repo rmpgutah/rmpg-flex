@@ -632,7 +632,9 @@
 //       type-based icons + corner condition tabs across Records lists & heroes.
 // v980: Business unified onto canonical `businesses` table (CRUD repointed +
 //       archive/unarchive/delete routes + delete endpoint wired).
-const CACHE_NAME = 'rmpg-flex-v982';
+// v983: Deep Research — stop the job poller spamming 404s after a job is
+//       deleted/gone (loadDetail now stops on 404 + clears the stale selection).
+const CACHE_NAME = 'rmpg-flex-v983';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
