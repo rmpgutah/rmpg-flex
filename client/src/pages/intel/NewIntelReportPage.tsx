@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../../hooks/useApi';
 
 const THREATS = ['low', 'medium', 'high', 'critical'];
+const SOURCE_TYPES = ['officer_observation', 'confidential_informant', 'anonymous_tip', 'public', 'other_agency', 'osint', 'technical', 'victim', 'witness', 'suspect'];
 
 export default function NewIntelReportPage() {
   const nav = useNavigate();
@@ -21,6 +22,7 @@ export default function NewIntelReportPage() {
   const [title, setTitle] = useState(initialTitle);
   const [narrative, setNarrative] = useState(initialNarrative);
   const [threat, setThreat] = useState('low');
+  const [sourceType, setSourceType] = useState('officer_observation');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -35,9 +37,18 @@ export default function NewIntelReportPage() {
           raw_narrative: narrative.trim(),
           threat_level: threat,
           classification: 'law_enforcement_sensitive',
-          source_type: from ? 'field' : 'manual',
+          source_type: sourceType,
         }),
       });
+      // If launched from a dossier (?from=type:id), auto-link the entity so the
+      // report shows it under Linked Entities. Best-effort — never block nav.
+      const [fromType, fromId] = from.split(':');
+      if (r?.id && fromType && fromId) {
+        await apiFetch(`/intel/reports/${r.id}/links`, {
+          method: 'POST',
+          body: JSON.stringify({ entity_type: fromType, entity_id: Number(fromId), role: 'subject' }),
+        }).catch(() => { /* link is a nicety, not a gate */ });
+      }
       nav(`/intel/reports/${r.id}`);
     } catch {
       setErr('Failed to create report.'); setBusy(false);
@@ -57,6 +68,13 @@ export default function NewIntelReportPage() {
       <label className="block text-[10px] text-[#888] uppercase tracking-wider">Raw narrative
         <textarea aria-label="narrative" value={narrative} onChange={(e) => setNarrative(e.target.value)} rows={8}
           className="mt-1 w-full bg-[#070707] border border-[#232323] rounded-[2px] px-2 py-[6px] text-[12px] text-[#e8e8e8]" />
+      </label>
+
+      <label className="block text-[10px] text-[#888] uppercase tracking-wider">Source type
+        <select aria-label="source type" value={sourceType} onChange={(e) => setSourceType(e.target.value)}
+          className="mt-1 w-full bg-[#070707] border border-[#232323] rounded-[2px] px-2 py-[6px] text-[12px] text-[#e8e8e8]">
+          {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+        </select>
       </label>
 
       <div className="flex items-center gap-2">
