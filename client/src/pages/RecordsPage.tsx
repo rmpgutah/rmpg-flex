@@ -601,7 +601,10 @@ export default function RecordsPage() {
       </PanelTitleBar>
 
       {hasSelection && RECORD_FORM_SECTIONS[activeTab as keyof typeof RECORD_FORM_SECTIONS]?.length > 0 && (
-        <SpillmanFormTabs sections={RECORD_FORM_SECTIONS[activeTab as keyof typeof RECORD_FORM_SECTIONS]} />
+        <SpillmanFormTabs
+          key={`${activeTab}-${personsState.selectedPerson?.id ?? 'none'}`}
+          sections={RECORD_FORM_SECTIONS[activeTab as keyof typeof RECORD_FORM_SECTIONS]}
+        />
       )}
 
       {/* Active TabDetail Content */}
