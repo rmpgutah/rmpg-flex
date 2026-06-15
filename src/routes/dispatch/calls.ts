@@ -1643,7 +1643,7 @@ calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
     for (const callId of body.call_ids.slice(0, 50)) {
       try {
         await execute(db,
-          `UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+          `UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = datetime('now') WHERE id = ?`,
           canonicalUnitIdsJson([body.unit_id]), callId);
         updated++;
       } catch { /* skip individual failures */ }

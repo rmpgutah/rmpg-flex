@@ -1746,8 +1746,8 @@ records.post('/retention/enforce', async (c) => {
     try {
       await execute(db,
         `INSERT INTO audit_log (user_id,action,entity_type,entity_id,details,ip_address,created_at)
-         VALUES (?,'records_retention_enforced','records',0,?,datetime('now'))`,
-        (user as any).id ?? 0, JSON.stringify(results));
+         VALUES (?,'records_retention_enforced','records',0,?,?,datetime('now'))`,
+        (user as any).id ?? 0, JSON.stringify(results), ip);
     } catch { /* non-fatal */ }
     return c.json({ enforced: true, results });
   } catch (err) {

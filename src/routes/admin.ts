@@ -1001,6 +1001,53 @@ admin.post('/purge/sessions', async (c) => {
   }
 });
 
+// ── God-mode bulk call operations (AdminGodModeTab) ────────
+// These two endpoints back buttons in client/src/pages/admin/AdminGodModeTab.tsx
+// that previously POSTed to unmounted paths (404 → dead buttons).
+
+// POST /admin/calls/bulk-reassign — reassign a set of calls to one officer.
+admin.post('/calls/bulk-reassign', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  try {
+    const db = getDb(c.env);
+    const { call_ids, target_officer_id } = await c.req.json<{ call_ids?: number[]; target_officer_id?: number }>();
+    const ids = (call_ids ?? []).map(Number).filter((n) => Number.isFinite(n));
+    const officerId = Number(target_officer_id);
+    if (!ids.length || !Number.isFinite(officerId)) return c.json({ error: 'call_ids and target_officer_id are required' }, 400);
+    const officer = await queryFirst<{ full_name: string | null; username: string }>(db, 'SELECT full_name, username FROM users WHERE id = ?', officerId);
+    if (!officer) return c.json({ error: 'Target officer not found' }, 404);
+    const placeholders = ids.map(() => '?').join(',');
+    const r = await execute(db,
+      `UPDATE calls_for_service SET reporting_officer_id = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
+      officerId, ...ids);
+    return c.json({ updated: r.meta.changes ?? 0, target: officer.full_name || officer.username });
+  } catch (err) {
+    console.error('POST /admin/calls/bulk-reassign failed:', err);
+    return c.json({ error: 'Bulk reassign failed' }, 500);
+  }
+});
+
+// POST /admin/calls/force-close-all — close every open call with a disposition.
+admin.post('/calls/force-close-all', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  try {
+    const db = getDb(c.env);
+    const { disposition } = await c.req.json<{ disposition?: string }>();
+    const disp = String(disposition ?? 'Closed by Admin').slice(0, 200);
+    const r = await execute(db,
+      `UPDATE calls_for_service
+          SET status = 'closed', closed_at = datetime('now'), disposition = ?, updated_at = datetime('now')
+        WHERE status NOT IN ('cleared','closed','cancelled','archived')`,
+      disp);
+    return c.json({ closed: r.meta.changes ?? 0 });
+  } catch (err) {
+    console.error('POST /admin/calls/force-close-all failed:', err);
+    return c.json({ error: 'Force close failed' }, 500);
+  }
+});
+
 // ── Read-only SQL query (admin diagnostic tool) ────────────
 admin.post('/query', async (c) => {
   const user = c.get('user') as { role: string } | undefined;

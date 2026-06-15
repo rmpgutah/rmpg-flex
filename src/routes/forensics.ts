@@ -818,11 +818,13 @@ forensics.get('/turnaround-times', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
+      // forensic_cases has no `completed_at` (that column lives on forensic_analyses);
+      // the completion column on this table is `completed_date`.
       `SELECT case_type,
               COUNT(*) AS total,
-              ROUND(AVG(CAST((julianday(COALESCE(completed_at, datetime('now'))) - julianday(created_at)) AS REAL)), 1) AS avg_days,
-              MIN(CAST((julianday(COALESCE(completed_at, datetime('now'))) - julianday(created_at)) AS REAL)) AS min_days,
-              MAX(CAST((julianday(COALESCE(completed_at, datetime('now'))) - julianday(created_at)) AS REAL)) AS max_days
+              ROUND(AVG(CAST((julianday(COALESCE(completed_date, datetime('now'))) - julianday(created_at)) AS REAL)), 1) AS avg_days,
+              MIN(CAST((julianday(COALESCE(completed_date, datetime('now'))) - julianday(created_at)) AS REAL)) AS min_days,
+              MAX(CAST((julianday(COALESCE(completed_date, datetime('now'))) - julianday(created_at)) AS REAL)) AS max_days
        FROM forensic_cases WHERE archived_at IS NULL
        GROUP BY case_type ORDER BY avg_days DESC`);
     return c.json({ data: rows });
@@ -834,7 +836,7 @@ forensics.get('/metrics/backlog', async (c) => {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
       `SELECT case_type, priority, COUNT(*) AS count
-       FROM forensic_cases WHERE status NOT IN ('completed','cancelled') AND archived_at IS NULL
+       FROM forensic_cases WHERE status NOT IN ('released','cancelled') AND archived_at IS NULL
        GROUP BY case_type, priority ORDER BY priority, case_type`);
     return c.json({ data: rows });
   } catch { return c.json({ data: [] }); }
@@ -880,8 +882,8 @@ forensics.get('/queue/priority', async (c) => {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
       `SELECT * FROM forensic_cases
-       WHERE status NOT IN ('completed','cancelled') AND archived_at IS NULL
-       ORDER BY CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, created_at
+       WHERE status NOT IN ('released','cancelled') AND archived_at IS NULL
+       ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'rush' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, created_at
        LIMIT 50`);
     return c.json({ data: rows });
   } catch { return c.json({ data: [] }); }
@@ -900,7 +902,7 @@ forensics.get('/capacity/planning', async (c) => {
   try {
     const db = getDb(c.env);
     const active = await queryFirst<{ count: number }>(db,
-      "SELECT COUNT(*) AS count FROM forensic_cases WHERE status NOT IN ('completed','cancelled') AND archived_at IS NULL");
+      "SELECT COUNT(*) AS count FROM forensic_cases WHERE status NOT IN ('released','cancelled') AND archived_at IS NULL");
     const avgPerWeek = await queryFirst<{ avg: number }>(db,
       `SELECT ROUND(COUNT(*) / MAX(1, (julianday('now') - julianday(MIN(created_at))) / 7.0), 1) AS avg
        FROM forensic_cases WHERE created_at >= datetime('now', '-90 days')`);

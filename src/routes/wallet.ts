@@ -60,10 +60,21 @@ async function getOrCreateCredential(db: any, userId: number): Promise<Credentia
   );
   if (existing) return existing;
   const walletId = crypto.randomUUID();
+  // user_id is UNIQUE. On an officer's first wallet view two concurrent requests
+  // (two tabs / a fast double-load) both pass the `existing` check; without
+  // ON CONFLICT the race loser's INSERT throws a UNIQUE violation that 500s the
+  // My-ID page. DO NOTHING + re-read makes issuance idempotent.
   await execute(
-    db, 'INSERT INTO wallet_credentials (wallet_id, user_id, status) VALUES (?, ?, ?)', walletId, userId, 'active',
+    db,
+    `INSERT INTO wallet_credentials (wallet_id, user_id, status) VALUES (?, ?, 'active')
+     ON CONFLICT(user_id) DO NOTHING`,
+    walletId, userId,
   );
-  return { wallet_id: walletId, user_id: userId, status: 'active', issued_at: new Date().toISOString(), revoked_at: null };
+  const row = await queryFirst<CredentialRow>(
+    db, 'SELECT wallet_id, user_id, status, issued_at, revoked_at FROM wallet_credentials WHERE user_id = ?', userId,
+  );
+  if (!row) throw new Error('wallet credential issuance failed');
+  return row;
 }
 
 async function auditCredential(db: any, actorUserId: number, action: string, walletId: string, details: unknown): Promise<void> {
