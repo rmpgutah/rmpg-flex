@@ -1,11 +1,29 @@
-import React, { useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { FormSection } from './recordFormSections';
 
 interface Props { sections: FormSection[]; }
 
 export default function SpillmanFormTabs({ sections }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  // Many detail-panel sections render conditionally on the record's data
+  // (Mechanical, Stolen / Tow, Damage, …). Show only the tabs whose anchor
+  // actually rendered so we never offer a tab that scrolls nowhere. Runs in a
+  // layout effect — siblings of this strip are committed before it fires, so
+  // pruning happens before paint (no flash of the full list).
+  const [visible, setVisible] = useState<FormSection[]>(sections);
   const [active, setActive] = useState<string | null>(sections[0]?.target ?? null);
+
+  useLayoutEffect(() => {
+    const scope: ParentNode = ref.current?.parentElement ?? document;
+    const present = sections.filter(
+      (s) => scope.querySelector(`[data-section-anchor="${s.target}"]`),
+    );
+    // Fall back to the full list if nothing matched (e.g. detail not yet in DOM)
+    // rather than hiding the strip entirely.
+    const next = present.length > 0 ? present : sections;
+    setVisible(next);
+    setActive((cur) => (cur && next.some((s) => s.target === cur) ? cur : next[0]?.target ?? null));
+  }, [sections]);
 
   if (sections.length === 0) return null;
 
@@ -22,7 +40,7 @@ export default function SpillmanFormTabs({ sections }: Props) {
 
   return (
     <div ref={ref} className="spm-form-tabs" role="tablist" aria-label="Record form sections">
-      {sections.map((s) => (
+      {visible.map((s) => (
         <button
           key={s.target}
           type="button"

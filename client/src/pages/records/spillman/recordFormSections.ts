@@ -13,8 +13,34 @@ export const RECORD_FORM_SECTIONS: Record<RecordTabId, FormSection[]> = {
     sec('Associations', 'Legal & Associations'),
     sec('Caution', 'Officer Safety / Caution'),
   ],
-  vehicles: [],
-  properties: [],
+  // Titles must match the CollapsibleSection `title` props in each detail panel
+  // (VehiclesTab/PropertiesTab/EvidenceTab) — sectionAnchorId slugifies both
+  // sides identically. Sections with a dynamic count in the title (e.g.
+  // "Incident History (3)", "Chain of Custody (2)") are intentionally omitted
+  // because the count makes the anchor slug unstable.
+  vehicles: [
+    sec('Details', 'Vehicle Details'),
+    sec('Mechanical', 'Mechanical'),
+    sec('Registration', 'Registration & Insurance'),
+    sec('Stolen / Tow', 'Stolen / Tow Status'),
+    sec('Damage', 'Damage & Features'),
+  ],
+  properties: [
+    sec('Details', 'Property Details'),
+    sec('Security', 'Security & Access'),
+    sec('Post Orders', 'Post Orders'),
+    sec('Hazards', 'Hazard Notes'),
+    sec('Access', 'Access Instructions'),
+  ],
+  // Businesses have no right-panel selection plumbing in RecordsPage yet
+  // (no businessesState in hasSelection), so the form-tab strip can't render
+  // for them — left empty until that selection model exists.
   businesses: [],
-  evidence: [],
+  evidence: [
+    sec('Description', 'Description'),
+    sec('Collection', 'Collection & Storage'),
+    sec('Item', 'Item Details'),
+    sec('Lab', 'Lab / Analysis'),
+    sec('Disposal', 'Disposal'),
+  ],
 };
