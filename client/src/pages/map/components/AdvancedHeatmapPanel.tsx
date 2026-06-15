@@ -262,7 +262,7 @@ export default function AdvancedHeatmapPanel({
       style={{
         width: 400,
         maxHeight: '85vh',
-        background: '#0a0a0a',
+        background: 'var(--surface-base)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)',
         border: '1px solid #282828',
       }}
@@ -272,7 +272,7 @@ export default function AdvancedHeatmapPanel({
       {/* ── Header Bar ────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-4 py-2.5 shrink-0"
-        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-deep)', borderBottom: '1px solid #282828' }}
       >
         <div className="flex items-center gap-2.5">
           <SlidersHorizontal size={14} className="text-rmpg-400" />
@@ -284,7 +284,7 @@ export default function AdvancedHeatmapPanel({
         <div className="flex items-center gap-1.5">
           <button type="button"
             onClick={onRefresh}
-            className="toolbar-btn p-1 rounded-sm hover:bg-[#181818] transition-all duration-150 active:scale-[0.97]"
+            className="toolbar-btn p-1 rounded-sm hover:bg-surface-raised transition-all duration-150 active:scale-[0.97]"
             title="Refresh data"
             aria-label="Refresh heatmap data"
           >
@@ -292,7 +292,7 @@ export default function AdvancedHeatmapPanel({
           </button>
           <button type="button"
             onClick={onClose}
-            className="toolbar-btn p-1 rounded-sm hover:bg-[#181818] transition-all duration-150 active:scale-[0.97]"
+            className="toolbar-btn p-1 rounded-sm hover:bg-surface-raised transition-all duration-150 active:scale-[0.97]"
             aria-label="Close advanced heatmap panel"
             title="Close"
           >
@@ -313,7 +313,7 @@ export default function AdvancedHeatmapPanel({
                 <button type="button"
                   key={m.key}
                   onClick={() => onModeChange(m.key)}
-                  className="flex flex-col items-center gap-1 py-2 px-1 rounded-sm transition-all duration-150 active:scale-[0.97] hover:bg-[#181818]/50"
+                  className="flex flex-col items-center gap-1 py-2 px-1 rounded-sm transition-all duration-150 active:scale-[0.97] hover:bg-surface-raised/50"
                   style={{
                     background: active ? m.accentBg : 'rgba(255,255,255,0.02)',
                     border: active ? `2px solid ${m.accent}` : '1px solid #282828',
@@ -425,7 +425,7 @@ export default function AdvancedHeatmapPanel({
                   <button type="button"
                     key={preset.label}
                     onClick={() => setDayPreset(preset.days)}
-                    className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-all duration-150 hover:text-rmpg-200 hover:bg-[#181818]/50 active:scale-[0.97]"
+                    className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-all duration-150 hover:text-rmpg-200 hover:bg-surface-raised/50 active:scale-[0.97]"
                     style={{
                       background: 'rgba(255,255,255,0.03)',
                       color: '#666666',
@@ -444,7 +444,7 @@ export default function AdvancedHeatmapPanel({
                   <button type="button"
                     key={label}
                     onClick={() => toggleDay(idx)}
-                    className="py-1.5 rounded-sm text-[9px] font-bold uppercase transition-all duration-150 text-center active:scale-[0.97] hover:bg-[#181818]/50"
+                    className="py-1.5 rounded-sm text-[9px] font-bold uppercase transition-all duration-150 text-center active:scale-[0.97] hover:bg-surface-raised/50"
                     style={{
                       background: active ? activeMode.accentBg : '#050505',
                       border: `1px solid ${active ? activeMode.accent + '55' : '#1e1e1e'}`,
@@ -641,7 +641,7 @@ export default function AdvancedHeatmapPanel({
                 <button type="button"
                   key={t.incident_type}
                   onClick={() => toggleType(t.incident_type)}
-                  className="flex items-center gap-2 w-full px-2 py-1 rounded-sm text-left transition-all duration-100 hover:bg-[#181818]/50 active:scale-[0.98]"
+                  className="flex items-center gap-2 w-full px-2 py-1 rounded-sm text-left transition-all duration-100 hover:bg-surface-raised/50 active:scale-[0.98]"
                 >
                   <div
                     className="w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 transition-all"

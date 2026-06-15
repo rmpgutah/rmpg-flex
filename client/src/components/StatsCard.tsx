@@ -73,7 +73,7 @@ function StatsCard({
         ${onClick ? 'cursor-pointer hover:brightness-110 transition-all duration-150 focus-visible:ring-1 focus-visible:ring-brand-500 focus-visible:outline-none active:scale-[0.99]' : ''}
         ${className}
       `}
-      style={{ background: 'linear-gradient(180deg, #090909 0%, #050505 100%)' }}
+      style={{ background: 'var(--surface-sunken)' }}
     >
       {/* Top accent glow line */}
       <div className="absolute top-0 left-0 right-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${glowHex}40, transparent)` }} />
