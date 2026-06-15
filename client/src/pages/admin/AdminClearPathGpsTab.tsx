@@ -430,6 +430,67 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     }
   };
 
+  // ── Auto-map dashcam devices ──
+  const handleAutoMap = async () => {
+    setSyncing(true);
+    try {
+      const result = await apiFetch<{ success: boolean; mapped: number; candidates: number; error?: string }>('/clearpathgps/auto-map-devices', { method: 'POST' });
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setError(null);
+        // Surface success info via transient error channel (green-ish awareness)
+        // Use null to clear errors; result counts shown via console for now
+        console.info(`Auto-mapped ${result.mapped} of ${result.candidates} dashcam device(s).`);
+      }
+      await fetchStatus();
+      await fetchMappings();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Auto-map devices failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // ── Enable dashcam ALPR media sync ──
+  const handleEnableMedia = async () => {
+    setSyncing(true);
+    try {
+      const result = await apiFetch<{ success: boolean; media_sync_enabled: boolean; mapped: number; candidates: number; error?: string }>('/clearpathgps/enable-media', { method: 'POST' });
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setError(null);
+        console.info('Dashcam ALPR media sync enabled.');
+      }
+      await fetchStatus();
+      await fetchMediaStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Enable dashcam ALPR failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // ── Run ALPR still-scan now ──
+  const handleScanAlprNow = async () => {
+    setSyncing(true);
+    try {
+      const result = await apiFetch<{ scanned: number; captured: number; note?: string; error?: string }>('/clearpathgps/scan-alpr-now', { method: 'POST' });
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setError(null);
+        const note = result.note ? ` ${result.note}` : '';
+        console.info(`Scanned ${result.scanned}, captured ${result.captured}.${note}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ALPR scan failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -1001,6 +1062,54 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                 <Download className="w-3 h-3" />
               )}
               {syncing ? 'Syncing...' : 'Sync Now'}
+            </button>
+
+            {/* Auto-map devices button */}
+            <button type="button"
+              onClick={handleAutoMap}
+              disabled={syncing || !status?.enabled}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wide
+                         bg-purple-900/50 hover:bg-purple-800/60 border border-purple-700/50 text-purple-300
+                         disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {syncing ? (
+                <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
+              ) : (
+                <Link2 className="w-3 h-3" />
+              )}
+              Auto-map devices
+            </button>
+
+            {/* Enable dashcam ALPR button */}
+            <button type="button"
+              onClick={handleEnableMedia}
+              disabled={syncing || !status?.enabled}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wide
+                         bg-purple-900/50 hover:bg-purple-800/60 border border-purple-700/50 text-purple-300
+                         disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {syncing ? (
+                <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
+              ) : (
+                <Camera className="w-3 h-3" />
+              )}
+              Enable dashcam ALPR
+            </button>
+
+            {/* Scan ALPR now button */}
+            <button type="button"
+              onClick={handleScanAlprNow}
+              disabled={syncing || !status?.enabled}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wide
+                         bg-purple-900/50 hover:bg-purple-800/60 border border-purple-700/50 text-purple-300
+                         disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {syncing ? (
+                <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
+              ) : (
+                <Zap className="w-3 h-3" />
+              )}
+              Scan ALPR now
             </button>
           </div>
 
