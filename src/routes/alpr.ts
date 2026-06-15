@@ -1088,7 +1088,7 @@ alpr.post('/edge', async (c) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
       canonical, rec.state ?? null, screen.vehicleId,
       rec.location_text ?? null, num(rec.lat), num(rec.lng), note,
-      typeof rec.plate_confidence === 'number' ? rec.plate_confidence : null);
+      trust.trustScore);
     sightingId = Number(sres.meta.last_row_id);
   } catch (err: any) { console.error('[alpr] edge sighting failed:', err?.message); }
 
