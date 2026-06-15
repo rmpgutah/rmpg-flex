@@ -9,16 +9,19 @@
 // ============================================================
 
 import React from 'react';
+import type { LucideIcon } from 'lucide-react';
 import RecordAvatar from './RecordAvatar';
-import { recordPosture, BADGE_TONES, type BadgeTone } from './recordVisuals';
+import { recordPosture, recordCornerBadge, BADGE_TONES, type BadgeTone } from './recordVisuals';
 
 interface RecordHeroProps {
   /** Subject / record name (Person, plate, business, address…). */
   name: string;
   /** Secondary identity line — DOB/age/sex, VIN, client, etc. */
   subtitle?: React.ReactNode;
-  /** Photo / ID image; falls back to initials tile. */
+  /** Photo / ID image; falls back to the type glyph tile. */
   photoUrl?: string | null;
+  /** Glyph for the no-photo tile (person / vehicle / building / …). */
+  icon?: LucideIcon;
   /**
    * Raw flag strings — drives the overall posture (threat bar + ring +
    * label). Splat in optional synthetic flags freely; nullish entries are
@@ -38,12 +41,14 @@ function RecordHero({
   name,
   subtitle,
   photoUrl,
+  icon,
   flags = [],
   tone,
   children,
 }: RecordHeroProps) {
   const posture = recordPosture(flags);
   const hasFlags = flags.some(Boolean);
+  const cornerBadge = recordCornerBadge(flags);
 
   // Posture wins when the record has flags; otherwise fall back to the
   // caller's record-type tone, then a quiet gray.
@@ -68,8 +73,8 @@ function RecordHero({
         <RecordAvatar
           name={name}
           photoUrl={photoUrl}
-          tone={hasFlags ? posture.tone : tone}
-          pulse={posture.pulse}
+          icon={icon}
+          cornerBadge={cornerBadge}
           size={52}
         />
 

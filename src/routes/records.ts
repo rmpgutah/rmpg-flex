@@ -1260,6 +1260,51 @@ function coerceBooleanField(key: string, val: unknown): unknown {
   return val ?? null;
 }
 
+// Columns the evidence write path (EVIDENCE_WRITABLE_COLUMNS) may emit, with the
+// types from the retired VPS `addCol()` definitions (legacy/server-vps/src/models/
+// database.ts). The VPS added these at boot; that mechanism is dead on Workers and
+// no migration ever replaced it, so live D1 was missing the crime-lab / checkout /
+// release-workflow columns — any write touching one (e.g. narcotics_flag) failed
+// with "no such column". This reconciler is the idempotent self-heal, mirroring
+// ensureAlprSchema / ensureSchema in the ALPR & redaction routes. case_id/flags
+// were in the whitelist but never in the legacy schema either; included so the
+// whitelist can never drift past the table again.
+const EVIDENCE_DRIFT_COLUMNS: Record<string, string> = {
+  case_id: 'INTEGER',
+  narcotics_flag: 'INTEGER DEFAULT 0',
+  temperature_sensitive: 'INTEGER DEFAULT 0',
+  collection_context: 'TEXT',
+  court_hold_reference: 'TEXT',
+  checked_out_by: 'INTEGER',
+  checked_out_at: 'TEXT',
+  checkout_reason: 'TEXT',
+  expected_return_date: 'TEXT',
+  condition_on_return: 'TEXT',
+  release_status: 'TEXT',
+  release_requested_by: 'INTEGER',
+  release_requested_at: 'TEXT',
+  release_to: 'TEXT',
+  release_reason: 'TEXT',
+  release_approved_by: 'INTEGER',
+  release_approved_at: 'TEXT',
+  location_detail: 'TEXT',
+  flags: 'TEXT',
+};
+
+// Reconcile the evidence table against the write-path column set before any
+// INSERT/UPDATE. One pragma read + ALTER only for whatever's actually missing,
+// so it's a no-op on an already-migrated DB. D1 lacks IF NOT EXISTS on ADD
+// COLUMN, hence the per-column existence check + tolerated ALTER failure.
+async function ensureEvidenceSchema(db: D1Database): Promise<void> {
+  const info = await db.prepare(`SELECT name FROM pragma_table_info('evidence')`).all();
+  const existing = new Set((info.results ?? []).map((r) => (r as { name: string }).name));
+  for (const [name, type] of Object.entries(EVIDENCE_DRIFT_COLUMNS)) {
+    if (existing.has(name)) continue;
+    try { await execute(db, `ALTER TABLE evidence ADD COLUMN ${name} ${type}`); }
+    catch { /* concurrent add or already present — tolerated */ }
+  }
+}
+
 // POST /records/evidence — create evidence.
 records.post('/evidence', async (c) => {
   try {
@@ -1271,6 +1316,7 @@ records.post('/evidence', async (c) => {
     if (body.type != null && body.evidence_type == null) body.evidence_type = body.type;
     delete body.type;
     if (!body.evidence_type || !body.description) return c.json({ error: 'evidence_type and description required' }, 400);
+    await ensureEvidenceSchema(db);
     // incident_id is optional — standalone evidence (e.g. found property) has no linked incident.
     const user = c.get('user') as { id: number } | undefined;
     const cols: string[] = [];
@@ -1320,6 +1366,7 @@ records.put('/evidence/:id', async (c) => {
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM evidence WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Evidence not found' }, 404);
+    await ensureEvidenceSchema(db);
     const body = await c.req.json<Record<string, unknown>>();
     // Live D1 uses `evidence_type` not `type` — accept either client field.
     if (body.type != null && body.evidence_type == null) body.evidence_type = body.type;

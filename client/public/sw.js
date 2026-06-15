@@ -627,10 +627,10 @@
 // v975: NCIC/NLETS data codes — coded terminal output + QZ decoder + code-aware QV.
 // v976: NCIC comprehensive code tables + printable operator reference guide PDF.
 // v977: theme consistency PR0 — global chrome tokens + light-mode menu fix.
-// v978: button-health diagnostic — opt-in read-only click-area scanner
-//       (Ctrl+Alt+B or ?btnaudit=1) that names any visible-but-unclickable
-//       control and what is covering it. No behavior change to the app.
-const CACHE_NAME = 'rmpg-flex-v978';
+// v978: theme sweep — DashboardPage hex → tokens (day/night flush).
+// v979: record icon tiles — steel-blue glyph tiles (person/vehicle/building) +
+//       type-based icons + corner condition tabs across Records lists & heroes.
+const CACHE_NAME = 'rmpg-flex-v979';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

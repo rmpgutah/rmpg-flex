@@ -21,6 +21,7 @@ import {
   ArrowUpDown,
   Filter,
   Users,
+  User,
   Gavel,
   Navigation,
 } from 'lucide-react';
@@ -44,7 +45,7 @@ import FieldGrid from '../../components/records/FieldGrid';
 import RecordBadge from '../../components/records/RecordBadge';
 import RecordHero from '../../components/records/RecordHero';
 import RecordAvatar from '../../components/records/RecordAvatar';
-import { recordPosture } from '../../components/records/recordVisuals';
+import { recordPosture, recordCornerBadge } from '../../components/records/recordVisuals';
 import type { Person, RecordAlert, RecordEntityType } from '../../types';
 import type { PersonFormData } from '../../components/PersonFormModal';
 import WarrantBadge from '../../components/WarrantBadge';
@@ -705,16 +706,17 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           >
             <div className="flex items-center gap-3">
               {(() => {
-                // Threat-aware list avatar: posture ring (red/orange/amber) so
-                // danger reads from the list before a record is even opened.
-                const posture = recordPosture(personPostureFlags(person));
+                // No-photo persons get a uniform steel-blue person glyph; the
+                // must-not-miss condition (WARRANT / SOR / GANG / …) shows as a
+                // small corner tab instead of a full colored ring.
+                const cornerBadge = recordCornerBadge(personPostureFlags(person));
                 const photo = (person as any).photo || person.photo_url || person.id_image_url;
                 return (
                   <RecordAvatar
                     name={`${person.first_name || ''} ${person.last_name || ''}`}
                     photoUrl={photo ? authedImageUrl(photo) : undefined}
-                    tone={posture.level === 'clear' ? undefined : posture.tone}
-                    pulse={posture.pulse}
+                    icon={User}
+                    cornerBadge={cornerBadge}
                     size={36}
                   />
                 );
@@ -932,8 +934,11 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
     !!selectedPerson.watchlist_match ||
     hasValue(selectedPerson.probation_parole);
 
-  const heroPhoto =
-    selectedPerson.photo_url ? authedImageUrl(selectedPerson.photo_url) : undefined;
+  // Same photo-source fallback chain the list row uses, so an attached
+  // mugshot / DL image populates the hero tile too (else the person glyph).
+  const heroPhotoSrc =
+    (selectedPerson as any).photo || selectedPerson.photo_url || selectedPerson.id_image_url;
+  const heroPhoto = heroPhotoSrc ? authedImageUrl(heroPhotoSrc) : undefined;
 
   const heroSubtitle = (
     <span className="flex items-center gap-3">
@@ -963,6 +968,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           name={heroName}
           subtitle={heroSubtitle}
           photoUrl={heroPhoto}
+          icon={User}
           flags={posturalFlags}
         >
           {hasSpecialFlags && (

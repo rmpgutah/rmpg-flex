@@ -19,7 +19,9 @@ import RecordField from '../../components/records/RecordField';
 import FieldGrid from '../../components/records/FieldGrid';
 import RecordBadge from '../../components/records/RecordBadge';
 import RecordHero from '../../components/records/RecordHero';
-import { recordPosture, toneStyle } from '../../components/records/recordVisuals';
+import RecordAvatar from '../../components/records/RecordAvatar';
+import { recordCornerBadge } from '../../components/records/recordVisuals';
+import { vehicleIcon } from '../../components/records/recordIcons';
 import { evaluateVehicle } from '../../utils/vehicleFunctions';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
 
@@ -632,22 +634,14 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             aria-selected={selectedVehicle?.id === v.id}
           >
             <div className="flex items-center gap-3">
-              {(() => {
-                // Plate-prefix tile, now ringed/glowing by threat posture so a
-                // stolen/hazmat vehicle reads from the list at a glance.
-                const posture = recordPosture(vehiclePostureFlags(v));
-                const ringed = posture.level !== 'clear';
-                return (
-                  <div
-                    className={`flex-shrink-0 w-9 h-9 rounded-[2px] flex items-center justify-center text-[10px] font-bold font-mono ${posture.pulse ? 'animate-led-pulse' : ''}`}
-                    style={ringed
-                      ? toneStyle(posture.tone, true)
-                      : { background: 'var(--surface-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-default)' }}
-                  >
-                    {v.license_plate.slice(0, 4) || '----'}
-                  </div>
-                );
-              })()}
+              {/* Vehicle-type glyph (from body_style) on the standard blue tile;
+                  a stolen/hazmat condition shows as a corner tab. */}
+              <RecordAvatar
+                name={v.license_plate || 'vehicle'}
+                icon={vehicleIcon(v.body_style)}
+                cornerBadge={recordCornerBadge(vehiclePostureFlags(v))}
+                size={36}
+              />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white font-mono">{v.license_plate}</span>
@@ -783,6 +777,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         <RecordHero
           name={selectedVehicle.license_plate || 'NO PLATE'}
           subtitle={vehicleSubtitle}
+          icon={vehicleIcon(selectedVehicle.body_style)}
           flags={vehiclePosturalFlags}
           tone="gold"
         >
