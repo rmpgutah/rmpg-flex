@@ -16,8 +16,8 @@ describe('RECORD_FORM_SECTIONS', () => {
     });
   });
 
-  it('defines navigational sections for vehicles, properties and evidence', () => {
-    for (const tab of ['vehicles', 'properties', 'evidence'] as const) {
+  it('defines navigational sections for every non-empty record type', () => {
+    for (const tab of ['vehicles', 'properties', 'businesses', 'evidence'] as const) {
       expect(RECORD_FORM_SECTIONS[tab].length).toBeGreaterThan(0);
     }
     expect(
@@ -25,6 +25,9 @@ describe('RECORD_FORM_SECTIONS', () => {
     ).toBeTruthy();
     expect(
       RECORD_FORM_SECTIONS.properties.find(s => s.target === sectionAnchorId('Security & Access')),
+    ).toBeTruthy();
+    expect(
+      RECORD_FORM_SECTIONS.businesses.find(s => s.target === sectionAnchorId('Business Information')),
     ).toBeTruthy();
     expect(
       RECORD_FORM_SECTIONS.evidence.find(s => s.target === sectionAnchorId('Collection & Storage')),

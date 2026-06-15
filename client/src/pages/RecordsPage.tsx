@@ -309,7 +309,7 @@ export default function RecordsPage() {
     { id: 'persons', label: 'Persons', icon: UserCircle, count: persons.length },
     { id: 'vehicles', label: 'Vehicles', icon: Car, count: vehicles.length },
     { id: 'properties', label: 'Properties', icon: Building2, count: properties.length },
-    { id: 'businesses', label: 'Business', icon: Briefcase, count: 0 },
+    { id: 'businesses', label: 'Business', icon: Briefcase, count: businessState.businesses.length },
     { id: 'evidence', label: 'Evidence', icon: Package, count: evidence.length },
   ];
 
@@ -323,6 +323,7 @@ export default function RecordsPage() {
     (activeTab === 'persons' && personsState.selectedPerson !== null) ||
     (activeTab === 'vehicles' && vehiclesState.selectedVehicle !== null) ||
     (activeTab === 'properties' && propertiesState.selectedProperty !== null) ||
+    (activeTab === 'businesses' && businessState.selectedBusiness !== null) ||
     (activeTab === 'evidence' && evidenceState.selectedEvidence !== null);
 
   // Selected record label for right PanelTitleBar
@@ -337,6 +338,9 @@ export default function RecordsPage() {
     if (activeTab === 'properties' && propertiesState.selectedProperty) {
       return propertiesState.selectedProperty.name;
     }
+    if (activeTab === 'businesses' && businessState.selectedBusiness) {
+      return businessState.selectedBusiness.name;
+    }
     if (activeTab === 'evidence' && evidenceState.selectedEvidence) {
       return evidenceState.selectedEvidence.evidence_number;
     }
@@ -348,6 +352,7 @@ export default function RecordsPage() {
     if (activeTab === 'persons') personsState.setSelectedPerson(null);
     else if (activeTab === 'vehicles') vehiclesState.setSelectedVehicle(null);
     else if (activeTab === 'properties') propertiesState.setSelectedProperty(null);
+    else if (activeTab === 'businesses') businessState.setSelectedBusiness(null);
     else if (activeTab === 'evidence') evidenceState.setSelectedEvidence(null);
   };
 
@@ -582,6 +587,7 @@ export default function RecordsPage() {
           activeTab === 'persons' ? UserCircle :
           activeTab === 'vehicles' ? Car :
           activeTab === 'properties' ? Building2 :
+          activeTab === 'businesses' ? Briefcase :
           Package
         }
       >
@@ -603,7 +609,7 @@ export default function RecordsPage() {
 
       {hasSelection && RECORD_FORM_SECTIONS[activeTab as keyof typeof RECORD_FORM_SECTIONS]?.length > 0 && (
         <SpillmanFormTabs
-          key={`${activeTab}-${personsState.selectedPerson?.id ?? vehiclesState.selectedVehicle?.id ?? propertiesState.selectedProperty?.id ?? evidenceState.selectedEvidence?.id ?? 'none'}`}
+          key={`${activeTab}-${personsState.selectedPerson?.id ?? vehiclesState.selectedVehicle?.id ?? propertiesState.selectedProperty?.id ?? businessState.selectedBusiness?.id ?? evidenceState.selectedEvidence?.id ?? 'none'}`}
           sections={RECORD_FORM_SECTIONS[activeTab as keyof typeof RECORD_FORM_SECTIONS]}
         />
       )}

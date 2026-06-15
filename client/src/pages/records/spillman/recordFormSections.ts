@@ -32,10 +32,12 @@ export const RECORD_FORM_SECTIONS: Record<RecordTabId, FormSection[]> = {
     sec('Hazards', 'Hazard Notes'),
     sec('Access', 'Access Instructions'),
   ],
-  // Businesses have no right-panel selection plumbing in RecordsPage yet
-  // (no businessesState in hasSelection), so the form-tab strip can't render
-  // for them — left empty until that selection model exists.
-  businesses: [],
+  businesses: [
+    sec('Business', 'Business Information'),
+    sec('Contact', 'Contact & Address'),
+    sec('Owner', 'Owner & Key Contact'),
+    sec('Notes', 'Notes'),
+  ],
   evidence: [
     sec('Description', 'Description'),
     sec('Collection', 'Collection & Storage'),
