@@ -147,6 +147,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const [mediaPollInterval, setMediaPollInterval] = useState(300);
   const [syncing, setSyncing] = useState(false);
   const [savingMedia, setSavingMedia] = useState(false);
+  const [actionResult, setActionResult] = useState<string | null>(null);
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
@@ -433,15 +434,14 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   // ── Auto-map dashcam devices ──
   const handleAutoMap = async () => {
     setSyncing(true);
+    setActionResult(null);
     try {
       const result = await apiFetch<{ success: boolean; mapped: number; candidates: number; error?: string }>('/clearpathgps/auto-map-devices', { method: 'POST' });
       if (result.error) {
         setError(result.error);
       } else {
         setError(null);
-        // Surface success info via transient error channel (green-ish awareness)
-        // Use null to clear errors; result counts shown via console for now
-        console.info(`Auto-mapped ${result.mapped} of ${result.candidates} dashcam device(s).`);
+        setActionResult(`Auto-mapped ${result.mapped} of ${result.candidates} dashcam device(s).`);
       }
       await fetchStatus();
       await fetchMappings();
@@ -455,13 +455,14 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   // ── Enable dashcam ALPR media sync ──
   const handleEnableMedia = async () => {
     setSyncing(true);
+    setActionResult(null);
     try {
       const result = await apiFetch<{ success: boolean; media_sync_enabled: boolean; mapped: number; candidates: number; error?: string }>('/clearpathgps/enable-media', { method: 'POST' });
       if (result.error) {
         setError(result.error);
       } else {
         setError(null);
-        console.info('Dashcam ALPR media sync enabled.');
+        setActionResult('Dashcam ALPR media sync enabled.');
       }
       await fetchStatus();
       await fetchMediaStatus();
@@ -475,14 +476,16 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   // ── Run ALPR still-scan now ──
   const handleScanAlprNow = async () => {
     setSyncing(true);
+    setActionResult(null);
     try {
       const result = await apiFetch<{ scanned: number; captured: number; note?: string; error?: string }>('/clearpathgps/scan-alpr-now', { method: 'POST' });
       if (result.error) {
         setError(result.error);
       } else {
         setError(null);
-        const note = result.note ? ` ${result.note}` : '';
-        console.info(`Scanned ${result.scanned}, captured ${result.captured}.${note}`);
+        setActionResult(`Scanned ${result.scanned}, captured ${result.captured}.${result.note ? ' ' + result.note : ''}`);
+        await fetchMediaStatus();
+        await fetchStatus();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ALPR scan failed');
@@ -1112,6 +1115,10 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               Scan ALPR now
             </button>
           </div>
+
+          {actionResult && (
+            <p className="mt-1 text-[10px] text-green-400">{actionResult}</p>
+          )}
 
           {/* Stats row */}
           {mediaStatus && (
