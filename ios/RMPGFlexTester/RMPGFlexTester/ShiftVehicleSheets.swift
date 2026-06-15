@@ -73,9 +73,12 @@ struct ShiftStartSheet: View {
                     }
                 }
                 Section {
+                    if photoUrls.isEmpty {
+                        Text("Add at least one pre-trip photo to go on duty.")
+                            .font(.system(size: 11)).foregroundStyle(Theme.orange)
+                    }
                     Button(submitting ? "STARTING…" : (isOOS ? "LOG OOS & GO ON DUTY" : "GO ON DUTY")) { Task { await submit() } }
-                        .fontWeight(.bold)
-                        .disabled(submitting || (needsOverride && overrideReason.isEmpty) || (isOOS && !oosAck))
+                        .fontWeight(.bold).disabled(submitting || photoUrls.isEmpty || (needsOverride && overrideReason.isEmpty) || (isOOS && !oosAck))
                     if let error { Text(error).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.red) }
                 }
             }
