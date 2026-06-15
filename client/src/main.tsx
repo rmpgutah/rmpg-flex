@@ -12,6 +12,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './index.css';
 import './styles/spillman.css';
+import './styles/spillman-kit.css';
 import { bootstrapThemePreference } from './utils/theme';
 import { setupNativeAppShell } from './utils/nativeAppShell';
 import { installUiTrapHotkey } from './utils/uiTrapDiagnostic';
