@@ -231,10 +231,8 @@ stubs.post('/ui-trap', async (c) => {
   return c.json({ received: true });
 });
 
-// ── Firecrawl tools (mounted at /api/firecrawl-tools) ────
-stubs.post('/pdf-inspect/upload', async (c) => c.json({ pages: 0, text: '', error: 'Firecrawl not configured' }));
-stubs.post('/doc-extract/upload', async (c) => c.json({ fields: {}, error: 'Firecrawl not configured' }));
-stubs.post('/pdf-manipulate/upload', async (c) => c.json({ error: 'Firecrawl not configured' }));
+// ── Firecrawl tools moved to the dedicated firecrawlTools router
+//    (/api/firecrawl-tools) — see src/routes/firecrawlTools.ts.
 
 // ── Mobile CFS (mounted at /api/mobile) ────
 stubs.get('/cfs/:callId/challenge', (c) => c.json({ valid: false }));
