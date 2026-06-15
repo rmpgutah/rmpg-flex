@@ -78,7 +78,7 @@ export default function AdminAISettingsTab({ LoadingSpinner, error, setError }: 
   return (
     <div className="space-y-4">
       {/* Horizontal tab strip */}
-      <div className="flex gap-1 border-b border-[#222222] pb-2 overflow-x-auto">
+      <div className="flex gap-1 border-b border-rmpg-700 pb-2 overflow-x-auto">
         {SECTIONS.map(s => {
           const Icon = s.icon;
           return (
@@ -87,8 +87,8 @@ export default function AdminAISettingsTab({ LoadingSpinner, error, setError }: 
               onClick={() => handleSectionChange(s.id)}
               className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
                 section === s.id
-                  ? 'bg-[#222222] text-white'
-                  : 'text-gray-400 hover:text-gray-200 hover:bg-[#141414]'
+                  ? 'bg-surface-raised text-white'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-surface-raised'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />

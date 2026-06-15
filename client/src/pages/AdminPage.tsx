@@ -740,8 +740,8 @@ export default function AdminPage() {
             <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} aria-hidden="true" />
             <RmpgLogo height={64} />
             <div className="flex-1 min-w-0">
-              <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0', letterSpacing: '0.12em' }}>System Administration</h1>
-              <p className="text-[9px] tracking-wide mt-0.5" style={{ color: '#383838' }}>Rocky Mountain Protective Group, LLC</p>
+              <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: 'var(--text-secondary)', letterSpacing: '0.12em' }}>System Administration</h1>
+              <p className="text-[9px] tracking-wide mt-0.5 text-rmpg-500">Rocky Mountain Protective Group, LLC</p>
             </div>
           </div>
         </div>
@@ -757,7 +757,7 @@ export default function AdminPage() {
       {isMobile && (
         <div
           className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5 scrollbar-dark tab-scroll"
-          style={{ background: '#050505', borderBottom: '1px solid #181818' }}
+          style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
           role="tablist"
           aria-label="Admin sections"
         >
@@ -794,8 +794,8 @@ export default function AdminPage() {
             className="flex-shrink-0 overflow-y-auto py-2 scrollbar-dark"
             style={{
               width: 200,
-              background: '#050505',
-              borderRight: '1px solid #181818',
+              background: 'var(--surface-overlay)',
+              borderRight: '1px solid var(--border-subtle)',
             }}
             aria-label="Admin navigation"
             role="tablist"
@@ -803,8 +803,7 @@ export default function AdminPage() {
             {tabGroups.map((group, gi) => (
               <div key={group.category} className={gi > 0 ? 'mt-2' : ''}>
                 <div
-                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.18em] select-none border-b border-[#181818]/60 mb-0.5"
-                  style={{ color: '#505050' }}
+                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.18em] select-none border-b border-border-subtle/60 mb-0.5 text-rmpg-500"
                   aria-hidden="true"
                 >
                   {group.category}
