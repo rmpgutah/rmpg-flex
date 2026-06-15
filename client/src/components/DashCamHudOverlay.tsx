@@ -84,7 +84,7 @@ export default function DashCamHudOverlay({ video, videoRef, isPlaying }: Props)
   const font = { fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace" };
 
   return (
-    <div className="absolute inset-0 pointer-events-none select-none z-10" style={font}>
+    <div className="tactical-dark absolute inset-0 pointer-events-none select-none z-10" style={font}>
 
       {/* ── TOP BAR ─────────────────────────────────────── */}
       <div className="absolute top-0 left-0 right-0 bg-black/60 px-3 py-1.5 flex items-center justify-between">

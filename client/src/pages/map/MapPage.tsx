@@ -3564,7 +3564,7 @@ export default function MapPage() {
   // ============================================================
 
   return (
-    <div className={`relative h-full flex ${isMobile ? 'overflow-hidden' : ''}`}>
+    <div className={`tactical-dark relative h-full flex ${isMobile ? 'overflow-hidden' : ''}`}>
       {/* Map Container — full-bleed on mobile, flex-1 on desktop */}
       <div className="flex-1 relative" style={isMobile ? { flex: 1, minHeight: 0, paddingBottom: 'env(safe-area-inset-bottom, 0px)' } : undefined}>
         <div
