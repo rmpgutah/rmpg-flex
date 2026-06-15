@@ -7,6 +7,8 @@ on:
       - 'scripts/theme-hex-audit.mjs'
   push:
     branches: [main]
+permissions:
+  contents: read
 jobs:
   theme-hex-ratchet:
     runs-on: ubuntu-latest
