@@ -89,6 +89,9 @@ export default function Force2FASetupModal() {
   return (
     <div
       className="fixed inset-0 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Two-factor setup required"
       style={{ background: 'rgba(0,0,0,0.90)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
       <div

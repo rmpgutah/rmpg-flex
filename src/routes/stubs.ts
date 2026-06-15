@@ -211,6 +211,12 @@ stubs.get('/export/csv', (c) => {
 });
 
 // ── Diagnostics (mounted at /api/diagnostics) ────
+// NOTE: /ui-trap is intentionally public and unauthenticated. A frozen or
+// logged-out client must still be able to report freeze state — gating on a JWT
+// defeats the whole point. Abuse surface is bounded by: (a) 60 KB body cap
+// enforced below, (b) 30-day KV TTL keeping storage bounded, and (c) the zone's
+// Cloudflare managed-challenge as the outermost gate (bots don't solve it).
+// No per-IP rate-limit today — acceptable for an internal ops crew of known size.
 stubs.post('/ui-trap', async (c) => {
   try {
     const raw = await c.req.text();

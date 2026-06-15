@@ -175,14 +175,6 @@ export async function captureUiTrap(notes?: string): Promise<void> {
   // Always persist locally first — uploads can fail, the data must survive
   persistToLocal(payload);
 
-  // Use window.alert because the React UI may be frozen — this is the
-  // most reliable confirmation gesture that always works.
-  const top = payload.fixedOverlays[0];
-  const summary = top
-    ? `Captured. Top overlay:\n${top.tag}.${top.className.slice(0, 60)}\nz-index: ${top.zIndex}\nbody.overflow: ${payload.bodyOverflow}\n\nUploaded to dispatch logs. Press F5 to recover the app.`
-    : `Captured (no fixed overlay >100×100 found).\nbody.overflow: ${payload.bodyOverflow}\nactive: ${payload.activeElement?.tag}\n\nPress F5 to recover.`;
-  window.alert(summary);
-
   // Fire-and-forget upload — already persisted locally
   uploadPayload(payload).then((ok) => {
     if (ok) {
