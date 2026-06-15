@@ -1183,7 +1183,7 @@ export default function CitationsPage() {
                         <input id="ff-citationspage-6" className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.reference_number} onChange={e => setPaymentForm(p => ({ ...p, reference_number: e.target.value }))} /></div>
                     </div>
                     <div className="flex gap-2">
-                      <button type="button" onClick={handleRecordPayment} disabled={paymentSubmitting || !paymentForm.amount} className="toolbar-btn-primary text-[10px] px-3 py-1">
+                      <button type="button" onClick={handleRecordPayment} disabled={paymentSubmitting || !paymentForm.amount} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1">
                         {paymentSubmitting ? 'Saving...' : 'Save Payment'}
                       </button>
                       <button type="button" onClick={() => setShowPaymentForm(false)} className="toolbar-btn text-[10px]">Cancel</button>

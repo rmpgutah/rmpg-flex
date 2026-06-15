@@ -279,7 +279,7 @@ export default function DashCamerasPage() {
           <p className="text-xs text-rmpg-400">No dash camera videos found</p>
           {canManage && (
             <button type="button" onClick={() => setShowUpload(true)}
-              className="mt-3 toolbar-btn-primary text-[10px] px-4 py-1.5 inline-flex items-center gap-1.5">
+              className="mt-3 toolbar-btn toolbar-btn-primary text-[10px] px-4 py-1.5 inline-flex items-center gap-1.5">
               <Plus className="w-3 h-3" /> Upload Video
             </button>
           )}
@@ -632,7 +632,7 @@ export default function DashCamerasPage() {
                 <button type="button" key={cls}
                   onClick={() => handleQuickClassify(selectedVideo.id, cls)}
                   className={`text-[9px] px-2.5 py-1 capitalize ${
-                    selectedVideo.classification === cls ? 'toolbar-btn-primary' : 'toolbar-btn'
+                    selectedVideo.classification === cls ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
                   }`}>
                   {cls}
                 </button>
@@ -692,11 +692,11 @@ export default function DashCamerasPage() {
         {/* View toggle */}
         <div className="flex items-center">
           <button type="button" onClick={() => setViewMode('gallery')} title="Gallery view" aria-label="Gallery view" aria-pressed={viewMode === 'gallery'}
-            className={`p-1 transition-colors duration-150 ${viewMode === 'gallery' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+            className={`p-1 transition-colors duration-150 ${viewMode === 'gallery' ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}>
             <Grid className="w-3 h-3" />
           </button>
           <button type="button" onClick={() => setViewMode('list')} title="List view" aria-label="List view" aria-pressed={viewMode === 'list'}
-            className={`p-1 transition-colors duration-150 ${viewMode === 'list' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+            className={`p-1 transition-colors duration-150 ${viewMode === 'list' ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}>
             <List className="w-3 h-3" />
           </button>
         </div>
@@ -706,7 +706,7 @@ export default function DashCamerasPage() {
         <ExportButton exportUrl="/fleet/dashcam-videos?limit=5000&format=csv" exportFilename="dashcam-videos.csv" />
         {canManage && (
           <button type="button" onClick={() => setShowUpload(true)}
-            className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+            className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
             <Upload className="w-3 h-3" /> Upload
           </button>
         )}
@@ -785,7 +785,7 @@ export default function DashCamerasPage() {
         ] as const).map(ch => (
           <button type="button" key={ch.key}
             onClick={() => { setChannelFilter(ch.key); setPage(0); }}
-            className={`text-[10px] px-2 py-1 ${channelFilter === ch.key ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+            className={`text-[10px] px-2 py-1 ${channelFilter === ch.key ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}>
             {ch.label}
           </button>
         ))}
@@ -813,7 +813,7 @@ export default function DashCamerasPage() {
         {['all', 'routine', 'evidence', 'flagged', 'restricted'].map(f => (
           <button type="button" key={f}
             onClick={() => { setClassFilter(f); setPage(0); }}
-            className={`text-[10px] px-2 py-1 capitalize ${classFilter === f ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+            className={`text-[10px] px-2 py-1 capitalize ${classFilter === f ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}>
             {f}
           </button>
         ))}
@@ -828,7 +828,7 @@ export default function DashCamerasPage() {
         ].map(f => (
           <button type="button" key={f.key}
             onClick={() => { setSourceFilter(f.key); setPage(0); }}
-            className={`text-[10px] px-2 py-1 ${sourceFilter === f.key ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+            className={`text-[10px] px-2 py-1 ${sourceFilter === f.key ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}>
             {f.label}
           </button>
         ))}

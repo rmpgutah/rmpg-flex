@@ -231,7 +231,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
             <RefreshCw className="w-3 h-3" />
             Reset Defaults
           </button>
-          <button type="button" onClick={saveSettings} disabled={saving} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+          <button type="button" onClick={saveSettings} disabled={saving} className="toolbar-btn toolbar-btn-primary text-[10px] flex items-center gap-1">
             {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Saving" /> : <Save className="w-3 h-3" />}
             Save Settings
           </button>

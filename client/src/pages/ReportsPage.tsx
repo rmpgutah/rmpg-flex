@@ -1573,7 +1573,7 @@ function PatrolTrackingCard() {
         <button type="button"
           onClick={handleGenerate}
           disabled={generating}
-          className={`toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center justify-center gap-1.5 ${isMobile ? 'w-full min-h-[44px]' : 'ml-auto'}`}
+          className={`toolbar-btn toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center justify-center gap-1.5 ${isMobile ? 'w-full min-h-[44px]' : 'ml-auto'}`}
         >
           {generating ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <FileText className="w-3 h-3" />}
           {generating ? 'Generating...' : 'Export PDF'}
