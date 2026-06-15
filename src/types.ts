@@ -28,10 +28,6 @@ export type Bindings = {
   // the geocode route also hands it to the client. Absent → ETA falls back to
   // a straight-line estimate and the client geocoder falls back to Nominatim.
   MAPBOX_ACCESS_TOKEN?: string;
-  // Firecrawl API key (secret, optional). When set, /api/deep-research runs
-  // real web search+scrape; unset → the route returns 503. Set via
-  // `wrangler secret put FIRECRAWL_API_KEY` (local dev: .dev.vars).
-  FIRECRAWL_API_KEY?: string;
   // WelfareWatchDO namespace — DI-4 automated escalation timer
   WELFARE_WATCH: DurableObjectNamespace;
   // DeepResearchDO namespace — one instance per research job; alarm-driven
@@ -73,8 +69,9 @@ export type Bindings = {
   // (default 'rmpg-flex-plate-fast'). See src/utils/roboflowPlateFast.ts.
   ROBOFLOW_FAST_WORKFLOW_ID?: string;
   // Firecrawl API key — powers the iCrimeWatch SOR scrape (DataDome bypass via
-  // stealth proxy). Set via `wrangler secret put FIRECRAWL_API_KEY`; unset →
-  // /api/sor-sources returns 503. Never hard-coded; read only from c.env.
+  // stealth proxy) AND /api/deep-research (Worker-safe v1 REST search+scrape,
+  // src/utils/firecrawl.ts). Set via `wrangler secret put FIRECRAWL_API_KEY`
+  // (local dev: .dev.vars); unset → those routes return 503. Read only from c.env.
   FIRECRAWL_API_KEY?: string;
   // Optional override of the Firecrawl base origin (default https://api.firecrawl.dev).
   FIRECRAWL_API_URL?: string;
