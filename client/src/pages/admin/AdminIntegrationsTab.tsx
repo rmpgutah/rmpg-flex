@@ -318,14 +318,14 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
   };
 
   return (
-    <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b2b2b]">
+    <div className="panel-beveled bg-surface-base border border-rmpg-700 rounded-sm">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-rmpg-700">
         {icon}
         <h2 className="text-sm font-semibold text-rmpg-300">{title}</h2>
       </div>
       <div className="p-4 space-y-4">
         {keyConfigs.map(({ key, label, desc, formatHint }) => (
-          <div key={key} className="flex flex-col gap-2 p-3 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
+          <div key={key} className="flex flex-col gap-2 p-3 bg-surface-sunken border border-rmpg-700 rounded-sm">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs font-semibold text-rmpg-300">{label}</div>
@@ -364,7 +364,7 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
                   value={values[key] || ''}
                   onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
                   placeholder={configured[key] ? '••••••••••••••••••••' : 'Paste API key here...'}
-                  className="w-full px-3 py-2 pr-8 bg-[#141414] border border-[#2b2b2b] rounded-sm text-xs text-white font-mono placeholder-[#525252] focus:outline-none focus:border-brand-500"
+                  className="w-full px-3 py-2 pr-8 bg-surface-raised border border-rmpg-700 rounded-sm text-xs text-white font-mono placeholder-[#525252] focus:outline-none focus:border-brand-500"
                 />
                 <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !showKey[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
                   {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -618,8 +618,8 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
   return (
     <div className="space-y-6">
       {/* ── Connected Service: rmpgutahps.us ── */}
-      <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b]">
+      <div className="panel-beveled bg-surface-base border border-rmpg-700 rounded-sm">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
           <div className="flex items-center gap-2">
             <Globe className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-semibold text-rmpg-300">rmpgutahps.us — Process Service Portal</h2>
@@ -647,7 +647,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
             <div>
               <label className="block text-xs text-rmpg-500 mb-1">Portal URL</label>
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
+                <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded-sm">
                   <Link2 className="w-3.5 h-3.5 text-rmpg-500" />
                   <input id="ff-adminintegrationstab-1"
                     type="text"
@@ -668,7 +668,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
               <div className="flex items-center gap-2">
                 <form
                   onSubmit={(e) => { e.preventDefault(); handleSaveSvc(); }}
-                  className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm"
+                  className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded-sm"
                 >
                   <Key className="w-3.5 h-3.5 text-rmpg-500" />
                   <input id="ff-adminintegrationstab-2"
@@ -744,8 +744,8 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       <ApiKeyPanel title="RapidAPI & Third-Party" icon={<Key className="w-4 h-4 text-brand-400" />} keys={THIRD_PARTY_KEYS} />
 
       {/* ── API Keys Panel ── */}
-      <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b]">
+      <div className="panel-beveled bg-surface-base border border-rmpg-700 rounded-sm">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
           <div className="flex items-center gap-2">
             <Key className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-semibold text-rmpg-300">Integration API Keys</h2>
@@ -771,7 +771,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#2b2b2b] text-rmpg-500 text-xs uppercase tracking-wider">
+                <tr className="border-b border-rmpg-700 text-rmpg-500 text-xs uppercase tracking-wider">
                   <th className="text-left px-4 py-2 font-medium">Name</th>
                   <th className="text-left px-4 py-2 font-medium">Key Prefix</th>
                   <th className="text-left px-4 py-2 font-medium">Status</th>
@@ -786,13 +786,13 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                   <tr
                     key={k.id}
                     onContextMenu={(e) => openMenu(e, buildKeyMenu(k))}
-                    className={`border-b border-[#2b2b2b]/50 hover:bg-[#181818] transition-colors ${
-                      idx % 2 === 0 ? 'bg-transparent' : 'bg-[#0c0c0c]/30'
+                    className={`border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors ${
+                      idx % 2 === 0 ? 'bg-transparent' : 'bg-surface-sunken/30'
                     }`}
                   >
                     <td className="px-4 py-2.5 text-rmpg-300">{k.name}</td>
                     <td className="px-4 py-2.5">
-                      <code className="text-xs font-mono text-rmpg-400 bg-[#0c0c0c] px-1.5 py-0.5 rounded-sm">
+                      <code className="text-xs font-mono text-rmpg-400 bg-surface-sunken px-1.5 py-0.5 rounded-sm">
                         {k.key_prefix}
                       </code>
                     </td>
@@ -849,7 +849,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                             </button>
                             <button type="button"
                               onClick={() => setDeletingId(null)}
-                              className="px-2 py-1 text-xs text-rmpg-500 hover:text-rmpg-400 bg-[#181818] rounded-sm transition-colors"
+                              className="px-2 py-1 text-xs text-rmpg-500 hover:text-rmpg-400 bg-surface-raised rounded-sm transition-colors"
                             >
                               Cancel
                             </button>
@@ -874,15 +874,15 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       </div>
 
       {/* ── Request Log Panel ── */}
-      <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b]">
+      <div className="panel-beveled bg-surface-base border border-rmpg-700 rounded-sm">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
           <div className="flex items-center gap-2">
             <RotateCcw className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-semibold text-rmpg-300">Recent Service Requests</h2>
           </div>
           <button type="button"
             onClick={() => { setLoadingLog(true); fetchRequestLog(); }}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-rmpg-400 hover:text-rmpg-300 bg-[#181818] hover:bg-[#181818]/80 rounded-sm transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-xs text-rmpg-400 hover:text-rmpg-300 bg-surface-raised hover:bg-surface-raised/80 rounded-sm transition-colors"
           >
             <RotateCcw className="w-3 h-3" />
             Refresh
@@ -901,7 +901,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#2b2b2b] text-rmpg-500 text-xs uppercase tracking-wider">
+                <tr className="border-b border-rmpg-700 text-rmpg-500 text-xs uppercase tracking-wider">
                   <th className="text-left px-4 py-2 font-medium">Time</th>
                   <th className="text-left px-4 py-2 font-medium">Details</th>
                   <th className="text-left px-4 py-2 font-medium">IP Address</th>
@@ -913,8 +913,8 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                   <tr
                     key={entry.id}
                     onContextMenu={(e) => openMenu(e, buildLogMenu(entry))}
-                    className={`border-b border-[#2b2b2b]/50 hover:bg-[#181818] transition-colors ${
-                      idx % 2 === 0 ? 'bg-transparent' : 'bg-[#0c0c0c]/30'
+                    className={`border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors ${
+                      idx % 2 === 0 ? 'bg-transparent' : 'bg-surface-sunken/30'
                     }`}
                   >
                     <td className="px-4 py-2.5 text-rmpg-500 text-xs whitespace-nowrap">
@@ -940,8 +940,8 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       {/* ── Create Key Modal ── */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
-          <div className="bg-surface-raised border border-[#2b2b2b] rounded-sm shadow-xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b]">
+          <div className="bg-surface-raised border border-rmpg-700 rounded-sm shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
               <h3 className="text-sm font-semibold text-rmpg-300">Create API Key</h3>
               {createdKey && (
                 <button type="button"
@@ -963,7 +963,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                       value={newKeyName}
                       onChange={(e) => setNewKeyName(e.target.value)}
                       placeholder="e.g. Process Service API"
-                      className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm text-rmpg-300 placeholder-rmpg-600 focus:outline-none focus:border-brand-500"
+                      className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 placeholder-rmpg-600 focus:outline-none focus:border-brand-500"
                       onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
                       autoFocus
                     />
@@ -971,7 +971,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                   <div className="flex justify-end gap-2">
                     <button type="button"
                       onClick={closeCreateModal}
-                      className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-300 bg-[#181818] rounded-sm transition-colors"
+                      className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-300 bg-surface-raised rounded-sm transition-colors"
                     >
                       Cancel
                     </button>

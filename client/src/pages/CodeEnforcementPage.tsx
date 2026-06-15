@@ -465,7 +465,7 @@ export default function CodeEnforcementPage() {
         </div>
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
           {activeTab === 'violations' ? (
             vLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
             violations.length === 0 ? <EmptyState icon={Construction} title="No violations found" description="Try adjusting your filters or create a new one." /> :
@@ -546,7 +546,7 @@ export default function CodeEnforcementPage() {
           <>
             <PanelTitleBar title={selectedViolation.violation_number} icon={Construction}>
             </PanelTitleBar>
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border font-bold ${VIOLATION_STATUS_COLORS[selectedViolation.status] || ''}`}>
                   {selectedViolation.status.replace(/_/g, ' ').toUpperCase()}
@@ -572,7 +572,7 @@ export default function CodeEnforcementPage() {
                   <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Reinspection</div>
                   <button type="button"
                     onClick={() => setShowReinspection(!showReinspection)}
-                    className="text-[10px] px-2 py-1 border border-gray-700/50 text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 transition-colors"
+                    className="text-[10px] px-2 py-1 border border-rmpg-600 text-rmpg-400 bg-surface-sunken hover:bg-rmpg-800/40 transition-colors"
                   >
                     <Calendar style={{ width: 10, height: 10, display: 'inline', marginRight: 4 }} />
                     Schedule Reinspection
@@ -590,7 +590,7 @@ export default function CodeEnforcementPage() {
                     <button type="button"
                       onClick={handleScheduleReinspection}
                       disabled={!reinspectionDate || schedulingReinspection}
-                      className="text-[10px] px-3 py-1 bg-gray-900/40 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 disabled:opacity-40 transition-colors"
+                      className="text-[10px] px-3 py-1 bg-surface-sunken text-rmpg-400 border border-rmpg-600 hover:bg-rmpg-800/50 disabled:opacity-40 transition-colors"
                     >
                       {schedulingReinspection ? 'Scheduling...' : 'Confirm'}
                     </button>
@@ -650,7 +650,7 @@ export default function CodeEnforcementPage() {
           <>
             <PanelTitleBar title={selectedTow.tow_number} icon={Truck}>
             </PanelTitleBar>
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border font-bold ${TOW_STATUS_COLORS[selectedTow.status] || ''}`}>
                   {selectedTow.status.replace(/_/g, ' ').toUpperCase()}
@@ -712,7 +712,7 @@ export default function CodeEnforcementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               {vFormWasRestored && (
-                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgba(212,160,23,0.12)' }}>
                   <div className="flex items-center gap-2">
                     <Clock size={14} className="text-amber-400" />
                     <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
@@ -808,7 +808,7 @@ export default function CodeEnforcementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               {tFormWasRestored && (
-                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgba(212,160,23,0.12)' }}>
                   <div className="flex items-center gap-2">
                     <Clock size={14} className="text-amber-400" />
                     <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>

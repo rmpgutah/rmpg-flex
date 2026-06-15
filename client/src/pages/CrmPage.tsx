@@ -466,7 +466,7 @@ export default function CrmPage() {
     <div className="flex h-full">
       {/* ── Sidebar ────────────────────────────────────── */}
       <div className="w-48 border-r border-rmpg-600 bg-surface-sunken flex flex-col flex-shrink-0">
-        <div className="px-3 py-2.5 border-b border-rmpg-600" style={{ background: '#050505' }}>
+        <div className="px-3 py-2.5 border-b border-rmpg-600" style={{ background: 'var(--surface-deep)' }}>
           <div className="flex items-center gap-2">
             <RmpgLogo height={14} iconOnly />
             <span className="text-xs font-bold text-brand-400 tracking-wider uppercase">Overwatch</span>
@@ -1088,7 +1088,7 @@ export default function CrmPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 z-10 bg-[#0c0c0c]">
+                <thead className="sticky top-0 z-10 bg-surface-sunken">
                   <tr className="text-left text-rmpg-400 border-b border-rmpg-600">
                     <th className="p-2 font-medium">Name</th>
                     <th className="p-2 font-medium">Client</th>
@@ -1100,7 +1100,7 @@ export default function CrmPage() {
                 </thead>
                 <tbody>
                   {contacts.map((c: any) => (
-                    <tr key={c.id} className="border-b border-rmpg-700/30 hover:bg-[#181818]/50 transition-colors">
+                    <tr key={c.id} className="border-b border-rmpg-700/30 hover:bg-surface-raised/50 transition-colors">
                       <td className="p-2 text-rmpg-200">{c.first_name} {c.last_name}</td>
                       <td className="p-2 text-brand-400">{c.client_name}</td>
                       <td className="p-2">
@@ -1143,7 +1143,7 @@ export default function CrmPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 z-10 bg-[#0c0c0c]">
+                <thead className="sticky top-0 z-10 bg-surface-sunken">
                   <tr className="text-left text-rmpg-400 border-b border-rmpg-600">
                     <th className="p-2 font-medium">Invoice #</th>
                     <th className="p-2 font-medium">Client</th>
@@ -1156,7 +1156,7 @@ export default function CrmPage() {
                 </thead>
                 <tbody>
                   {filteredInvoices.map((inv: any) => (
-                    <tr key={inv.id} className="border-b border-rmpg-700/30 hover:bg-[#181818]/50 transition-colors">
+                    <tr key={inv.id} className="border-b border-rmpg-700/30 hover:bg-surface-raised/50 transition-colors">
                       <td className="p-2 text-green-400 font-mono">{inv.invoice_number}</td>
                       <td className="p-2 text-rmpg-200">{inv.client_name || '—'}</td>
                       <td className="p-2">

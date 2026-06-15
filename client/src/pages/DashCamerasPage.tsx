@@ -279,7 +279,7 @@ export default function DashCamerasPage() {
           <p className="text-xs text-rmpg-400">No dash camera videos found</p>
           {canManage && (
             <button type="button" onClick={() => setShowUpload(true)}
-              className="mt-3 toolbar-btn-primary text-[10px] px-4 py-1.5 inline-flex items-center gap-1.5">
+              className="mt-3 toolbar-btn toolbar-btn-primary text-[10px] px-4 py-1.5 inline-flex items-center gap-1.5">
               <Plus className="w-3 h-3" /> Upload Video
             </button>
           )}
@@ -307,7 +307,7 @@ export default function DashCamerasPage() {
                     className="w-full h-full object-cover" />
                 ) : (
                   <div className="flex items-center justify-center h-full"
-                    style={{ background: 'linear-gradient(135deg, #0c0c0c 0%, #141414 100%)' }}>
+                    style={{ background: 'linear-gradient(135deg, var(--surface-sunken) 0%, var(--surface-raised) 100%)' }}>
                     <Film className="w-8 h-8 text-rmpg-600" />
                   </div>
                 )}
@@ -452,10 +452,10 @@ export default function DashCamerasPage() {
 
   // ── Detail Panel (Right Panel) ───────────
   const detailPanel = selectedVideo ? (
-    <div className="flex flex-col h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" style={{ background: '#050505' }}>
+    <div className="flex flex-col h-full overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent" style={{ background: 'var(--surface-deep)' }}>
       {/* Detail Header */}
       <div className="flex items-center gap-2 px-2 py-1.5 flex-shrink-0"
-        style={{ background: 'linear-gradient(180deg, #2b2b2b, #181818)', borderBottom: '1px solid #141414' }}>
+        style={{ background: 'linear-gradient(180deg, var(--surface-overlay), var(--surface-raised))', borderBottom: '1px solid var(--surface-raised)' }}>
         <Video className="w-3 h-3 text-gray-400 flex-shrink-0" />
         <span className="text-[10px] font-semibold text-rmpg-200 truncate flex-1">{selectedVideo.title}</span>
         <button type="button" onClick={() => setPlayingVideo(selectedVideo)} className="toolbar-btn p-1" title="Full screen player with HUD">
@@ -632,7 +632,7 @@ export default function DashCamerasPage() {
                 <button type="button" key={cls}
                   onClick={() => handleQuickClassify(selectedVideo.id, cls)}
                   className={`text-[9px] px-2.5 py-1 capitalize ${
-                    selectedVideo.classification === cls ? 'toolbar-btn-primary' : 'toolbar-btn'
+                    selectedVideo.classification === cls ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
                   }`}>
                   {cls}
                 </button>
@@ -692,11 +692,11 @@ export default function DashCamerasPage() {
         {/* View toggle */}
         <div className="flex items-center">
           <button type="button" onClick={() => setViewMode('gallery')} title="Gallery view" aria-label="Gallery view" aria-pressed={viewMode === 'gallery'}
-            className={`p-1 transition-colors duration-150 ${viewMode === 'gallery' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+            className={`p-1 transition-colors duration-150 ${viewMode === 'gallery' ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}>
             <Grid className="w-3 h-3" />
           </button>
           <button type="button" onClick={() => setViewMode('list')} title="List view" aria-label="List view" aria-pressed={viewMode === 'list'}
-            className={`p-1 transition-colors duration-150 ${viewMode === 'list' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+            className={`p-1 transition-colors duration-150 ${viewMode === 'list' ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}>
             <List className="w-3 h-3" />
           </button>
         </div>
@@ -706,7 +706,7 @@ export default function DashCamerasPage() {
         <ExportButton exportUrl="/fleet/dashcam-videos?limit=5000&format=csv" exportFilename="dashcam-videos.csv" />
         {canManage && (
           <button type="button" onClick={() => setShowUpload(true)}
-            className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+            className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
             <Upload className="w-3 h-3" /> Upload
           </button>
         )}
@@ -714,7 +714,7 @@ export default function DashCamerasPage() {
 
       {/* ── Stats Strip ──────────────────── */}
       <div className="panel-inset flex items-center h-8 overflow-x-auto flex-shrink-0" role="group" aria-label="Video statistics"
-        style={{ borderBottom: '1px solid #141414' }}>
+        style={{ borderBottom: '1px solid var(--surface-raised)' }}>
         <div className="px-3 flex items-center gap-1.5 whitespace-nowrap">
           <Film className="w-3 h-3 text-gray-400" />
           <span className="text-[10px] font-mono font-bold text-gray-400">{stats.total}</span>
@@ -764,7 +764,7 @@ export default function DashCamerasPage() {
 
       {/* ── Filter Bar ───────────────────── */}
       <div className="panel-inset p-1.5 flex items-center gap-2 flex-wrap flex-shrink-0"
-        style={{ borderBottom: '1px solid #141414' }}>
+        style={{ borderBottom: '1px solid var(--surface-raised)' }}>
         {/* Search */}
         <div className="relative flex-1 min-w-[160px] max-w-[260px]">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
@@ -785,7 +785,7 @@ export default function DashCamerasPage() {
         ] as const).map(ch => (
           <button type="button" key={ch.key}
             onClick={() => { setChannelFilter(ch.key); setPage(0); }}
-            className={`text-[10px] px-2 py-1 ${channelFilter === ch.key ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+            className={`text-[10px] px-2 py-1 ${channelFilter === ch.key ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}>
             {ch.label}
           </button>
         ))}
@@ -813,7 +813,7 @@ export default function DashCamerasPage() {
         {['all', 'routine', 'evidence', 'flagged', 'restricted'].map(f => (
           <button type="button" key={f}
             onClick={() => { setClassFilter(f); setPage(0); }}
-            className={`text-[10px] px-2 py-1 capitalize ${classFilter === f ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+            className={`text-[10px] px-2 py-1 capitalize ${classFilter === f ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}>
             {f}
           </button>
         ))}
@@ -828,7 +828,7 @@ export default function DashCamerasPage() {
         ].map(f => (
           <button type="button" key={f.key}
             onClick={() => { setSourceFilter(f.key); setPage(0); }}
-            className={`text-[10px] px-2 py-1 ${sourceFilter === f.key ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+            className={`text-[10px] px-2 py-1 ${sourceFilter === f.key ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}`}>
             {f.label}
           </button>
         ))}
@@ -851,7 +851,7 @@ export default function DashCamerasPage() {
       {/* ── Pagination ───────────────────── */}
       {!loading && totalPages > 1 && (
         <div className="flex items-center justify-between px-3 py-1 flex-shrink-0"
-          style={{ borderTop: '1px solid #141414', background: '#050505' }}>
+          style={{ borderTop: '1px solid var(--surface-raised)', background: 'var(--surface-deep)' }}>
           <span className="text-[10px] text-rmpg-500">
             Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
           </span>

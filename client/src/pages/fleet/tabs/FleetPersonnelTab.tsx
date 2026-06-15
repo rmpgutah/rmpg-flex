@@ -123,7 +123,7 @@ export default function FleetPersonnelTab({
           <div className="flex items-center gap-3">
             {/* Avatar */}
             <div className="flex-shrink-0 w-12 h-12 rounded-full border-2 border-brand-500/50 flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #272727, #131313)' }}>
+              style={{ background: 'var(--surface-sunken)' }}>
               <span className="text-sm font-bold font-mono text-brand-400">{getInitials(officer?.full_name)}</span>
             </div>
 

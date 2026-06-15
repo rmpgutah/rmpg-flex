@@ -1070,7 +1070,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                                 setAssignNotes('');
                               }}
                               disabled={assignOfficerIds.length === 0 && assignUnitIds.length === 0}
-                              className="toolbar-btn-success flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[8px] font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              className="toolbar-btn toolbar-btn-success flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[8px] font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                             >
                               <UserCheck className="w-2.5 h-2.5" />
                               Assign
@@ -1170,7 +1170,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   {shiftPlanning.activePlan?.assignments.length > 0 && (
                     <button type="button"
                       onClick={() => shiftPlanning.removeAllAssignments()}
-                      className="toolbar-btn-danger flex items-center gap-1 px-1.5 py-0.5 text-[8px] transition-colors"
+                      className="toolbar-btn toolbar-btn-danger flex items-center gap-1 px-1.5 py-0.5 text-[8px] transition-colors"
                     >
                       <Trash2 className="w-2 h-2" /> Clear All
                     </button>
@@ -1302,14 +1302,14 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                       {(eventPlanning.drawMode === 'perimeter' || eventPlanning.drawMode === 'route') && (
                         <button type="button"
                           onClick={() => eventPlanning.finishDrawing()}
-                          className="toolbar-btn-success text-[8px] px-1.5 py-0.5"
+                          className="toolbar-btn toolbar-btn-success text-[8px] px-1.5 py-0.5"
                         >
                           <Check className="w-2.5 h-2.5 inline mr-0.5" />Finish
                         </button>
                       )}
                       <button type="button"
                         onClick={() => eventPlanning.cancelDrawing()}
-                        className="toolbar-btn-danger text-[8px] px-1.5 py-0.5"
+                        className="toolbar-btn toolbar-btn-danger text-[8px] px-1.5 py-0.5"
                       >
                         <X className="w-2.5 h-2.5 inline mr-0.5" />Cancel
                       </button>

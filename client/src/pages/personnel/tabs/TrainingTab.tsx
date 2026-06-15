@@ -144,7 +144,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
           <button type="button"
             onClick={() => setCategoryFilter('all')}
             className={`text-[10px] px-2.5 py-1 ${
-              categoryFilter === 'all' ? 'toolbar-btn-primary' : 'toolbar-btn'
+              categoryFilter === 'all' ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
             }`}
           >
             All
@@ -154,14 +154,14 @@ export default function TrainingTab({ training, requirements, officers, loading,
               key={cat}
               onClick={() => setCategoryFilter(cat)}
               className={`text-[10px] px-2.5 py-1 capitalize ${
-                categoryFilter === cat ? 'toolbar-btn-primary' : 'toolbar-btn'
+                categoryFilter === cat ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
               }`}
             >
               {cat.replace(/_/g, ' ')}
             </button>
           ))}
         </div>
-        <button type="button" onClick={onAddTraining} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
+        <button type="button" onClick={onAddTraining} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
           <Plus className="w-3 h-3" />
           Add Training
         </button>

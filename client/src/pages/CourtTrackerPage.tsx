@@ -520,7 +520,7 @@ export default function CourtTrackerPage() {
 
         {/* Feature 1: Calendar View */}
         {activeView === 'calendar' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-2">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-2">
             <div className="flex items-center justify-between mb-2">
               <IconButton onClick={() => { if (calendarMonth === 1) { setCalendarMonth(12); setCalendarYear(y => y - 1); } else setCalendarMonth(m => m - 1); }} className="toolbar-btn p-1" aria-label="Previous month">
                 <ChevronLeft style={{ width: 14, height: 14 }} />
@@ -574,7 +574,7 @@ export default function CourtTrackerPage() {
 
         {/* Feature 10: Statistics View */}
         {activeView === 'stats' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-3 space-y-3">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-3 space-y-3">
             {statsLoading ? (
               <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : stats ? (
@@ -638,7 +638,7 @@ export default function CourtTrackerPage() {
 
         {/* Event List (upcoming + list views) */}
         {(activeView === 'upcoming' || activeView === 'list') && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
             {loading && activeView === 'list' ? (
               <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : displayEvents.length === 0 ? (
@@ -716,7 +716,7 @@ export default function CourtTrackerPage() {
               )}
             </PanelTitleBar>
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
               {/* Badges */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${EVENT_TYPE_COLORS[selected.event_type] || ''}`}>
@@ -1279,7 +1279,7 @@ export default function CourtTrackerPage() {
               <IconButton onClick={() => setWitnessOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
-              <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-2">
+              <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent space-y-2">
                 {witnesses.map((w, i) => (
                   <div key={i} className="panel-beveled p-2 space-y-1">
                     <div className="flex gap-2">
@@ -1327,13 +1327,13 @@ export default function CourtTrackerPage() {
                   onKeyDown={e => e.key === 'Enter' && handleSearchCitations()}
                   placeholder="Search by citation number, name, or statute..." aria-label="Search by citation number, name, or statute..."
                   className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
-                <button type="button" onClick={handleSearchCitations} disabled={citationSearching} className="toolbar-btn-primary text-[10px] px-3">
+                <button type="button" onClick={handleSearchCitations} disabled={citationSearching} className="toolbar-btn toolbar-btn-primary text-[10px] px-3">
                   {citationSearching ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search style={{ width: 11, height: 11 }} />}
                   Search
                 </button>
               </div>
               {citationSearchResults.length > 0 ? (
-                <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-1">
+                <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent space-y-1">
                   {citationSearchResults.map((c: any) => (
                     <div key={c.id} className="flex items-center justify-between px-3 py-2 border border-rmpg-700 bg-surface-sunken hover:bg-rmpg-800/50">
                       <div>
@@ -1341,7 +1341,7 @@ export default function CourtTrackerPage() {
                         <div className="text-[10px] text-rmpg-300">{c.person_name || 'Unknown'} -- {c.statute_citation || c.violation_description || ''}</div>
                         <div className="text-[9px] text-rmpg-500">{c.court_date ? `Court: ${c.court_date}` : 'No court date'} {c.court_name ? `at ${c.court_name}` : ''}</div>
                       </div>
-                      <button type="button" onClick={() => handleCreateFromCitation(c.id)} disabled={creatingFromCitation} className="toolbar-btn-primary text-[10px] px-2 py-1 flex-shrink-0">
+                      <button type="button" onClick={() => handleCreateFromCitation(c.id)} disabled={creatingFromCitation} className="toolbar-btn toolbar-btn-primary text-[10px] px-2 py-1 flex-shrink-0">
                         {creatingFromCitation ? '...' : 'Create Event'}
                       </button>
                     </div>

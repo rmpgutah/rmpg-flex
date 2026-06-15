@@ -325,7 +325,7 @@ export default function DashCamUploadModal({
           {/* Actions */}
           <div className="flex items-center justify-end gap-2 pt-2">
             <button type="button" onClick={handleClose} disabled={uploading} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
-            <button type="submit" disabled={uploading || !file || !title} className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5">
+            <button type="submit" disabled={uploading || !file || !title} className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5">
               {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
               {uploading ? 'Uploading...' : 'Upload Video'}
             </button>

@@ -36,7 +36,7 @@ import PrintButton from '../components/PrintButton';
 import ActivityFeed from '../components/ActivityFeed';
 import FormModal from '../components/FormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { apiFetch, apiUploadFiles } from '../hooks/useApi';
+import { apiFetch, apiUploadFiles, authedImageUrl } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -729,11 +729,11 @@ export default function CommunicationsPage() {
       {/* Portal Header */}
       <div className="panel-beveled bg-surface-base overflow-hidden">
         <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #9ca4ad 30%, #9ca4ad 70%, #1a1a1a)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--surface-raised), #9ca4ad 30%, #9ca4ad 70%, var(--surface-raised))' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
-            <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Communications Center</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: '#6f747b' }}>Rocky Mountain Protective Group, LLC</p>
+            <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: 'var(--text-secondary)' }}>Communications Center</h1>
+            <p className="text-[9px] tracking-wide" style={{ color: 'var(--text-muted)' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>
       </div>
@@ -742,7 +742,7 @@ export default function CommunicationsPage() {
       <PanelTitleBar title="COMMUNICATIONS" icon={MessageSquare}>
         {activePanel === 'messages' && (
           <>
-            <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: '#050505' }}>
+            <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: 'var(--surface-deep)' }}>
               <Search className="w-3 h-3 text-rmpg-500" />
               <input id="ff-communicationspage-0"
                 type="text"
@@ -792,7 +792,7 @@ export default function CommunicationsPage() {
       </PanelTitleBar>
 
       {/* Panel Tabs */}
-      <div className="px-4 py-2 border-b border-rmpg-600 flex items-center gap-4" style={{ background: '#050505' }}>
+      <div className="px-4 py-2 border-b border-rmpg-600 flex items-center gap-4" style={{ background: 'var(--surface-deep)' }}>
         <div className="flex gap-1">
           {panels.map((panel) => {
             const Icon = panel.icon;
@@ -958,7 +958,7 @@ export default function CommunicationsPage() {
                 {selectedThread && (
                   <div className={`${isMobile ? 'w-full' : 'flex-1'} flex flex-col overflow-hidden animate-slide-in-right`}>
                     {/* Thread header */}
-                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0" style={{ background: '#050505' }}>
+                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
                       <button type="button"
                         onClick={() => setSelectedThreadId(null)}
                         className="p-1 hover:bg-rmpg-700 text-rmpg-400 transition-colors"
@@ -987,7 +987,7 @@ export default function CommunicationsPage() {
                     </div>
 
                     {/* Messages in thread */}
-                    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent px-4 py-3 space-y-3">
+                    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent px-4 py-3 space-y-3">
                       {selectedThread.messages.map((msg, idx) => {
                         const isOwnMessage = msg.from_user_id === currentUserId;
 
@@ -1002,9 +1002,9 @@ export default function CommunicationsPage() {
                                   <div
                                     className="w-6 h-6 flex items-center justify-center text-[9px] font-bold flex-shrink-0"
                                     style={{
-                                      background: isOwnMessage ? 'linear-gradient(135deg, #3a3a3a, #888888)' : 'linear-gradient(135deg, #333333, #888888)',
+                                      background: 'var(--surface-raised)',
                                       color: '#fff',
-                                      border: isOwnMessage ? '1px solid #a0a0a0' : '1px solid #aaaaaa',
+                                      border: '1px solid var(--border-default)',
                                       borderRadius: 2,
                                     }}
                                   >
@@ -1069,7 +1069,7 @@ export default function CommunicationsPage() {
                     </div>
 
                     {/* Reply compose area */}
-                    <div className="px-4 py-3 border-t border-rmpg-600 flex-shrink-0" style={{ background: '#050505' }}>
+                    <div className="px-4 py-3 border-t border-rmpg-600 flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
                       <div className="flex items-center gap-2 mb-2">
                         <Reply className="w-3.5 h-3.5 text-rmpg-400" />
                         <span className="text-[10px] text-rmpg-400 font-medium">
@@ -1118,7 +1118,7 @@ export default function CommunicationsPage() {
 
         {/* BOLOs Panel */}
         {activePanel === 'bolos' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
             {/* New BOLO Form */}
             {showNewBOLO && (
               <form onSubmit={handleCreateBOLO} className="bg-surface-base border border-red-700/40 p-4 animate-fade-in">
@@ -1287,7 +1287,7 @@ export default function CommunicationsPage() {
                   <p className="text-sm text-rmpg-200 mb-3 leading-relaxed">{bolo.description}</p>
                   {bolo.photo_url && (
                     <div className="mb-3">
-                      <img src={`/api/uploads/${bolo.photo_url}`} alt="BOLO Photo" className="max-w-[200px] max-h-[200px] object-cover border border-rmpg-600 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => window.open(`/api/uploads/${bolo.photo_url}`, '_blank', 'noopener,noreferrer')} />
+                      <img src={authedImageUrl(`/api/uploads/${bolo.photo_url}`)} alt="BOLO Photo" className="max-w-[200px] max-h-[200px] object-cover border border-rmpg-600 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => window.open(authedImageUrl(`/api/uploads/${bolo.photo_url}`), '_blank', 'noopener,noreferrer')} />
                     </div>
                   )}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
@@ -1339,7 +1339,7 @@ export default function CommunicationsPage() {
                   <span className="text-xs text-rmpg-400">({activities.length} of {activitiesTotal} entries)</span>
                 )}
               </div>
-              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
                 {activitiesLoading ? (
                   <Spinner label="Loading activity..." />
                 ) : (

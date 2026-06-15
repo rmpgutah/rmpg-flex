@@ -25,6 +25,8 @@
     "@capacitor/ios": "^8.3.1",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
+    "@ffmpeg/ffmpeg": "0.12.10",
+    "@ffmpeg/util": "0.12.1",
     "@simplewebauthn/browser": "^13.3.0",
     "@tiptap/extension-color": "^3.26.1",
     "@tiptap/extension-font-family": "^3.26.1",

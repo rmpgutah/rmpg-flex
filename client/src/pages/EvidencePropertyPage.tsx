@@ -1167,7 +1167,7 @@ export default function EvidencePropertyPage() {
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setChainModalOpen(false)} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
-                <button type="button" onClick={handleChainAction} disabled={chainSubmitting} className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5">
+                <button type="button" onClick={handleChainAction} disabled={chainSubmitting} className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5">
                   {chainSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Record Action
                 </button>
@@ -1318,7 +1318,7 @@ export default function EvidencePropertyPage() {
                 <button type="button"
                   onClick={handleCreateEvidence}
                   disabled={newEvidenceSubmitting || !newEvidence.description || !newEvidence.evidence_type}
-                  className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5"
+                  className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5"
                 >
                   {newEvidenceSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Plus style={{ width: 11, height: 11 }} />}
                   Create Evidence

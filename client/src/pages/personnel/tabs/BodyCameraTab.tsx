@@ -271,7 +271,7 @@ export default function BodyCameraTab({
             </button>
           )}
           {canManage && (
-            <button type="button" onClick={onAddCamera} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+            <button type="button" onClick={onAddCamera} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
               <Plus className="w-3 h-3" />
               Assign Camera
             </button>
@@ -352,7 +352,7 @@ export default function BodyCameraTab({
               key={f.value}
               onClick={() => setStatusFilter(f.value)}
               className={`text-[10px] px-2.5 py-1 ${
-                statusFilter === f.value ? 'toolbar-btn-primary' : 'toolbar-btn'
+                statusFilter === f.value ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
               }`}
             >
               {f.label}
@@ -365,7 +365,7 @@ export default function BodyCameraTab({
                 key={f.value}
                 onClick={() => setClassFilter(f.value)}
                 className={`text-[10px] px-2.5 py-1 ${
-                  classFilter === f.value ? 'toolbar-btn-primary' : 'toolbar-btn'
+                  classFilter === f.value ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
                 }`}
               >
                 {f.label}
@@ -474,7 +474,7 @@ export default function BodyCameraTab({
                   try { await onBulkClassifyVideos(Array.from(selectedVideoIds), bulkClassification); setSelectedVideoIds(new Set()); } catch { /* handled by parent */ }
                 }}
                 disabled={bulkLoading}
-                className="toolbar-btn-primary text-[10px] px-2.5 py-1 flex items-center gap-1"
+                className="toolbar-btn toolbar-btn-primary text-[10px] px-2.5 py-1 flex items-center gap-1"
               >
                 {bulkLoading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Shield className="w-3 h-3" />}
                 Classify

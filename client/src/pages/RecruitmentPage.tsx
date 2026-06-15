@@ -82,7 +82,7 @@ export default function RecruitmentPage() {
     )},
   ];
 
-  if (loading) return <div className="p-6 text-[#888888]">Loading recruitment data...</div>;
+  if (loading) return <div className="p-6 text-rmpg-400">Loading recruitment data...</div>;
 
   return (
     <div className="p-4 space-y-4">
@@ -128,7 +128,7 @@ export default function RecruitmentPage() {
             <div className="mt-3"><label className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label><textarea id="ff-recruitmentpage-6" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={3} /></div>
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setFormOpen(false)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
-              <button onClick={handleSave} disabled={formSubmitting || !formData.candidate_name} className="toolbar-btn-primary px-4" style={{ height: 28 }}>{formSubmitting ? 'Saving...' : 'Save'}</button>
+              <button onClick={handleSave} disabled={formSubmitting || !formData.candidate_name} className="toolbar-btn toolbar-btn-primary px-4" style={{ height: 28 }}>{formSubmitting ? 'Saving...' : 'Save'}</button>
             </div>
           </div>
         </div>
@@ -138,10 +138,10 @@ export default function RecruitmentPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setDeleteId(null)}>
           <div className="bg-surface-raised border border-red-800 p-6 max-w-sm w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-red-400 mb-2">Delete Candidate</h3>
-            <p className="text-xs text-[#888888] mb-4">This permanently removes this candidate record. This cannot be undone.</p>
+            <p className="text-xs text-rmpg-400 mb-4">This permanently removes this candidate record. This cannot be undone.</p>
             <div className="flex justify-end gap-3">
               <button onClick={() => setDeleteId(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
-              <button onClick={handleDelete} className="toolbar-btn-primary px-4 text-red-400 border-red-800" style={{ height: 28, borderColor: '#991b1b' }}>Delete</button>
+              <button onClick={handleDelete} className="toolbar-btn toolbar-btn-primary px-4 text-red-400 border-red-800" style={{ height: 28, borderColor: '#991b1b' }}>Delete</button>
             </div>
           </div>
         </div>

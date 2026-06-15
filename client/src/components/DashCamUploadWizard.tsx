@@ -910,7 +910,7 @@ export default function DashCamUploadWizard({
             type="button"
             onClick={() => setStep(2)}
             disabled={files.length === 0}
-            className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-40"
+            className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-40"
           >
             Next <ArrowRight className="w-3 h-3" />
           </button>
@@ -933,7 +933,7 @@ export default function DashCamUploadWizard({
             type="button"
             onClick={() => setStep(3)}
             disabled={!allHaveTitles}
-            className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-40"
+            className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-40"
           >
             Next <ArrowRight className="w-3 h-3" />
           </button>
@@ -960,7 +960,7 @@ export default function DashCamUploadWizard({
           <button
             type="button"
             onClick={handleCloseAfterUpload}
-            className="toolbar-btn-primary text-xs px-4 py-1.5"
+            className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5"
           >
             Close
           </button>
@@ -969,7 +969,7 @@ export default function DashCamUploadWizard({
             type="button"
             onClick={startUploadAll}
             disabled={isUploading}
-            className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-40"
+            className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-40"
           >
             {isUploading ? (
               <>

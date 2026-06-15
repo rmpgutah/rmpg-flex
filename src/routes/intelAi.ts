@@ -60,15 +60,22 @@ intelAi.post('/ask', async (c): Promise<Response> => {
   const question = (body.question || '').trim();
   if (!question) return c.json({ error: 'question required' }, 400);
 
-  const hits = await topHits(getDb(c.env), question);
   try {
+    // topHits hits D1/FTS — keep it inside the try so a DB/index error
+    // returns a structured JSON error instead of an uncaught throw (which
+    // the Worker would otherwise surface as an opaque 502).
+    const hits = await topHits(getDb(c.env), question);
     const reply = await callClaude(key, {
       system: ASK_SYSTEM, text: buildAskPrompt(question, hits),
       model: await getClaudeModel(c.env), maxTokens: 1024,
     });
     return c.json({ answer: reply, citations: citationsFrom(reply, hits), sources: hits });
   } catch (err: any) {
-    return c.json({ error: 'AI request failed', detail: String(err?.message).slice(0, 200) }, 502);
+    // The client only renders `error` (not `detail`), so fold the upstream
+    // cause (e.g. "Anthropic 401: ...") into the message — most 502s here
+    // are an Anthropic key/model config problem, not a Worker fault.
+    const detail = String(err?.message || err).slice(0, 200);
+    return c.json({ error: `AI request failed: ${detail}`, detail }, 502);
   }
 });
 

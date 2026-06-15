@@ -364,16 +364,16 @@ export default function FleetAnalysisFormsTab({
       <div className="px-3 pt-3">
         <div className="flex items-center gap-2 mb-1">
           <FileText size={14} style={{ color: '#d4a017' }} />
-          <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: '#e0e0e0' }}>
+          <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
             Analysis Reports
           </h2>
         </div>
-        <p className="text-[10px]" style={{ color: '#888' }}>
+        <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
           Generate detailed PDF analysis reports for fleet management. Apply filters below to scope each report.
         </p>
       </div>
 
-      <div className="mx-3 rounded-sm border border-subtle" style={{ background: '#0a0a0a' }}>
+      <div className="mx-3 rounded-sm border border-subtle" style={{ background: 'var(--surface-base)' }}>
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-subtle">
           <Filter size={11} style={{ color: '#d4a017' }} />
           <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
@@ -383,7 +383,7 @@ export default function FleetAnalysisFormsTab({
 
         <div className="p-2.5 space-y-3">
           <div>
-            <label className="flex items-center gap-1 text-[9px] font-semibold uppercase mb-1" style={{ color: '#888' }}>
+            <label className="flex items-center gap-1 text-[9px] font-semibold uppercase mb-1" style={{ color: 'var(--text-muted)' }}>
               <Calendar size={9} /> Date Range
             </label>
             <div className="flex flex-wrap gap-1">
@@ -395,7 +395,7 @@ export default function FleetAnalysisFormsTab({
                   className="px-2 py-0.5 text-[10px] font-mono border transition-colors"
                   style={{
                     background: dateRange === r ? '#1a1a1a' : 'transparent',
-                    borderColor: dateRange === r ? '#d4a017' : '#222',
+                    borderColor: dateRange === r ? '#d4a017' : 'var(--border-default)',
                     color: dateRange === r ? '#d4a017' : '#888',
                   }}
                 >
@@ -406,7 +406,7 @@ export default function FleetAnalysisFormsTab({
           </div>
 
           <div>
-            <label className="flex items-center gap-1 text-[9px] font-semibold uppercase mb-1" style={{ color: '#888' }}>
+            <label className="flex items-center gap-1 text-[9px] font-semibold uppercase mb-1" style={{ color: 'var(--text-muted)' }}>
               <BarChart3 size={9} /> Group Reports By
             </label>
             <div className="flex flex-wrap gap-1">
@@ -418,7 +418,7 @@ export default function FleetAnalysisFormsTab({
                   className="px-2 py-0.5 text-[10px] font-mono border transition-colors"
                   style={{
                     background: groupBy === g ? '#1a1a1a' : 'transparent',
-                    borderColor: groupBy === g ? '#d4a017' : '#222',
+                    borderColor: groupBy === g ? '#d4a017' : 'var(--border-default)',
                     color: groupBy === g ? '#d4a017' : '#888',
                   }}
                 >
@@ -429,7 +429,7 @@ export default function FleetAnalysisFormsTab({
           </div>
 
           <div>
-            <label className="flex items-center gap-1 text-[9px] font-semibold uppercase mb-1" style={{ color: '#888' }}>
+            <label className="flex items-center gap-1 text-[9px] font-semibold uppercase mb-1" style={{ color: 'var(--text-muted)' }}>
               <Gauge size={9} /> Min Current Mileage
             </label>
             <input
@@ -439,14 +439,14 @@ export default function FleetAnalysisFormsTab({
               value={minMileage}
               onChange={(e) => setMinMileage(Number(e.target.value) || 0)}
               className="w-full px-2 py-1 text-[11px] font-mono bg-surface-sunken border border-subtle focus:border-rmpg-400 outline-none"
-              style={{ color: '#e0e0e0' }}
+              style={{ color: 'var(--text-secondary)' }}
               placeholder="0 (no minimum)"
             />
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="flex items-center gap-1 text-[9px] font-semibold uppercase" style={{ color: '#888' }}>
+              <label className="flex items-center gap-1 text-[9px] font-semibold uppercase" style={{ color: 'var(--text-muted)' }}>
                 <Car size={9} /> Vehicles ({selectedVehicleIds.length || 'all'} selected)
               </label>
               <div className="flex gap-1.5">
@@ -462,7 +462,7 @@ export default function FleetAnalysisFormsTab({
                   type="button"
                   onClick={clearSelection}
                   className="text-[9px] font-mono hover:underline"
-                  style={{ color: '#888' }}
+                  style={{ color: 'var(--text-muted)' }}
                 >
                   Clear
                 </button>
@@ -482,7 +482,7 @@ export default function FleetAnalysisFormsTab({
                       className="w-3 h-3 accent-rmpg-400"
                     />
                     <span className="text-[10px] font-mono" style={{ color: '#d4a017' }}>{v.number}</span>
-                    <span className="text-[9px] truncate" style={{ color: '#888' }}>{v.label}</span>
+                    <span className="text-[9px] truncate" style={{ color: 'var(--text-muted)' }}>{v.label}</span>
                   </label>
                 );
               })}
@@ -503,17 +503,17 @@ export default function FleetAnalysisFormsTab({
               <div
                 key={r}
                 className="rounded-sm border border-subtle p-2.5 transition-colors hover:border-strong"
-                style={{ background: '#0a0a0a' }}
+                style={{ background: 'var(--surface-base)' }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <Icon size={12} style={{ color: '#d4a017' }} />
-                      <span className="text-[11px] font-semibold" style={{ color: '#e0e0e0' }}>
+                      <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
                         {REPORT_LABELS[r]}
                       </span>
                     </div>
-                    <p className="text-[9px] mt-0.5" style={{ color: '#888' }}>
+                    <p className="text-[9px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                       {REPORT_DESCRIPTIONS[r]}
                     </p>
                   </div>
@@ -523,7 +523,7 @@ export default function FleetAnalysisFormsTab({
                     disabled={isLoading || vehicles.length === 0}
                     className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider border transition-colors disabled:opacity-50"
                     style={{
-                      background: '#1a1a1a',
+                      background: 'var(--surface-raised)',
                       borderColor: '#d4a017',
                       color: '#d4a017',
                     }}

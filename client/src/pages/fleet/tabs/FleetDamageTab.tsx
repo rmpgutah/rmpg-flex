@@ -157,7 +157,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
       {showForm && (
         <div className="panel-inset p-3 space-y-2">
           {wasRestored && (
-            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30 bg-amber-900/20">
               <div className="flex items-center gap-2">
                 <span className="led-dot led-amber" />
                 <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
