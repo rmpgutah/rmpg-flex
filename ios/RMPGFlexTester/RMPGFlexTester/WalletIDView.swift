@@ -120,7 +120,7 @@ struct WalletIDView: View {
     private func field(_ label: String, _ value: String?) -> some View {
         HStack(spacing: 6) {
             Text(label).font(.system(size: 11)).foregroundStyle(Theme.neutral).frame(width: 48, alignment: .leading)
-            Text(value?.isEmpty == false ? value! : "—").font(.system(size: 11)).foregroundStyle(Color(hex: 0xcccccc))
+            Text(value?.isEmpty == false ? value! : "—").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
         }
     }
 

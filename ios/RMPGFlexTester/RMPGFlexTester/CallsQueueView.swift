@@ -90,7 +90,7 @@ struct CallsQueueView: View {
                 Text(FieldFormat.value("status", st)).font(.system(size: 10)).foregroundStyle(Theme.neutral)
             }
             Text(type).font(.system(size: 13, weight: .semibold)).foregroundStyle(mine ? Theme.gold : .white)
-            if !addr.isEmpty { Text(addr).font(.system(size: 11)).foregroundStyle(Color(hex: 0xbbbbbb)) }
+            if !addr.isEmpty { Text(addr).font(.system(size: 11)).foregroundStyle(Theme.textSecondary) }
 
             HStack(spacing: 6) {
                 if mine {

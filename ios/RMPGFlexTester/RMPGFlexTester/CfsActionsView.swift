@@ -76,7 +76,7 @@ struct CfsActionsView: View {
     private func background(_ a: CfsAction) -> Color {
         switch a.category {
         case "Hazards": return Theme.red.opacity(0.85)
-        case "Notify", "Resources": return Color(hex: 0x2a2417)   // warm tint
+        case "Notify", "Resources": return Theme.raised   // steel panel
         default: return Theme.raised
         }
     }
