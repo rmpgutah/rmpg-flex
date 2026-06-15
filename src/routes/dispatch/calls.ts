@@ -1655,4 +1655,92 @@ calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
   }
 });
 
+// ── POST /dispatch/calls/force-close-all ────────────────────
+// God Mode bulk action (Admin → God Mode → Bulk Call Operations). Closes
+// EVERY currently-open call in one shot — no per-call selection — stamping the
+// supplied disposition. "Open" = the active CAD status set the queue/active
+// views use; closing flips each to 'closed' with closed_at + disposition,
+// exactly like the per-call status writer (POST /:id/status). Mirrors the
+// bulk-reassign sibling's shape: read body, cap the batch, mutate, emit a
+// dispatch_update, return { success, closed } (the client toast reads `closed`).
+// Assigned units are RELEASED so they don't strand 'dispatched' on a now-dead
+// call — the exact "stuck on the board" hazard syncUnitsWithCallStatus and the
+// archive-bulk handler both defend against.
+const FORCE_CLOSE_OPEN_STATUSES = ['pending', 'dispatched', 'enroute', 'onscene', 'open'];
+const FORCE_CLOSE_BATCH_CAP = 500;
+
+calls.post('/force-close-all', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ disposition?: string }>().catch(() => ({} as { disposition?: string }));
+    const disposition = typeof body.disposition === 'string' && body.disposition.trim().length > 0
+      ? body.disposition.trim()
+      : 'Closed by Admin';
+
+    // Capture the open call ids first (capped) so we know exactly which calls —
+    // and therefore which units — this operation touched. "Force close ALL" is
+    // meant to clear a backlog, not scan an unbounded table in one UPDATE; if
+    // more than the cap are open, re-run to drain the rest.
+    const openStatusPlaceholders = FORCE_CLOSE_OPEN_STATUSES.map(() => '?').join(',');
+    const open = await query<{ id: number }>(db,
+      `SELECT id FROM calls_for_service WHERE status IN (${openStatusPlaceholders}) ORDER BY id LIMIT ${FORCE_CLOSE_BATCH_CAP}`,
+      ...FORCE_CLOSE_OPEN_STATUSES);
+    if (open.length === 0) return c.json({ success: true, closed: 0 });
+
+    const ids = open.map((r) => r.id);
+    const idPlaceholders = ids.map(() => '?').join(',');
+    await execute(db,
+      `UPDATE calls_for_service
+          SET status = 'closed',
+              disposition = ?,
+              closed_at = COALESCE(closed_at, datetime('now')),
+              status_changed_at = datetime('now'),
+              updated_at = datetime('now')
+        WHERE id IN (${idPlaceholders})`,
+      disposition, ...ids);
+
+    // Release any units riding the calls we just closed (best-effort — a sync
+    // failure must never fail the close). Emits one unit_status_changed per
+    // freed unit so every console drops it from the call without a refresh.
+    try {
+      const affected = await query<{ id: number; call_sign: string }>(db,
+        `SELECT id, call_sign FROM units WHERE current_call_id IN (${idPlaceholders})`, ...ids);
+      if (affected.length) {
+        await execute(db,
+          `UPDATE units SET status = 'available', current_call_id = NULL,
+                  last_status_change = datetime('now'), updated_at = datetime('now')
+            WHERE current_call_id IN (${idPlaceholders})`, ...ids);
+        for (const u of affected) {
+          await emitAlert(c.env, 'dispatch_update', {
+            action: 'unit_status_changed',
+            unit: { id: u.id, call_sign: u.call_sign, status: 'available', current_call_id: null, current_call_number: null },
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[calls] force-close-all unit release failed (non-fatal):', err);
+    }
+
+    // One summary audit row — a bulk close is destructive and worth a trail.
+    // entity_id is NULL (no single call); audit_log.entity_id is nullable TEXT.
+    try {
+      const userId = c.get('userId') as number | undefined;
+      if (userId != null) {
+        await execute(db,
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+           VALUES (?, 'FORCE_CLOSE_ALL', 'call', NULL, ?, datetime('now'))`,
+          userId, `Force-closed ${ids.length} open call(s) with disposition "${disposition}"`);
+      }
+    } catch (auditErr) {
+      console.warn('audit_log insert failed for force-close-all:', auditErr);
+    }
+
+    await emitAlert(c.env, 'dispatch_update', { action: 'bulk_force_close', closed: ids.length, disposition });
+    return c.json({ success: true, closed: ids.length });
+  } catch (err) {
+    console.error('Force close-all error:', err);
+    return c.json({ error: 'Force close failed' }, 500);
+  }
+});
+
 export default calls;

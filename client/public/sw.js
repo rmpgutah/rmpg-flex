@@ -639,7 +639,7 @@
 //       Workers AI when Claude is out of credit (no more 502) + "FREE FALLBACK
 //       AI" badge; Plate Log dashcam "reads" counts alpr_captures; Jail Mgmt
 //       links to the scraped Arrest Roster.
-const CACHE_NAME = 'rmpg-flex-v985';
+const CACHE_NAME = 'rmpg-flex-v986';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
