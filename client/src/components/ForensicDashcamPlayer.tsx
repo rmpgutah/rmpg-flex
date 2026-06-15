@@ -9,7 +9,7 @@
 // driving-analysis readout (distance, peak g-forces, event verdict).
 // ============================================================
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Gauge, Navigation, AlertTriangle, Activity, Car, MapPin, Loader2, ScanSearch, Route, Camera, ZoomIn, ShieldAlert, Layers, FileText, RefreshCw, Siren, Radio, CheckCircle2, Sparkles, Maximize2 } from 'lucide-react';
+import { X, Gauge, Navigation, AlertTriangle, Activity, Car, MapPin, Loader2, ScanSearch, Route, Camera, ZoomIn, ShieldAlert, Layers, FileText, RefreshCw, Siren, Radio, CheckCircle2, Sparkles, Maximize2, ShieldOff } from 'lucide-react';
 import { apiFetch, apiPostForm, authedImageUrl } from '../hooks/useApi';
 import PlateMagnifier from './PlateMagnifier';
 import { ENHANCE_PRESETS, presetByKey, nextPresetKey, cssFilterFor } from '../utils/imageEnhance';
@@ -28,6 +28,7 @@ import {
 } from '../utils/drivingPrediction';
 import ForensicTrackMap from './ForensicTrackMap';
 import PlateDossier from './PlateDossier';
+import RedactionStudio from './RedactionStudio';
 import { loadVehicleDetector, detectVehicles, type DetectorStatus } from '../utils/aiVehicleTracking';
 import {
   emptyTrackerState, stepTracker, visibleTracks, primaryTrack, type TrackerState, type Track,
@@ -76,6 +77,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
   const [trackView, setTrackView] = useState<'svg' | 'map'>('svg');
   const [prior, setPrior] = useState<{ count: number; distinct_days?: number; sightings: Array<{ id: number; location: string | null; source: string; created_at: string | null }> } | null>(null);
   const [dossier, setDossier] = useState<string | null>(null);
+  const [redactOpen, setRedactOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const detLoopRef = useRef<number | null>(null);
   const trackerRef = useRef<TrackerState>(emptyTrackerState());
@@ -468,6 +470,10 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                 className="text-[10px] font-semibold px-1.5 py-1 border border-[#2a2a2a] text-rmpg-300 hover:border-[#d4a017] flex items-center gap-1" aria-label="Export forensic report">
                 <FileText className="w-3.5 h-3.5" /> REPORT
               </button>
+              <button onClick={() => setRedactOpen(true)} title="Redact & export for disclosure"
+                className="text-[10px] font-semibold px-1.5 py-1 border border-[#232323] text-rmpg-300 hover:border-[#d4a017] flex items-center gap-1" aria-label="Open redaction studio">
+                <ShieldOff className="w-3.5 h-3.5" /> REDACT
+              </button>
               <span className="w-px h-4 bg-[#2a2a2a]" />
             </>
           )}
@@ -838,6 +844,14 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
         </div>
       )}
       {dossier && <PlateDossier plate={dossier} onClose={() => setDossier(null)} />}
+      {redactOpen && media?.stream_url && (
+        <RedactionStudio
+          eventId={eventId}
+          streamUrl={media.stream_url}
+          stampLines={evidenceStampLines(evidenceMeta())}
+          onClose={() => setRedactOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -15,9 +15,9 @@ import type { FleetAnalytics, FleetServiceAlert } from '../../../types';
 
 const CHART_TOOLTIP_STYLE = {
   contentStyle: {
-    backgroundColor: '#0a0a0a',
-    border: '1px solid #2b2b2b',
-    color: '#e0e0e0',
+    backgroundColor: 'var(--surface-base)',
+    border: '1px solid var(--border-default)',
+    color: 'var(--text-primary)',
     fontSize: 10,
     fontFamily: 'Consolas, monospace',
     borderRadius: 2,
@@ -172,7 +172,7 @@ function InfoTooltip({ text }: { text: string }) {
         <Info className="w-2.5 h-2.5" />
       </button>
       {show && (
-        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-48 px-2 py-1.5 bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-[8px] text-rmpg-300 font-normal normal-case tracking-normal shadow-lg pointer-events-none">
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-48 px-2 py-1.5 bg-surface-overlay border border-rmpg-700 rounded-[2px] text-[8px] text-rmpg-300 font-normal normal-case tracking-normal shadow-lg pointer-events-none">
           {text}
         </div>
       )}
@@ -410,7 +410,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             className={`px-2.5 py-1 text-[9px] font-mono font-bold tracking-wider rounded-[2px] border transition-colors duration-150
               ${period === opt.value
                 ? 'bg-[#888888] border-[#888888] text-white'
-                : 'bg-[#0c0c0c] border-[#2b2b2b] text-rmpg-400 hover:text-white hover:border-[#2a2a2a]'
+                : 'bg-surface-sunken border-rmpg-700 text-rmpg-400 hover:text-white hover:border-rmpg-600'
               }`}
           >
             {opt.label}
@@ -421,7 +421,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 1: KPI Cards with Tooltips */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Total Fleet Costs */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <DollarSign className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Total Fleet Costs</span>
@@ -437,7 +437,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Average MPG */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Fuel className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Average MPG</span>
@@ -450,7 +450,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Service Compliance */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Wrench className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Service Compliance</span>
@@ -465,7 +465,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Inspection Pass Rate */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <CheckCircle className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Inspection Pass Rate</span>
@@ -483,7 +483,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 2: Maintenance Cost Trend + Fuel Economy Trend */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Maintenance Cost Trend (Bar Chart) */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <DollarSign className="w-3 h-3" /> Maintenance Cost Trend
           </h4>
@@ -504,7 +504,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Fuel Economy Trend (Line Chart) */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Fuel className="w-3 h-3" /> Fuel Economy Trend
           </h4>
@@ -528,7 +528,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 3: Top Vehicles by Cost + Service Alerts */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Top Vehicles by Cost */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <TrendingUp className="w-3 h-3" /> Top Vehicles by Cost
           </h4>
@@ -536,7 +536,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <div className="overflow-x-auto">
               <table className="w-full text-[10px]">
                 <thead>
-                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#2b2b2b]">
+                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-rmpg-700">
                     <th className="text-left py-1 pr-2">Vehicle</th>
                     <th className="text-left py-1 pr-2">Make/Model</th>
                     <th className="text-right py-1 pr-2 font-mono">$/Mile</th>
@@ -545,7 +545,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 </thead>
                 <tbody>
                   {cost_per_mile_ranking.map((v) => (
-                    <tr key={v.id} className="border-b border-[#2b2b2b]/50 hover:bg-[#0c0c0c] transition-colors duration-150">
+                    <tr key={v.id} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
                       <td className="py-1 pr-2 font-mono font-bold text-white">{v.vehicle_number}</td>
                       <td className="py-1 pr-2 text-rmpg-400">{v.make} {v.model}</td>
                       <td className="py-1 pr-2 text-right font-mono tabular-nums text-green-400">
@@ -565,7 +565,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Service Alerts */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <ShieldAlert className="w-3 h-3" /> Service Alerts
             {serviceAlerts.length > 0 && (
@@ -602,7 +602,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 4: Daily Mileage Run + Fleet Status */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Daily Mileage Run (GPS miles per day, fleet-wide) */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Gauge className="w-3 h-3" /> Daily Mileage Run
           </h4>
@@ -638,7 +638,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Fleet Status (Donut) */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Car className="w-3 h-3" /> Fleet Status
           </h4>
@@ -672,7 +672,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   </div>
                 ))}
                 {utilization && (
-                  <div className="mt-2 pt-2 border-t border-[#2b2b2b] text-[9px] text-rmpg-400">
+                  <div className="mt-2 pt-2 border-t border-rmpg-700 text-[9px] text-rmpg-400">
                     <span>Utilization: </span>
                     <span className="font-mono font-bold text-[#d4a017] tabular-nums">{utilization.rate}%</span>
                     <span className="ml-1">({utilization.assigned} assigned)</span>
@@ -689,7 +689,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 5: Daily Fleet Utilization + Maintenance Forecast */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Daily Fleet Utilization (Area Chart) */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Activity className="w-3 h-3" /> Daily Fleet Utilization
           </h4>
@@ -742,7 +742,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Maintenance Forecast */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Wrench className="w-3 h-3" /> Maintenance Forecast
           </h4>
@@ -750,7 +750,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <div className="overflow-x-auto">
               <table className="w-full text-[10px]">
                 <thead>
-                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#2b2b2b]">
+                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-rmpg-700">
                     <th className="text-left py-1 pr-2">Vehicle #</th>
                     <th className="text-right py-1 pr-2 font-mono">Current Mi</th>
                     <th className="text-right py-1 pr-2 font-mono">Next Svc</th>
@@ -765,7 +765,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       : days < 30 ? 'text-amber-400'
                       : 'text-green-400';
                     return (
-                      <tr key={v.id} className="border-b border-[#2b2b2b]/50 hover:bg-[#0c0c0c] transition-colors duration-150">
+                      <tr key={v.id} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
                         <td className="py-1 pr-2 font-mono font-bold text-white">{v.vehicle_number}</td>
                         <td className="py-1 pr-2 text-right font-mono tabular-nums text-rmpg-300">
                           {v.current_mileage != null ? v.current_mileage.toLocaleString() : '--'}
@@ -791,7 +791,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 6: Quick Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Avg Daily Miles */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Gauge className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Avg Daily Miles</span>
@@ -803,7 +803,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Total Vehicles */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Car className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Total Vehicles</span>
@@ -815,7 +815,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Oldest Vehicle */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Calendar className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Oldest Vehicle</span>
@@ -827,7 +827,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Fleet Utilization */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Activity className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Fleet Utilization</span>
@@ -837,7 +837,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           </div>
           {utilization && (
             <div className="mt-1.5">
-              <div className="h-1.5 bg-[#0c0c0c] rounded-[1px] overflow-hidden">
+              <div className="h-1.5 bg-surface-deep rounded-[1px] overflow-hidden">
                 <div
                   className="h-full rounded-[1px] transition-all duration-150"
                   style={{
@@ -855,7 +855,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       </div>
 
       {/* ROW 7: Combined Cost Trend (Full Width) */}
-      <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+      <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
         <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
           <TrendingUp className="w-3 h-3" /> Combined Cost Trend (12 Months)
         </h4>
@@ -904,7 +904,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
       {/* ROW 7b: Monthly Spend (Last 8 Months) */}
       {monthlySpend.length > 0 && (
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <DollarSign className="w-3 h-3" /> Monthly Spend (Last 8 Months)
           </h4>
@@ -937,7 +937,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       )}
 
       {/* ROW 7c: Daily GPS Mileage (Start of Shift → End of Shift) */}
-      <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+      <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
         <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
           <Gauge className="w-3 h-3" /> Daily GPS Mileage (Start of Shift — End of Shift)
         </h4>
@@ -947,7 +947,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
             <table className="w-full text-[10px]">
               <thead>
-                <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#2b2b2b] sticky top-0 bg-[#141414]">
+                <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-rmpg-700 sticky top-0 bg-surface-raised">
                   <th className="text-left py-1 pr-2">Date</th>
                   <th className="text-left py-1 pr-2">Vehicle</th>
                   <th className="text-right py-1 pr-2 font-mono">GPS Miles</th>
@@ -961,7 +961,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   const startTime = d.shift_start ? d.shift_start.split(' ')[1]?.slice(0, 5) || d.shift_start : '—';
                   const endTime = d.shift_end ? d.shift_end.split(' ')[1]?.slice(0, 5) || d.shift_end : '—';
                   return (
-                    <tr key={i} className="border-b border-[#2b2b2b]/50 hover:bg-[#0c0c0c] transition-colors duration-150">
+                    <tr key={i} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
                       <td className="py-1 pr-2 text-rmpg-200 font-mono">{d.date?.slice(5)}</td>
                       <td className="py-1 pr-2 text-white font-semibold">#{d.vehicle_number}</td>
                       <td className="py-1 pr-2 text-right text-[#22c55e] font-mono font-bold tabular-nums">{d.gps_miles?.toFixed(1)} mi</td>
@@ -984,7 +984,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 8: Top Maintenance Issues + Vehicle Lifecycle */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Top Maintenance Issues (Horizontal Bar Chart) */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Wrench className="w-3 h-3" /> Top Maintenance Issues
           </h4>
@@ -1001,7 +1001,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                         {issue.count}x &middot; {formatCostAbbrev(issue.total_cost)}
                       </span>
                     </div>
-                    <div className="h-2 bg-[#0c0c0c] rounded-[1px] overflow-hidden">
+                    <div className="h-2 bg-surface-deep rounded-[1px] overflow-hidden">
                       <div
                         className="h-full rounded-[1px] transition-all duration-150"
                         style={{
@@ -1020,7 +1020,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Vehicle Lifecycle Table */}
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Activity className="w-3 h-3" /> Vehicle Lifecycle
           </h4>
@@ -1028,7 +1028,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <div className="overflow-x-auto max-h-[200px] overflow-y-auto">
               <table className="w-full text-[10px]">
                 <thead>
-                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#2b2b2b] sticky top-0 bg-[#141414]">
+                  <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-rmpg-700 sticky top-0 bg-surface-raised">
                     <th className="text-left py-1 pr-1">Vehicle</th>
                     <th className="text-right py-1 pr-1 font-mono">Age</th>
                     <th className="text-right py-1 pr-1 font-mono">Miles</th>
@@ -1043,7 +1043,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       : v.estimated_remaining_life_years < 3 ? 'text-amber-400'
                       : 'text-green-400';
                     return (
-                      <tr key={v.id} className="border-b border-[#2b2b2b]/50 hover:bg-[#0c0c0c] transition-colors duration-150">
+                      <tr key={v.id} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
                         <td className="py-1 pr-1">
                           <div className="flex items-center gap-1">
                             <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_DOT_COLORS[v.status] || '#666666' }} />
@@ -1073,10 +1073,10 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       </div>
 
       {/* ROW 9: Vehicle Comparison Tool (Collapsible) */}
-      <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px]">
+      <div className="bg-surface-raised border border-rmpg-700 rounded-[2px]">
         <button
           onClick={() => setCompareExpanded(!compareExpanded)}
-          className="w-full flex items-center justify-between p-3 hover:bg-[#0c0c0c] transition-colors duration-150"
+          className="w-full flex items-center justify-between p-3 hover:bg-surface-sunken transition-colors duration-150"
         >
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Search className="w-3 h-3" /> Compare Vehicles
@@ -1104,7 +1104,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       className={`px-2 py-1 text-[9px] font-mono rounded-[2px] border transition-colors duration-150
                         ${isSelected
                           ? 'bg-[#888888] border-[#888888] text-white'
-                          : 'bg-[#0c0c0c] border-[#2b2b2b] text-rmpg-400 hover:text-white hover:border-[#2a2a2a]'
+                          : 'bg-surface-sunken border-rmpg-700 text-rmpg-400 hover:text-white hover:border-rmpg-600'
                         }`}
                     >
                       {v.vehicle_number}
@@ -1136,7 +1136,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               <div className="overflow-x-auto">
                 <table className="w-full text-[10px]">
                   <thead>
-                    <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#2b2b2b]">
+                    <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-rmpg-700">
                       <th className="text-left py-1.5 pr-3 font-bold">Metric</th>
                       {comparisonResults.map((v) => (
                         <th key={v.id} className="text-right py-1.5 px-2 font-mono font-bold text-white">{v.vehicle_number}</th>
@@ -1145,14 +1145,14 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   </thead>
                   <tbody>
                     {/* Make/Model */}
-                    <tr className="border-b border-[#2b2b2b]/50">
+                    <tr className="border-b border-rmpg-700/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Make/Model</td>
                       {comparisonResults.map((v) => (
                         <td key={v.id} className="py-1.5 px-2 text-right text-rmpg-300">{v.make} {v.model} ({v.year})</td>
                       ))}
                     </tr>
                     {/* Total Cost */}
-                    <tr className="border-b border-[#2b2b2b]/50">
+                    <tr className="border-b border-rmpg-700/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Total Cost</td>
                       {comparisonResults.map((v) => {
                         const best = getBestValue('total_cost', true);
@@ -1164,7 +1164,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       })}
                     </tr>
                     {/* Cost/Mile */}
-                    <tr className="border-b border-[#2b2b2b]/50">
+                    <tr className="border-b border-rmpg-700/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Cost/Mile</td>
                       {comparisonResults.map((v) => {
                         const best = getBestValue('cost_per_mile', true);
@@ -1176,7 +1176,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       })}
                     </tr>
                     {/* Avg MPG */}
-                    <tr className="border-b border-[#2b2b2b]/50">
+                    <tr className="border-b border-rmpg-700/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Avg MPG</td>
                       {comparisonResults.map((v) => {
                         const best = getBestValue('avg_mpg', false);
@@ -1188,7 +1188,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       })}
                     </tr>
                     {/* Mileage */}
-                    <tr className="border-b border-[#2b2b2b]/50">
+                    <tr className="border-b border-rmpg-700/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Mileage</td>
                       {comparisonResults.map((v) => (
                         <td key={v.id} className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
@@ -1197,7 +1197,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       ))}
                     </tr>
                     {/* Inspections */}
-                    <tr className="border-b border-[#2b2b2b]/50">
+                    <tr className="border-b border-rmpg-700/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Inspections</td>
                       {comparisonResults.map((v) => {
                         const best = getBestValue('inspection_pass_rate', false);
@@ -1211,7 +1211,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       })}
                     </tr>
                     {/* Days Since Last Service */}
-                    <tr className="border-b border-[#2b2b2b]/50">
+                    <tr className="border-b border-rmpg-700/50">
                       <td className="py-1.5 pr-3 text-rmpg-400">Days Since Service</td>
                       {comparisonResults.map((v) => {
                         const best = getBestValue('days_since_last_service', true);
@@ -1231,7 +1231,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       </div>
 
       {/* ROW 10: Vehicle Health Dashboard */}
-      <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+      <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
         <div className="flex items-center justify-between mb-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Heart className="w-3 h-3" /> Vehicle Health Scores
@@ -1239,7 +1239,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <select id="ff-fleetanalyticstab-0"
             value={healthSort}
             onChange={(e) => setHealthSort(e.target.value as 'score' | 'number' | 'age')}
-            className="text-[9px] bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-rmpg-300 px-2 py-1 font-mono"
+            className="text-[9px] bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-300 px-2 py-1 font-mono"
           >
             <option value="score">Sort: Worst First</option>
             <option value="number">Sort: Vehicle #</option>
@@ -1269,7 +1269,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 inspection: v.health_score, cost: v.health_score,
               };
               return (
-                <div key={v.vehicle_id} className="bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] p-2.5">
+                <div key={v.vehicle_id} className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-2.5">
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <div className="text-[11px] font-mono font-bold text-white">{v.vehicle_number}</div>
@@ -1295,7 +1295,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   <div className="flex gap-0.5 mb-1.5">
                     {factorLabels.map((f) => (
                       <div key={f} className="flex-1" title={`${f}: ${factors[f]}`}>
-                        <div className="h-1 bg-[#2b2b2b] rounded-full overflow-hidden">
+                        <div className="h-1 bg-rmpg-700 rounded-full overflow-hidden">
                           <div
                             className="h-full rounded-full transition-all duration-150"
                             style={{
@@ -1321,7 +1321,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       </div>
 
       {/* ROW 11: Maintenance Schedule */}
-      <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+      <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
         <div className="flex items-center gap-2 mb-3">
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Wrench className="w-3 h-3" /> Maintenance Schedule
@@ -1336,7 +1336,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
               <thead>
-                <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#2b2b2b]">
+                <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-rmpg-700">
                   <th className="text-left py-1.5 pr-3 font-bold">Vehicle#</th>
                   <th className="text-left py-1.5 pr-3 font-bold">Service Type</th>
                   <th className="text-right py-1.5 px-2 font-bold">Due Date</th>
@@ -1355,7 +1355,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   };
                   const uc = urgencyColors[m.urgency] || urgencyColors.ok;
                   return (
-                    <tr key={`${m.vehicle_id}-${m.service_type}`} className="border-b border-[#2b2b2b]/50 hover:bg-[#0c0c0c] transition-colors duration-150">
+                    <tr key={`${m.vehicle_id}-${m.service_type}`} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
                       <td className="py-1.5 pr-3 font-mono font-bold text-white">{m.vehicle_number}</td>
                       <td className="py-1.5 pr-3 text-rmpg-300">{(m.service_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
@@ -1385,7 +1385,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       </div>
 
       {/* ROW 12: Driver Performance */}
-      <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+      <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
         <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5 mb-3">
           <User className="w-3 h-3" /> Driver Performance
         </h4>
@@ -1393,7 +1393,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
               <thead>
-                <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#2b2b2b]">
+                <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-rmpg-700">
                   <th className="text-left py-1.5 pr-3 font-bold">Officer</th>
                   <th className="text-left py-1.5 pr-2 font-bold">Call Sign</th>
                   <th className="text-right py-1.5 px-2 font-bold">Miles</th>
@@ -1410,14 +1410,14 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 {driverPerf.map((d) => {
                   const scoreColor = d.overall_score >= 80 ? 'text-green-400' : d.overall_score >= 40 ? 'text-amber-400' : 'text-red-400';
                   return (
-                    <tr key={d.call_sign} className="border-b border-[#2b2b2b]/50 hover:bg-[#0c0c0c] transition-colors duration-150">
+                    <tr key={d.call_sign} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
                       <td className="py-1.5 pr-3 text-rmpg-300 truncate max-w-[120px]">{d.officer_name}</td>
                       <td className="py-1.5 pr-2 font-mono font-bold text-white">{d.call_sign}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.total_miles != null ? d.total_miles.toLocaleString() : '-'}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.total_hours}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
                         <span className="inline-flex items-center gap-1">
-                          <span className="inline-block w-8 h-1 bg-[#2b2b2b] rounded-full overflow-hidden">
+                          <span className="inline-block w-8 h-1 bg-rmpg-700 rounded-full overflow-hidden">
                             <span className="block h-full rounded-full" style={{ width: `${d.idle_pct}%`, backgroundColor: d.idle_pct > 60 ? '#ef4444' : d.idle_pct > 30 ? '#f59e0b' : '#22c55e' }} />
                           </span>
                           {d.idle_pct}%

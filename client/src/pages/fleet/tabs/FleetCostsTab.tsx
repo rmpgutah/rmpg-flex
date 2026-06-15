@@ -403,7 +403,7 @@ function EmptyState({ icon: Icon, label, action, onAdd }: {
 }) {
   return (
     <div className="text-center py-10 panel-beveled bg-surface-base">
-      <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#050505' }}>
+      <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: 'var(--surface-deep)' }}>
         <Icon className="w-7 h-7 text-rmpg-600" />
       </div>
       <p className="text-xs text-rmpg-400 font-semibold">{label}</p>
