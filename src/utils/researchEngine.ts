@@ -25,7 +25,15 @@ export async function runResearchLLM(env: ResearchEnv, opts: LlmOpts): Promise<s
   if (system) messages.push({ role: 'system', content: system });
   messages.push({ role: 'user', content: user });
   const r: any = await env.AI.run(WORKERS_AI_MODEL as any, { messages, max_tokens: maxTokens } as any);
-  return typeof r?.response === 'string' ? r.response : '';
+  // Workers AI AUTO-PARSES JSON: when the prompt elicits JSON (expand/extract/
+  // verify), `response` comes back as a parsed array/object, NOT a string. The
+  // downstream parsers (parseAngles/parseFindings/...) all run JSON.parse on a
+  // string, so re-serialize non-string responses instead of dropping them. This
+  // was the "Angle expansion produced no angles (LLM engine unavailable?)" crash.
+  const resp = r?.response;
+  if (typeof resp === 'string') return resp;
+  if (resp != null && typeof resp === 'object') return JSON.stringify(resp);
+  return '';
 }
 
 function clamp01(n: number): number { return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0; }
