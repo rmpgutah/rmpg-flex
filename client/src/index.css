@@ -2594,7 +2594,7 @@ body.fx-noise::after {
 
 .cad-command-line {
   background: var(--surface-deep);
-  border-top: 1px solid #222222;
+  border-top: 1px solid var(--border-default);
   font-family: var(--font-mono);
   padding: 0;
 }
@@ -2654,8 +2654,8 @@ body.fx-noise::after {
   color: #d4a017;
   font-size: 11px;
   line-height: 1.5;
-  border-top: 1px solid #222222;
-  background: #080808;
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-deep);
 }
 
 .cad-command-output-expanded pre {

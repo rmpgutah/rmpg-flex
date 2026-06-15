@@ -405,7 +405,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // Auth error (config problem, not connectivity)
   if (isAuthError) {
     return (
-      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a0a' }}>
+      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-base)' }}>
         <span className="text-[9px] text-rmpg-500">{error}</span>
       </div>
     );
