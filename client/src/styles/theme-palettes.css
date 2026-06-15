@@ -102,7 +102,7 @@ html.theme-light {
   --toolbar-gradient-start: #ffffff; --toolbar-gradient-end: #e8e6da;
   --grid-header-bg: #d6d3c8; --grid-row-alt: #f6f5ef;
   --field-label-color: #936c0a;
-  --surface-panel: #ece9dd; --surface-panel-alt: #f7f9fb; --surface-hover: #e9f0fa;
+  --surface-panel: #ece9dd; --surface-panel-alt: #f9f7f1; --surface-hover: #e0ddd4;
   --info-text: #2e4a66; --info-bg: rgba(46, 74, 102, 0.10); --info-border: rgba(46, 74, 102, 0.22);
   --desktop-shell-start: #d6d3c8; --desktop-shell-end: #c9c5b8;
   --desktop-shell-raised-start: #ece9dd; --desktop-shell-raised-end: #d6d3c8;
