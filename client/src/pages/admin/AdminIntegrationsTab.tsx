@@ -3,7 +3,7 @@ import {
   Plus, Trash2, Copy, CheckCircle2, XCircle, Key, AlertTriangle,
   Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
   Shield, Database, Bell, Unlock, Cloud, Cpu, MapPin, Navigation, Server, Hash,
-  ExternalLink,
+  ExternalLink, Zap,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
@@ -59,6 +59,9 @@ interface ApiKeyConfig {
   pattern?: RegExp;
   /** Human-readable format hint shown below the input */
   formatHint?: string;
+  /** When set, render a "Test" button that live-probes the stored key via
+   *  POST /admin/third-party-keys/:key/test (only anthropic_api_key today). */
+  testable?: boolean;
 }
 
 function validateKey(value: string, config: ApiKeyConfig): string | null {
@@ -83,7 +86,7 @@ const MAPBOX_KEYS: ApiKeyConfig[] = [
 
 const AI_ML_KEYS: ApiKeyConfig[] = [
   { key: 'openai_api_key', label: 'OpenAI', desc: 'GPT-4 / GPT-4o — narrative generation, report writing, evidence analysis', pattern: /^sk-[A-Za-z0-9_-]{40,}$/, formatHint: 'Starts with sk-' },
-  { key: 'anthropic_api_key', label: 'Anthropic (Claude)', desc: 'Claude — document analysis, legal research, policy compliance checks', pattern: /^sk-ant-[A-Za-z0-9_-]+$/, formatHint: 'Starts with sk-ant-' },
+  { key: 'anthropic_api_key', label: 'Anthropic (Claude)', desc: 'Claude — document analysis, legal research, policy compliance checks. Deep Research & OCR silently fall back to free Workers AI when this is invalid or out of credit — use Test to confirm it actually works.', pattern: /^sk-ant-[A-Za-z0-9_-]+$/, formatHint: 'Starts with sk-ant-', testable: true },
   { key: 'replicate_api_key', label: 'Replicate', desc: 'Free tier — open-source AI models, image generation, facial similarity search' },
   { key: 'huggingface_api_key', label: 'Hugging Face', desc: 'Free tier — NLP models, text classification, entity extraction for reports', pattern: /^hf_[A-Za-z0-9]+$/, formatHint: 'Starts with hf_' },
   { key: 'deepgram_api_key', label: 'Deepgram', desc: 'Free tier: $200 credit — real-time speech-to-text, body camera transcription' },
@@ -263,6 +266,8 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
   const [saving, setSaving] = useState<string | null>(null);
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string | null>>({});
+  const [testing, setTesting] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<Record<string, { ok: boolean; message: string } | null>>({});
 
   useEffect(() => {
     // Check which keys are configured — single bulk request, no N+1.
@@ -313,8 +318,22 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
         body: JSON.stringify({ key: configKey }),
       });
       setConfigured(prev => ({ ...prev, [configKey]: false }));
+      setTestResult(prev => ({ ...prev, [configKey]: null }));
     } catch { /* silent */ }
     setSaving(null);
+  };
+
+  // Live-probe the stored key. Endpoint always returns 200 with { ok, message }.
+  const handleTest = async (configKey: string) => {
+    setTesting(configKey);
+    setTestResult(prev => ({ ...prev, [configKey]: null }));
+    try {
+      const r = await apiFetch<{ ok: boolean; message: string }>(`/admin/third-party-keys/${configKey}/test`, { method: 'POST' });
+      setTestResult(prev => ({ ...prev, [configKey]: { ok: !!r.ok, message: r.message || (r.ok ? 'OK' : 'Failed') } }));
+    } catch (e: any) {
+      setTestResult(prev => ({ ...prev, [configKey]: { ok: false, message: e?.message || 'Test request failed' } }));
+    }
+    setTesting(null);
   };
 
   return (
@@ -324,7 +343,7 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
         <h2 className="text-sm font-semibold text-rmpg-300">{title}</h2>
       </div>
       <div className="p-4 space-y-4">
-        {keyConfigs.map(({ key, label, desc, formatHint }) => (
+        {keyConfigs.map(({ key, label, desc, formatHint, testable }) => (
           <div key={key} className="flex flex-col gap-2 p-3 bg-surface-sunken border border-rmpg-700 rounded-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -380,6 +399,18 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
                 {saving === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                 Save
               </button>
+              {testable && configured[key] && (
+                <button
+                  type="button"
+                  onClick={() => handleTest(key)}
+                  disabled={testing === key}
+                  title="Send a minimal live request to verify the key works (valid + funded)"
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs text-brand-300 hover:text-brand-200 bg-brand-900/20 hover:bg-brand-900/30 border border-brand-700/30 rounded-sm transition-colors disabled:opacity-40"
+                >
+                  {testing === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                  Test
+                </button>
+              )}
               {configured[key] && (
                 <button
                   type="button"
@@ -391,6 +422,12 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
                 </button>
               )}
             </div>
+            {testResult[key] && (
+              <div className={`flex items-center gap-1.5 text-[10px] font-medium ${testResult[key]!.ok ? 'text-green-400' : 'text-red-400'}`}>
+                {testResult[key]!.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                {testResult[key]!.message}
+              </div>
+            )}
             {errors[key] && <div className="text-[10px] text-red-400 font-medium">⚠ {errors[key]}</div>}
             {formatHint && !errors[key] && <div className="text-[9px] text-rmpg-600 italic">{formatHint}</div>}
             <div className="text-[9px] text-rmpg-700 font-mono">config_key: {key}</div>

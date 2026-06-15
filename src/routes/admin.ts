@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { fireRule, type NotificationRuleRow } from './notificationEngine';
+import { getAnthropicKey, getClaudeModel, callClaude, diagnoseAnthropicError } from '../utils/anthropic';
 
 const admin = new Hono<Env>();
 
@@ -802,6 +803,31 @@ admin.delete('/third-party-keys', async (c) => {
   } catch (err) {
     console.error('[Admin] Third-party key clear failed:', err);
     return c.json({ error: 'Failed to clear key' }, 500);
+  }
+});
+
+// POST /api/admin/third-party-keys/:key/test — live connectivity probe for keys
+// we know how to test. Currently anthropic_api_key (a minimal Claude call): the
+// "Configured" badge only proves a value exists, but Deep Research + OCR silently
+// fall back to free Workers AI when the Claude key is invalid or out of credit —
+// this lets an admin tell those states apart. Always returns 200; read body.ok.
+admin.post('/third-party-keys/:key/test', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const key = c.req.param('key');
+  if (!ALLOWED_THIRD_PARTY_KEYS.has(key)) return c.json({ error: 'Unknown key' }, 400);
+  if (key !== 'anthropic_api_key') {
+    return c.json({ ok: false, testable: false, message: 'No live test available for this key yet' });
+  }
+  const apiKey = await getAnthropicKey(c.env);
+  if (!apiKey) return c.json({ ok: false, testable: true, message: 'Key not configured' });
+  try {
+    const model = await getClaudeModel(c.env);
+    const text = await callClaude(apiKey, { text: 'Reply with the single word: ok', maxTokens: 8, model });
+    return c.json({ ok: true, testable: true, model, message: `OK — ${model} responded`, sample: text.trim().slice(0, 40) });
+  } catch (e: any) {
+    const { status, hint } = diagnoseAnthropicError(String(e?.message || e));
+    return c.json({ ok: false, testable: true, status, message: hint });
   }
 });
 
