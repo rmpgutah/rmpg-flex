@@ -275,7 +275,7 @@ const OFFENSE: Array<[keyword: string, entry: OffenseEntry]> = [
   ['AGGRAVATED KIDNAPPING', { utahStatute: '76-5-302', ncicCode: '1099', severity: 'F1' }],
   ['KIDNAPPING',            { utahStatute: '76-5-301', ncicCode: '1099', severity: 'F2' }],
   ['RAPE',                  { utahStatute: '76-5-402', ncicCode: '1199', severity: 'F1' }],
-  ['SEXUAL ASSAULT',        { utahStatute: '76-5-404', ncicCode: '1199', severity: 'MA' }],
+  ['FORCIBLE SEXUAL ABUSE', { utahStatute: '76-5-404', ncicCode: '1199', severity: 'F2' }],
   ['CHILD ABUSE',           { utahStatute: '76-5-109', ncicCode: '1399', severity: 'F3' }],
   ['DOMESTIC VIOLENCE',     { utahStatute: '77-36-1',  ncicCode: '1313', severity: 'MB' }],
   // Property
@@ -301,7 +301,7 @@ const OFFENSE: Array<[keyword: string, entry: OffenseEntry]> = [
   ['POSSESSION OF CONTROLLED',   { utahStatute: '58-37-8(2)', ncicCode: '3599', severity: 'MA' }],
   ['DRUG PARAPHERNALIA',         { utahStatute: '58-37a-5',  ncicCode: '3550', severity: 'MB' }],
   // Weapons
-  ['FELON IN POSSESSION', { utahStatute: '76-10-503', ncicCode: '5215', severity: 'F2' }],
+  ['FELON IN POSSESSION', { utahStatute: '76-10-503', ncicCode: '5212', severity: 'F2' }],
   ['CONCEALED WEAPON',    { utahStatute: '76-10-504', ncicCode: '5212', severity: 'MB' }],
   ['DISCHARGE OF FIREARM',{ utahStatute: '76-10-508', ncicCode: '5212', severity: 'F3' }],
   // Public order / justice
@@ -314,8 +314,8 @@ const OFFENSE: Array<[keyword: string, entry: OffenseEntry]> = [
   // Traffic
   ['DUI',                 { utahStatute: '41-6a-502', ncicCode: '5404', severity: 'MB' }],
   ['DRIVING UNDER THE INFLUENCE', { utahStatute: '41-6a-502', ncicCode: '5404', severity: 'MB' }],
-  ['RECKLESS DRIVING',    { utahStatute: '41-6a-528', ncicCode: '5401', severity: 'MC' }],
-  ['DRIVING ON SUSPENDED',{ utahStatute: '53-3-227',  ncicCode: '5402', severity: 'MC' }],
+  ['RECKLESS DRIVING',    { utahStatute: '41-6a-528', ncicCode: '5499', severity: 'MC' }],
+  ['DRIVING ON SUSPENDED',{ utahStatute: '53-3-227',  ncicCode: '5499', severity: 'MC' }],
   ['ELUDING',             { utahStatute: '41-6a-210', ncicCode: '5499', severity: 'F3' }],
   ['NO INSURANCE',        { utahStatute: '41-12a-301', ncicCode: '5499', severity: 'INF' }],
 ];
