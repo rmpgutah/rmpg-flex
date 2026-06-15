@@ -132,13 +132,18 @@ extension UIColor {
 
 // ── Reusable styles (apply app-wide for a consistent MDT look) ──
 
+/// Size variants for the shared button styles. `.large` is for primary field
+/// actions that must be hit one-handed; both enforce a 44pt minimum height.
+enum ButtonSize { case regular, large }
+
 /// Primary action: gold fill, black text, pressed-state dim.
 struct GoldButtonStyle: ButtonStyle {
+    var size: ButtonSize = .regular
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .semibold))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 9)
+            .font(size == .large ? Theme.Typography.headline : .system(size: 12, weight: .semibold))
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.vertical, size == .large ? 14 : 9)
             .background(Theme.gold.opacity(configuration.isPressed ? 0.7 : 1))
             .foregroundStyle(.black)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
@@ -147,11 +152,12 @@ struct GoldButtonStyle: ButtonStyle {
 
 /// Secondary action: raised surface, gold text, hairline border.
 struct RaisedButtonStyle: ButtonStyle {
+    var size: ButtonSize = .regular
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 11, weight: .semibold))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
+            .font(size == .large ? Theme.Typography.headline : .system(size: 11, weight: .semibold))
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.vertical, size == .large ? 13 : 8)
             .background(Theme.raised.opacity(configuration.isPressed ? 0.6 : 1))
             .foregroundStyle(Theme.gold)
             .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.border, lineWidth: 1))
@@ -173,6 +179,12 @@ struct ThemeCard: ViewModifier {
 
 extension View {
     func themeCard() -> some View { modifier(ThemeCard()) }
+
+    /// Guarantee at least a 44×44pt hit area (Apple HIG minimum) for compact /
+    /// icon-only controls.
+    func minTouchTarget(_ side: CGFloat = 44) -> some View {
+        frame(minWidth: side, minHeight: side).contentShape(Rectangle())
+    }
 }
 
 /// Status line that colors itself by convention: ✓ gold, ✗ red, ⚠ orange.
