@@ -182,5 +182,12 @@
 .spillman-theme [role="listitem"][aria-selected="true"] * {
   color: #ffffff !important;
 }
-/* keep status badges legible on the blue selection */
-.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-red-9"] { background: #b91c1c !important; }
+/* Colored badges on the selected (steel-blue) row → solid saturated tile + white text.
+   Keeps each badge legible and preserves its color-coded meaning instead of
+   collapsing to white-on-white or white-on-yellow. */
+.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-red-"] { background: #b91c1c !important; color: #ffffff !important; }
+.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-amber-"],
+.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-yellow-"] { background: #b45309 !important; color: #ffffff !important; }
+.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-green-"] { background: #15803d !important; color: #ffffff !important; }
+.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-purple-"] { background: #7e22ce !important; color: #ffffff !important; }
+.spillman-theme [role="listitem"][aria-selected="true"] [class*="bg-rmpg-"] { background: #1e3f6b !important; color: #ffffff !important; }
