@@ -1724,12 +1724,8 @@ body.fx-noise::after {
     z-index: 9990;
     min-width: 220px;
     background: var(--surface-base);
-    border: 1px solid #2e2e2e;
-    border-top-color: #383838;
-    border-left-color: #383838;
-    border-bottom-color: #050505;
-    border-right-color: #050505;
-    box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--spm-border);
+    box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.2);
     padding: 2px 0;
   }
   .menu-dropdown-root {
@@ -1752,7 +1748,7 @@ body.fx-noise::after {
     width: 100%;
     padding: 4px 10px;
     font-size: 11px;
-    color: #d0d0d0;
+    color: var(--spm-text);
     background: transparent;
     border: 1px solid transparent;
     cursor: pointer;
@@ -1761,8 +1757,11 @@ body.fx-noise::after {
     gap: 6px;
     white-space: nowrap;
   }
+  /* White is intentional here: --spm-select is constant steel-blue (#316ac5) in
+     all themes (night/day/legacy), so white-on-select stays legible. Do NOT
+     "tokenize" this #ffffff to a theme text var — it would go dark on the blue. */
   .menu-item:hover {
-    background: var(--surface-raised);
+    background: var(--spm-select);
     color: #ffffff;
   }
   .menu-item:hover .menu-item-shortcut {
@@ -1772,10 +1771,11 @@ body.fx-noise::after {
     color: #ffffff;
   }
   .menu-item.active {
-    color: #ffffff !important;
+    color: var(--spm-accent) !important;
   }
   .menu-item-disabled {
-    color: #505050 !important;
+    color: var(--spm-text-muted) !important;
+    opacity: 0.55;
     cursor: default;
     pointer-events: none;
   }
