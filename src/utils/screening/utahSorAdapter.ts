@@ -8,7 +8,8 @@ import type {
   ScreeningHitRow,
 } from './types';
 import { scoreSanctionMatch } from './scoring';
-import { getDb, query, execute } from '../db';
+import { sorCoverage } from './coverage';
+import { getDb, query, queryFirst, execute } from '../db';
 
 // Column mapping (from migrations/0096_utah_sex_offenders.sql):
 //   id, registry_id, first_name, middle_name, last_name,
@@ -62,6 +63,17 @@ export const utahSorAdapter: ScreeningAdapter = {
       term,
     ).catch(() => []);
     return rows.map(rowToCandidate);
+  },
+
+  async coverage(env: Bindings) {
+    const db = getDb(env);
+    const cnt = await queryFirst<{ n: number }>(
+      db, 'SELECT COUNT(*) n FROM utah_sex_offenders').catch(() => null);
+    const cfg = await queryFirst<{ config_value: string }>(
+      db, "SELECT config_value FROM system_config WHERE config_key = 'sor_feed_url' ORDER BY id DESC LIMIT 1",
+    ).catch(() => null);
+    const configured = !!(cfg?.config_value && /^https:\/\//i.test(cfg.config_value));
+    return sorCoverage(cnt?.n ?? 0, configured);
   },
 
   scoreMatch(person: PersonRow, candidate: NormalizedCandidate): MatchResult {
