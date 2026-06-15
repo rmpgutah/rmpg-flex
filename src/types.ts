@@ -30,6 +30,10 @@ export type Bindings = {
   MAPBOX_ACCESS_TOKEN?: string;
   // WelfareWatchDO namespace — DI-4 automated escalation timer
   WELFARE_WATCH: DurableObjectNamespace;
+  // DeepResearchDO namespace — one instance per research job; alarm-driven
+  // pipeline (expand → search → extract → verify → synthesize) + scheduled
+  // monitors. See src/durable-objects/DeepResearchDO.ts.
+  DEEP_RESEARCH: DurableObjectNamespace;
   // VoiceHubDO namespace — one instance per radio channel / panic
   // incident; the single shared hub that relays + records live voice.
   // See src/durable-objects/VoiceHubDO.ts.
@@ -64,6 +68,13 @@ export type Bindings = {
   // Optional override of the lean plate-only fast-scan workflow slug
   // (default 'rmpg-flex-plate-fast'). See src/utils/roboflowPlateFast.ts.
   ROBOFLOW_FAST_WORKFLOW_ID?: string;
+  // Firecrawl API key — powers the iCrimeWatch SOR scrape (DataDome bypass via
+  // stealth proxy) AND /api/deep-research (Worker-safe v1 REST search+scrape,
+  // src/utils/firecrawl.ts). Set via `wrangler secret put FIRECRAWL_API_KEY`
+  // (local dev: .dev.vars); unset → those routes return 503. Read only from c.env.
+  FIRECRAWL_API_KEY?: string;
+  // Optional override of the Firecrawl base origin (default https://api.firecrawl.dev).
+  FIRECRAWL_API_URL?: string;
   // AES-GCM-256 key (base64, 32 bytes) encrypting the ClearPath client_secret at
   // rest in system_config. Set via `wrangler secret put CPG_ENC_KEY`; unset →
   // ClearPath credential save/use returns a clear 503. See src/utils/cpgCrypto.ts.

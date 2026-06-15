@@ -106,6 +106,7 @@ import clients from './routes/clients';
 import cloudflare from './routes/cloudflare';
 import connections from './routes/connections';
 import crm from './routes/crm';
+import deepResearch from './routes/deepResearch';
 import crisisResponse from './routes/crisisResponse';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
@@ -131,6 +132,7 @@ import court from './routes/court';
 import dlRecords from './routes/dlRecords';
 import microbilt from './routes/microbilt';
 import screening from './routes/screening';
+import sorSources from './routes/sorSources';
 import serve from './routes/serve';
 
 import settings from './routes/settings';
@@ -143,6 +145,8 @@ import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import stubs from './routes/stubs';
+import firecrawlTools from './routes/firecrawlTools';
+import webResearch from './routes/webResearch';
 import pdfEngine from './routes/pdfEngine';
 import dar from './routes/dar';
 import evidence from './routes/evidence';
@@ -338,6 +342,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Crisis response: CIT deployments, mental health holds, mobile crisis team coordination' },
   { prefix: '/api/crm', router: crm, auth: 'required',
     note: 'CRM stub — dashboard, leads, proposals, reports, firecrawl, scraper admin, competitor monitor. All GETs return empty/null-safe shapes; mutations 201-OK as no-ops. Full CRM backend is Phase 2.' },
+  { prefix: '/api/deep-research', router: deepResearch, auth: 'required' },
   { prefix: '/api/dl-records', router: dlRecords, auth: 'required',
     note: 'Local DL store CRUD over dl_records + dl_addresses. /verify + /ocr-scan (external APIs) stay on legacy — proxy routes only the bare path + numeric :id here.' },
   { prefix: '/api/cloudflare', router: cloudflare, auth: 'required',
@@ -370,6 +375,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/recruitment', router: recruitment, auth: 'required',
     note: 'Recruitment & hiring: applicant pipeline, testing, oral boards, onboarding workflow' },
   { prefix: '/api/screening', router: screening, auth: 'required' },
+  { prefix: '/api/sor-sources', router: sorSources, auth: 'required' },
   { prefix: '/api/serve', router: serve, auth: 'required',
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
   // Alias — ServePage calls /api/process-server/* but the handlers live
@@ -551,7 +557,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dar', router: dar, auth: 'required' },
   { prefix: '/api/evidence', router: evidence, auth: 'required' },
   { prefix: '/api/diagnostics', router: stubs, auth: 'public' },
-  { prefix: '/api/firecrawl-tools', router: stubs, auth: 'required' },
+  // Dedicated empty-state router (not `stubs`) so its catch-all `*`
+  // handlers can't leak onto the other prefixes `stubs` is mounted at.
+  // Firecrawl is unprovisioned — every list returns [], mutations return
+  // a graceful not-configured. Swap for real handlers when a key exists.
+  { prefix: '/api/firecrawl-tools', router: firecrawlTools, auth: 'required' },
+  { prefix: '/api/web-research', router: webResearch, auth: 'required' },
   { prefix: '/api/mobile', router: stubs, auth: 'public' },
   { prefix: '/api/pdf-artifacts', router: stubs, auth: 'required' },
   { prefix: '/api/pdf-engine', router: pdfEngine, auth: 'required' },
