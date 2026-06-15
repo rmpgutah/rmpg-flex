@@ -17,6 +17,7 @@ import SightingsMap, { type MapSighting } from '../components/SightingsMap';
 import PlateDossier from '../components/PlateDossier';
 import ClearPathDashcamPanel from '../components/ClearPathDashcamPanel';
 import AlprCaptureGallery from '../components/AlprCaptureGallery';
+import CaptureReviewEditor, { type EditableCapture } from '../components/CaptureReviewEditor';
 
 interface ScreenHit { kind: string; severity: 'critical' | 'warning'; detail: string }
 interface Vehicle { id: number; plate_number: string; make: string; model: string; color: string; year: number }
@@ -44,11 +45,15 @@ interface AlprResult {
   image_url: string; annotated_image_url: string | null;
 }
 
-/** A held (sub-85%) capture awaiting officer review. */
+/** A held (sub-85%) capture awaiting officer review. Carries the AI-observed
+ *  attributes so the editor pre-fills (the /captures?review=1 payload is a full
+ *  shapeCapture row). */
 interface ReviewItem {
   id: number; plate: string | null; state?: string | null; condition?: string | null;
   damage_summary?: string | null; plate_confidence?: number | null;
-  image_url?: string | null; created_at?: string;
+  image_url?: string | null; annotated_image_url?: string | null; created_at?: string;
+  make?: string | null; model?: string | null; color?: string | null;
+  year?: number | null; vehicle_type?: string | null; review_status?: string | null;
 }
 
 /** Tailwind classes for a condition badge (clean→salvage). */
@@ -98,6 +103,7 @@ export default function PlateLogPage() {
   const [reviewQueue, setReviewQueue] = useState<ReviewItem[]>([]);
   const [reviewBusy, setReviewBusy] = useState<number | null>(null);
   const [reviewMsg, setReviewMsg] = useState<{ text: string; kind: 'ok' | 'warn' | 'err' } | null>(null);
+  const [editing, setEditing] = useState<EditableCapture | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SightingSourceKey | 'all'>('all');
   const [dossierPlate, setDossierPlate] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
@@ -371,6 +377,10 @@ export default function PlateLogPage() {
                   {[q.state, q.condition, q.damage_summary].filter(Boolean).join(' · ') || 'no attributes'}
                 </div>
               </div>
+              <button type="button" disabled={reviewBusy === q.id} onClick={() => setEditing(q as EditableCapture)}
+                className="text-[10px] font-bold uppercase px-2 py-1 border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1400] disabled:opacity-40">
+                Edit
+              </button>
               <button type="button" disabled={reviewBusy === q.id} onClick={() => reviewAction(q.id, 'accept')}
                 className="text-[10px] font-bold uppercase px-2 py-1 border border-green-700 text-green-400 hover:bg-green-950 disabled:opacity-40">
                 Confirm
@@ -425,6 +435,13 @@ export default function PlateLogPage() {
       </>)}
 
       {dossierPlate && <PlateDossier plate={dossierPlate} onClose={() => setDossierPlate(null)} />}
+      {editing && (
+        <CaptureReviewEditor
+          capture={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(m) => { setReviewMsg(m); loadReview(); loadRecent(); }}
+        />
+      )}
     </div>
   );
 }
