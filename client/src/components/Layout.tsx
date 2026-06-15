@@ -1162,7 +1162,7 @@ export default function Layout() {
                   const isLight = html.classList.contains('theme-light');
                   const next = isLight ? 'dark' : 'light';
                   writeThemeOverride({ theme: next, active: true });
-                  applyThemePreference(next);
+                  applyThemePreference(next, { persist: false });
                   // Persist via API (best-effort mirror)
                   apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: next }) }).catch(() => {});
                 }}
