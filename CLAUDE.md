@@ -1,8 +1,10 @@
 # RMPG Flex — Claude Code Project Memory
 
 > **This file describes the Cloudflare Workers stack only** (live as of 2026-05-24).
-> The retired Hostinger VPS architecture (`/opt/rmpg-flex`, rsync deploys, systemd,
-> Express, better-sqlite3) is dead. Its source has been moved to
+> The Hostinger VPS architecture (`/opt/rmpg-flex`, rsync deploys, systemd,
+> Express, better-sqlite3) is **dead and the host is decommissioned** (shut down
+> 2026-06-15 — there is no longer a server at `194.113.64.90` to ssh/rsync/systemctl
+> against). Its source has been moved to
 > [`legacy/server-vps/`](legacy/README.md) and is not built, tested, or deployed.
 > See [`LEGACY.md`](LEGACY.md) for a quick live-vs-dead map of every top-level
 > directory before assuming anything about the codebase.
@@ -59,7 +61,7 @@ edge/               Python edge runner for Flex Dashcam AI (independent of Worke
 
 legacy/             ⚠️  RETIRED VPS-era code (read-only, do not import) — see LEGACY.md
 desktop/            Electron wrapper — undecided whether to keep in CF era
-deploy/             VPS deploy scripts — likely dead, retained until confirmed
+deploy/             ⚠️  DEAD VPS deploy scripts (host decommissioned 2026-06-15) — never invoke
 ```
 
 ## Deploy
