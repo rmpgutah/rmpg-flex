@@ -24,8 +24,10 @@ enum Theme {
     static let borderSubtle = Color(hex: 0x1e2b3a)
     static let borderStrong = Color(hex: 0x3a4f66)
     static let borderPanel = Color(hex: 0x243a52)
-    // Severity hues (themed bright; mirror --sev-*)
-    static let red = Color(hex: 0xef4444)
+    // Severity hues (themed bright; mirror --sev-*). `red` is the deeper red-600
+    // (desktop --stat-accent-red) not red-500, so white text on red fills (PANIC,
+    // hazard) clears WCAG AA — critical for glanceability under stress.
+    static let red = Color(hex: 0xdc2626)
     static let orange = Color(hex: 0xf59e0b)
     static let green = Color(hex: 0x22c55e)
     // Spillman group-box / toolbar gradient stops (--spm-group-head)
