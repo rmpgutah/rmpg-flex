@@ -4,9 +4,10 @@
 // redacted MP4 (canvas + ffmpeg.wasm), upload it to /api/redactions with a
 // custody record, and download it.
 import { useMemo, useRef, useState } from 'react';
-import { X, Loader2, ScanSearch, ShieldOff, Download, Square, Trash2 } from 'lucide-react';
+import { X, Loader2, ScanSearch, ShieldOff, Download, Square, Trash2, AlertTriangle } from 'lucide-react';
 import { apiPostForm, authedImageUrl } from '../hooks/useApi';
 import { scanClip } from '../utils/redaction/scanClip';
+import { loadFaceDetector } from '../utils/redaction/detectFaces';
 import { renderRedacted } from '../utils/redaction/renderRedacted';
 import { activeRegionsAt, interpBox, type RedactionRegion, type RedactionKind, type RedactionStyle } from '../utils/redaction/regions';
 
@@ -24,15 +25,25 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
   const [style, setStyle] = useState<RedactionStyle>('blur');
   const [strength, setStrength] = useState(14);
   const [err, setErr] = useState<string | null>(null);
+  // True after a scan if the BlazeFace face model failed to load (CSP block,
+  // offline, CDN down…). Faces were NOT scanned — operators must be told so
+  // they don't trust an under-redacted clip with bystander faces still visible.
+  const [faceModelFailed, setFaceModelFailed] = useState(false);
 
   const natW = nat?.w || 1280, natH = nat?.h || 720;
 
   const runScan = async () => {
     const v = videoRef.current; if (!v) return;
-    setScan({ busy: true, frac: 0 }); setErr(null);
+    setScan({ busy: true, frac: 0 }); setErr(null); setFaceModelFailed(false);
     try {
+      // Probe the face model up front. scanClip() loads it internally too, but
+      // both share the same cached promise (loadFaceDetector memoises), so this
+      // is a free check — null means BlazeFace weights never loaded and the
+      // scan found plates only, with faces silently skipped.
+      const faceModel = await loadFaceDetector();
       const found = await scanClip(v, { intervalSec: 0.25, includePeople: false, onProgress: (f) => setScan({ busy: true, frac: f }) });
       setRegions(found.map((r) => ({ ...r, style, strength })));
+      setFaceModelFailed(!faceModel);
     } catch (e: any) { setErr(e?.message || 'Scan failed'); }
     setScan({ busy: false, frac: 1 });
   };
@@ -55,20 +66,21 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
     const v = videoRef.current; if (!v) return;
     setRender({ busy: true, frac: 0, phase: 'frames' }); setErr(null);
     try {
-      const blob = await renderRedacted(v, regions, {
-        fps: 12, stamp: stampLines,
+      const { blob, ext } = await renderRedacted(v, regions, {
+        stamp: stampLines,
         onProgress: (frac, phase) => setRender({ busy: true, frac, phase }),
       });
+      const fileName = `redacted-${eventId}.${ext}`;
       const kinds = Array.from(new Set(regions.filter((r) => r.enabled).map((r) => (r.kind === 'plate' ? 'license_plate' : r.kind))));
       const fd = new FormData();
-      fd.append('video', blob, `redacted-${eventId}.mp4`);
-      fd.append('metadata', JSON.stringify({ event_id: eventId, kinds, region_count: regions.filter((r) => r.enabled).length, style, regions: regions }));
+      fd.append('video', blob, fileName);
+      fd.append('metadata', JSON.stringify({ event_id: eventId, kinds, region_count: regions.filter((r) => r.enabled).length, style, format: ext, regions: regions }));
       await apiPostForm('/redactions', fd).catch((e) => {
         console.warn('[redaction] custody upload failed:', e);
         setErr('Exported & downloaded OK — but the custody copy upload failed. Re-export to retry.');
       });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = `redacted-${eventId}.mp4`; a.click();
+      const a = document.createElement('a'); a.href = url; a.download = fileName; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
     } catch (e: any) { setErr(e?.message || 'Export failed'); }
     setRender(null);
@@ -112,6 +124,13 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
           <button onClick={runScan} disabled={scan.busy} className="w-full flex items-center justify-center gap-1.5 px-2 py-2 border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1400] disabled:opacity-60">
             {scan.busy ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Scanning… {Math.round(scan.frac * 100)}%</> : <><ScanSearch className="w-3.5 h-3.5" /> Auto-detect plates + faces</>}
           </button>
+
+          {faceModelFailed && (
+            <div role="alert" className="flex items-start gap-1.5 px-2 py-1.5 border border-amber-600/60 bg-amber-950/30 text-[10px] text-amber-300 leading-snug">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
+              <span>Face detection unavailable — the face model failed to load, so <strong>only plates were scanned</strong>. Review the clip and add manual boxes over any bystander faces before exporting.</span>
+            </div>
+          )}
 
           {(['plate', 'face', 'person', 'manual'] as RedactionKind[]).map((k) => counts[k] ? (
             <label key={k} className="flex items-center justify-between gap-2">
