@@ -42,6 +42,7 @@ import { usePropertiesTab, PropertiesTabList, PropertiesTabDetail, mapDbProperty
 import { useEvidenceTab, EvidenceTabList, EvidenceTabDetail } from './records/EvidenceTab';
 import { useBusinessTab, BusinessTabList, BusinessTabDetail } from './records/BusinessTab';
 import SpillmanRecordTabs from './records/spillman/SpillmanRecordTabs';
+import SpillmanMenuBar from './records/spillman/SpillmanMenuBar';
 
 // ============================================================
 // Constants
@@ -437,6 +438,20 @@ export default function RecordsPage() {
           </>
         )}
       </PanelTitleBar>
+
+      <SpillmanMenuBar
+        onNew={() => {
+          if (activeTab === 'persons') setNewPersonTrigger(t => t + 1);
+          else if (activeTab === 'vehicles') setNewVehicleTrigger(t => t + 1);
+          else if (activeTab === 'properties') setNewPropertyTrigger(t => t + 1);
+          else if (activeTab === 'businesses') businessState.setShowFormModal(true);
+          else if (activeTab === 'evidence') setNewEvidenceTrigger(t => t + 1);
+        }}
+        onFind={() => {
+          const el = document.querySelector<HTMLInputElement>('.spillman-theme input[type="search"], .spillman-theme input[placeholder]');
+          el?.focus();
+        }}
+      />
 
       {/* Tab Row — Spillman silver record-type tabs + archive toggle */}
       <div className="flex items-stretch border-b border-rmpg-600">
