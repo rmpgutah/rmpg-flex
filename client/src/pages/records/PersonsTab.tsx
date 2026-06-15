@@ -257,8 +257,8 @@ export interface PersonsTabProps {
   setPersons: React.Dispatch<React.SetStateAction<Person[]>>;
   loadingPersons: boolean;
   setLoadingPersons: React.Dispatch<React.SetStateAction<boolean>>;
-  deleteTarget: { type: 'person' | 'vehicle' | 'property' | 'evidence'; id: string; label: string } | null;
-  setDeleteTarget: React.Dispatch<React.SetStateAction<{ type: 'person' | 'vehicle' | 'property' | 'evidence'; id: string; label: string } | null>>;
+  deleteTarget: { type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence'; id: string; label: string } | null;
+  setDeleteTarget: React.Dispatch<React.SetStateAction<{ type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence'; id: string; label: string } | null>>;
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
   handleArchiveRecord: (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => Promise<void>;

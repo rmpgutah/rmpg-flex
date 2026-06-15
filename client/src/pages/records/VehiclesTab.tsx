@@ -168,7 +168,7 @@ export interface VehiclesTabProps {
   setVehicles: React.Dispatch<React.SetStateAction<Vehicle[]>>;
   loadingVehicles: boolean;
   setLoadingVehicles: React.Dispatch<React.SetStateAction<boolean>>;
-  setDeleteTarget: React.Dispatch<React.SetStateAction<{ type: 'person' | 'vehicle' | 'property' | 'evidence'; id: string; label: string } | null>>;
+  setDeleteTarget: React.Dispatch<React.SetStateAction<{ type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence'; id: string; label: string } | null>>;
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
   handleArchiveRecord: (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => Promise<void>;

@@ -35,9 +35,6 @@ async function ensureSentinelClient(db: D1Database, name: string, notes: string)
 const ensureScanSentinelClient = (db: D1Database) =>
   ensureSentinelClient(db, 'Field Intelligence — Scanned',
     'Auto-created for scan/field-imported property rows (DL scanner). Do not delete — used as the default client_id for those rows.');
-const ensureBusinessSentinelClient = (db: D1Database) =>
-  ensureSentinelClient(db, 'Business Records — Unaffiliated',
-    'Auto-created for business/intel records with no parent client. Do not delete — used as the default client_id for those rows.');
 
 // GET /records/properties
 records.get('/properties', async (c) => {
@@ -1089,52 +1086,42 @@ records.get('/vehicles/alerts/expired-registration', async (c) => {
   } catch (err) { return c.json({ expired: false }); }
 });
 
-// ── Businesses (stored in the properties table, filtered by business_type) ──
+// ── Businesses (canonical `businesses` table) ──
+// Unified onto the dedicated businesses table (migration 0125) so the Records
+// Business tab shares one store with call-linking + business photos/visits/
+// vehicles (which already key off `businesses`). `properties` is real-estate
+// only. Columns latitude/longitude/annual_revenue/status/flags added in 0125.
 
-// GET /records/businesses — list businesses (properties with business_type set).
+const BUSINESS_WRITABLE_COLUMNS = new Set([
+  'name', 'dba_name', 'business_type', 'ein', 'license_number',
+  'address', 'city', 'state', 'zip', 'latitude', 'longitude',
+  'phone', 'email', 'website', 'owner_name', 'owner_phone',
+  'contact_name', 'contact_phone', 'contact_email',
+  'industry', 'employee_count', 'annual_revenue', 'status', 'flags', 'notes',
+]);
+
+// GET /records/businesses — list businesses.
 records.get('/businesses', async (c) => {
   try {
     const db = getDb(c.env);
-    const q = c.req.query('archived');
-    const archived = q === 'true';
-    const rows = await query<Record<string, unknown>>(db, `SELECT * FROM properties WHERE business_type IS NOT NULL AND business_type != ''${archived ? " AND archived_at IS NOT NULL" : " AND archived_at IS NULL"} ORDER BY name LIMIT 500`);
+    const archived = c.req.query('archived') === 'true';
+    const rows = await query<Record<string, unknown>>(db, `SELECT * FROM businesses WHERE ${archived ? 'archived_at IS NOT NULL' : 'archived_at IS NULL'} ORDER BY name LIMIT 500`);
     return c.json(rows);
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
-// POST /records/businesses — create a business (property with business_type).
+// POST /records/businesses — create a business.
 records.post('/businesses', async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.name || !body.business_type) return c.json({ error: 'name and business_type required' }, 400);
-    // properties.client_id is NOT NULL + FK → clients(id); a business
-    // created without a client has no natural parent, so fall back to the
-    // "Unaffiliated Business" sentinel instead of null (which 500'd with a
-    // NOT NULL constraint failure).
-    const sentinelClientId = await ensureBusinessSentinelClient(db);
-    // Persist the full business profile (migration 0061 added these columns).
-    // Previously only name/address/type/phone/email/notes were written, so
-    // EIN/DBA/owner/contact/industry/revenue/status were silently dropped.
-    const result = await execute(db,
-      `INSERT INTO properties (
-         client_id, name, address, city, state, zip, business_type,
-         latitude, longitude, phone, email, notes,
-         dba_name, ein, license_number, website,
-         owner_name, owner_phone, contact_name, contact_phone, contact_email,
-         industry, employee_count, annual_revenue, status, is_active, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      // client_id is NOT NULL + FK → clients(id); a business with no parent
-      // client gets the unaffiliated-business sentinel instead of null (which
-      // 500'd with a NOT NULL constraint failure — same bug class as DL-scan).
-      body.client_id || (await ensureBusinessSentinelClient(db)),
-      body.name, body.address || '', body.city || null, body.state || null, body.zip || null,
-      body.business_type, body.latitude || null, body.longitude || null, body.phone || null, body.email || null, body.notes || null,
-      body.dba_name || null, body.ein || null, body.license_number || null, body.website || null,
-      body.owner_name || null, body.owner_phone || null, body.contact_name || null, body.contact_phone || null, body.contact_email || null,
-      body.industry || null, body.employee_count || null, body.annual_revenue || null, body.status || 'active',
-      body.is_active ?? 1);
-    const created = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', Number(result.meta.last_row_id));
+    const cols: string[] = ['created_at']; const placeholders: string[] = ["datetime('now')"]; const vals: unknown[] = [];
+    for (const [key, val] of Object.entries(body)) {
+      if (BUSINESS_WRITABLE_COLUMNS.has(key)) { cols.push(key); placeholders.push('?'); vals.push(val ?? null); }
+    }
+    const result = await execute(db, `INSERT INTO businesses (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`, ...vals);
+    const created = await queryFirst(db, 'SELECT * FROM businesses WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(created, 201);
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
@@ -1144,20 +1131,50 @@ records.put('/businesses/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM properties WHERE id = ? AND business_type IS NOT NULL AND business_type != ?', id, '');
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM businesses WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Business not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
-    const writable = new Set([
-      'name', 'address', 'business_type', 'latitude', 'longitude', 'phone', 'email', 'notes', 'client_id', 'city', 'state', 'zip',
-      'dba_name', 'ein', 'license_number', 'website', 'owner_name', 'owner_phone',
-      'contact_name', 'contact_phone', 'contact_email', 'industry', 'employee_count', 'annual_revenue', 'status',
-    ]);
     const cols: string[] = []; const params: unknown[] = [];
-    for (const [key, val] of Object.entries(body)) { if (writable.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); } }
+    for (const [key, val] of Object.entries(body)) {
+      if (BUSINESS_WRITABLE_COLUMNS.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); }
+    }
     if (cols.length === 0) return c.json({ message: 'No changes' });
-    await execute(db, `UPDATE properties SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
-    const updated = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', id);
+    cols.push("updated_at = datetime('now')");
+    await execute(db, `UPDATE businesses SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
+    const updated = await queryFirst(db, 'SELECT * FROM businesses WHERE id = ?', id);
     return c.json(updated);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// POST /records/businesses/:id/archive — soft-delete (client expects this route).
+records.post('/businesses/:id/archive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    await execute(db, "UPDATE businesses SET archived_at = datetime('now') WHERE id = ?", c.req.param('id'));
+    return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// POST /records/businesses/:id/unarchive — restore.
+records.post('/businesses/:id/unarchive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    await execute(db, 'UPDATE businesses SET archived_at = NULL WHERE id = ?', c.req.param('id'));
+    return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// DELETE /records/businesses/:id — hard-delete + clean its junction rows.
+records.delete('/businesses/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    await execute(db, 'DELETE FROM business_vehicles WHERE business_id = ?', id);
+    await execute(db, 'DELETE FROM business_visits WHERE business_id = ?', id);
+    await execute(db, 'DELETE FROM business_photos WHERE business_id = ?', id);
+    await execute(db, 'DELETE FROM call_businesses WHERE business_id = ?', id);
+    await execute(db, 'DELETE FROM businesses WHERE id = ?', id);
+    return c.json({ success: true });
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
