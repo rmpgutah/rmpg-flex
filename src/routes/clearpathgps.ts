@@ -289,6 +289,24 @@ cpg.delete('/mappings/:id', adminOnly, async (c) => {
   return c.json({ success: true });
 });
 
+// Backfill unit_id onto a device's existing NULL-unit dashcam_events after the
+// admin maps it to a unit. Idempotent, bounded to the one device.
+cpg.post('/mappings/:id/relink', adminOnly, async (c) => {
+  const db = getDb(c.env);
+  const m = await queryFirst<{ cpg_device_id: string; unit_id: number | null }>(
+    db, 'SELECT cpg_device_id, unit_id FROM cpg_device_mappings WHERE id = ?', c.req.param('id'));
+  if (!m) return c.json({ error: 'Mapping not found' }, 404);
+  if (m.unit_id == null) return c.json({ error: 'Map this device to a unit first' }, 400);
+  let events = 0;
+  try {
+    const r = await execute(db,
+      `UPDATE dashcam_events SET unit_id = ? WHERE cpg_device_id = ? AND unit_id IS NULL`,
+      m.unit_id, m.cpg_device_id);
+    events = r.meta.changes ?? 0;
+  } catch { /* table may be absent on a fresh env */ }
+  return c.json({ success: true, relinked_events: events });
+});
+
 // ── Media sync (Phase B) + dashcam events ────────────────────
 
 cpg.get('/media-status', async (c) => {

@@ -48,6 +48,7 @@ import {
   ALPR_ACCEPT_CONFIDENCE,
   type AlprVehicle,
 } from '../roboflowAlpr';
+import { trustScore } from '../plateTrust';
 
 type DB = D1Database;
 
@@ -114,6 +115,17 @@ async function upsertVehicleByPlate(db: DB, v: AlprVehicle): Promise<number | nu
   } catch (err) { console.error('[flexcam-alpr] vehicle upsert failed:', (err as Error)?.message); return null; }
 }
 
+/** Derive honest trust for one footage read. A footage chunk yields a single
+ *  Roboflow read per vehicle, so trustScore hard-caps it below the accept gate
+ *  (no corroboration). Never gate/store the raw model self-report. */
+export function deriveFootageTrust(
+  plate: string | null,
+  modelPct: number | null | undefined,
+): { trustScore: number; accepted: boolean } {
+  const t = trustScore({ reads: plate ? [plate] : [], modelPct: modelPct ?? undefined });
+  return { trustScore: t.trustScore, accepted: !!plate && t.trustScore >= ALPR_ACCEPT_CONFIDENCE }; // 0.85 gate baked in
+}
+
 /** Persist one detected vehicle the same way the event path does: screen
  *  (always — officer safety), upsert the master record on an accepted (≥0.85)
  *  read, and always log a sighting. Best-effort per step. */
@@ -122,7 +134,7 @@ async function persistVehicle(
 ): Promise<void> {
   const plate = v.plate;
   if (!plate) return;
-  const accepted = (v.confidence ?? 0) >= ALPR_ACCEPT_CONFIDENCE;
+  const { trustScore: derivedTrust, accepted } = deriveFootageTrust(plate, v.confidence);
 
   // Upsert the authoritative record only on an accepted read (same gate as the
   // on-scene scanner); a held read still logs a sighting + screens.
@@ -137,7 +149,7 @@ async function persistVehicle(
        VALUES (?, ?, ?, ?, NULL, NULL, ?, 0, ?)`,
       plate, v.state, vehicleId, locationText,
       `FlexCam footage ${deviceId ?? ''}`.trim() + (accepted ? '' : ' (unconfirmed <0.85)'),
-      v.confidence);
+      derivedTrust);
   } catch (err) { console.error('[flexcam-alpr] sighting insert failed:', (err as Error)?.message); }
 
   // Always screen (officer safety) — critical hits raise a notification.

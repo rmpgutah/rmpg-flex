@@ -43,6 +43,9 @@ interface AlprResult {
   condition?: string | null; damage_observed?: boolean | null; damage_summary?: string | null;
   damage_areas?: DamageArea[];
   image_url: string; annotated_image_url: string | null;
+  /** Non-fatal warnings from image upload / field-photo attach (Worker returns these
+   *  when a secondary write failed but the capture itself succeeded). */
+  warnings?: string[];
 }
 
 /** A held (sub-85%) capture awaiting officer review. Carries the AI-observed
@@ -54,6 +57,18 @@ interface ReviewItem {
   image_url?: string | null; annotated_image_url?: string | null; created_at?: string;
   make?: string | null; model?: string | null; color?: string | null;
   year?: number | null; vehicle_type?: string | null; review_status?: string | null;
+}
+
+const REVIEW_STATUS_LABELS: Record<string, string> = {
+  confirmed: 'Confirmed',
+  confirmed_unlinked: 'Confirmed (record not linked)',
+  needs_review: 'Needs review',
+  no_plate: 'No plate',
+  rejected: 'Rejected',
+};
+
+function reviewStatusLabel(status: string): string {
+  return REVIEW_STATUS_LABELS[status] ?? status;
 }
 
 /** Tailwind classes for a condition badge (clean→salvage). */
@@ -134,16 +149,26 @@ export default function PlateLogPage() {
   const reviewAction = async (id: number, action: 'accept' | 'reject') => {
     setReviewBusy(id);
     try {
-      const res = await apiFetch<{ hits?: Array<{ severity: string; detail: string }> }>(
+      const res = await apiFetch<{ hits?: Array<{ severity: string; detail: string }>; warning?: string }>(
         `/alpr/capture/${id}/${action}`, { method: 'POST', body: JSON.stringify({}) });
       if (action === 'accept') {
         // Confirming re-screens the plate — a STOLEN/watchlist hit MUST be shown.
         const crit = (res?.hits || []).filter((h) => h.severity === 'critical');
-        setReviewMsg(crit.length
-          ? { text: `Confirmed — HIT: ${crit.map((h) => h.detail).join('; ')}`, kind: 'warn' }
-          : { text: 'Confirmed.', kind: 'ok' });
+        if (crit.length) {
+          setReviewMsg({ text: `Confirmed — HIT: ${crit.map((h) => h.detail).join('; ')}`, kind: 'warn' });
+        } else if (res?.warning) {
+          // Authoritative DB write failed (e.g. vehicle record upsert) but the
+          // capture status was updated — surface so the officer can follow up.
+          setReviewMsg({ text: `Confirmed (with warning): ${res.warning}`, kind: 'warn' });
+        } else {
+          setReviewMsg({ text: 'Confirmed.', kind: 'ok' });
+        }
       } else {
-        setReviewMsg({ text: 'Rejected.', kind: 'ok' });
+        if (res?.warning) {
+          setReviewMsg({ text: `Rejected (with warning): ${res.warning}`, kind: 'warn' });
+        } else {
+          setReviewMsg({ text: 'Rejected.', kind: 'ok' });
+        }
       }
       loadReview(); loadRecent();
     } catch (e: any) {
@@ -160,13 +185,19 @@ export default function PlateLogPage() {
     if (!ids.length || bulkBusy) return;
     setBulkBusy(true);
     try {
-      const res = await apiFetch<{ results?: Array<{ ok: boolean }>; hits?: Array<{ severity: string; detail: string; plate: string }> }>(
+      const res = await apiFetch<{ results?: Array<{ ok: boolean; status?: string }>; hits?: Array<{ severity: string; detail: string; plate: string }> }>(
         '/alpr/captures/bulk', { method: 'POST', body: JSON.stringify({ ids, action }) });
-      const ok = (res?.results || []).filter((r) => r.ok).length;
+      const results = res?.results || [];
+      const ok = results.filter((r) => r.ok).length;
+      const notLinked = results.filter((r) => !r.ok || r.status === 'confirmed_unlinked').length;
       const crit = (res?.hits || []).filter((h) => h.severity === 'critical');
+      const baseText = `${action === 'confirm' ? 'Confirmed' : 'Rejected'} ${ok} capture${ok === 1 ? '' : 's'}`;
+      const linkSuffix = action === 'confirm' && notLinked > 0 ? ` (${notLinked} not linked — review & retry)` : '';
       setReviewMsg(crit.length
-        ? { text: `${action === 'confirm' ? 'Confirmed' : 'Rejected'} ${ok} — HITS: ${crit.map((h) => `${h.plate} ${h.detail}`).join('; ')}`, kind: 'warn' }
-        : { text: `${action === 'confirm' ? 'Confirmed' : 'Rejected'} ${ok} capture${ok === 1 ? '' : 's'}.`, kind: 'ok' });
+        ? { text: `${action === 'confirm' ? 'Confirmed' : 'Rejected'} ${ok} — HITS: ${crit.map((h) => `${h.plate} ${h.detail}`).join('; ')}${linkSuffix}`, kind: 'warn' }
+        : notLinked > 0
+          ? { text: `${baseText}${linkSuffix}`, kind: 'warn' }
+          : { text: `${baseText}.`, kind: 'ok' });
       setSelected(new Set());
       loadReview(); loadRecent();
     } catch (e: any) {
@@ -222,6 +253,11 @@ export default function PlateLogPage() {
       setScan(r); setResult(null);
       if (r.capture.plate) setPlate(r.capture.plate);
       loadRecent();
+      // Surface non-fatal warnings (e.g. image upload / field-photo attach failed
+      // but the capture itself was recorded successfully).
+      if (r.warnings?.length) {
+        setReviewMsg({ text: `Capture saved — warning: ${r.warnings.join(' · ')}`, kind: 'warn' });
+      }
       // Background enrichment fills make/model/color a moment later — re-fetch
       // the capture up to twice. Bounded; never loops forever.
       if (r.enrich_status === 'pending') {
@@ -325,7 +361,7 @@ export default function PlateLogPage() {
                   </div>
                 )}
                 {scan.capture.reviewStatus && scan.accepted !== false && (
-                  <div className="text-[10px] text-[#888888] mt-1">Review: {scan.capture.reviewStatus}</div>
+                  <div className="text-[10px] text-[#888888] mt-1">Review: {reviewStatusLabel(scan.capture.reviewStatus)}</div>
                 )}
                 {!scan.hits.length && (
                   <div className="text-[11px] text-[#888888] mt-1">No hits — sighting logged.</div>

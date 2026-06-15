@@ -48,6 +48,8 @@ interface AlprScanResult {
   condition?: string | null; damage_observed?: boolean | null; damage_summary?: string | null;
   damage_areas?: DamageArea[];
   image_url: string | null; annotated_image_url: string | null;
+  /** Non-fatal server-side warnings (e.g. field-photo attach failed, vehicle record upsert failed). */
+  warnings?: string[];
 }
 
 /** Tailwind classes for a condition badge (clean→salvage). Pure for testing. */
@@ -354,6 +356,10 @@ export default function FieldCameraPage() {
             : 'ALPR: no readable plate — photo saved to call',
           rHits.some((h) => h.severity === 'critical') ? 'error' : 'success',
         );
+        // Surface any non-fatal server warnings (e.g. photo not attached to call gallery).
+        if (r.warnings?.length) {
+          addToast(r.warnings.join(' · '), 'warning');
+        }
         if (r.enrich_status === 'pending') void pollEnrichment(r.id);
         // keep the preview + result on screen so the officer can review hits
       } else {

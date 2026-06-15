@@ -36,6 +36,7 @@ import { readPlateCloudflare, type CloudflarePlateResult } from '../utils/cloudf
 import { trustScore } from '../utils/plateTrust';
 import { verifyEdgeSignature } from '../utils/edgeHmac';
 import { normalizeCaptureEdit, describeEdit } from '../utils/alprEdit';
+import { confirmReviewStatus, confirmWarning } from '../utils/alprReview';
 
 const alpr = new Hono<Env>();
 
@@ -533,6 +534,8 @@ alpr.post('/capture', operational, async (c) => {
     } catch (err: any) { console.error('[alpr] field_photos insert failed:', err?.message); }
   }
 
+  const fieldPhotoLinked = !attachToCall || fieldPhotoId != null;
+
   // ── Read the plate on Cloudflare Workers AI (free — no Roboflow credits) ──
   // One vision call returns plate + state + make/model/color + confidence, so the
   // old two-stage fast→enrich collapses into a single read. The photo is already
@@ -589,6 +592,12 @@ alpr.post('/capture', operational, async (c) => {
   return c.json({
     success: finalized,
     status: fin.status,
+    image_stored: imageStored,
+    field_photo_linked: fieldPhotoLinked,
+    warnings: [
+      ...(imageStored ? [] : ['Image upload failed — capture saved without a stored photo.']),
+      ...(fieldPhotoLinked ? [] : ['Photo could not be attached to the call gallery.']),
+    ],
     id: captureRowId,
     call_id: callId,
     incident_id: incidentId,
@@ -746,6 +755,7 @@ alpr.post('/capture/:id/accept', operational, async (c) => {
   // original read's attributes belonged to the wrong plate — drop them; the new
   // plate's attributes will be re-enriched on its next clean scan.
   let hits: Array<{ kind: string; severity: string; detail: string }> = [];
+  let persisted = true;
   if (plate) {
     try {
       const screen = await screenVehicle(db, { plate });
@@ -780,15 +790,26 @@ alpr.post('/capture/:id/accept', operational, async (c) => {
         corrected ? null : (row.damage_observed ?? null),
         corrected ? null : (row.damage_summary ?? null),
         corrected ? null : (row.plate_confidence ?? null));
-    } catch (err: any) { console.error('[alpr] accept relink failed:', err?.message); }
+    } catch (err: any) {
+      console.error('[alpr] accept relink failed:', err?.message);
+      persisted = false;
+    }
   }
 
   await execute(db,
-    `UPDATE alpr_captures SET accepted=1, review_status='confirmed', plate=COALESCE(?, plate),
+    `UPDATE alpr_captures SET accepted=1, review_status=?, plate=COALESCE(?, plate),
        reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
-    corrected, userId, id);
+    confirmReviewStatus(persisted), corrected, userId, id);
+  if (!persisted) {
+    try {
+      await execute(db,
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+         VALUES (?, 'ALPR_ACCEPT_UNLINKED', 'alpr_capture', ?, 'authoritative write failed', datetime('now'))`,
+        userId, id);
+    } catch { /* best-effort */ }
+  }
   const updated = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
-  return c.json({ success: true, hits, ...shapeCapture(updated) });
+  return c.json({ success: true, hits, ...(persisted ? {} : { warning: confirmWarning(false) }), ...shapeCapture(updated) });
 });
 
 // ── Review queue: reject a held capture (kept for audit) ─────
@@ -832,7 +853,7 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
   if (errors.length) return c.json({ error: errors[0].message, errors }, 400);
 
   // Re-editing an already-decided row is an audited "change function".
-  const wasDecided = row.review_status === 'confirmed' || row.review_status === 'rejected';
+  const wasDecided = row.review_status === 'confirmed' || row.review_status === 'confirmed_unlinked' || row.review_status === 'rejected';
   const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
   if (wasDecided && !reason) {
     return c.json({ error: 'A reason is required to change an already-reviewed capture.' }, 400);
@@ -850,6 +871,7 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
   const plate: string | null = (values.plate ?? row.plate) ?? null;
 
   let hits: Array<{ kind: string; severity: string; detail: string }> = [];
+  let verifyWarning: string | undefined;
 
   if (action === 'reject') {
     await execute(db,
@@ -860,6 +882,7 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
     // (edited) attributes. A human-supplied attribute is trusted; on a plate
     // change with NO replacement attribute we drop the stale OCR value (it
     // belonged to the misread plate) — mirrors the original /accept rule.
+    let persisted = true;
     try {
       const keep = (col: string, key: keyof typeof values) =>
         key in values ? (values as any)[key] : (plateChanged ? null : (row[col] ?? null));
@@ -877,10 +900,14 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
         aftermarket: null, confidences: {},
       };
       hits = await persistConfirmedVehicle(db, row, v, userId, 'ALPR (verified)');
-    } catch (err: any) { console.error('[alpr] verify relink failed:', err?.message); }
+    } catch (err: any) {
+      console.error('[alpr] verify relink failed:', err?.message);
+      persisted = false;
+    }
     await execute(db,
-      `UPDATE alpr_captures SET accepted=1, review_status='confirmed', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
-      userId, id);
+      `UPDATE alpr_captures SET accepted=1, review_status=?, reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+      confirmReviewStatus(persisted), userId, id);
+    if (!persisted) verifyWarning = confirmWarning(false);
   } else if (action === 'save') {
     await execute(db, `UPDATE alpr_captures SET reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`, userId, id);
   }
@@ -897,7 +924,7 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
   } catch (auditErr: any) { console.warn('[alpr] audit_log insert failed:', auditErr?.message); }
 
   const updated = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
-  return c.json({ success: true, hits, ...shapeCapture(updated) });
+  return c.json({ success: true, hits, ...(verifyWarning ? { warning: verifyWarning } : {}), ...shapeCapture(updated) });
 });
 
 // ── Bulk confirm/reject the review queue ─────────────────────
@@ -936,12 +963,19 @@ alpr.post('/captures/bulk', operational, async (c) => {
           condition: row.condition ?? null, damageObserved: null,
           damageSummary: row.damage_summary ?? null, damageAreas: [], aftermarket: null, confidences: {},
         };
-        const hits = await persistConfirmedVehicle(db, row, v, userId, 'ALPR (bulk verified)');
+        let persisted = true;
+        let hits: Array<{ kind: string; severity: string; detail: string }> = [];
+        try {
+          hits = await persistConfirmedVehicle(db, row, v, userId, 'ALPR (bulk verified)');
+        } catch (persistErr: any) {
+          console.error('[alpr] bulk persist failed:', id, persistErr?.message);
+          persisted = false;
+        }
         for (const h of hits.filter((x) => x.severity === 'critical')) allHits.push({ ...h, plate: row.plate });
         await execute(db,
-          `UPDATE alpr_captures SET accepted=1, review_status='confirmed', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
-          userId, id);
-        results.push({ id, ok: true, status: 'confirmed' });
+          `UPDATE alpr_captures SET accepted=1, review_status=?, reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+          confirmReviewStatus(persisted), userId, id);
+        results.push({ id, ok: persisted, status: confirmReviewStatus(persisted) });
       } else {
         results.push({ id, ok: false, status: 'no_plate' });
       }
@@ -1088,7 +1122,7 @@ alpr.post('/edge', async (c) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
       canonical, rec.state ?? null, screen.vehicleId,
       rec.location_text ?? null, num(rec.lat), num(rec.lng), note,
-      typeof rec.plate_confidence === 'number' ? rec.plate_confidence : null);
+      trust.trustScore);
     sightingId = Number(sres.meta.last_row_id);
   } catch (err: any) { console.error('[alpr] edge sighting failed:', err?.message); }
 
