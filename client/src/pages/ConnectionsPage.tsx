@@ -461,7 +461,7 @@ export default function ConnectionsPage() {
           <input id="ff-connectionspage-0"
             type="text"
             placeholder="Search for a person, vehicle, case, incident..."
-            className="flex-1 bg-surface-raised border border-[#222222] px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:border-[#d4a017] focus:outline-none"
+            className="flex-1 bg-surface-raised border border-rmpg-700 px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:border-[#d4a017] focus:outline-none"
             style={{ borderRadius: 2 }}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
@@ -473,7 +473,7 @@ export default function ConnectionsPage() {
             type="button"
             disabled={!seed || nodes.length === 0}
             onClick={() => setSaveModalOpen(true)}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-[#222222] text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderRadius: 2 }}
           >
             SAVE INVESTIGATION
@@ -482,7 +482,7 @@ export default function ConnectionsPage() {
             type="button"
             disabled={!seed || nodes.length === 0}
             onClick={handleExportPng}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-[#222222] text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderRadius: 2 }}
           >
             EXPORT PNG
@@ -491,7 +491,7 @@ export default function ConnectionsPage() {
             type="button"
             disabled={!seed || nodes.length === 0}
             onClick={handleExportPdf}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-[#222222] text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderRadius: 2 }}
           >
             EXPORT PDF
@@ -500,7 +500,7 @@ export default function ConnectionsPage() {
             <button
               type="button"
               onClick={openLoadDropdown}
-              className="px-3 py-1.5 text-xs bg-surface-raised border border-[#222222] text-gray-300 hover:text-[#d4a017]"
+              className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-gray-300 hover:text-[#d4a017]"
               style={{ borderRadius: 2 }}
             >
               LOAD INVESTIGATION
@@ -509,7 +509,7 @@ export default function ConnectionsPage() {
               <div
                 role="dialog"
                 aria-label="Load investigation"
-                className="absolute right-0 z-40 mt-1 w-80 bg-surface-raised border border-[#222222]"
+                className="absolute right-0 z-40 mt-1 w-80 bg-surface-raised border border-rmpg-700"
                 style={{ borderRadius: 2 }}
               >
                 {loadingInvestigations && <div className="p-3 text-xs text-gray-400">Loading...</div>}
@@ -522,7 +522,7 @@ export default function ConnectionsPage() {
                       <li
                         key={inv.id}
                         onClick={() => openInvestigation(inv.id)}
-                        className="px-3 py-2 text-sm text-gray-200 cursor-pointer hover:bg-surface-sunken border-b border-[#1a1a1a]"
+                        className="px-3 py-2 text-sm text-gray-200 cursor-pointer hover:bg-surface-sunken border-b border-border-subtle"
                       >
                         <div className="font-semibold">{inv.name}</div>
                         {inv.description && <div className="text-xs text-gray-500 mt-0.5">{inv.description}</div>}
@@ -530,7 +530,7 @@ export default function ConnectionsPage() {
                     ))}
                   </ul>
                 )}
-                <div className="p-2 border-t border-[#222222] text-right">
+                <div className="p-2 border-t border-rmpg-700 text-right">
                   <button type="button" onClick={() => setLoadDropdownOpen(false)} className="text-xs text-gray-400 hover:text-[#d4a017]">Close</button>
                 </div>
               </div>
@@ -544,7 +544,7 @@ export default function ConnectionsPage() {
         {dropdownOpen && results.length > 0 && (
           <ul
             role="listbox"
-            className="absolute z-10 mt-1 w-full bg-surface-raised border border-[#222222] max-h-80 overflow-y-auto"
+            className="absolute z-10 mt-1 w-full bg-surface-raised border border-rmpg-700 max-h-80 overflow-y-auto"
             style={{ borderRadius: 2 }}
           >
             {results.map(r => (
@@ -553,7 +553,7 @@ export default function ConnectionsPage() {
                 role="option"
                 aria-selected={false}
                 onClick={() => pickSeed(r)}
-                className="px-3 py-2 text-sm text-gray-200 cursor-pointer hover:bg-surface-sunken border-b border-[#1a1a1a] last:border-b-0"
+                className="px-3 py-2 text-sm text-gray-200 cursor-pointer hover:bg-surface-sunken border-b border-border-subtle last:border-b-0"
               >
                 <span className="text-[#d4a017] text-xs uppercase mr-2">{r.type}</span>
                 {r.label}
@@ -572,7 +572,7 @@ export default function ConnectionsPage() {
           <span className="text-[#d4a017] text-xs uppercase font-semibold">{seed.type}</span>
           <span className="font-semibold">{seed.label}</span>
           <span className="text-gray-500 text-xs ml-auto">#{seed.id}</span>
-          <div className="flex items-center gap-2 border-l border-[#222222] pl-3">
+          <div className="flex items-center gap-2 border-l border-rmpg-700 pl-3">
             <label htmlFor="depth-slider" className="uppercase font-semibold text-xs text-gray-400">Depth</label>
             <input
               id="depth-slider"
@@ -591,7 +591,7 @@ export default function ConnectionsPage() {
             type="button"
             onClick={() => setTimelineOpen(o => !o)}
             disabled={nodes.length === 0}
-            style={{ background: timelineOpen ? '#e879f9' : '#0b0b0b', color: timelineOpen ? '#000' : '#888', borderRadius: 2, padding: '4px 10px', fontSize: 11, fontWeight: 600 }}
+            style={{ background: timelineOpen ? '#e879f9' : 'var(--surface-raised)', color: timelineOpen ? '#000' : '#888', borderRadius: 2, padding: '4px 10px', fontSize: 11, fontWeight: 600 }}
             aria-label="Toggle timeline"
           >
             TIMELINE
@@ -610,7 +610,7 @@ export default function ConnectionsPage() {
       <div className="flex-1 flex gap-2 min-h-0" style={{ minHeight: 400 }}>
       <div
         data-testid="graph-canvas"
-        className="flex-1 bg-surface-sunken border border-[#222222] relative overflow-hidden"
+        className="flex-1 bg-surface-sunken border border-rmpg-700 relative overflow-hidden"
         style={{ borderRadius: 2 }}
       >
         {loadingGraph && (
@@ -783,7 +783,7 @@ export default function ConnectionsPage() {
           <button
             type="button"
             onClick={resetView}
-            className="absolute top-2 right-2 bg-surface-raised border border-[#222222] px-2 py-1 text-xs text-gray-300 hover:text-[#d4a017]"
+            className="absolute top-2 right-2 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-gray-300 hover:text-[#d4a017]"
             style={{ borderRadius: 2 }}
             aria-label="Reset view"
           >
@@ -793,7 +793,7 @@ export default function ConnectionsPage() {
             <button
               type="button"
               onClick={() => { setPathNodes(new Set()); setPathEdges(new Set()); }}
-              className="absolute top-2 right-28 bg-surface-raised border border-[#222222] px-2 py-1 text-xs text-gray-300 hover:text-[#d4a017]"
+              className="absolute top-2 right-28 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-gray-300 hover:text-[#d4a017]"
               style={{ borderRadius: 2 }}
             >
               CLEAR PATH
@@ -801,7 +801,7 @@ export default function ConnectionsPage() {
           )}
           {selectedNodeId && !pathFrom && (
             <div
-              className="absolute bottom-2 left-2 bg-surface-raised border border-[#222222] px-2 py-1 text-xs text-gray-300 z-20 max-w-md"
+              className="absolute bottom-2 left-2 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-gray-300 z-20 max-w-md"
               style={{ borderRadius: 2 }}
             >
               <div className="flex items-center gap-2 flex-wrap">
@@ -827,14 +827,14 @@ export default function ConnectionsPage() {
                 {annotations[selectedNodeId] ? 'Edit note' : 'Add note'}
               </button>
               {annotations[selectedNodeId] && (
-                <span className="text-gray-400 italic border-l border-[#222222] pl-2 ml-1">
+                <span className="text-gray-400 italic border-l border-rmpg-700 pl-2 ml-1">
                   {annotations[selectedNodeId]}
                 </span>
               )}
               </div>
               {selectedNode?.type === 'intel_report' && (
                 <div className="mt-2 space-y-1 text-[11px]">
-                  <div style={{ color: '#aaa' }}>
+                  <div style={{ color: 'var(--text-muted)' }}>
                     Grade {String(selectedNode.metadata?.grade || '—')} · Threat {String(selectedNode.metadata?.threat_level || '—')} · Handling {String(selectedNode.metadata?.handling_code || '—')}
                   </div>
                   <Link to={`/intel/reports/${selectedNode.entityId}`} style={{ color: '#e879f9' }}>Open intelligence product →</Link>
@@ -844,7 +844,7 @@ export default function ConnectionsPage() {
           )}
           {pathFrom && (
             <div
-              className="absolute top-2 left-2 right-32 bg-[#1a1a1a] border border-[#d4a017] px-3 py-2 flex items-center justify-between text-xs text-[#d4a017] z-20"
+              className="absolute top-2 left-2 right-32 bg-surface-raised border border-[#d4a017] px-3 py-2 flex items-center justify-between text-xs text-[#d4a017] z-20"
               style={{ borderRadius: 2 }}
             >
               <span>Click a second node to find the path from <strong>{pathFrom.label}</strong></span>
@@ -863,7 +863,7 @@ export default function ConnectionsPage() {
       </div>
       {availableTypes.length > 0 && (
         <div
-          className="w-40 bg-surface-raised border border-[#222222] p-2 space-y-1 overflow-y-auto"
+          className="w-40 bg-surface-raised border border-rmpg-700 p-2 space-y-1 overflow-y-auto"
           style={{ borderRadius: 2 }}
         >
           <div className="text-[#d4a017] text-xs uppercase font-semibold mb-2">Filter by Type</div>
@@ -889,14 +889,14 @@ export default function ConnectionsPage() {
         </div>
       )}
       {timelineOpen && (
-        <div style={{ width: 320, background: '#0a0a0a', borderLeft: '1px solid #232323', overflowY: 'auto', padding: 8, flexShrink: 0, maxHeight: '100%' }}>
+        <div style={{ width: 320, background: 'var(--surface-overlay)', borderLeft: '1px solid var(--border-subtle)', overflowY: 'auto', padding: 8, flexShrink: 0, maxHeight: '100%' }}>
           <div className="text-[9px] font-semibold mb-2" style={{ color: '#e879f9' }}>TIMELINE — {nodes.length} NODES</div>
           {timelineError && <div style={{ color: '#ef4444', fontSize: 11 }}>{timelineError}</div>}
           {timelineLoading && <div style={{ color: '#555', fontSize: 11 }}>Loading…</div>}
           {!timelineLoading && timeline.length === 0 && <div style={{ color: '#555', fontSize: 11 }}>No dated events.</div>}
           {timeline.map((ev, i) => {
             return (
-              <div key={`${ev.kind}-${ev.id}-${i}`} className="py-[3px]" style={{ borderTop: '1px solid #1a1a1a' }}>
+              <div key={`${ev.kind}-${ev.id}-${i}`} className="py-[3px]" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <div className="flex items-center gap-2 text-[10px]">
                   <span style={{ color: TIMELINE_KIND_COLOR[ev.kind] || '#888', fontWeight: 700 }}>{ev.kind.toUpperCase()}</span>
                   <span style={{ color: '#666' }}>{ev.date ? ev.date.slice(0, 10) : '—'}</span>
@@ -912,13 +912,13 @@ export default function ConnectionsPage() {
 
       {editingAnnotationFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
-          <div role="dialog" className="w-96 bg-surface-raised border border-[#222222] p-4 space-y-3" style={{ borderRadius: 2 }}>
+          <div role="dialog" className="w-96 bg-surface-raised border border-rmpg-700 p-4 space-y-3" style={{ borderRadius: 2 }}>
             <h2 className="text-[#d4a017] text-sm uppercase font-semibold">
               Note for {nodes.find(n => n.id === editingAnnotationFor)?.label}
             </h2>
             <RichTextArea
               aria-label={`Note for ${nodes.find(n => n.id === editingAnnotationFor)?.label}`}
-              className="w-full bg-surface-sunken border border-[#222222] px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none h-28"
+              className="w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none h-28"
               style={{ borderRadius: 2 }}
               value={annotationDraft}
               onChange={e => setAnnotationDraft(e.target.value)}
@@ -972,7 +972,7 @@ export default function ConnectionsPage() {
           <div
             role="dialog"
             aria-label="Save investigation"
-            className="w-96 bg-surface-raised border border-[#222222] p-4 space-y-3"
+            className="w-96 bg-surface-raised border border-rmpg-700 p-4 space-y-3"
             style={{ borderRadius: 2 }}
           >
             <h2 className="text-[#d4a017] text-sm uppercase font-semibold">Save Investigation</h2>
@@ -981,7 +981,7 @@ export default function ConnectionsPage() {
               Name
               <input id="ff-connectionspage-2"
                 type="text"
-                className="mt-1 w-full bg-surface-sunken border border-[#222222] px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none"
+                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none"
                 style={{ borderRadius: 2 }}
                 value={saveName}
                 onChange={e => setSaveName(e.target.value)}
@@ -992,7 +992,7 @@ export default function ConnectionsPage() {
             <label className="block text-xs text-gray-300">
               Description
               <RichTextArea
-                className="mt-1 w-full bg-surface-sunken border border-[#222222] px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none h-20"
+                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none h-20"
                 style={{ borderRadius: 2 }}
                 value={saveDescription}
                 onChange={e => setSaveDescription(e.target.value)}
