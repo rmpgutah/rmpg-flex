@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { plateResultFromExtraction } from '../src/utils/cloudflarePlate';
+import { plateResultFromExtraction, normalizeCondition } from '../src/utils/cloudflarePlate';
 import type { ExtractionResult } from '../src/utils/serveIntakeExtract';
 
 const mk = (fields: Record<string, { value: string; confidence: number }>, over: Partial<ExtractionResult> = {}): ExtractionResult => ({
@@ -46,5 +46,56 @@ describe('plateResultFromExtraction', () => {
       vehicle_year: { value: 'unknown', confidence: 0.1 },
     }));
     expect(r!.year).toBeNull();
+  });
+
+  it('maps condition + damage from the vision read', () => {
+    const r = plateResultFromExtraction(mk({
+      plate_number: { value: 'DMG100', confidence: 0.9 },
+      vehicle_condition: { value: 'Moderate', confidence: 0.5 },
+      vehicle_damage: { value: 'dented rear bumper', confidence: 0.5 },
+    }));
+    expect(r!.condition).toBe('moderate');
+    expect(r!.damageSummary).toBe('dented rear bumper');
+  });
+
+  it('treats a "none" damage answer as no damage', () => {
+    const r = plateResultFromExtraction(mk({
+      plate_number: { value: 'CLN200', confidence: 0.9 },
+      vehicle_condition: { value: 'clean', confidence: 0.5 },
+      vehicle_damage: { value: 'none', confidence: 0.5 },
+    }));
+    expect(r!.condition).toBe('clean');
+    expect(r!.damageSummary).toBeNull();
+  });
+
+  it('infers minor condition when damage is noted but condition is blank', () => {
+    const r = plateResultFromExtraction(mk({
+      plate_number: { value: 'INF300', confidence: 0.9 },
+      vehicle_damage: { value: 'scratch on door', confidence: 0.5 },
+    }));
+    expect(r!.condition).toBe('minor');
+    expect(r!.damageSummary).toBe('scratch on door');
+  });
+});
+
+describe('normalizeCondition', () => {
+  it('maps clean synonyms', () => {
+    for (const v of ['clean', 'no damage', 'none', 'undamaged', 'good condition']) {
+      expect(normalizeCondition(v)).toBe('clean');
+    }
+  });
+  it('matches known buckets by substring', () => {
+    expect(normalizeCondition('Heavy damage')).toBe('heavy');
+    expect(normalizeCondition('appears moderate')).toBe('moderate');
+    expect(normalizeCondition('salvage title')).toBe('salvage');
+  });
+  it('maps severity synonyms', () => {
+    expect(normalizeCondition('totaled')).toBe('salvage');
+    expect(normalizeCondition('light scratches')).toBe('minor');
+  });
+  it('returns null for empty / unrecognized', () => {
+    expect(normalizeCondition(null)).toBeNull();
+    expect(normalizeCondition('')).toBeNull();
+    expect(normalizeCondition('purple')).toBeNull();
   });
 });

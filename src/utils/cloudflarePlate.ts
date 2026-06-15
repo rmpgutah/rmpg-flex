@@ -15,6 +15,7 @@
 
 import { extractVisionWorkersAI } from './visionExtract';
 import { cleanPlate } from './roboflowAlpr';
+import { CONDITIONS } from './alprEdit';
 import type { ExtractionResult } from './serveIntakeExtract';
 
 export interface CloudflarePlateResult {
@@ -26,6 +27,8 @@ export interface CloudflarePlateResult {
   year: number | null;
   plateType: string | null;
   bodyStyle: string | null;
+  condition: string | null;       // clean | minor | moderate | heavy | salvage
+  damageSummary: string | null;   // brief visible-damage note, else null
   confidence: number | null;   // plate-field confidence (0..1), the acceptance signal
   model_id: string;            // which engine produced this
   ms: number;
@@ -35,6 +38,19 @@ const str = (f?: { value: string }): string | null => {
   const v = (f?.value ?? '').trim();
   return v ? v : null;
 };
+
+/** Normalize the model's free-text condition to a known bucket, else null.
+ *  "no damage"/"good"/"none" → clean; substring-matches the buckets otherwise. */
+export function normalizeCondition(raw: string | null): string | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase();
+  if (!v) return null;
+  if (/\b(clean|none|no damage|undamaged|good|excellent|intact)\b/.test(v)) return 'clean';
+  for (const c of CONDITIONS) if (v.includes(c)) return c;
+  if (/\b(totaled|wreck|severe)\b/.test(v)) return 'salvage';
+  if (/\b(light|small|scratch|scuff)\b/.test(v)) return 'minor';
+  return null;
+}
 
 /** Pure: map a license_plate ExtractionResult to a CloudflarePlateResult.
  *  Exported for unit tests (no I/O). */
@@ -50,6 +66,10 @@ export function plateResultFromExtraction(r: ExtractionResult | null): Cloudflar
   // Prefer the plate field's own confidence; fall back to the overall doc score.
   const plateConf = typeof f.plate_number?.confidence === 'number' ? f.plate_number.confidence
     : (typeof r.confidence === 'number' ? r.confidence : null);
+  // Damage note: drop a "none"/"no damage" answer to null so it isn't recorded.
+  const rawDamage = str(f.vehicle_damage);
+  const damageSummary = rawDamage && !/^(none|no damage|n\/?a|null)\.?$/i.test(rawDamage.trim()) ? rawDamage : null;
+  const condition = normalizeCondition(str(f.vehicle_condition)) ?? (damageSummary ? 'minor' : null);
   return {
     plate,
     state: str(f.plate_state),
@@ -59,6 +79,8 @@ export function plateResultFromExtraction(r: ExtractionResult | null): Cloudflar
     year,
     plateType: str(f.plate_type),
     bodyStyle: str(f.vehicle_body),
+    condition,
+    damageSummary,
     confidence: plateConf,
     model_id: r.model || 'workers-ai',
     ms: r.ms ?? 0,

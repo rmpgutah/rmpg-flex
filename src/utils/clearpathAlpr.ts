@@ -100,6 +100,7 @@ const SIGHTING_EXTRA_COLUMNS: Array<[string, string]> = [['confidence', 'REAL']]
 const CAPTURE_EXTRA_COLUMNS: Array<[string, string]> = [
   ['plate_confidence', 'REAL'], ['accepted', 'INTEGER'], ['review_status', 'TEXT'],
   ['image_key', 'TEXT'], ['capture_id', 'TEXT'], ['raw_json', 'TEXT'],
+  ['condition', 'TEXT'], ['damage_observed', 'INTEGER'], ['damage_summary', 'TEXT'],
 ];
 async function ensureAlprWriteSchema(db: DB): Promise<void> {
   for (const [name, type] of SIGHTING_EXTRA_COLUMNS) {
@@ -203,11 +204,14 @@ export async function alprDashcamClip(
   // image_key points at the R2-persisted still so the capture gallery can render
   // it (and overlay the plate) long after the pre-signed S3 url expires.
   try {
+    const damageObserved = read?.damageSummary != null || (read?.condition != null && read?.condition !== 'clean');
     await execute(db,
-      `INSERT INTO alpr_captures (plate, state, make, model, color, year, confidence, plate_confidence,
+      `INSERT INTO alpr_captures (plate, state, make, model, color, year, condition, damage_observed, damage_summary,
+         confidence, plate_confidence,
          accepted, review_status, image_key, lat, lng, location_text, captured_by, capture_id, raw_json, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, datetime('now'))`,
       plate, read?.state ?? null, read?.make ?? null, read?.model ?? null, read?.color ?? null, read?.year ?? null,
+      read?.condition ?? null, damageObserved ? 1 : 0, read?.damageSummary ?? null,
       confidence, confidence, accepted ? 1 : 0, !plate ? 'no_plate' : accepted ? 'accepted' : 'needs_review', imageKey,
       lat, lng, locationText,
       `cpg_dashcam:${args.mapping.cpg_device_id}:${args.event.eventTimestamp}`,

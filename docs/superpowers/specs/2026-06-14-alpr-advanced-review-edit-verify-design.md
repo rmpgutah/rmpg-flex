@@ -135,3 +135,18 @@ Three additions layered onto the same branch so one merge deploys everything:
 
 No new migration (reuses `audit_log`). Shipped as a fresh PR after #1269
 squash-merged; rebased onto the new main; SW `v958` → `v959`.
+
+### F4 — Condition/damage inference on the Workers AI path
+
+The realistic version of deferred "item B" (NOT the Jetson/LoRA detour — Workers
+AI LoRA is text-only). Added `vehicle_condition` + `vehicle_damage` to the
+`license_plate` OCR profile (`PLATE_FIELDS`), so the SAME single vision call
+(`llama-3.2-11b-vision`) returns condition + a damage note. `cloudflarePlate.ts`
+maps them (`normalizeCondition` → clean|minor|moderate|heavy|salvage; "none"
+damage → null; damage-present-but-no-condition → minor) onto
+`CloudflarePlateResult`. Persisted onto the capture row in BOTH the field/manual
+(`finalizeCapture`) and dashcam (`clearpathAlpr.ts`) paths, and surfaced on the
+live `POST /capture` response. The review editor + gallery already render/edit
+condition+damage, so the UI lights up with no client change. No migration
+(`alpr_captures` condition/damage columns already exist; dashcam reconciler
+extended). Unit-tested in `tests/cloudflarePlate.test.ts`.

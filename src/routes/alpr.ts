@@ -259,7 +259,9 @@ function cfReadToVehicle(read: CloudflarePlateResult): AlprVehicle {
   return {
     plate: read.plate, state: read.state, make: read.make, model: read.model,
     color: read.color, year: read.year, vehicleType: read.bodyStyle, plateType: read.plateType,
-    confidence: conf, condition: null, damageObserved: null, damageSummary: null,
+    confidence: conf, condition: read.condition,
+    damageObserved: read.damageSummary != null || (read.condition != null && read.condition !== 'clean'),
+    damageSummary: read.damageSummary,
     damageAreas: [], aftermarket: null,
     confidences: { plate: conf, make: conf, model: conf, year: conf, color: conf },
   };
@@ -406,12 +408,15 @@ async function finalizeCapture(
     // still governs only the authoritative vehicles_records + sighting writes
     // above; the capture row is observation, not assertion. (Mirrors the dashcam
     // path in clearpathAlpr.ts, which already retains observed attributes.)
+    const damageObserved = read.damageSummary != null || (read.condition != null && read.condition !== 'clean');
     await execute(db,
       `UPDATE alpr_captures SET make=?, model=?, color=?, year=?, state=?, vehicle_type=?,
+         condition=?, damage_observed=?, damage_summary=?,
          plate_confidence=?, accepted=?, review_status=?, sighting_id=?, vehicle_record_ids=?,
          vehicle_count=1, enrich_status='done' WHERE id=?`,
       read.make, read.model, read.color,
       read.year, read.state, read.bodyStyle,
+      read.condition, damageObserved ? 1 : 0, read.damageSummary,
       out.plateConf, asserted ? 1 : 0, asserted ? 'accepted' : 'needs_review',
       out.sightingId, JSON.stringify(out.recordIds), args.captureRowId);
   } catch (err: any) {
@@ -594,6 +599,9 @@ alpr.post('/capture', operational, async (c) => {
       color: read?.color ?? null,
       year: read?.year ?? null,
       vehicleType: read?.bodyStyle ?? null,
+      condition: read?.condition ?? null,
+      damageObserved: read?.damageSummary != null || (read?.condition != null && read?.condition !== 'clean'),
+      damageSummary: read?.damageSummary ?? null,
       confidence: fin.plateConf, riskScore: null,
       reviewStatus: fin.accepted ? 'accepted' : (plate ? 'needs_review' : 'no_plate'),
       alerted: hits.some((h) => h.severity === 'critical'),
@@ -602,9 +610,9 @@ alpr.post('/capture', operational, async (c) => {
     enrich_status: fin.status,
     accepted: plate ? fin.accepted : null,
     plate_confidence: fin.plateConf,
-    condition: null,
-    damage_observed: null,
-    damage_summary: null,
+    condition: read?.condition ?? null,
+    damage_observed: read?.damageSummary != null || (read?.condition != null && read?.condition !== 'clean'),
+    damage_summary: read?.damageSummary ?? null,
     damage_areas: [],
     hits,
     image_url: imageUrlFor(imageKey),
