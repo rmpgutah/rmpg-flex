@@ -4,7 +4,7 @@ import {
   Phone, Users, FileText, Clock, AlertTriangle, Plus, Activity, Shield, Loader2,
   Radio, MapPin, Eye, ArrowRight, TrendingUp, Gavel, Briefcase, Target,
   CheckCircle, XCircle, Sun, Cloud, CloudRain, CloudSnow, CloudLightning,
-  CloudDrizzle, CloudFog, Snowflake, Timer, Navigation, Mail, Zap, RefreshCw,
+  CloudDrizzle, CloudFog, Snowflake, Timer, Navigation, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -693,6 +693,9 @@ export default function DashboardPage() {
       )}
 
       {/* Stats Cards Row */}
+      {hasPanel('activeCalls') && (
+      <SpmGroup title="Active Calls — Priority & Volume">
+      <div className="space-y-4">
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'}`} role="region" aria-label="Key statistics">
         <StatsCard
           icon={Phone}
@@ -737,6 +740,8 @@ export default function DashboardPage() {
       </div>
 
       {/* Secondary Stats Row — expanded to 5 cols 2026-05-24 to add Warrant Poll card */}
+      {hasPanel('statusSummary') && (
+      <SpmGroup title="Status Summary">
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2'}`} role="region" aria-label="Record statistics">
         <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/warrants')}>
           <div className="flex items-center gap-2">
@@ -800,6 +805,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      </SpmGroup>
+      )}
 
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`} role="region" aria-label="Calls by priority">
@@ -828,12 +835,15 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+      </div>
+      </SpmGroup>
+      )}
 
       {/* Shift Countdown + Weather + Quick Actions Row */}
       <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'}`}>
         {/* Shift Countdown Timer */}
-        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current shift status">
-          <PanelTitleBar title="SHIFT STATUS" icon={Timer} />
+        {hasPanel('shiftStatus') && (
+        <SpmGroup title="Shift Status">
           <div className="p-3 space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -882,11 +892,12 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
-        </div>
+        </SpmGroup>
+        )}
 
         {/* Weather Widget */}
-        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current weather conditions" style={{ minWidth: 260 }}>
-          <PanelTitleBar title="WEATHER — SALT LAKE CITY" icon={Cloud} />
+        {hasPanel('weather') && (
+        <SpmGroup title="Weather — Salt Lake City">
           <div className="p-3">
             {weather ? (() => {
               const WeatherIcon = weather.icon;
@@ -949,12 +960,14 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-        </div>
+        </SpmGroup>
+        )}
 
       </div>
 
       {/* BOLO Ticker */}
-      {bolos.length > 0 && (
+      {hasPanel('activeBolos') && bolos.length > 0 && (
+        <SpmGroup title="Active BOLOs" tone="red">
         <div className="bg-red-900/20 panel-beveled p-3 cursor-pointer hover:bg-red-900/30 transition-colors duration-200 border-l-4 border-l-red-500 shadow-md shadow-red-900/15 animate-fade-in" role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/communications'); }} onClick={() => navigate('/communications')} aria-label={`View ${bolos.length} active BOLO${bolos.length !== 1 ? 's' : ''}`}>
           <div className="flex items-center gap-2 mb-2">
             <span className="led-dot led-red animate-led-pulse" />
@@ -978,10 +991,55 @@ export default function DashboardPage() {
           ))}
           </div>
         </div>
+        </SpmGroup>
+      )}
+
+      {/* Calls Near Me (patrol view) — reuses active-calls priority data */}
+      {hasPanel('callsNearMe') && (
+        <SpmGroup title="Calls Near Me">
+          <div className="p-3">
+            <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`} role="region" aria-label="Calls near me by priority">
+              {[
+                { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
+                { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
+                { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
+                { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: 'var(--text-muted)' },
+              ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
+                <div
+                  key={key}
+                  onClick={() => navigate('/dispatch')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/dispatch'); }}
+                  tabIndex={0}
+                  role="button"
+                  className={`flex items-center gap-3 ${isMobile ? 'p-3 min-h-[56px]' : 'p-2'} panel-beveled border-l-4 ${border} cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 group bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+                  title={`View ${key} calls in Dispatch`}
+                  aria-label={`${label}: ${count} calls`}
+                >
+                  <span className={`led-dot ${led} ${count > 0 && key === 'P1' ? 'animate-led-pulse' : ''}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono tabular-nums`} style={{ color: valueColor }}>{count}</div>
+                    <div className={`${isMobile ? 'text-[11px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide`}>{isMobile ? label : labelFull}</div>
+                  </div>
+                  <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200" aria-hidden="true" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </SpmGroup>
+      )}
+
+      {/* My Activity (patrol view) — same data as Recent Activity */}
+      {hasPanel('myActivity') && (
+        <SpmGroup title="My Activity">
+          <div className="p-3">
+            <ActivityFeed entries={activities} maxHeight="320px" />
+          </div>
+        </SpmGroup>
       )}
 
       {/* ═══ NEW: Shift-Aware Stats + Court Dates + Expiring Certs Row ═══ */}
-      {(shiftStats || courtDatesCount > 0 || expiringCertsCount > 0) && (
+      {hasPanel('alertsReminders') && (shiftStats || courtDatesCount > 0 || expiringCertsCount > 0) && (
+        <SpmGroup title="Alerts & Reminders" tone="gold">
         <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 sm:grid-cols-3 gap-3'}`}>
           {shiftStats && (
             <div className="panel-beveled bg-surface-base p-3">
@@ -1036,6 +1094,7 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+        </SpmGroup>
       )}
 
       {/* Main Content Grid */}
@@ -1573,18 +1632,20 @@ export default function DashboardPage() {
       {/* Activity Feed + Operational Alerts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Activity Feed */}
-        <div className="lg:col-span-2 panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Recent activity feed" aria-live="polite">
-          <PanelTitleBar title="RECENT ACTIVITY" icon={Activity}>
-            <button type="button"
-              className="toolbar-btn flex items-center gap-1 hover:bg-surface-raised transition-colors"
-              onClick={() => navigate('/audit')}
-              title="View full audit log"
-            >
-              <Eye style={{ width: 10, height: 10 }} />
-              <span className="text-[9px] font-bold">View All</span>
-            </button>
-          </PanelTitleBar>
+        {hasPanel('recentActivity') && (
+        <div className="lg:col-span-2">
+        <SpmGroup title="Recent Activity">
           <div className="p-3">
+            <div className="flex justify-end mb-2">
+              <button type="button"
+                className="toolbar-btn flex items-center gap-1 hover:bg-surface-raised transition-colors"
+                onClick={() => navigate('/audit')}
+                title="View full audit log"
+              >
+                <Eye style={{ width: 10, height: 10 }} />
+                <span className="text-[9px] font-bold">View All</span>
+              </button>
+            </div>
             {activities.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 gap-2" role="status">
                 <Activity className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
@@ -1594,11 +1655,13 @@ export default function DashboardPage() {
               <ActivityFeed entries={activities} maxHeight="320px" />
             )}
           </div>
+        </SpmGroup>
         </div>
+        )}
 
         {/* Operational Summary */}
-        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Operational status">
-          <PanelTitleBar title="OPERATIONAL STATUS" icon={Radio} />
+        {hasPanel('activeUnits') && (
+        <SpmGroup title="Active Units">
           <div className="p-3 space-y-2.5">
             {/* Active Warrant Alerts */}
             <div
@@ -1667,7 +1730,8 @@ export default function DashboardPage() {
               {expiringCredentials.length > 0 && <span className="led-dot led-amber animate-led-pulse" />}
             </div>
           </div>
-        </div>
+        </SpmGroup>
+        )}
       </div>
 
       {/* Credential Alerts */}
@@ -1724,7 +1788,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Officer Activity Comparison */}
-      {officerActivity.length > 0 && (() => {
+      {hasPanel('officerActivity') && officerActivity.length > 0 && (() => {
         const ROLE_COLORS: Record<string, string> = {
           admin: '#ef4444',
           supervisor: '#f59e0b',
@@ -1754,8 +1818,7 @@ export default function DashboardPage() {
         }));
 
         return (
-          <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Officer activity comparison">
-            <PanelTitleBar title="OFFICER ACTIVITY COMPARISON — LAST 30 DAYS" icon={Users} />
+          <SpmGroup title="Officer Activity">
             <div className="p-3">
               {/* Role Legend */}
               <div className="flex items-center gap-4 mb-3 flex-wrap">
@@ -1800,7 +1863,7 @@ export default function DashboardPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </SpmGroup>
         );
       })()}
 
