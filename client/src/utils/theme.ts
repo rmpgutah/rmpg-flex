@@ -77,11 +77,12 @@ async function syncNativeStatusBar(theme: ThemePreference) {
     const { StatusBar, Style } = await import('@capacitor/status-bar');
     // Day (light) surface needs dark icons; night/legacy surfaces need light icons.
     // Capacitor Style.Dark = dark icons (for light backgrounds); Style.Light = light icons.
-    const lightSurface = theme === 'light' && !isLegacyBlackForced();
+    const legacy = isLegacyBlackForced();
+    const lightSurface = theme === 'light' && !legacy;
     await StatusBar.setStyle({ style: lightSurface ? Style.Dark : Style.Light });
 
     if (cap.getPlatform?.() === 'android') {
-      await StatusBar.setBackgroundColor({ color: isLegacyBlackForced() ? '#000000' : THEME_CHROME_COLORS[theme] });
+      await StatusBar.setBackgroundColor({ color: legacy ? '#000000' : THEME_CHROME_COLORS[theme] });
     }
   } catch (error) {
     console.warn('[theme] Failed to sync native status bar', error);
