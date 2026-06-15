@@ -166,9 +166,56 @@ export async function getStatistics(db: D1Database) {
   const recent = await query<Record<string, unknown>>(db,
     `SELECT county, status, records_found, records_new, finished_at, error
        FROM jail_roster_sync_log ORDER BY id DESC LIMIT 20`);
+
+  // Population summary + per-county breakdown over the whole arrest_records table
+  // (what the Arrest Records page lists). The previous shape omitted these, so the
+  // page's summary cards + county stats sat at 0 while the list showed the real
+  // rows. booking_date/release_date are '' for name-only scraper rows, so the
+  // date() comparisons safely yield 0 rather than miscounting. Best-effort: a
+  // missing arrest_records table (fresh env) degrades to empty stats, not a 500.
+  let population_summary = {
+    total_records: 0, total_active: 0, total_released: 0,
+    counties_with_data: 0, intakes_today: 0, releases_today: 0,
+  };
+  let per_county: Record<string, unknown>[] = [];
+  try {
+    const pop = await queryFirst<typeof population_summary>(db, `
+      SELECT
+        COUNT(*) total_records,
+        SUM(CASE WHEN status='active'   THEN 1 ELSE 0 END) total_active,
+        SUM(CASE WHEN status='released' THEN 1 ELSE 0 END) total_released,
+        COUNT(DISTINCT NULLIF(county,'')) counties_with_data,
+        SUM(CASE WHEN date(NULLIF(booking_date,'')) = date('now') THEN 1 ELSE 0 END) intakes_today,
+        SUM(CASE WHEN date(NULLIF(release_date,'')) = date('now') THEN 1 ELSE 0 END) releases_today
+      FROM arrest_records`);
+    if (pop) population_summary = {
+      total_records: pop.total_records ?? 0, total_active: pop.total_active ?? 0,
+      total_released: pop.total_released ?? 0, counties_with_data: pop.counties_with_data ?? 0,
+      intakes_today: pop.intakes_today ?? 0, releases_today: pop.releases_today ?? 0,
+    };
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT
+        county,
+        COALESCE(NULLIF(source_name,''), county) display_name,
+        COUNT(*) total_records,
+        SUM(CASE WHEN status='active'   THEN 1 ELSE 0 END) active_count,
+        SUM(CASE WHEN status='released' THEN 1 ELSE 0 END) released_count,
+        MIN(NULLIF(booking_date,'')) earliest_booking,
+        MAX(NULLIF(booking_date,'')) newest_booking,
+        SUM(CASE WHEN lower(gender) IN ('m','male')   THEN 1 ELSE 0 END) male_count,
+        SUM(CASE WHEN lower(gender) IN ('f','female') THEN 1 ELSE 0 END) female_count,
+        SUM(CASE WHEN NULLIF(date_of_birth,'') IS NOT NULL THEN 1 ELSE 0 END) details_fetched
+      FROM arrest_records
+      WHERE NULLIF(county,'') IS NOT NULL
+      GROUP BY county, display_name
+      ORDER BY total_records DESC`);
+    per_county = rows.map((r) => ({ ...r, avg_stay_days: null }));
+  } catch { /* arrest_records absent on a fresh env — return empty stats */ }
+
   return {
     counties: totals?.counties ?? 0, enabled: totals?.enabled ?? 0, circuit_broken: totals?.broken ?? 0,
     active_bookings: bookings?.n ?? 0, recent_syncs: recent,
+    population_summary, per_county,
   };
 }
 
