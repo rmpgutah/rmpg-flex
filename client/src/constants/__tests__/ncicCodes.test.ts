@@ -82,6 +82,23 @@ describe('vehicle codes', () => {
     expect(encode('VMA', 'Honda')).toBe('HOND');
     expect(encode('VMA', 'Mercedes-Benz')).toBe('MERZ');
   });
+  it('encodes newly added VMA codes from NIEM AutoCodeSimpleType', () => {
+    // Verified against NIEM 5.0 AutoCodeSimpleType / MotorcycleCodeSimpleType
+    expect(encode('VMA', 'Kawasaki')).toBe('KAWK');
+    expect(encode('VMA', 'Yamaha')).toBe('YAMA');
+    expect(encode('VMA', 'Harley')).toBe('HD');        // alias
+    expect(encode('VMA', 'Freightliner')).toBe('FRHT');
+    expect(encode('VMA', 'Peterbilt')).toBe('PTRB');
+    expect(encode('VMA', 'Alfa Romeo')).toBe('ALFA');
+    expect(encode('VMA', 'Kenworth')).toBe('KW');
+  });
+  it('decodes newly added VMA codes back to canonical labels', () => {
+    expect(decode('VMA', 'KAWK')).toBe('Kawasaki');
+    expect(decode('VMA', 'YAMA')).toBe('Yamaha');
+    expect(decode('VMA', 'ALFA')).toBe('Alfa Romeo');
+    expect(decode('VMA', 'FERR')).toBe('Ferrari');
+    expect(decode('VMA', 'FRHT')).toBe('Freightliner');
+  });
   it('fmtCoded renders vehicle make/color/style', () => {
     expect(fmtCoded('VMA', 'Toyota')).toBe('TOYT (TOYOTA)');
     expect(fmtCoded('VCO', 'Blue')).toBe('BLU (BLUE)');
