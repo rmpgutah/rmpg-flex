@@ -23,14 +23,37 @@ export default function IntelContextPanel() {
   const { selected, selectEntity, panelMode, setPanelMode, panelCollapsed, togglePanel } = useIntelContext();
   const [dossier, setDossier] = useState<DossierLite | null>(null);
   const [loading, setLoading] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!selected || selected.type !== 'person' || panelMode !== 'dossier') { setDossier(null); return; }
-    setLoading(true); setDossier(null);
+    setLoading(true); setDossier(null); setAiSummary(null);
     apiFetch<DossierLite>(`/intel/dossier/person/${selected.id}`)
       .then(setDossier).catch(() => setDossier(null)).finally(() => setLoading(false));
   }, [selected, panelMode]);
+
+  // Claude summary of the loaded dossier. Sends the sections the panel already
+  // has; degrades to an inline notice if AI isn't configured / has no credit.
+  const summarizeDossier = async (label: string) => {
+    if (!dossier) return;
+    setAiBusy(true); setAiSummary(null);
+    try {
+      const sections = {
+        flags: dossier.flags || [],
+        timeline: dossier.timeline || [],
+        associates: dossier.associates || [],
+      };
+      const res = await apiFetch<{ summary?: string; error?: string }>('/intel/ai/summarize', {
+        method: 'POST', body: JSON.stringify({ label, sections }),
+      });
+      setAiSummary(res?.summary || res?.error || 'No summary returned.');
+    } catch (e: any) {
+      const s = `${e?.code ?? ''} ${e?.message ?? ''}`;
+      setAiSummary(/NO_AI_KEY|not configured/i.test(s) ? 'AI not configured (set the Anthropic key in Admin).' : (e?.message || 'AI summary failed.'));
+    } finally { setAiBusy(false); }
+  };
 
   if (panelCollapsed) {
     return (
@@ -113,6 +136,18 @@ export default function IntelContextPanel() {
                       ))}
                     </div>
                   )}
+
+                  <div>
+                    <button onClick={() => summarizeDossier(name)} disabled={aiBusy}
+                      className="w-full text-center font-mono text-[8px] tracking-wide text-[#c084fc] border border-[#3a2a5a] rounded-[2px] py-[6px] uppercase disabled:opacity-50">
+                      {aiBusy ? 'Summarizing…' : '✨ AI Summary'}
+                    </button>
+                    {aiSummary && (
+                      <div className="mt-[6px] text-[10px] text-[#cfcfcf] leading-relaxed whitespace-pre-wrap border-l-2 border-[#3a2a5a] pl-2">
+                        {aiSummary}
+                      </div>
+                    )}
+                  </div>
 
                   {(dossier.associates || []).length > 0 && (
                     <div>

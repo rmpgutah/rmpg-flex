@@ -6,7 +6,6 @@ import { generateIntelProductPdf } from '../../utils/intelProductPdf';
 const REL = ['A', 'B', 'C', 'D', 'E', 'F'];
 const CRED = [1, 2, 3, 4, 5, 6];
 const HANDLING = ['H1', 'H2', 'H3', 'H4', 'H5'];
-const THREATS = ['low', 'medium', 'high', 'critical'];
 
 const btn = (bg: string, fg = '#000'): React.CSSProperties => ({
   background: bg, color: fg, borderRadius: 2, padding: '4px 10px', fontSize: 11, fontWeight: 600,
@@ -16,17 +15,15 @@ const field: React.CSSProperties = { background: '#0b0b0b', color: '#ddd', borde
 export default function IntelReportDetailPage() {
   const { id } = useParams();
   const nav = useNavigate();
-  const isNew = id === 'new';
   const [r, setR] = useState<any>(null);
-  const [draft, setDraft] = useState<any>({ title: '', raw_narrative: '', threat_level: 'low', source_type: 'officer_observation' });
   const [grade, setGrade] = useState<any>({ source_reliability: 'B', info_credibility: 2, handling_code: 'H1' });
   const [analysis, setAnalysis] = useState<any>({ sanitized_narrative: '', assessment: '', criminal_predicate: '' });
+  const [linkDraft, setLinkDraft] = useState<any>({ entity_type: 'person', entity_id: '', role: 'subject' });
   const [msg, setMsg] = useState('');
 
   const load = useCallback(() => {
-    if (isNew) return;
     apiFetch<any>(`/intel/reports/${id}`).then(setR).catch(() => setMsg('Failed to load.'));
-  }, [id, isNew]);
+  }, [id]);
   useEffect(load, [load]);
 
   const act = async (path: string, body: unknown) => {
@@ -38,15 +35,24 @@ export default function IntelReportDetailPage() {
     } catch (e: any) { setMsg(e?.message || 'Action failed.'); }
   };
 
-  const submit = async () => {
-    setMsg('');
-    if (!draft.title.trim()) { setMsg('Title required.'); return; }
-    try {
-      const res = await apiFetch<any>('/intel/reports', { method: 'POST', body: JSON.stringify(draft) });
-      if (res?.id) nav(`/intel/reports/${res.id}`);
-      else setMsg(res?.error || 'Submit failed.');
-    } catch (e: any) { setMsg(e?.message || 'Submit failed.'); }
+  const addLink = async () => {
+    if (!linkDraft.entity_id) { setMsg('Entity ID required.'); return; }
+    await act('/links', { entity_type: linkDraft.entity_type, entity_id: Number(linkDraft.entity_id), role: linkDraft.role });
+    setLinkDraft({ ...linkDraft, entity_id: '' });
   };
+
+  const removeLink = async (linkId: number) => {
+    setMsg('');
+    try {
+      const res = await apiFetch<any>(`/intel/reports/${id}/links/${linkId}`, { method: 'DELETE' });
+      if (res?.error) { setMsg(res.error); return; }
+      load();
+    } catch (e: any) { setMsg(e?.message || 'Remove failed.'); }
+  };
+
+  const linkPath = (t: string, eid: number) =>
+    t === 'person' ? `/intel/person/${eid}` : t === 'vehicle' ? `/records?tab=vehicles&id=${eid}`
+      : t === 'warrant' ? `/warrants?id=${eid}` : `/connections?type=${t}&id=${eid}`;
 
   const wrap = (children: React.ReactNode) => (
     <div className="p-4 space-y-3" style={{ background: '#000', minHeight: '100%', color: '#ddd' }}>
@@ -55,25 +61,6 @@ export default function IntelReportDetailPage() {
       {children}
     </div>
   );
-
-  if (isNew) {
-    return wrap(
-      <div className="space-y-2 max-w-2xl">
-        <h1 className="text-sm font-semibold" style={{ color: '#d4a017' }}>NEW INTEL REPORT</h1>
-        <input placeholder="Title" style={field} value={draft.title}
-          onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
-        <select style={field} value={draft.source_type} onChange={(e) => setDraft({ ...draft, source_type: e.target.value })}>
-          {['officer_observation', 'confidential_informant', 'anonymous_tip', 'public', 'other_agency', 'osint', 'technical', 'victim', 'witness', 'suspect'].map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <textarea placeholder="Raw narrative (restricted — source-identifying OK here)" rows={6} style={field}
-          value={draft.raw_narrative} onChange={(e) => setDraft({ ...draft, raw_narrative: e.target.value })} />
-        <select style={field} value={draft.threat_level} onChange={(e) => setDraft({ ...draft, threat_level: e.target.value })}>
-          {THREATS.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <button onClick={submit} style={btn('#d4a017')}>SUBMIT REPORT</button>
-      </div>,
-    );
-  }
 
   if (!r) return wrap(<div style={{ color: '#555' }}>Loading…</div>);
 
@@ -141,6 +128,14 @@ export default function IntelReportDetailPage() {
             sanitized_narrative: r.sanitized_narrative, assessment: r.assessment,
             disseminated_at: r.disseminated_at, links: r.links || [],
           })} style={btn('#0b0b0b', '#d4a017')}>EXPORT PDF</button>
+          {['H2', 'H3', 'H4'].includes(r.handling_code) && (
+            <button onClick={() => {
+              const recipient_label = prompt('Share with (agency / recipient):');
+              if (!recipient_label) return;
+              const reason = prompt('Reason for external share:') || '';
+              act('/share', { recipient_label, reason, recipient_type: 'agency' });
+            }} style={btn('#0b0b0b', '#22d3ee')}>SHARE EXTERNALLY</button>
+          )}
           <button onClick={() => { const reason = prompt('Recall reason:'); if (reason) act('/recall', { reason }); }}
             style={btn('#0b0b0b', '#ef4444')}>RECALL</button>
         </div>
@@ -149,6 +144,43 @@ export default function IntelReportDetailPage() {
       {['submitted', 'under_evaluation', 'graded'].includes(r.status) && (
         <button onClick={() => { const reason = prompt('Reject reason:'); if (reason) act('/reject', { reason }); }}
           style={btn('#0b0b0b', '#ef4444')}>REJECT</button>
+      )}
+
+      {/* Linked entities */}
+      <div className="space-y-2 p-2" style={{ border: '1px solid #232323', borderRadius: 2 }}>
+        <div className="text-[9px] font-semibold" style={{ color: '#d4a017' }}>LINKED ENTITIES</div>
+        {(r.links || []).length === 0 && <div className="text-[10px]" style={{ color: '#555' }}>No linked entities.</div>}
+        {(r.links || []).map((l: any) => (
+          <div key={l.id} className="flex items-center gap-2 text-[11px]">
+            <button onClick={() => nav(linkPath(l.entity_type, l.entity_id))} style={{ color: '#22d3ee' }}>
+              {l.entity_type} #{l.entity_id}
+            </button>
+            <span style={{ color: '#666' }}>· {l.role}</span>
+            <button onClick={() => removeLink(l.id)} style={{ color: '#ef4444', marginLeft: 'auto', fontSize: 10 }}>remove</button>
+          </div>
+        ))}
+        <div className="flex gap-2">
+          <select style={field} value={linkDraft.entity_type} onChange={(e) => setLinkDraft({ ...linkDraft, entity_type: e.target.value })}>
+            {['person', 'vehicle', 'warrant', 'case', 'incident', 'property'].map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <input placeholder="ID" style={field} value={linkDraft.entity_id}
+            onChange={(e) => setLinkDraft({ ...linkDraft, entity_id: e.target.value })} />
+          <input placeholder="role" style={field} value={linkDraft.role}
+            onChange={(e) => setLinkDraft({ ...linkDraft, role: e.target.value })} />
+          <button onClick={addLink} style={btn('#0b0b0b', '#d4a017')}>LINK</button>
+        </div>
+      </div>
+
+      {/* Dissemination log (supervisor-only; server returns [] otherwise) */}
+      {(r.dissemination || []).length > 0 && (
+        <div className="space-y-1 p-2" style={{ border: '1px solid #232323', borderRadius: 2 }}>
+          <div className="text-[9px] font-semibold" style={{ color: '#d4a017' }}>DISSEMINATION LOG</div>
+          {r.dissemination.map((d: any) => (
+            <div key={d.id} className="text-[10px]" style={{ color: '#aaa' }}>
+              {d.channel} → {d.recipient_label || `user #${d.recipient_id}`}{d.reason ? ` · ${d.reason}` : ''}
+            </div>
+          ))}
+        </div>
       )}
     </div>,
   );
