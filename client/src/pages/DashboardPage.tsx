@@ -24,6 +24,14 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useAuth } from '../context/AuthContext';
+import SpmGroup from './dashboard/SpmGroup';
+import DashboardViewSelector from './dashboard/DashboardViewSelector';
+import {
+  resolveDashboardView, canSwitchView, writeSavedView,
+  VIEW_PANELS, toolbarActionsForView,
+  type DashboardView, type PanelId, type ToolbarActionId,
+} from './dashboard/dashboardViews';
 import { parseTimestamp } from '../utils/dateUtils';
 
 // ─── Backend Response Types ──────────────────────────────
@@ -353,6 +361,18 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const role = user?.role ?? '';
+  const [view, setView] = useState<DashboardView>(() => resolveDashboardView(role));
+  // Re-resolve when the role becomes available after async auth load.
+  useEffect(() => { setView(resolveDashboardView(role)); }, [role]);
+  const maySwitch = canSwitchView(role);
+  const panels = VIEW_PANELS[view];
+  const hasPanel = useCallback((id: PanelId) => panels.includes(id), [panels]);
+  const handleViewChange = useCallback((v: DashboardView) => {
+    writeSavedView(v);
+    setView(v);
+  }, []);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
 
@@ -522,6 +542,18 @@ export default function DashboardPage() {
   const silentRefreshDashboard = useCallback(() => fetchDashboardData({ silent: true }), [fetchDashboardData]);
   useLiveSync(['dispatch', 'incidents', 'records', 'personnel', 'fleet'], silentRefreshDashboard);
 
+  const runToolbarAction = useCallback((id: ToolbarActionId) => {
+    switch (id) {
+      case 'newCall': setShowNewCallModal(true); break;
+      case 'newIncident': setShowIncidentModal(true); break;
+      case 'newCitation': navigate('/citations'); break;
+      case 'startPatrol': navigate('/patrol'); break;
+      case 'processServer': navigate('/serve'); break;
+      case 'print': window.print(); break;
+      case 'refresh': fetchDashboardData(); break;
+    }
+  }, [navigate, fetchDashboardData]);
+
   // Activity feed 30-second auto-refresh
   useEffect(() => {
     let cancelled = false;
@@ -592,7 +624,28 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-4 space-y-4 animate-fade-in" role="main" aria-label="Command and Control Dashboard" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+    <div className="dashboard-page p-4 space-y-4 animate-fade-in" role="main" aria-label="Command and Control Dashboard" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+      {/* Spillman screen title bar */}
+      <div className="spm-screen-title">
+        <span className={`led-dot ${stats.active_calls > 0 ? 'led-green animate-led-pulse' : 'led-green'}`} aria-hidden="true" />
+        Command &amp; Control — Operational
+      </div>
+
+      {/* Spillman screen toolbar: View selector + raised action buttons */}
+      <div className="spm-screen-toolbar" role="toolbar" aria-label="Dashboard actions">
+        <DashboardViewSelector view={view} canSwitch={maySwitch} onChange={handleViewChange} />
+        {toolbarActionsForView(view).map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            className={`spm-toolbtn ${a.id === 'print' ? 'spacer' : ''}`.trim()}
+            onClick={() => runToolbarAction(a.id)}
+          >
+            {a.label}
+          </button>
+        ))}
+      </div>
+
       {/* Portal Header — RMPG Logo + System Title */}
       <div className="panel-beveled bg-surface-base overflow-hidden shadow-lg shadow-black/20">
         <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
@@ -898,38 +951,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Quick Action Buttons */}
-        <div className="panel-beveled bg-surface-base" role="region" aria-label="Quick actions">
-          <PanelTitleBar title="QUICK ACTIONS" icon={Zap} />
-          <div className="p-3">
-            <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'} gap-2`}>
-              {[
-                { icon: Phone, label: 'New Call', path: '', color: '#ef4444', action: () => setShowNewCallModal(true) },
-                { icon: FileText, label: 'New Incident', path: '', color: '#f59e0b', action: () => setShowIncidentModal(true) },
-                { icon: Navigation, label: 'Start Patrol', path: '/patrol', color: '#22c55e' },
-                { icon: Gavel, label: 'New Citation', path: '/citations', color: '#888888' },
-                { icon: Target, label: 'Process Server', path: '/serve', color: '#a855f7' },
-                { icon: Mail, label: 'Email', path: '/email', color: '#22c55e' },
-              ].map(({ icon: ActionIcon, label, path, color, action }) => (
-                <button type="button"
-                  key={label}
-                  onClick={() => action ? action() : navigate(path)}
-                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#3a3a3a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
-                  aria-label={label}
-                >
-                  <ActionIcon
-                    className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} transition-transform duration-200 group-hover:scale-110 drop-shadow-sm`}
-                    style={{ color }}
-                    aria-hidden="true"
-                  />
-                  <span className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} font-bold text-rmpg-300 uppercase tracking-wider group-hover:text-rmpg-100 transition-colors duration-200 text-center leading-tight select-none`}>
-                    {label}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* BOLO Ticker */}
