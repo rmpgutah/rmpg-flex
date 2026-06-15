@@ -448,10 +448,10 @@ export default function RecordsPage() {
         <button
           type="button"
           onClick={() => setShowArchived(!showArchived)}
-          className={`ml-auto flex items-center gap-1 px-2 text-[9px] font-bold uppercase tracking-wider transition-colors border whitespace-nowrap ${
+          className={`ml-auto flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border whitespace-nowrap ${
             showArchived
-              ? 'bg-amber-900/40 text-amber-400 border-amber-700/50'
-              : 'bg-rmpg-700/50 text-rmpg-500 border-rmpg-600'
+              ? 'bg-amber-900/40 text-amber-400 border-amber-700/50 hover:bg-amber-900/60'
+              : 'bg-rmpg-700/50 text-rmpg-500 border-rmpg-600 hover:text-rmpg-300 hover:bg-rmpg-700'
           }`}
         >
           <Archive className="w-2.5 h-2.5" />
