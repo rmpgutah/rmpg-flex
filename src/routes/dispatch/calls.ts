@@ -1658,8 +1658,13 @@ calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
       return c.json({ error: 'call_ids (array) and unit_id required' }, 400);
     }
     const db = getDb(c.env);
-    const unit = await queryFirst<{ id: number; unit_number: string }>(db,
-      'SELECT id, unit_number FROM units WHERE id = ?', body.unit_id);
+    // `call_sign` is the units table's human-readable id (UNIQUE NOT NULL);
+    // there is NO `unit_number` column on units (that lives on the GPS-device
+    // table) — selecting it threw `no such column` and the catch turned every
+    // reassign into a generic 500. Return it as `target` so the God Mode toast
+    // renders "Reassigned N calls to D19" instead of "...to undefined".
+    const unit = await queryFirst<{ id: number; call_sign: string }>(db,
+      'SELECT id, call_sign FROM units WHERE id = ?', body.unit_id);
     if (!unit) return c.json({ error: 'Unit not found' }, 404);
     let updated = 0;
     for (const callId of body.call_ids.slice(0, 50)) {
@@ -1671,7 +1676,7 @@ calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
       } catch { /* skip individual failures */ }
     }
     await emitAlert(c.env, 'dispatch_update', { action: 'bulk_reassign', unit_id: body.unit_id, call_ids: body.call_ids });
-    return c.json({ success: true, updated, total: body.call_ids.length });
+    return c.json({ success: true, updated, total: body.call_ids.length, target: unit.call_sign });
   } catch (err) {
     return c.json({ error: 'Bulk reassign failed' }, 500);
   }
