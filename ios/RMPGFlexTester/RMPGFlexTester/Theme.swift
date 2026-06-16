@@ -147,6 +147,8 @@ struct GoldButtonStyle: ButtonStyle {
             .background(Theme.gold.opacity(configuration.isPressed ? 0.7 : 1))
             .foregroundStyle(.black)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -162,6 +164,8 @@ struct RaisedButtonStyle: ButtonStyle {
             .foregroundStyle(Theme.gold)
             .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.border, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -227,5 +231,50 @@ struct SpmGroupHeader: View {
             .padding(.vertical, 5)
             .background(Theme.groupHead)
             .overlay(Rectangle().fill(Theme.borderStrong).frame(height: 1), alignment: .bottom)
+    }
+}
+
+/// Wraps content in a literal Spillman group-box: a gold gradient header bar over
+/// a steel-blue panel body with a panel-border hairline. The drop-in chrome for
+/// detail panels / cards that want the desktop group-box look.
+struct SpmGroupBox<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: () -> Content
+    var body: some View {
+        VStack(spacing: 0) {
+            SpmGroupHeader(title: title)
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Theme.Spacing.lg)
+                .background(Theme.raised)
+        }
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderPanel, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+    }
+}
+
+/// Standard empty / zero-state: a muted icon, a title, and an optional subtitle.
+/// Replaces the one-off "No …" Text lines scattered across the list screens.
+struct EmptyState: View {
+    let icon: String
+    let title: String
+    var subtitle: String? = nil
+    var body: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Image(systemName: icon)
+                .font(.system(size: 34))
+                .foregroundStyle(Theme.neutral)
+            Text(title)
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.textSecondary)
+            if let subtitle {
+                Text(subtitle)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.neutral)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.xxl * 2)
     }
 }

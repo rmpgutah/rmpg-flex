@@ -34,7 +34,7 @@ struct CallsQueueView: View {
                 if loading {
                     ProgressView().tint(Theme.gold).padding(.top, 30)
                 } else if calls.isEmpty {
-                    Text("No active calls.").font(.system(size: 12)).foregroundStyle(Theme.neutral).padding(.top, 24)
+                    EmptyState(icon: "checkmark.circle", title: "No active calls", subtitle: "You're all caught up.")
                 } else {
                     ForEach(sortedCalls.indices, id: \.self) { i in callRow(sortedCalls[i]) }
                 }

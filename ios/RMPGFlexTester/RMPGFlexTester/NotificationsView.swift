@@ -18,7 +18,7 @@ struct NotificationsView: View {
                 if loading {
                     ProgressView().tint(Theme.gold).padding(.top, 30)
                 } else if items.isEmpty {
-                    Text("No notifications.").font(.system(size: 12)).foregroundStyle(Theme.neutral).padding(.top, 24)
+                    EmptyState(icon: "bell.slash", title: "No notifications")
                 } else {
                     ForEach(items.indices, id: \.self) { i in row(items[i]) }
                 }
