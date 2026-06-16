@@ -11,6 +11,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { recordAudit } from '../utils/auditLog';
 
 const audit = new Hono<Env>();
 
@@ -214,14 +215,13 @@ audit.post('/retention/enforce', async (c) => {
     // Log the enforcement itself so it stays auditable even after the purge.
     const user = c.get('user');
     const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown';
-    await execute(
-      db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-       VALUES (?, 'audit_retention_enforced', 'audit', 0, ?, ?)`,
-      user?.id ?? 0,
-      `Enforced ${days}-day retention: removed ${result.meta.changes} entries`,
-      ip,
-    );
+    await recordAudit(c, {
+      action: 'audit_retention_enforced',
+      entityType: 'audit',
+      entityId: 0,
+      details: `Enforced ${days}-day retention: removed ${result.meta.changes} entries`,
+      actorId: user?.id ?? 0,
+    });
 
     return c.json({
       retention_days: days,

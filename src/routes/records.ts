@@ -4,6 +4,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { normalizeDob } from '../utils/normalizeDob';
 import { codedLike } from '../utils/searchText';
+import { recordAudit } from '../utils/auditLog';
 
 const records = new Hono<Env>();
 
@@ -1815,12 +1816,7 @@ records.post('/retention/enforce', async (c) => {
       if (count > 0) results[recordType] = count;
     }
     const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown';
-    try {
-      await execute(db,
-        `INSERT INTO audit_log (user_id,action,entity_type,entity_id,details,ip_address,created_at)
-         VALUES (?,'records_retention_enforced','records',0,?,?,datetime('now'))`,
-        (user as any).id ?? 0, JSON.stringify(results), ip);
-    } catch { /* non-fatal */ }
+    await recordAudit(c, { action: 'records_retention_enforced', entityType: 'records', entityId: 0, details: JSON.stringify(results), actorId: (user as any).id ?? 0 });
     return c.json({ enforced: true, results });
   } catch (err) {
     return c.json({ error: 'Failed to enforce retention', detail: (err as Error)?.message }, 500);

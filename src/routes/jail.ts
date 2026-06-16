@@ -9,6 +9,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { emitAnalytics, flexEvent } from '../utils/analytics';
 
 const jail = new Hono<Env>();
 
@@ -94,6 +95,16 @@ jail.post('/inmates', async (c) => {
       b.bail_amount ?? null, b.bond_type ?? null, b.notes ?? null, userId,
     );
     const newId = Number(result.meta.last_row_id);
+
+    // Analytics lakehouse: booking event (best-effort, fire-and-forget).
+    emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+      event_type: 'jail_booking', occurred_at: new Date().toISOString(),
+      actor_id: userId, entity_type: 'inmate', entity_id: newId,
+      label: bookingNumber, status: 'booked', category: 'jail',
+      value: b.bail_amount,
+      payload: { arresting_agency: b.arresting_agency ?? 'RMPG', bond_type: b.bond_type ?? null },
+    })]);
+
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM inmates WHERE id = ?', newId);
     return c.json({ data: created, booking_number: bookingNumber }, 201);
   } catch (err) {

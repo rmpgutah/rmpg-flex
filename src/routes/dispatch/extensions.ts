@@ -20,6 +20,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { recordAudit } from '../../utils/auditLog';
 import { requireRole } from '../../middleware/auth';
 import { emitAlert } from '../../utils/alertHub';
 import { geocodeAddress } from '../geocode';
@@ -239,12 +240,11 @@ audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
     if (mileage > 999_999) {
       // Log the reject before returning
       if (userId) {
-        await execute(db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-           VALUES (?, 'mileage_rejected_ceiling', 'unit', ?, ?, ?)`,
-          userId, unitId,
-          `Rejected ${mileage} — exceeds 999,999 ceiling by ${user?.full_name ?? userId} on unit ${unitId}`,
-          c.req.header('CF-Connecting-IP') || 'unknown');
+        await recordAudit(c, {
+          action: 'mileage_rejected_ceiling', entityType: 'unit', entityId: unitId,
+          details: `Rejected ${mileage} — exceeds 999,999 ceiling by ${user?.full_name ?? userId} on unit ${unitId}`,
+          actorId: userId,
+        });
       }
       return c.json({
         error: `Mileage ${mileage} exceeds maximum of 999,999 miles. This is likely a data-entry error — add one fewer digit or contact an admin to override.`,
@@ -265,12 +265,11 @@ audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
     if (unit.mileage != null && mileage < unit.mileage) {
       if (!isManager) {
         if (userId) {
-          await execute(db,
-            `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-             VALUES (?, 'mileage_rejected_decreasing', 'unit', ?, ?, ?)`,
-            userId, unitId,
-            `Rejected decreasing mileage ${mileage} < ${unit.mileage} by ${user?.full_name ?? userId} on unit ${unitId} (${unit.call_sign ?? ''})`,
-            c.req.header('CF-Connecting-IP') || 'unknown');
+          await recordAudit(c, {
+            action: 'mileage_rejected_decreasing', entityType: 'unit', entityId: unitId,
+            details: `Rejected decreasing mileage ${mileage} < ${unit.mileage} by ${user?.full_name ?? userId} on unit ${unitId} (${unit.call_sign ?? ''})`,
+            actorId: userId,
+          });
         }
         return c.json({
           error: `New mileage (${mileage}) is lower than the current reading (${unit.mileage}). Odometer readings should not decrease. Verify you entered the right number, or request an admin override.`,
@@ -283,12 +282,11 @@ audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
       const reason = typeof body.override_reason === 'string' && body.override_reason.trim()
         ? body.override_reason.trim() : 'Admin override — decreasing mileage correction';
       if (userId) {
-        await execute(db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-           VALUES (?, 'mileage_override_decreasing', 'unit', ?, ?, ?)`,
-          userId, unitId,
-          `Override decreasing ${unit.mileage}→${mileage}: ${reason}`,
-          c.req.header('CF-Connecting-IP') || 'unknown');
+        await recordAudit(c, {
+          action: 'mileage_override_decreasing', entityType: 'unit', entityId: unitId,
+          details: `Override decreasing ${unit.mileage}→${mileage}: ${reason}`,
+          actorId: userId,
+        });
       }
     }
     // Gate 3: delta sanity (> 500 mi in one step is not plausible
@@ -296,12 +294,11 @@ audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
     if (unit.mileage != null && mileage > unit.mileage && mileage - unit.mileage > 500) {
       if (!isManager) {
         if (userId) {
-          await execute(db,
-            `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-             VALUES (?, 'mileage_rejected_delta', 'unit', ?, ?, ?)`,
-            userId, unitId,
-            `Rejected large delta ${mileage - unit.mileage} mi by ${user?.full_name ?? userId} on unit ${unitId} (${unit.call_sign ?? ''})`,
-            c.req.header('CF-Connecting-IP') || 'unknown');
+          await recordAudit(c, {
+            action: 'mileage_rejected_delta', entityType: 'unit', entityId: unitId,
+            details: `Rejected large delta ${mileage - unit.mileage} mi by ${user?.full_name ?? userId} on unit ${unitId} (${unit.call_sign ?? ''})`,
+            actorId: userId,
+          });
         }
         return c.json({
           error: `Mileage jump of ${mileage - unit.mileage} miles is unusually large for one session. Verify the reading and try again, or request an admin override.`,
@@ -315,23 +312,21 @@ audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
       const reason = typeof body.override_reason === 'string' && body.override_reason.trim()
         ? body.override_reason.trim() : 'Admin override — large mileage delta correction';
       if (userId) {
-        await execute(db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-           VALUES (?, 'mileage_override_delta', 'unit', ?, ?, ?)`,
-          userId, unitId,
-          `Override delta ${mileage - unit.mileage} mi: ${reason}`,
-          c.req.header('CF-Connecting-IP') || 'unknown');
+        await recordAudit(c, {
+          action: 'mileage_override_delta', entityType: 'unit', entityId: unitId,
+          details: `Override delta ${mileage - unit.mileage} mi: ${reason}`,
+          actorId: userId,
+        });
       }
     }
     // Gate 4: audit the accepted write so fleet data-integrity
     // investigations have the full edit history.
     if (userId) {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-         VALUES (?, 'mileage_updated', 'unit', ?, ?, ?)`,
-        userId, unitId,
-        `${user?.full_name ?? userId} updated mileage ${unit.mileage ?? 'null'}→${mileage} on unit ${unitId} (${unit.call_sign ?? ''})`,
-        c.req.header('CF-Connecting-IP') || 'unknown');
+      await recordAudit(c, {
+        action: 'mileage_updated', entityType: 'unit', entityId: unitId,
+        details: `${user?.full_name ?? userId} updated mileage ${unit.mileage ?? 'null'}→${mileage} on unit ${unitId} (${unit.call_sign ?? ''})`,
+        actorId: userId,
+      });
     }
     await execute(db, "UPDATE units SET mileage = ?, updated_at = datetime('now') WHERE id = ?", mileage, unitId);
     return c.json({ success: true, unit_id: unitId, mileage, previous_mileage: unit.mileage });
@@ -1177,11 +1172,11 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
     `, call.id, now, nearest.id);
 
     if (userId != null) {
-      await execute(db, `
-        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'auto_assigned', 'call', ?, ?, ?)
-      `, userId, call.id, `Auto-assigned nearest unit ${nearest.call_sign} (${minMiles.toFixed(2)} mi) to ${call.call_number ?? '#' + call.id}`,
-        c.req.header('CF-Connecting-IP') || 'unknown');
+      await recordAudit(c, {
+        action: 'auto_assigned', entityType: 'call', entityId: call.id,
+        details: `Auto-assigned nearest unit ${nearest.call_sign} (${minMiles.toFixed(2)} mi) to ${call.call_number ?? '#' + call.id}`,
+        actorId: userId,
+      });
     }
 
     const updated = await queryFirst<Record<string, unknown>>(
@@ -1248,12 +1243,13 @@ callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
       timestamp = body.created_at;
     }
 
-    const result = await execute(db, `
-      INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, ?, 'call', ?, ?, ?, ?)
-    `, userId, action, call.id, details, c.req.header('CF-Connecting-IP') || 'unknown', timestamp);
+    await recordAudit(c, {
+      action, entityType: 'call', entityId: call.id, details, actorId: userId,
+      createdAt: timestamp, // preserve caller-supplied backfill time
+    });
 
-    const insertedId = (result as any)?.meta?.last_row_id ?? (result as any)?.lastInsertRowid;
+    const idRow = await queryFirst<{ id: number }>(db, 'SELECT last_insert_rowid() AS id');
+    const insertedId = idRow?.id;
     const entry = await queryFirst<Record<string, unknown>>(db, `
       SELECT al.*, u.full_name AS user_name
       FROM audit_log al
@@ -1395,11 +1391,11 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
     }
 
     if (userId != null) {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-         VALUES (?, 'status_reverted', 'call', ?, ?, ?)`,
-        userId, id, `${call.call_number} status reverted from ${call.status} to ${previousStatus}`,
-        c.req.header('CF-Connecting-IP') || 'unknown');
+      await recordAudit(c, {
+        action: 'status_reverted', entityType: 'call', entityId: id,
+        details: `${call.call_number} status reverted from ${call.status} to ${previousStatus}`,
+        actorId: userId,
+      });
     }
 
     const updated = await fetchCallRow(db, id);
@@ -1446,11 +1442,11 @@ callActions.post('/:id/le-notification', requireRole(...READ_ROLES), async (c) =
       agencyName, case_number || null, now, id);
 
     if (userId != null) {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-         VALUES (?, 'le_notification', 'call', ?, ?, ?, ?)`,
-        userId, id, `LE notified: ${agencyName}${case_number ? ` (Case #${case_number})` : ''}`,
-        c.req.header('CF-Connecting-IP') || 'unknown', now);
+      await recordAudit(c, {
+        action: 'le_notification', entityType: 'call', entityId: id,
+        details: `LE notified: ${agencyName}${case_number ? ` (Case #${case_number})` : ''}`,
+        actorId: userId,
+      });
     }
 
     const updated = await fetchCallRow(db, id);
@@ -1497,11 +1493,11 @@ callActions.post('/:id/transfer', requireRole(...WRITE_ROLES), async (c) => {
     ]);
 
     if (userId != null) {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-         VALUES (?, 'call_transferred', 'call', ?, ?, ?)`,
-        userId, id, `Transferred ${call.call_number} from ${fromUnit.call_sign} to ${toUnit.call_sign}`,
-        c.req.header('CF-Connecting-IP') || 'unknown');
+      await recordAudit(c, {
+        action: 'call_transferred', entityType: 'call', entityId: id,
+        details: `Transferred ${call.call_number} from ${fromUnit.call_sign} to ${toUnit.call_sign}`,
+        actorId: userId,
+      });
     }
 
     const updated = await fetchCallRow(db, id);
@@ -1725,11 +1721,11 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
       call.location_address || null, call.latitude ?? null, call.longitude ?? null, narrative, userId);
     const incidentId = result.meta.last_row_id;
 
-    await execute(db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-       VALUES (?, 'incident_created', 'incident', ?, ?, ?)`,
-      userId, incidentId, `Generated ${incidentNumber} from call ${call.call_number}`,
-      c.req.header('CF-Connecting-IP') || 'unknown');
+    await recordAudit(c, {
+      action: 'incident_created', entityType: 'incident', entityId: incidentId,
+      details: `Generated ${incidentNumber} from call ${call.call_number}`,
+      actorId: userId,
+    });
 
     const incident = await queryFirst<Record<string, unknown>>(db, `
       SELECT i.*, o.full_name AS officer_name, c.call_number
@@ -1802,11 +1798,11 @@ callActions.post('/:id/send-to-serve', requireRole('admin', 'manager', 'supervis
       `Created from dispatch call ${call.call_number}`);
 
     try {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-         VALUES (?, 'serve_queued', 'serve_queue', ?, ?, ?)`,
-        userId, result.meta.last_row_id, `Sent call ${call.call_number} to serve queue`,
-        c.req.header('cf-connecting-ip') || 'unknown');
+      await recordAudit(c, {
+        action: 'serve_queued', entityType: 'serve_queue', entityId: result.meta.last_row_id,
+        details: `Sent call ${call.call_number} to serve queue`,
+        actorId: userId,
+      });
     } catch { /* audit non-fatal */ }
 
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM serve_queue WHERE id = ?', result.meta.last_row_id);
