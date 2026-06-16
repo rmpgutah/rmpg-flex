@@ -646,7 +646,12 @@
 //       reload-hold (chunkRetry) surfaces the ErrorBoundary recovery card
 //       instead of a permanent button-less Suspense splash; plus an automatic
 //       UI-trap watchdog that auto-recovers orphaned full-screen overlays.
-const CACHE_NAME = 'rmpg-flex-v988';
+// v989: record/CFS rendering fixes — PDF form cells shrink long values to one
+//       line (fitTextToWidth) instead of wrapping past the cell and overprinting
+//       the next row (CFS location-map grid); person record two-column identifying
+//       marks reserve their row to avoid a page break splitting the columns;
+//       on-screen RecordField wraps long values (break-words/min-w-0).
+const CACHE_NAME = 'rmpg-flex-v989';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

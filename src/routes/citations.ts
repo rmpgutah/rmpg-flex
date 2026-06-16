@@ -322,7 +322,7 @@ citations.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM citations WHERE id = ?', newId);
 
     // Analytics lakehouse: citation-issued event (best-effort, fire-and-forget).
-    emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+    emitAnalytics(c, c.env.EVENTS, [flexEvent({
       event_type: 'citation_issued', occurred_at: new Date().toISOString(),
       actor_id: (c.get('userId') as number | undefined) ?? null,
       entity_type: 'citation', entity_id: newId,

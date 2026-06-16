@@ -82,7 +82,7 @@ evidence.post('/', async (c): Promise<Response> => {
     String((body as Record<string, unknown>).captured_at ?? ''),
   );
   // Analytics lakehouse: evidence-logged event (best-effort, fire-and-forget).
-  emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+  emitAnalytics(c, c.env.EVENTS, [flexEvent({
     event_type: 'evidence_logged', occurred_at: new Date().toISOString(),
     actor_id: userId, entity_type: 'evidence', entity_id: Number(res.meta?.last_row_id) || null,
     lat: (body as Record<string, unknown>).gps_lat, lng: (body as Record<string, unknown>).gps_lng,

@@ -260,7 +260,7 @@ pt.post('/scan', async (c) => {
   );
 
   // Analytics lakehouse: patrol-scan event = proof-of-patrol (best-effort, fire-and-forget).
-  emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+  emitAnalytics(c, c.env.EVENTS, [flexEvent({
     event_type: 'patrol_scan', occurred_at: new Date().toISOString(),
     actor_id: user.id, entity_type: 'checkpoint', entity_id: body.checkpoint_id,
     lat: body.latitude, lng: body.longitude, status, category: 'patrol',

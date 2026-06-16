@@ -40,32 +40,48 @@ export interface AnalyticsPipeline {
   send(records: AnalyticsEvent[]): Promise<void>;
 }
 
+/** Minimal structural shape — just the (lazily-accessed, possibly-absent)
+ *  execution context. Typed structurally so this util needn't import Hono. */
+interface ExecutionCtxHolder {
+  /** Hono's `c.executionCtx` — a getter that THROWS when there is none. */
+  executionCtx?: ExecutionContext;
+}
+
 /**
  * Fire-and-forget emit to the analytics stream (failure-strategy A).
  *
- * Uses `ctx.waitUntil` so the HTTP response returns immediately while the
- * runtime keeps the isolate alive until the send resolves. A failed send is
+ * Uses `c.executionCtx.waitUntil` so the HTTP response returns immediately while
+ * the runtime keeps the isolate alive until the send resolves. A failed send is
  * logged, never thrown — D1 stays authoritative and the batch ETL backfills any
  * gap. No-ops when the binding is unset or there is nothing to send.
  *
- * @param ctx     the Worker ExecutionContext (Hono: `c.executionCtx`)
+ * Takes the Hono context `c` (not `c.executionCtx`) and reads the execution
+ * context LAZILY inside, after the no-op early-return. That getter THROWS when
+ * there is no execution context (the vitest worker harness, Durable Object
+ * alarms, non-fetch entrypoints) — evaluating it eagerly at the call site
+ * 500'd the whole request. Guarded here, a missing ctx degrades to an
+ * un-awaited send (the send still runs; only the isolate-keepalive is skipped).
+ *
+ * @param c       the Hono context (`c.executionCtx` accessed internally)
  * @param stream  the Pipelines binding (Hono: `c.env.ANALYTICS`) — may be undefined
  * @param events  zero or more flat events to append
  */
 export function emitAnalytics(
-  ctx: ExecutionContext,
+  c: ExecutionCtxHolder,
   stream: AnalyticsPipeline | undefined,
   events: AnalyticsEvent[],
 ): void {
   if (!stream || events.length === 0) return;
-  ctx.waitUntil(
-    stream.send(events).catch((err: unknown) => {
-      console.error(
-        '[analytics] emit failed:',
-        err instanceof Error ? err.message : String(err),
-      );
-    }),
-  );
+  const work = stream.send(events).catch((err: unknown) => {
+    console.error(
+      '[analytics] emit failed:',
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+  let exec: ExecutionContext | undefined;
+  try { exec = c.executionCtx; } catch { exec = undefined; }
+  if (exec) exec.waitUntil(work);
+  else void work; // no execution context — let the send run un-awaited
 }
 
 // ── ALPR read → event mapping ────────────────────────────────

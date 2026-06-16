@@ -117,7 +117,7 @@ gps.post('/', async (c) => {
     // Analytics lakehouse: one AVL position sample per ingest (best-effort,
     // no-op until the EVENTS pipeline is provisioned). Never blocks the response.
     if (lastPt && unitId) {
-      emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+      emitAnalytics(c, c.env.EVENTS, [flexEvent({
         event_type: 'gps_ping', occurred_at: new Date().toISOString(),
         actor_id: userId, entity_type: 'unit', entity_id: unitId,
         unit_id: callSign ?? unitId, lat: lastPt.latitude, lng: lastPt.longitude,

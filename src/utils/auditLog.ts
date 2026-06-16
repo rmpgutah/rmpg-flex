@@ -56,16 +56,10 @@ export async function recordAudit(c: Context<Env>, e: AuditEntry): Promise<void>
   } catch (err) {
     console.warn('[audit] insert failed:', err instanceof Error ? err.message : String(err));
   }
-  // Mirror to flex_events. `c.executionCtx` throws in contexts that lack one
-  // (tests, scheduled handlers) — guard it so audit logging never throws.
-  let ctx: ExecutionContext | undefined;
-  try { ctx = c.executionCtx; } catch { ctx = undefined; }
-  if (ctx) {
-    emitAnalytics(ctx, c.env.EVENTS, [flexEvent({
-      event_type: 'audit', occurred_at: createdAt ?? new Date().toISOString(),
-      actor_id: actorId, entity_type: e.entityType, entity_id: entityId,
-      label: e.action, category: 'audit',
-      payload: details ? { details: details.slice(0, 2000) } : null,
-    })]);
-  }
+  emitAnalytics(c, c.env.EVENTS, [flexEvent({
+    event_type: 'audit', occurred_at: createdAt ?? new Date().toISOString(),
+    actor_id: actorId, entity_type: e.entityType, entity_id: entityId,
+    label: e.action, category: 'audit',
+    payload: details ? { details: details.slice(0, 2000) } : null,
+  })]);
 }
