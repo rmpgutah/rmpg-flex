@@ -447,6 +447,15 @@ export default {
         .then((r) => { if (r.configured && !r.skipped) console.log(`[icw] seen=${r.seen} upserted=${r.upserted}${r.error ? ` err=${r.error}` : ''}`); })
         .catch((err) => console.error('[icw] cron failed:', err)),
     );
+    // FlexCam footage retention — purge non-evidence footage past the configured
+    // window (default 120 days / 4 months). Evidence-locked footage is never
+    // touched. Best-effort; cannot abort the other 4-hourly scans or crash the cron.
+    ctx.waitUntil(
+      import('./utils/footage/captureOrchestrator')
+        .then(({ purgeExpiredFootage }) => purgeExpiredFootage(env))
+        .then((r) => { if (r.purged) console.log(`[flexcam-retention] purged ${r.purged} request(s), ${r.objects} object(s)`); })
+        .catch((err) => console.error('[flexcam-retention] purge failed:', (err as Error)?.message)),
+    );
     // Person-screening framework (INTERPOL / OFAC / Utah SOR). Watch-listed
     // persons only; OFAC dataset is bulk-refreshed inside the orchestrator.
     ctx.waitUntil(

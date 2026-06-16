@@ -1,9 +1,10 @@
 // src/utils/footage/captureOrchestrator.ts
 import type { Bindings } from '../../types';
-import { getDb, query, queryFirst, execute } from '../db';
+import { getDb, query, queryFirst, execute, columnExists } from '../db';
 import { getClearPathSource } from './clearpathSource';
 import { splitWindow } from './splitWindow';
 import { capChunkCount, batchLimit } from './pacing';
+import { retentionCutoffMs } from './retention';
 
 const R2_PREFIX = 'flexcam/trips/';
 const MAX_DOWNLOADS_PER_RUN = 40;  // download pass cap per cron tick
@@ -191,4 +192,40 @@ export async function maybeRunFootagePoll(env: Bindings): Promise<void> {
   const req = await runRequestPass(env);
   const r = await pollAndDownload(env);
   if (req.requested || r.downloaded || r.missing) console.log(`[flexcam] requested=${req.requested} downloaded=${r.downloaded} missing=${r.missing}`);
+}
+
+const DEFAULT_RETENTION_DAYS = 120; // 4 months
+const PURGE_BATCH = 50;             // requests purged per cron run
+
+/** Delete R2 objects + rows for footage_requests past the retention window that
+ *  are NOT locked as evidence. Batched per run; best-effort per object. Returns
+ *  counts. footage_retention_days config overrides the 120-day default; 0 = keep
+ *  forever (no-op). Evidence-locked footage is never purged. */
+export async function purgeExpiredFootage(env: Bindings, nowMs = Date.now()): Promise<{ purged: number; objects: number }> {
+  const db = getDb(env);
+  await ensureFootageSchema(db);
+  const days = await cfgInt(db, 'footage_retention_days', DEFAULT_RETENTION_DAYS);
+  const cutoff = retentionCutoffMs(nowMs, days);
+  if (cutoff == null) return { purged: 0, objects: 0 };                                // keep forever
+  const cutoffIso = new Date(cutoff).toISOString().replace('T', ' ').slice(0, 19);    // new-date-ok (epoch number)
+
+  // evidence_locked is a Phase-2 column that may not exist on live → guard it.
+  const locked = await columnExists(db, 'footage_requests', 'evidence_locked').catch(() => false);
+  const lockClause = locked ? 'AND COALESCE(evidence_locked,0)=0' : '';
+  const due = await query<{ id: number; merged_r2_key: string | null }>(db,
+    `SELECT id, merged_r2_key FROM footage_requests WHERE created_at < ? ${lockClause} ORDER BY id LIMIT ?`,
+    cutoffIso, PURGE_BATCH).catch(() => []);
+
+  let purged = 0, objects = 0;
+  for (const req of due) {
+    const chunks = await query<{ r2_key: string | null }>(db, 'SELECT r2_key FROM footage_chunks WHERE request_id=?', req.id).catch(() => []);
+    for (const ch of chunks) {
+      if (ch.r2_key) { try { await env.UPLOADS.delete(ch.r2_key); objects++; } catch { /* best-effort */ } }
+    }
+    if (req.merged_r2_key) { try { await env.UPLOADS.delete(req.merged_r2_key); objects++; } catch { /* */ } }
+    await execute(db, 'DELETE FROM footage_chunks WHERE request_id=?', req.id).catch(() => {});
+    await execute(db, 'DELETE FROM footage_requests WHERE id=?', req.id).catch(() => {});
+    purged++;
+  }
+  return { purged, objects };
 }
