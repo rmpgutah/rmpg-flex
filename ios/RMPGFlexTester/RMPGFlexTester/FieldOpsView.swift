@@ -50,7 +50,6 @@ struct FieldOpsView: View {
                 VStack(spacing: 10) {
                     HStack(spacing: 6) { OfflineStatusPill(); GPSStatusPill(); Spacer(); MDTStatusPill() }
                     dutyCard
-                    if onShift { statusCard }
                     NavigationLink {
                         CallsQueueView()
                     } label: {
@@ -106,7 +105,6 @@ struct FieldOpsView: View {
                         .themeCard()
                     }
                     if let myCall { callCard(myCall) }
-                    panicButton
                     Button { Task { await sendLocationToMDT() } } label: {
                         Label("SEND LOCATION TO MDT", systemImage: "car.fill")
                             .font(.system(size: 11, weight: .semibold)).frame(maxWidth: .infinity)
@@ -120,6 +118,14 @@ struct FieldOpsView: View {
                 .padding(12)
             }
             .background(Theme.base)
+            .safeAreaInset(edge: .bottom) {
+                ResponderActionBar(
+                    currentStatus: unitStatus,
+                    statuses: statuses,
+                    showStatus: onShift,
+                    onSelectStatus: { value in Task { await setStatus(value) } },
+                    onPanic: { confirmPanic = true })
+            }
             .navigationTitle("FIELD OPS")
             .navigationBarTitleDisplayMode(.inline)
             .task {
@@ -188,24 +194,6 @@ struct FieldOpsView: View {
         }
         .padding(10).background(Theme.raised.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-    }
-
-    private var statusCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("UNIT STATUS: \(unitStatus.uppercased())")
-                .font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.neutral)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                ForEach(statuses, id: \.0) { value, label in
-                    Button(label) { Task { await setStatus(value) } }
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(unitStatus == value ? Theme.gold : Theme.raised)
-                        .foregroundStyle(unitStatus == value ? .black : .white)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                        .disabled(busyAction)
-                }
-            }
-        }
     }
 
     // Hazard flags carried on the call row (SQLite booleans = 1). Surfaced as
@@ -301,16 +289,6 @@ struct FieldOpsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10).background(Theme.raised)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-    }
-
-    private var panicButton: some View {
-        Button { confirmPanic = true } label: {
-            Text("⚠ PANIC")
-                .font(.system(size: 16, weight: .heavy))
-                .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(Theme.red).foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-        }
     }
 
     // ── Networking ──────────────────────────────────────────
