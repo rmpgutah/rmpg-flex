@@ -192,7 +192,7 @@ struct StatusLine: View {
     let text: String
     var body: some View {
         Text(text)
-            .font(.system(size: 11, design: .monospaced))
+            .font(Theme.Typography.mono)
             .foregroundStyle(text.hasPrefix("✓") ? Theme.gold
                              : text.hasPrefix("✗") ? Theme.red
                              : text.hasPrefix("⚠") ? Theme.orange : Theme.neutral)
@@ -206,7 +206,7 @@ struct SectionHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .semibold))
+                .font(Theme.Typography.label)
                 .foregroundStyle(Theme.gold)
             Rectangle().fill(Theme.border).frame(height: 1)
         }

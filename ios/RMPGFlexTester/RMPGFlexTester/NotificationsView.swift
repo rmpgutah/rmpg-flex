@@ -65,7 +65,7 @@ struct NotificationsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
                         Text(title)
-                            .font(.system(size: 13, weight: read ? .regular : .semibold))
+                            .font(Theme.Typography.headline).fontWeight(read ? .regular : .semibold)
                             .foregroundStyle(read ? Theme.textSecondary : .white)
                         Spacer()
                         if !priority.isEmpty && priority != "normal" && priority != "low" {
