@@ -49,6 +49,7 @@ import {
   type AlprVehicle,
 } from '../roboflowAlpr';
 import { trustScore } from '../plateTrust';
+import { readPlateCloudflare, type CloudflarePlateResult } from '../cloudflarePlate';
 
 type DB = D1Database;
 
@@ -113,6 +114,18 @@ async function upsertVehicleByPlate(db: DB, v: AlprVehicle): Promise<number | nu
       v.plate, v.state, v.make, v.model, v.year, v.color, v.vehicleType, v.plateType);
     return Number(r.meta.last_row_id);
   } catch (err) { console.error('[flexcam-alpr] vehicle upsert failed:', (err as Error)?.message); return null; }
+}
+
+/** Map the free Workers-AI plate read onto the AlprVehicle shape persistVehicle
+ *  consumes. Pure (exported for tests). */
+export function cloudflarePlateToVehicle(r: CloudflarePlateResult): AlprVehicle {
+  return {
+    plate: r.plate, state: r.state, make: r.make, model: r.model, color: r.color, year: r.year,
+    vehicleType: r.bodyStyle, plateType: r.plateType, confidence: r.confidence,
+    condition: r.condition, damageObserved: r.damageSummary ? true : null, damageSummary: r.damageSummary,
+    damageAreas: [], aftermarket: null,
+    confidences: r.confidence != null ? { plate: r.confidence } : {},
+  };
 }
 
 /** Derive honest trust for one footage read. A footage chunk yields a single
