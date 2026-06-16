@@ -14,19 +14,7 @@
 // references a chunk the CDN is still replicating (a reload there re-fails
 // instantly), then reload ONCE per 30s to pick up the fresh index.
 
-const RELOAD_KEY = 'rmpg_chunk_reload';
-
-function isChunkLoadError(err: unknown): boolean {
-  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  return (
-    msg.includes('failed to fetch dynamically imported module') ||
-    msg.includes('chunkloaderror') ||
-    msg.includes('loading chunk') ||
-    msg.includes('failed to load module script') ||
-    msg.includes('expected a javascript-or-wasm module') ||
-    msg.includes('chunk load failed')
-  );
-}
+import { isChunkLoadError, tryReloadForChunkFailure } from './chunkRetry';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -53,16 +41,14 @@ export async function importWithRetry<T>(factory: () => Promise<T>): Promise<T> 
     return await factory();
   } catch (err) {
     if (isChunkLoadError(err)) {
-      const last = sessionStorage.getItem(RELOAD_KEY);
-      const now = Date.now();
-      // Reload once per 30s to avoid a reload loop if the fresh index still
-      // can't load the chunk (CDN still propagating / genuine server error).
-      if (!last || now - parseInt(last) > 30000) {
-        sessionStorage.setItem(RELOAD_KEY, String(now));
-        window.location.reload();
-        // Stay pending; the reload navigates away before this resolves.
-        return new Promise<T>(() => { /* reload in flight */ });
-      }
+      // Reload once per 30s to pick up the fresh index, holding this promise
+      // pending while the reload navigates away. The hold is BOUNDED: if the
+      // reload never tears the page down (CDN still propagating, offline, stale
+      // SW shell), it rejects after ~10s so the awaiting caller's catch fires
+      // (a toast) instead of the feature hanging silently forever. Returns null
+      // inside the 30s window → fall through and rethrow.
+      const held = tryReloadForChunkFailure<T>(err);
+      if (held) return held;
     }
     throw err;
   }

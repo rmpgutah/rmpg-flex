@@ -2,6 +2,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { query, queryFirst, execute } from '../utils/db';
+import { recordAudit } from '../utils/auditLog';
 
 const deepResearch = new Hono<Env>();
 
@@ -38,9 +39,7 @@ deepResearch.post('/', async (c): Promise<Response> => {
     id, org, uid, subject, subjectType, context, monitorIntervalDays,
     link?.entity_type ?? null, link?.entity_id ?? null);
 
-  await execute(c.env.DB,
-    `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?,?,?,?,?, datetime('now'))`,
-    uid, 'deep_research.create', 'deep_research_job', null, JSON.stringify({ id, subject, subjectType }));
+  await recordAudit(c, { action: 'deep_research.create', entityType: 'deep_research_job', entityId: null, details: JSON.stringify({ id, subject, subjectType }), actorId: uid });
 
   const stub = c.env.DEEP_RESEARCH.get(c.env.DEEP_RESEARCH.idFromName(id));
   await stub.fetch('https://do/start', {
@@ -114,9 +113,7 @@ deepResearch.post('/findings/:id/confirm', async (c): Promise<Response> => {
   const refId = Number.isFinite(body.entity_ref_id) ? Math.floor(body.entity_ref_id) : null;
   const r = await execute(c.env.DB, `UPDATE research_findings SET status='confirmed', entity_ref_type=?, entity_ref_id=? WHERE id=? AND (org_id=? OR org_id IS NULL)`, refType, refId, id, orgId(c));
   if (!r.meta.changes) return c.json({ error: 'not found' }, 404);
-  await execute(c.env.DB,
-    `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?,?,?,?,?, datetime('now'))`,
-    actorId(c), 'deep_research.confirm_finding', 'research_finding', id, JSON.stringify({ refType, refId }));
+  await recordAudit(c, { action: 'deep_research.confirm_finding', entityType: 'research_finding', entityId: id, details: JSON.stringify({ refType, refId }), actorId: actorId(c) });
   return c.json({ ok: true });
 });
 

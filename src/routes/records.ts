@@ -4,6 +4,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { normalizeDob } from '../utils/normalizeDob';
 import { codedLike } from '../utils/searchText';
+import { recordAudit } from '../utils/auditLog';
 
 const records = new Hono<Env>();
 
@@ -103,6 +104,60 @@ records.put('/properties/:id', async (c) => {
     const updated = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', id);
     return c.json(updated);
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// GET /records/properties/export — CSV download. Must be registered before
+// /properties/:id so Hono does not match "export" as the :id segment.
+records.get('/properties/export', async (c): Promise<Response> => {
+  try {
+    const db = getDb(c.env);
+    const { archived } = c.req.query();
+    const sql = `SELECT * FROM properties WHERE ${archived === 'true' ? 'archived_at IS NOT NULL' : 'archived_at IS NULL'} ORDER BY name LIMIT 50000`;
+    const rows = await query<Record<string, unknown>>(db, sql);
+    if (rows.length === 0) return c.newResponse('', 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=properties_export.csv' });
+    const keys = ['name', 'address', 'city', 'state', 'zip', 'property_type', 'client_id', 'is_active', 'notes'];
+    const csv = [keys.join(','), ...rows.map((r) => keys.map((k) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=properties_export.csv' });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// GET /records/properties/:id — fetch a single property.
+records.get('/properties/:id', async (c): Promise<Response> => {
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', c.req.param('id'));
+    if (!row) return c.json({ error: 'Not found' }, 404);
+    return c.json(row);
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// DELETE /records/properties/:id — hard delete + remove junction rows.
+records.delete('/properties/:id', async (c): Promise<Response> => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    await execute(db, "DELETE FROM record_links WHERE (source_type = 'property' AND source_id = ?) OR (target_type = 'property' AND target_id = ?)", id, id);
+    await execute(db, 'DELETE FROM properties WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// POST /records/properties/:id/archive — soft-delete.
+records.post('/properties/:id/archive', async (c): Promise<Response> => {
+  try {
+    const db = getDb(c.env);
+    await execute(db, "UPDATE properties SET archived_at = datetime('now') WHERE id = ?", c.req.param('id'));
+    return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// POST /records/properties/:id/unarchive — restore.
+records.post('/properties/:id/unarchive', async (c): Promise<Response> => {
+  try {
+    const db = getDb(c.env);
+    await execute(db, 'UPDATE properties SET archived_at = NULL WHERE id = ?', c.req.param('id'));
+    return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 // All writable columns on the persons table, sourced from the legacy
@@ -1086,6 +1141,14 @@ records.get('/vehicles/alerts/expired-registration', async (c) => {
   } catch (err) { return c.json({ expired: false }); }
 });
 
+// POST /records/plate-check — multi-source plate aggregator called by VehiclesTab.
+// Returns an empty result set when no external integration is configured so the
+// tab loads without error (the caller already has .catch(() => null) as a guard,
+// but a 404 is noisier than a clean empty response).
+records.post('/plate-check', async (c): Promise<Response> => {
+  return c.json({ results: [], sources: [] });
+});
+
 // ── Businesses (canonical `businesses` table) ──
 // Unified onto the dedicated businesses table (migration 0125) so the Records
 // Business tab shares one store with call-linking + business photos/visits/
@@ -1107,6 +1170,16 @@ records.get('/businesses', async (c) => {
     const archived = c.req.query('archived') === 'true';
     const rows = await query<Record<string, unknown>>(db, `SELECT * FROM businesses WHERE ${archived ? 'archived_at IS NOT NULL' : 'archived_at IS NULL'} ORDER BY name LIMIT 500`);
     return c.json(rows);
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// GET /records/businesses/:id — fetch a single business record.
+records.get('/businesses/:id', async (c): Promise<Response> => {
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst(db, 'SELECT * FROM businesses WHERE id = ?', c.req.param('id'));
+    if (!row) return c.json({ error: 'Not found' }, 404);
+    return c.json(row);
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
@@ -1743,12 +1816,7 @@ records.post('/retention/enforce', async (c) => {
       if (count > 0) results[recordType] = count;
     }
     const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown';
-    try {
-      await execute(db,
-        `INSERT INTO audit_log (user_id,action,entity_type,entity_id,details,ip_address,created_at)
-         VALUES (?,'records_retention_enforced','records',0,?,?,datetime('now'))`,
-        (user as any).id ?? 0, JSON.stringify(results), ip);
-    } catch { /* non-fatal */ }
+    await recordAudit(c, { action: 'records_retention_enforced', entityType: 'records', entityId: 0, details: JSON.stringify(results), actorId: (user as any).id ?? 0 });
     return c.json({ enforced: true, results });
   } catch (err) {
     return c.json({ error: 'Failed to enforce retention', detail: (err as Error)?.message }, 500);

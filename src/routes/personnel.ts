@@ -3,6 +3,7 @@ import type { Context } from 'hono';
 import { hashSync } from 'bcryptjs';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { recordAudit } from '../utils/auditLog';
 import { setFleetOdometer } from '../utils/fleetOdometer';
 import { bodyCamerasRouter, bodycamVideosRouter } from './personnel/bodyCameras';
 // Side-effect import: registers upload + stream handlers on
@@ -1067,13 +1068,7 @@ personnel.delete('/time/:id', async (c) => {
 
     try {
       if (actor?.id != null) {
-        await execute(
-          db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-           VALUES (?, 'TIME_ENTRY_DELETE', 'time_entry', ?, ?, datetime('now'))`,
-          actor.id, id,
-          `Deleted time entry #${id} (officer ${existing.officer_id}, ${existing.total_hours ?? 0}h) — ${reason}`,
-        );
+        await recordAudit(c, { action: 'TIME_ENTRY_DELETE', entityType: 'time_entry', entityId: id, details: `Deleted time entry #${id} (officer ${existing.officer_id}, ${existing.total_hours ?? 0}h) — ${reason}`, actorId: actor.id });
       }
     } catch (auditErr) {
       console.warn('audit_log insert failed for time-entry delete:', auditErr);

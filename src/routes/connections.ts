@@ -31,6 +31,7 @@ import { requireRole } from '../middleware/auth';
 import { escapeLike, codedLike } from '../utils/searchText';
 import { mergeTimeline } from '../utils/intelDossier';
 import { parseNodeRefs, buildTimelineEvent } from '../utils/connectionsTimeline';
+import { recordAudit } from '../utils/auditLog';
 
 const connections = new Hono<Env>();
 
@@ -79,21 +80,13 @@ async function audit(
   entityId: number | string,
   details: string,
 ): Promise<void> {
-  try {
-    await execute(
-      getDb(c.env),
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      (c.get('userId') as number | undefined) ?? null,
-      action,
-      entityType,
-      String(entityId),
-      details,
-      c.req.header('CF-Connecting-IP') ?? null,
-    );
-  } catch (err: any) {
-    console.error('[Connections] audit write failed:', err?.message);
-  }
+  await recordAudit(c, {
+    action,
+    entityType,
+    entityId: String(entityId),
+    details,
+    actorId: (c.get('userId') as number | undefined) ?? null,
+  });
 }
 
 // ── Node loading (label + metadata in one query) ─────────────

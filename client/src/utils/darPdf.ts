@@ -11,8 +11,6 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import type { DailyActivityReport } from '../types';
 
-const GOLD = '#d4a017';
-const BLACK = '#0a0a0a';
 const GRAY = '#888888';
 
 // ── Pure helpers (unit-tested) ──────────────────────────────────
@@ -71,16 +69,18 @@ export function generateDarPdf(r: DailyActivityReport): void {
     doc.text(str, x, y);
   };
 
-  // Banner
-  doc.setFillColor(BLACK); doc.rect(0, 0, W, 56, 'F');
-  doc.setFillColor(GOLD); doc.rect(0, 56, W, 3, 'F');
-  doc.setFont('Arial', 'bold'); doc.setFontSize(18); doc.setTextColor(GOLD);
-  doc.text('RMPG', M, 34);
-  doc.setFontSize(13); doc.setTextColor('#ffffff');
-  doc.text('DAILY ACTIVITY REPORT', M + 64, 34);
-  doc.setFontSize(10); doc.setTextColor(GOLD);
-  doc.text(r.dar_number || '', W - M, 34, { align: 'right' });
-  y = 84;
+  // Header — clean line-and-text format
+  y = M;
+  doc.setFont('Arial', 'bold'); doc.setFontSize(16); doc.setTextColor('#000000');
+  doc.text('RMPG FLEX — DAILY ACTIVITY REPORT', M, y);
+  if (r.dar_number) {
+    doc.setFontSize(10); doc.setTextColor(GRAY);
+    doc.text(r.dar_number, W - M, y, { align: 'right' });
+    doc.setTextColor('#000000');
+  }
+  y += 14;
+  doc.setDrawColor(0); doc.setLineWidth(1.2); doc.line(M, y, W - M, y); y += 2;
+  doc.setLineWidth(0.4); doc.line(M, y, W - M, y); y += 14;
 
   // Meta block
   const metaPairs: [string, string][] = [
@@ -99,7 +99,7 @@ export function generateDarPdf(r: DailyActivityReport): void {
   const c = darCounts(r);
   ensure(20);
   text(`${c.calls} calls   ·   ${c.incidents} incidents   ·   ${c.citations} citations   ·   ${c.patrols} patrol scans`,
-       M, 11, BLACK, true);
+       M, 11, '#000000', true);
   y += 22;
 
   // Activity tables
@@ -113,8 +113,8 @@ export function generateDarPdf(r: DailyActivityReport): void {
   for (const [title, kind, json, headers] of sections) {
     const rows = darSectionRows(parseDarArray(json), kind);
     ensure(28);
-    doc.setFillColor('#f3f3f3'); doc.rect(M, y - 10, W - M * 2, 16, 'F');
-    text(title, M + 4, 9, BLACK, true); y += 12;
+    text(title, M + 4, 9, '#000000', true); y += 12;
+    doc.setDrawColor(0); doc.setLineWidth(0.5); doc.line(M, y - 2, W - M, y - 2);
     text(headers[0], col[0] + 4, 8, GRAY, true); text(headers[1], col[1], 8, GRAY, true); text(headers[2], col[2], 8, GRAY, true);
     y += 12;
     if (rows.length === 0) { text('None recorded.', M + 4, 9, GRAY); y += 14; }
@@ -138,7 +138,7 @@ export function generateDarPdf(r: DailyActivityReport): void {
   ];
   for (const [title, body] of blocks) {
     if (!body || !body.trim()) continue;
-    ensure(30); text(title, M, 9, BLACK, true); y += 14;
+    ensure(30); text(title, M, 9, '#000000', true); y += 14;
     doc.setFont('Arial', 'normal'); doc.setFontSize(9); doc.setTextColor('#222222');
     for (const line of doc.splitTextToSize(body, W - M * 2) as string[]) {
       ensure(12); doc.text(line, M, y); y += 12;

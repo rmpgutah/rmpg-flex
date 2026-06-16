@@ -14,6 +14,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { recordAudit } from '../utils/auditLog';
 import { codedLike } from '../utils/searchText';
 
 const uof = new Hono<Env>();
@@ -124,10 +125,7 @@ uof.post('/', async (c) => {
       b.body_camera_active === false ? 0 : 1, witnesses, b.narrative ?? null);
     // Audit trail — UoF is a compliance document; record the submission.
     try {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-         VALUES (?, 'CREATE', 'use_of_force', ?, ?, datetime('now'))`,
-        userId, r.meta.last_row_id, `Use of force report submitted (${b.force_type})`);
+      await recordAudit(c, { action: 'CREATE', entityType: 'use_of_force', entityId: r.meta.last_row_id, details: `Use of force report submitted (${b.force_type})`, actorId: userId });
     } catch { /* non-fatal */ }
     // ── FlexCam auto-preserve (best-effort, strictly additive). The officer's
     // unit isn't in scope here, so resolve it from the submitter; never throws
@@ -174,10 +172,7 @@ uof.put('/:id/review', async (c) => {
               review_notes = COALESCE(?, review_notes), updated_at = datetime('now','localtime')
        WHERE id = ?`, status, userId, b.notes ?? null, id);
     try {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-         VALUES (?, 'REVIEW', 'use_of_force', ?, ?, datetime('now'))`,
-        userId, id, `Use of force report ${b.decision}`);
+      await recordAudit(c, { action: 'REVIEW', entityType: 'use_of_force', entityId: id, details: `Use of force report ${b.decision}`, actorId: userId });
     } catch { /* non-fatal */ }
     const updated = await queryFirst<Record<string, unknown>>(db, `${REPORT_SELECT} WHERE u.id = ?`, id);
     return c.json({ success: true, report: updated });

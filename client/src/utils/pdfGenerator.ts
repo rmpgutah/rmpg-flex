@@ -206,7 +206,7 @@ export function setGenerationTimestamp(ts: string) { generationTimestamp = ts; }
 // flip to 'light' on entry and restore 'dark' on exit so other forms
 // keep their existing look.
 export type SectionHeaderStyle = 'dark' | 'light';
-let activeSectionStyle: SectionHeaderStyle = 'dark';
+let activeSectionStyle: SectionHeaderStyle = 'light';
 export function setActiveSectionStyle(s: SectionHeaderStyle) { activeSectionStyle = s; }
 export function getActiveSectionStyle(): SectionHeaderStyle { return activeSectionStyle; }
 
@@ -743,24 +743,23 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Spillman Flex / LexisNexis convention:
-  // Solid black header band across the full content width, white UPPERCASE
-  // bold text. No accent strip, no tint — pure black-and-white police form.
+  // Clean section header: bold UPPERCASE title + thin underline rule.
+  // No filled bands — matches the fuel-report / line-and-text standard.
   const sectionY = y;
   const sectionPage = doc.getNumberOfPages();
   const barH = SPACING.SECTION_HEADER_H;
 
-  doc.setFillColor(0, 0, 0);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, barH, 'F');
-
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('Arial', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
   const capH = FONT.SIZE_SECTION_TITLE * 0.35;
   const textY = y + (barH + capH) / 2;
-  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textY);
+  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, textY);
 
-  // Reset text to black for content
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setLineWidth(0.5);
+  doc.line(LAYOUT.PAGE_MARGIN, y + barH, LAYOUT.PAGE_MARGIN + cw, y + barH);
+
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   return { contentY: y + barH + SPACING.SECTION_CONTENT_PAD, sectionY, sectionPage };
 }
