@@ -6,6 +6,7 @@ import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { ensureFootageSchema, enqueueFootage } from '../utils/footage/captureOrchestrator';
 import { getClearPathSource } from '../utils/footage/clearpathSource';
 import { getApiConfig, listDevices, listMedia } from '../utils/clearpathGps';
+import { ensureMarkersSchema, buildFootageMarkers } from '../utils/footage/markers';
 import { buildManifest, concatToR2 } from '../utils/footage/concat';
 import { requireRole } from '../middleware/auth';
 import { footageEvidenceNumber, isUnlockable, buildCourtManifest, manifestPayloadHash, logCustody, viewSessionKey } from '../utils/footage/evidence';
@@ -94,7 +95,10 @@ flexcam.get('/footage/:id', async (c): Promise<Response> => {
   const rows = await query<{ seq: number; from_ts: number; to_ts: number; status: string; r2_key: string | null; bytes: number }>(
     db, 'SELECT seq, from_ts, to_ts, status, r2_key, bytes FROM footage_chunks WHERE request_id=? ORDER BY seq', id).catch(() => []);
   const manifest = buildManifest(id, rows);
-  return c.json({ request: req, manifest });
+  await ensureMarkersSchema(db);
+  const markers = await query(db,
+    'SELECT ts_ms, offset_ms, kind, type, severity, label, lat, lng, heading_deg, turn_dir FROM footage_markers WHERE footage_request_id=? ORDER BY offset_ms', id).catch(() => []);
+  return c.json({ request: req, manifest, markers });
 });
 
 flexcam.get('/footage/:id/chunk/:seq/stream', async (c): Promise<Response> => {
@@ -234,6 +238,17 @@ flexcam.delete('/footage/:id', async (c): Promise<Response> => {
   await execute(db, 'DELETE FROM footage_chunks WHERE request_id=?', id);
   await execute(db, 'DELETE FROM footage_requests WHERE id=?', id);
   return c.json({ success: true });
+});
+
+// Timeline markers for a request (event tags + turn pins). ?rebuild=1 re-derives
+// from the live ClearPath events + GPS track for the window.
+flexcam.get('/footage/:id/markers', async (c): Promise<Response> => {
+  const db = getDb(c.env); await ensureMarkersSchema(db);
+  const id = Number(c.req.param('id'));
+  if (c.req.query('rebuild') === '1') { try { await buildFootageMarkers(c.env, id); } catch { /* best-effort */ } }
+  const markers = await query(db,
+    'SELECT ts_ms, offset_ms, kind, type, severity, label, lat, lng, heading_deg, turn_dir FROM footage_markers WHERE footage_request_id=? ORDER BY offset_ms', id).catch(() => []);
+  return c.json({ markers });
 });
 
 // ── W1 verification spike ────────────────────────────────────
