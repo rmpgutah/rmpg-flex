@@ -1,7 +1,6 @@
 // src/utils/footage/clearpathSource.ts
 import { getApiConfig, listMedia, API_BASE, type CpgClient } from '../clearpathGps';
 import type { FootageSource, FootageRequestHandle, FootageChunkStatus } from './types';
-import { splitWindow } from './splitWindow';
 
 // ⚠️ Confirm against Task 0 spike findings before production use.
 const CPG_MEDIA_REQUEST_PATH = '/v2.0/media/request';
@@ -34,7 +33,8 @@ export function classifyChunkStatus(obj: Record<string, unknown>): FootageChunkS
   if (status === 'NO_MEDIA' || status === 'UNAVAILABLE') return { state: 'missing' };
   if (status === 'ERROR' || status === 'FAILED') return { state: 'error' };
   if (accessUrl && (status === 'AVAILABLE' || status === 'READY')) {
-    return { state: 'available', accessUrl, contentType: obj?.contentType ? String(obj.contentType) : undefined };
+    return { state: 'available', accessUrl, contentType: obj?.contentType ? String(obj.contentType) : undefined,
+      thumbnailUrl: obj?.thumbnailUrl ? String(obj.thumbnailUrl) : undefined };
   }
   return { state: 'requested' };
 }
@@ -67,17 +67,10 @@ export class ClearPathSource implements FootageSource {
   readonly maxChunkSeconds = MAX_CHUNK_SECONDS;
   constructor(private env: EnvLike, private client: CpgClient) {}
 
-  async requestWindow(assetId: number, fromTs: number, toTs: number, channels: string[]): Promise<FootageRequestHandle[]> {
-    // TODO: parallelize chunk requests per channel once the endpoint contract is confirmed (spike).
-    const handles: FootageRequestHandle[] = [];
-    for (const channel of channels.length ? channels : ['outside']) {
-      const chunks = splitWindow(fromTs, toTs, this.maxChunkSeconds);
-      for (const c of chunks) {
-        const resp = await post(this.env, this.client, CPG_MEDIA_REQUEST_PATH, buildMediaRequestPayload(assetId, c.fromTs, c.toTs, channel));
-        handles.push({ seq: c.seq, vendorId: parseRequestId(resp), fromTs: c.fromTs, toTs: c.toTs, channel });
-      }
-    }
-    return handles;
+  async requestChunk(assetId: number, fromTs: number, toTs: number, channel: string): Promise<string | null> {
+    const resp = await post(this.env, this.client, CPG_MEDIA_REQUEST_PATH,
+      buildMediaRequestPayload(assetId, fromTs, toTs, channel));
+    return parseRequestId(resp);
   }
 
   async pollChunk(assetId: number, handle: FootageRequestHandle): Promise<FootageChunkStatus> {

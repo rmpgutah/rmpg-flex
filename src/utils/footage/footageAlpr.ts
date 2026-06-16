@@ -49,6 +49,7 @@ import {
   type AlprVehicle,
 } from '../roboflowAlpr';
 import { trustScore } from '../plateTrust';
+import { readPlateCloudflare, type CloudflarePlateResult } from '../cloudflarePlate';
 
 type DB = D1Database;
 
@@ -113,6 +114,18 @@ async function upsertVehicleByPlate(db: DB, v: AlprVehicle): Promise<number | nu
       v.plate, v.state, v.make, v.model, v.year, v.color, v.vehicleType, v.plateType);
     return Number(r.meta.last_row_id);
   } catch (err) { console.error('[flexcam-alpr] vehicle upsert failed:', (err as Error)?.message); return null; }
+}
+
+/** Map the free Workers-AI plate read onto the AlprVehicle shape persistVehicle
+ *  consumes. Pure (exported for tests). */
+export function cloudflarePlateToVehicle(r: CloudflarePlateResult): AlprVehicle {
+  return {
+    plate: r.plate, state: r.state, make: r.make, model: r.model, color: r.color, year: r.year,
+    vehicleType: r.bodyStyle, plateType: r.plateType, confidence: r.confidence,
+    condition: r.condition, damageObserved: r.damageSummary ? true : null, damageSummary: r.damageSummary,
+    damageAreas: [], aftermarket: null,
+    confidences: r.confidence != null ? { plate: r.confidence } : {},
+  };
 }
 
 /** Derive honest trust for one footage read. A footage chunk yields a single
@@ -235,4 +248,22 @@ export async function alprFootageChunk(
   for (const v of vehicles) {
     await persistVehicle(db, v, deviceId, locationText);
   }
+}
+
+/** Free Workers-AI ALPR on a still image (e.g. a segment thumbnail). Reads the
+ *  most prominent plate, maps it, and persists via the SAME path as the Roboflow
+ *  flow (screen → upsert → sighting → hit) — so footage plates land in the intel
+ *  log at zero Roboflow credit cost. Best-effort; never throws. No-op when the AI
+ *  binding is absent, the still is empty, or no plate is read. */
+export async function alprFootageStillCloudflare(
+  env: Bindings, db: DB, _chunkId: number, stillBytes: Uint8Array, deviceId: string | null,
+): Promise<void> {
+  if (!(env as { AI?: unknown }).AI || !stillBytes.length) return;
+  let result: CloudflarePlateResult | null = null;
+  try { result = await readPlateCloudflare(env as unknown as { AI: Ai }, stillBytes, 'image/jpeg'); }
+  catch (e) { console.error('[flexcam-alpr] workers-ai read failed:', (e as Error)?.message); return; }
+  if (!result?.plate) return;
+  await ensureSightingColumns(db);
+  const locationText = `FlexCam ${deviceId ?? ''}`.trim() || 'FlexCam footage';
+  await persistVehicle(db, cloudflarePlateToVehicle(result), deviceId, locationText);
 }
