@@ -8,7 +8,7 @@ import {
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
   Upload, Building2, ShieldAlert, Megaphone, GraduationCap, CheckCircle,
   DollarSign, Shield, Share2, Swords, Brain, Heart, Bell, Pill, Award, UserPlus,
-  Globe,
+  Globe, ScanSearch,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -100,6 +100,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/reports', icon: BarChart3, label: 'Reports' },
       { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
       { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
+      { path: '/analytics', icon: ScanSearch, label: 'Plate Analytics' },
       { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
       { path: '/reports/custom', icon: Database, label: 'Report Builder' },
       { path: '/connections', icon: Network, label: 'Connections', adminOnly: true },
@@ -153,7 +154,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
 const CONTRACT_MANAGER_BLOCKED = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/patrol', '/shift-plans', '/statute-analytics',
-  '/reports/custom', '/crime-analysis', '/dar',
+  '/reports/custom', '/crime-analysis', '/dar', '/analytics',
 ]);
 
 interface SidebarProps {
