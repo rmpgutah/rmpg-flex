@@ -589,7 +589,7 @@ alpr.post('/capture', operational, async (c) => {
   // until the ANALYTICS pipeline is provisioned). D1 above is the source of truth.
   if (fin.vehicles.length) {
     const occurredAt = new Date().toISOString();
-    emitAnalytics(c.executionCtx, c.env.ANALYTICS, fin.vehicles.map((v) =>
+    emitAnalytics(c, c.env.ANALYTICS, fin.vehicles.map((v) =>
       alprReadEvent(
         { captureRowId, callId, incidentId, lat, lng, locationText, userId, source: 'field' },
         v, occurredAt,
@@ -1144,7 +1144,7 @@ alpr.post('/edge', async (c) => {
   }
   // Fan the edge read out to the analytics lakehouse (best-effort; no-op until
   // the ANALYTICS pipeline is provisioned). Edge reads are unattended → userId null.
-  emitAnalytics(c.executionCtx, c.env.ANALYTICS, [alprReadEvent(
+  emitAnalytics(c, c.env.ANALYTICS, [alprReadEvent(
     {
       captureRowId: null, callId: null, incidentId: null,
       lat: num(rec.lat), lng: num(rec.lng), locationText: rec.location_text ?? null,

@@ -373,7 +373,7 @@ calls.get('/', async (c) => {
 
       // Analytics lakehouse: call-created event (best-effort, no-op until the
       // EVENTS pipeline is provisioned; fire-and-forget, never blocks dispatch).
-      emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+      emitAnalytics(c, c.env.EVENTS, [flexEvent({
         event_type: 'cfs_created', occurred_at: new Date().toISOString(),
         actor_id: (c.get('userId') as number | undefined) ?? null,
         entity_type: 'call', entity_id: callId,
@@ -970,7 +970,7 @@ calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
 
     // Analytics lakehouse: call status-change event (best-effort, fire-and-forget).
-    emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+    emitAnalytics(c, c.env.EVENTS, [flexEvent({
       event_type: 'cfs_status', occurred_at: new Date().toISOString(),
       actor_id: (c.get('userId') as number | undefined) ?? null,
       entity_type: 'call', entity_id: id, status,

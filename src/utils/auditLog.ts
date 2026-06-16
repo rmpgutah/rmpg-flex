@@ -56,7 +56,7 @@ export async function recordAudit(c: Context<Env>, e: AuditEntry): Promise<void>
   } catch (err) {
     console.warn('[audit] insert failed:', err instanceof Error ? err.message : String(err));
   }
-  emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+  emitAnalytics(c, c.env.EVENTS, [flexEvent({
     event_type: 'audit', occurred_at: createdAt ?? new Date().toISOString(),
     actor_id: actorId, entity_type: e.entityType, entity_id: entityId,
     label: e.action, category: 'audit',
