@@ -368,6 +368,28 @@ export async function listCameras(env: EnvLike, client: CpgClient): Promise<CpgC
   return devices.filter((d) => d.mediaEnabled).map(vehicleToCamera).filter((c): c is CpgCamera => !!c);
 }
 
+/** Resolve the camera-service ID for a given assetId.
+ *  The on-demand request endpoint (/v2.0/media/cameras/{cameraId}/request-media)
+ *  uses camera.id from /v1.0/assets/ids, which is DIFFERENT from the assetId. */
+export async function getCameraIdForAsset(
+  env: EnvLike, client: CpgClient, assetId: number,
+): Promise<number | null> {
+  try {
+    const data = await apiGet(env, client, '/v1.0/assets/ids', {
+      withDashcamsOnly: 'true', includeInactive: 'false', page: '0', pageSize: '200',
+    }) as { items?: unknown[] };
+    for (const item of asArray(data, 'items')) {
+      const it = item as Record<string, unknown>;
+      if (Number(it.id) === assetId) {
+        const cam = it.camera as Record<string, unknown> | undefined;
+        const camId = Number(cam?.id);
+        return Number.isFinite(camId) && camId > 0 ? camId : null;
+      }
+    }
+  } catch { /* not fatal — requestChunk will surface the error */ }
+  return null;
+}
+
 // ── Media clips (v2.0 Media API) — Phase B/C ─────────────────
 
 export interface CpgMediaObject {

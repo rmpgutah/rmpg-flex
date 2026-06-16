@@ -3,15 +3,14 @@ import { describe, it, expect } from 'vitest';
 import { buildMediaRequestPayload, parseRequestId, classifyChunkStatus } from '../../src/utils/footage/clearpathSource';
 
 describe('buildMediaRequestPayload', () => {
-  it('builds the per-chunk request body with seconds duration', () => {
-    const body = buildMediaRequestPayload(136022, 1_000_000, 1_040_000, 'outside');
-    expect(body.assetId).toBe(136022);
-    expect(body.startTime).toBe(1_000_000);
+  it('builds the confirmed HAR-verified request body (timestamp ms, cameraTypes, duration sec)', () => {
+    const body = buildMediaRequestPayload(1_000_000, 1_040_000, 'outside');
+    expect(body.timestamp).toBe(1_000_000);   // start time in ms
     expect(body.duration).toBe(40);           // (1_040_000-1_000_000)/1000
-    expect(body.cameras).toEqual(['road']);    // outside → road-facing
+    expect(body.cameraTypes).toEqual(['OUTSIDE']);
   });
-  it('maps inside channel to driver-facing', () => {
-    expect(buildMediaRequestPayload(1, 0, 20_000, 'inside').cameras).toEqual(['driver']);
+  it('maps inside channel to INSIDE camera type', () => {
+    expect(buildMediaRequestPayload(0, 20_000, 'inside').cameraTypes).toEqual(['INSIDE']);
   });
 });
 
