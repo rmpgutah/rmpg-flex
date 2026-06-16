@@ -19,7 +19,7 @@ struct PersonSearchView: View {
                 if searching {
                     ProgressView().tint(Theme.gold).padding(.top, 24)
                 } else if searched && results.isEmpty {
-                    Text("No matches.").font(.system(size: 12)).foregroundStyle(Theme.neutral).padding(.top, 24)
+                    EmptyState(icon: "person.fill.questionmark", title: "No matches.").padding(.top, 24)
                 } else {
                     ForEach(results.indices, id: \.self) { i in resultRow(results[i]) }
                 }
@@ -69,10 +69,10 @@ struct PersonSearchView: View {
             SubjectRecordsView(personId: id, displayName: name)
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: "person.crop.circle").font(.system(size: 22)).foregroundStyle(Theme.gold)
+                Image(systemName: "person.crop.circle").font(Theme.Typography.title).foregroundStyle(Theme.gold)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(last.uppercased())\(last.isEmpty || first.isEmpty ? "" : ", ")\(first)")
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                        .font(Theme.Typography.body).fontWeight(.semibold).foregroundStyle(.white)
                     HStack(spacing: 8) {
                         if let dob { Text("DOB \(dob)").font(.system(size: 10)).foregroundStyle(Theme.neutral) }
                         if let phone, !phone.isEmpty { Text(phone).font(.system(size: 10)).foregroundStyle(Theme.neutral) }

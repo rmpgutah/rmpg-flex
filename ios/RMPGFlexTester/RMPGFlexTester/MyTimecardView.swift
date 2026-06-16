@@ -14,7 +14,7 @@ struct MyTimecardView: View {
             VStack(spacing: 10) {
                 VStack(spacing: 2) {
                     Text(String(format: "%.1f", hoursThisWeek))
-                        .font(.system(size: 30, weight: .bold)).foregroundStyle(Theme.gold)
+                        .font(Theme.Typography.display).fontWeight(.bold).foregroundStyle(Theme.gold)
                     Text("HOURS — LAST 7 DAYS").font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.neutral)
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 14).themeCard()
@@ -23,7 +23,7 @@ struct MyTimecardView: View {
                 if loading {
                     ProgressView().tint(Theme.gold).padding(.top, 20)
                 } else if entries.isEmpty {
-                    Text("No time entries.").font(.system(size: 12)).foregroundStyle(Theme.neutral).padding(.top, 16)
+                    EmptyState(icon: "clock.badge.xmark", title: "No time entries.").padding(.top, 16)
                 } else {
                     ForEach(entries.indices, id: \.self) { i in row(entries[i]) }
                 }
@@ -44,12 +44,12 @@ struct MyTimecardView: View {
         let hrs = (e["total_hours"] as? Double) ?? (e["total_hours"] as? Int).map(Double.init) ?? 0
         return HStack {
             VStack(alignment: .leading, spacing: 1) {
-                Text("\(inS) → \(outS)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.white)
+                Text("\(inS) → \(outS)").font(Theme.Typography.mono).foregroundStyle(.white)
                 Text((e["status"] as? String ?? "").uppercased()).font(.system(size: 9)).foregroundStyle(Theme.neutral)
             }
             Spacer()
             Text(outS == "OPEN" ? "—" : String(format: "%.2f h", hrs))
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(outS == "OPEN" ? Theme.green : Theme.gold)
+                .font(Theme.Typography.caption).fontWeight(.semibold).foregroundStyle(outS == "OPEN" ? Theme.green : Theme.gold)
         }
         .themeCard()
     }

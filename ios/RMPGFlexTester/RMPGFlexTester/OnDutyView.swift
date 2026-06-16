@@ -13,7 +13,7 @@ struct OnDutyView: View {
                 if loading {
                     ProgressView().tint(Theme.gold).padding(.top, 30)
                 } else if officers.isEmpty {
-                    Text("No officers on duty.").font(.system(size: 12)).foregroundStyle(Theme.neutral).padding(.top, 24)
+                    EmptyState(icon: "person.2.slash", title: "No officers on duty.").padding(.top, 24)
                 } else {
                     ForEach(officers) { o in row(o) }
                 }
@@ -36,7 +36,7 @@ struct OnDutyView: View {
         HStack(spacing: 10) {
             Circle().fill(o.onCall ? Theme.orange : Theme.green).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
-                Text(o.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                Text(o.name).font(Theme.Typography.body).fontWeight(.semibold).foregroundStyle(.white)
                 Text([o.callSign, o.unitStatus.map { FieldFormat.value("status", $0) }, o.vehicleNumber]
                         .compactMap { $0 }.joined(separator: " · "))
                     .font(.system(size: 10)).foregroundStyle(Theme.neutral).lineLimit(1)
