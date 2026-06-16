@@ -115,6 +115,36 @@ bucket_name = "rmpg-flex-uploads"
 binding = "DOWNLOADS"
 bucket_name = "rmpg-flex-downloads"
 
+# ─── Analytics lakehouse (R2 Data Catalog / Pipelines) ─────
+# OPTIONAL until provisioned. The ALPR dual-write (src/routes/alpr.ts) and the
+# query routes (src/routes/analytics.ts) BOTH no-op / 503 while these are unset,
+# so this is safe to deploy before the pipeline exists.
+#
+# One-time operator setup:
+#   1. npx wrangler pipelines setup
+#        Simple mode creates the R2 bucket (e.g. rmpg-flex-analytics), enables
+#        R2 Data Catalog, and makes a stream + sink writing the Iceberg table
+#        `default.alpr_reads`. Note the printed STREAM_ID and WAREHOUSE
+#        (WAREHOUSE = "<account_id>_<bucket>").
+#        Recommended structured-stream schema (matches alprReadEvent in
+#        src/utils/analytics.ts): event_type(string), occurred_at(string),
+#        captured_by(int64,opt), source(string), capture_id(int64,opt),
+#        call_id(int64,opt), incident_id(int64,opt), plate(string),
+#        raw_plate(string,opt), state(string,opt), make/model/color/vehicle_type
+#        (string,opt), year(string,opt), trust(float64,opt),
+#        vehicle_record_id(int64,opt), lat/lng(float64,opt),
+#        location_text(string,opt), hit_count(int64), critical_hit(bool).
+#   2. Uncomment the [[pipelines]] block below and set stream = "<STREAM_ID>".
+#   3. Set R2_ANALYTICS_WAREHOUSE in [vars] below to the printed WAREHOUSE.
+#   4. npx wrangler secret put R2_SQL_TOKEN
+#        API token with: R2 SQL (read) + R2 Data Catalog (read) + R2 (read) on
+#        the analytics bucket.
+#   5. Redeploy. Verify: GET /api/analytics/health → query_ready:true.
+#
+# [[pipelines]]
+# binding = "ANALYTICS"
+# stream  = "<STREAM_ID>"
+
 # ─── PDF Tools Container (DISABLED) ───────────────────────
 # The PdfToolsContainer sidecar is intentionally OFF in prod.
 # Serve-intake OCR uses browser pdfjs (born-digital) + Workers AI
@@ -191,6 +221,10 @@ CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:517
 JWT_ACCESS_EXPIRY = "15m"
 JWT_REFRESH_EXPIRY = "7d"
 SERVER_TIMEZONE = "America/Denver"
+# Analytics warehouse id from `wrangler pipelines setup` (= "<account_id>_<bucket>").
+# Uncomment + set once provisioned; /api/analytics 503s until then. The bearer
+# token is the R2_SQL_TOKEN secret (set via `wrangler secret put`).
+# R2_ANALYTICS_WAREHOUSE = "<account_id>_rmpg-flex-analytics"
 
 # Secrets (set via `npx wrangler secret put`)
 # JWT_SECRET (already set)

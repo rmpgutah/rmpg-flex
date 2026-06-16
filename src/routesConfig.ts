@@ -98,6 +98,7 @@ import cases from './routes/cases';
 import accreditation from './routes/accreditation';
 import alarms from './routes/alarms';
 import alpr from './routes/alpr';
+import analytics from './routes/analytics';
 import redactionsRouter from './routes/redactions';
 import citations from './routes/citations';
 import clearpathgps from './routes/clearpathgps';
@@ -419,6 +420,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
   { prefix: '/api/alpr', router: alpr, auth: 'required',
     note: 'ALPR plate read on Cloudflare Workers AI (free, no external key) → intel plate log' },
+  { prefix: '/api/analytics', router: analytics, auth: 'required',
+    note: 'R2 Data Catalog (Iceberg) analytics over R2 SQL: ALPR plate history + summary + raw query. 503s until the ANALYTICS pipeline + R2_ANALYTICS_WAREHOUSE + R2_SQL_TOKEN are provisioned.' },
   { prefix: '/api/redactions', router: redactionsRouter, auth: 'required',
     note: 'In-video redaction custody store: persist client-redacted MP4 to R2 + video_redactions chain-of-custody row' },
   { prefix: '/api/arrests', router: arrests, auth: 'required',

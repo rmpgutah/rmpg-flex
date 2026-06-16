@@ -2,6 +2,7 @@
 // time the import is elided, so containers/pdfToolsContainer.ts → types.ts
 // stays one-way at runtime.
 import type { PdfToolsContainer } from './containers/pdfToolsContainer';
+import type { AnalyticsPipeline } from './utils/analytics';
 
 export type Bindings = {
   DB: D1Database;
@@ -89,6 +90,21 @@ export type Bindings = {
   // HMAC-SHA256 shared secret for edge device (Jetson vision-LoRA) ingest.
   // Set via `wrangler secret put ALPR_EDGE_SECRET`; unset → /api/alpr/edge returns 503.
   ALPR_EDGE_SECRET?: string;
+  // ─── Analytics lakehouse (R2 Data Catalog / Iceberg) ─────────────────────
+  // Cloudflare Pipelines stream binding. OPTIONAL: when unset, the ALPR
+  // dual-write (src/routes/alpr.ts) and the query routes (src/routes/analytics.ts)
+  // no-op so the Worker is safe to deploy before the pipeline is provisioned.
+  // Typed structurally (src/utils/analytics.ts) to avoid a hard dependency on the
+  // `cloudflare:pipelines` ambient types at typecheck time. Wired in wrangler.toml
+  // via `[[pipelines]] binding="ANALYTICS"` once `wrangler pipelines setup` runs.
+  ANALYTICS?: AnalyticsPipeline;
+  // R2 SQL warehouse id ("<account_id>_<bucket>") printed by `wrangler pipelines
+  // setup`. Unset → /api/analytics returns 503. (var in wrangler.toml)
+  R2_ANALYTICS_WAREHOUSE?: string;
+  // Bearer token for the R2 SQL HTTP API (needs R2 SQL + R2 Data Catalog + R2
+  // read on the analytics bucket). Set via `wrangler secret put R2_SQL_TOKEN`;
+  // unset → /api/analytics returns 503. Read only from c.env, never hard-coded.
+  R2_SQL_TOKEN?: string;
 };
 
 export type Variables = {
