@@ -32,12 +32,19 @@ struct DashboardView: View {
                     contextualBanner
                     statRow
                     quickActions
-                    panicButton
                     if let status { StatusLine(text: status) }
                 }
                 .padding(12)
             }
             .background(Theme.base)
+            .safeAreaInset(edge: .bottom) {
+                ResponderActionBar(
+                    currentStatus: "",
+                    statuses: [],
+                    showStatus: false,
+                    onSelectStatus: { _ in },
+                    onPanic: { confirmPanic = true })
+            }
             .navigationTitle("HOME")
             .navigationBarTitleDisplayMode(.inline)
             .refreshable { await refresh(); await counts.refresh() }
@@ -187,17 +194,6 @@ struct DashboardView: View {
             .frame(maxWidth: .infinity).padding(.vertical, 16).themeCard()
         }
         .buttonStyle(.plain)
-    }
-
-    private var panicButton: some View {
-        Button { confirmPanic = true } label: {
-            Text("⚠ PANIC")
-                .font(.system(size: 16, weight: .heavy))
-                .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(Theme.red).foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-        }
-        .padding(.top, 4)
     }
 
     private var greetingPrefix: String {
