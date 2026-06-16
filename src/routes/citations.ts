@@ -18,6 +18,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { geocodeAddress } from './geocode';
 
 const citations = new Hono<Env>();
@@ -319,6 +320,17 @@ citations.post('/', async (c) => {
     );
     const newId = Number(result.meta.last_row_id);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM citations WHERE id = ?', newId);
+
+    // Analytics lakehouse: citation-issued event (best-effort, fire-and-forget).
+    emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+      event_type: 'citation_issued', occurred_at: new Date().toISOString(),
+      actor_id: (c.get('userId') as number | undefined) ?? null,
+      entity_type: 'citation', entity_id: newId,
+      lat: b.latitude, lng: b.longitude, status, label: type,
+      value: b.fine_amount, category: 'enforcement',
+      payload: { citation_number: citationNumber, issuing_officer_id: b.issuing_officer_id ?? null, person_id: b.person_id ?? null },
+    })]);
+
     return c.json({ data: created, citation_number: citationNumber }, 201);
   } catch (err) {
     return c.json({

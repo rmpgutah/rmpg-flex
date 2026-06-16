@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
+import { emitAnalytics, flexEvent } from '../../utils/analytics';
 import { emitAlert } from '../../utils/alertHub';
 import { haversineM } from '../../utils/tripTelemetry';
 import { applyTripEvent, type ApplyArgs } from '../../utils/tripStore';
@@ -112,6 +113,18 @@ gps.post('/', async (c) => {
     }));
     const results = await executeBatch(db, stmts);
     const inserted = results.map((r) => Number(r.meta.last_row_id)).filter(Boolean);
+
+    // Analytics lakehouse: one AVL position sample per ingest (best-effort,
+    // no-op until the EVENTS pipeline is provisioned). Never blocks the response.
+    if (lastPt && unitId) {
+      emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+        event_type: 'gps_ping', occurred_at: new Date().toISOString(),
+        actor_id: userId, entity_type: 'unit', entity_id: unitId,
+        unit_id: callSign ?? unitId, lat: lastPt.latitude, lng: lastPt.longitude,
+        value: lastPt.speed, category: 'avl',
+        payload: { points: points.length, heading: lastPt.heading ?? null, call_id: (unit as any)?.current_call_id ?? null },
+      })]);
+    }
     // Mirror latest fix onto units row, including heading + speed so the
     // NavigationPage map turning arrow and speed label work.
     if (lastPt && lastPt.latitude != null && lastPt.longitude != null && unitId) {

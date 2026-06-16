@@ -22,6 +22,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { darNumber, nextDarSeq, parseArr, summarizeDar, type AutoPopulate } from '../utils/dar';
 
 const dar = new Hono<Env>();
@@ -174,7 +175,18 @@ dar.put('/:id/submit', async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureTable(db);
   const id = parseInt(c.req.param('id'), 10);
   await execute(db, `UPDATE daily_activity_reports SET status = 'submitted', submitted_at = datetime('now') WHERE id = ?`, id);
-  return c.json({ data: await queryFirst(db, `${SELECT_WITH_OFFICER} WHERE d.id = ?`, id) });
+  const row = await queryFirst<Record<string, unknown>>(db, `${SELECT_WITH_OFFICER} WHERE d.id = ?`, id);
+
+  // Analytics lakehouse: DAR-filed event on final submit only (best-effort, fire-and-forget).
+  emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+    event_type: 'dar_filed', occurred_at: new Date().toISOString(),
+    actor_id: (row?.officer_id as number | undefined) ?? null,
+    entity_type: 'dar', entity_id: id, status: 'submitted',
+    label: (row?.dar_number as string | undefined) ?? null, category: 'reporting',
+    payload: { shift_date: (row?.shift_date as string | undefined) ?? null },
+  })]);
+
+  return c.json({ data: row });
 });
 
 dar.put('/:id/approve', async (c): Promise<Response> => {
