@@ -339,6 +339,20 @@ export function buildGpsCoverageSql(opts: { sinceIso: string; limit?: number }):
   ].join(' ');
 }
 
+/** Audit actions by volume since <sinceIso> — the compliance rollup over the
+ *  `audit` events recorded by recordAudit (src/utils/auditLog.ts). */
+export function buildAuditSummarySql(opts: { sinceIso: string; limit?: number }): string {
+  const since = escapeSqlLiteral(opts.sinceIso);
+  const limit = clampInt(opts.limit, 1, 500, 100);
+  return [
+    'SELECT label AS action, COUNT(*) AS events, MAX(occurred_at) AS last_at',
+    `FROM ${ANALYTICS_NAMESPACE}.${EVENTS_TABLE}`,
+    `WHERE event_type = 'audit' AND occurred_at >= '${since}'`,
+    'GROUP BY label ORDER BY events DESC',
+    `LIMIT ${limit}`,
+  ].join(' ');
+}
+
 /** The R2 SQL HTTP response envelope shape isn't contractually fixed in the
  *  public beta, so pull the row array out tolerantly across known variants.
  *  Pure + tested so the live shape can be locked down by adding one case. */

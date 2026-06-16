@@ -38,6 +38,7 @@ import { verifyEdgeSignature } from '../utils/edgeHmac';
 import { normalizeCaptureEdit, describeEdit } from '../utils/alprEdit';
 import { confirmReviewStatus, confirmWarning } from '../utils/alprReview';
 import { emitAnalytics, alprReadEvent } from '../utils/analytics';
+import { recordAudit } from '../utils/auditLog';
 
 const alpr = new Hono<Env>();
 
@@ -815,10 +816,7 @@ alpr.post('/capture/:id/accept', operational, async (c) => {
     confirmReviewStatus(persisted), corrected, userId, id);
   if (!persisted) {
     try {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-         VALUES (?, 'ALPR_ACCEPT_UNLINKED', 'alpr_capture', ?, 'authoritative write failed', datetime('now'))`,
-        userId, id);
+      await recordAudit(c, { action: 'ALPR_ACCEPT_UNLINKED', entityType: 'alpr_capture', entityId: id, details: 'authoritative write failed', actorId: userId });
     } catch { /* best-effort */ }
   }
   const updated = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
@@ -930,10 +928,7 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
   try {
     const diff = describeEdit(row, values);
     const detail = [`${action}`, reason, diff].filter(Boolean).join(' — ');
-    await execute(db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, 'ALPR_VERIFY', 'alpr_capture', ?, ?, datetime('now'))`,
-      userId, id, detail.slice(0, 500));
+    await recordAudit(c, { action: 'ALPR_VERIFY', entityType: 'alpr_capture', entityId: id, details: detail.slice(0, 500), actorId: userId });
   } catch (auditErr: any) { console.warn('[alpr] audit_log insert failed:', auditErr?.message); }
 
   const updated = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
@@ -1000,10 +995,7 @@ alpr.post('/captures/bulk', operational, async (c) => {
   // One audit row for the batch.
   try {
     const okCount = results.filter((r) => r.ok).length;
-    await execute(db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, 'ALPR_BULK_VERIFY', 'alpr_capture', 0, ?, datetime('now'))`,
-      userId, `${action} ${okCount}/${ids.length}`.slice(0, 500));
+    await recordAudit(c, { action: 'ALPR_BULK_VERIFY', entityType: 'alpr_capture', entityId: 0, details: `${action} ${okCount}/${ids.length}`.slice(0, 500), actorId: userId });
   } catch { /* best-effort */ }
   return c.json({ success: true, action, results, hits: allHits });
 });

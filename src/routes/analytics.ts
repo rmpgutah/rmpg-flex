@@ -30,6 +30,7 @@ import {
   buildEventSummarySql,
   buildCfsTrendsSql,
   buildGpsCoverageSql,
+  buildAuditSummarySql,
   cleanEventType,
   ANALYTICS_NAMESPACE,
   ALPR_TABLE,
@@ -210,6 +211,19 @@ analytics.get('/gps/coverage', operational, async (c) => {
   try {
     const rows = await runR2Sql(c.env, buildGpsCoverageSql({ sinceIso }));
     return c.json({ since: sinceIso, count: rows.length, units: rows });
+  } catch (err) {
+    return sqlErrorResponse(c, err);
+  }
+});
+
+// ── Audit / compliance: actions by volume ────────────────────
+// GET /api/analytics/audit/summary?days=30   (timeline via /events?type=audit)
+analytics.get('/audit/summary', operational, async (c) => {
+  const days = Number(c.req.query('days'));
+  const sinceIso = daysAgoIso(Number.isFinite(days) ? days : 30);
+  try {
+    const rows = await runR2Sql(c.env, buildAuditSummarySql({ sinceIso }));
+    return c.json({ since: sinceIso, count: rows.length, actions: rows });
   } catch (err) {
     return sqlErrorResponse(c, err);
   }
