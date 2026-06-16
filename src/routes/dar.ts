@@ -178,7 +178,7 @@ dar.put('/:id/submit', async (c): Promise<Response> => {
   const row = await queryFirst<Record<string, unknown>>(db, `${SELECT_WITH_OFFICER} WHERE d.id = ?`, id);
 
   // Analytics lakehouse: DAR-filed event on final submit only (best-effort, fire-and-forget).
-  emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+  emitAnalytics(c, c.env.EVENTS, [flexEvent({
     event_type: 'dar_filed', occurred_at: new Date().toISOString(),
     actor_id: (row?.officer_id as number | undefined) ?? null,
     entity_type: 'dar', entity_id: id, status: 'submitted',

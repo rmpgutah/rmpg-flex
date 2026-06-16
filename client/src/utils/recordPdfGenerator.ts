@@ -493,6 +493,21 @@ function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, 
   return y + 2.5;
 }
 
+/**
+ * Vertical space (mm) addNarrativeField will consume for `value` at `width`.
+ * Used to reserve a whole two-column row up front so a page break can never
+ * land BETWEEN the left and right columns — which would draw the right column
+ * at a stale y on the new page and overprint its label onto its value.
+ * Mirrors addNarrativeField's geometry: 5.2 (label+gap) + lines*3.4 + 2.5 pad.
+ */
+function narrativeFieldHeight(doc: jsPDF, value: string, width: number): number {
+  if (!value || !value.trim()) return 0;
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  const lines = doc.splitTextToSize(sanitizePdfText(value), width - 1) as string[];
+  return 5.2 + lines.length * 3.4 + 2.5;
+}
+
 // ── Type Aliases for Record Types ────────────────────────────
 
 export type RecordPdfType =
@@ -3608,6 +3623,12 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     // right column reads as floating mid-page (seen live 2026-06-11).
     if (data.scar_description || data.piercing_description) {
       if (data.scar_description && data.piercing_description) {
+        // Reserve the whole row so a page break can't split the two columns
+        // (which would draw the right column at a stale y → label/value overlap).
+        y = checkPageBreak(doc, y, Math.max(
+          narrativeFieldHeight(doc, data.scar_description, hfw),
+          narrativeFieldHeight(doc, data.piercing_description, hfw),
+        ), prio);
         const ly = addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, hfw);
         const ry = addNarrativeField(doc, 'Piercing Description', data.piercing_description, rx, y, hfw);
         y = Math.max(ly, ry) + 1.5;  // explicit row-gap before next 2-col row
@@ -3621,6 +3642,11 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     // Distinguishing Features / Marks Location → 2-col row (same collapse)
     if (data.distinguishing_features || data.identifying_marks_location) {
       if (data.distinguishing_features && data.identifying_marks_location) {
+        // Reserve the whole row so a page break can't split the two columns.
+        y = checkPageBreak(doc, y, Math.max(
+          narrativeFieldHeight(doc, data.distinguishing_features, hfw),
+          narrativeFieldHeight(doc, data.identifying_marks_location, hfw),
+        ), prio);
         const ly = addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, hfw);
         const ry = addNarrativeField(doc, 'Marks Location', data.identifying_marks_location, rx, y, hfw);
         y = Math.max(ly, ry);

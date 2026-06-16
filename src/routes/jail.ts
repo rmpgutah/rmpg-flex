@@ -97,7 +97,7 @@ jail.post('/inmates', async (c) => {
     const newId = Number(result.meta.last_row_id);
 
     // Analytics lakehouse: booking event (best-effort, fire-and-forget).
-    emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+    emitAnalytics(c, c.env.EVENTS, [flexEvent({
       event_type: 'jail_booking', occurred_at: new Date().toISOString(),
       actor_id: userId, entity_type: 'inmate', entity_id: newId,
       label: bookingNumber, status: 'booked', category: 'jail',

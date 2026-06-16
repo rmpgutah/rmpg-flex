@@ -112,7 +112,7 @@ incidents.post('/', requireRole(...WRITE_ROLES), async (c) => {
     const created = await queryFirst(db, 'SELECT * FROM incidents WHERE id = ?', result.meta.last_row_id);
 
     // Analytics lakehouse: incident-created event (best-effort, fire-and-forget).
-    emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+    emitAnalytics(c, c.env.EVENTS, [flexEvent({
       event_type: 'incident_created', occurred_at: new Date().toISOString(),
       actor_id: userId, entity_type: 'incident', entity_id: Number(result.meta.last_row_id),
       lat, lng, status: 'draft', label: incident_type, priority: priority || 'P3',
