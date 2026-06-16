@@ -12,6 +12,7 @@ import {
   buildEventSummarySql,
   buildCfsTrendsSql,
   buildGpsCoverageSql,
+  buildAuditSummarySql,
   ANALYTICS_NAMESPACE,
   ALPR_TABLE,
   EVENTS_TABLE,
@@ -215,5 +216,12 @@ describe('flex_events SQL builders', () => {
     expect(sql).toContain("event_type = 'gps_ping'");
     expect(sql).toContain('GROUP BY unit_id');
     expect(sql).toContain('AVG(value) AS avg_speed');
+  });
+
+  it('buildAuditSummarySql filters to audit events and groups by action', () => {
+    const sql = buildAuditSummarySql({ sinceIso });
+    expect(sql).toContain("event_type = 'audit'");
+    expect(sql).toContain('label AS action');
+    expect(sql).toContain('GROUP BY label');
   });
 });

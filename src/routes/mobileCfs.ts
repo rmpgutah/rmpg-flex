@@ -20,6 +20,7 @@ import { Hono } from 'hono';
 import { SignJWT, jwtVerify } from 'jose';
 import type { Env } from '../types';
 import { getDb, queryFirst, execute } from '../utils/db';
+import { recordAudit } from '../utils/auditLog';
 import { requireRole } from '../middleware/auth';
 
 const PUBLIC_APP_URL = 'https://rmpgutah.us';
@@ -32,12 +33,8 @@ function randomToken(): string {
 }
 
 async function bestEffortAudit(c: any, userId: number | null, action: string, entityId: number, details: unknown) {
-  try {
-    await execute(getDb(c.env),
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, ?, 'calls_for_service', ?, ?, datetime('now'))`,
-      userId, action, entityId, JSON.stringify(details));
-  } catch { /* audit is best-effort */ }
+  // Routes through the central audit seam (audit_log + flex_events analytics).
+  await recordAudit(c, { action, entityType: 'calls_for_service', entityId, details, actorId: userId });
 }
 
 interface MobileAuth { userId: number; username: string; role: string; callId: number }

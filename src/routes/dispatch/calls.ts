@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { emitAnalytics, flexEvent } from '../../utils/analytics';
+import { recordAudit } from '../../utils/auditLog';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser } from '../ws';
@@ -411,12 +412,7 @@ calls.get('/', async (c) => {
       // Audit trail entry — dispatch's Audit tab reads audit_log by
       // entity_type='call' + entity_id. Failure shouldn't block the create.
       try {
-        await execute(
-          db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-           VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-          userId, 'CREATE', 'call', callId, `Created call ${callNumber}`,
-        );
+        await recordAudit(c, { action: 'CREATE', entityType: 'call', entityId: callId, details: `Created call ${callNumber}`, actorId: userId });
       } catch (auditErr) {
         console.warn('audit_log insert failed for call create:', auditErr);
       }
@@ -992,12 +988,8 @@ calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
       const userId = c.get('userId') as number | undefined;
       if (userId != null) {
         const callNumber = (updated?.call_number as string) ?? `#${id}`;
-        await execute(
-          db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-           VALUES (?, 'STATUS_CHANGE', 'call', ?, ?, datetime('now'))`,
-          userId, id, `Status changed to ${status} on ${callNumber}${typeof disposition === 'string' && disposition.length > 0 ? ` (disposition: ${disposition})` : ''}`,
-        );
+        await recordAudit(c, { action: 'STATUS_CHANGE', entityType: 'call', entityId: id, actorId: userId,
+          details: `Status changed to ${status} on ${callNumber}${typeof disposition === 'string' && disposition.length > 0 ? ` (disposition: ${disposition})` : ''}` });
       }
     } catch (auditErr) {
       console.warn('audit_log insert failed for status change:', auditErr);
@@ -1128,10 +1120,7 @@ calls.post('/:id/action', requireRole(...WRITE_ROLES), async (c): Promise<Respon
       id, String(action ?? verb), verb, JSON.stringify(params ?? {}), plan.narrative, userId ?? null);
     try {
       if (userId != null) {
-        await execute(db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-           VALUES (?, 'CFS_ACTION', 'call', ?, ?, datetime('now'))`,
-          userId, id, plan.narrative);
+        await recordAudit(c, { action: 'CFS_ACTION', entityType: 'call', entityId: id, details: plan.narrative, actorId: userId });
       }
     } catch (auditErr) {
       console.warn('[cfs action] audit_log insert degraded:', (auditErr as Error)?.message);
@@ -1559,8 +1548,8 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
 
     // ── Audit trail (best-effort) ──
     try {
-      await execute(db, "INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))", userId, 'call_redispatched', 'call', parentId, `Re-dispatched → ${newCallNumber} (${ordinal(newAttempt)} attempt)`);
-      await execute(db, "INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))", userId, 'call_created_from_redispatch', 'call', newCallId, `Created from re-dispatch of ${parentBase.call_number} (${ordinal(newAttempt)} attempt)`);
+      await recordAudit(c, { action: 'call_redispatched', entityType: 'call', entityId: parentId, details: `Re-dispatched → ${newCallNumber} (${ordinal(newAttempt)} attempt)`, actorId: userId });
+      await recordAudit(c, { action: 'call_created_from_redispatch', entityType: 'call', entityId: newCallId, details: `Created from re-dispatch of ${parentBase.call_number} (${ordinal(newAttempt)} attempt)`, actorId: userId });
     } catch (e) { console.warn('redispatch audit_log failed (non-fatal):', e); }
 
     // ── Build response: merged child row + full chain ──
@@ -1609,7 +1598,7 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
       return c.json({ error: 'Can only undo a return visit that is still pending. Once dispatched, it cannot be undone.', code: 'CHILD_NOT_PENDING' }, 400);
     }
     if (user.role === 'admin' && childBase.status !== 'pending') {
-      try { await execute(db, "INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))", userId, 'ADMIN_OVERRIDE', 'call', childId, `Admin override: bypassed pending-only undo-redispatch (status: ${childBase.status})`); } catch { /* non-fatal */ }
+      await recordAudit(c, { action: 'ADMIN_OVERRIDE', entityType: 'call', entityId: childId, details: `Admin override: bypassed pending-only undo-redispatch (status: ${childBase.status})`, actorId: userId });
     }
 
     const parentBase = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
@@ -1635,7 +1624,7 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
     parentNotes.push({ id: String(Date.now()), author: user.full_name || 'System', text: `Return visit ${childBase.call_number} was undone`, timestamp: new Date().toISOString() });
     await execute(db, "UPDATE calls_for_service SET notes = ?, updated_at = datetime('now') WHERE id = ?", JSON.stringify(parentNotes), parentId);
 
-    try { await execute(db, "INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))", userId, 'undo_redispatch', 'call', parentId, `Undid return visit ${childBase.call_number} for ${parentBase.call_number}`); } catch (e) { console.warn('undo-redispatch audit_log failed (non-fatal):', e); }
+    await recordAudit(c, { action: 'undo_redispatch', entityType: 'call', entityId: parentId, details: `Undid return visit ${childBase.call_number} for ${parentBase.call_number}`, actorId: userId });
 
     const updatedBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
     const updatedExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', parentId);
@@ -1753,10 +1742,7 @@ calls.post('/force-close-all', requireRole(...WRITE_ROLES), async (c) => {
     try {
       const userId = c.get('userId') as number | undefined;
       if (userId != null) {
-        await execute(db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-           VALUES (?, 'FORCE_CLOSE_ALL', 'call', NULL, ?, datetime('now'))`,
-          userId, `Force-closed ${ids.length} open call(s) with disposition "${disposition}"`);
+        await recordAudit(c, { action: 'FORCE_CLOSE_ALL', entityType: 'call', entityId: null, details: `Force-closed ${ids.length} open call(s) with disposition "${disposition}"`, actorId: userId });
       }
     } catch (auditErr) {
       console.warn('audit_log insert failed for force-close-all:', auditErr);
