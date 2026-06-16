@@ -13,15 +13,15 @@ struct MDTInboxView: View {
                 HStack(spacing: 6) {
                     Circle().fill(link.online ? Theme.green : Theme.neutral).frame(width: 8, height: 8)
                     Text(link.online ? "Vehicle MDT online" : "Vehicle MDT offline")
-                        .font(.system(size: 11)).foregroundStyle(Theme.neutral)
+                        .font(Theme.Typography.caption).foregroundStyle(Theme.neutral)
                     Spacer()
                     Button { Task { await link.pollOnce() } } label: {
                         Image(systemName: "arrow.clockwise").font(.system(size: 12)).foregroundStyle(Theme.gold)
                     }
                 }
                 if link.inbox.isEmpty {
-                    Text("No messages from your vehicle MDT yet.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.neutral).padding(.top, 20)
+                    EmptyState(icon: "tray", title: "No MDT messages",
+                               subtitle: "No messages from your vehicle MDT yet.")
                 } else {
                     ForEach(link.inbox) { row($0) }
                 }
@@ -38,7 +38,7 @@ struct MDTInboxView: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(MDTInbox.label(for: msg.type).uppercased())
                 .font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.gold)
-            Text(summary(msg)).font(.system(size: 12)).foregroundStyle(.white)
+            Text(summary(msg)).font(Theme.Typography.caption).foregroundStyle(.white)
             if let lat = coord(msg, "lat") ?? coord(msg, "latitude"),
                let lng = coord(msg, "lng") ?? coord(msg, "longitude") {
                 Button { openMaps(lat, lng) } label: {

@@ -104,7 +104,7 @@ struct DutyRosterView: View {
     private var rosterList: some View {
         List {
             if !status.isEmpty {
-                Text(status).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.gold)
+                Text(status).font(Theme.Typography.mono).foregroundStyle(Theme.gold)
             }
             Section("ON DUTY (\(officers.filter(\.onShift).count))") {
                 ForEach(officers.filter(\.onShift)) { o in row(o) }
@@ -123,11 +123,11 @@ struct DutyRosterView: View {
             HStack {
                 Circle().fill(o.onShift ? (o.onCall ? Theme.red : Theme.gold) : Theme.neutral)
                     .frame(width: 8, height: 8)
-                Text(o.name).font(.system(size: 13, weight: .semibold))
+                Text(o.name).font(Theme.Typography.body).fontWeight(.semibold)
                 Spacer()
                 if let h = o.hoursSoFar {
                     Text(String(format: "%.1f h", h))
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(Theme.Typography.mono)
                         .foregroundStyle(h >= 12 ? Theme.red : Theme.neutral)
                 }
             }
@@ -211,7 +211,7 @@ struct TimeEntryEditSheet: View {
         NavigationStack {
             Form {
                 Section("RECENT ENTRIES — \(officer.name.uppercased())") {
-                    if entries.isEmpty { Text("No entries in the last 14 days").font(.system(size: 12)).foregroundStyle(Theme.neutral) }
+                    if entries.isEmpty { EmptyState(icon: "clock.badge.questionmark", title: "No entries in the last 14 days") }
                     ForEach(entries.indices, id: \.self) { i in
                         let e = entries[i]
                         let id = e["id"] as? Int
@@ -219,7 +219,7 @@ struct TimeEntryEditSheet: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("\(short(e["clock_in"])) → \(e["clock_out"] == nil ? "OPEN" : short(e["clock_out"]))")
-                                        .font(.system(size: 12, design: .monospaced))
+                                        .font(Theme.Typography.mono)
                                     if let h = e["total_hours"] as? Double {
                                         Text(String(format: "%.2f h", h)).font(.system(size: 10)).foregroundStyle(Theme.neutral)
                                     }
@@ -232,8 +232,8 @@ struct TimeEntryEditSheet: View {
                 }
                 if selectedId != nil {
                     Section("CORRECTION (ISO timestamps, e.g. 2026-06-12T14:00:00+00:00)") {
-                        TextField("Clock in", text: $clockIn).font(.system(size: 12, design: .monospaced))
-                        TextField("Clock out (blank = leave open)", text: $clockOut).font(.system(size: 12, design: .monospaced))
+                        TextField("Clock in", text: $clockIn).font(Theme.Typography.mono)
+                        TextField("Clock out (blank = leave open)", text: $clockOut).font(Theme.Typography.mono)
                         TextField("Break minutes", text: $breakMinutes).keyboardType(.numberPad)
                         TextField("Reason (required — feeds payroll audit)", text: $reason)
                     }
@@ -241,7 +241,7 @@ struct TimeEntryEditSheet: View {
                         Button(submitting ? "SAVING…" : "SAVE CORRECTION") { Task { await submit() } }
                             .fontWeight(.bold)
                             .disabled(submitting || reason.trimmingCharacters(in: .whitespaces).isEmpty)
-                        if let error { Text(error).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.red) }
+                        if let error { Text(error).font(Theme.Typography.mono).foregroundStyle(Theme.red) }
                     }
                 }
             }
