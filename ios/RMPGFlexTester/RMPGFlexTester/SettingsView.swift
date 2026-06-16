@@ -28,6 +28,11 @@ struct SettingsView: View {
                     Text("Reads new Priority-1 and hazard calls aloud while you're on shift, so you can keep your eyes on the road.")
                         .font(Theme.Typography.caption).foregroundStyle(Theme.neutral)
                 }
+                Section("EMERGENCY") {
+                    NavigationLink("Set up hardware panic (Back Tap / Action Button)") {
+                        HardwarePanicSetupView()
+                    }
+                }
                 Section {
                     Button("Save all to Keychain") { save() }
                         .fontWeight(.semibold)
