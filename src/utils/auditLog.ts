@@ -31,6 +31,9 @@ export interface AuditEntry {
   details?: unknown;
   /** Acting user; defaults to the authenticated `c.get('userId')`. */
   actorId?: number | null;
+  /** Override the audit_log created_at (ISO/SQL datetime). Defaults to now.
+   *  Supports backfilled timeline entries (e.g. dispatch timeline notes). */
+  createdAt?: string | null;
 }
 
 /** Write an audit_log row AND mirror it to flex_events. Never throws. */
@@ -38,21 +41,23 @@ export async function recordAudit(c: Context<Env>, e: AuditEntry): Promise<void>
   const db = getDb(c.env);
   const actorId = e.actorId ?? (c.get('userId') as number | undefined) ?? null;
   const entityId = e.entityId ?? null;
+  const createdAt = e.createdAt ?? null;
   const details = e.details == null
     ? null
     : typeof e.details === 'string' ? e.details : JSON.stringify(e.details);
   try {
     await execute(
       db,
+      // COALESCE lets a caller backfill created_at (timeline notes); else now().
       `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-      actorId, e.action, e.entityType, entityId, details,
+       VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')))`,
+      actorId, e.action, e.entityType, entityId, details, createdAt,
     );
   } catch (err) {
     console.warn('[audit] insert failed:', err instanceof Error ? err.message : String(err));
   }
   emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
-    event_type: 'audit', occurred_at: new Date().toISOString(),
+    event_type: 'audit', occurred_at: createdAt ?? new Date().toISOString(),
     actor_id: actorId, entity_type: e.entityType, entity_id: entityId,
     label: e.action, category: 'audit',
     payload: details ? { details: details.slice(0, 2000) } : null,

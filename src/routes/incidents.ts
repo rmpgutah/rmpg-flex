@@ -13,6 +13,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { recordAudit } from '../utils/auditLog';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { requireRole } from '../middleware/auth';
 import { validateIncidentForNibrs } from './nibrs';
@@ -205,10 +206,7 @@ incidents.put('/:id/submit', requireRole(...WRITE_ROLES), async (c) => {
     }
     if (!validation.valid && force) {
       try {
-        await execute(db, `
-          INSERT INTO audit_log (user_id, action, entity_type, entity_id, details)
-          VALUES (?, 'admin_override', 'incident', ?, ?)`,
-          user.id, id, `God Mode: bypassed NIBRS validation (${validation.errors.length} errors)`);
+        await recordAudit(c, { action: 'admin_override', entityType: 'incident', entityId: id, details: `God Mode: bypassed NIBRS validation (${validation.errors.length} errors)`, actorId: user.id });
       } catch { /* non-fatal */ }
     }
 
@@ -259,10 +257,7 @@ incidents.put('/:id/return', requireRole(...REVIEW_ROLES), async (c) => {
     if (!reason) return c.json({ error: 'reason is required', code: 'INC_REASON_REQUIRED' }, 400);
     await execute(db, "UPDATE incidents SET status = 'returned', supervisor_id = ?, updated_at = datetime('now') WHERE id = ?", user.id, id);
     try {
-      await execute(db, `
-        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details)
-        VALUES (?, 'incident_returned', 'incident', ?, ?)`,
-        user.id, id, `Returned for revision: ${reason}`);
+      await recordAudit(c, { action: 'incident_returned', entityType: 'incident', entityId: id, details: `Returned for revision: ${reason}`, actorId: user.id });
     } catch { /* non-fatal */ }
     return c.json(await queryFirst(db, 'SELECT * FROM incidents WHERE id = ?', id));
   } catch (err) {

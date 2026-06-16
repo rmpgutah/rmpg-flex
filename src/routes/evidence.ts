@@ -15,6 +15,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { normalizeClassification, validateManifest, evidenceNumber, shortHash } from '../utils/evidence';
 
 const evidence = new Hono<Env>();
@@ -80,6 +81,18 @@ evidence.post('/', async (c): Promise<Response> => {
     String((body as Record<string, unknown>).mime ?? 'image/jpeg'),
     String((body as Record<string, unknown>).captured_at ?? ''),
   );
+  // Analytics lakehouse: evidence-logged event (best-effort, fire-and-forget).
+  emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+    event_type: 'evidence_logged', occurred_at: new Date().toISOString(),
+    actor_id: userId, entity_type: 'evidence', entity_id: Number(res.meta?.last_row_id) || null,
+    lat: (body as Record<string, unknown>).gps_lat, lng: (body as Record<string, unknown>).gps_lng,
+    label: evNumber, category: 'evidence',
+    payload: {
+      classification: String((body as Record<string, unknown>).classification ?? ''),
+      case_ref: String((body as Record<string, unknown>).case_ref ?? ''),
+    },
+  })]);
+
   return c.json({
     data: { id: res.meta?.last_row_id, evidence_number: evNumber, sha256: sha, short_hash: shortHash(sha) },
   });

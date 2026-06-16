@@ -15,6 +15,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { classifyDrivingEvent, fleetStatusFor } from '../utils/drivingEvents';
 import { getApiConfig, listMedia, type CpgMediaObject } from '../utils/clearpathGps';
+import { recordAudit } from '../utils/auditLog';
 
 const drivingEvents = new Hono<Env>();
 
@@ -207,12 +208,7 @@ drivingEvents.post('/audit-log', async (c: Context<Env>): Promise<Response> => {
   const action = (body.action || 'forensic_access').toString().slice(0, 64);
   const userId = Number((c.get('user') as any)?.id) || (c.get('userId') as number) || null;
   const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || null;
-  try {
-    await execute(db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-       VALUES (?, ?, 'dashcam_event', ?, ?, ?, datetime('now'))`,
-      userId, action, body.event_id ?? null, (body.details || '').toString().slice(0, 500), ip);
-  } catch { /* best-effort — never block the UI on an audit write */ }
+  await recordAudit(c, { action, entityType: 'dashcam_event', entityId: body.event_id ?? null, details: (body.details || '').toString().slice(0, 500), actorId: userId });
   return c.json({ ok: true });
 });
 

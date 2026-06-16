@@ -17,6 +17,7 @@ import { requireRole } from '../../middleware/auth';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { canonicalUnitIdsJson } from './unitIds';
 import { emitAlert } from '../../utils/alertHub';
+import { recordAudit } from '../../utils/auditLog';
 import { verifySignedResource } from '../../utils/signedAccess';
 import { evaluateNotificationRules } from '../notificationEngine';
 
@@ -441,14 +442,7 @@ panic.post('/panic/:id/deactivate', requireRole('admin', 'manager'), async (c) =
 
   // Audit — admin force-actions on officer-safety alerts must leave a trail.
   try {
-    await execute(
-      db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-       VALUES (?, 'panic_force_deactivated', 'panic_alert', ?, ?, ?)`,
-      userId, id,
-      `Admin force-deactivated panic #${id}${body.notes ? `: ${body.notes}` : ''} (was status=${row.status})`,
-      c.req.header('cf-connecting-ip') || 'unknown',
-    );
+    await recordAudit(c, { action: 'panic_force_deactivated', entityType: 'panic_alert', entityId: id, details: `Admin force-deactivated panic #${id}${body.notes ? `: ${body.notes}` : ''} (was status=${row.status})`, actorId: userId });
   } catch { /* audit is non-fatal */ }
 
   return c.json({ ...(updated as Record<string, unknown>), force_deactivated: true, steps });
@@ -542,12 +536,7 @@ panic.post('/request-backup', async (c) => {
     };
 
     try {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-         VALUES (?, 'backup_requested', 'user', ?, ?, ?)`,
-        userId, userId,
-        `Backup requested${unit?.call_sign ? ` by ${unit.call_sign}` : ''}${body.message ? `: ${body.message}` : ''}`,
-        c.req.header('cf-connecting-ip') || 'unknown');
+      await recordAudit(c, { action: 'backup_requested', entityType: 'user', entityId: userId, details: `Backup requested${unit?.call_sign ? ` by ${unit.call_sign}` : ''}${body.message ? `: ${body.message}` : ''}`, actorId: userId });
     } catch { /* audit is non-fatal */ }
 
     // Fan to the whole fleet via the shared hub (the per-isolate broadcast
