@@ -704,7 +704,9 @@ export function drawNibrsHeader(
   const headTextColor: [number, number, number] = [
     COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2],
   ];
-  const headSubColor: [number, number, number] = [200, 200, 200];
+  const headSubColor: [number, number, number] = [
+    COLOR.TEXT_SUBHEAD_INVERTED[0], COLOR.TEXT_SUBHEAD_INVERTED[1], COLOR.TEXT_SUBHEAD_INVERTED[2],
+  ];
 
   const sealSize = LAYOUT.SEAL_SIZE;
   const sealX = margin + 3;
@@ -2166,7 +2168,7 @@ export function drawEnhancedNibrsHeader(
       const rY = caseBoxY + caseBoxH - 3;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(FONT.SIZE_BADGE_LABEL);
-      doc.setTextColor(200, 200, 200);
+      doc.setTextColor(...COLOR.TEXT_SUBHEAD_INVERTED); // sub-heading on the dark header bar
       const parts: string[] = [];
       if (config.reportingOfficer) parts.push(config.reportingOfficer);
       if (config.reportingBadge) parts.push(`#${config.reportingBadge}`);
