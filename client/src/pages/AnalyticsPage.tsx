@@ -12,7 +12,7 @@
 // with the setup steps instead of scary errors.
 // ============================================================
 import { useCallback, useEffect, useState } from 'react';
-import { ScanSearch, Search, RotateCcw, AlertTriangle, Database, Loader2, Car, MapPin, Terminal } from 'lucide-react';
+import { ScanSearch, Search, RotateCcw, AlertTriangle, Database, Loader2, Car, MapPin, Terminal, Activity, Gauge } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import StatsCard from '../components/StatsCard';
@@ -33,6 +33,23 @@ interface PlateSighting {
 interface PlateHistoryResp { plate: string; since: string; count: number; sightings: PlateSighting[] }
 interface SummaryRow { plate?: string | null; reads?: number | string | null; last_seen?: string | null; ever_hit?: boolean | number | null }
 interface SummaryResp { since: string; count: number; plates: SummaryRow[] }
+// flex_events (system-wide) shapes
+interface EventSummaryRow { event_type?: string | null; events?: number | string | null; last_at?: string | null }
+interface EventRow {
+  occurred_at?: string | null; event_type?: string | null; actor_id?: number | null;
+  entity_type?: string | null; entity_id?: string | null; status?: string | null;
+  label?: string | null; category?: string | null; priority?: string | null;
+  lat?: number | null; lng?: number | null;
+}
+interface CfsTrendRow { call_type?: string | null; priority?: string | null; calls?: number | string | null }
+interface GpsRow { unit_id?: string | null; pings?: number | string | null; last_at?: string | null; avg_speed?: number | string | null }
+
+type Tab = 'plates' | 'activity' | 'operations';
+const TABS: Array<{ key: Tab; label: string; icon: typeof ScanSearch }> = [
+  { key: 'plates', label: 'Plates', icon: ScanSearch },
+  { key: 'activity', label: 'Activity', icon: Activity },
+  { key: 'operations', label: 'Operations', icon: Gauge },
+];
 
 const DAY_OPTIONS = [1, 7, 30, 90] as const;
 
@@ -56,6 +73,19 @@ export default function AnalyticsPage() {
   const [health, setHealth] = useState<HealthResp | null>(null);
   const [notProvisioned, setNotProvisioned] = useState(false);
   const [days, setDays] = useState<number>(7);
+  const [tab, setTab] = useState<Tab>('plates');
+
+  // Activity tab (flex_events)
+  const [eventTypes, setEventTypes] = useState<EventSummaryRow[]>([]);
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [actLoading, setActLoading] = useState(false);
+  const [actError, setActError] = useState<string | null>(null);
+
+  // Operations tab (cfs trends + gps coverage)
+  const [cfsTrends, setCfsTrends] = useState<CfsTrendRow[]>([]);
+  const [gpsCoverage, setGpsCoverage] = useState<GpsRow[]>([]);
+  const [opsLoading, setOpsLoading] = useState(false);
+  const [opsError, setOpsError] = useState<string | null>(null);
 
   // Summary
   const [summary, setSummary] = useState<SummaryRow[]>([]);
@@ -142,6 +172,56 @@ export default function AnalyticsPage() {
     }
   }, [rawSql]);
 
+  const loadActivity = useCallback(async (d: number) => {
+    setActLoading(true); setActError(null);
+    try {
+      const [sum, ev] = await Promise.all([
+        apiFetch<{ types: EventSummaryRow[] }>(`/analytics/events/summary?days=${d}`),
+        apiFetch<{ events: EventRow[] }>(`/analytics/events?days=${d}&limit=100`),
+      ]);
+      setEventTypes(sum.types || []); setEvents(ev.events || []); setNotProvisioned(false);
+    } catch (err: any) {
+      if (is503(err)) { setNotProvisioned(true); setEventTypes([]); setEvents([]); }
+      else setActError(err?.message || 'Failed to load activity');
+    } finally {
+      setActLoading(false);
+    }
+  }, []);
+
+  const loadEventsFiltered = useCallback(async (type: string) => {
+    setActLoading(true); setActError(null);
+    try {
+      const ev = await apiFetch<{ events: EventRow[] }>(`/analytics/events?type=${encodeURIComponent(type)}&days=${days}&limit=100`);
+      setEvents(ev.events || []);
+    } catch (err: any) {
+      if (!is503(err)) setActError(err?.message || 'Failed to load events');
+    } finally {
+      setActLoading(false);
+    }
+  }, [days]);
+
+  const loadOps = useCallback(async (d: number) => {
+    setOpsLoading(true); setOpsError(null);
+    try {
+      const [cfs, gps] = await Promise.all([
+        apiFetch<{ call_types: CfsTrendRow[] }>(`/analytics/cfs/trends?days=${d}`),
+        apiFetch<{ units: GpsRow[] }>(`/analytics/gps/coverage?days=${d}`),
+      ]);
+      setCfsTrends(cfs.call_types || []); setGpsCoverage(gps.units || []); setNotProvisioned(false);
+    } catch (err: any) {
+      if (is503(err)) { setNotProvisioned(true); setCfsTrends([]); setGpsCoverage([]); }
+      else setOpsError(err?.message || 'Failed to load operations');
+    } finally {
+      setOpsLoading(false);
+    }
+  }, []);
+
+  // Lazy-load each tab's data when it becomes active or the window changes.
+  useEffect(() => {
+    if (tab === 'activity') loadActivity(days);
+    else if (tab === 'operations') loadOps(days);
+  }, [tab, days, loadActivity, loadOps]);
+
   const totalReads = summary.reduce((acc, r) => acc + (Number(r.reads) || 0), 0);
   const hitPlates = summary.filter((r) => truthy(r.ever_hit)).length;
 
@@ -151,7 +231,12 @@ export default function AnalyticsPage() {
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-rmpg-400 uppercase tracking-wider">R2 Data Catalog · Iceberg</span>
           <button
-            onClick={() => { loadHealth(); loadSummary(days); }}
+            onClick={() => {
+              loadHealth();
+              if (tab === 'plates') loadSummary(days);
+              else if (tab === 'activity') loadActivity(days);
+              else loadOps(days);
+            }}
             aria-label="Refresh analytics"
             className="p-1.5 text-rmpg-300 hover:text-brand-400 transition-colors"
           >
@@ -194,9 +279,25 @@ export default function AnalyticsPage() {
             </button>
           ))}
         </div>
-        {summaryLoading && <Loader2 className="w-4 h-4 animate-spin text-brand-400" />}
+        {(summaryLoading || actLoading || opsLoading) && <Loader2 className="w-4 h-4 animate-spin text-brand-400" />}
       </div>
 
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-border-default">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2 text-[12px] font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
+              tab === t.key ? 'border-brand-500 text-brand-400' : 'border-transparent text-rmpg-400 hover:text-rmpg-200'
+            }`}
+          >
+            <t.icon className="w-3.5 h-3.5" />{t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'plates' && (<>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatsCard icon={ScanSearch} label={`Reads · last ${days}d`} value={totalReads.toLocaleString()} accent="blue" />
         <StatsCard icon={Car} label="Distinct plates" value={summary.length.toLocaleString()} accent="purple" />
@@ -312,6 +413,133 @@ export default function AnalyticsPage() {
           </div>
         )}
       </div>
+      </>)}
+
+      {/* Activity tab — system-wide event firehose (flex_events) */}
+      {tab === 'activity' && (
+        <div className="space-y-4">
+          {actError && <p className="text-red-400 text-[12px]">{actError}</p>}
+          <div className="bg-surface-raised border border-border-default rounded-sm p-4">
+            <h3 className="text-brand-400 font-semibold text-sm mb-3 flex items-center gap-2">
+              <Activity className="w-4 h-4" /> Event volume · last {days} days
+            </h3>
+            {eventTypes.length === 0 && !actLoading ? (
+              <p className="text-rmpg-400 text-[12px]">No events recorded in this window yet.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {eventTypes.map((t, i) => (
+                  <button
+                    key={i}
+                    onClick={() => loadEventsFiltered(String(t.event_type ?? ''))}
+                    className="text-left bg-surface-sunken border border-border-subtle rounded-sm p-2 hover:border-brand-600 transition-colors"
+                  >
+                    <div className="text-[10px] uppercase text-rmpg-400 truncate">{(t.event_type || '—').replace(/_/g, ' ')}</div>
+                    <div className="text-lg font-mono text-brand-400">{Number(t.events || 0).toLocaleString()}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="bg-surface-raised border border-border-default rounded-sm p-4">
+            <h3 className="text-brand-400 font-semibold text-sm mb-3">Recent activity</h3>
+            {events.length === 0 && !actLoading ? (
+              <p className="text-rmpg-400 text-[12px]">No recent events.</p>
+            ) : (
+              <div className="overflow-x-auto max-h-[28rem] overflow-y-auto">
+                <table className="w-full text-left">
+                  <thead className="sticky top-0 bg-surface-raised">
+                    <tr className="text-[9px] uppercase tracking-wider text-rmpg-500 border-b border-border-default">
+                      <th className="py-[3px] pr-2 font-semibold">When</th>
+                      <th className="py-[3px] pr-2 font-semibold">Event</th>
+                      <th className="py-[3px] pr-2 font-semibold">Entity</th>
+                      <th className="py-[3px] pr-2 font-semibold">Detail</th>
+                      <th className="py-[3px] pr-2 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {events.map((e, i) => (
+                      <tr key={i} className="text-[11px] text-rmpg-200 border-b border-border-subtle hover:bg-surface-sunken">
+                        <td className="py-[2px] pr-2 whitespace-nowrap font-mono">{fmtTs(e.occurred_at)}</td>
+                        <td className="py-[2px] pr-2 uppercase text-brand-400">{(e.event_type || '—').replace(/_/g, ' ')}</td>
+                        <td className="py-[2px] pr-2">{e.entity_type ? `${e.entity_type} ${e.entity_id ?? ''}`.trim() : '—'}</td>
+                        <td className="py-[2px] pr-2 max-w-[240px] truncate">{e.label || '—'}{e.priority ? ` · ${e.priority}` : ''}</td>
+                        <td className="py-[2px] pr-2">{e.status || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Operations tab — CFS trends + patrol/AVL coverage */}
+      {tab === 'operations' && (
+        <div className="space-y-4">
+          {opsError && <p className="text-red-400 text-[12px]">{opsError}</p>}
+          <div className="bg-surface-raised border border-border-default rounded-sm p-4">
+            <h3 className="text-brand-400 font-semibold text-sm mb-3 flex items-center gap-2">
+              <Database className="w-4 h-4" /> Calls for service by type · last {days} days
+            </h3>
+            {cfsTrends.length === 0 && !opsLoading ? (
+              <p className="text-rmpg-400 text-[12px]">No calls recorded in this window yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-[9px] uppercase tracking-wider text-rmpg-500 border-b border-border-default">
+                      <th className="py-[3px] pr-2 font-semibold">Call type</th>
+                      <th className="py-[3px] pr-2 font-semibold">Priority</th>
+                      <th className="py-[3px] pr-2 font-semibold text-right">Calls</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cfsTrends.map((r, i) => (
+                      <tr key={i} className="text-[11px] text-rmpg-200 border-b border-border-subtle">
+                        <td className="py-[2px] pr-2">{r.call_type || '—'}</td>
+                        <td className="py-[2px] pr-2">{r.priority || '—'}</td>
+                        <td className="py-[2px] pr-2 text-right font-mono">{Number(r.calls || 0).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          <div className="bg-surface-raised border border-border-default rounded-sm p-4">
+            <h3 className="text-brand-400 font-semibold text-sm mb-3 flex items-center gap-2">
+              <Gauge className="w-4 h-4" /> Patrol / AVL coverage by unit · last {days} days
+            </h3>
+            {gpsCoverage.length === 0 && !opsLoading ? (
+              <p className="text-rmpg-400 text-[12px]">No AVL pings in this window yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-[9px] uppercase tracking-wider text-rmpg-500 border-b border-border-default">
+                      <th className="py-[3px] pr-2 font-semibold">Unit</th>
+                      <th className="py-[3px] pr-2 font-semibold text-right">Pings</th>
+                      <th className="py-[3px] pr-2 font-semibold">Last seen</th>
+                      <th className="py-[3px] pr-2 font-semibold text-right">Avg speed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gpsCoverage.map((r, i) => (
+                      <tr key={i} className="text-[11px] text-rmpg-200 border-b border-border-subtle">
+                        <td className="py-[2px] pr-2 font-mono">{r.unit_id || '—'}</td>
+                        <td className="py-[2px] pr-2 text-right font-mono">{Number(r.pings || 0).toLocaleString()}</td>
+                        <td className="py-[2px] pr-2 whitespace-nowrap font-mono">{fmtTs(r.last_at)}</td>
+                        <td className="py-[2px] pr-2 text-right font-mono">{r.avg_speed != null ? Number(r.avg_speed).toFixed(1) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Raw R2 SQL console — command staff only */}
       {canQueryRaw && (
