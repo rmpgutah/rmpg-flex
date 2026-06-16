@@ -15,6 +15,9 @@ Two operator goals, one program:
 2. **ClearPath GPS — capture the full drive.** Request every ~40-second segment of
    travel, download all of it, and retain it for 4 months (auto-purge non-evidence
    at 120 days; locked evidence never purged).
+3. **One continuous full-drive video (no length limit), with a marked timeline.**
+   Present the 40s clips as a single seamless video of any length; pin camera-triggered
+   driving-violation events and turns/direction-changes on the timeline.
 
 ### Operator-confirmed parameters
 - **ClearPath pull:** verify the on-demand contract with a live spike *before*
@@ -77,10 +80,14 @@ Two operator goals, one program:
   passes: (1) fire ≤`MAX_REQUESTS_PER_RUN` (≈30) vendor requests for `pending_request`
   chunks → set `vendor_media_id` + status `requested`; (2) existing poll→download for
   `requested` chunks. New chunk lifecycle: `pending_request → requested → downloaded|missing`.
-- **Lift the cap:** `DEFAULT_CHUNK_CAP` → configurable `flexcam_max_chunks_per_request`
-  (default ~1,100 ≈ 12h).
-- **Cost note (honest):** full-drive road-cam ≈ up to ~1,080 requests/vehicle/12h-shift.
-  Flag-gated + per-run batch caps bound the blast radius; the spike informs real limits.
+- **Remove the length cap (operator: "no time limits on max time of video"):**
+  delete `DEFAULT_CHUNK_CAP`. A drive of any length is captured; the cron-paced
+  request/download drains it over successive ticks. An optional safety-ceiling config
+  `flexcam_max_chunks_per_request` defaults to **0 = unlimited** (operator can set a
+  ceiling later if cost demands).
+- **Cost note (honest):** full-drive road-cam ≈ ~90 requests/hour/vehicle (unbounded
+  by shift length). Flag-gated + per-run batch caps bound per-tick blast radius; the
+  spike informs real vendor limits.
 
 ### W3 — 4-month retention
 - **Purge sweep** on the 4-hourly cron. Config `footage_retention_days` (default **120**).
@@ -105,6 +112,34 @@ On the existing continuous scanner (`PlateLogPage` / patrol scan, reuses `/api/a
 - **Multi-frame consensus** before a hit fires — kill false single-read "100%" alerts
   (route reads through `trustScore`).
 - **Tighter dedup** window.
+
+### W6 — Continuous full-drive video + timeline markers
+The operator goal: the 40s clips presented as **one full video, no length limit**, with
+the camera-triggered violations and turns pinned on the timeline.
+- **Seamless continuous playback (default, unbounded):** the FlexCam viewer plays the
+  ordered downloaded chunks back-to-back as one video (HLS-style ordered-segment player).
+  No giant-file merge, so length is genuinely unlimited. Driven by the existing
+  `buildManifest()` ordered-chunk list + per-chunk stream endpoint.
+- **On-demand true merge (evidence export):** `POST /render/:id` produces one physical
+  file via `concatToR2()` (streaming, length-safe) for TS/fMP4; for standard MP4 the
+  client ffmpeg.wasm path merges. Used for court export, not routine playback.
+- **Marker layer** — a new `footage_markers` table
+  (`footage_request_id, ts_ms, offset_ms, kind, type, severity, label, lat, lng, heading_deg, turn_dir`):
+  1. **Event tags (camera-triggered):** fetch the ClearPath event list across the drive
+     window, classify each via `classifyDrivingEvent()` (`hard_brake / fcw / ldw /
+     hard_turn / …` + severity). This is the "camera triggered for a ~20s driving-violation
+     observation" tag, positioned at the event timestamp's offset within the drive.
+  2. **Turn pins (GPS-derived, both):** a pure helper detects direction changes from the
+     GPS track (bearing delta over a short window past a threshold) → a pin per turn with
+     `turn_dir` (left/right) + `heading_deg`. Turns the camera *also* flagged as a hard-turn
+     event are distinctly marked (`kind='camera_hard_turn'`) vs. plain GPS turns
+     (`kind='gps_turn'`).
+- **GPS source:** the `gps[]` arrays carried on ClearPath media objects for the window;
+  spike-gated fallback to the trip's stored GPS track if on-demand segments omit `gps`.
+- **Rendering:** markers returned by `GET /footage/:id` (alongside the manifest) and drawn
+  as pins on the viewer's scrubber; clicking a pin seeks the continuous player to that offset.
+- **Pure, unit-tested helpers:** GPS turn detection (bearing delta → turn_dir/degrees) and
+  marker offset positioning (ts → offset within the drive, gap-aware).
 
 ## Architecture / interfaces
 
@@ -143,8 +178,6 @@ On the existing continuous scanner (`PlateLogPage` / patrol scan, reuses `/api/a
 
 ## Out of scope (this program)
 - Edge/Jetson keyframe ALPR (hardware path; the `edge/` runner).
-- Stitching chunks into one continuous video (already a separate concern; existing
-  `concat.ts` / client ffmpeg path unchanged).
 - Cabin-camera full-drive capture (event-only by operator decision).
 - Roboflow video-native inference (possible W4 follow-up if the spike + thumbnails fall short).
 
