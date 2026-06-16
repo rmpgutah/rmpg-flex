@@ -1,21 +1,20 @@
 // src/utils/footage/clearpathSource.ts
-import { getApiConfig, listMedia, API_BASE, type CpgClient } from '../clearpathGps';
+import { getApiConfig, listMedia, getCameraIdForAsset, API_BASE, type CpgClient } from '../clearpathGps';
 import type { FootageSource, FootageRequestHandle, FootageChunkStatus } from './types';
 
-// ⚠️ Confirm against Task 0 spike findings before production use.
-const CPG_MEDIA_REQUEST_PATH = '/v2.0/media/request';
-const MAX_CHUNK_SECONDS = 40; // raise if the spike proves the backend honors more.
+// Confirmed 2026-06-15 via HAR capture: on-demand clips use the camera-service
+// entity ID (camera.id from /v1.0/assets/ids), NOT the fleet assetId.
+const MAX_CHUNK_SECONDS = 40;
 
 type EnvLike = { KV: KVNamespace; CPG_ENC_KEY?: string; CPG_REFRESH_TOKEN?: string; CPG_USER_ID?: string };
 
 // ── Pure builders (exported for tests) ───────────────────────
 
-export function buildMediaRequestPayload(assetId: number, fromTs: number, toTs: number, channel: string) {
+export function buildMediaRequestPayload(fromTs: number, toTs: number, channel: string) {
   return {
-    assetId,
-    startTime: fromTs,
+    timestamp: fromTs,
+    cameraTypes: [channel === 'inside' ? 'INSIDE' : 'OUTSIDE'],
     duration: Math.round((toTs - fromTs) / 1000),
-    cameras: channel === 'inside' ? ['driver'] : ['road'], // 'inside' → driver-facing; any other channel → road-facing ('outside')
   };
 }
 
@@ -68,9 +67,11 @@ export class ClearPathSource implements FootageSource {
   constructor(private env: EnvLike, private client: CpgClient) {}
 
   async requestChunk(assetId: number, fromTs: number, toTs: number, channel: string): Promise<string | null> {
-    const resp = await post(this.env, this.client, CPG_MEDIA_REQUEST_PATH,
-      buildMediaRequestPayload(assetId, fromTs, toTs, channel));
-    return parseRequestId(resp);
+    const cameraId = await getCameraIdForAsset(this.env, this.client, assetId);
+    if (!cameraId) throw new Error(`ClearPath: no camera ID for asset ${assetId}`);
+    const path = `/v2.0/media/cameras/${cameraId}/request-media`;
+    const resp = await post(this.env, this.client, path, buildMediaRequestPayload(fromTs, toTs, channel));
+    return parseRequestId(resp) ?? String(cameraId);
   }
 
   async pollChunk(assetId: number, handle: FootageRequestHandle): Promise<FootageChunkStatus> {
