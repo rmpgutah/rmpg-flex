@@ -18,7 +18,10 @@ export interface FootageChunkStatus {
 export interface FootageSource {
   readonly id: string;               // 'clearpathgps'
   readonly maxChunkSeconds: number;  // 40 (or larger if the cap bends)
-  requestWindow(assetId: number, fromTs: number, toTs: number, channels: string[]): Promise<FootageRequestHandle[]>;
+  /** Fire ONE vendor request for a single [fromTs,toTs] chunk; returns the vendor
+   *  media/request id (null if the vendor didn't echo one). The orchestrator paces
+   *  these across cron ticks so any-length drives stay inside Worker limits. */
+  requestChunk(assetId: number, fromTs: number, toTs: number, channel: string): Promise<string | null>;
   pollChunk(assetId: number, handle: FootageRequestHandle): Promise<FootageChunkStatus>;
 }
 

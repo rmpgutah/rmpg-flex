@@ -2,11 +2,22 @@
 import type { Bindings } from '../../types';
 import { getDb, query, queryFirst, execute } from '../db';
 import { getClearPathSource } from './clearpathSource';
+import { splitWindow } from './splitWindow';
+import { capChunkCount, batchLimit } from './pacing';
 
 const R2_PREFIX = 'flexcam/trips/';
-const MAX_DOWNLOADS_PER_RUN = 40;
+const MAX_DOWNLOADS_PER_RUN = 40;  // download pass cap per cron tick
+const MAX_REQUESTS_PER_RUN = 30;   // request pass cap per cron tick (vendor subrequest safety)
 const MAX_POLL_ATTEMPTS = 30;      // ~30 cron minutes before a chunk is 'missing'
-const DEFAULT_CHUNK_CAP = 90;      // 60 min at 40s/chunk
+const CHUNK_SECONDS = 40;          // segment length we split a drive into
+
+/** Read an integer config from system_config (category integrations); def on absent/NaN. */
+async function cfgInt(db: D1Database, key: string, def: number): Promise<number> {
+  const row = await queryFirst<{ config_value: string }>(db,
+    "SELECT config_value FROM system_config WHERE config_key=? AND category='integrations' AND is_active=1 LIMIT 1", key).catch(() => null);
+  const n = Number(row?.config_value);
+  return Number.isFinite(n) ? n : def;
+}
 
 let schemaReady = false;
 export async function ensureFootageSchema(db: D1Database): Promise<void> {
@@ -50,10 +61,17 @@ export async function enqueueFootage(env: Bindings, args: EnqueueArgs): Promise<
   if (dup) return dup.id;
 
   const channels = args.channels?.length ? args.channels : ['outside'];
-  const handles = await source.requestWindow(args.assetId, args.fromTs, args.toTs, channels)
-    .catch((e) => { console.error('[flexcam] requestWindow failed:', (e as Error).message); return []; });
-  if (!handles.length) return null;
-  const capped = handles.slice(0, DEFAULT_CHUNK_CAP);
+  // Build the chunk plan WITHOUT firing vendor requests — the cron paces those
+  // (runRequestPass), so a multi-hour drive can't blow the Worker subrequest limit.
+  const maxChunks = await cfgInt(db, 'flexcam_max_chunks_per_request', 0); // 0 = unlimited
+  const planned: Array<{ seq: number; fromTs: number; toTs: number; channel: string }> = [];
+  for (const channel of channels) {
+    for (const c of splitWindow(args.fromTs, args.toTs, CHUNK_SECONDS)) {
+      planned.push({ seq: planned.length, fromTs: c.fromTs, toTs: c.toTs, channel });
+    }
+  }
+  const capped = planned.slice(0, capChunkCount(planned.length, maxChunks));
+  if (!capped.length) return null;
 
   const r = await execute(db, `INSERT INTO footage_requests
     (source, asset_id, cpg_device_id, unit_id, trip_id, call_id, from_ts, to_ts, reason, status, chunk_count, title, created_by)
@@ -62,12 +80,38 @@ export async function enqueueFootage(env: Bindings, args: EnqueueArgs): Promise<
     args.fromTs, args.toTs, args.reason, capped.length, args.title ?? null, args.createdBy ?? null);
   const requestId = Number(r.meta.last_row_id);
 
+  // Chunks start in 'pending_request'; the cron's request pass fires the vendor
+  // call and advances them to 'requested', then the download pass pulls them.
   for (const h of capped) {
     await execute(db, `INSERT INTO footage_chunks
-      (request_id, seq, from_ts, to_ts, channel, vendor_media_id, status) VALUES (?, ?, ?, ?, ?, ?, 'requested')`,
-      requestId, h.seq, h.fromTs, h.toTs, h.channel, h.vendorId);
+      (request_id, seq, from_ts, to_ts, channel, status) VALUES (?, ?, ?, ?, ?, 'pending_request')`,
+      requestId, h.seq, h.fromTs, h.toTs, h.channel);
   }
   return requestId;
+}
+
+/** Cron pass 1: fire vendor requests for 'pending_request' chunks, bounded per run.
+ *  Advances each to 'requested' with its vendor media id so the download pass picks
+ *  it up. Best-effort per chunk — a vendor error leaves the chunk pending for retry. */
+export async function runRequestPass(env: Bindings): Promise<{ requested: number }> {
+  const db = getDb(env);
+  await ensureFootageSchema(db);
+  const source = await getClearPathSource(db, env);
+  if (!source) return { requested: 0 };
+  const limit = batchLimit(await cfgInt(db, 'flexcam_requests_per_run', MAX_REQUESTS_PER_RUN), MAX_REQUESTS_PER_RUN);
+  const pend = await query<{ id: number; from_ts: number; to_ts: number; channel: string; asset_id: number }>(db,
+    `SELECT ch.id, ch.from_ts, ch.to_ts, ch.channel, rq.asset_id
+       FROM footage_chunks ch JOIN footage_requests rq ON rq.id = ch.request_id
+      WHERE ch.status='pending_request' ORDER BY ch.request_id, ch.seq LIMIT ?`, limit).catch(() => []);
+  let requested = 0;
+  for (const ch of pend) {
+    try {
+      const vendorId = await source.requestChunk(ch.asset_id, ch.from_ts, ch.to_ts, ch.channel);
+      await execute(db, `UPDATE footage_chunks SET status='requested', vendor_media_id=?, updated_at=datetime('now') WHERE id=?`, vendorId, ch.id);
+      requested++;
+    } catch (e) { console.error('[flexcam] requestChunk failed:', (e as Error).message); }
+  }
+  return { requested };
 }
 
 /** Cron tick: poll 'requested' chunks; download 'available' ones into R2. */
@@ -144,6 +188,7 @@ export async function maybeRunFootagePoll(env: Bindings): Promise<void> {
   const enabled = await queryFirst<{ config_value: string }>(db,
     "SELECT config_value FROM system_config WHERE config_key='flexcam_enabled' AND category='integrations' AND is_active=1 LIMIT 1").catch(() => null);
   if (enabled?.config_value !== 'true') return;
+  const req = await runRequestPass(env);
   const r = await pollAndDownload(env);
-  if (r.downloaded || r.missing) console.log(`[flexcam] downloaded=${r.downloaded} missing=${r.missing}`);
+  if (req.requested || r.downloaded || r.missing) console.log(`[flexcam] requested=${req.requested} downloaded=${r.downloaded} missing=${r.missing}`);
 }
