@@ -26,8 +26,14 @@ import {
   extractRows,
   buildPlateHistorySql,
   buildAlprSummarySql,
+  buildEventsSql,
+  buildEventSummarySql,
+  buildCfsTrendsSql,
+  buildGpsCoverageSql,
+  cleanEventType,
   ANALYTICS_NAMESPACE,
   ALPR_TABLE,
+  EVENTS_TABLE,
 } from '../utils/analytics';
 
 const analytics = new Hono<Env>();
@@ -104,7 +110,9 @@ analytics.get('/health', operational, (c) => {
     ok: true,
     engine: 'r2-sql',
     table: `${ANALYTICS_NAMESPACE}.${ALPR_TABLE}`,
+    events_table: `${ANALYTICS_NAMESPACE}.${EVENTS_TABLE}`,
     pipeline_bound: !!c.env.ANALYTICS,
+    events_pipeline_bound: !!c.env.EVENTS,
     warehouse_configured: !!c.env.R2_ANALYTICS_WAREHOUSE,
     token_configured: !!c.env.R2_SQL_TOKEN,
     // `query_ready` true ⇒ the read endpoints can serve; pipeline_bound false
@@ -146,6 +154,62 @@ analytics.get('/alpr/summary', operational, async (c) => {
   try {
     const rows = await runR2Sql(c.env, sql);
     return c.json({ since: sinceIso, count: rows.length, plates: rows });
+  } catch (err) {
+    return sqlErrorResponse(c, err);
+  }
+});
+
+// ── System-wide events: activity timeline ────────────────────
+// GET /api/analytics/events?type=cfs_created&days=7&limit=200
+analytics.get('/events', operational, async (c) => {
+  const days = Number(c.req.query('days'));
+  const limit = Number(c.req.query('limit'));
+  const typeRaw = c.req.query('type') ?? '';
+  const eventType = typeRaw ? cleanEventType(typeRaw) : undefined;
+  const sinceIso = daysAgoIso(Number.isFinite(days) ? days : 7);
+  const sql = buildEventsSql({ sinceIso, eventType, limit: Number.isFinite(limit) ? limit : undefined });
+  try {
+    const rows = await runR2Sql(c.env, sql);
+    return c.json({ since: sinceIso, event_type: eventType ?? null, count: rows.length, events: rows });
+  } catch (err) {
+    return sqlErrorResponse(c, err);
+  }
+});
+
+// ── System-wide events: volume by type ───────────────────────
+// GET /api/analytics/events/summary?days=7
+analytics.get('/events/summary', operational, async (c) => {
+  const days = Number(c.req.query('days'));
+  const sinceIso = daysAgoIso(Number.isFinite(days) ? days : 7);
+  try {
+    const rows = await runR2Sql(c.env, buildEventSummarySql({ sinceIso }));
+    return c.json({ since: sinceIso, count: rows.length, types: rows });
+  } catch (err) {
+    return sqlErrorResponse(c, err);
+  }
+});
+
+// ── Calls-for-service trends (by nature/priority) ────────────
+// GET /api/analytics/cfs/trends?days=30
+analytics.get('/cfs/trends', operational, async (c) => {
+  const days = Number(c.req.query('days'));
+  const sinceIso = daysAgoIso(Number.isFinite(days) ? days : 30);
+  try {
+    const rows = await runR2Sql(c.env, buildCfsTrendsSql({ sinceIso }));
+    return c.json({ since: sinceIso, count: rows.length, call_types: rows });
+  } catch (err) {
+    return sqlErrorResponse(c, err);
+  }
+});
+
+// ── Patrol / AVL coverage by unit (proof of patrol) ──────────
+// GET /api/analytics/gps/coverage?days=7
+analytics.get('/gps/coverage', operational, async (c) => {
+  const days = Number(c.req.query('days'));
+  const sinceIso = daysAgoIso(Number.isFinite(days) ? days : 7);
+  try {
+    const rows = await runR2Sql(c.env, buildGpsCoverageSql({ sinceIso }));
+    return c.json({ since: sinceIso, count: rows.length, units: rows });
   } catch (err) {
     return sqlErrorResponse(c, err);
   }

@@ -98,8 +98,16 @@ export type Bindings = {
   // `cloudflare:pipelines` ambient types at typecheck time. Wired in wrangler.toml
   // via `[[pipelines]] binding="ANALYTICS"` once `wrangler pipelines setup` runs.
   ANALYTICS?: AnalyticsPipeline;
+  // Second Pipelines stream for the UNIFIED system-wide event table
+  // (default.flex_events) — GPS/AVL, calls-for-service, citations, incidents,
+  // patrol scans, DAR. OPTIONAL; same no-op-when-unset semantics as ANALYTICS.
+  // Wired via `[[pipelines]] binding="EVENTS"` once provisioned. Every emit is
+  // fire-and-forget (waitUntil), so instrumenting core CAD paths is non-blocking.
+  EVENTS?: AnalyticsPipeline;
   // R2 SQL warehouse id ("<account_id>_<bucket>") printed by `wrangler pipelines
   // setup`. Unset → /api/analytics returns 503. (var in wrangler.toml)
+  // Shared by both tables (alpr_reads + flex_events) when both streams write to
+  // the SAME analytics bucket/catalog.
   R2_ANALYTICS_WAREHOUSE?: string;
   // Bearer token for the R2 SQL HTTP API (needs R2 SQL + R2 Data Catalog + R2
   // read on the analytics bucket). Set via `wrangler secret put R2_SQL_TOKEN`;

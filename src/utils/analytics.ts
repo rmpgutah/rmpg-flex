@@ -154,6 +154,66 @@ export function alprReadEvent(
   };
 }
 
+// ── Unified system-wide event mapping (flex_events) ──────────────────────────
+
+/** Input to {@link flexEvent}. Domain fields are accepted as `unknown` and
+ *  coerced, so a route can pass raw body values (`body.priority`, `updated.lat`)
+ *  straight in without casting at the call site. */
+export interface FlexEventInput {
+  /** e.g. 'gps_ping' | 'cfs_created' | 'cfs_status' | 'incident_created' |
+   *  'citation_issued' | 'patrol_scan' | 'dar_filed'. */
+  event_type: string;
+  occurred_at: string;
+  /** Acting user id, or null for unattended sources. */
+  actor_id?: number | null;
+  source?: string | null;
+  /** Domain of the entity, e.g. 'call' | 'unit' | 'incident' | 'citation'. */
+  entity_type?: string | null;
+  entity_id?: unknown;
+  unit_id?: unknown;
+  lat?: unknown;
+  lng?: unknown;
+  status?: unknown;
+  /** Human label / type / nature (call type, citation type, dar number, …). */
+  label?: unknown;
+  /** Coarse grouping for dashboards, e.g. 'dispatch' | 'patrol' | 'enforcement'. */
+  category?: string | null;
+  priority?: unknown;
+  /** Generic numeric (speed, fine amount, count, …). */
+  value?: unknown;
+  /** Long-tail domain specifics — JSON-stringified into one column. */
+  payload?: Record<string, unknown> | null;
+}
+
+/** Map any worker write into one flat {@link AnalyticsEvent} for `flex_events`.
+ *  Pure; every domain value is coerced (ids → string, lat/lng/value → number,
+ *  payload → JSON string) so the Iceberg column types stay consistent. */
+export function flexEvent(input: FlexEventInput): AnalyticsEvent {
+  // ids/labels accept string OR number (a numeric priority/id still lands as a
+  // consistent string column); anything else (incl. '') → null.
+  const asLabel = (v: unknown): string | null =>
+    typeof v === 'string' ? (v === '' ? null : v)
+      : typeof v === 'number' && Number.isFinite(v) ? String(v)
+        : null;
+  return {
+    event_type: input.event_type,
+    occurred_at: input.occurred_at,
+    actor_id: input.actor_id ?? null,
+    source: input.source ?? null,
+    entity_type: input.entity_type ?? null,
+    entity_id: asLabel(input.entity_id),
+    unit_id: asLabel(input.unit_id),
+    lat: asNum(input.lat),
+    lng: asNum(input.lng),
+    status: asLabel(input.status),
+    label: asLabel(input.label),
+    category: input.category ?? null,
+    priority: asLabel(input.priority),
+    value: asNum(input.value),
+    payload: input.payload != null ? JSON.stringify(input.payload) : null,
+  };
+}
+
 // ── R2 SQL helpers (pure; the fetch lives in src/routes/analytics.ts) ────────
 
 /** Iceberg namespace + table the Pipelines sink must write to (and that R2 SQL
@@ -161,6 +221,9 @@ export function alprReadEvent(
  *  keep them in sync there. */
 export const ANALYTICS_NAMESPACE = 'default';
 export const ALPR_TABLE = 'alpr_reads';
+/** The unified system-wide event table (GPS, CFS, citations, incidents, patrol,
+ *  DAR, …) written via the separate `EVENTS` Pipelines binding. */
+export const EVENTS_TABLE = 'flex_events';
 
 /** Split the warehouse id ("<account_id>_<bucket>") into its parts for the R2
  *  SQL HTTP endpoint. Account ids are hex (no `_`) and bucket names use hyphens
@@ -210,6 +273,68 @@ export function buildAlprSummarySql(opts: { sinceIso: string; limit?: number }):
     `FROM ${ANALYTICS_NAMESPACE}.${ALPR_TABLE}`,
     `WHERE occurred_at >= '${since}'`,
     'GROUP BY plate ORDER BY reads DESC',
+    `LIMIT ${limit}`,
+  ].join(' ');
+}
+
+/** Sanitize an event_type filter to `[a-z0-9_]` (defence in depth alongside the
+ *  literal escaping). Returns '' if nothing valid remains. */
+export function cleanEventType(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 40);
+}
+
+/** Recent events (optionally one type) since <sinceIso>, newest first — the
+ *  system-wide activity timeline. */
+export function buildEventsSql(opts: { sinceIso: string; eventType?: string; limit?: number }): string {
+  const since = escapeSqlLiteral(opts.sinceIso);
+  const limit = clampInt(opts.limit, 1, 5000, 200);
+  const type = opts.eventType ? cleanEventType(opts.eventType) : '';
+  const typeClause = type ? ` AND event_type = '${type}'` : '';
+  return [
+    'SELECT occurred_at, event_type, actor_id, entity_type, entity_id, unit_id,',
+    'status, label, category, priority, lat, lng, value',
+    `FROM ${ANALYTICS_NAMESPACE}.${EVENTS_TABLE}`,
+    `WHERE occurred_at >= '${since}'${typeClause}`,
+    `ORDER BY occurred_at DESC LIMIT ${limit}`,
+  ].join(' ');
+}
+
+/** Event volume by type since <sinceIso> — the "what's happening" rollup. */
+export function buildEventSummarySql(opts: { sinceIso: string; limit?: number }): string {
+  const since = escapeSqlLiteral(opts.sinceIso);
+  const limit = clampInt(opts.limit, 1, 200, 50);
+  return [
+    'SELECT event_type, COUNT(*) AS events, MAX(occurred_at) AS last_at',
+    `FROM ${ANALYTICS_NAMESPACE}.${EVENTS_TABLE}`,
+    `WHERE occurred_at >= '${since}'`,
+    'GROUP BY event_type ORDER BY events DESC',
+    `LIMIT ${limit}`,
+  ].join(' ');
+}
+
+/** Calls-for-service by nature/type since <sinceIso> — crime-trend rollup. */
+export function buildCfsTrendsSql(opts: { sinceIso: string; limit?: number }): string {
+  const since = escapeSqlLiteral(opts.sinceIso);
+  const limit = clampInt(opts.limit, 1, 200, 50);
+  return [
+    'SELECT label AS call_type, priority, COUNT(*) AS calls',
+    `FROM ${ANALYTICS_NAMESPACE}.${EVENTS_TABLE}`,
+    `WHERE event_type = 'cfs_created' AND occurred_at >= '${since}'`,
+    'GROUP BY label, priority ORDER BY calls DESC',
+    `LIMIT ${limit}`,
+  ].join(' ');
+}
+
+/** Patrol/AVL coverage by unit since <sinceIso> — proof-of-patrol rollup. */
+export function buildGpsCoverageSql(opts: { sinceIso: string; limit?: number }): string {
+  const since = escapeSqlLiteral(opts.sinceIso);
+  const limit = clampInt(opts.limit, 1, 500, 100);
+  return [
+    'SELECT unit_id, COUNT(*) AS pings, MAX(occurred_at) AS last_at,',
+    'AVG(value) AS avg_speed',
+    `FROM ${ANALYTICS_NAMESPACE}.${EVENTS_TABLE}`,
+    `WHERE event_type = 'gps_ping' AND occurred_at >= '${since}'`,
+    'GROUP BY unit_id ORDER BY pings DESC',
     `LIMIT ${limit}`,
   ].join(' ');
 }

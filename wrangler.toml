@@ -141,9 +141,26 @@ bucket_name = "rmpg-flex-downloads"
 #        the analytics bucket.
 #   5. Redeploy. Verify: GET /api/analytics/health → query_ready:true.
 #
+#   6. (System-wide events) Run `wrangler pipelines setup` AGAIN, pointing it at
+#        the SAME analytics bucket/catalog, writing a SECOND Iceberg table
+#        `default.flex_events`. Uncomment the EVENTS block below + set its stream.
+#        This one table is fed by GPS/AVL, calls-for-service, citations,
+#        incidents, patrol scans, and DAR (see flexEvent in src/utils/analytics.ts).
+#        Recommended structured schema: event_type(string), occurred_at(string),
+#        actor_id(int64,opt), source(string,opt), entity_type(string,opt),
+#        entity_id(string,opt), unit_id(string,opt), lat/lng(float64,opt),
+#        status(string,opt), label(string,opt), category(string,opt),
+#        priority(string,opt), value(float64,opt), payload(string,opt JSON).
+#        Sharing the bucket means the SAME R2_ANALYTICS_WAREHOUSE + R2_SQL_TOKEN
+#        query BOTH alpr_reads and flex_events.
+#
 # [[pipelines]]
 # binding = "ANALYTICS"
-# stream  = "<STREAM_ID>"
+# stream  = "<ALPR_STREAM_ID>"
+#
+# [[pipelines]]
+# binding = "EVENTS"
+# stream  = "<FLEX_EVENTS_STREAM_ID>"
 
 # ─── PDF Tools Container (DISABLED) ───────────────────────
 # The PdfToolsContainer sidecar is intentionally OFF in prod.

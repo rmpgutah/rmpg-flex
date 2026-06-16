@@ -13,6 +13,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { requireRole } from '../middleware/auth';
 import { validateIncidentForNibrs } from './nibrs';
 import { geocodeAddress } from './geocode';
@@ -108,6 +109,15 @@ incidents.post('/', requireRole(...WRITE_ROLES), async (c) => {
       geo?.sector_id ?? null, geo?.zone_id ?? null, geo?.beat_id ?? null, geo?.zone_beat ?? null,
       geo?.area_code ?? null, geo?.area_name ?? null);
     const created = await queryFirst(db, 'SELECT * FROM incidents WHERE id = ?', result.meta.last_row_id);
+
+    // Analytics lakehouse: incident-created event (best-effort, fire-and-forget).
+    emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+      event_type: 'incident_created', occurred_at: new Date().toISOString(),
+      actor_id: userId, entity_type: 'incident', entity_id: Number(result.meta.last_row_id),
+      lat, lng, status: 'draft', label: incident_type, priority: priority || 'P3',
+      category: 'records',
+      payload: { incident_number, call_id: call_id ?? null, area: geo?.area_name ?? null },
+    })]);
     // ── FlexCam auto-preserve (best-effort, strictly additive). Resolve the
     // officer's unit from the reporting officer; never throws into the filing
     // flow — a preserve failure logs and is swallowed so the incident still files.

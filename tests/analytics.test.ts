@@ -6,8 +6,15 @@ import {
   buildAlprSummarySql,
   extractRows,
   alprReadEvent,
+  flexEvent,
+  cleanEventType,
+  buildEventsSql,
+  buildEventSummarySql,
+  buildCfsTrendsSql,
+  buildGpsCoverageSql,
   ANALYTICS_NAMESPACE,
   ALPR_TABLE,
+  EVENTS_TABLE,
 } from '../src/utils/analytics';
 
 describe('parseWarehouse', () => {
@@ -130,5 +137,83 @@ describe('alprReadEvent', () => {
   it('falls back to confidence when trust_score is absent, else null', () => {
     expect(alprReadEvent(src, { plate: 'A1', confidence: 0.5 }, 't').trust).toBe(0.5);
     expect(alprReadEvent(src, { plate: 'A1' }, 't').trust).toBeNull();
+  });
+});
+
+describe('flexEvent', () => {
+  it('coerces ids to string, lat/lng/value to number, payload to JSON string', () => {
+    const ev = flexEvent({
+      event_type: 'cfs_created', occurred_at: '2026-06-15T00:00:00Z',
+      actor_id: 7, entity_type: 'call', entity_id: 42, unit_id: 'PS-D19',
+      lat: 40.76, lng: -111.89, status: 'pending', label: 'Disturbance',
+      category: 'dispatch', priority: 'P2', value: 3,
+      payload: { call_number: '26-0001' },
+    });
+    expect(ev.event_type).toBe('cfs_created');
+    expect(ev.entity_id).toBe('42');          // id → string
+    expect(ev.unit_id).toBe('PS-D19');
+    expect(ev.lat).toBe(40.76);
+    expect(ev.value).toBe(3);
+    expect(ev.priority).toBe('P2');
+    expect(ev.payload).toBe('{"call_number":"26-0001"}');
+  });
+
+  it('nulls absent/empty fields (no undefined leaks into Iceberg columns)', () => {
+    const ev = flexEvent({ event_type: 'patrol_scan', occurred_at: 't' });
+    expect(ev.actor_id).toBeNull();
+    expect(ev.entity_id).toBeNull();
+    expect(ev.unit_id).toBeNull();
+    expect(ev.lat).toBeNull();
+    expect(ev.value).toBeNull();
+    expect(ev.payload).toBeNull();
+  });
+
+  it('accepts raw unknown values (e.g. body.priority) without throwing', () => {
+    const ev = flexEvent({ event_type: 'x', occurred_at: 't', lat: 'not-a-number', priority: 4 });
+    expect(ev.lat).toBeNull();      // non-numeric string → null
+    expect(ev.priority).toBe('4');  // number → string
+  });
+});
+
+describe('cleanEventType', () => {
+  it('keeps [a-z0-9_], lowercases, and strips the rest', () => {
+    expect(cleanEventType('CFS_Created')).toBe('cfs_created');
+    expect(cleanEventType("gps'; DROP")).toBe('gpsdrop');
+    expect(cleanEventType('a'.repeat(50)).length).toBe(40);
+  });
+});
+
+describe('flex_events SQL builders', () => {
+  const sinceIso = '2026-06-01T00:00:00.000Z';
+
+  it('buildEventsSql reads flex_events, filters by sanitized type, time-bounds, orders', () => {
+    const sql = buildEventsSql({ sinceIso, eventType: 'cfs_created' });
+    expect(sql).toContain(`FROM ${ANALYTICS_NAMESPACE}.${EVENTS_TABLE}`);
+    expect(sql).toContain("event_type = 'cfs_created'");
+    expect(sql).toContain(`occurred_at >= '${sinceIso}'`);
+    expect(sql).toContain('ORDER BY occurred_at DESC');
+  });
+
+  it('buildEventsSql omits the type filter when no type given', () => {
+    expect(buildEventsSql({ sinceIso })).not.toContain('event_type =');
+  });
+
+  it('buildEventSummarySql groups by event_type', () => {
+    const sql = buildEventSummarySql({ sinceIso });
+    expect(sql).toContain('COUNT(*) AS events');
+    expect(sql).toContain('GROUP BY event_type');
+  });
+
+  it('buildCfsTrendsSql filters to cfs_created and groups by nature', () => {
+    const sql = buildCfsTrendsSql({ sinceIso });
+    expect(sql).toContain("event_type = 'cfs_created'");
+    expect(sql).toContain('GROUP BY label, priority');
+  });
+
+  it('buildGpsCoverageSql aggregates pings per unit', () => {
+    const sql = buildGpsCoverageSql({ sinceIso });
+    expect(sql).toContain("event_type = 'gps_ping'");
+    expect(sql).toContain('GROUP BY unit_id');
+    expect(sql).toContain('AVG(value) AS avg_speed');
   });
 });
