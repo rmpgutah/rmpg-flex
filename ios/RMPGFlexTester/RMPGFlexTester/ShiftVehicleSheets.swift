@@ -61,25 +61,25 @@ struct ShiftStartSheet: View {
                 if isOOS {
                     Section("⚠ VEHICLE OUT OF SERVICE") {
                         Text("A critical defect was flagged — this vehicle will be marked OUT OF SERVICE and a maintenance request opened. Do not operate it; notify your supervisor and obtain another vehicle.")
-                            .font(.system(size: 11)).foregroundStyle(Theme.red)
+                            .font(Theme.Typography.caption).foregroundStyle(Theme.red)
                         Toggle("I acknowledge — vehicle is out of service", isOn: $oosAck).tint(Theme.red)
                     }
                 }
                 if needsOverride {
                     Section("MANAGER OVERRIDE") {
                         Text("Reading is below the last recorded odometer — a reason is required to proceed.")
-                            .font(.system(size: 11)).foregroundStyle(Theme.red)
+                            .font(Theme.Typography.caption).foregroundStyle(Theme.red)
                         TextField("Override reason", text: $overrideReason)
                     }
                 }
                 Section {
                     if photoUrls.isEmpty {
                         Text("Add at least one pre-trip photo to go on duty.")
-                            .font(.system(size: 11)).foregroundStyle(Theme.orange)
+                            .font(Theme.Typography.caption).foregroundStyle(Theme.orange)
                     }
                     Button(submitting ? "STARTING…" : (isOOS ? "LOG OOS & GO ON DUTY" : "GO ON DUTY")) { Task { await submit() } }
                         .fontWeight(.bold).disabled(submitting || photoUrls.isEmpty || (needsOverride && overrideReason.isEmpty) || (isOOS && !oosAck))
-                    if let error { Text(error).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.red) }
+                    if let error { Text(error).font(Theme.Typography.mono).foregroundStyle(Theme.red) }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -219,14 +219,14 @@ struct ShiftEndSheet: View {
                 if isOOS {
                     Section("⚠ VEHICLE OUT OF SERVICE") {
                         Text("A critical defect was found on the post-trip — this vehicle will be marked OUT OF SERVICE for the next shift and a maintenance request opened.")
-                            .font(.system(size: 11)).foregroundStyle(Theme.red)
+                            .font(Theme.Typography.caption).foregroundStyle(Theme.red)
                         Toggle("I acknowledge — vehicle is out of service", isOn: $oosAck).tint(Theme.red)
                     }
                 }
                 if needsOverride {
                     Section("MANAGER OVERRIDE") {
                         Text("Reading is below this shift's starting odometer — a reason is required.")
-                            .font(.system(size: 11)).foregroundStyle(Theme.red)
+                            .font(Theme.Typography.caption).foregroundStyle(Theme.red)
                         TextField("Override reason", text: $overrideReason)
                     }
                 }
@@ -234,7 +234,7 @@ struct ShiftEndSheet: View {
                     Button(submitting ? "ENDING…" : (isOOS ? "LOG OOS & END SHIFT" : "END SHIFT")) { Task { await submit() } }
                         .fontWeight(.bold)
                         .disabled(submitting || (needsOverride && overrideReason.isEmpty) || (isOOS && !oosAck))
-                    if let error { Text(error).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.red) }
+                    if let error { Text(error).font(Theme.Typography.mono).foregroundStyle(Theme.red) }
                 }
             }
             .scrollContentBackground(.hidden)

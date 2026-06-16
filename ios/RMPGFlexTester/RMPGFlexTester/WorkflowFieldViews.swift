@@ -54,7 +54,7 @@ struct DictationBar: View {
                 }
                 Text(dictation.state == .listening ? "Listening · tap to stop"
                      : dictation.state == .denied ? "Enable speech in Settings" : "Tap to dictate")
-                    .font(.system(size: 11)).foregroundStyle(Theme.neutral)
+                    .font(Theme.Typography.caption).foregroundStyle(Theme.neutral)
                 Spacer()
             }
         }
@@ -93,7 +93,7 @@ struct SegmentedRow: View {
             HStack(spacing: 0) {
                 ForEach(field.options ?? [], id: \.value) { opt in
                     let selected = currentValue == opt.value
-                    Text(opt.label).font(.system(size: 12, weight: .semibold))
+                    Text(opt.label).font(Theme.Typography.caption).fontWeight(.semibold)
                         .frame(maxWidth: .infinity).padding(.vertical, 8)
                         .background(selected ? Theme.gold : Theme.raised)
                         .foregroundStyle(selected ? .black : .white)
@@ -156,7 +156,7 @@ struct ToggleRow: View {
         Toggle(isOn: Binding(
             get: { if case .bool(let b)? = values[field.key] { return b }; return false },
             set: { values[field.key] = .bool($0) })) {
-            Text(field.label).font(.system(size: 12)).foregroundStyle(.white)
+            Text(field.label).font(Theme.Typography.caption).foregroundStyle(.white)
         }.tint(Theme.gold)
     }
 }

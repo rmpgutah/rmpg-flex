@@ -82,11 +82,11 @@ struct WorkflowRenderer: View {
                 HStack(spacing: 7) {
                     Image(systemName: item.satisfied ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                         .foregroundStyle(item.satisfied ? Theme.green : Theme.orange)
-                    Text(item.label).font(.system(size: 12)).foregroundStyle(.white)
+                    Text(item.label).font(Theme.Typography.caption).foregroundStyle(.white)
                 }
             }
             if localReadiness().allSatisfy(\.satisfied) && readiness.isEmpty {
-                Text("Ready to submit").font(.system(size: 11)).foregroundStyle(Theme.neutral)
+                Text("Ready to submit").font(Theme.Typography.caption).foregroundStyle(Theme.neutral)
             }
             Button { Task { await notifyMDT() } } label: {
                 Label("Notify vehicle MDT", systemImage: "car.fill")
