@@ -98,7 +98,9 @@ flexcam.get('/footage/:id', async (c): Promise<Response> => {
   await ensureMarkersSchema(db);
   const markers = await query(db,
     'SELECT ts_ms, offset_ms, kind, type, severity, label, lat, lng, heading_deg, turn_dir FROM footage_markers WHERE footage_request_id=? ORDER BY offset_ms', id).catch(() => []);
-  return c.json({ request: req, manifest, markers });
+  // `chunks` carries per-chunk from/to so the client player can map a marker's
+  // offset → (chunk, seek-within) on the gap-collapsed playable timeline.
+  return c.json({ request: req, manifest, markers, chunks: rows });
 });
 
 flexcam.get('/footage/:id/chunk/:seq/stream', async (c): Promise<Response> => {
