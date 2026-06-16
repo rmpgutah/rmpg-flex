@@ -66,7 +66,7 @@ function RecordField({
       <span
         onClick={handleCopy}
         className={`
-          flex items-center gap-1 leading-snug
+          flex items-center gap-1 leading-snug min-w-0 break-words
           ${isEmpty ? 'text-rmpg-600' : 'text-rmpg-200 group-hover/field:text-white'}
           ${mono ? 'font-mono tabular-nums tracking-tight' : ''}
           ${copyable && !isEmpty ? 'cursor-pointer' : ''}
