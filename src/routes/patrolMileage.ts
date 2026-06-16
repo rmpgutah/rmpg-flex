@@ -37,6 +37,7 @@ import { Hono } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
+import { recordAudit } from '../utils/auditLog';
 
 const pm = new Hono<Env>();
 
@@ -765,16 +766,14 @@ pm.post('/mileage/fix', async (c) => {
         delta, cascadeCount, reason, user.id,
       ],
     });
-    // Generic audit_log entry for the dispatch Audit tab.
-    batch.push({
-      sql: `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-            VALUES (?, 'MILEAGE_FIX', 'call', ?, ?, datetime('now'))`,
-      bindings: [
-        user.id, body.entry_id,
-        `${isBackfill ? 'Mileage backfill' : 'Mileage fix'}: ${existing.call_number || body.entry_id} ${body.field} ${before == null ? '—' : before}→${after}` +
+    // Dispatch-Audit-tab + analytics entries — routed through the central audit
+    // seam AFTER the atomic batch commits (a fix that doesn't commit isn't
+    // audited), rather than inlined in the batch. Collected here, fired below.
+    const auditLogEntries: Array<{ action: string; entityType: string; entityId: number | string | null; details: string }> = [{
+      action: 'MILEAGE_FIX', entityType: 'call', entityId: body.entry_id,
+      details: `${isBackfill ? 'Mileage backfill' : 'Mileage fix'}: ${existing.call_number || body.entry_id} ${body.field} ${before == null ? '—' : before}→${after}` +
         `${isBackfill ? '' : ` (Δ ${delta >= 0 ? '+' : ''}${delta.toFixed(1)} mi, cascade=${cascadeCount})`} scope=${scopeKey} — ${reason}`,
-      ],
-    });
+    }];
 
     // ── Fleet odometer write-through ────────────────────────
     // When the corrected/backfilled field is the call's ending_mileage AND
@@ -798,14 +797,10 @@ pm.post('/mileage/fix', async (c) => {
                  WHERE id = ?`,
           bindings: [after, vehicleId],
         });
-        batch.push({
-          sql: `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-                VALUES (?, 'FLEET_ODOMETER_SYNC', 'fleet_vehicle', ?, ?, datetime('now'))`,
-          bindings: [
-            user.id, vehicleId,
-            `Odometer write-through from mileage fix on call ${existing.call_number || body.entry_id}: ` +
+        auditLogEntries.push({
+          action: 'FLEET_ODOMETER_SYNC', entityType: 'fleet_vehicle', entityId: vehicleId,
+          details: `Odometer write-through from mileage fix on call ${existing.call_number || body.entry_id}: ` +
             `proposed ${after} mi (current MAX-merged) — ${reason}`,
-          ],
         });
       }
     }
@@ -814,6 +809,11 @@ pm.post('/mileage/fix', async (c) => {
       const stmt = db.prepare(s.sql);
       return s.bindings?.length ? stmt.bind(...s.bindings) : stmt;
     }));
+
+    // Fire the audit_log rows + flex_events mirror now that the fix committed.
+    for (const a of auditLogEntries) {
+      await recordAudit(c, { ...a, actorId: user.id });
+    }
 
     return c.json({
       success: true,
