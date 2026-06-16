@@ -60,6 +60,10 @@ export default function AdminGodModeTab() {
   const [impersonateUserId, setImpersonateUserId] = useState('');
   const [users, setUsers] = useState<any[]>([]);
 
+  // Dispatch units (bulk-reassign target — dispatch assigns calls to UNITS,
+  // not directly to officers; each option still shows the staffing officer)
+  const [units, setUnits] = useState<any[]>([]);
+
   // Broadcast
   const [broadcastTitle, setBroadcastTitle] = useState('');
   const [broadcastMessage, setBroadcastMessage] = useState('');
@@ -105,16 +109,18 @@ export default function AdminGodModeTab() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [stats, overview, bk, userList] = await Promise.all([
+      const [stats, overview, bk, userList, unitList] = await Promise.all([
         apiFetch<DbStats>('/admin/database/stats').catch(() => null),
         apiFetch<SystemOverview>('/admin/system-overview').catch(() => null),
         apiFetch<Backup[]>('/admin/database/backups').catch(() => []),
         apiFetch<any[]>('/personnel').catch(() => []),
+        apiFetch<any[]>('/dispatch/units').catch(() => []),
       ]);
       if (stats) setDbStats(stats);
       if (overview) setSystemOverview(overview);
       setBackups(asArray<Backup>(bk));
       setUsers(asArray<any>(userList));
+      setUnits(asArray<any>(unitList));
 
       const [ws, presence, lockdown, feed] = await Promise.all([
         apiFetch<any>('/admin/websocket/clients').catch(() => ({ clients: [] })),
@@ -233,8 +239,12 @@ export default function AdminGodModeTab() {
     const ids = reassignCallIds.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
     if (!ids.length || !reassignTargetId) return;
     try {
-      const r = await apiFetch<any>('/admin/calls/bulk-reassign', {
-        method: 'POST', body: JSON.stringify({ call_ids: ids, target_officer_id: parseInt(reassignTargetId) }),
+      // Mounted at /api/dispatch/calls in the Worker (calls.post('/bulk-reassign')).
+      // The old /admin/calls/bulk-reassign had no route — this button 404'd.
+      // Dispatch assigns calls to UNITS (assigned_unit_ids), so the target is a
+      // unit_id; the handler returns `target` = the unit's call-sign for the toast.
+      const r = await apiFetch<any>('/dispatch/calls/bulk-reassign', {
+        method: 'POST', body: JSON.stringify({ call_ids: ids, unit_id: parseInt(reassignTargetId) }),
       });
       showResult('success', `Reassigned ${r.updated} calls to ${r.target}`);
     } catch (err: any) { showResult('error', err.message); }
@@ -608,9 +618,11 @@ export default function AdminGodModeTab() {
               onChange={e => setReassignTargetId(e.target.value)}
               className="w-full bg-surface-raised border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white"
             >
-              <option value="">Target officer...</option>
-              {users.filter((u: any) => ['officer', 'supervisor'].includes(u.role)).map((u: any) => (
-                <option key={u.id} value={u.id}>{u.full_name || u.username} ({u.call_sign || u.badge_number || 'N/A'})</option>
+              <option value="">Target unit...</option>
+              {units.map((u: any) => (
+                <option key={u.id} value={u.id}>
+                  {u.call_sign}{u.officer_name ? ` — ${u.officer_name}` : ' — unstaffed'}{u.status ? ` (${String(u.status).replace(/_/g, ' ')})` : ''}
+                </option>
               ))}
             </select>
             <button onClick={handleBulkReassign} disabled={!reassignCallIds || !reassignTargetId} className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white">

@@ -3,6 +3,7 @@ import type { Env } from '../../types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { emitAnalytics, flexEvent } from '../../utils/analytics';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser } from '../ws';
@@ -368,6 +369,17 @@ calls.get('/', async (c) => {
     try {
       const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
       const callId = Number(result.meta.last_row_id);
+
+      // Analytics lakehouse: call-created event (best-effort, no-op until the
+      // EVENTS pipeline is provisioned; fire-and-forget, never blocks dispatch).
+      emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+        event_type: 'cfs_created', occurred_at: new Date().toISOString(),
+        actor_id: (c.get('userId') as number | undefined) ?? null,
+        entity_type: 'call', entity_id: callId,
+        lat: body.latitude, lng: body.longitude, status: 'pending',
+        label: body.incident_type, priority: body.priority, category: 'dispatch',
+        payload: { call_number: callNumber, address: body.location_address ?? null },
+      })]);
 
       // Write the PSO/process-service/tactical-flag overflow columns AND the
       // applied run card to the ext table in one INSERT OR IGNORE + UPDATE.
@@ -960,6 +972,16 @@ calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
     params.push(id);
     await execute(db, `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'), updated_at = datetime('now')${timeSql}${dispSql}${notesSql} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+
+    // Analytics lakehouse: call status-change event (best-effort, fire-and-forget).
+    emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+      event_type: 'cfs_status', occurred_at: new Date().toISOString(),
+      actor_id: (c.get('userId') as number | undefined) ?? null,
+      entity_type: 'call', entity_id: id, status,
+      lat: updated?.latitude, lng: updated?.longitude,
+      label: updated?.incident_type, priority: updated?.priority, category: 'dispatch',
+      payload: { call_number: updated?.call_number ?? null, disposition: disposition ?? null },
+    })]);
 
     // Audit trail — parity with the legacy handler this replaced (which wrote
     // a STATUS_CHANGE row). Without this the call's Audit tab showed nothing
@@ -1636,8 +1658,13 @@ calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
       return c.json({ error: 'call_ids (array) and unit_id required' }, 400);
     }
     const db = getDb(c.env);
-    const unit = await queryFirst<{ id: number; unit_number: string }>(db,
-      'SELECT id, unit_number FROM units WHERE id = ?', body.unit_id);
+    // `call_sign` is the units table's human-readable id (UNIQUE NOT NULL);
+    // there is NO `unit_number` column on units (that lives on the GPS-device
+    // table) — selecting it threw `no such column` and the catch turned every
+    // reassign into a generic 500. Return it as `target` so the God Mode toast
+    // renders "Reassigned N calls to D19" instead of "...to undefined".
+    const unit = await queryFirst<{ id: number; call_sign: string }>(db,
+      'SELECT id, call_sign FROM units WHERE id = ?', body.unit_id);
     if (!unit) return c.json({ error: 'Unit not found' }, 404);
     let updated = 0;
     for (const callId of body.call_ids.slice(0, 50)) {
@@ -1649,7 +1676,7 @@ calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
       } catch { /* skip individual failures */ }
     }
     await emitAlert(c.env, 'dispatch_update', { action: 'bulk_reassign', unit_id: body.unit_id, call_ids: body.call_ids });
-    return c.json({ success: true, updated, total: body.call_ids.length });
+    return c.json({ success: true, updated, total: body.call_ids.length, target: unit.call_sign });
   } catch (err) {
     return c.json({ error: 'Bulk reassign failed' }, 500);
   }

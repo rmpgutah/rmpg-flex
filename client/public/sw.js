@@ -639,7 +639,10 @@
 //       Workers AI when Claude is out of credit (no more 502) + "FREE FALLBACK
 //       AI" badge; Plate Log dashcam "reads" counts alpr_captures; Jail Mgmt
 //       links to the scraped Arrest Roster.
-const CACHE_NAME = 'rmpg-flex-v988';
+// v987: God Mode "Reassign Calls" — repoint to /dispatch/calls/bulk-reassign
+//       (dead /admin path 404'd), dropdown now targets a UNIT (sends unit_id),
+//       handler fix (call_sign lookup + `target` in response for the toast).
+const CACHE_NAME = 'rmpg-flex-v987';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

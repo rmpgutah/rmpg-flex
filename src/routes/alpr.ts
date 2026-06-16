@@ -37,6 +37,7 @@ import { trustScore } from '../utils/plateTrust';
 import { verifyEdgeSignature } from '../utils/edgeHmac';
 import { normalizeCaptureEdit, describeEdit } from '../utils/alprEdit';
 import { confirmReviewStatus, confirmWarning } from '../utils/alprReview';
+import { emitAnalytics, alprReadEvent } from '../utils/analytics';
 
 const alpr = new Hono<Env>();
 
@@ -582,6 +583,18 @@ alpr.post('/capture', operational, async (c) => {
   const fin = await finalizeCapture(c.env, db, {
     captureRowId, read, callId, incidentId, lat, lng, locationText, userId, imageKey,
   });
+
+  // Fan each finalized read out to the analytics lakehouse (best-effort; no-op
+  // until the ANALYTICS pipeline is provisioned). D1 above is the source of truth.
+  if (fin.vehicles.length) {
+    const occurredAt = new Date().toISOString();
+    emitAnalytics(c.executionCtx, c.env.ANALYTICS, fin.vehicles.map((v) =>
+      alprReadEvent(
+        { captureRowId, callId, incidentId, lat, lng, locationText, userId, source: 'field' },
+        v, occurredAt,
+      ),
+    ));
+  }
 
   const hits = Array.from(new Map(fin.hits.map((h) => [h.detail, h])).values());
   // Honest status: reflect finalize's real outcome instead of hardcoding success.
@@ -1137,6 +1150,23 @@ alpr.post('/edge', async (c) => {
       trust.consensusRatio, trust.trustScore, trust.basis, 'edge_lora', 0);
     photoRowId = r.meta.last_row_id as number;
   }
+  // Fan the edge read out to the analytics lakehouse (best-effort; no-op until
+  // the ANALYTICS pipeline is provisioned). Edge reads are unattended → userId null.
+  emitAnalytics(c.executionCtx, c.env.ANALYTICS, [alprReadEvent(
+    {
+      captureRowId: null, callId: null, incidentId: null,
+      lat: num(rec.lat), lng: num(rec.lng), locationText: rec.location_text ?? null,
+      userId: null, source: 'edge',
+    },
+    {
+      plate: rec.plate ?? null, canonical_plate: canonical, state: rec.state ?? null,
+      make: rec.make ?? null, model: rec.model ?? null, year: rec.year ?? null,
+      color: rec.color ?? null, vehicle_type: rec.type ?? null,
+      trust_score: trust.trustScore, vehicle_record_id: screen.vehicleId ?? null, hits,
+    },
+    new Date().toISOString(),
+  )]);
+
   return c.json({ success: true, canonical_plate: canonical, trust_score: trust.trustScore,
                   trust_basis: trust.basis, photo_row_id: photoRowId,
                   sighting_id: sightingId, hits,

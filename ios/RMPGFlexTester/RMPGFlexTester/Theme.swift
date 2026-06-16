@@ -40,6 +40,39 @@ enum Theme {
         LinearGradient(colors: [groupHeadTop, groupHeadBottom], startPoint: .top, endPoint: .bottom)
     }
 
+    /// Named type roles at the Responder scale. Each is scaled by Dynamic Type
+    /// relative to a system text style, so it honors the officer's text-size +
+    /// accessibility settings while keeping our exact base size + weight (and
+    /// the monospaced Spillman feel where it matters). SwiftUI's plain
+    /// `.system(size:)` does NOT auto-scale — this layer is why the scale honors
+    /// Dynamic Type instead of being fixed pt values.
+    enum Typography {
+        static func scaled(_ size: CGFloat, _ weight: Font.Weight,
+                           relativeTo style: UIFont.TextStyle,
+                           monospaced: Bool = false) -> Font {
+            let s = UIFontMetrics(forTextStyle: style).scaledValue(for: size)
+            return .system(size: s, weight: weight, design: monospaced ? .monospaced : .default)
+        }
+        static var display: Font   { scaled(28, .heavy,    relativeTo: .largeTitle) }
+        static var title: Font     { scaled(22, .heavy,    relativeTo: .title1) }
+        static var headline: Font  { scaled(17, .semibold, relativeTo: .title3) }
+        static var body: Font      { scaled(16, .regular,  relativeTo: .body) }
+        static var label: Font     { scaled(13, .semibold, relativeTo: .subheadline) }
+        static var caption: Font   { scaled(12, .regular,  relativeTo: .caption1) }
+        static var mono: Font      { scaled(16, .regular,  relativeTo: .body, monospaced: true) }
+        static var monoLarge: Font { scaled(18, .semibold, relativeTo: .title3, monospaced: true) }
+    }
+
+    /// Layout spacing scale, replacing the scattered 6/8/9/10/12/14pt literals.
+    enum Spacing {
+        static let xs: CGFloat = 4
+        static let sm: CGFloat = 6
+        static let md: CGFloat = 8
+        static let lg: CGFloat = 12
+        static let xl: CGFloat = 16
+        static let xxl: CGFloat = 20
+    }
+
     /// Global UIKit appearance — steel-blue tab + nav bars with gold accents
     /// (SwiftUI has no direct API for bar backgrounds). Call once at app init.
     static func configureAppearance() {
@@ -99,30 +132,40 @@ extension UIColor {
 
 // ── Reusable styles (apply app-wide for a consistent MDT look) ──
 
+/// Size variants for the shared button styles. `.large` is for primary field
+/// actions that must be hit one-handed; both enforce a 44pt minimum height.
+enum ButtonSize { case regular, large }
+
 /// Primary action: gold fill, black text, pressed-state dim.
 struct GoldButtonStyle: ButtonStyle {
+    var size: ButtonSize = .regular
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .semibold))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 9)
+            .font(size == .large ? Theme.Typography.headline : .system(size: 12, weight: .semibold))
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.vertical, size == .large ? 14 : 9)
             .background(Theme.gold.opacity(configuration.isPressed ? 0.7 : 1))
             .foregroundStyle(.black)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
 /// Secondary action: raised surface, gold text, hairline border.
 struct RaisedButtonStyle: ButtonStyle {
+    var size: ButtonSize = .regular
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 11, weight: .semibold))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
+            .font(size == .large ? Theme.Typography.headline : .system(size: 11, weight: .semibold))
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.vertical, size == .large ? 13 : 8)
             .background(Theme.raised.opacity(configuration.isPressed ? 0.6 : 1))
             .foregroundStyle(Theme.gold)
             .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.border, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -140,6 +183,12 @@ struct ThemeCard: ViewModifier {
 
 extension View {
     func themeCard() -> some View { modifier(ThemeCard()) }
+
+    /// Guarantee at least a 44×44pt hit area (Apple HIG minimum) for compact /
+    /// icon-only controls.
+    func minTouchTarget(_ side: CGFloat = 44) -> some View {
+        frame(minWidth: side, minHeight: side).contentShape(Rectangle())
+    }
 }
 
 /// Status line that colors itself by convention: ✓ gold, ✗ red, ⚠ orange.
@@ -147,7 +196,7 @@ struct StatusLine: View {
     let text: String
     var body: some View {
         Text(text)
-            .font(.system(size: 11, design: .monospaced))
+            .font(Theme.Typography.mono)
             .foregroundStyle(text.hasPrefix("✓") ? Theme.gold
                              : text.hasPrefix("✗") ? Theme.red
                              : text.hasPrefix("⚠") ? Theme.orange : Theme.neutral)
@@ -161,7 +210,7 @@ struct SectionHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .semibold))
+                .font(Theme.Typography.label)
                 .foregroundStyle(Theme.gold)
             Rectangle().fill(Theme.border).frame(height: 1)
         }
@@ -182,5 +231,50 @@ struct SpmGroupHeader: View {
             .padding(.vertical, 5)
             .background(Theme.groupHead)
             .overlay(Rectangle().fill(Theme.borderStrong).frame(height: 1), alignment: .bottom)
+    }
+}
+
+/// Wraps content in a literal Spillman group-box: a gold gradient header bar over
+/// a steel-blue panel body with a panel-border hairline. The drop-in chrome for
+/// detail panels / cards that want the desktop group-box look.
+struct SpmGroupBox<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: () -> Content
+    var body: some View {
+        VStack(spacing: 0) {
+            SpmGroupHeader(title: title)
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Theme.Spacing.lg)
+                .background(Theme.raised)
+        }
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderPanel, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+    }
+}
+
+/// Standard empty / zero-state: a muted icon, a title, and an optional subtitle.
+/// Replaces the one-off "No …" Text lines scattered across the list screens.
+struct EmptyState: View {
+    let icon: String
+    let title: String
+    var subtitle: String? = nil
+    var body: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Image(systemName: icon)
+                .font(.system(size: 34))
+                .foregroundStyle(Theme.neutral)
+            Text(title)
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.textSecondary)
+            if let subtitle {
+                Text(subtitle)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.neutral)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.xxl * 2)
     }
 }

@@ -51,25 +51,25 @@ struct FieldPhotoSheet: View {
                         .padding(8).background(Theme.raised)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                     Toggle("Attach to my current call", isOn: $attachToCall)
-                        .font(.system(size: 12)).tint(Theme.gold)
+                        .font(Theme.Typography.caption).tint(Theme.gold)
                     Button(uploading ? "UPLOADING…" : "UPLOAD EVIDENCE PHOTO") {
                         Task { await upload(image) }
                     }
-                    .font(.system(size: 13, weight: .bold))
+                    .font(Theme.Typography.body).fontWeight(.bold)
                     .frame(maxWidth: .infinity).padding(.vertical, 10)
                     .background(Theme.gold).foregroundStyle(.black)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                     .disabled(uploading)
                     Button("Retake") { showCamera = true }
-                        .font(.system(size: 12)).foregroundStyle(Theme.neutral)
+                        .font(Theme.Typography.caption).foregroundStyle(Theme.neutral)
                 }
                 if let status {
-                    Text(status).font(.system(size: 11, design: .monospaced))
+                    Text(status).font(Theme.Typography.mono)
                         .foregroundStyle(status.hasPrefix("✓") ? Theme.gold : Theme.red)
                 }
                 Spacer()
             }
-            .padding(12)
+            .padding(Theme.Spacing.lg)
             .background(Theme.base)
             .navigationTitle("FIELD PHOTO")
             .navigationBarTitleDisplayMode(.inline)
@@ -137,7 +137,7 @@ struct BoloComposer: View {
                     .lineLimit(3...6)
                 Button("ISSUE BOLO") { Task { await submit() } }
                     .fontWeight(.semibold).disabled(title.isEmpty)
-                if let status { Text(status).font(.system(size: 11, design: .monospaced)) }
+                if let status { Text(status).font(Theme.Typography.mono) }
             }
             .scrollContentBackground(.hidden)
             .background(Theme.base)

@@ -4,6 +4,9 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { ensureFootageSchema, enqueueFootage } from '../utils/footage/captureOrchestrator';
+import { getClearPathSource } from '../utils/footage/clearpathSource';
+import { getApiConfig, listDevices, listMedia } from '../utils/clearpathGps';
+import { ensureMarkersSchema, buildFootageMarkers } from '../utils/footage/markers';
 import { buildManifest, concatToR2 } from '../utils/footage/concat';
 import { requireRole } from '../middleware/auth';
 import { footageEvidenceNumber, isUnlockable, buildCourtManifest, manifestPayloadHash, logCustody, viewSessionKey } from '../utils/footage/evidence';
@@ -92,7 +95,12 @@ flexcam.get('/footage/:id', async (c): Promise<Response> => {
   const rows = await query<{ seq: number; from_ts: number; to_ts: number; status: string; r2_key: string | null; bytes: number }>(
     db, 'SELECT seq, from_ts, to_ts, status, r2_key, bytes FROM footage_chunks WHERE request_id=? ORDER BY seq', id).catch(() => []);
   const manifest = buildManifest(id, rows);
-  return c.json({ request: req, manifest });
+  await ensureMarkersSchema(db);
+  const markers = await query(db,
+    'SELECT ts_ms, offset_ms, kind, type, severity, label, lat, lng, heading_deg, turn_dir FROM footage_markers WHERE footage_request_id=? ORDER BY offset_ms', id).catch(() => []);
+  // `chunks` carries per-chunk from/to so the client player can map a marker's
+  // offset → (chunk, seek-within) on the gap-collapsed playable timeline.
+  return c.json({ request: req, manifest, markers, chunks: rows });
 });
 
 flexcam.get('/footage/:id/chunk/:seq/stream', async (c): Promise<Response> => {
@@ -232,6 +240,72 @@ flexcam.delete('/footage/:id', async (c): Promise<Response> => {
   await execute(db, 'DELETE FROM footage_chunks WHERE request_id=?', id);
   await execute(db, 'DELETE FROM footage_requests WHERE id=?', id);
   return c.json({ success: true });
+});
+
+// Timeline markers for a request (event tags + turn pins). ?rebuild=1 re-derives
+// from the live ClearPath events + GPS track for the window.
+flexcam.get('/footage/:id/markers', async (c): Promise<Response> => {
+  const db = getDb(c.env); await ensureMarkersSchema(db);
+  const id = Number(c.req.param('id'));
+  if (c.req.query('rebuild') === '1') { try { await buildFootageMarkers(c.env, id); } catch { /* best-effort */ } }
+  const markers = await query(db,
+    'SELECT ts_ms, offset_ms, kind, type, severity, label, lat, lng, heading_deg, turn_dir FROM footage_markers WHERE footage_request_id=? ORDER BY offset_ms', id).catch(() => []);
+  return c.json({ markers });
+});
+
+// ── W1 verification spike ────────────────────────────────────
+// Read-only probe of the LIVE ClearPath contract for a tiny recent window. Reports
+// the raw response SHAPES (secrets / URLs / base64 stripped) so we can confirm,
+// before flipping flexcam_full_drive on: does on-demand media/request return a
+// handle? does media/data return arbitrary past segments or only events? is there a
+// per-object still (thumbnail) the footage-ALPR can read? Admin-only; writes nothing.
+flexcam.post('/diagnose', requireRole('admin'), async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  const client = await getApiConfig(db, c.env).catch(() => null);
+  if (!client) return c.json({ ok: false, error: 'ClearPath not configured (no refresh token)' }, 503);
+  let body: { asset_id?: number; window_seconds?: number; lookback_minutes?: number };
+  try { body = await c.req.json(); } catch { body = {}; }
+
+  const steps: Array<{ name: string; data: unknown }> = [];
+  const step = (name: string, data: unknown) => steps.push({ name, data });
+  const report: Record<string, unknown> = { steps };
+
+  // 1) Resolve a camera asset (explicit, else first media-enabled device).
+  let assetId = Number(body.asset_id) || 0;
+  try {
+    const devices = await listDevices(c.env, client);
+    step('devices', { count: devices.length, sample: devices.slice(0, 3).map((d) => ({ deviceId: d.deviceId, assetId: d.assetId, mediaEnabled: d.mediaEnabled, name: d.displayName })) });
+    if (!assetId) { const m = devices.find((d) => d.mediaEnabled && d.assetId); assetId = m ? Number(m.assetId) : 0; }
+  } catch (e) { step('devices_error', (e as Error).message); }
+  if (!assetId) return c.json({ ok: false, error: 'No camera asset resolved', report }, 200);
+  report.assetId = assetId;
+
+  // 2) Tiny recent window.
+  const lookbackMin = Number(body.lookback_minutes) || 10;
+  const winSec = Math.min(Number(body.window_seconds) || 40, 120);
+  const toTs = Date.now() - lookbackMin * 60_000;
+  const fromTs = toTs - winSec * 1000;
+  report.window = { fromTs, toTs, winSec, lookbackMin };
+
+  // 3) On-demand request — does the vendor accept it / echo a handle?
+  const source = await getClearPathSource(db, c.env);
+  try {
+    const vendorId = source ? await source.requestChunk(assetId, fromTs, toTs, 'outside') : null;
+    step('on_demand_request', { accepted: vendorId != null, vendorId });
+  } catch (e) { step('on_demand_request_error', (e as Error).message); }
+
+  // 4) What does media/data return for that window? (shapes only — strip URLs/base64)
+  try {
+    const page = await listMedia(c.env, client, assetId, fromTs, toTs, 0, 25);
+    const objs = page.items.flatMap((ev) => ev.mediaObject.map((mo) => ({
+      channel: mo.channel, type: mo.type, status: mo.status, eventType: mo.eventType,
+      hasThumbnail: !!mo.thumbnailUrl, hasAccessUrl: !!mo.accessUrl,
+      durationSec: mo.durationSec, gpsPoints: mo.gps?.length ?? 0,
+    })));
+    step('media_data', { total: page.total, events: page.items.length, objects: objs.slice(0, 25) });
+  } catch (e) { step('media_data_error', (e as Error).message); }
+
+  return c.json({ ok: true, report });
 });
 
 export default flexcam;

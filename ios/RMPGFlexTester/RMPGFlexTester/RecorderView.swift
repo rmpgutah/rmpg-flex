@@ -19,12 +19,12 @@ struct RecorderView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     Text("Records with the screen locked or the app pocketed. Each 30s is uploaded immediately — a crash loses almost nothing.")
-                        .font(.system(size: 11)).foregroundColor(Theme.neutral)
+                        .font(Theme.Typography.caption).foregroundColor(Theme.neutral)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8).background(Theme.raised).overlay(border)
 
                     if let err = recorder.error {
-                        Text(err).font(.system(size: 11)).foregroundColor(Theme.red)
+                        Text(err).font(Theme.Typography.caption).foregroundColor(Theme.red)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(8).background(Theme.raised).overlay(border)
                     }
@@ -45,10 +45,10 @@ struct RecorderView: View {
             if recorder.isRecording {
                 HStack(spacing: 8) {
                     Circle().fill(Theme.red).frame(width: 12, height: 12)
-                    Text(fmt(recorder.elapsed)).font(.system(size: 34, weight: .semibold, design: .monospaced))
+                    Text(fmt(recorder.elapsed)).font(Theme.Typography.monoLarge)
                         .foregroundColor(Theme.red)
                 }
-                Text("\(recorder.segmentsUploaded) segment(s) saved").font(.system(size: 11)).foregroundColor(Theme.neutral)
+                Text("\(recorder.segmentsUploaded) segment(s) saved").font(Theme.Typography.caption).foregroundColor(Theme.neutral)
                 Button { Task { await recorder.stop(); locText = ""; note = ""; await loadRecent() } } label: {
                     Label("STOP", systemImage: "stop.fill").font(.system(size: 14, weight: .semibold))
                         .foregroundColor(Theme.red).padding(.horizontal, 24).padding(.vertical, 10)
@@ -84,12 +84,12 @@ struct RecorderView: View {
             Text("RECORDINGS").font(.system(size: 9, weight: .semibold)).foregroundColor(Theme.gold)
                 .padding(.horizontal, 8).padding(.vertical, 3)
             if recent.isEmpty {
-                Text(loading ? "Loading…" : "None yet.").font(.system(size: 11)).foregroundColor(Theme.neutral).padding(8)
+                Text(loading ? "Loading…" : "None yet.").font(Theme.Typography.caption).foregroundColor(Theme.neutral).padding(8)
             }
             ForEach(Array(recent.enumerated()), id: \.offset) { _, r in
                 HStack(spacing: 8) {
                     Text(String((r["started_at"] as? String ?? "").prefix(16).dropFirst(5)))
-                        .font(.system(size: 11)).foregroundColor(.white)
+                        .font(Theme.Typography.caption).foregroundColor(.white)
                     Spacer()
                     Text("\(r["duration_sec"] as? Int ?? 0)s · \(r["chunk_count"] as? Int ?? 0) seg")
                         .font(.system(size: 10)).foregroundColor(Theme.neutral)

@@ -38,7 +38,7 @@ struct UnitsMapView: View {
 
             HStack {
                 Text(loading ? "LOADING…" : "\(pins.count) UNIT\(pins.count == 1 ? "" : "S") LIVE")
-                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.gold)
+                    .font(Theme.Typography.label).foregroundStyle(Theme.gold)
                 Spacer()
                 if let status { Text(status).font(.system(size: 10)).foregroundStyle(Theme.red) }
             }

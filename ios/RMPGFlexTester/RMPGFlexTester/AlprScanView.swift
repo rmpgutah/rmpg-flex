@@ -26,29 +26,29 @@ struct AlprScanSheet: View {
 
                     if summary == nil {
                         Toggle("Attach to my current call", isOn: $attachToCall)
-                            .font(.system(size: 12)).tint(Theme.gold)
+                            .font(Theme.Typography.caption).tint(Theme.gold)
                         if image != nil {
                             Button(scanning ? "SCANNING…" : "SCAN VEHICLES") { Task { await scan() } }
-                                .font(.system(size: 13, weight: .bold))
+                                .font(Theme.Typography.body).fontWeight(.bold)
                                 .frame(maxWidth: .infinity).padding(.vertical, 10)
                                 .background(Theme.gold).foregroundStyle(.black)
                                 .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                                 .disabled(scanning)
                             Button("Retake") { showCamera = true }
-                                .font(.system(size: 12)).foregroundStyle(Theme.neutral)
+                                .font(Theme.Typography.caption).foregroundStyle(Theme.neutral)
                         }
                     }
 
                     if let summary { resultView(summary) }
 
                     if let status {
-                        Text(status).font(.system(size: 11, design: .monospaced))
+                        Text(status).font(Theme.Typography.mono)
                             .foregroundStyle(status.hasPrefix("✓") ? Theme.gold : Theme.red)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Spacer(minLength: 0)
                 }
-                .padding(12)
+                .padding(Theme.Spacing.lg)
             }
             .background(Theme.base)
             .navigationTitle("SCAN VEHICLES")
@@ -64,43 +64,44 @@ struct AlprScanSheet: View {
     private func resultView(_ s: AlprScanSummary) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("\(s.vehicleCount) vehicle(s) · \(s.createdCount) new record(s)")
-                .font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.gold)
+                .font(Theme.Typography.caption).fontWeight(.bold).foregroundStyle(Theme.gold)
 
             ForEach(s.criticalHits, id: \.self) { h in
                 Text("⚠ \(h)")
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.red)
-                    .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                    .font(Theme.Typography.caption).fontWeight(.semibold).foregroundStyle(Theme.red)
+                    .padding(Theme.Spacing.md).frame(maxWidth: .infinity, alignment: .leading)
                     .background(Theme.red.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
             }
 
             if s.vehicleCount == 0 {
-                Text("No readable plate found. The photo was still saved to the call.")
-                    .font(.system(size: 11)).foregroundStyle(Theme.neutral)
+                EmptyState(icon: "car",
+                           title: "No readable plate found",
+                           subtitle: "The photo was still saved to the call.")
             }
 
             ForEach(Array(s.vehicles.enumerated()), id: \.offset) { _, v in
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
-                        Text(v.plate ?? "—").font(.system(size: 17, weight: .bold))
+                        Text(v.plate ?? "—").font(Theme.Typography.headline).fontWeight(.bold)
                             .tracking(2)
                         Spacer()
                         Text(v.recordCreated ? "NEW RECORD" : "LINKED")
                             .font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.neutral)
                     }
                     Text(v.descriptor + (v.confidence.map { " · \(Int($0 * 100))%" } ?? ""))
-                        .font(.system(size: 11)).foregroundStyle(Theme.neutral)
+                        .font(Theme.Typography.caption).foregroundStyle(Theme.neutral)
                     ForEach(v.criticalHits, id: \.self) { hit in
-                        Text("⚠ \(hit)").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.red)
+                        Text("⚠ \(hit)").font(Theme.Typography.caption).fontWeight(.semibold).foregroundStyle(Theme.red)
                     }
                 }
-                .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Theme.Spacing.md).frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.raised)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
             }
 
             Button("DONE") { dismiss() }
-                .font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.gold)
+                .font(Theme.Typography.caption).fontWeight(.bold).foregroundStyle(Theme.gold)
                 .frame(maxWidth: .infinity).padding(.vertical, 8)
         }
     }

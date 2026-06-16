@@ -92,12 +92,17 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
       else await accrueFleetOdometer(db, c?.vehicle_id ?? args.vehicleId, c?.distance_m ?? null);
       await broadcastTrip(env, db, d.close.tripId, 'closed');
 
-      // FlexCam: auto-capture full footage for trips tied to a dispatched call.
-      // Best-effort — must never disrupt trip close.
+      // FlexCam: auto-capture footage on trip close. With flexcam_full_drive ON,
+      // capture EVERY camera-mapped trip (the full drive, road camera); when OFF,
+      // keep the call-tied-only behavior. Best-effort — must never disrupt trip close.
       try {
         const closed = await queryFirst<{ unit_id: number; call_id: number | null; call_number: string | null; start_time: string; end_time: string }>(
           db, 'SELECT unit_id, call_id, call_number, start_time, end_time FROM unit_trips WHERE id=?', d.close.tripId);
-        if (closed && (closed.call_id || closed.call_number)) {
+        const fullDrive = await queryFirst<{ config_value: string }>(
+          db, "SELECT config_value FROM system_config WHERE config_key='flexcam_full_drive' AND category='integrations' AND is_active=1 LIMIT 1").catch(() => null);
+        const fullDriveOn = fullDrive?.config_value === 'true';
+        const callTied = !!(closed && (closed.call_id || closed.call_number));
+        if (closed && (fullDriveOn || callTied)) {
           const map = await queryFirst<{ cpg_camera_id: number | null; cpg_device_id: string }>(
             db, 'SELECT cpg_camera_id, cpg_device_id FROM cpg_device_mappings WHERE unit_id=? AND is_active=1 LIMIT 1', closed.unit_id);
           const assetId = map?.cpg_camera_id ?? 0;
@@ -110,7 +115,8 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
             // touches env.DB + optional ClearPath bindings, all present at runtime.
             await enqueueFootage(env as unknown as import('../types').Bindings, {
               assetId, unitId: closed.unit_id, cpgDeviceId: map!.cpg_device_id,
-              tripId: String(d.close.tripId), callId: closed.call_id ?? null, fromTs, toTs, reason: 'trip_auto',
+              tripId: String(d.close.tripId), callId: closed.call_id ?? null, fromTs, toTs,
+              reason: 'trip_auto', channels: ['outside'],
               title: `Trip ${d.close.tripId}${closed.call_number ? ' · Call ' + closed.call_number : ''}`,
             });
           }

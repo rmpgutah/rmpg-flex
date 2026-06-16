@@ -55,7 +55,7 @@ struct WalletIDView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("RMPG OFFICER ID")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(Theme.Typography.label)
                     .foregroundStyle(Theme.gold)
                 Spacer()
                 Text(isActive ? "ACTIVE" : "INACTIVE")
@@ -79,7 +79,7 @@ struct WalletIDView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(b.fullName)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(Theme.Typography.headline)
                         .foregroundStyle(.white)
                     field("Badge", b.badgeNumber)
                     field("Rank", b.rank)
@@ -119,8 +119,8 @@ struct WalletIDView: View {
 
     private func field(_ label: String, _ value: String?) -> some View {
         HStack(spacing: 6) {
-            Text(label).font(.system(size: 11)).foregroundStyle(Theme.neutral).frame(width: 48, alignment: .leading)
-            Text(value?.isEmpty == false ? value! : "—").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
+            Text(label).font(Theme.Typography.caption).foregroundStyle(Theme.neutral).frame(width: 48, alignment: .leading)
+            Text(value?.isEmpty == false ? value! : "—").font(Theme.Typography.caption).foregroundStyle(Theme.textSecondary)
         }
     }
 
