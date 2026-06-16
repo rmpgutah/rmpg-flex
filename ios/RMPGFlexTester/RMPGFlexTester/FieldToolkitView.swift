@@ -68,7 +68,7 @@ struct FieldToolkitView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(Theme.neutral)
                     TextField("Search \(FieldToolRegistry.tools.count) field functions…", text: $search)
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(Theme.Typography.mono)
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
                     if !search.isEmpty {
                         Button { search = ""; Haptics.tap() } label: {
@@ -81,16 +81,15 @@ struct FieldToolkitView: View {
 
                 if queueCount > 0 {
                     Text("⏳ \(queueCount) action(s) queued offline — tap Sync Offline Queue when back in coverage")
-                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.orange)
+                        .font(Theme.Typography.caption).fontWeight(.semibold).foregroundStyle(Theme.orange)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if let toast { StatusLine(text: toast) }
 
                 ScrollView {
                     if !search.isEmpty && filtered.isEmpty {
-                        Text("No functions match “\(search)”.")
-                            .font(.system(size: 12)).foregroundStyle(Theme.neutral)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 20)
+                        EmptyState(icon: "magnifyingglass", title: "No functions match “\(search)”.")
+                            .padding(.top, 20)
                     }
                     ForEach(displayCategories, id: \.self) { cat in
                         let catTools = tools(in: cat)
@@ -98,7 +97,7 @@ struct FieldToolkitView: View {
                     }
                 }
             }
-            .padding(12)
+            .padding(Theme.Spacing.lg)
             .background(Theme.base)
             .navigationTitle("FIELD TOOLKIT")
             .navigationBarTitleDisplayMode(.inline)
@@ -172,7 +171,7 @@ struct FieldToolkitView: View {
             HStack(spacing: 3) {
                 Rectangle().fill(accent).frame(width: 2).frame(maxHeight: .infinity)
                 Text(tool.title)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(Theme.Typography.caption).fontWeight(.medium)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 6)
@@ -226,7 +225,7 @@ struct FieldToolkitView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if let resultText {
                         Text(resultText)
-                            .font(.system(size: 13, design: .monospaced))
+                            .font(Theme.Typography.mono)
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
@@ -240,7 +239,7 @@ struct FieldToolkitView: View {
                                         Text(FieldFormat.label(key)).font(.system(size: 9, weight: .semibold))
                                             .foregroundStyle(Theme.gold)
                                             .frame(width: 120, alignment: .leading)
-                                        Text(value).font(.system(size: 11))
+                                        Text(value).font(Theme.Typography.caption)
                                             .foregroundStyle(.white)
                                             .textSelection(.enabled)
                                     }
@@ -252,7 +251,7 @@ struct FieldToolkitView: View {
                         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                     }
                 }
-                .padding(12)
+                .padding(Theme.Spacing.lg)
             }
             .background(Theme.base)
             .navigationTitle(resultTitle)
@@ -273,7 +272,7 @@ struct FieldToolkitView: View {
                         showResult = false
                         toast = "✓ Added to scratchpad"
                     }
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(Theme.Typography.caption).fontWeight(.semibold)
                     .foregroundStyle(Theme.gold)
                 }
             }
@@ -819,17 +818,17 @@ struct FieldTimerView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Text(label).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.gold)
+            Text(label).font(Theme.Typography.body).fontWeight(.semibold).foregroundStyle(Theme.gold)
             Text(String(format: "%02d:%02d", display / 60, display % 60))
                 .font(.system(size: 64, weight: .bold, design: .monospaced))
                 .foregroundStyle(done ? Theme.gold : .white)
             Text("Started \(startedAt.formatted(date: .omitted, time: .standard))")
-                .font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.neutral)
+                .font(Theme.Typography.mono).foregroundStyle(Theme.neutral)
             if done {
-                Text("✓ TIME SATISFIED").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.gold)
+                Text("✓ TIME SATISFIED").font(Theme.Typography.body).fontWeight(.bold).foregroundStyle(Theme.gold)
             }
             Button(running ? "PAUSE" : "RESUME") { running.toggle() }
-                .font(.system(size: 12, weight: .semibold))
+                .font(Theme.Typography.caption).fontWeight(.semibold)
                 .padding(.horizontal, 24).padding(.vertical, 8)
                 .background(Theme.raised).foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.radius))

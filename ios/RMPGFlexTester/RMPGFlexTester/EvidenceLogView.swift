@@ -18,13 +18,10 @@ struct EvidenceLogView: View {
                     if loading && rows.isEmpty {
                         ProgressView().tint(Theme.gold).padding(.top, 30)
                     } else if rows.isEmpty {
-                        VStack(spacing: 6) {
-                            Image(systemName: "shield.lefthalf.filled").font(.system(size: 26)).foregroundStyle(Theme.neutral)
-                            Text("No evidence logged yet.").font(.system(size: 12)).foregroundStyle(Theme.neutral)
-                            Text("Captures from the evidence camera file a tamper-evident manifest here.")
-                                .font(.system(size: 10)).foregroundStyle(Theme.neutral)
-                                .multilineTextAlignment(.center).padding(.horizontal, 24)
-                        }.padding(.top, 28)
+                        EmptyState(icon: "shield.lefthalf.filled",
+                                   title: "No evidence logged yet.",
+                                   subtitle: "Captures from the evidence camera file a tamper-evident manifest here.")
+                            .padding(.top, 28)
                     } else {
                         ForEach(rows.indices, id: \.self) { i in row(rows[i]) }
                     }
@@ -60,7 +57,7 @@ struct EvidenceLogView: View {
                 Text("EXH \(EvidenceManifest.sequenceLabel(seq))").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.neutral)
             }.frame(width: 44)
             VStack(alignment: .leading, spacing: 2) {
-                Text(cls).font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.gold)
+                Text(cls).font(Theme.Typography.caption).fontWeight(.bold).foregroundStyle(Theme.gold)
                 Text("SHA256 \(EvidenceManifest.shortHash(sha))")
                     .font(.system(size: 10, design: .monospaced)).foregroundStyle(.white).lineLimit(1)
                 Text([caseRef.isEmpty ? nil : caseRef, when.isEmpty ? nil : when]

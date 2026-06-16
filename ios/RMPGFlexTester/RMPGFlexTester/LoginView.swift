@@ -47,7 +47,8 @@ struct LoginView: View {
                 .font(.system(size: 60))
                 .foregroundStyle(Theme.gold)
             Text("RMPG FLEX")
-                .font(.system(size: 24, weight: .bold))
+                .font(Theme.Typography.title)
+                .fontWeight(.bold)
                 .foregroundStyle(.white)
                 .tracking(3)
             Text("ROCKY MOUNTAIN PROTECTIVE GROUP")
@@ -61,7 +62,7 @@ struct LoginView: View {
         VStack(spacing: 12) {
             if let name = session.officerName {
                 Text("Welcome back, \(name)")
-                    .font(.system(size: 13)).foregroundStyle(Theme.neutral)
+                    .font(Theme.Typography.body).foregroundStyle(Theme.neutral)
             }
             Button { Task { await session.unlockWithBiometrics() } } label: {
                 Label("Unlock with \(session.biometryLabel)", systemImage: session.biometrySymbol)
@@ -70,7 +71,8 @@ struct LoginView: View {
             .disabled(session.busy)
 
             Button("Use password instead") { showPasswordForm = true; focused = .user }
-                .font(.system(size: 11, weight: .semibold))
+                .font(Theme.Typography.caption)
+                .fontWeight(.semibold)
                 .foregroundStyle(Theme.neutral)
                 .padding(.top, 2)
         }
@@ -95,7 +97,8 @@ struct LoginView: View {
 
             if session.hasStoredCredentials && session.biometryAvailable {
                 Button("Use \(session.biometryLabel) instead") { showPasswordForm = false }
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(Theme.Typography.caption)
+                    .fontWeight(.semibold)
                     .foregroundStyle(Theme.neutral)
                     .padding(.top, 2)
             }
@@ -105,7 +108,7 @@ struct LoginView: View {
     // Themed input row.
     private func field<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         content()
-            .font(.system(size: 14))
+            .font(Theme.Typography.body)
             .foregroundStyle(.white)
             .padding(.horizontal, 12).padding(.vertical, 11)
             .background(Theme.sunken)

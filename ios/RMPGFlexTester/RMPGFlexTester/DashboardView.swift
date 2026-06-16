@@ -32,12 +32,19 @@ struct DashboardView: View {
                     contextualBanner
                     statRow
                     quickActions
-                    panicButton
                     if let status { StatusLine(text: status) }
                 }
                 .padding(12)
             }
             .background(Theme.base)
+            .safeAreaInset(edge: .bottom) {
+                ResponderActionBar(
+                    currentStatus: "",
+                    statuses: [],
+                    showStatus: false,
+                    onSelectStatus: { _ in },
+                    onPanic: { confirmPanic = true })
+            }
             .navigationTitle("HOME")
             .navigationBarTitleDisplayMode(.inline)
             .refreshable { await refresh(); await counts.refresh() }
@@ -79,7 +86,7 @@ struct DashboardView: View {
     private var greeting: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(greetingPrefix + ", \(officerName)")
-                .font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                .font(Theme.Typography.title).fontWeight(.semibold).foregroundStyle(.white)
             HStack(spacing: 6) {
                 Circle().fill(onShift ? Theme.green : Theme.neutral).frame(width: 8, height: 8)
                 Text(onShift
@@ -149,7 +156,7 @@ struct DashboardView: View {
 
     private func stat(_ value: String, _ label: String, _ color: Color) -> some View {
         VStack(spacing: 2) {
-            Text(value).font(.system(size: 20, weight: .bold)).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.5)
+            Text(value).font(Theme.Typography.title).fontWeight(.bold).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.5)
             Text(label.uppercased()).font(.system(size: 8, weight: .semibold)).foregroundStyle(Theme.neutral)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 10).themeCard()
@@ -187,17 +194,6 @@ struct DashboardView: View {
             .frame(maxWidth: .infinity).padding(.vertical, 16).themeCard()
         }
         .buttonStyle(.plain)
-    }
-
-    private var panicButton: some View {
-        Button { confirmPanic = true } label: {
-            Text("⚠ PANIC")
-                .font(.system(size: 16, weight: .heavy))
-                .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(Theme.red).foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-        }
-        .padding(.top, 4)
     }
 
     private var greetingPrefix: String {

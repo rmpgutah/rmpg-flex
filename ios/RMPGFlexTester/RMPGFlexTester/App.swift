@@ -129,7 +129,7 @@ struct MoreHubView: View {
                                             .frame(width: 28)
                                         VStack(alignment: .leading, spacing: 1) {
                                             Text(e.title)
-                                                .font(.system(size: 13, weight: .semibold))
+                                                .font(Theme.Typography.body).fontWeight(.semibold)
                                                 .foregroundStyle(.white)
                                             Text(e.subtitle)
                                                 .font(.system(size: 10))

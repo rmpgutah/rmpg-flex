@@ -42,8 +42,9 @@ struct DailyActivityReportView: View {
                         line((p["checkpoint"] as? String) ?? "Checkpoint", FieldFormat.value("status", p["status"]), p["scanned_at"])
                     }
                     if totalActivity == 0 {
-                        Text("No auto-captured activity for today yet — file your reports and patrol scans, then refresh.")
-                            .font(.system(size: 12)).foregroundStyle(Theme.neutral)
+                        EmptyState(icon: "tray",
+                                   title: "No activity captured yet",
+                                   subtitle: "File your reports and patrol scans, then refresh.")
                     }
 
                     SectionHeader(title: "Notable events")
@@ -73,10 +74,10 @@ struct DailyActivityReportView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(today).font(.system(size: 14, weight: .semibold, design: .monospaced)).foregroundStyle(.white)
+            Text(today).font(Theme.Typography.mono).fontWeight(.semibold).foregroundStyle(.white)
             Text(loading ? "Auto-compiling from your shift activity…"
                  : "\(totalActivity) auto-captured \(totalActivity == 1 ? "activity" : "activities") · review + sign")
-                .font(.system(size: 11)).foregroundStyle(Theme.gold)
+                .font(Theme.Typography.caption).foregroundStyle(Theme.gold)
         }
         .frame(maxWidth: .infinity, alignment: .leading).themeCard()
     }
@@ -97,7 +98,7 @@ struct DailyActivityReportView: View {
     private func line(_ primary: String, _ secondary: String, _ when: Any?) -> some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 0) {
-                Text(primary).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                Text(primary).font(Theme.Typography.caption).fontWeight(.semibold).foregroundStyle(.white)
                 if !secondary.isEmpty { Text(secondary).font(.system(size: 10)).foregroundStyle(Theme.neutral) }
             }
             Spacer()

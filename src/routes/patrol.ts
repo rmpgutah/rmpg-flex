@@ -38,6 +38,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { emitAnalytics, flexEvent } from '../utils/analytics';
 
 const pt = new Hono<Env>();
 
@@ -257,6 +258,15 @@ pt.post('/scan', async (c) => {
     body.checkpoint_id, user.id, body.latitude ?? null, body.longitude ?? null,
     body.notes ?? null, status, body.weather_json ? JSON.stringify(body.weather_json) : null,
   );
+
+  // Analytics lakehouse: patrol-scan event = proof-of-patrol (best-effort, fire-and-forget).
+  emitAnalytics(c.executionCtx, c.env.EVENTS, [flexEvent({
+    event_type: 'patrol_scan', occurred_at: new Date().toISOString(),
+    actor_id: user.id, entity_type: 'checkpoint', entity_id: body.checkpoint_id,
+    lat: body.latitude, lng: body.longitude, status, category: 'patrol',
+    payload: { scan_id: Number(r.meta.last_row_id) },
+  })]);
+
   return c.json({ success: true, id: r.meta.last_row_id, status }, 201);
 });
 
