@@ -2,16 +2,28 @@
 
 **Date:** 2026-06-15
 **Status:** Approved (design); spec pending user review
-**Scope decision:** Attempt all 5 workstreams this session. W2/W4 are built to the
-best-guess vendor contract now and repaired after the operator runs the W1 spike.
+**Scope decision:** Attempt all **8 workstreams** this session (grew from 5 via operator
+refinement: + continuous video/markers, + Forensic Playback overlay, + trained plate
+detector). W2/W4 are built to the best-guess vendor contract now and repaired after the
+operator runs the W1 spike. W8 (model training) is an async parallel track kicked off
+first; W7 ships degraded-to-heuristic and auto-upgrades when W8's endpoint is live.
+
+**Recommended build sequence:** W8 model training (kick off first, runs async) →
+W1 spike + pure helpers (shared `trustScore`/turn-detection/retention helpers) →
+W3 retention + W2 full-drive pull (server) → W6 continuous video + markers →
+W4 footage ALPR → W7 forensic overlay (wires to W8 when ready) → W5 live patrol scan.
+This is a multi-PR program; ship in reviewable slices, not one mega-PR.
 
 ## Goal
 
 Two operator goals, one program:
 
 1. **ALPR — scan and capture data faster and more accurately.** Make full-drive
-   footage actually get plate-scanned (today it no-ops on video), and sharpen the
-   live "while driving" patrol scanner.
+   footage actually get plate-scanned (today it no-ops on video), sharpen the live
+   "while driving" patrol scanner, and upgrade the Forensic Playback viewer's yellow
+   reticle into a real detection-driven capture point (closest-vehicle lock, exact
+   plate localization via a trained detector, dynamic red/yellow/green read state, and
+   multi-frame consensus for accuracy).
 2. **ClearPath GPS — capture the full drive.** Request every ~40-second segment of
    travel, download all of it, and retain it for 4 months (auto-purge non-evidence
    at 120 days; locked evidence never purged).
@@ -140,6 +152,45 @@ the camera-triggered violations and turns pinned on the timeline.
   as pins on the viewer's scrubber; clicking a pin seeks the continuous player to that offset.
 - **Pure, unit-tested helpers:** GPS turn detection (bearing delta → turn_dir/degrees) and
   marker offset positioning (ts → offset within the drive, gap-aware).
+
+### W7 — Forensic Playback overlay upgrade (the dashcam viewer)
+Operator fixes to `client/src/components/ForensicDashcamPlayer.tsx` + helpers:
+1. **Reticle locks to the closest vehicle.** `primaryTrack()`
+   (`client/src/utils/vehicleTracker.ts`) currently blends `area + centrality +
+   lowness + stability`. Re-weight so **closest dominates** (largest/lowest box wins;
+   keep light stability damping to stop jitter). The yellow focus reticle follows that
+   vehicle every frame.
+2. **LP capture point sits on the actual plate.** The reticle's plate point is driven by
+   the **trained plate-detection model (W8)** when its box is available, falling back to
+   the `plateRegion(bbox)` heuristic (lower-center of the closest vehicle) until/if the
+   detector returns nothing. Graceful upgrade — the viewer ships working on the heuristic
+   and sharpens to exact boxes once W8 is live.
+3. **Dynamic reticle color + multi-frame consensus.** Reticle color = read state:
+   **red** = bad/below-trust read, **yellow** = capturing/in-progress, **green** =
+   accepted (≥0.85 derived trust). While capturing, grab **N frames** of the plate region,
+   run ALPR on each, and combine via `trustScore()` consensus (agreement across frames
+   raises trust above the single-read cap) → drives the color and the stored read. Replaces
+   today's single-frame `rescanPlate`.
+- Pure, unit-tested helpers: closest-vehicle selection weighting, reticle-color state
+  machine (reads → red/yellow/green), multi-frame read consensus (shared with W4/W5).
+
+### W8 — Trained plate-detection model (returns a real plate box)
+The engine behind W7's exact reticle. Cloudflare Workers AI has no stock plate-localization
+model and can't host a custom YOLO, so:
+- **Train on Roboflow.** Fork a high-quality Universe license-plate **detection** dataset
+  (candidates confirmed available: `cardetect-iyapw/anpr-tdrid` ~10k labeled images, single
+  `License_Plate` class; `testworkspace-7jvng/license-plate-detection-itypr` ~5.1k, trained
+  v9) into our `rmpg-utah` workspace → generate a version → train a detection model. No
+  from-scratch labeling. (Operator does any visual review/label-judging per Roboflow's
+  human-in-the-loop split; Claude drives the API/automation.)
+- **Serve via Roboflow hosted inference** (fast detection endpoint returning plate bboxes +
+  confidence), **proxied by a new Worker route `POST /api/alpr/detect-plate`** so the
+  `ROBOFLOW_API_KEY` never reaches the client. The viewer calls it throttled (not every
+  frame — on capture + periodic refresh) to snap the reticle.
+- **Honest framing:** "Cloudflare-side" = trained on Roboflow, proxied through the Cloudflare
+  Worker. Latency: training is asynchronous (minutes–hours) + may want a label review pass,
+  so W8 runs as a **parallel track kicked off first**; W7 ships degraded-to-heuristic and
+  auto-upgrades when the model endpoint goes live.
 
 ## Architecture / interfaces
 
