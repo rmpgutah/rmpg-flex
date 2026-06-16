@@ -249,3 +249,21 @@ export async function alprFootageChunk(
     await persistVehicle(db, v, deviceId, locationText);
   }
 }
+
+/** Free Workers-AI ALPR on a still image (e.g. a segment thumbnail). Reads the
+ *  most prominent plate, maps it, and persists via the SAME path as the Roboflow
+ *  flow (screen → upsert → sighting → hit) — so footage plates land in the intel
+ *  log at zero Roboflow credit cost. Best-effort; never throws. No-op when the AI
+ *  binding is absent, the still is empty, or no plate is read. */
+export async function alprFootageStillCloudflare(
+  env: Bindings, db: DB, _chunkId: number, stillBytes: Uint8Array, deviceId: string | null,
+): Promise<void> {
+  if (!(env as { AI?: unknown }).AI || !stillBytes.length) return;
+  let result: CloudflarePlateResult | null = null;
+  try { result = await readPlateCloudflare(env as unknown as { AI: Ai }, stillBytes, 'image/jpeg'); }
+  catch (e) { console.error('[flexcam-alpr] workers-ai read failed:', (e as Error)?.message); return; }
+  if (!result?.plate) return;
+  await ensureSightingColumns(db);
+  const locationText = `FlexCam ${deviceId ?? ''}`.trim() || 'FlexCam footage';
+  await persistVehicle(db, cloudflarePlateToVehicle(result), deviceId, locationText);
+}

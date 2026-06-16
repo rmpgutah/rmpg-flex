@@ -150,8 +150,20 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
         downloaded++;
         if (alpr === 'pending') {
           try {
-            const { alprFootageChunk } = await import('./footageAlpr');
-            await alprFootageChunk(env, db, ch.id, key, ch.cpg_device_id);
+            if (st.thumbnailUrl) {
+              // Free Workers-AI ALPR on the segment's still — no Roboflow credits,
+              // no in-Worker video decode. The video chunk itself stays unscanned.
+              const tr = await fetch(st.thumbnailUrl, { signal: AbortSignal.timeout(30_000) });
+              if (tr.ok) {
+                const stillBytes = new Uint8Array(await tr.arrayBuffer());
+                const { alprFootageStillCloudflare } = await import('./footageAlpr');
+                await alprFootageStillCloudflare(env, db, ch.id, stillBytes, ch.cpg_device_id);
+              }
+            } else {
+              // No still — try the chunk object (no-ops on video; reads image chunks).
+              const { alprFootageChunk } = await import('./footageAlpr');
+              await alprFootageChunk(env, db, ch.id, key, ch.cpg_device_id);
+            }
             await execute(db, `UPDATE footage_chunks SET alpr_status='done' WHERE id=?`, ch.id);
           } catch (e) { console.error('[flexcam-alpr] failed:', (e as Error).message); }
         }

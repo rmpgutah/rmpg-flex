@@ -13,6 +13,7 @@ export interface FootageChunkStatus {
   state: 'requested' | 'available' | 'missing' | 'error';
   accessUrl?: string;        // pre-signed download URL when available
   contentType?: string;
+  thumbnailUrl?: string;     // per-segment still — fed to the free Workers-AI footage ALPR
 }
 
 export interface FootageSource {

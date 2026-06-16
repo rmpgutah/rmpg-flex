@@ -33,7 +33,8 @@ export function classifyChunkStatus(obj: Record<string, unknown>): FootageChunkS
   if (status === 'NO_MEDIA' || status === 'UNAVAILABLE') return { state: 'missing' };
   if (status === 'ERROR' || status === 'FAILED') return { state: 'error' };
   if (accessUrl && (status === 'AVAILABLE' || status === 'READY')) {
-    return { state: 'available', accessUrl, contentType: obj?.contentType ? String(obj.contentType) : undefined };
+    return { state: 'available', accessUrl, contentType: obj?.contentType ? String(obj.contentType) : undefined,
+      thumbnailUrl: obj?.thumbnailUrl ? String(obj.thumbnailUrl) : undefined };
   }
   return { state: 'requested' };
 }
