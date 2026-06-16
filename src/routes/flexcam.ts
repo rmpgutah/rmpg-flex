@@ -287,41 +287,13 @@ flexcam.post('/diagnose', requireRole('admin'), async (c): Promise<Response> => 
   const fromTs = toTs - winSec * 1000;
   report.window = { fromTs, toTs, winSec, lookbackMin };
 
-  // 3) Probe all plausible on-demand endpoint variants — report HTTP status per path.
-  //    404 = doesn't exist; 400/422 = exists, wrong payload; 200/202 = success.
-  const PROBE_PATHS = [
-    '/v2.0/media/request',
-    '/v1.0/media/request',
-    '/v2.0/dashcams/media-request',
-    '/v1.0/dashcams/media-request',
-    '/v2.0/media/clip',
-    '/v1.0/media/clip',
-    '/v2.0/recording/request',
-    '/v1.0/cameras/media-request',
-  ];
-  const token = await client.getToken().catch(() => null);
-  const probePayload = { assetId, startTime: fromTs, duration: winSec, cameras: ['road'] };
-  const probeResults: Array<{ path: string; status: number; body: string }> = [];
-  if (token) {
-    for (const path of PROBE_PATHS) {
-      try {
-        const r = await fetch(`https://api.clearpathgps.com${path}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify(probePayload),
-          signal: AbortSignal.timeout(10_000),
-        });
-        const text = await r.text().catch(() => '');
-        probeResults.push({ path, status: r.status, body: text.slice(0, 200) });
-        if (r.ok) break; // stop on first success
-      } catch (e) { probeResults.push({ path, status: 0, body: (e as Error).message }); }
-    }
-  }
-  step('endpoint_probe', probeResults);
-  // Best successful path (status 2xx), if any
-  const winner = probeResults.find((p) => p.status >= 200 && p.status < 300);
-  if (winner) step('on_demand_request', { accepted: true, path: winner.path, body: winner.body });
-  else step('on_demand_request', { accepted: false, tried: probeResults.length });
+  // 3) On-demand request — confirmed endpoint (2026-06-15 HAR):
+  //    POST /v2.0/media/cameras/{cameraId}/request-media
+  const source = await getClearPathSource(db, c.env);
+  try {
+    const vendorId = source ? await source.requestChunk(assetId, fromTs, toTs, 'outside') : null;
+    step('on_demand_request', { accepted: vendorId != null, vendorId });
+  } catch (e) { step('on_demand_request_error', (e as Error).message); }
 
   // 4) What does media/data return for that window? (shapes only — strip URLs/base64)
   try {
