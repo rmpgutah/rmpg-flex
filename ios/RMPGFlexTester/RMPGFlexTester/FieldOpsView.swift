@@ -35,6 +35,10 @@ struct FieldOpsView: View {
     private var unit: [String: Any]? { duty["unit"] as? [String: Any] }
     private var unitStatus: String { unit?["status"] as? String ?? "—" }
 
+    private var spokenAlertsEnabled: Bool {
+        UserDefaults.standard.object(forKey: "spokenAlertsEnabled") as? Bool ?? true
+    }
+
     private let statuses: [(String, String)] = [
         ("available", "10-8 AVAILABLE"), ("enroute", "EN ROUTE"),
         ("on_scene", "ON SCENE"), ("busy", "10-6 BUSY"),
@@ -360,9 +364,15 @@ struct FieldOpsView: View {
                 if callId != lastAlertedCallId, let call = myCall {
                     let p1 = ((call["priority"] as? String)?.contains("1") ?? false)
                         || ((call["priority"] as? Int) == 1)
-                    if p1 || !hazards(call).isEmpty {
+                    let hasHazards = !hazards(call).isEmpty
+                    if p1 || hasHazards {
                         AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
                         Haptics.warning()
+                    }
+                    if spokenAlertsEnabled, onShift,
+                       SpokenAlert.shouldSpeak(callId: callId, isP1: p1,
+                                               hasHazards: hasHazards, lastSpokenId: lastAlertedCallId) {
+                        SpeechAnnouncer.shared.speak(SpokenAlert.phrase(for: call))
                     }
                     lastAlertedCallId = callId
                 }
