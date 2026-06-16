@@ -642,7 +642,11 @@
 // v987: God Mode "Reassign Calls" — repoint to /dispatch/calls/bulk-reassign
 //       (dead /admin path 404'd), dropdown now targets a UNIT (sends unit_id),
 //       handler fix (call_sign lookup + `target` in response for the toast).
-const CACHE_NAME = 'rmpg-flex-v987';
+// v988: stop 404 / chunk-load failures from freezing the whole app — bounded
+//       reload-hold (chunkRetry) surfaces the ErrorBoundary recovery card
+//       instead of a permanent button-less Suspense splash; plus an automatic
+//       UI-trap watchdog that auto-recovers orphaned full-screen overlays.
+const CACHE_NAME = 'rmpg-flex-v988';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
