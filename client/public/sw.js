@@ -651,7 +651,12 @@
 //       the next row (CFS location-map grid); person record two-column identifying
 //       marks reserve their row to avoid a page break splitting the columns;
 //       on-screen RecordField wraps long values (break-words/min-w-0).
-const CACHE_NAME = 'rmpg-flex-v989';
+// v990: PDF report header treatment — section/hero/table header bars softened
+//       from solid black to dark grey (#333); sub-heading text on those bars
+//       (descriptor/address/labels) set to light-medium grey (#b8b8b8) via new
+//       TEXT_SUBHEAD_INVERTED token; primary titles stay white. Section headers
+//       keep their text+underline style (unchanged).
+const CACHE_NAME = 'rmpg-flex-v990';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

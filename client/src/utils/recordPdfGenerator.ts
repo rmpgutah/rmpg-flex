@@ -428,7 +428,9 @@ function drawDistrictBar(
   // labels render as muted-white and values as full-white regardless
   // of activeSectionStyle so the bar always reads as a unified
   // dark-slate strip with high text contrast.
-  const labelColor: [number, number, number] = [200, 200, 200];
+  const labelColor: [number, number, number] = [
+    COLOR.TEXT_SUBHEAD_INVERTED[0], COLOR.TEXT_SUBHEAD_INVERTED[1], COLOR.TEXT_SUBHEAD_INVERTED[2],
+  ];
   const valueColor: [number, number, number] = [
     COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2],
   ];
