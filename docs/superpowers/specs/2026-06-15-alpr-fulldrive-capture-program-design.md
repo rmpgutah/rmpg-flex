@@ -5,14 +5,13 @@
 **Scope decision:** Attempt all **8 workstreams** this session (grew from 5 via operator
 refinement: + continuous video/markers, + Forensic Playback overlay, + trained plate
 detector). W2/W4 are built to the best-guess vendor contract now and repaired after the
-operator runs the W1 spike. W8 (model training) is an async parallel track kicked off
-first; W7 ships degraded-to-heuristic and auto-upgrades when W8's endpoint is live.
+operator runs the W1 spike. W8 is a client-side ONNX engine (no training, no Roboflow
+credits — see W8); W7 ships degraded-to-heuristic and lights up when the ONNX models load.
 
-**Recommended build sequence:** W8 model training (kick off first, runs async) →
-W1 spike + pure helpers (shared `trustScore`/turn-detection/retention helpers) →
-W3 retention + W2 full-drive pull (server) → W6 continuous video + markers →
-W4 footage ALPR → W7 forensic overlay (wires to W8 when ready) → W5 live patrol scan.
-This is a multi-PR program; ship in reviewable slices, not one mega-PR.
+**Build sequence (operator chose "one growing PR" on #1349):**
+W1 spike + pure helpers → W3 retention + W2 full-drive pull (server) ✅ **DONE (PR #1349)** →
+W6 continuous video + markers → W4 footage ALPR → W8 client ONNX engine + W7 forensic overlay
+→ W5 live patrol scan. Originally ~5 separate PRs; operator opted to grow #1349 instead.
 
 ## Goal
 
@@ -161,10 +160,10 @@ Operator fixes to `client/src/components/ForensicDashcamPlayer.tsx` + helpers:
    keep light stability damping to stop jitter). The yellow focus reticle follows that
    vehicle every frame.
 2. **LP capture point sits on the actual plate.** The reticle's plate point is driven by
-   the **trained plate-detection model (W8)** when its box is available, falling back to
-   the `plateRegion(bbox)` heuristic (lower-center of the closest vehicle) until/if the
-   detector returns nothing. Graceful upgrade — the viewer ships working on the heuristic
-   and sharpens to exact boxes once W8 is live.
+   the **client-side ONNX plate detector (W8, `open-image-models`)** when its box is
+   available, falling back to the `plateRegion(bbox)` heuristic (lower-center of the closest
+   vehicle) until the ONNX model loads / when it returns nothing. Graceful upgrade — the
+   viewer ships working on the heuristic and sharpens to exact boxes once W8 loads.
 3. **Dynamic reticle color + multi-frame consensus.** Reticle color = read state:
    **red** = bad/below-trust read, **yellow** = capturing/in-progress, **green** =
    accepted (≥0.85 derived trust). While capturing, grab **N frames** of the plate region,
@@ -174,23 +173,27 @@ Operator fixes to `client/src/components/ForensicDashcamPlayer.tsx` + helpers:
 - Pure, unit-tested helpers: closest-vehicle selection weighting, reticle-color state
   machine (reads → red/yellow/green), multi-frame read consensus (shared with W4/W5).
 
-### W8 — Trained plate-detection model (returns a real plate box)
-The engine behind W7's exact reticle. Cloudflare Workers AI has no stock plate-localization
-model and can't host a custom YOLO, so:
-- **Train on Roboflow.** Fork a high-quality Universe license-plate **detection** dataset
-  (candidates confirmed available: `cardetect-iyapw/anpr-tdrid` ~10k labeled images, single
-  `License_Plate` class; `testworkspace-7jvng/license-plate-detection-itypr` ~5.1k, trained
-  v9) into our `rmpg-utah` workspace → generate a version → train a detection model. No
-  from-scratch labeling. (Operator does any visual review/label-judging per Roboflow's
-  human-in-the-loop split; Claude drives the API/automation.)
-- **Serve via Roboflow hosted inference** (fast detection endpoint returning plate bboxes +
-  confidence), **proxied by a new Worker route `POST /api/alpr/detect-plate`** so the
-  `ROBOFLOW_API_KEY` never reaches the client. The viewer calls it throttled (not every
-  frame — on capture + periodic refresh) to snap the reticle.
-- **Honest framing:** "Cloudflare-side" = trained on Roboflow, proxied through the Cloudflare
-  Worker. Latency: training is asynchronous (minutes–hours) + may want a label review pass,
-  so W8 runs as a **parallel track kicked off first**; W7 ships degraded-to-heuristic and
-  auto-upgrades when the model endpoint goes live.
+### W8 — Plate detection + OCR engine (client-side ONNX, no training, no credits)
+The engine behind W7's exact reticle. Roboflow training is **blocked on workspace credits**
+(forking the 10k dataset failed: <2 credits) and Workers AI can't host a custom YOLO — so
+instead use a proven open-source ALPR stack **client-side via onnxruntime-web**, the same
+lazy-CDN pattern the viewer already uses for COCO-SSD (`aiVehicleTracking.ts`):
+- **Detection (bbox → reticle):** `open-image-models` license-plate detector (ONNX,
+  region-agnostic). Returns plate boxes; snap the reticle onto the highest-confidence box
+  inside the closest vehicle.
+- **OCR (plate text):** `fast-plate-ocr` (ONNX, CCT-based, pre-trained model hub; expects a
+  cropped plate, so runs after detection). A free client-side read feeding the multi-frame
+  `trustScore` consensus.
+- **Source:** `ankandrew/fast-alpr` (= open-image-models + fast-plate-ocr), MIT-licensed.
+- **Why this over Roboflow:** free, no training/inference credits, no per-call cost, returns
+  boxes, runs in-browser (~tens of ms). Also reusable to cut Roboflow credit spend on the W4
+  keyframe + W5 patrol reads. **Removes the W8 credit blocker entirely.**
+- **Verify at build:** pick the US/global `fast-plate-ocr` model variant (Utah plates);
+  confirm onnxruntime-web + model bundle sizes load acceptably from CDN; confirm MIT license.
+  The authoritative on-scene read still cross-checks via the existing Roboflow workflow +
+  `trustScore`, so a client OCR miss is backstopped.
+- No Worker proxy / no async training track. W7 ships degraded-to-`plateRegion`-heuristic and
+  lights up the moment the ONNX models load in the browser.
 
 ## Architecture / interfaces
 
