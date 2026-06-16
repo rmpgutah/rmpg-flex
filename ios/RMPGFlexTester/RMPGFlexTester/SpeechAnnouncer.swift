@@ -3,7 +3,12 @@ import AVFoundation
 /// Speaks a phrase aloud, ducking other audio (music / nav) briefly so it's
 /// heard, then un-ducks when done. Not unit-tested (AV side effects); the
 /// decision logic + phrasing live in the pure `SpokenAlert`.
-final class SpeechAnnouncer: NSObject, AVSpeechSynthesizerDelegate {
+///
+/// `@unchecked Sendable`: the synth + audio session are only driven from the
+/// main actor (`speak()` is called from `@MainActor` refresh; AVSpeech delegate
+/// callbacks arrive on the main queue), so the non-Sendable AVSpeechSynthesizer
+/// stored property is safe here.
+final class SpeechAnnouncer: NSObject, @unchecked Sendable, AVSpeechSynthesizerDelegate {
     static let shared = SpeechAnnouncer()
     private let synth = AVSpeechSynthesizer()
 
