@@ -11,6 +11,7 @@ import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
+import { tryReloadForChunkFailure, normalizeChunkError } from './utils/chunkRetry';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
@@ -45,23 +46,18 @@ function lazyRetry<T extends React.ComponentType<any>>(
   return lazy(() => withRetry().catch((err) => {
     // A lazy chunk failed to load — almost always a stale bundle after a
     // deploy: this long-lived tab requests an old hash the server no longer
-    // serves. Reload ONCE per 30s to pick up the fresh index. On that first
-    // failure return a promise that NEVER settles, so React keeps rendering
-    // the Suspense fallback (spinner) while the reload navigates away —
-    // rejecting here instead would flash the ErrorBoundary's red error card
-    // for a frame (the exact "[ErrorBoundary] Chunk load failed — page will
-    // reload" noise seen in prod). If a second failure lands inside the 30s
-    // window the reload didn't help, so rethrow and let the ErrorBoundary show
-    // its recovery UI rather than reload-loop forever.
-    const KEY = 'rmpg_chunk_reload';
-    const last = sessionStorage.getItem(KEY);
-    const now = Date.now();
-    if (!last || now - parseInt(last) > 30000) {
-      sessionStorage.setItem(KEY, String(now));
-      window.location.reload();
-      return new Promise<{ default: T }>(() => { /* stay pending; reload in flight */ });
-    }
-    throw err instanceof Error ? err : new Error('Chunk load failed');
+    // serves. Reload ONCE per 30s to pick up the fresh index, holding the
+    // Suspense fallback (spinner) while the reload navigates away — rejecting
+    // immediately would flash the ErrorBoundary's red card for a frame. The
+    // hold is BOUNDED (tryReloadForChunkFailure): if the reload never tears
+    // this page down (offline / stale SW shell / captive portal / webview that
+    // ignores reload()), it rejects after ~10s so the RouteErrorBoundary shows
+    // its recovery card — never a permanent button-less splash. A second
+    // failure inside the 30s window means the reload didn't help → reload
+    // returns null here and we rethrow for the ErrorBoundary instead of looping.
+    const held = tryReloadForChunkFailure<{ default: T }>(err);
+    if (held) return held;
+    throw normalizeChunkError(err);
   }));
 }
 
