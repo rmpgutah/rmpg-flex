@@ -212,7 +212,7 @@ export default function NotificationsPage() {
 
   const typeIcon = (type: string) => {
     if (type === 'escalation') return <AlertTriangle className="w-4 h-4 text-red-400" />;
-    if (type === 'dispatch') return <Bell className="w-4 h-4 text-gray-400" />;
+    if (type === 'dispatch') return <Bell className="w-4 h-4 text-rmpg-400" />;
     return <Bell className="w-4 h-4 text-rmpg-400" />;
   };
 
@@ -266,7 +266,7 @@ export default function NotificationsPage() {
             <button
               type="button"
               onClick={() => { setFilterType(''); fetchNotifications(1); }}
-              className={`w-full text-left px-2 py-1.5 text-xs transition-colors mb-0.5 ${!filterType ? 'bg-brand-blue/20 text-white' : 'text-rmpg-300 hover:bg-surface-raised'}`}
+              className={`w-full text-left px-2 py-1.5 text-xs transition-colors mb-0.5 ${!filterType ? 'bg-brand-blue/20 text-rmpg-100' : 'text-rmpg-300 hover:bg-surface-raised'}`}
             >
               All ({pagination.total})
             </button>
@@ -282,7 +282,7 @@ export default function NotificationsPage() {
                 key={cat.category}
                 type="button"
                 onClick={() => { setFilterType(cat.category); setFilterRead(''); fetchNotifications(1); }}
-                className={`w-full text-left px-2 py-1.5 text-xs transition-colors mb-0.5 ${filterType === cat.category ? 'bg-brand-blue/20 text-white' : 'text-rmpg-300 hover:bg-surface-raised'}`}
+                className={`w-full text-left px-2 py-1.5 text-xs transition-colors mb-0.5 ${filterType === cat.category ? 'bg-brand-blue/20 text-rmpg-100' : 'text-rmpg-300 hover:bg-surface-raised'}`}
               >
                 {cat.category} <span className="text-rmpg-500">({cat.unread}/{cat.total})</span>
               </button>
@@ -314,7 +314,7 @@ export default function NotificationsPage() {
         <div className="flex-1 overflow-y-auto">
           {showPrefs && prefs ? (
             <div className="p-4 max-w-xl">
-              <h2 className="text-sm font-bold text-white mb-4">Notification Preferences</h2>
+              <h2 className="text-sm font-bold text-rmpg-100 mb-4">Notification Preferences</h2>
               <div className="space-y-3">
                 {Object.entries(prefs).filter(([k]) => typeof (prefs as any)[k] === 'boolean').map(([key, value]) => (
                   <label key={key} className="flex items-center gap-3 text-xs text-rmpg-200 cursor-pointer">
@@ -375,7 +375,7 @@ export default function NotificationsPage() {
                   {typeIcon(n.type)}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs font-bold ${n.is_read ? 'text-rmpg-300' : 'text-white'}`}>{n.title}</span>
+                      <span className={`text-xs font-bold ${n.is_read ? 'text-rmpg-300' : 'text-rmpg-100'}`}>{n.title}</span>
                       {n.priority === 'critical' && (
                         <span className="text-[8px] px-1.5 py-0.5 bg-red-700/50 text-red-300 font-bold uppercase tracking-wider">Critical</span>
                       )}

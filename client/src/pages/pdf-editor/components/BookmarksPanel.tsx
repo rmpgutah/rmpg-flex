@@ -50,11 +50,11 @@ export default function BookmarksPanel({ bookmarks, activePage, pageCount, onAdd
   );
 
   return (
-    <div className="bg-[#0d0d0d] border border-[#222222] rounded-[2px] w-[220px] flex-shrink-0 p-2 overflow-y-auto">
+    <div className="bg-surface-base border border-border-default rounded-[2px] w-[220px] flex-shrink-0 p-2 overflow-y-auto">
       <div className="flex items-center gap-1.5 mb-2 px-1">
         <BookmarkIcon className="w-3.5 h-3.5 text-[#d4a017]" />
         <div className="text-[9px] uppercase tracking-wider text-[#d4a017] font-semibold">Bookmarks</div>
-        <IconButton onClick={onClose} aria-label="Close bookmarks" className="ml-auto p-0.5 text-rmpg-400 hover:text-white"><X className="w-3 h-3" /></IconButton>
+        <IconButton onClick={onClose} aria-label="Close bookmarks" className="ml-auto p-0.5 text-rmpg-400 hover:text-rmpg-100"><X className="w-3 h-3" /></IconButton>
       </div>
 
       <div className="flex items-center gap-1 mb-2">
@@ -64,10 +64,10 @@ export default function BookmarksPanel({ bookmarks, activePage, pageCount, onAdd
           onChange={e => setTitle(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') add(); }}
           placeholder={`Name (pg ${activePage})`}
-          className="flex-1 bg-[#0a0a0a] border border-[#222] text-[10px] text-white px-1.5 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]"
+          className="flex-1 bg-surface-sunken border border-border-default text-[10px] text-rmpg-100 px-1.5 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]"
         />
         <IconButton onClick={() => add()} aria-label="Add bookmark at current page" title={`Bookmark page ${activePage}`}
-          className="p-1 text-[#d4a017] hover:text-white border border-[#222] rounded-sm"><Plus className="w-3 h-3" /></IconButton>
+          className="p-1 text-[#d4a017] hover:text-rmpg-100 border border-border-default rounded-sm"><Plus className="w-3 h-3" /></IconButton>
       </div>
 
       {roots.length === 0 ? (

@@ -156,11 +156,11 @@ export default function MobileCardList<T>({
             className="flex items-center gap-2 px-3"
             style={{
               height: 40,
-              background: '#050505',
+              background: 'var(--surface-overlay)',
               border: '1px solid #2b2b2b',
             }}
           >
-            <Search style={{ width: 16, height: 16, color: '#666666', flexShrink: 0 }} />
+            <Search style={{ width: 16, height: 16, color: 'var(--rmpg-500)', flexShrink: 0 }} />
             <input id="ff-mobilecardlist-0"
               type="text"
               value={searchValue}
@@ -215,7 +215,7 @@ export default function MobileCardList<T>({
               style={{
                 width: 20,
                 height: 20,
-                color: pullReady || refreshing ? '#888888' : '#666666',
+                color: pullReady || refreshing ? '#888888' : 'var(--rmpg-500)',
                 transform: pullReady ? 'rotate(180deg)' : `rotate(${pullDistance * 3}deg)`,
                 transition: 'transform 0.2s ease',
                 animation: refreshing ? 'spin 1s linear infinite' : undefined,

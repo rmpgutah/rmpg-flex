@@ -128,10 +128,10 @@ export default function PersonnelDashboard({
     <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-dark">
       {/* Hero KPI row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <Kpi icon={Users} value={officers.length} label="Total Personnel" color="text-white" topBorder="border-t-brand-500" onClick={() => onNavigate('roster')} />
+        <Kpi icon={Users} value={officers.length} label="Total Personnel" color="text-rmpg-100" topBorder="border-t-brand-500" onClick={() => onNavigate('roster')} />
         <Kpi icon={UserCheck} value={onDuty.length} label="On Duty" color="text-green-400" topBorder="border-t-green-500" onClick={() => onNavigate('duty_board')} />
         <Kpi icon={Clock} value={clockedIn} label="Clocked In" color="text-brand-400" topBorder="border-t-brand-500" onClick={() => onNavigate('time')} />
-        <Kpi icon={CalendarClock} value={totalHours.toFixed(0)} label="Period Hours" color="text-white" topBorder="border-t-rmpg-500" onClick={() => onNavigate('time')} />
+        <Kpi icon={CalendarClock} value={totalHours.toFixed(0)} label="Period Hours" color="text-rmpg-100" topBorder="border-t-rmpg-500" onClick={() => onNavigate('time')} />
         <Kpi
           icon={ShieldAlert}
           value={`${credCompliance}%`}
@@ -178,7 +178,7 @@ export default function PersonnelDashboard({
                       </div>
                     </div>
                     {active && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-gray-900/30 text-gray-300 border border-gray-700/30">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-surface-sunken/30 text-rmpg-300 border border-border-default/30">
                         <Clock className="w-2.5 h-2.5" /> {elapsedSince(active.clock_in)}
                       </span>
                     )}

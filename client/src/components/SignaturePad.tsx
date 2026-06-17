@@ -333,7 +333,7 @@ export default function SignaturePad({
             <button
               type="button"
               onClick={() => setShowPad(true)}
-              className="text-[10px] px-1.5 py-0.5 bg-brand-700 text-white rounded-sm hover:bg-brand-600 active:bg-brand-500 transition-colors"
+              className="text-[10px] px-1.5 py-0.5 bg-brand-700 text-rmpg-100 rounded-sm hover:bg-brand-600 active:bg-brand-500 transition-colors"
             >
               Re-sign
             </button>
@@ -341,7 +341,7 @@ export default function SignaturePad({
             <button
               type="button"
               onClick={handleRemove}
-              className="text-[10px] px-1.5 py-0.5 bg-red-700 text-white rounded-sm hover:bg-red-600 active:bg-red-500 transition-colors"
+              className="text-[10px] px-1.5 py-0.5 bg-red-700 text-rmpg-100 rounded-sm hover:bg-red-600 active:bg-red-500 transition-colors"
             >
               Remove
             </button>
@@ -380,7 +380,7 @@ export default function SignaturePad({
             onClick={() => setMode('draw')}
             className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold rounded-sm transition-all duration-150 ${
               mode === 'draw'
-                ? 'bg-brand-700 text-white shadow-sm'
+                ? 'bg-brand-700 text-rmpg-100 shadow-sm'
                 : 'bg-rmpg-700 text-rmpg-300 hover:bg-rmpg-600 hover:text-rmpg-200'
             }`}
           >
@@ -391,7 +391,7 @@ export default function SignaturePad({
             onClick={() => setMode('type')}
             className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold rounded-sm transition-all duration-150 ${
               mode === 'type'
-                ? 'bg-brand-700 text-white shadow-sm'
+                ? 'bg-brand-700 text-rmpg-100 shadow-sm'
                 : 'bg-rmpg-700 text-rmpg-300 hover:bg-rmpg-600 hover:text-rmpg-200'
             }`}
           >
@@ -455,7 +455,7 @@ export default function SignaturePad({
                   style={{ fontFamily: `"${f.family}", cursive` }}
                   className={`px-2 py-0.5 text-[13px] leading-none rounded-sm transition-colors ${
                     selectedFont === i
-                      ? 'bg-gray-100 border border-gray-400 text-gray-800'
+                      ? 'bg-surface-raised border border-border-strong text-rmpg-100'
                       : 'bg-rmpg-800 border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700'
                   }`}
                   title={f.name}

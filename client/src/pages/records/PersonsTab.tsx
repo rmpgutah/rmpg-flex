@@ -615,7 +615,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
+              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100 transition-colors" aria-label="Clear search">
                 <X className="w-3 h-3" />
               </button>
             )}
@@ -640,7 +640,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
 
       {/* Stats Bar */}
       <div className="px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-4 text-[9px] flex-wrap">
-        <span className="text-rmpg-400 flex items-center gap-1"><Users className="w-3 h-3" /> <strong className="text-white">{stats.total}</strong> Records</span>
+        <span className="text-rmpg-400 flex items-center gap-1"><Users className="w-3 h-3" /> <strong className="text-rmpg-100">{stats.total}</strong> Records</span>
         {stats.withWarrants > 0 && <span className="text-red-400 flex items-center gap-1"><Gavel className="w-3 h-3" /> <strong>{stats.withWarrants}</strong> Warrants</span>}
         {stats.sexOffenders > 0 && <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> <strong>{stats.sexOffenders}</strong> RSO</span>}
         {stats.veterans > 0 && <span className="text-green-400 flex items-center gap-1"><Shield className="w-3 h-3" /> <strong>{stats.veterans}</strong> Veterans</span>}
@@ -723,7 +723,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
               })()}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-white truncate">
+                  <span className="text-sm font-semibold text-rmpg-100 truncate">
                     {person.last_name}, {person.first_name}
                     {person.middle_name ? ` ${person.middle_name[0]}.` : ''}
                   </span>
@@ -867,7 +867,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           <div className="relative w-full max-w-[95vw] md:max-w-md mx-4 max-h-[90vh] overflow-y-auto bg-surface-base border border-rmpg-600 shadow-md" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
               <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <h2 className="text-xs font-bold text-white uppercase tracking-wider">Possible Duplicates Found</h2>
+              <h2 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Possible Duplicates Found</h2>
             </div>
             <div className="p-4 space-y-3">
               <p className="text-xs text-rmpg-300">The following existing records match the person you're creating:</p>
@@ -876,7 +876,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   <div key={m.id} className="flex items-center gap-3 p-2 border border-rmpg-700 bg-surface-sunken text-xs">
                     <div className="w-2 h-2 bg-amber-400" style={{ borderRadius: '1px' }} />
                     <div className="flex-1">
-                      <div className="font-bold text-white">{m.first_name} {m.last_name}</div>
+                      <div className="font-bold text-rmpg-100">{m.first_name} {m.last_name}</div>
                       <div className="text-rmpg-400">
                         {m.dob && <span>DOB: {m.dob}</span>}
                         {m.address && <span className="ml-2">• {m.address}</span>}
@@ -1056,11 +1056,11 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                   >
                     <img src={authedImageUrl(selectedPerson.id_image_url)} alt="ID" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Eye className="w-4 h-4 text-white" />
+                      <Eye className="w-4 h-4 text-rmpg-100" />
                     </div>
                   </div>
                   {selectedPerson.id_type && (
-                    <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-gray-900/40 text-gray-400 border border-gray-700/40 text-center w-full">
+                    <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-surface-sunken/40 text-rmpg-400 border border-border-default/40 text-center w-full">
                       {selectedPerson.id_type.replace(/_/g, ' ')}
                     </span>
                   )}

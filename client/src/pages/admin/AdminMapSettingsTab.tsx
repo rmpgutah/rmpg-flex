@@ -72,7 +72,7 @@ const DEFAULT_VALUES: MapSettings = {
   layer_beat_stroke_opacity: 0.6,
   layer_beat_stroke_weight: 1.2,
   layer_beat_min_zoom: 10,
-  layer_county_fill: '#141414',
+  layer_county_fill: 'var(--surface-base)',
   layer_county_fill_opacity: 0.15,
   layer_county_stroke: '#444444',
   layer_county_stroke_opacity: 0.5,
@@ -287,7 +287,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
                     className={`text-[10px] px-2.5 py-1.5 text-left flex items-center gap-2 transition-colors ${
                       enabled
                         ? 'bg-brand-900/20 border border-brand-700/40 text-brand-300'
-                        : 'bg-surface-sunken border border-[#222] text-rmpg-600'
+                        : 'bg-surface-sunken border border-border-default text-rmpg-600'
                     }`}
                   >
                     {enabled ? <ToggleRight className="w-3 h-3 text-brand-400" /> : <ToggleLeft className="w-3 h-3 text-rmpg-600" />}
@@ -389,7 +389,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
               const hasFill = layerId !== 'highway' && layerId !== 'state_boundary';
 
               return (
-                <div key={layerId} className="bg-surface-sunken border border-[#1a1a1a] p-3 space-y-2">
+                <div key={layerId} className="bg-surface-sunken border border-border-default p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={() => {
@@ -399,7 +399,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
                           : [...current, layerId];
                         updateField('default_visible_layers', updated);
                       }}
-                        className={`text-[10px] px-2 py-1 border transition-colors ${visible ? 'bg-brand-900/20 border-brand-700/40 text-brand-300' : 'bg-[#0a0a0a] border-[#222] text-rmpg-600'}`}
+                        className={`text-[10px] px-2 py-1 border transition-colors ${visible ? 'bg-brand-900/20 border-brand-700/40 text-brand-300' : 'bg-surface-sunken border-border-default text-rmpg-600'}`}
                       >
                         {visible ? 'ON' : 'OFF'}
                       </button>
@@ -509,7 +509,7 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
     <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
       <span className="w-14 shrink-0">{label}</span>
       <input id="ff-adminmapsettingstab-6" type="color" value={value} onChange={e => onChange(e.target.value)}
-        className="w-6 h-6 p-0 border border-[#333] bg-transparent cursor-pointer rounded-sm"
+        className="w-6 h-6 p-0 border border-border-subtle bg-transparent cursor-pointer rounded-sm"
       />
       <input id="ff-adminmapsettingstab-7" type="text" value={value} onChange={e => onChange(e.target.value)}
         className="input-dark text-[10px] w-20 text-center font-mono min-h-[24px]"

@@ -24,11 +24,11 @@ interface Props {
 }
 
 const labelCls = 'text-[9px] uppercase tracking-wider text-rmpg-500 block mb-0.5';
-const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+const inputCls = 'w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
 
 export default function PropertiesPanel(p: Props) {
   return (
-    <div className="bg-[#0d0d0d] border border-[#222222] rounded-[2px] w-[260px] flex-shrink-0 p-3 space-y-4 overflow-y-auto">
+    <div className="bg-surface-base border border-border-default rounded-[2px] w-[260px] flex-shrink-0 p-3 space-y-4 overflow-y-auto">
       <Section title="Selection">
         {p.annotation ? <AnnotationProps ann={p.annotation} onChange={p.onChange} onDelete={p.onDelete} /> : (
           <div className="text-[10px] text-rmpg-500">Select an annotation to edit its properties.</div>
@@ -72,15 +72,15 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <div className="text-[10px] text-rmpg-300">Type: <span className="text-white font-mono">{ann.type}</span></div>
+        <div className="text-[10px] text-rmpg-300">Type: <span className="text-rmpg-100 font-mono">{ann.type}</span></div>
         <button type="button" onClick={() => onChange({ ...ann, locked: !ann.locked })}
           title={ann.locked ? 'Unlock annotation' : 'Lock annotation (blocks move/resize/delete)'}
-          className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded-sm border ${ann.locked ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400 hover:text-white'}`}>
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded-sm border ${ann.locked ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-border-default text-rmpg-400 hover:text-rmpg-100'}`}>
           {ann.locked ? <Lock className="w-3 h-3" /> : <LockOpen className="w-3 h-3" />}
           {ann.locked ? 'Locked' : 'Lock'}
         </button>
       </div>
-      <div className="text-[10px] text-rmpg-300">Page: <span className="text-white font-mono">{ann.page}</span></div>
+      <div className="text-[10px] text-rmpg-300">Page: <span className="text-rmpg-100 font-mono">{ann.page}</span></div>
       {ann.type === 'text' && (
         <>
           <label className={labelCls}>Text</label>
@@ -100,10 +100,10 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
             </div>
           </div>
           <div className="flex gap-1">
-            <button type="button" onClick={() => onChange({ ...ann, fontSize: Math.max(6, ann.fontSize - 2) })} className="px-2 py-1 text-xs rounded-sm border border-[#222] text-rmpg-400 hover:text-white" title="Decrease font size">A−</button>
-            <button type="button" onClick={() => onChange({ ...ann, fontSize: Math.min(96, ann.fontSize + 2) })} className="px-2 py-1 text-xs rounded-sm border border-[#222] text-rmpg-400 hover:text-white" title="Increase font size">A+</button>
-            <button type="button" onClick={() => onChange({ ...ann, bold: !ann.bold })} className={`flex-1 px-2 py-1 text-xs rounded-sm border font-bold ${ann.bold ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>B</button>
-            <button type="button" onClick={() => onChange({ ...ann, italic: !ann.italic })} className={`flex-1 px-2 py-1 text-xs rounded-sm border italic ${ann.italic ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>I</button>
+            <button type="button" onClick={() => onChange({ ...ann, fontSize: Math.max(6, ann.fontSize - 2) })} className="px-2 py-1 text-xs rounded-sm border border-border-default text-rmpg-400 hover:text-rmpg-100" title="Decrease font size">A−</button>
+            <button type="button" onClick={() => onChange({ ...ann, fontSize: Math.min(96, ann.fontSize + 2) })} className="px-2 py-1 text-xs rounded-sm border border-border-default text-rmpg-400 hover:text-rmpg-100" title="Increase font size">A+</button>
+            <button type="button" onClick={() => onChange({ ...ann, bold: !ann.bold })} className={`flex-1 px-2 py-1 text-xs rounded-sm border font-bold ${ann.bold ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-border-default text-rmpg-400'}`}>B</button>
+            <button type="button" onClick={() => onChange({ ...ann, italic: !ann.italic })} className={`flex-1 px-2 py-1 text-xs rounded-sm border italic ${ann.italic ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-border-default text-rmpg-400'}`}>I</button>
           </div>
         </>
       )}
@@ -141,12 +141,12 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
       {supportsColor && (
         <>
           <label className={labelCls}>Stroke color</label>
-          <input id="ff-propertiespanel-3" type="color" value={ann.color ?? '#0a0a0a'} onChange={e => onChange({ ...ann, color: e.target.value })} className="w-full h-7 bg-transparent border border-[#222] rounded-sm cursor-pointer" />
+          <input id="ff-propertiespanel-3" type="color" value={ann.color ?? '#0a0a0a'} onChange={e => onChange({ ...ann, color: e.target.value })} className="w-full h-7 bg-transparent border border-border-default rounded-sm cursor-pointer" />
           <div className="flex flex-wrap gap-1 pt-1">
             {COLOR_PRESETS.map(c => (
               <button key={c} type="button" onClick={() => onChange({ ...ann, color: c })}
                 aria-label={`Use color ${c}`} title={c}
-                className={`w-5 h-5 rounded-sm border ${(ann.color ?? '#0a0a0a').toLowerCase() === c ? 'border-[#d4a017]' : 'border-[#333]'}`}
+                className={`w-5 h-5 rounded-sm border ${(ann.color ?? '#0a0a0a').toLowerCase() === c ? 'border-[#d4a017]' : 'border-border-subtle'}`}
                 style={{ background: c }} />
             ))}
           </div>
@@ -164,7 +164,7 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
           <div className="flex gap-1">
             {(['solid', 'dashed', 'dotted'] as const).map(s => (
               <button key={s} type="button" onClick={() => onChange({ ...ann, strokeStyle: s })}
-                className={`flex-1 px-2 py-1 text-[10px] capitalize rounded-sm border ${(ann.strokeStyle ?? 'solid') === s ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>
+                className={`flex-1 px-2 py-1 text-[10px] capitalize rounded-sm border ${(ann.strokeStyle ?? 'solid') === s ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-border-default text-rmpg-400'}`}>
                 {s}
               </button>
             ))}
@@ -197,9 +197,9 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
               onChange={e => onChange({ ...ann, rotation: parseInt(e.target.value, 10) })} className="flex-1 accent-[#d4a017]" />
             <button type="button" onClick={() => onChange({ ...ann, rotation: snap90(ann.rotation ?? 0) })}
               title="Rotate 90° clockwise" aria-label="Rotate 90 degrees clockwise"
-              className="p-1 rounded-sm border border-[#222] text-rmpg-400 hover:text-white"><RotateCw className="w-3 h-3" /></button>
+              className="p-1 rounded-sm border border-border-default text-rmpg-400 hover:text-rmpg-100"><RotateCw className="w-3 h-3" /></button>
             <button type="button" onClick={() => onChange({ ...ann, rotation: 0 })}
-              className="px-1.5 py-1 text-[9px] rounded-sm border border-[#222] text-rmpg-400 hover:text-white" title="Reset rotation">0°</button>
+              className="px-1.5 py-1 text-[9px] rounded-sm border border-border-default text-rmpg-400 hover:text-rmpg-100" title="Reset rotation">0°</button>
           </div>
         </>
       )}
@@ -242,8 +242,8 @@ function StickyCategoryPicker({ ann, onChange }: { ann: Annotation; onChange: (a
             <button key={key} type="button"
               onClick={() => onChange({ ...ann, category: key, fillColor: meta.paper, color: meta.ink })}
               title={meta.label}
-              className={`px-1 py-1 text-[9px] rounded-sm border inline-flex items-center gap-1 ${active ? 'border-[#d4a017] text-white' : 'border-[#222] text-rmpg-400 hover:text-white'}`}>
-              <span className="w-2.5 h-2.5 rounded-sm border border-[#333] flex-shrink-0" style={{ background: meta.paper }} />
+              className={`px-1 py-1 text-[9px] rounded-sm border inline-flex items-center gap-1 ${active ? 'border-[#d4a017] text-rmpg-100' : 'border-border-default text-rmpg-400 hover:text-rmpg-100'}`}>
+              <span className="w-2.5 h-2.5 rounded-sm border border-border-subtle flex-shrink-0" style={{ background: meta.paper }} />
               <span className="truncate">{meta.label}</span>
             </button>
           );
@@ -263,9 +263,9 @@ function RedactOptions({ ann, onChange }: { ann: Annotation; onChange: (a: Annot
       <label className={labelCls}>Bar style</label>
       <div className="flex gap-1">
         <button type="button" onClick={() => onChange({ ...ann, redactStyle: 'black' })}
-          className={`flex-1 px-2 py-1 text-[10px] rounded-sm border ${style === 'black' ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>Black bar</button>
+          className={`flex-1 px-2 py-1 text-[10px] rounded-sm border ${style === 'black' ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-border-default text-rmpg-400'}`}>Black bar</button>
         <button type="button" onClick={() => onChange({ ...ann, redactStyle: 'white' })}
-          className={`flex-1 px-2 py-1 text-[10px] rounded-sm border ${style === 'white' ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>White-out</button>
+          className={`flex-1 px-2 py-1 text-[10px] rounded-sm border ${style === 'white' ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-border-default text-rmpg-400'}`}>White-out</button>
       </div>
       <label className={labelCls}>Reason / exemption (optional)</label>
       <input id="ff-propertiespanel-redactreason" value={ann.reason ?? ''} onChange={e => onChange({ ...ann, reason: e.target.value || undefined })}
@@ -301,7 +301,7 @@ function RepliesEditor({ ann, onChange }: { ann: Annotation; onChange: (a: Annot
       <div className="space-y-1 mb-1.5 max-h-40 overflow-y-auto">
         {replies.length === 0 && <div className="text-[9px] text-rmpg-600 italic">No replies yet.</div>}
         {replies.map(r => (
-          <div key={r.id} className="border border-[#1a1a1a] rounded-sm px-1.5 py-1 bg-[#0a0a0a]">
+          <div key={r.id} className="border border-border-default rounded-sm px-1.5 py-1 bg-surface-sunken">
             <div className="flex items-center justify-between">
               <span className="text-[9px] text-[#d4a017] font-semibold">{r.author}</span>
               <button type="button" onClick={() => removeReply(r.id)} aria-label="Delete reply" title="Delete reply"
@@ -317,7 +317,7 @@ function RepliesEditor({ ann, onChange }: { ann: Annotation; onChange: (a: Annot
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addReply(); } }}
           placeholder="Reply…" className={inputCls} />
         <button type="button" onClick={addReply} disabled={!text.trim()}
-          className="px-2 py-1 text-[10px] rounded-sm border border-[#222] text-rmpg-300 hover:text-white disabled:opacity-30">Post</button>
+          className="px-2 py-1 text-[10px] rounded-sm border border-border-default text-rmpg-300 hover:text-rmpg-100 disabled:opacity-30">Post</button>
       </div>
     </div>
   );
@@ -365,8 +365,8 @@ function WatermarkEditor({ wm, onChange }: { wm: WatermarkConfig | null; onChang
           <input id="ff-propertiespanel-12" value={wm.text} onChange={e => onChange({ ...wm, text: e.target.value })} placeholder="Watermark text" className={inputCls} />
           <label className={labelCls}>Placement</label>
           <div className="flex gap-1">
-            <button type="button" onClick={() => onChange({ ...wm, mode: 'diagonal' })} className={`flex-1 px-2 py-1 text-[10px] rounded-sm border ${(wm.mode ?? 'diagonal') === 'diagonal' ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>Diagonal</button>
-            <button type="button" onClick={() => onChange({ ...wm, mode: 'tiled' })} className={`flex-1 px-2 py-1 text-[10px] rounded-sm border ${wm.mode === 'tiled' ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>Tiled</button>
+            <button type="button" onClick={() => onChange({ ...wm, mode: 'diagonal' })} className={`flex-1 px-2 py-1 text-[10px] rounded-sm border ${(wm.mode ?? 'diagonal') === 'diagonal' ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-border-default text-rmpg-400'}`}>Diagonal</button>
+            <button type="button" onClick={() => onChange({ ...wm, mode: 'tiled' })} className={`flex-1 px-2 py-1 text-[10px] rounded-sm border ${wm.mode === 'tiled' ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-border-default text-rmpg-400'}`}>Tiled</button>
           </div>
           <label className={labelCls}>Opacity</label>
           <input id="ff-propertiespanel-13" type="range" min={0.05} max={0.5} step={0.05} value={wm.opacity} onChange={e => onChange({ ...wm, opacity: parseFloat(e.target.value) })} className="w-full accent-[#d4a017]" />
@@ -377,11 +377,11 @@ function WatermarkEditor({ wm, onChange }: { wm: WatermarkConfig | null; onChang
           <label className={labelCls}>Image watermark (optional)</label>
           {wm.imageData ? (
             <div className="flex items-center gap-1">
-              <img src={wm.imageData} alt="watermark" className="h-8 w-8 object-contain bg-white/5 border border-[#222] rounded-sm" />
+              <img src={wm.imageData} alt="watermark" className="h-8 w-8 object-contain bg-white/5 border border-border-default rounded-sm" />
               <button type="button" onClick={() => onChange({ ...wm, imageData: undefined })} className="text-[10px] text-red-300 hover:text-red-200">Remove</button>
             </div>
           ) : (
-            <label className="block text-[10px] text-rmpg-400 border border-[#222] rounded-sm px-2 py-1 cursor-pointer hover:text-white text-center">
+            <label className="block text-[10px] text-rmpg-400 border border-border-default rounded-sm px-2 py-1 cursor-pointer hover:text-rmpg-100 text-center">
               Choose image…
               <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={e => {
                 const f = e.target.files?.[0]; e.target.value = '';

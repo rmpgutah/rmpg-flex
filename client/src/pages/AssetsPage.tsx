@@ -60,7 +60,7 @@ export default function AssetsPage() {
     { key: 'make', label: 'Make' }, { key: 'status', label: 'Status' },
     { key: 'actions', label: '', width: '100px', render: (row: any) => (
       <div className="flex gap-2">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-white"><Pencil size={12} /></button>
+        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100"><Pencil size={12} /></button>
         <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }} className="text-red-500 hover:text-red-300"><Trash2 size={12} /></button>
       </div>
     )},
@@ -98,7 +98,7 @@ export default function AssetsPage() {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
           <div className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Asset' : 'New Asset'}</h3>
+            <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord ? 'Edit Asset' : 'New Asset'}</h3>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Asset Tag <span className="text-red-500">*</span></label>

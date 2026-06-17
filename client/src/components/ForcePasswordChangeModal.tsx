@@ -114,7 +114,7 @@ export default function ForcePasswordChangeModal() {
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
             <Shield style={{ width: 20, height: 20, color: '#888888' }} />
-            <div className="text-lg font-bold text-white">Password Change Required</div>
+            <div className="text-lg font-bold text-rmpg-100">Password Change Required</div>
           </div>
           <div className="text-xs text-rmpg-400 max-w-sm mx-auto">
             Your administrator has required you to change your password before continuing.
@@ -146,7 +146,7 @@ export default function ForcePasswordChangeModal() {
                 <button
                   type="button"
                   onClick={() => setShowCurrentPw(!showCurrentPw)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100"
                 >
                   {showCurrentPw
                     ? <EyeOff style={{ width: 14, height: 14 }} />
@@ -171,7 +171,7 @@ export default function ForcePasswordChangeModal() {
                 <button
                   type="button"
                   onClick={() => setShowNewPw(!showNewPw)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100"
                 >
                   {showNewPw
                     ? <EyeOff style={{ width: 14, height: 14 }} />
@@ -201,7 +201,7 @@ export default function ForcePasswordChangeModal() {
                   {rule.met ? (
                     <Check style={{ width: 10, height: 10, color: '#22c55e', flexShrink: 0 }} />
                   ) : (
-                    <AlertCircle style={{ width: 10, height: 10, color: '#666666', flexShrink: 0 }} />
+                    <AlertCircle style={{ width: 10, height: 10, color: 'var(--rmpg-500)', flexShrink: 0 }} />
                   )}
                   <span className={rule.met ? 'text-green-400' : 'text-rmpg-500'}>
                     {rule.label}

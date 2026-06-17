@@ -100,22 +100,22 @@ interface PersonResult {
 // ── County colors ─────────────────────────────────────────
 
 const COUNTY_COLORS: Record<string, string> = {
-  weber:     'from-gray-600/20 to-gray-800/10 border-gray-500/30',
+  weber:     'from-gray-600/20 to-gray-800/10 border-rmpg-500/30',
   davis:     'from-emerald-600/20 to-emerald-800/10 border-emerald-500/30',
   iron:      'from-red-600/20 to-red-800/10 border-red-500/30',
   salt_lake: 'from-purple-600/20 to-purple-800/10 border-purple-500/30',
-  summit:    'from-gray-600/20 to-gray-800/10 border-gray-500/30',
+  summit:    'from-gray-600/20 to-gray-800/10 border-rmpg-500/30',
   uinta:     'from-amber-600/20 to-amber-800/10 border-amber-500/30',
 };
 
 const COUNTY_ACCENTS: Record<string, string> = {
-  weber: 'text-gray-400', davis: 'text-emerald-400', iron: 'text-red-400',
-  salt_lake: 'text-purple-400', summit: 'text-gray-400', uinta: 'text-amber-400',
+  weber: 'text-rmpg-400', davis: 'text-emerald-400', iron: 'text-red-400',
+  salt_lake: 'text-purple-400', summit: 'text-rmpg-400', uinta: 'text-amber-400',
 };
 
 const COUNTY_BAR_COLORS: Record<string, string> = {
-  weber: 'bg-gray-500', davis: 'bg-emerald-500', iron: 'bg-red-500',
-  salt_lake: 'bg-purple-500', summit: 'bg-gray-500', uinta: 'bg-amber-500',
+  weber: 'bg-rmpg-500', davis: 'bg-emerald-500', iron: 'bg-red-500',
+  salt_lake: 'bg-purple-500', summit: 'bg-rmpg-500', uinta: 'bg-amber-500',
 };
 
 // ── Sort config ───────────────────────────────────────────
@@ -158,7 +158,7 @@ function statusBadge(status: string) {
   if (status === 'active') return { bg: 'bg-red-900/40 text-red-400', label: 'IN CUSTODY' };
   if (status === 'released') return { bg: 'bg-green-900/40 text-green-400', label: 'RELEASED' };
   if (status === 'transferred') return { bg: 'bg-amber-900/40 text-amber-400', label: 'TRANSFERRED' };
-  if (status === 'bonded') return { bg: 'bg-gray-900/40 text-gray-400', label: 'BONDED' };
+  if (status === 'bonded') return { bg: 'bg-surface-sunken/40 text-rmpg-400', label: 'BONDED' };
   return { bg: 'bg-rmpg-700 text-rmpg-400', label: status?.toUpperCase() || '—' };
 }
 
@@ -730,11 +730,11 @@ export default function ArrestRecordsPage() {
         <div className="p-4 border-b border-rmpg-700/30" style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}>
           <div className="flex items-start justify-between gap-2">
             <div>
-              <h2 className="text-base font-bold text-white">{rec.full_name}</h2>
+              <h2 className="text-base font-bold text-rmpg-100">{rec.full_name}</h2>
               {rec.booking_number && (
                 <button
                   type="button"
-                  className="text-[9px] font-mono text-rmpg-400 hover:text-white transition-colors cursor-pointer flex items-center gap-1 group"
+                  className="text-[9px] font-mono text-rmpg-400 hover:text-rmpg-100 transition-colors cursor-pointer flex items-center gap-1 group"
                   title="Click to copy booking number"
                   onClick={() => {
                     navigator.clipboard.writeText(rec.booking_number!).then(() => {
@@ -1003,7 +1003,7 @@ export default function ArrestRecordsPage() {
               style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}
             >
               <AlertTriangle className="w-4 h-4 text-red-400" />
-              <h2 className="text-xs font-bold text-white uppercase tracking-wider">Delete Booking</h2>
+              <h2 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Delete Booking</h2>
             </div>
             <div className="p-5">
               <p className="text-sm text-rmpg-200 leading-relaxed">
@@ -1015,7 +1015,7 @@ export default function ArrestRecordsPage() {
                 </button>
                 <button type="button"
                   onClick={() => handleDelete(deleteConfirm)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm bg-red-700 hover:bg-red-600 border-red-500 text-white transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm bg-red-700 hover:bg-red-600 border-red-500 text-rmpg-100 transition-colors"
                 >
                   Delete
                 </button>

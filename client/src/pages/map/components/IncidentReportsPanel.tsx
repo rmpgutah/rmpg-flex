@@ -40,7 +40,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 };
 
 function getStatusStyle(status: string) {
-  return STATUS_CONFIG[status] || { label: status, color: '#999999', bg: '#666666' };
+  return STATUS_CONFIG[status] || { label: status, color: '#999999', bg: 'var(--rmpg-500)' };
 }
 
 // ─── Time-ago helper ────────────────────────────────────────
@@ -110,7 +110,7 @@ export default function IncidentReportsPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid #282828' }}
       >
         <div className="flex items-center gap-2">
           <FileText size={12} className="text-emerald-400" />
@@ -129,7 +129,7 @@ export default function IncidentReportsPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="toolbar-btn p-1 hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] rounded-sm"
+          className="toolbar-btn p-1 hover:bg-surface-raised transition-all duration-150 active:scale-[0.97] rounded-sm"
           aria-label="Close incident reports panel"
           title="Close"
         >
@@ -145,7 +145,7 @@ export default function IncidentReportsPanel({
             <span className="text-[9px] font-mono text-rmpg-500 animate-pulse">Loading reports...</span>
             <div className="space-y-1 w-full">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="animate-pulse rounded-sm h-8" style={{ background: '#050505', opacity: 1 - i * 0.2 }} />
+                <div key={i} className="animate-pulse rounded-sm h-8" style={{ background: 'var(--surface-overlay)', opacity: 1 - i * 0.2 }} />
               ))}
             </div>
           </div>
@@ -163,7 +163,7 @@ export default function IncidentReportsPanel({
                       className={`toolbar-btn px-1.5 py-0.5 text-[9px] font-mono transition-all duration-150 active:scale-[0.97] ${
                         days === d
                           ? 'text-emerald-300 bg-emerald-900/40'
-                          : 'text-rmpg-500 hover:bg-[#181818]/50'
+                          : 'text-rmpg-500 hover:bg-surface-raised/50'
                       }`}
                       title={`Show last ${d} days`}
                       aria-label={`Show last ${d} days`}
@@ -206,7 +206,7 @@ export default function IncidentReportsPanel({
                         <span className="text-[9px] font-mono w-[60px] text-right" style={{ color: style.color }}>
                           {style.label}
                         </span>
-                        <div className="flex-1 h-1.5 rounded-sm overflow-hidden" style={{ background: '#0a0a0a' }}>
+                        <div className="flex-1 h-1.5 rounded-sm overflow-hidden" style={{ background:"var(--surface-sunken)" }}>
                           <div
                             className="h-full rounded-sm"
                             style={{ width: `${pct}%`, background: style.bg, opacity: 0.7 }}
@@ -227,8 +227,8 @@ export default function IncidentReportsPanel({
                 {topTypes.map(([type, cnt]) => (
                   <div
                     key={type}
-                    className="flex items-center justify-between text-[9px] font-mono px-1.5 py-0.5 rounded-sm hover:bg-[#181818]/50 transition-colors duration-100"
-                    style={{ background: '#0a0a0a' }}
+                    className="flex items-center justify-between text-[9px] font-mono px-1.5 py-0.5 rounded-sm hover:bg-surface-raised/50 transition-colors duration-100"
+                    style={{ background:"var(--surface-sunken)" }}
                   >
                     <span className="text-rmpg-300 truncate">{type}</span>
                     <span className="text-emerald-400 font-bold ml-2 flex-shrink-0">{cnt}</span>
@@ -241,14 +241,14 @@ export default function IncidentReportsPanel({
             {recentReports.length > 0 && (
               <div className="space-y-0.5">
                 <span className="text-[9px] font-mono text-rmpg-500 uppercase">Recent</span>
-                <div className="max-h-[140px] overflow-y-auto space-y-0.5 scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+                <div className="max-h-[140px] overflow-y-auto space-y-0.5 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
                   {recentReports.map((r) => {
                     const ss = getStatusStyle(r.status);
                     const hasCoords = r.latitude != null && r.longitude != null;
                     return (
                       <div
                         key={r.id}
-                        className="rounded-sm px-1.5 py-1 space-y-0.5 hover:bg-[#181818]/50 transition-colors duration-100"
+                        className="rounded-sm px-1.5 py-1 space-y-0.5 hover:bg-surface-raised/50 transition-colors duration-100"
                         style={{ background: '#050505', border: '1px solid #282828', borderLeft: `2px solid ${ss.bg}` }}
                       >
                         <div className="flex items-center justify-between">
@@ -296,7 +296,7 @@ export default function IncidentReportsPanel({
             {/* Info note */}
             <div
               className="flex items-start gap-1.5 px-2 py-1.5 rounded"
-              style={{ background: '#050505', border: '1px solid #282828' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
             >
               <Info size={10} className="text-emerald-500 mt-0.5 shrink-0" />
               <span className="text-[9px] font-mono text-rmpg-500 leading-tight">

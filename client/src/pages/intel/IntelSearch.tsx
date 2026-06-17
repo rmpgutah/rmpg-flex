@@ -69,7 +69,7 @@ export default function IntelSearch() {
           ))}
           {recent.slice(0, 6).map((r, i) => (
             <button key={`r${i}`} onClick={() => setRaw(r.query_text)}
-              className="font-mono text-[9px] px-2 py-[3px] rounded-[2px] border border-[#232323] text-[#999]">{r.query_text}</button>
+              className="font-mono text-[9px] px-2 py-[3px] rounded-[2px] border border-border-default text-[#999]">{r.query_text}</button>
           ))}
         </div>
       )}
@@ -84,7 +84,7 @@ export default function IntelSearch() {
           {loading && <div className="text-[11px] text-[#888]">Searching…</div>}
           {!loading && raw.trim().length >= 2 && clustered.length === 0 && <div className="text-[11px] text-[#888]">No results.</div>}
           {clustered.length > 0 && (
-            <div className="font-mono text-[9px] text-[#666] px-1">{clustered.length} result{clustered.length === 1 ? '' : 's'}</div>
+            <div className="font-mono text-[9px] text-rmpg-500 px-1">{clustered.length} result{clustered.length === 1 ? '' : 's'}</div>
           )}
           {grouped.map(([type, items]) => (
             <ResultGroup key={type} type={type} items={items} highlightKey={highlightKey}
@@ -92,7 +92,7 @@ export default function IntelSearch() {
               onOpen={(t, id) => navigate(recordPath({ type: t, id }))} />
           ))}
           {raw.trim().length < 2 && (
-            <div className="text-[11px] text-[#555] pt-6 text-center">
+            <div className="text-[11px] text-rmpg-500 pt-6 text-center">
               Type to search. Use operators like <span className="text-[#d4a017] font-mono">plate:</span>,
               <span className="text-[#d4a017] font-mono"> name:"…"</span>,
               <span className="text-[#d4a017] font-mono"> flag:warrant</span>, or just a name / plate / phone.

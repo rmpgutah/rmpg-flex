@@ -89,9 +89,9 @@ export default function DocumentIntakePage() {
           onDragLeave={() => setDragActive(false)}
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
-          className="bg-[#0a0a0a] border-2 border-dashed p-12 text-center transition-colors"
+          className="bg-surface-sunken border-2 border-dashed p-12 text-center transition-colors"
           style={{
-            borderColor: dragActive ? '#d4a017' : '#2a2a2a',
+            borderColor: dragActive ? '#d4a017' : 'var(--border-default)',
             borderRadius: 2,
             background: dragActive ? 'rgba(212,160,23,0.05)' : '#0a0a0a',
           }}
@@ -108,7 +108,7 @@ export default function DocumentIntakePage() {
             Supports court records, ICU investigation docs, info forms, field sheets.
             Auto-detects document type and extracts structured fields.
           </div>
-          <div className="text-[10px] text-[#666] mt-3 font-mono">
+          <div className="text-[10px] text-rmpg-500 mt-3 font-mono">
             Implemented kinds: court_warrant · fi_card · witness_statement · info_form
             <br />
             Stub kinds (low coverage): court_order · trespass_order · evidence_log · investigation_report
@@ -117,12 +117,12 @@ export default function DocumentIntakePage() {
       )}
 
       {state.kind === 'processing' && (
-        <div className="bg-[#0a0a0a] border border-[#222] p-12 text-center" style={{ borderRadius: 2 }}>
+        <div className="bg-surface-sunken border border-border-default p-12 text-center" style={{ borderRadius: 2 }}>
           <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin" style={{ color: '#d4a017' }} />
-          <div className="text-[13px] text-[#ccc]">
+          <div className="text-[13px] text-rmpg-300">
             Extracting fields from <span className="font-mono text-[#d4a017]">{state.filename}</span>…
           </div>
-          <div className="text-[10px] text-[#666] mt-2">
+          <div className="text-[10px] text-rmpg-500 mt-2">
             Reading the PDF text layer in-browser, then classifying the document
             and pulling structured fields. Born-digital PDFs only (no OCR).
           </div>

@@ -20,12 +20,12 @@ function nextId(): string { return `iw${++_iwCounter}`; }
 const FONT_MONO = "'Courier New','JetBrains Mono',monospace";
 const FONT_SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
 const C_BASE = '#0a0a0a';
-const C_SUNKEN = '#050505';
-const C_RAISED = '#141414';
-const C_BORDER = '#222222';
-const C_TEXT = '#e0e0e0';
+const C_SUNKEN = 'var(--surface-overlay)';
+const C_RAISED = 'var(--surface-base)';
+const C_BORDER = 'var(--border-subtle)';
+const C_TEXT = 'var(--text-secondary)';
 const C_TEXT_DIM = '#999999';
-const C_TEXT_MUTED = '#666666';
+const C_TEXT_MUTED = 'var(--rmpg-500)';
 // Neutral light-gray for popup accents/links (NOT blue — Spillman has zero blue).
 const C_NEUTRAL = '#aaaaaa';
 const C_BRAND = '#888888';
@@ -418,7 +418,7 @@ export function buildPropertyInfoWindow(
   const RELATIONSHIP_COLORS: Record<string, string> = {
     employee: '#22c55e', contact: '#aaaaaa', tenant: '#a78bfa', owner: '#4ade80',
     manager: '#d4a017', subject: '#f59e0b', trespass_warning: '#ef4444',
-    banned: '#ef4444', frequent_visitor: '#999999', associated: '#666666',
+    banned: '#ef4444', frequent_visitor: '#999999', associated: 'var(--rmpg-500)',
   };
 
   const recentCalls = details.recentCalls || [];
@@ -502,7 +502,7 @@ export function buildPropertyInfoWindow(
       <div style="${details.client_contact ? `margin-top:6px;padding-top:4px;border-top:1px solid ${C_BORDER};` : ''}">
         ${sectionHeader(`Linked Persons (${linkedPersons.length})`, '#e879f9')}
         ${linkedPersons.slice(0, 8).map(p => {
-          const relColor = RELATIONSHIP_COLORS[p.relationship || ''] || '#666666';
+          const relColor = RELATIONSHIP_COLORS[p.relationship || ''] || 'var(--rmpg-500)';
           const name = `${p.first_name} ${p.last_name}`;
           const rel = (p.relationship || '').replace(/_/g, ' ');
           let flagsArr: string[] = [];

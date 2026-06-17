@@ -286,8 +286,8 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
             onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-1.5 text-xs font-medium transition-colors ${
               activeTab === tab.id
-                ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
-                : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/50'
+                ? 'bg-rmpg-700 text-rmpg-100 border border-rmpg-600 border-b-rmpg-700'
+                : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/50'
             }`}
           >
             {tab.label}

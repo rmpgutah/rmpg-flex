@@ -2317,7 +2317,7 @@ export default function DispatchPage() {
                   return (
                     <div className="flex items-center gap-1">
                       <span className="text-rmpg-400">Response:</span>
-                      <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                      <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
                     </div>
                   );
                 })()}
@@ -2328,7 +2328,7 @@ export default function DispatchPage() {
                   return (
                     <div className="flex items-center gap-1">
                       <span className="text-rmpg-400">On-Scene:</span>
-                      <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                      <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
                     </div>
                   );
                 })()}
@@ -2359,7 +2359,7 @@ export default function DispatchPage() {
                 {selectedCall.status === 'pending' && (
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     <Send style={{ width: 16, height: 16 }} /> Dispatch
@@ -2368,7 +2368,7 @@ export default function DispatchPage() {
                 {selectedCall.status === 'dispatched' && (
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     <Navigation style={{ width: 16, height: 16 }} /> En Route
@@ -2377,7 +2377,7 @@ export default function DispatchPage() {
                 {selectedCall.status === 'enroute' && (
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     <Eye style={{ width: 16, height: 16 }} /> On Scene
@@ -2429,7 +2429,7 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={handleGenerateIncident}
                       disabled={isGenerating}
-                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
                       style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                     >
                       {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
@@ -2441,7 +2441,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={handleGenerateIncident}
                     disabled={isGenerating}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
@@ -2667,7 +2667,7 @@ export default function DispatchPage() {
                       return (
                         <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
                           <span className="text-rmpg-400 text-[10px]">Response Time</span>
-                          <span className="text-gray-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                          <span className="text-rmpg-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
                         </div>
                       );
                     })()}
@@ -2725,7 +2725,7 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={handleAddNote}
                       disabled={!newNote.trim()}
-                      className="flex items-center justify-center px-4 py-3 text-xs font-bold text-white rounded-sm"
+                      className="flex items-center justify-center px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
                       style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? 'var(--spm-border)' : 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                     >
                       <Send style={{ width: 16, height: 16 }} />
@@ -3167,7 +3167,7 @@ export default function DispatchPage() {
             {searchQuery && (
               <button type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-white transition-colors"
+                className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-rmpg-100 transition-colors"
                 title="Clear search"
               >
                 <X style={{ width: 10, height: 10 }} />
@@ -3232,7 +3232,7 @@ export default function DispatchPage() {
                       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                     >
-                      <span className="font-bold text-white" style={{ fontSize: '11px' }}>{tpl.name || formatIncidentType(tpl.incident_type)}</span>
+                      <span className="font-bold text-rmpg-100" style={{ fontSize: '11px' }}>{tpl.name || formatIncidentType(tpl.incident_type)}</span>
                       {tpl.description && <span className="text-rmpg-400 truncate w-full" style={{ fontSize: '10px' }}>{tpl.description}</span>}
                     </button>
                   ))
@@ -3380,7 +3380,7 @@ export default function DispatchPage() {
                 {/* Right: today + priority filters + call count */}
                 <div className="ml-auto flex items-center gap-1.5">
                   <span className="text-rmpg-400">
-                    <span className="text-[8px] text-rmpg-600">TODAY</span> <strong className="text-white">{todayCalls.length}</strong>/<strong className="text-green-400">{clearedToday}</strong>
+                    <span className="text-[8px] text-rmpg-600">TODAY</span> <strong className="text-rmpg-100">{todayCalls.length}</strong>/<strong className="text-green-400">{clearedToday}</strong>
                   </span>
                   <span className="text-rmpg-700">|</span>
                   {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
@@ -3389,7 +3389,7 @@ export default function DispatchPage() {
                     const colors: Record<string, string> = {
                       P1: `bg-red-900/${active ? '60' : '40'} text-red-400 border-red-700/${active ? '60' : '50'}`,
                       P2: `bg-amber-900/${active ? '60' : '40'} text-amber-400 border-amber-700/${active ? '60' : '50'}`,
-                      P3: `bg-gray-900/${active ? '60' : '40'} text-gray-400 border-gray-700/${active ? '60' : '50'}`,
+                      P3: `bg-surface-sunken/${active ? '60' : '40'} text-rmpg-400 border-border-default/${active ? '60' : '50'}`,
                       P4: `bg-green-900/${active ? '60' : '40'} text-green-400 border-green-700/${active ? '60' : '50'}`,
                     };
                     return (
@@ -3472,19 +3472,19 @@ export default function DispatchPage() {
                 style={{ background: priorityFilter === 'P1' ? 'rgba(239,68,68,0.25)' : priorityFilter === 'P2' ? 'rgba(217,119,6,0.25)' : priorityFilter === 'P3' ? 'rgba(107,114,128,0.25)' : 'rgba(34,197,94,0.25)', borderColor: priorityFilter === 'P1' ? 'color-mix(in srgb, var(--sev-critical) 50%, transparent)' : priorityFilter === 'P2' ? 'color-mix(in srgb, var(--sev-warn) 50%, transparent)' : priorityFilter === 'P3' ? 'color-mix(in srgb, var(--spm-text-muted) 50%, transparent)' : 'color-mix(in srgb, var(--sev-ok) 50%, transparent)', color: priorityFilter === 'P1' ? 'var(--sev-critical)' : priorityFilter === 'P2' ? 'var(--sev-warn)' : priorityFilter === 'P3' ? 'var(--spm-text-muted)' : 'var(--sev-ok)' }}
               >
                 Priority: {priorityFilter}
-                <button type="button" onClick={() => setPriorityFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+                <button type="button" onClick={() => setPriorityFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors">&times;</button>
               </span>
             )}
             {typeFilter && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-brand-300 border-brand-700/50 bg-brand-900/20">
                 Type: {formatIncidentType(typeFilter)}
-                <button type="button" onClick={() => setTypeFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+                <button type="button" onClick={() => setTypeFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors">&times;</button>
               </span>
             )}
             {signalFilter && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-purple-300 border-purple-700/50 bg-purple-900/20">
                 Signal: {signalFilter === 'signaled' ? 'Has code' : 'No code'}
-                <button type="button" onClick={() => setSignalFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+                <button type="button" onClick={() => setSignalFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors">&times;</button>
               </span>
             )}
             <button
@@ -3677,7 +3677,7 @@ export default function DispatchPage() {
                       />
                     ) : selectedCall.incident_number ? (
                       <span
-                        className={`text-[10px] font-bold font-mono text-gray-300 bg-gray-900/30 border border-gray-700/40 px-1.5 py-0.5 whitespace-nowrap cursor-pointer hover:brightness-125 hover:text-gray-200 transition-colors`}
+                        className={`text-[10px] font-bold font-mono text-rmpg-300 bg-surface-sunken/30 border border-border-default/40 px-1.5 py-0.5 whitespace-nowrap cursor-pointer hover:brightness-125 hover:text-rmpg-200 transition-colors`}
                         onClick={(e) => {
                           if (isAdminOrManager && e.shiftKey) {
                             setEditingTimestamp('incident_number');
@@ -4038,9 +4038,9 @@ export default function DispatchPage() {
                     if (diff <= 0 || !isFinite(diff)) return null;
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
-                        <Navigation style={{ width: 10, height: 10 }} className="text-gray-500" />
+                        <Navigation style={{ width: 10, height: 10 }} className="text-rmpg-500" />
                         <span className="text-rmpg-400">Response:</span>
-                        <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                        <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
                       </div>
                     );
                   })()}
@@ -4051,9 +4051,9 @@ export default function DispatchPage() {
                     if (diff <= 0 || !isFinite(diff)) return null;
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
-                        <Clock style={{ width: 10, height: 10 }} className="text-gray-500" />
+                        <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
                         <span className="text-rmpg-400">On-Scene:</span>
-                        <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                        <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
                       </div>
                     );
                   })()}
@@ -4178,7 +4178,7 @@ export default function DispatchPage() {
                       ) : (
                         <div className="flex items-center gap-1.5">
                           <MapPin className="w-3.5 h-3.5 text-rmpg-300" />
-                          <p className="text-sm text-white">{formatAddressDisplay(selectedCall.location)}</p>
+                          <p className="text-sm text-rmpg-100">{formatAddressDisplay(selectedCall.location)}</p>
                         </div>
                       )}
                       {!isEditing && selectedCall.property_name && (
@@ -4336,7 +4336,7 @@ export default function DispatchPage() {
                             <>
                               <div className="flex items-center gap-1.5">
                                 <User className="w-3.5 h-3.5 text-rmpg-300" />
-                                <p className="text-sm text-white">{selectedCall.caller_name || 'Unknown'}</p>
+                                <p className="text-sm text-rmpg-100">{selectedCall.caller_name || 'Unknown'}</p>
                                 {selectedCall.caller_relationship && <span className="text-[9px] text-rmpg-400">({selectedCall.caller_relationship})</span>}
                               </div>
                               {selectedCall.caller_phone && (
@@ -4395,7 +4395,7 @@ export default function DispatchPage() {
                               </div>
                             ) : (
                               <span
-                                className={`text-white font-mono text-[10px] tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                                className={`text-rmpg-100 font-mono text-[10px] tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
                                 onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
                                 title={isAdminOrManager ? 'Click to edit' : undefined}
                               >
@@ -4418,7 +4418,7 @@ export default function DispatchPage() {
                           return (
                             <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
                               <span className="text-rmpg-400 text-[10px]">Response Time</span>
-                              <span className="text-gray-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                              <span className="text-rmpg-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
                             </div>
                           );
                         })()}
@@ -4565,10 +4565,10 @@ export default function DispatchPage() {
                       {/* Inline ETA from route */}
                       {routeInfo && (
                         <div className="mt-2 flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm" style={{ background: 'rgba(136, 136, 136,0.08)', border: '1px solid rgba(136, 136, 136,0.2)', boxShadow: '0 0 8px rgba(136, 136, 136,0.06)' }}>
-                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-gray-400">
+                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-rmpg-400">
                             <Navigation style={{ width: 9, height: 9 }} /> ETA
                           </span>
-                          <span className="text-[11px] font-mono font-bold text-white tabular-nums">{routeInfo.eta}</span>
+                          <span className="text-[11px] font-mono font-bold text-rmpg-100 tabular-nums">{routeInfo.eta}</span>
                           <span className="text-[9px] font-mono text-[var(--spm-text-muted)] tabular-nums">{routeInfo.distance}</span>
                           <span className="text-[8px] font-mono text-[var(--spm-text-muted)] ml-auto">{routeInfo.unitCallSign}</span>
                         </div>
@@ -4854,7 +4854,7 @@ export default function DispatchPage() {
                                     updateEditField('subject_description', desc);
                                     setShowPersonDropdown(false);
                                   }}>
-                                    <span className="font-semibold text-white">{p.last_name}, {p.first_name}</span>
+                                    <span className="font-semibold text-rmpg-100">{p.last_name}, {p.first_name}</span>
                                     {p.dob && <span className="text-rmpg-400 ml-1">DOB: {p.dob}</span>}
                                     {p.address && <span className="text-rmpg-500 ml-1 text-[9px]">— {p.address}</span>}
                                   </button>
@@ -4901,7 +4901,7 @@ export default function DispatchPage() {
                                     updateEditField('vehicle_description', desc);
                                     setShowVehicleDropdown(false);
                                   }}>
-                                    <span className="font-semibold text-white">{[v.color, v.year, v.make, v.model].filter(Boolean).join(' ')}</span>
+                                    <span className="font-semibold text-rmpg-100">{[v.color, v.year, v.make, v.model].filter(Boolean).join(' ')}</span>
                                     {v.plate_number && <span className="text-brand-400 ml-1">PLT: {v.plate_number}{v.plate_state ? `/${v.plate_state}` : ''}</span>}
                                     {v.owner_first_name && <span className="text-rmpg-400 ml-1 text-[9px]">Owner: {v.owner_last_name}, {v.owner_first_name}</span>}
                                   </button>
@@ -4946,7 +4946,7 @@ export default function DispatchPage() {
                                     linkBusinessToCall(selectedCall.id, b.id, linkBusinessRole);
                                     setBusinessQuery(''); setShowBusinessDropdown(false);
                                   }}>
-                                    <span className="font-semibold text-white">{b.name}</span>
+                                    <span className="font-semibold text-rmpg-100">{b.name}</span>
                                     {b.address && <span className="text-rmpg-500 ml-1 text-[9px]">— {b.address}</span>}
                                   </button>
                                 ))}
@@ -4991,7 +4991,7 @@ export default function DispatchPage() {
                             {callPersons.map((cp: any) => (
                               <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
                                 <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{(cp.role || '').replace(/_/g, ' ')}</span>
-                                <span className="text-white font-semibold">{cp.last_name}, {cp.first_name}</span>
+                                <span className="text-rmpg-100 font-semibold">{cp.last_name}, {cp.first_name}</span>
                                 <WarrantBadge flags={cp.flags} size="sm" />
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
                                 {cp.race && <span className="text-rmpg-500">{cp.race}</span>}
@@ -5007,7 +5007,7 @@ export default function DispatchPage() {
                             {callVehicles.map((cv: any) => (
                               <div key={cv.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
                                 <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{(cv.role || '').replace(/_/g, ' ')}</span>
-                                <span className="text-white font-semibold">{[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}</span>
+                                <span className="text-rmpg-100 font-semibold">{[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}</span>
                                 {cv.plate_number && <span className="text-brand-400">PLT: {cv.plate_number}{cv.plate_state ? `/${cv.plate_state}` : ''}</span>}
                                 {cv.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(cv.stolen_status.toLowerCase()) && <span className="text-red-400 font-bold uppercase">{cv.stolen_status.replace(/_/g, ' ')}</span>}
                               </div>
@@ -5204,7 +5204,7 @@ export default function DispatchPage() {
                       return (
                         <div className="mb-2 inline-flex flex-wrap items-center gap-2 px-2 py-1 bg-brand-900/20 border border-brand-700/40 rounded-sm text-[10px]">
                           <span className="text-brand-gold-500 uppercase font-black text-[8px] tracking-wide">Client</span>
-                          <span className="text-white font-semibold">{cli?.name || `#${cid}`}</span>
+                          <span className="text-rmpg-100 font-semibold">{cli?.name || `#${cid}`}</span>
                           {contractId && <span className="text-rmpg-300">Contract: {contractId}</span>}
                           {billing && <span className="text-rmpg-300">Billing: {billing}</span>}
                           {auth && <span className="text-rmpg-300">Auth: {auth}</span>}
@@ -5630,7 +5630,7 @@ export default function DispatchPage() {
                                 </span>
                                 <span className={`text-[8px] font-bold px-1 py-0 rounded-sm ${
                                   visit.status === 'cleared' ? 'bg-green-900/40 border border-green-700/50 text-green-400'
-                                  : visit.status === 'closed' ? 'bg-gray-900/40 border border-gray-700/50 text-gray-400'
+                                  : visit.status === 'closed' ? 'bg-surface-sunken border border-border-default text-rmpg-400'
                                   : visit.status === 'cancelled' ? 'bg-red-900/40 border border-red-700/50 text-red-400'
                                   : 'bg-rmpg-700 border border-rmpg-500 text-rmpg-300'
                                 }`}>
@@ -5959,7 +5959,7 @@ export default function DispatchPage() {
                           <div key={ev.id} className="flex items-start gap-2 text-[10px] font-mono py-1 border-b border-[var(--spm-border)]">
                             <span className="text-rmpg-500 tabular-nums whitespace-nowrap">{(ev.created_at || '').slice(5, 16).replace('T', ' ')}</span>
                             <span className="text-amber-300 font-bold uppercase whitespace-nowrap">{ev.action}</span>
-                            <span className="text-rmpg-300 truncate flex-1" title={ev.details || ''}>{ev.details || ''}</span>
+                            <span className="text-rmpg-300 min-w-0 truncate flex-1" title={ev.details || ''}>{ev.details || ''}</span>
                             <span className="text-rmpg-400 whitespace-nowrap">{ev.user_name || ev.username || `#${ev.user_id ?? '?'}`}</span>
                           </div>
                         ))}
@@ -6124,7 +6124,7 @@ export default function DispatchPage() {
               <div className="flex items-center gap-2 text-[#d4a017] text-xs font-bold uppercase tracking-wider">
                 <Terminal className="w-3.5 h-3.5" /> Keyboard Shortcuts
               </div>
-              <button type="button" aria-label="Close" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-400 hover:text-white">
+              <button type="button" aria-label="Close" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-400 hover:text-rmpg-100">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -6289,9 +6289,9 @@ export default function DispatchPage() {
             <div className="panel-title-bar flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Send className="w-3.5 h-3.5 text-brand-400" />
-                <span className="text-xs font-bold text-white uppercase tracking-wider">Quick Dispatch</span>
+                <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Quick Dispatch</span>
               </div>
-              <button type="button" onClick={() => setQuickTemplateData(null)} className="text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setQuickTemplateData(null)} className="text-rmpg-400 hover:text-rmpg-100">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -6305,7 +6305,7 @@ export default function DispatchPage() {
                   quickTemplateData.priority === 'P4' ? 'border-rmpg-500 text-rmpg-300 bg-rmpg-700/30' :
                   'border-brand-500 text-brand-400 bg-brand-900/30'
                 }`}>{quickTemplateData.priority}</span>
-                <span className="text-xs font-bold text-white">{quickTemplateData.name}</span>
+                <span className="text-xs font-bold text-rmpg-100">{quickTemplateData.name}</span>
                 <span className="text-[10px] text-rmpg-400 ml-auto">{formatIncidentType(quickTemplateData.incident_type)}</span>
               </div>
 
@@ -6397,7 +6397,7 @@ export default function DispatchPage() {
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
-                <span id={unitModalTitleId} className="text-sm font-bold text-white tracking-wide">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
+                <span id={unitModalTitleId} className="text-sm font-bold text-rmpg-100 tracking-wide">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
               </div>
               <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn ml-auto">
                 <X style={{ width: 12, height: 12 }} />
@@ -6867,9 +6867,9 @@ export default function DispatchPage() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: 'var(--surface-deep)' }}>
               <div className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-brand-400" />
-                <h3 className="text-sm font-bold text-white">Shift Handoff Notes</h3>
+                <h3 className="text-sm font-bold text-rmpg-100">Shift Handoff Notes</h3>
               </div>
-              <button type="button" onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-rmpg-100 transition-colors"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-3 flex-1 overflow-auto" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
               {handoffMeta.updated_by && (

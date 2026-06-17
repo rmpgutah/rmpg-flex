@@ -140,7 +140,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
     }
   };
 
-  const inputClass = 'w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none';
+  const inputClass = 'w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:outline-none';
   const labelClass = 'block text-xs text-rmpg-400 mb-1';
 
   return (
@@ -152,11 +152,11 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
         <div className="px-4 py-2 border-b border-rmpg-700 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-brand-400" />
-            <h3 className="text-sm font-semibold text-white">
+            <h3 className="text-sm font-semibold text-rmpg-100">
               {review?.id ? 'Edit Performance Review' : 'Create Performance Review'}
             </h3>
           </div>
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close">
+          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -276,13 +276,13 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
         {/* Footer */}
         <div className="px-4 py-2 border-t border-rmpg-700 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white">
+          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-100">
             Cancel
           </button>
           <button type="button"
             onClick={handleSubmit}
             disabled={saving}
-            className="px-3 py-1.5 text-xs bg-brand-500 text-white rounded-sm hover:bg-brand-600 disabled:opacity-50"
+            className="px-3 py-1.5 text-xs bg-brand-500 text-rmpg-100 rounded-sm hover:bg-brand-600 disabled:opacity-50"
           >
             {saving ? 'Saving...' : review?.id ? 'Update Review' : 'Create Review'}
           </button>

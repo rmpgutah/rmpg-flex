@@ -957,7 +957,7 @@ export default function IncidentsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <IconButton onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
+            <IconButton onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100 transition-colors" aria-label="Clear search">
               <X className="w-3.5 h-3.5" />
             </IconButton>
           )}
@@ -966,7 +966,7 @@ export default function IncidentsPage() {
 
       {/* Quick Stats Bar */}
       {!showArchived && !loading && (
-        <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-4'} text-[10px] font-mono flex-shrink-0`} style={{ background: '#050505' }}>
+        <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-4'} text-[10px] font-mono flex-shrink-0`} style={{ background: 'var(--surface-overlay)' }}>
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-amber-500" />
             <span className="text-rmpg-400">Draft:</span>
@@ -1001,7 +1001,7 @@ export default function IncidentsPage() {
       )}
 
       {/* Table / Loading / Error */}
-      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
+      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
         {loading ? (
           <table className="table-dark">
             <thead className="sticky top-0 z-10">
@@ -1075,7 +1075,7 @@ export default function IncidentsPage() {
                     selectedIncident?.id === inc.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
                   }`}
                 >
-                  <td className="font-bold text-white text-xs font-mono">
+                  <td className="font-bold text-rmpg-100 text-xs font-mono">
                     <span className="cursor-pointer hover:text-green-400 transition-colors" title="Click to copy"
                       onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(inc.incident_number || ''); }}>
                       {inc.incident_number}
@@ -1388,7 +1388,7 @@ export default function IncidentsPage() {
         const currentIdx = steps.indexOf(selectedIncident.status as any);
         const idx = currentIdx >= 0 ? currentIdx : selectedIncident.status === 'returned' ? 1 : 0;
         return (
-          <div className="flex items-center gap-0 px-4 py-2 border-b border-[#2b2b2b]" style={{ background: '#050505' }}>
+          <div className="flex items-center gap-0 px-4 py-2 border-b border-border-default bg-surface-base">
             {labels.map((label, i) => (
               <div key={label} className="flex items-center flex-1">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${i <= idx ? 'bg-green-500' : 'bg-rmpg-600'}`} style={i <= idx ? { boxShadow: '0 0 4px #22c55e' } : {}} />
@@ -1401,7 +1401,7 @@ export default function IncidentsPage() {
       })()}
 
       {/* Detail Body — Collapsible Sections */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-4">
         {/* Returned Warning */}
         {selectedIncident.status === 'returned' && selectedIncident.review_notes && (
           <div className="p-3 bg-red-900/20 border border-red-700/40 mb-3">
@@ -1426,7 +1426,7 @@ export default function IncidentsPage() {
             {inc.officer_safety_caution && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Ofc Safety</span>}
             {inc.mental_health_crisis && <span className="px-2 py-0.5 bg-rmpg-700/25 text-rmpg-200 text-[10px] uppercase font-bold border border-rmpg-600/40">Mental Health</span>}
             {inc.injuries_reported && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Injuries</span>}
-            {inc.juvenile_involved && <span className="px-2 py-0.5 bg-gray-900/40 text-gray-300 text-[10px] uppercase font-bold border border-gray-700/40">Juvenile</span>}
+            {inc.juvenile_involved && <span className="px-2 py-0.5 bg-surface-sunken/40 text-rmpg-300 text-[10px] uppercase font-bold border border-border-default/40">Juvenile</span>}
             {inc.gang_related && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Gang</span>}
             {inc.hazmat && <span className="px-2 py-0.5 bg-yellow-900/40 text-yellow-300 text-[10px] uppercase font-bold border border-yellow-700/40">HAZMAT</span>}
             {inc.body_camera_active && <span className="px-2 py-0.5 bg-green-900/40 text-green-300 text-[10px] uppercase font-bold border border-green-700/40">BWC</span>}
@@ -1470,7 +1470,7 @@ export default function IncidentsPage() {
         <CollapsibleSection title="Incident Info" icon={FileText} defaultOpen>
           <div className="mb-2">
             <label className="field-label">Title:</label>
-            <p className="text-sm text-white font-medium">{selectedIncident.title}</p>
+            <p className="text-sm text-rmpg-100 font-medium">{selectedIncident.title}</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -1482,7 +1482,7 @@ export default function IncidentsPage() {
               {selectedIncident.call_number ? (
                 <button type="button"
                   onClick={() => navigate('/dispatch')}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold text-gray-400 bg-gray-900/20 border border-gray-700/40 hover:bg-gray-900/40 transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold text-rmpg-400 bg-surface-sunken/20 border border-border-default/40 hover:bg-surface-sunken/40 transition-colors"
                   title="Go to dispatch"
                 >
                   <ExternalLink className="w-3 h-3" />
@@ -1729,7 +1729,7 @@ export default function IncidentsPage() {
                       <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold border border-brand-600/40">
                         {(lp.role || 'involved').replace(/_/g, ' ')}
                       </span>
-                      <span className="text-sm text-white font-medium">{lp.last_name}, {lp.first_name}</span>
+                      <span className="text-sm text-rmpg-100 font-medium">{lp.last_name}, {lp.first_name}</span>
                       <WarrantBadge flags={lp.flags || '[]'} size="sm" />
                       {lp.dob && <span className="text-[11px] text-rmpg-400">DOB: {lp.dob}</span>}
                       {flags.map((f, i) => {
@@ -1782,7 +1782,7 @@ export default function IncidentsPage() {
                     <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-600/40">
                       {(lv.role || 'involved').replace(/_/g, ' ')}
                     </span>
-                    <span className="text-sm text-white font-medium">
+                    <span className="text-sm text-rmpg-100 font-medium">
                       {lv.plate_number || 'No Plate'}{lv.state ? ` (${lv.state})` : ''}
                     </span>
                     <span className="text-[11px] text-rmpg-300">
@@ -1827,14 +1827,14 @@ export default function IncidentsPage() {
           {detailOffenses.length > 0 ? (
             <div className="space-y-1.5">
               {detailOffenses.map((offense: any) => (
-                <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #2b2b2b' }}>
+                <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid #2b2b2b' }}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? '#ef4444' : offense.offense_level === 'misdemeanor' ? '#f59e0b' : '#666666' }}>
+                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? '#ef4444' : offense.offense_level === 'misdemeanor' ? '#f59e0b' : 'var(--rmpg-500)' }}>
                         {offense.offense_code}
                       </span>
-                      <span className="text-xs text-white font-medium truncate">{offense.description}</span>
-                      <span className={`text-[8px] font-bold px-1 py-0.5 rounded-sm ${offense.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : offense.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50' : 'bg-[#141414] text-gray-400 border border-gray-700'}`}>
+                      <span className="text-xs text-rmpg-100 font-medium truncate">{offense.description}</span>
+                      <span className={`text-[8px] font-bold px-1 py-0.5 rounded-sm ${offense.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : offense.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50' : 'bg-surface-sunken text-rmpg-400 border border-border-default'}`}>
                         {(offense.offense_level || 'other').toUpperCase()}
                       </span>
                       {offense.attempted_completed === 'attempted' && <span className="text-[8px] text-purple-400 bg-purple-900/30 px-1 py-0.5 rounded-sm border border-purple-700/30">ATTEMPTED</span>}
@@ -1844,7 +1844,7 @@ export default function IncidentsPage() {
                       {offense.statute_number && <span className="font-mono">§{offense.statute_number}</span>}
                       {offense.ucr_code && <span>UCR: {offense.ucr_code}</span>}
                       {offense.suspect_first && <span className="text-red-300">Suspect: {offense.suspect_first} {offense.suspect_last}</span>}
-                      {offense.victim_first && <span className="text-gray-300">Victim: {offense.victim_first} {offense.victim_last}</span>}
+                      {offense.victim_first && <span className="text-rmpg-300">Victim: {offense.victim_first} {offense.victim_last}</span>}
                       {offense.disposition && <span className="text-green-400">Disp: {humanizeDisposition(offense.disposition)}</span>}
                     </div>
                   </div>
@@ -1880,16 +1880,16 @@ export default function IncidentsPage() {
           {detailOfficers.length > 0 ? (
             <div className="space-y-1">
               {detailOfficers.map((officer: any) => (
-                <div key={officer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #2b2b2b' }}>
+                <div key={officer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm bg-surface-sunken border border-border-default">
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase ${
                     officer.role === 'primary' ? 'bg-rmpg-700/25 text-rmpg-200 border border-rmpg-600/40' :
                     officer.role === 'supervisor' ? 'bg-purple-900/60 text-purple-300 border border-purple-700/50' :
                     officer.role === 'investigator' ? 'bg-amber-900/60 text-amber-300 border border-amber-700/50' :
-                    'bg-[#141414] text-gray-400 border border-gray-700'
+                    'bg-surface-base text-rmpg-400 border border-border-default'
                   }`}>{officer.role}</span>
-                  <span className="text-xs text-white font-medium">{officer.first_name} {officer.last_name}</span>
+                  <span className="text-xs text-rmpg-100 font-medium">{officer.first_name} {officer.last_name}</span>
                   {officer.badge_number && <span className="text-[10px] font-mono text-rmpg-400">#{officer.badge_number}</span>}
-                  {officer.call_sign && <span className="text-[10px] text-gray-400">{officer.call_sign}</span>}
+                  {officer.call_sign && <span className="text-[10px] text-rmpg-400">{officer.call_sign}</span>}
                   {officer.rank && <span className="text-[10px] text-rmpg-500">{officer.rank}</span>}
                   {officer.arrived_at && <span className="text-[9px] text-green-400 ml-auto">Arr: {safeTimeStr(officer.arrived_at, '')}</span>}
                   {officer.departed_at && <span className="text-[9px] text-rmpg-400">Dep: {safeTimeStr(officer.departed_at, '')}</span>}
@@ -1929,12 +1929,12 @@ export default function IncidentsPage() {
                 const typeColors: Record<string, string> = { incident: '#888888', call: '#22c55e', case: '#a855f7', warrant: '#ef4444', citation: '#f59e0b', arrest: '#ec4899' };
                 const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
                 return (
-                  <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #2b2b2b' }}>
-                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: typeColors[link.linked_type] || '#666666', background: (typeColors[link.linked_type] || '#666666') + '20', border: `1px solid ${typeColors[link.linked_type] || '#666666'}40` }}>
+                  <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid #2b2b2b' }}>
+                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: typeColors[link.linked_type] || 'var(--rmpg-500)', background: (typeColors[link.linked_type] || 'var(--rmpg-500)') + '20', border: `1px solid ${typeColors[link.linked_type] || 'var(--rmpg-500)'}40` }}>
                       {typeLabels[link.linked_type] || link.linked_type}
                     </span>
                     {link.detail ? (
-                      <span className="text-xs text-white font-mono">
+                      <span className="text-xs text-rmpg-100 font-mono">
                         {link.detail.incident_number || link.detail.call_number || link.detail.case_number || link.detail.warrant_number || link.detail.citation_number || `#${link.linked_id}`}
                       </span>
                     ) : (
@@ -1988,8 +1988,8 @@ export default function IncidentsPage() {
                       <span className="px-1.5 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-600/40">
                         {ev.evidence_type || 'physical'}
                       </span>
-                      <span className="text-xs text-white font-mono font-bold">{ev.evidence_number}</span>
-                      <span className="text-xs text-rmpg-300 flex-1 truncate">{ev.description}</span>
+                      <span className="text-xs text-rmpg-100 font-mono font-bold">{ev.evidence_number}</span>
+                      <span className="text-xs text-rmpg-300 flex-1 min-w-0 truncate">{ev.description}</span>
                       <button type="button"
                         className="toolbar-btn"
                         style={{ fontSize: '10px', padding: '2px 6px' }}
@@ -2083,7 +2083,7 @@ export default function IncidentsPage() {
             <div className="space-y-2">
               {/* Summary row */}
               <div className="flex items-center gap-4 text-[10px] text-rmpg-400 pb-1 border-b border-rmpg-700/50">
-                <span>Total: <strong className="text-white">{detailSupplements.length}</strong></span>
+                <span>Total: <strong className="text-rmpg-100">{detailSupplements.length}</strong></span>
                 <span>Draft: <strong className="text-amber-400">{detailSupplements.filter((s: any) => s.status === 'draft').length}</strong></span>
                 <span>Submitted: <strong className="text-rmpg-200">{detailSupplements.filter((s: any) => s.status === 'submitted').length}</strong></span>
                 <span>Approved: <strong className="text-green-400">{detailSupplements.filter((s: any) => s.status === 'approved').length}</strong></span>
@@ -2109,7 +2109,7 @@ export default function IncidentsPage() {
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-white font-mono font-bold">{sup.report_number || 'N/A'}</span>
+                          <span className="text-xs text-rmpg-100 font-mono font-bold">{sup.report_number || 'N/A'}</span>
                           {(sup.report_type || sup.type) && (
                             <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[9px] uppercase font-bold border border-brand-600/40">
                               {(sup.report_type || sup.type || '').replace(/_/g, ' ')}
@@ -2135,7 +2135,7 @@ export default function IncidentsPage() {
                         <summary className="text-[10px] text-brand-400 cursor-pointer hover:text-brand-300 select-none">
                           View narrative ({sup.narrative.length} chars)
                         </summary>
-                        <div className="mt-1.5 p-2 bg-surface-deep border border-rmpg-700 text-[11px] text-rmpg-300 leading-relaxed whitespace-pre-wrap max-h-48 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+                        <div className="mt-1.5 p-2 bg-surface-deep border border-rmpg-700 text-[11px] text-rmpg-300 leading-relaxed whitespace-pre-wrap max-h-48 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
                           {sup.narrative}
                         </div>
                       </details>
@@ -2425,7 +2425,7 @@ export default function IncidentsPage() {
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">
                 Custody Action — {custodyTransfer.evidenceNumber}
               </h3>
-              <IconButton onClick={() => setCustodyTransfer(null)} className="text-rmpg-400 hover:text-white" aria-label="Close custody transfer">
+              <IconButton onClick={() => setCustodyTransfer(null)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close custody transfer">
                 <X className="w-4 h-4" />
               </IconButton>
             </div>
@@ -2435,7 +2435,7 @@ export default function IncidentsPage() {
                 <select id="ff-incidentspage-1"
                   value={custodyAction}
                   onChange={(e) => setCustodyAction(e.target.value)}
-                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white`}
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-rmpg-100`}
                   style={{ borderRadius: 2 }}
                 >
                   <option value="transfer">Transfer</option>
@@ -2463,7 +2463,7 @@ export default function IncidentsPage() {
                   value={custodyToLocation}
                   onChange={(e) => setCustodyToLocation(e.target.value)}
                   placeholder="Evidence room, lab, officer name..."
-                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500`}
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-rmpg-100 placeholder-rmpg-500`}
                   style={{ borderRadius: 2 }}
                   autoFocus
                 />
@@ -2475,7 +2475,7 @@ export default function IncidentsPage() {
                   onChange={(e) => setCustodyNotes(e.target.value)}
                   placeholder="Optional notes..."
                   rows={isMobile ? 3 : 2}
-                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[80px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500 resize-none`}
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[80px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-rmpg-100 placeholder-rmpg-500 resize-none`}
                   style={{ borderRadius: 2 }}
                 />
               </div>
@@ -2521,7 +2521,7 @@ export default function IncidentsPage() {
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Offense / Charge</h3>
-              <IconButton onClick={() => setShowAddOffenseModal(false)} className="text-rmpg-400 hover:text-white" aria-label="Close add offense"><X className="w-4 h-4" /></IconButton>
+              <IconButton onClick={() => setShowAddOffenseModal(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add offense"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-2 gap-3">
@@ -2591,7 +2591,7 @@ export default function IncidentsPage() {
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Responding Officer</h3>
-              <IconButton onClick={() => setShowAddOfficerModal(false)} className="text-rmpg-400 hover:text-white" aria-label="Close add officer"><X className="w-4 h-4" /></IconButton>
+              <IconButton onClick={() => setShowAddOfficerModal(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add officer"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Officer *</label>
@@ -2659,7 +2659,7 @@ export default function IncidentsPage() {
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Link Record</h3>
-              <IconButton onClick={() => setShowAddLinkModal(false)} className="text-rmpg-400 hover:text-white" aria-label="Close add link"><X className="w-4 h-4" /></IconButton>
+              <IconButton onClick={() => setShowAddLinkModal(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add link"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record Type *</label>

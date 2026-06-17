@@ -675,7 +675,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
           <button type="button"
             onClick={handleSaveCredentials}
             disabled={saving || !refreshToken.trim()}
-            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
+            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
             Save Credentials
@@ -1025,7 +1025,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                   : /hard_brake|hard_turn|hard_accel|speeding/i.test(evt.event_type)
                   ? 'text-amber-400 bg-amber-950/30 border-amber-800/40'
                   : /video|camera|recording/i.test(evt.event_type)
-                  ? 'text-gray-400 bg-gray-950/30 border-gray-800/40'
+                  ? 'text-rmpg-400 bg-surface-overlay/30 border-border-subtle/40'
                   : 'text-rmpg-300 bg-surface-sunken border-rmpg-600';
                 return (
                   <div
@@ -1076,7 +1076,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
             <button type="button"
               onClick={handleToggleMediaSync}
               disabled={savingMedia}
-              className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-white transition-colors"
+              className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-rmpg-100 transition-colors"
               title={mediaSyncEnabled ? 'Disable media sync' : 'Enable media sync'}
             >
               {mediaSyncEnabled ? (

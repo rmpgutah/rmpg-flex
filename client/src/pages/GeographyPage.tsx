@@ -444,7 +444,7 @@ export default function GeographyPage() {
           <p className="text-red-400 text-sm">{error}</p>
           <button
             onClick={refetch}
-            className="mt-3 px-3 py-1 text-xs border border-[#333] hover:bg-[#1a1a1a] text-[var(--text-primary)]"
+            className="mt-3 px-3 py-1 text-xs border border-border-subtle hover:bg-surface-raised text-[var(--text-primary)]"
           >
             Retry
           </button>
@@ -506,7 +506,7 @@ export default function GeographyPage() {
       </div>
 
       {/* Columns */}
-      <div className="flex-1 flex gap-0 min-h-0 panel-raised border border-[#222222]">
+      <div className="flex-1 flex gap-0 min-h-0 panel-raised border border-border-default">
         <TierColumn<Area>
           title="AREAS"
           count={currentAreas.length}
@@ -580,7 +580,7 @@ export default function GeographyPage() {
       </div>
 
       {/* Stats bar */}
-      <div className="panel-sunken px-4 py-2 text-[10px] text-[var(--text-muted)] flex gap-6 border border-[#222]">
+      <div className="panel-sunken px-4 py-2 text-[10px] text-[var(--text-muted)] flex gap-6 border border-border-default">
         <span>
           <span className="text-[#d4a017] font-bold">{tree?.areas.length || 0}</span> AREAS
         </span>
@@ -618,17 +618,17 @@ interface TierColumnProps<T extends { id: number }> {
 function TierColumn<T extends { id: number }>(props: TierColumnProps<T>) {
   return (
     <div
-      className="border-r border-[#222222] flex flex-col min-h-0 bg-[var(--surface-raised)]"
+      className="border-r border-border-default flex flex-col min-h-0 bg-[var(--surface-raised)]"
       style={{ width: props.width, minWidth: props.width }}
     >
-      <div className="px-3 py-2 border-b border-[#222222] bg-[var(--surface-sunken)] flex items-center justify-between">
+      <div className="px-3 py-2 border-b border-border-default bg-[var(--surface-sunken)] flex items-center justify-between">
         <span className="text-[10px] font-bold tracking-wider text-[#d4a017] truncate">
           {props.title}
         </span>
         <button
           onClick={props.onAdd}
           disabled={props.disabled}
-          className="p-1 hover:bg-[#1a1a1a] disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-1 hover:bg-surface-raised disabled:opacity-30 disabled:cursor-not-allowed"
           title={`Add new ${props.title.split(' ')[0].toLowerCase()}`}
         >
           <Plus size={12} className="text-[var(--text-muted)]" />
@@ -654,7 +654,7 @@ function TierColumn<T extends { id: number }>(props: TierColumnProps<T>) {
                 className={`w-full text-left px-3 py-2 border-l-2 text-[11px] ${
                   selected
                     ? 'border-[#d4a017] bg-[var(--surface-hover)]'
-                    : 'border-transparent hover:bg-[#1a1a1a]'
+                    : 'border-transparent hover:bg-surface-raised'
                 }`}
               >
                 <div className="font-semibold text-[var(--text-primary)] truncate">
@@ -888,7 +888,7 @@ function DetailPane({
         ) : (
           <button
             onClick={onStartEdit}
-            className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-[#333] hover:border-[#d4a017] hover:bg-[#d4a017]/10 text-[var(--text-muted)] hover:text-[#d4a017]"
+            className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-border-subtle hover:border-[#d4a017] hover:bg-[#d4a017]/10 text-[var(--text-muted)] hover:text-[#d4a017]"
           >
             <Edit2 size={11} />
             Edit
@@ -896,7 +896,7 @@ function DetailPane({
         )}
         <button
           onClick={isEditing ? onCancelEdit : onDelete}
-          className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-[#333] hover:border-red-400 hover:bg-red-900/20 text-[var(--text-muted)] hover:text-red-300"
+          className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-border-subtle hover:border-red-400 hover:bg-red-900/20 text-[var(--text-muted)] hover:text-red-300"
         >
           <Trash2 size={11} />
           {isEditing ? 'Cancel' : 'Delete'}

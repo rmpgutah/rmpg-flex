@@ -48,7 +48,7 @@ interface Props {
 }
 
 const SUB_TABS: { value: SubTab; label: string; icon: React.ComponentType<{ className?: string }>; color: string }[] = [
-  { value: 'loan',      label: 'Loan',        icon: CreditCard, color: 'text-gray-400' },
+  { value: 'loan',      label: 'Loan',        icon: CreditCard, color: 'text-rmpg-400' },
   { value: 'insurance', label: 'Insurance',   icon: Shield,     color: 'text-green-400' },
   { value: 'accessory', label: 'Accessories', icon: Wrench,     color: 'text-amber-400' },
   { value: 'utility',   label: 'Utilities',   icon: Zap,        color: 'text-purple-400' },
@@ -76,13 +76,13 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
   const colors: Record<string, string> = {
     active:     'bg-green-900/30 text-green-400 border-green-700/40',
     paid_off:   'bg-rmpg-800 text-rmpg-300 border-rmpg-700',
-    refinanced: 'bg-gray-900/30 text-gray-400 border-gray-700/40',
+    refinanced: 'bg-surface-sunken/30 text-rmpg-400 border-border-default/40',
     defaulted:  'bg-red-900/30 text-red-400 border-red-700/40',
     expired:    'bg-amber-900/30 text-amber-400 border-amber-700/40',
     cancelled:  'bg-rmpg-800 text-rmpg-500 border-rmpg-700',
     installed:  'bg-green-900/30 text-green-400 border-green-700/40',
     removed:    'bg-rmpg-800 text-rmpg-500 border-rmpg-700',
-    replaced:   'bg-gray-900/30 text-gray-400 border-gray-700/40',
+    replaced:   'bg-surface-sunken/30 text-rmpg-400 border-border-default/40',
     damaged:    'bg-red-900/30 text-red-400 border-red-700/40',
     inactive:   'bg-rmpg-800 text-rmpg-500 border-rmpg-700',
   };
@@ -126,7 +126,7 @@ export default function FleetCostsTab({
               {alerts.map((a, i) => (
                 <div key={i} className="flex items-center gap-2 text-[10px] text-amber-300 font-mono">
                   <span className="w-32 text-amber-400">{a.kind}</span>
-                  <span className="flex-1 truncate">{a.label}</span>
+                  <span className="min-w-0 flex-1 truncate">{a.label}</span>
                   <span className="text-rmpg-400">{a.date}</span>
                   <span className="text-amber-500 w-16 text-right">{a.days}d</span>
                 </div>
@@ -244,7 +244,7 @@ function CostBreakdown({ summary }: { summary: FleetCostSummary }) {
   const rows: { label: string; value: number; color: string }[] = [
     { label: 'Fuel',        value: toNum(cat.fuel),        color: 'bg-rmpg-600' },
     { label: 'Maintenance', value: toNum(cat.maintenance), color: 'bg-amber-600' },
-    { label: 'Loan',        value: toNum(cat.loans),       color: 'bg-gray-600' },
+    { label: 'Loan',        value: toNum(cat.loans),       color: 'bg-rmpg-600' },
     { label: 'Insurance',   value: toNum(cat.insurance),   color: 'bg-green-600' },
     { label: 'Accessories', value: toNum(cat.accessories), color: 'bg-purple-600' },
     { label: 'Utilities',   value: toNum(cat.utilities),   color: 'bg-pink-600' },
@@ -455,14 +455,14 @@ function LoanList({ records, onAdd, onEdit, onDelete }: {
       <div className="space-y-1.5">
         {records.map((l) => (
           <div key={l.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
-            <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-gray-900/20 border border-gray-700/40">
-              <CreditCard className="w-4 h-4 text-gray-400" />
+            <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-surface-sunken/20 border border-border-default/40">
+              <CreditCard className="w-4 h-4 text-rmpg-400" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] text-rmpg-200 font-bold">{l.lender || '(no lender)'}</span>
                 <StatusBadge status={l.status} />
-                <span className="text-[10px] text-gray-400 font-mono">{fmtCurrency(l.monthly_payment)}/mo</span>
+                <span className="text-[10px] text-rmpg-400 font-mono">{fmtCurrency(l.monthly_payment)}/mo</span>
                 {fmtFixed(l.interest_rate, 2, '') !== '' && (
                   <span className="text-[9px] font-mono text-rmpg-500">{fmtFixed(l.interest_rate, 2)}% APR</span>
                 )}

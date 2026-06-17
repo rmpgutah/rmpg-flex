@@ -77,7 +77,7 @@ export default function AffairsPage() {
     { key: 'created_at', label: 'Filed' },
     { key: 'actions', label: '', width: '100px', render: (row: Complaint) => (
       <div className="flex gap-2">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-white"><Pencil size={12} /></button>
+        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100"><Pencil size={12} /></button>
         <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }} className="text-red-500 hover:text-red-300"><Trash2 size={12} /></button>
       </div>
     )},

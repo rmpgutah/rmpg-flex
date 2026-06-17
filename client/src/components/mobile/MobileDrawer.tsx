@@ -321,7 +321,7 @@ export default function MobileDrawer({
 
           {/* Name & Info */}
           <div className="flex-1 min-w-0">
-            <div className="text-base font-bold text-white truncate">
+            <div className="text-base font-bold text-rmpg-100 truncate">
               {user?.first_name} {user?.last_name}
             </div>
             <div className="flex items-center gap-2 mt-1">
@@ -413,7 +413,7 @@ export default function MobileDrawer({
         {/* ── Status Footer ── */}
         <div
           className="border-t px-4 py-4"
-          style={{ borderColor: 'var(--border-default)', background: '#050505' }}
+          style={{ borderColor: 'var(--border-default)', background: 'var(--surface-overlay)' }}
         >
           {/* Status indicators row */}
           <div className="flex items-center gap-4 mb-4">

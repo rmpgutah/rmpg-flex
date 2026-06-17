@@ -412,7 +412,7 @@ export default function LoginPage() {
   // ── Info row item ──────────────────────────────
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
     <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-      <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>{label}</span>
+      <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: 'var(--rmpg-500)' }}>{label}</span>
       <span className="text-[9px] font-mono" style={{ color: '#888888' }}>{value}</span>
     </div>
   );
@@ -586,9 +586,9 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-0 top-1/2 -translate-y-1/2 transition-colors flex items-center justify-center w-11 h-11"
-                      style={{ color: '#666666' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                      style={{ color: 'var(--rmpg-500)' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                       tabIndex={0}
                     >
@@ -599,7 +599,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || !loginUsername.trim() || !password}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -615,9 +615,9 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => { setForgotPwActive(true); setForgotPwStep('username'); setForgotUsername(loginUsername); setForgotError(''); }}
                   className="w-full text-center text-[10px] uppercase tracking-wider font-bold mt-2 transition-colors"
-                  style={{ color: '#666666' }}
+                  style={{ color: 'var(--rmpg-500)' }}
                   onMouseEnter={(e) => { e.currentTarget.style.color = '#d4a017'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                   aria-label="Forgot password"
                 >
                   Forgot Password?
@@ -642,7 +642,7 @@ export default function LoginPage() {
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
                     Enter Authenticator Code
                   </p>
-                  <p className="text-[9px]" style={{ color: '#666666' }}>
+                  <p className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
                     Open your authenticator app and enter the 6-digit code
                   </p>
                 </div>
@@ -657,7 +657,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || totpCode.replace(/\s/g, '').length < 6}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -694,9 +694,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={handleBackWebAuthn}
                     className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5"
-                    style={{ color: '#666666' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                    style={{ color: 'var(--rmpg-500)' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                     aria-label="Go back to credentials"
                   >
                     <ArrowLeft className="w-3 h-3" aria-hidden="true" />
@@ -708,9 +708,9 @@ export default function LoginPage() {
                       onClick={() => { clearError(); handleSecurityKeyAuth(); }}
                       disabled={loginBusy}
                       className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5"
-                      style={{ color: '#666666' }}
+                      style={{ color: 'var(--rmpg-500)' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#d97706'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                       aria-label="Verify with YubiKey security key"
                     >
                       <Usb className="w-3 h-3" aria-hidden="true" />
@@ -720,9 +720,9 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => { setTwoFactorMode('backup'); setUseBackupCode(true); clearError(); }}
                       className="text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5"
-                      style={{ color: '#666666' }}
+                      style={{ color: 'var(--rmpg-500)' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                       aria-label="Use a backup recovery code"
                     >
                       Backup Code
@@ -737,7 +737,7 @@ export default function LoginPage() {
               <div className="space-y-4">
                 <div className="text-center mb-2">
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>Security Key</p>
-                  <p className="text-[9px]" style={{ color: '#666666' }}>
+                  <p className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
                     {webauthnError ? 'Authentication failed — try again' : 'Touch your security key when it flashes'}
                   </p>
                 </div>
@@ -746,7 +746,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleSecurityKeyAuth}
                   disabled={loginBusy}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                   aria-label={webauthnError ? 'Retry security key authentication' : 'Activate security key'}
                 >
@@ -768,9 +768,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={handleBackWebAuthn}
                     className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
-                    style={{ color: '#666666' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                    style={{ color: 'var(--rmpg-500)' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                   >
                     <ArrowLeft className="w-3 h-3" />
                     Back
@@ -784,7 +784,7 @@ export default function LoginPage() {
               <form onSubmit={handleBackupSubmit} className="space-y-3">
                 <div className="text-center mb-2">
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>Recovery Code</p>
-                  <p className="text-[9px]" style={{ color: '#666666' }}>Enter one of your single-use backup codes</p>
+                  <p className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>Enter one of your single-use backup codes</p>
                 </div>
 
                 <input id="ff-loginpage-1"
@@ -803,7 +803,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || !backupCode.trim()}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loginBusy ? (
                     <>
@@ -820,9 +820,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={handleBackWebAuthn}
                     className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
-                    style={{ color: '#666666' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                    style={{ color: 'var(--rmpg-500)' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                   >
                     <ArrowLeft className="w-3 h-3" />
                     Back
@@ -831,9 +831,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => { setTwoFactorMode('totp'); clearError(); }}
                     className="text-[10px] uppercase tracking-wide font-bold transition-colors"
-                    style={{ color: '#666666' }}
+                    style={{ color: 'var(--rmpg-500)' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                   >
                     Use Authenticator
                   </button>
@@ -849,7 +849,7 @@ export default function LoginPage() {
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
                     Two-Factor Authentication Required
                   </p>
-                  <p className="text-[9px] leading-relaxed" style={{ color: '#666666' }}>
+                  <p className="text-[9px] leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
                     Your account requires two-factor authentication. You'll need an authenticator app like
                     <strong> Google Authenticator</strong> or <strong>Authy</strong>.
                   </p>
@@ -858,7 +858,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleStartSetup}
                   disabled={loginBusy}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -873,7 +873,7 @@ export default function LoginPage() {
                 <button type="button"
                   onClick={handleBack}
                   className="w-full flex items-center justify-center gap-1 py-1.5 text-[9px] uppercase tracking-wider"
-                  style={{ color: '#666666', background: 'transparent', border: 'none' }}
+                  style={{ color: 'var(--rmpg-500)', background: 'transparent', border: 'none' }}
                 >
                   <ArrowLeft className="w-3 h-3" /> Set Up Later
                 </button>
@@ -885,7 +885,7 @@ export default function LoginPage() {
               <form onSubmit={handleConfirmSetup} className="space-y-4">
                 <div className="text-center">
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>Scan QR Code</p>
-                  <p className="text-[9px]" style={{ color: '#666666' }}>
+                  <p className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
                     Scan with your authenticator app, then enter the 6-digit code
                   </p>
                 </div>
@@ -910,7 +910,7 @@ export default function LoginPage() {
                   {showManualKey && manualKey && (
                     <div
                       className="mt-2 p-2 font-mono text-xs tracking-wider break-all select-all cursor-text"
-                      style={{ background: '#050505', border: '1px solid #2b2b2b', color: '#e0e0e0' }}
+                      style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b', color: 'var(--text-secondary)' }}
                     >
                       {manualKey}
                     </div>
@@ -940,7 +940,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || setupCode.length !== 6}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -979,7 +979,7 @@ export default function LoginPage() {
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
                     Password Change Required
                   </p>
-                  <p className="text-[9px]" style={{ color: '#666666' }}>
+                  <p className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
                     Your password has expired or must be changed before continuing.
                   </p>
                 </div>
@@ -1026,7 +1026,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || !newPassword || newPassword !== confirmPassword}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -1060,7 +1060,7 @@ export default function LoginPage() {
                       <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
                         Forgot Password
                       </p>
-                      <p className="text-[9px]" style={{ color: '#666666' }}>
+                      <p className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
                         Enter your username to retrieve your security questions.
                       </p>
                     </div>
@@ -1083,7 +1083,7 @@ export default function LoginPage() {
                     <button
                       type="submit"
                       disabled={forgotBusy || !forgotUsername.trim()}
-                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {forgotBusy ? (
                         <>
@@ -1098,7 +1098,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={handleForgotClose}
                       className="w-full text-center text-[9px] uppercase tracking-wider mt-1"
-                      style={{ color: '#666666' }}
+                      style={{ color: 'var(--rmpg-500)' }}
                     >
                       Back to Login
                     </button>
@@ -1113,7 +1113,7 @@ export default function LoginPage() {
                       <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
                         Answer Security Questions
                       </p>
-                      <p className="text-[9px]" style={{ color: '#666666' }}>
+                      <p className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
                         Answers are case-insensitive.
                       </p>
                     </div>
@@ -1142,7 +1142,7 @@ export default function LoginPage() {
                     <button
                       type="submit"
                       disabled={forgotBusy || forgotAnswers.some(a => !a.trim())}
-                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {forgotBusy ? (
                         <>
@@ -1157,7 +1157,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => { setForgotPwStep('username'); setForgotError(''); }}
                       className="w-full flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider mt-1"
-                      style={{ color: '#666666' }}
+                      style={{ color: 'var(--rmpg-500)' }}
                     >
                       <ArrowLeft className="w-3 h-3" /> Back
                     </button>
@@ -1172,7 +1172,7 @@ export default function LoginPage() {
                       <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
                         Reset Password
                       </p>
-                      <p className="text-[9px]" style={{ color: '#666666' }}>
+                      <p className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
                         Choose a new password for your account.
                       </p>
                     </div>
@@ -1213,7 +1213,7 @@ export default function LoginPage() {
                     <button
                       type="submit"
                       disabled={forgotBusy || !forgotNewPassword || forgotNewPassword !== forgotConfirmPassword}
-                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {forgotBusy ? (
                         <>
@@ -1228,7 +1228,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => { setForgotPwStep('questions'); setForgotError(''); }}
                       className="w-full flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider mt-1"
-                      style={{ color: '#666666' }}
+                      style={{ color: 'var(--rmpg-500)' }}
                     >
                       <ArrowLeft className="w-3 h-3" /> Back
                     </button>
@@ -1242,13 +1242,13 @@ export default function LoginPage() {
                     <p className="text-[10px] uppercase tracking-wide font-bold" style={{ color: '#888888' }}>
                       Password Reset Complete
                     </p>
-                    <p className="text-[9px]" style={{ color: '#666666' }}>
+                    <p className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
                       Your password has been reset successfully. You can now log in with your new password.
                     </p>
                     <button
                       type="button"
                       onClick={handleForgotClose}
-                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2"
+                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2"
                     >
                       <ArrowRight className="w-3.5 h-3.5" />
                       Return to Login
@@ -1268,7 +1268,7 @@ export default function LoginPage() {
               <span>{status.text}</span>
             </div>
             <div className="status-bar-section" aria-label="Connection encrypted">
-              <span style={{ color: '#666666' }}>ENCRYPTED</span>
+              <span style={{ color: 'var(--rmpg-500)' }}>ENCRYPTED</span>
             </div>
             <div className="status-bar-section border-r-0">
               <span>v{APP_VERSION}</span>
@@ -1293,7 +1293,7 @@ export default function LoginPage() {
                 <InfoRow label="Operator" value="Rocky Mountain Protective Group" />
                 <InfoRow label="Jurisdiction" value="Salt Lake City, UT" />
                 <div className="flex items-center justify-between py-[3px]">
-                  <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>Server</span>
+                  <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: 'var(--rmpg-500)' }}>Server</span>
                   <div className="flex items-center gap-1">
                     <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 3px #22c55e' }} />
                     <span className="text-[9px] font-mono" style={{ color: '#4ade80' }}>Online</span>
@@ -1315,7 +1315,7 @@ export default function LoginPage() {
                 <InfoRow label="Display" value={device.screen} />
                 <InfoRow label="Viewport" value={device.viewport} />
                 <div className="flex items-center justify-between py-[3px]">
-                  <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>Connection</span>
+                  <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: 'var(--rmpg-500)' }}>Connection</span>
                   <div className="flex items-center gap-1">
                     <Wifi className="w-2.5 h-2.5" style={{ color: device.online ? '#4ade80' : '#ef4444' }} />
                     <span className="text-[9px] font-mono" style={{ color: device.online ? '#4ade80' : '#ef4444' }}>
@@ -1341,7 +1341,7 @@ export default function LoginPage() {
             <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: 'var(--text-muted)' }}>
               Internal Use Only
             </p>
-            <p className="text-[7px] mt-0.5 uppercase tracking-wider" style={{ color: '#666666' }}>
+            <p className="text-[7px] mt-0.5 uppercase tracking-wider" style={{ color: 'var(--rmpg-500)' }}>
               Company Confidential — Do Not Distribute
             </p>
           </div>

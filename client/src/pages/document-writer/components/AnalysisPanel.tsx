@@ -37,7 +37,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
   const TabBtn = ({ id, icon: Icon, label }: { id: Tab; icon: typeof Gauge; label: string }) => (
     <button type="button" onClick={() => setTab(id)} title={label}
       className={`flex-1 flex items-center justify-center gap-1 py-1 text-[9px] rounded-[2px] ${
-        tab === id ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-[#1a1a1a]'
+        tab === id ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-surface-raised'
       }`}>
       <Icon className="w-3 h-3" />{label}
     </button>
@@ -54,7 +54,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
     k === 'passive' ? 'text-amber-400' : k === 'long' ? 'text-orange-400' : 'text-sky-400';
 
   return (
-    <div className="w-56 sm:w-72 shrink-0 bg-[#0d0d0d] border border-[#222] rounded-[2px] p-2 overflow-auto flex flex-col">
+    <div className="w-56 sm:w-72 shrink-0 bg-surface-base border border-border-default rounded-[2px] p-2 overflow-auto flex flex-col">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wide flex items-center gap-1">
           <Gauge className="w-3 h-3" /> Analysis
@@ -71,7 +71,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
 
       {tab === 'readability' && (
         <div>
-          <div className="bg-[#141414] border border-[#222] rounded-[2px] p-2 mb-2 text-center">
+          <div className="bg-surface-base border border-border-default rounded-[2px] p-2 mb-2 text-center">
             <div className="text-2xl font-bold text-[#d4a017] tabular-nums">{readability.fleschReadingEase}</div>
             <div className="text-[9px] text-rmpg-400 uppercase tracking-wide">Flesch Reading Ease</div>
             <div className="text-[10px] text-rmpg-200 mt-0.5">{readability.ease}</div>
@@ -81,7 +81,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
           <Stat label="Sentences" value={readability.sentences} />
           <Stat label="Syllables" value={readability.syllables} />
           <Stat label="Avg words / sentence" value={readability.sentences ? Math.round((readability.words / readability.sentences) * 10) / 10 : 0} />
-          <div className="mt-2 pt-1 border-t border-[#222] flex items-center gap-1 text-[10px] text-rmpg-400">
+          <div className="mt-2 pt-1 border-t border-border-default flex items-center gap-1 text-[10px] text-rmpg-400">
             <FileStack className="w-3 h-3" /> <span className="text-rmpg-100 tabular-nums">{pageEst.pages}</span> printed page{pageEst.pages === 1 ? '' : 's'} (est.)
           </div>
           <p className="text-[9px] text-rmpg-600 mt-2 leading-snug">Aim for 60–70 (plain English). Reports above grade 12 may be hard to read in court.</p>
@@ -95,7 +95,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
           </div>
           <div className="space-y-1.5">
             {issues.map((iss, i) => (
-              <div key={i} className="border border-[#1a1a1a] rounded-[2px] px-1.5 py-1">
+              <div key={i} className="border border-border-default rounded-[2px] px-1.5 py-1">
                 <div className={`text-[9px] uppercase font-semibold ${issueColor(iss.kind)}`}>{iss.detail}</div>
                 <div className="text-[10px] text-rmpg-300 mt-0.5 line-clamp-3 leading-snug">{iss.sentence}</div>
               </div>
@@ -113,7 +113,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
             {words.map((w) => (
               <div key={w.word} className="flex items-center gap-1.5">
                 <span className="text-[10px] text-rmpg-300 w-24 truncate">{w.word}</span>
-                <span className="flex-1 h-1.5 bg-[#1a1a1a] rounded-full overflow-hidden">
+                <span className="flex-1 h-1.5 bg-surface-raised rounded-full overflow-hidden">
                   <span className="block h-full bg-[#d4a017]/70" style={{ width: `${Math.min(100, (w.count / (words[0]?.count || 1)) * 100)}%` }} />
                 </span>
                 <span className="text-[10px] text-rmpg-500 tabular-nums w-5 text-right">{w.count}</span>
@@ -122,7 +122,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
           </div>
           {phrases.length > 0 && (
             <>
-              <div className="text-[9px] text-rmpg-500 uppercase tracking-wide pb-1 pt-1 border-t border-[#222]">Top phrases</div>
+              <div className="text-[9px] text-rmpg-500 uppercase tracking-wide pb-1 pt-1 border-t border-border-default">Top phrases</div>
               <div className="space-y-0.5">
                 {phrases.map((p) => (
                   <div key={p.word} className="flex items-center justify-between">
@@ -142,7 +142,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
             value={prevText}
             onChange={(e) => setPrevText(e.target.value)}
             placeholder="Paste a previous version here to compare against the current document…"
-            className="w-full h-20 bg-[#141414] border border-[#222] text-rmpg-200 text-[10px] rounded-[2px] p-1.5 focus:outline-none focus:border-[#d4a017]/50 resize-none mb-2"
+            className="w-full h-20 bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] p-1.5 focus:outline-none focus:border-[#d4a017]/50 resize-none mb-2"
           />
           {prevText && (
             <>
@@ -151,7 +151,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
                 <span className="text-red-400">−{diffSummary.removed} removed</span>
                 <span className="text-rmpg-500">{diffSummary.unchanged} same</span>
               </div>
-              <div className="text-[10px] leading-relaxed bg-[#141414] border border-[#222] rounded-[2px] p-1.5 max-h-64 overflow-auto whitespace-pre-wrap">
+              <div className="text-[10px] leading-relaxed bg-surface-base border border-border-default rounded-[2px] p-1.5 max-h-64 overflow-auto whitespace-pre-wrap">
                 {diffOps.map((op, i) => (
                   <span key={i}
                     className={op.type === 'add' ? 'bg-green-900/40 text-green-300' : op.type === 'del' ? 'bg-red-900/40 text-red-300 line-through' : 'text-rmpg-300'}>

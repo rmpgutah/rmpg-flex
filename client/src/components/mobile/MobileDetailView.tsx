@@ -149,7 +149,7 @@ export default function MobileDetailView({
       <div
         className="absolute inset-0 flex flex-col"
         style={{
-          background: '#050505',
+          background: 'var(--surface-overlay)',
           transform: `translateX(${translateX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.32,0.72,0,1)',
           willChange: 'transform',
@@ -221,7 +221,7 @@ export default function MobileDetailView({
                   <div
                     className="absolute right-0 top-full mt-1 z-50 py-1 min-w-[180px]"
                     style={{
-                      background: '#141414',
+                      background: 'var(--surface-base)',
                       border: '1px solid #2a2a2a',
                       boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                     }}

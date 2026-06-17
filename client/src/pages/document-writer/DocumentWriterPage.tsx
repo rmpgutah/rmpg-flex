@@ -830,7 +830,7 @@ export default function DocumentWriterPage() {
   const pageW = landscape ? dim.height : dim.width;
   const pageH = landscape ? dim.width : dim.height;
   const pageBg = theme === 'dark' ? '#1e1e1e' : docSettings.background;
-  const textColor = theme === 'dark' ? '#e8e8e8' : '#111111';
+  const textColor = theme === 'dark' ? '#e8e8e8' : 'var(--surface-base)';
   const m = docSettings.page.margins;
   const reading = viewMode === 'reading';
   const fullscreen = viewMode === 'fullscreen';
@@ -841,7 +841,7 @@ export default function DocumentWriterPage() {
   ].filter(Boolean).join(' ');
 
   return (
-    <div className={`p-3 flex flex-col h-[calc(100vh-140px)] ${fullscreen || focusMode ? 'fixed inset-0 z-[60] bg-[#050505] h-screen' : ''}`}>
+    <div className={`p-3 flex flex-col h-[calc(100vh-140px)] ${fullscreen || focusMode ? 'fixed inset-0 z-[60] bg-surface-overlay h-screen' : ''}`}>
       {!reading && !focusMode && <PanelTitleBar title="DOCUMENT WRITER" icon={FileText} />}
 
       <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
@@ -851,20 +851,20 @@ export default function DocumentWriterPage() {
       {recovery && (
         <div className="bg-amber-900/20 border border-amber-700/40 text-amber-200 text-[11px] px-3 py-1.5 rounded-[2px] mt-2 flex items-center gap-2">
           <span>Recovered an unsaved draft ("{recovery.title}").</span>
-          <button type="button" onClick={() => { editor?.commands.setContent(recovery.html); setTitle(recovery.title); setRecovery(null); }} className="ml-auto text-amber-300 hover:text-white text-[10px] underline">Restore</button>
-          <button type="button" onClick={() => { clearDraft(); setRecovery(null); }} className="text-amber-300/70 hover:text-white text-[10px]">Discard</button>
+          <button type="button" onClick={() => { editor?.commands.setContent(recovery.html); setTitle(recovery.title); setRecovery(null); }} className="ml-auto text-amber-300 hover:text-rmpg-100 text-[10px] underline">Restore</button>
+          <button type="button" onClick={() => { clearDraft(); setRecovery(null); }} className="text-amber-300/70 hover:text-rmpg-100 text-[10px]">Discard</button>
         </div>
       )}
       {savedNotice && (
         <div className="bg-green-900/20 border border-green-700/40 text-green-200 text-[11px] px-3 py-1.5 rounded-[2px] mt-2 flex items-center gap-2">
           <span>{savedNotice}</span>
-          <button type="button" onClick={() => navigate('/documents')} className="ml-auto text-green-300 hover:text-white text-[10px]">Open Documents →</button>
+          <button type="button" onClick={() => navigate('/documents')} className="ml-auto text-green-300 hover:text-rmpg-100 text-[10px]">Open Documents →</button>
         </div>
       )}
       {errorNotice && (
         <div className="bg-red-900/20 border border-red-700/40 text-red-200 text-[11px] px-3 py-1.5 rounded-[2px] mt-2 flex items-center gap-2">
           <span>{errorNotice}</span>
-          <button type="button" onClick={() => setErrorNotice(null)} className="ml-auto text-red-300 hover:text-white text-[10px]">Dismiss</button>
+          <button type="button" onClick={() => setErrorNotice(null)} className="ml-auto text-red-300 hover:text-rmpg-100 text-[10px]">Dismiss</button>
         </div>
       )}
 
@@ -936,7 +936,7 @@ export default function DocumentWriterPage() {
         <div className="mt-2 flex justify-center"><div className="writer-ruler" style={{ width: pageW }} /></div>
       )}
 
-      <div className="flex-1 mt-3 overflow-auto bg-[#050505] border border-[#1a1a1a] rounded-[2px] flex gap-2 p-2 relative">
+      <div className="flex-1 mt-3 overflow-auto bg-surface-overlay border border-border-default rounded-[2px] flex gap-2 p-2 relative">
         {showOutline && !focusMode && editor && <OutlinePane editor={editor} onClose={() => setShowOutline(false)} />}
 
         <div className="writer-scroll flex-1 overflow-auto flex justify-center relative">
@@ -1018,14 +1018,14 @@ export default function DocumentWriterPage() {
             type="button"
             title="Open Tools, Snippets, Statutes, Persons, CFS, and more (140+ snippets, 25+ insert tools)"
             onClick={() => setShowFeatures(true)}
-            className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium bg-[#0d0d0d] border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/10"
+            className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium bg-surface-base border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/10"
           >
             <Sparkles className="w-3 h-3" /> Tools
           </button>
         )}
 
         {/* Zoom controls + reading-mode exit */}
-        <div className="absolute bottom-2 right-3 flex items-center gap-1 bg-[#0d0d0d]/90 border border-[#222] rounded-[2px] px-1.5 py-1">
+        <div className="absolute bottom-2 right-3 flex items-center gap-1 bg-surface-base/90 border border-border-default rounded-[2px] px-1.5 py-1">
           <button type="button" title="Zoom out (Ctrl+-)" onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))} className="text-rmpg-400 hover:text-rmpg-100"><ZoomOut className="w-3.5 h-3.5" /></button>
           <span className="text-[10px] text-rmpg-400 w-9 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
           <button type="button" title="Zoom in (Ctrl+=)" onClick={() => setZoom((z) => Math.min(2, z + 0.1))} className="text-rmpg-400 hover:text-rmpg-100"><ZoomIn className="w-3.5 h-3.5" /></button>

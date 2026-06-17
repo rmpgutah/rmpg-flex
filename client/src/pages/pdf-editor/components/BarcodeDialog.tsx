@@ -102,13 +102,13 @@ export default function BarcodeDialog({ open, onClose, onConfirm }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#141414] border border-[#222222] rounded-[2px] p-4 max-w-[640px] w-full" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] p-4 max-w-[640px] w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-white inline-flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
             {format === 'qrcode' ? <QrCode className="w-4 h-4 text-[#d4a017]" /> : <BarcodeIcon className="w-4 h-4 text-[#d4a017]" />}
             Generate barcode / QR
           </h3>
-          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-white" aria-label="Close"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -116,7 +116,7 @@ export default function BarcodeDialog({ open, onClose, onConfirm }: Props) {
             <div>
               <label className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1">Format</label>
               <select id="ff-barcodedialog-0" value={format} onChange={(e) => setFormat(e.target.value as BarcodeFormat)}
-                className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]">
+                className="w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]">
                 {FORMATS.map((f) => (
                   <option key={f.value} value={f.value}>{f.label} — {f.hint}</option>
                 ))}
@@ -137,14 +137,14 @@ export default function BarcodeDialog({ open, onClose, onConfirm }: Props) {
                   format === 'ITF14' ? '00012345678905' :
                   'EVIDENCE-2026-00123'
                 }
-                className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]"
+                className="w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]"
               />
             </div>
             {format === 'qrcode' && (
               <div>
                 <label className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1">Error correction</label>
                 <select id="ff-barcodedialog-2" value={errorCorrection} onChange={(e) => setErrorCorrection(e.target.value as typeof errorCorrection)}
-                  className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]">
+                  className="w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]">
                   <option value="L">Low (~7%) — densest</option>
                   <option value="M">Medium (~15%) — recommended</option>
                   <option value="Q">Quartile (~25%)</option>
@@ -158,7 +158,7 @@ export default function BarcodeDialog({ open, onClose, onConfirm }: Props) {
                 Show readable text below
               </label>
             )}
-            <div className="text-[10px] text-rmpg-500 pt-2 border-t border-[#222]">
+            <div className="text-[10px] text-rmpg-500 pt-2 border-t border-border-default">
               The generated code is placed as a high-resolution PNG image annotation. It can be moved, resized, and saved with the rest of your edits.
             </div>
           </div>
@@ -169,7 +169,7 @@ export default function BarcodeDialog({ open, onClose, onConfirm }: Props) {
             ) : preview ? (
               <img src={preview} alt="Preview" className="max-h-[200px] max-w-full" />
             ) : (
-              <div className="text-gray-400 text-[10px] inline-flex items-center gap-1">
+              <div className="text-rmpg-400 text-[10px] inline-flex items-center gap-1">
                 <RefreshCw className="w-3 h-3" /> Enter a value to generate
               </div>
             )}

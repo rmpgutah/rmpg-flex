@@ -74,7 +74,7 @@ const RECORD_TYPE_CLASSES: Record<string, string> = {
   booking: 'bg-orange-900/40 text-orange-300 border-orange-700/50',
   probation: 'bg-purple-900/40 text-purple-300 border-purple-700/50',
   parole: 'bg-purple-900/50 text-purple-400 border-purple-600/50',
-  court_order: 'bg-gray-900/40 text-gray-300 border-gray-700/50',
+  court_order: 'bg-surface-sunken/40 text-rmpg-300 border-border-default/50',
   restraining_order: 'bg-pink-900/40 text-pink-300 border-pink-700/50',
   sex_offense: 'bg-red-900/70 text-red-300 border-red-500/70',
   dui: 'bg-amber-900/60 text-amber-400 border-amber-600/50',
@@ -248,7 +248,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 <span className="text-[10px] text-brand-400 uppercase font-bold tracking-wider">
                   {editingId ? 'Edit Record' : 'Add Criminal Record'}
                 </span>
-                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="text-rmpg-400 hover:text-white">
+                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="text-rmpg-400 hover:text-rmpg-100">
                   <X className="w-3 h-3" />
                 </button>
               </div>
@@ -448,7 +448,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                         {toDisplayLabel(rec.offense_level)}
                       </span>
                     )}
-                    <span className="text-white font-semibold text-[11px] flex-1">{rec.offense}</span>
+                    <span className="text-rmpg-100 font-semibold text-[11px] flex-1">{rec.offense}</span>
                     <span className="text-rmpg-400 text-[10px]">{formatDate(rec.offense_date)}</span>
                     <button type="button" onClick={() => handleEdit(rec)} className="p-0.5 text-rmpg-400 hover:text-brand-400" title="Edit">
                       <Pencil className="w-3 h-3" />

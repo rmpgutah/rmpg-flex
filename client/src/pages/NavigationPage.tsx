@@ -337,7 +337,7 @@ function GForceBall({ longG, latG, peak, size = 66 }: {
     <div className="relative shrink-0" style={{ width: size, height: size }} title="Live G-force — longitudinal vs lateral load · gold ring = session peak">
       <svg viewBox={`0 0 ${size} ${size}`} className="absolute inset-0" aria-hidden="true">
         {[0.5, 1.0].map((g) => (
-          <circle key={g} cx={c} cy={c} r={g * R} fill="none" stroke={g === 1 ? '#2e2e2e' : '#1a1a1a'} strokeWidth="1" />
+          <circle key={g} cx={c} cy={c} r={g * R} fill="none" stroke={g === 1 ? '#2e2e2e' : 'var(--surface-raised)'} strokeWidth="1" />
         ))}
         <line x1={c} y1={c - R} x2={c} y2={c + R} stroke="#181818" strokeWidth="1" />
         <line x1={c - R} y1={c} x2={c + R} y2={c} stroke="#181818" strokeWidth="1" />
@@ -410,7 +410,7 @@ function TacticalScope({ heading, contacts, maxRangeMi, size = 134 }: {
       <svg viewBox={`0 0 ${size} ${size}`} className="absolute inset-0" aria-hidden="true">
         <circle cx={cc} cy={cc} r={R} fill="rgba(34,197,94,0.035)" />
         {rings.map((f, i) => (
-          <circle key={i} cx={cc} cy={cc} r={R * f} fill="none" stroke={i === rings.length - 1 ? '#2e2e2e' : '#1c1c1c'} strokeWidth="1" />
+          <circle key={i} cx={cc} cy={cc} r={R * f} fill="none" stroke={i === rings.length - 1 ? '#2e2e2e' : 'var(--surface-raised)'} strokeWidth="1" />
         ))}
         <line x1={cc} y1={cc - R} x2={cc} y2={cc + R} stroke="#161616" strokeWidth="1" />
         <line x1={cc - R} y1={cc} x2={cc + R} y2={cc} stroke="#161616" strokeWidth="1" />
@@ -736,7 +736,7 @@ export default function NavigationPage() {
             for (const ly of (map.getStyle()?.layers || [])) {
               if (ly.type === 'background') map.setPaintProperty(ly.id, 'background-color', '#000000');
               else if (/water/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', '#04070d');
-              else if (/(^|[-_])(land|landcover|landuse)/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', '#050505');
+              else if (/(^|[-_])(land|landcover|landuse)/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', 'var(--surface-overlay)');
             }
           } catch { /* style recolor is cosmetic — never block the map */ }
           markerRef.current = new mapboxgl.Marker({ color: '#d4a017' })
@@ -1943,7 +1943,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setSearchOpen((v) => !v)}
           className="toolbar-btn flex items-center justify-center"
-          style={{ color: searchOpen ? '#d4a017' : '#a0a0a0' }}
+          style={{ color: searchOpen ? '#d4a017' : 'var(--rmpg-400)' }}
           title="Search destination"
           aria-label="Search destination"
         >
@@ -2005,7 +2005,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={toggleFullscreen}
-          className="toolbar-btn flex items-center justify-center text-rmpg-300 hover:text-white"
+          className="toolbar-btn flex items-center justify-center text-rmpg-300 hover:text-rmpg-100"
           title={isFullscreen ? 'Exit full screen' : 'Full screen'}
           aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
         >
@@ -2013,7 +2013,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => navigate('/map')}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase text-rmpg-300 hover:text-white"
+          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase text-rmpg-300 hover:text-rmpg-100"
           title="Back to map"
           aria-label="Back to map"
         >
@@ -2045,7 +2045,7 @@ export default function NavigationPage() {
               className="flex-1 bg-transparent outline-none text-[13px] text-rmpg-100 placeholder:text-rmpg-600"
             />
             {searching && <span className="text-[9px] text-rmpg-500 shrink-0">…</span>}
-            <button onClick={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); }} className="text-rmpg-500 hover:text-white shrink-0" aria-label="Close search">
+            <button onClick={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); }} className="text-rmpg-500 hover:text-rmpg-100 shrink-0" aria-label="Close search">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -2081,7 +2081,7 @@ export default function NavigationPage() {
             </div>
             <div className="flex flex-col gap-1 shrink-0">
               <button onClick={refitRoute} title="Fit route on map" aria-label="Fit route on map"
-                className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-white hover:border-brand-500" style={{ borderRadius: 2 }}>
+                className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-rmpg-100 hover:border-brand-500" style={{ borderRadius: 2 }}>
                 <Navigation2 className="w-3.5 h-3.5" />
               </button>
               <button onClick={clearDestination} title="Clear route" aria-label="Clear route"

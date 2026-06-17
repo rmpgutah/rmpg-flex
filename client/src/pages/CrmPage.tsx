@@ -531,7 +531,7 @@ export default function CrmPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowTaskModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
-              <span className="text-xs font-bold text-white">{editingTask ? 'Edit Task' : 'New Task'}</span>
+              <span className="text-xs font-bold text-rmpg-100">{editingTask ? 'Edit Task' : 'New Task'}</span>
               <IconButton onClick={() => setShowTaskModal(false)} className="text-rmpg-400 hover:text-rmpg-200" aria-label="Close task modal"><X className="w-3.5 h-3.5" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
@@ -601,7 +601,7 @@ export default function CrmPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowActivityModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
-              <span className="text-xs font-bold text-white">Log Activity</span>
+              <span className="text-xs font-bold text-rmpg-100">Log Activity</span>
               <IconButton onClick={() => setShowActivityModal(false)} className="text-rmpg-400 hover:text-rmpg-200" aria-label="Close activity modal"><X className="w-3.5 h-3.5" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
@@ -672,7 +672,7 @@ export default function CrmPage() {
 
   function renderDashboard() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="OVERWATCH DASHBOARD" icon={LayoutDashboard}>
           <RmpgLogo height={16} iconOnly />
           <ExportButton exportUrl="/api/crm/export/csv" exportFilename="crm.csv" />
@@ -689,7 +689,7 @@ export default function CrmPage() {
               <StatCard icon={Building2} label="Active Clients" value={stats.active_clients} sub={`${stats.total_clients} total`} color="text-brand-400" />
               <StatCard icon={DollarSign} label="Outstanding" value={formatCurrency(stats.outstanding_revenue)} sub={`${stats.overdue_invoices} overdue`} color="text-amber-400" />
               <StatCard icon={TrendingUp} label="Invoiced MTD" value={formatCurrency(stats.total_invoiced_mtd)} sub={`${formatCurrency(stats.total_paid_mtd)} paid`} color="text-green-400" />
-              <StatCard icon={CheckSquare} label="Pending Tasks" value={stats.pending_tasks} sub={`${stats.expiring_contracts} contracts expiring`} color="text-gray-400" />
+              <StatCard icon={CheckSquare} label="Pending Tasks" value={stats.pending_tasks} sub={`${stats.expiring_contracts} contracts expiring`} color="text-rmpg-400" />
             </div>
 
             {/* Feature 15: Revenue Forecast */}
@@ -697,12 +697,12 @@ export default function CrmPage() {
               <div className="panel-inset p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <TrendingUp className="w-3.5 h-3.5 text-green-400" />
-                  <span className="text-xs font-bold text-white">Revenue Forecast</span>
+                  <span className="text-xs font-bold text-rmpg-100">Revenue Forecast</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                   <div><div className="text-lg font-bold text-green-400 font-mono">{formatCurrency(revenueForecast.won_revenue)}</div><div className="text-[9px] text-rmpg-400 uppercase">Won</div></div>
                   <div><div className="text-lg font-bold text-brand-300 font-mono">{formatCurrency(revenueForecast.total_expected)}</div><div className="text-[9px] text-rmpg-400 uppercase">Expected</div></div>
-                  <div><div className="text-lg font-bold text-white font-mono">{formatCurrency(revenueForecast.total_pipeline)}</div><div className="text-[9px] text-rmpg-400 uppercase">Total Pipeline</div></div>
+                  <div><div className="text-lg font-bold text-rmpg-100 font-mono">{formatCurrency(revenueForecast.total_pipeline)}</div><div className="text-[9px] text-rmpg-400 uppercase">Total Pipeline</div></div>
                   <div><div className="text-lg font-bold text-amber-400 font-mono">{revenueForecast.active_deals}</div><div className="text-[9px] text-rmpg-400 uppercase">Active Deals</div></div>
                 </div>
               </div>
@@ -713,16 +713,16 @@ export default function CrmPage() {
               <div className="panel-inset p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <Target className="w-3.5 h-3.5 text-brand-400" />
-                  <span className="text-xs font-bold text-white">Sales Pipeline</span>
+                  <span className="text-xs font-bold text-rmpg-100">Sales Pipeline</span>
                 </div>
                 <div className="flex gap-1">
                   {(pipelineSummary.stages || []).map((s: any) => {
-                    const stageColors: Record<string, string> = { new: 'bg-rmpg-600', contacted: 'bg-gray-700', qualified: 'bg-gray-700', proposal: 'bg-amber-700', negotiation: 'bg-orange-700', won: 'bg-green-700', lost: 'bg-red-700' };
+                    const stageColors: Record<string, string> = { new: 'bg-rmpg-600', contacted: 'bg-rmpg-700', qualified: 'bg-rmpg-700', proposal: 'bg-amber-700', negotiation: 'bg-orange-700', won: 'bg-green-700', lost: 'bg-red-700' };
                     return (
                       <div key={s.pipeline_stage} className={`flex-1 ${stageColors[s.pipeline_stage] || 'bg-rmpg-700'} px-2 py-2 text-center hover:brightness-110 transition-all cursor-default`} style={{ borderRadius: '2px' }}>
-                        <div className="text-sm font-bold text-white font-mono tabular-nums">{s.count}</div>
-                        <div className="text-[8px] text-white/70 uppercase font-bold tracking-wider">{s.pipeline_stage}</div>
-                        {s.total_value > 0 && <div className="text-[8px] text-white/50 font-mono">{formatCurrency(s.total_value)}</div>}
+                        <div className="text-sm font-bold text-rmpg-100 font-mono tabular-nums">{s.count}</div>
+                        <div className="text-[8px] text-rmpg-100/70 uppercase font-bold tracking-wider">{s.pipeline_stage}</div>
+                        {s.total_value > 0 && <div className="text-[8px] text-rmpg-100/50 font-mono">{formatCurrency(s.total_value)}</div>}
                       </div>
                     );
                   })}
@@ -730,7 +730,7 @@ export default function CrmPage() {
                 {pipelineSummary.conversions?.length > 0 && (
                   <div className="mt-2 flex items-center gap-1 text-[9px] text-rmpg-400">
                     {pipelineSummary.conversions.map((c: any, i: number) => (
-                      <span key={i}>{c.from} → {c.to}: <span className="text-white font-bold">{c.rate}%</span>{i < pipelineSummary.conversions.length - 1 ? ' | ' : ''}</span>
+                      <span key={i}>{c.from} → {c.to}: <span className="text-rmpg-100 font-bold">{c.rate}%</span>{i < pipelineSummary.conversions.length - 1 ? ' | ' : ''}</span>
                     ))}
                   </div>
                 )}
@@ -744,14 +744,14 @@ export default function CrmPage() {
                 <div className="panel-inset p-3">
                   <div className="flex items-center gap-2 mb-2">
                     <Calendar className="w-3.5 h-3.5 text-amber-400" />
-                    <span className="text-xs font-bold text-white">Follow-up Reminders</span>
+                    <span className="text-xs font-bold text-rmpg-100">Follow-up Reminders</span>
                   </div>
                   {(followUps.overdue?.length || 0) > 0 && (
                     <div className="mb-2">
                       <div className="text-[9px] text-red-400 font-bold uppercase mb-1">Overdue ({followUps.overdue.length})</div>
                       {followUps.overdue.slice(0, 5).map((l: any) => (
                         <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-red-300">
-                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="min-w-0 flex-1 truncate">{l.business_name}</span>
                           <span className="text-rmpg-500">{l.next_follow_up}</span>
                         </div>
                       ))}
@@ -762,7 +762,7 @@ export default function CrmPage() {
                       <div className="text-[9px] text-amber-400 font-bold uppercase mb-1">Today ({followUps.today.length})</div>
                       {followUps.today.slice(0, 5).map((l: any) => (
                         <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-amber-300">
-                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="min-w-0 flex-1 truncate">{l.business_name}</span>
                           <span className="text-rmpg-500">Score: {l.lead_score}</span>
                         </div>
                       ))}
@@ -770,10 +770,10 @@ export default function CrmPage() {
                   )}
                   {(followUps.upcoming?.length || 0) > 0 && (
                     <div>
-                      <div className="text-[9px] text-gray-400 font-bold uppercase mb-1">Upcoming ({followUps.upcoming.length})</div>
+                      <div className="text-[9px] text-rmpg-400 font-bold uppercase mb-1">Upcoming ({followUps.upcoming.length})</div>
                       {followUps.upcoming.slice(0, 3).map((l: any) => (
-                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-gray-300">
-                          <span className="flex-1 truncate">{l.business_name}</span>
+                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-rmpg-300">
+                          <span className="min-w-0 flex-1 truncate">{l.business_name}</span>
                           <span className="text-rmpg-500">{l.next_follow_up}</span>
                         </div>
                       ))}
@@ -789,8 +789,8 @@ export default function CrmPage() {
               {sourceAnalytics && (
                 <div className="panel-inset p-3">
                   <div className="flex items-center gap-2 mb-2">
-                    <BarChart3 className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="text-xs font-bold text-white">Lead Sources ({sourceAnalytics.period_days}d)</span>
+                    <BarChart3 className="w-3.5 h-3.5 text-rmpg-400" />
+                    <span className="text-xs font-bold text-rmpg-100">Lead Sources ({sourceAnalytics.period_days}d)</span>
                   </div>
                   <div className="space-y-1">
                     {(sourceAnalytics.data || []).slice(0, 8).map((s: any) => (
@@ -799,7 +799,7 @@ export default function CrmPage() {
                         <div className="flex-1 bg-rmpg-700 h-2 overflow-hidden" style={{ borderRadius: '2px' }}>
                           <div className="h-full bg-brand-500 transition-all duration-300" style={{ width: `${Math.min(100, (s.total_leads / (sourceAnalytics.data[0]?.total_leads || 1)) * 100)}%`, borderRadius: '2px' }} />
                         </div>
-                        <span className="text-white w-6 text-right">{s.total_leads}</span>
+                        <span className="text-rmpg-100 w-6 text-right">{s.total_leads}</span>
                         <span className="text-green-400 w-10 text-right">{s.conversion_rate}%</span>
                       </div>
                     ))}
@@ -813,12 +813,12 @@ export default function CrmPage() {
               <div className="panel-inset p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="text-xs font-bold text-white">Expiring Contracts (90 days)</span>
+                  <span className="text-xs font-bold text-rmpg-100">Expiring Contracts (90 days)</span>
                 </div>
                 {expiringContracts.length === 0 ? (
                   <p className="text-xs text-rmpg-400">No contracts expiring soon</p>
                 ) : (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
                     {expiringContracts.map((c: any) => (
                       <div key={c.id} className="flex items-center justify-between text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
                         <div>
@@ -838,13 +838,13 @@ export default function CrmPage() {
               {/* Recent Activity */}
               <div className="panel-inset p-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <Activity className="w-3.5 h-3.5 text-gray-400" />
-                  <span className="text-xs font-bold text-white">Recent Activity</span>
+                  <Activity className="w-3.5 h-3.5 text-rmpg-400" />
+                  <span className="text-xs font-bold text-rmpg-100">Recent Activity</span>
                 </div>
                 {recentActivity.length === 0 ? (
                   <p className="text-xs text-rmpg-400">No recent activity</p>
                 ) : (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
                     {recentActivity.slice(0, 10).map((a: any) => (
                       <div key={a.id} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
                         <div className="flex items-center justify-between">
@@ -854,7 +854,7 @@ export default function CrmPage() {
                         <div className="text-rmpg-300 mt-0.5">
                           <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
                             a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
-                            a.activity_type === 'email' ? 'text-gray-400 border-gray-700/50 bg-gray-900/20' :
+                            a.activity_type === 'email' ? 'text-rmpg-400 border-border-default/50 bg-surface-sunken/20' :
                             'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
                           }`}>{toDisplayLabel(a.activity_type)}</span>
                           {a.subject && <span className="ml-1.5">{a.subject}</span>}
@@ -882,7 +882,7 @@ export default function CrmPage() {
               <Plus className="w-3 h-3" /> New
             </button>
           </PanelTitleBar>
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
             {filteredClients.length === 0 && !isLoading && (
               <div className="text-center py-12 text-rmpg-500">
                 <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
@@ -913,12 +913,12 @@ export default function CrmPage() {
         </div>
 
         {/* Client Detail */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {selectedClient ? (
             <div>
               <div className="panel-title-bar flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-bold text-white">{selectedClient.name}</span>
+                  <span className="text-sm font-bold text-rmpg-100">{selectedClient.name}</span>
                   {(selectedClient as any).priority_client && (
                     <span className="text-[9px] font-bold px-1.5 py-0.5 text-amber-400 bg-amber-900/30 border border-amber-700/50">PRIORITY</span>
                   )}
@@ -977,7 +977,7 @@ export default function CrmPage() {
                 {/* Activity Feed */}
                 <div className="panel-inset p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-white">Activity Timeline</span>
+                    <span className="text-xs font-bold text-rmpg-100">Activity Timeline</span>
                     <button type="button" onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
                       <Plus className="w-3 h-3" /> Log
                     </button>
@@ -985,14 +985,14 @@ export default function CrmPage() {
                   {clientActivity.length === 0 ? (
                     <p className="text-xs text-rmpg-400">No activity recorded</p>
                   ) : (
-                    <div className="relative pl-5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+                    <div className="relative pl-5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
                       <div className="absolute left-1.5 top-0 bottom-0 w-px bg-rmpg-700" />
                       {clientActivity.map((a: any) => {
                         const dotColor = a.activity_type === 'call' ? 'bg-green-500' :
-                          a.activity_type === 'email' ? 'bg-gray-500' :
+                          a.activity_type === 'email' ? 'bg-rmpg-500' :
                           a.activity_type === 'meeting' ? 'bg-purple-500' :
                           a.activity_type === 'invoice' ? 'bg-amber-500' :
-                          a.activity_type === 'contract_change' ? 'bg-gray-500' : 'bg-rmpg-500';
+                          a.activity_type === 'contract_change' ? 'bg-rmpg-500' : 'bg-rmpg-500';
                         return (
                           <div key={a.id} className="relative mb-2">
                             <div className={`absolute -left-[14px] top-1.5 w-2 h-2 rounded-full ${dotColor}`} />
@@ -1000,7 +1000,7 @@ export default function CrmPage() {
                               <div className="flex items-center justify-between">
                                 <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
                                   a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
-                                  a.activity_type === 'email' ? 'text-gray-400 border-gray-700/50 bg-gray-900/20' :
+                                  a.activity_type === 'email' ? 'text-rmpg-400 border-border-default/50 bg-surface-sunken/20' :
                                   a.activity_type === 'meeting' ? 'text-purple-400 border-purple-700/50 bg-purple-900/20' :
                                   'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
                                 }`}>{toDisplayLabel(a.activity_type)}</span>
@@ -1038,7 +1038,7 @@ export default function CrmPage() {
 
   function renderProperties() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="PROPERTIES" icon={MapPin}>
           <input id="ff-crmpage-11" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search properties..." aria-label="Search properties..." value={propertySearch} onChange={e => setPropertySearch(e.target.value)} />
         </PanelTitleBar>
@@ -1077,7 +1077,7 @@ export default function CrmPage() {
 
   function renderContacts() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="CONTACTS" icon={Users}>
           <input id="ff-crmpage-12" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search contacts..." aria-label="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
           <select id="ff-crmpage-13" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={contactRelationship} onChange={e => setContactRelationship(e.target.value)}>
@@ -1130,7 +1130,7 @@ export default function CrmPage() {
 
   function renderInvoices() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="INVOICES" icon={FileText}>
           <select id="ff-crmpage-14" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => setInvoiceFilter(e.target.value)}>
             <option value="">All Statuses</option>
@@ -1187,7 +1187,7 @@ export default function CrmPage() {
 
   function renderTasks() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="TASKS" icon={CheckSquare}>
           <select id="ff-crmpage-15" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 160 }} value={taskFilter} onChange={e => setTaskFilter(e.target.value)}>
             <option value="pending,in_progress">Active</option>
@@ -1219,7 +1219,7 @@ export default function CrmPage() {
                     onClick={() => toggleTaskComplete(task)}
                     className={`mt-0.5 w-4 h-4 border flex-shrink-0 flex items-center justify-center ${
                       task.status === 'completed'
-                        ? 'bg-green-600 border-green-500 text-white'
+                        ? 'bg-green-600 border-green-500 text-rmpg-100'
                         : 'border-rmpg-500 hover:border-brand-400'
                     }`}
                   >

@@ -19,8 +19,8 @@ function normalizeItem(raw: any): { category: string; item: string; status: Insp
 const isPhotoNote = (s: string) => s.startsWith('/api/field-photos/file/');
 
 const TYPE_BADGE: Record<InspectionType, { bg: string; text: string; border: string }> = {
-  pre_trip: { bg: 'bg-gray-900/30', text: 'text-gray-400', border: 'border-gray-700/40' },
-  post_trip: { bg: 'bg-gray-900/30', text: 'text-gray-400', border: 'border-gray-700/40' },
+  pre_trip: { bg: 'bg-surface-sunken/30', text: 'text-rmpg-400', border: 'border-border-default/40' },
+  post_trip: { bg: 'bg-surface-sunken/30', text: 'text-rmpg-400', border: 'border-border-default/40' },
   monthly: { bg: 'bg-amber-900/30', text: 'text-amber-400', border: 'border-amber-700/40' },
   annual: { bg: 'bg-green-900/30', text: 'text-green-400', border: 'border-green-700/40' },
 };
@@ -71,8 +71,8 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
       {/* Quick Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <ClipboardCheck className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
-          <div className="text-sm font-bold font-mono text-gray-400">{inspections.length}</div>
+          <ClipboardCheck className="w-3.5 h-3.5 mx-auto text-rmpg-400 mb-1" />
+          <div className="text-sm font-bold font-mono text-rmpg-400">{inspections.length}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total</div>
         </div>
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
@@ -83,8 +83,8 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
           <div className="text-[7px] text-rmpg-500 uppercase">Pass Rate</div>
         </div>
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <Calendar className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
-          <div className="text-[10px] font-bold font-mono text-gray-400">
+          <Calendar className="w-3.5 h-3.5 mx-auto text-rmpg-400 mb-1" />
+          <div className="text-[10px] font-bold font-mono text-rmpg-400">
             {lastInspection ? formatMilitary(lastInspection.inspection_date) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Last Insp.</div>

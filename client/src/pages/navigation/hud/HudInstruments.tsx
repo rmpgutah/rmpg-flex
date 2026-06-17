@@ -380,7 +380,7 @@ export function HudCollapseToggle({ collapsed, onToggle }: { collapsed: boolean;
       onClick={onToggle}
       aria-label={collapsed ? 'Expand instrument dashboard' : 'Collapse instrument dashboard'}
       title={collapsed ? 'Expand dashboard' : 'Collapse dashboard'}
-      className="flex items-center justify-center px-1.5 py-1 border border-rmpg-700 text-rmpg-300 hover:text-white"
+      className="flex items-center justify-center px-1.5 py-1 border border-rmpg-700 text-rmpg-300 hover:text-rmpg-100"
       style={{ borderRadius: 2, background: 'rgba(20,20,20,0.7)' }}
     >
       {collapsed ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -430,19 +430,19 @@ export function HudMapControls({
   return (
     <div className="flex items-center gap-1">
       <button type="button" onClick={onRecenter} aria-label="Recenter / follow me" title={followActive ? 'Following — recenter' : 'Re-enable follow-me'}
-        className={btn} style={{ borderRadius: 2, borderColor: followActive ? '#d4a017' : '#3a3a3a', color: followActive ? '#d4a017' : '#a0a0a0', background: followActive ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
+        className={btn} style={{ borderRadius: 2, borderColor: followActive ? '#d4a017' : '#3a3a3a', color: followActive ? '#d4a017' : 'var(--rmpg-400)', background: followActive ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
         <Crosshair className="w-4 h-4" />
       </button>
       <button type="button" onClick={onZoomIn} aria-label="Zoom in" title="Zoom in"
-        className={btn} style={{ borderRadius: 2, borderColor: '#3a3a3a', color: '#a0a0a0', background: 'rgba(20,20,20,0.7)' }}>
+        className={btn} style={{ borderRadius: 2, borderColor: '#3a3a3a', color: 'var(--rmpg-400)', background: 'rgba(20,20,20,0.7)' }}>
         <Plus className="w-4 h-4" />
       </button>
       <button type="button" onClick={onZoomOut} aria-label="Zoom out" title="Zoom out"
-        className={btn} style={{ borderRadius: 2, borderColor: '#3a3a3a', color: '#a0a0a0', background: 'rgba(20,20,20,0.7)' }}>
+        className={btn} style={{ borderRadius: 2, borderColor: '#3a3a3a', color: 'var(--rmpg-400)', background: 'rgba(20,20,20,0.7)' }}>
         <Minus className="w-4 h-4" />
       </button>
       <button type="button" onClick={onTogglePitch} aria-label={pitched ? 'Switch to 2D' : 'Switch to 3D'} title={pitched ? '3D — tap for 2D' : '2D — tap for 3D'}
-        className={btn} style={{ borderRadius: 2, borderColor: pitched ? '#d4a017' : '#3a3a3a', color: pitched ? '#d4a017' : '#a0a0a0', background: pitched ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
+        className={btn} style={{ borderRadius: 2, borderColor: pitched ? '#d4a017' : '#3a3a3a', color: pitched ? '#d4a017' : 'var(--rmpg-400)', background: pitched ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
         <Box className="w-4 h-4" />
         <span className="text-[7px] font-bold ml-0.5">{pitched ? '3D' : '2D'}</span>
       </button>
@@ -474,7 +474,7 @@ export function HudArrivedBanner({ label, onDismiss }: { label: string; onDismis
     <div className="flex items-center gap-2 px-3 py-2 shadow-2xl" style={{ background: 'rgba(8,8,8,0.96)', border: '1px solid #22c55e', borderRadius: 2, boxShadow: '0 0 16px rgba(34,197,94,0.4)' }}>
       <Flag className="w-4 h-4 shrink-0" style={{ color: '#22c55e' }} />
       <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: '#22c55e' }}>Arrived — {label}</span>
-      <button type="button" onClick={onDismiss} aria-label="Dismiss arrival" title="Dismiss" className="ml-2 text-rmpg-400 hover:text-white text-[11px] font-bold">✕</button>
+      <button type="button" onClick={onDismiss} aria-label="Dismiss arrival" title="Dismiss" className="ml-2 text-rmpg-400 hover:text-rmpg-100 text-[11px] font-bold">✕</button>
     </div>
   );
 }

@@ -28,9 +28,9 @@ const ChartTooltip = ({ active, payload, label, formatter }: any) => {
   if (!active || !payload?.length) return null;
   const display = formatter ? formatter(label, payload[0].value) : `${payload[0].value}`;
   return (
-    <div style={{ background: '#050505', border: '1px solid #222222', padding: '6px 10px', borderRadius: 2 }}>
+    <div style={{ background: 'var(--surface-overlay)', border: '1px solid #222222', padding: '6px 10px', borderRadius: 2 }}>
       <div style={{ color: '#aaaaaa', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
-      <div style={{ color: '#e0e0e0', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
     </div>
   );
 };
@@ -203,7 +203,7 @@ export default function CrimeAnalysisPage() {
         {/* ── Summary Cards ──────────────────────────────────── */}
         <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3 mb-4`}>
           {[
-            { label: 'Total Incidents', value: totalIncidents, color: 'text-white', spark: '#888888' },
+            { label: 'Total Incidents', value: totalIncidents, color: 'text-rmpg-100', spark: '#888888' },
             { label: 'Clearance Rate', value: `${data?.clearanceRate?.rate ?? 0}%`, color: 'text-green-400', spark: '#10b981' },
             { label: 'Avg Response', value: `${data?.responseMetrics?.[0]?.avg_minutes ?? '\u2014'} min`, color: 'text-amber-400', spark: '#d97706' },
             { label: 'Repeat Offenders', value: data?.repeatOffenders?.length || 0, color: 'text-red-400', spark: '#ef4444' },
@@ -356,7 +356,7 @@ export default function CrimeAnalysisPage() {
                     return (
                       <div key={idx} className="flex items-center gap-2 px-2 py-1.5 panel-beveled">
                         <span className="text-[9px] font-mono text-rmpg-500 w-4 text-right">{idx + 1}</span>
-                        <span className="text-[10px] text-white flex-1 truncate">{person.name || 'Unknown'}</span>
+                        <span className="text-[10px] text-rmpg-100 min-w-0 flex-1 truncate">{person.name || 'Unknown'}</span>
                         <div className="w-16 h-2 bg-surface-sunken rounded-[1px] overflow-hidden">
                           <div className="h-full rounded-[1px]" style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #ef4444, #dc2626)' }} />
                         </div>
@@ -390,9 +390,9 @@ export default function CrimeAnalysisPage() {
                             {humanizePriority(metric.priority)}
                           </span>
                           <div className="flex items-center gap-3">
-                            <span className="text-[9px] text-rmpg-400">Avg: <span className="text-white font-bold">{metric.avg_minutes} min</span></span>
+                            <span className="text-[9px] text-rmpg-400">Avg: <span className="text-rmpg-100 font-bold">{metric.avg_minutes} min</span></span>
                             <span className="text-[9px] text-rmpg-400">Target: <span className="text-rmpg-300">{target}m</span></span>
-                            <span className="text-[9px] text-rmpg-400">Calls: <span className="text-white font-bold">{metric.call_count}</span></span>
+                            <span className="text-[9px] text-rmpg-400">Calls: <span className="text-rmpg-100 font-bold">{metric.call_count}</span></span>
                           </div>
                         </div>
                         <div className="h-2 bg-surface-sunken rounded-[1px] overflow-hidden relative">

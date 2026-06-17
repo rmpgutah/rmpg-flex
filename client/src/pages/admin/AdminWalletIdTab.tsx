@@ -74,16 +74,16 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
       <div className="flex items-center gap-2">
         <CreditCard className="w-4 h-4 text-[#d4a017]" />
         <h2 className="text-sm font-semibold text-[#d4a017] tracking-wide">OFFICER IDS</h2>
-        <span className="text-[11px] text-[#666]">{rows.length} issued</span>
+        <span className="text-[11px] text-rmpg-500">{rows.length} issued</span>
       </div>
 
       <div className="relative max-w-xs">
-        <Search className="w-3.5 h-3.5 text-[#666] absolute left-2 top-1/2 -translate-y-1/2" />
+        <Search className="w-3.5 h-3.5 text-rmpg-500 absolute left-2 top-1/2 -translate-y-1/2" />
         <input
           value={queryText}
           onChange={(e) => setQueryText(e.target.value)}
           placeholder="Filter by name, badge, dept"
-          className="w-full pl-7 pr-2 py-1 rounded-[2px] bg-[#050505] border border-[#222] text-[11px] text-[#ccc]"
+          className="w-full pl-7 pr-2 py-1 rounded-[2px] bg-surface-overlay border border-border-default text-[11px] text-rmpg-300"
         />
       </div>
 
@@ -92,11 +92,11 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
       {loading ? (
         <LoadingSpinner />
       ) : visible.length === 0 ? (
-        <div className="text-[11px] text-[#666]">No officer IDs match.</div>
+        <div className="text-[11px] text-rmpg-500">No officer IDs match.</div>
       ) : (
         <table className="w-full text-left">
           <thead>
-            <tr className="text-[9px] font-semibold text-[#888] uppercase border-b border-[#222]">
+            <tr className="text-[9px] font-semibold text-[#888] uppercase border-b border-border-default">
               <th className="py-[3px] pr-2">Officer</th>
               <th className="py-[3px] pr-2">Rank / Dept</th>
               <th className="py-[3px] pr-2">Status</th>
@@ -111,8 +111,8 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
               return (
                 <tr key={r.wallet_id} className="text-[11px] border-b border-[#141414]">
                   <td className="py-[3px] pr-2">
-                    <span className="text-white">{r.full_name}</span>
-                    <span className="text-[#666]"> · {r.badge_number || '—'}</span>
+                    <span className="text-rmpg-100">{r.full_name}</span>
+                    <span className="text-rmpg-500"> · {r.badge_number || '—'}</span>
                   </td>
                   <td className="py-[3px] pr-2 text-[#999]">{[r.rank, r.department].filter(Boolean).join(' / ') || '—'}</td>
                   <td className="py-[3px] pr-2">
@@ -120,7 +120,7 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
                       {st.label}
                     </span>
                   </td>
-                  <td className="py-[3px] pr-2 text-[#666]">{(r.issued_at || '').slice(0, 10) || '—'}</td>
+                  <td className="py-[3px] pr-2 text-rmpg-500">{(r.issued_at || '').slice(0, 10) || '—'}</td>
                   <td className="py-[3px] pr-2 text-right">
                     {revoked ? (
                       <button

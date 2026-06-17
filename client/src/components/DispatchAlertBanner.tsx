@@ -48,7 +48,7 @@ function severityClasses(severity: AlertSeverity): string {
     case 'moderate':
       return 'bg-amber-900/80 border-amber-500/50 text-amber-100 animate-pulse';
     case 'minor':
-      return 'bg-gray-900/80 border-gray-500/50 text-gray-100';
+      return 'bg-surface-sunken/80 border-rmpg-500/50 text-rmpg-200';
   }
 }
 
@@ -115,7 +115,7 @@ export default function DispatchAlertBanner({ alerts, onDismiss, onDismissAll }:
           {alerts.length > 2 && (
             <button
               onClick={onDismissAll}
-              className="w-full text-center text-xs font-mono text-zinc-400 hover:text-white bg-zinc-900/80 border border-zinc-700/50 rounded px-3 py-1 transition-colors"
+              className="w-full text-center text-xs font-mono text-zinc-400 hover:text-rmpg-100 bg-zinc-900/80 border border-zinc-700/50 rounded px-3 py-1 transition-colors"
             >
               Dismiss all ({alerts.length})
             </button>

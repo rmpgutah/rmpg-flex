@@ -39,7 +39,7 @@ const SEVERITY_COLORS: Record<string, string> = {
   danger: 'bg-red-900/60 text-red-300 border-red-600/50',
   warning: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   caution: 'bg-yellow-900/50 text-yellow-400 border-yellow-700/50',
-  info: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
+  info: 'bg-surface-sunken/50 text-rmpg-400 border-border-default/50',
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -47,8 +47,8 @@ const TYPE_COLORS: Record<string, string> = {
   watch_list: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   sex_offender: 'bg-purple-900/60 text-purple-300 border-purple-600/50',
   gang_member: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
-  probation: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
-  parole: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
+  probation: 'bg-surface-sunken/50 text-rmpg-400 border-border-default/50',
+  parole: 'bg-surface-sunken/50 text-rmpg-400 border-border-default/50',
   mental_health: 'bg-teal-900/50 text-teal-400 border-teal-700/50',
   violent_history: 'bg-red-900/70 text-red-300 border-red-600/50',
   warrant_flag: 'bg-rose-900/50 text-rose-400 border-rose-700/50',
@@ -103,14 +103,14 @@ function CdocSearchPanel() {
             onChange={e => setLastName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && searchCdoc()}
             placeholder="Last name *"
-            className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 outline-none focus:border-brand-600"
+            className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 outline-none focus:border-brand-600"
           />
           <input id="ff-offenderregistrypage-1"
             value={firstName}
             onChange={e => setFirstName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && searchCdoc()}
             placeholder="First name"
-            className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 outline-none focus:border-brand-600"
+            className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 outline-none focus:border-brand-600"
           />
           <IconButton onClick={searchCdoc} disabled={loading || !lastName.trim()} className="toolbar-btn toolbar-btn-primary px-2" aria-label="Search">
             {loading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search style={{ width: 11, height: 11 }} />}
@@ -133,14 +133,14 @@ function CdocSearchPanel() {
                 <img src={selectedOffender.photo_url} alt="Mugshot" className="w-20 h-24 object-cover border border-rmpg-600" />
               )}
               <div className="flex-1">
-                <div className="text-sm font-bold text-white">{selectedOffender.last_name}, {selectedOffender.first_name}</div>
+                <div className="text-sm font-bold text-rmpg-100">{selectedOffender.last_name}, {selectedOffender.first_name}</div>
                 <div className="text-[10px] text-rmpg-400 font-mono">DOC# {selectedOffender.doc_number}</div>
                 {selectedOffender.dob && <div className="text-[10px] text-rmpg-400">DOB: {parseTimestamp(selectedOffender.dob).toLocaleDateString()}</div>}
                 {selectedOffender.status && (
                   <span className={`inline-block mt-1 text-[9px] px-1.5 py-0.5 font-bold border ${
                     selectedOffender.status.toLowerCase().includes('incarcerat') ? 'bg-red-900/50 text-red-300 border-red-700/50' :
                     selectedOffender.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
-                    'bg-gray-900/40 text-gray-400 border-gray-700/40'
+                    'bg-surface-sunken/40 text-rmpg-400 border-border-default/40'
                   }`}>
                     {selectedOffender.status.toUpperCase()}
                   </span>
@@ -150,7 +150,7 @@ function CdocSearchPanel() {
             {selectedOffender.facility && (
               <div className="panel-beveled p-2">
                 <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-1">Facility</div>
-                <div className="text-xs text-white">{selectedOffender.facility}</div>
+                <div className="text-xs text-rmpg-100">{selectedOffender.facility}</div>
               </div>
             )}
             {selectedOffender.offenses && (
@@ -175,7 +175,7 @@ function CdocSearchPanel() {
               <div className="flex items-center gap-2">
                 {r.photo_url && <img src={r.photo_url} alt="" className="w-8 h-10 object-cover border border-rmpg-600 flex-shrink-0" />}
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-white truncate">{r.last_name}, {r.first_name}</div>
+                  <div className="text-xs font-bold text-rmpg-100 truncate">{r.last_name}, {r.first_name}</div>
                   <div className="text-[10px] text-rmpg-400 font-mono">DOC# {r.doc_number}</div>
                 </div>
                 {r.status && (
@@ -380,7 +380,7 @@ export default function OffenderRegistryPage() {
     switch (severity) {
       case 'danger': return <ShieldAlert style={{ width: 14, height: 14 }} className="text-red-400" />;
       case 'warning': return <AlertTriangle style={{ width: 14, height: 14 }} className="text-amber-400" />;
-      default: return <Shield style={{ width: 14, height: 14 }} className="text-gray-400" />;
+      default: return <Shield style={{ width: 14, height: 14 }} className="text-rmpg-400" />;
     }
   };
 
@@ -434,11 +434,11 @@ export default function OffenderRegistryPage() {
           <div className="flex gap-2 px-2 py-1.5 border-b border-rmpg-700 bg-surface-sunken overflow-x-auto">
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">ALERTS</div>
-              <div className="text-sm font-bold text-white">{stats.total_alerts || 0}</div>
+              <div className="text-sm font-bold text-rmpg-100">{stats.total_alerts || 0}</div>
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">PERSONS</div>
-              <div className="text-sm font-bold text-gray-400">{stats.total_persons || 0}</div>
+              <div className="text-sm font-bold text-rmpg-400">{stats.total_persons || 0}</div>
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">DANGER</div>
@@ -455,7 +455,7 @@ export default function OffenderRegistryPage() {
         <div className="flex gap-1 p-1.5 border-b border-rmpg-700 bg-surface-base">
           <div className="flex-1 relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
-            <input id="ff-offenderregistrypage-2" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search alerts..." aria-label="Search alerts..." className="w-full pl-7 pr-7 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none" />
+            <input id="ff-offenderregistrypage-2" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search alerts..." aria-label="Search alerts..." className="w-full pl-7 pr-7 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 focus:border-brand-600 outline-none" />
             {searchQuery && (
               <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
                 <X style={{ width: 12, height: 12 }} />
@@ -498,7 +498,7 @@ export default function OffenderRegistryPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {severityIcon(alert.severity)}
-                    <span className="text-[11px] font-bold text-white">
+                    <span className="text-[11px] font-bold text-rmpg-100">
                       {alert.person_name || `Person #${alert.person_id}`}
                     </span>
                   </div>
@@ -551,8 +551,8 @@ export default function OffenderRegistryPage() {
               <div className="panel-beveled p-3">
                 <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Person Information</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div><span className="text-[9px] text-rmpg-500">Name:</span> <span className="text-xs text-white font-bold">{selected.person_name || '—'}</span></div>
-                  <div><span className="text-[9px] text-rmpg-500">DOB:</span> <span className="text-xs text-white">{selected.dob ? parseTimestamp(selected.dob).toLocaleDateString() : '—'}</span></div>
+                  <div><span className="text-[9px] text-rmpg-500">Name:</span> <span className="text-xs text-rmpg-100 font-bold">{selected.person_name || '—'}</span></div>
+                  <div><span className="text-[9px] text-rmpg-500">DOB:</span> <span className="text-xs text-rmpg-100">{selected.dob ? parseTimestamp(selected.dob).toLocaleDateString() : '—'}</span></div>
                   {selected.is_sex_offender && (
                     <span className="text-[9px] px-1.5 py-0.5 bg-purple-900/50 text-purple-300 border border-purple-600/50 col-span-2 w-fit">SEX OFFENDER</span>
                   )}
@@ -569,7 +569,7 @@ export default function OffenderRegistryPage() {
                     <MapPin size={10} className="text-red-400" />
                     Registered Address / Ban Zone
                   </div>
-                  <div className="h-40 bg-[#0c0c0c] relative">
+                  <div className="h-40 bg-surface-sunken relative">
                     {staticMapApiKey ? (
                       <img
                         src={`https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l+ef4444(${selected.location_lng},${selected.location_lat})/${selected.location_lng},${selected.location_lat},15/600x200?access_token=${staticMapApiKey}`}
@@ -586,7 +586,7 @@ export default function OffenderRegistryPage() {
                     )}
                   </div>
                   {selected.location_address && (
-                    <div className="px-3 py-1.5 text-[10px] text-rmpg-300 flex items-center gap-1.5 border-t border-[#2b2b2b]">
+                    <div className="px-3 py-1.5 text-[10px] text-rmpg-300 flex items-center gap-1.5 border-t border-rmpg-700">
                       <MapPin size={10} className="text-rmpg-500" />
                       {selected.location_address}
                     </div>
@@ -605,7 +605,7 @@ export default function OffenderRegistryPage() {
                 ].map(([label, value]) => (
                   <div key={label as string}>
                     <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>
-                    <div className="text-xs text-white mt-0.5">{value || '—'}</div>
+                    <div className="text-xs text-rmpg-100 mt-0.5">{value || '—'}</div>
                   </div>
                 ))}
               </div>
@@ -656,14 +656,14 @@ export default function OffenderRegistryPage() {
                 {selectedPerson ? (
                   <div className="mt-1 flex items-center gap-2 px-2 py-1.5 bg-surface-sunken border border-rmpg-700">
                     <User style={{ width: 12, height: 12 }} className="text-rmpg-500" />
-                    <span className="text-xs text-white">{selectedPerson.first_name} {selectedPerson.last_name}</span>
-                    <IconButton onClick={() => { setSelectedPerson(null); setFormData(p => ({ ...p, person_id: '' })); setPersonSearch(''); }} className="ml-auto text-rmpg-500 hover:text-white" aria-label="Clear selected person">
+                    <span className="text-xs text-rmpg-100">{selectedPerson.first_name} {selectedPerson.last_name}</span>
+                    <IconButton onClick={() => { setSelectedPerson(null); setFormData(p => ({ ...p, person_id: '' })); setPersonSearch(''); }} className="ml-auto text-rmpg-500 hover:text-rmpg-100" aria-label="Clear selected person">
                       <X style={{ width: 10, height: 10 }} />
                     </IconButton>
                   </div>
                 ) : (
                   <div className="relative">
-                    <input id="ff-offenderregistrypage-5" value={personSearch} onChange={e => setPersonSearch(e.target.value)} placeholder="Search by name..." aria-label="Search by name..." className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white placeholder-rmpg-500 outline-none ${formErrors.person_id ? 'border-red-500' : 'border-rmpg-700'}`} />
+                    <input id="ff-offenderregistrypage-5" value={personSearch} onChange={e => setPersonSearch(e.target.value)} placeholder="Search by name..." aria-label="Search by name..." className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 placeholder-rmpg-500 outline-none ${formErrors.person_id ? 'border-red-500' : 'border-rmpg-700'}`} />
                     {formErrors.person_id && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.person_id}</p>}
                     {personResults.length > 0 && (
                       <div className="absolute z-10 top-full left-0 right-0 bg-surface-base border border-rmpg-700 max-h-40 overflow-y-auto">
@@ -671,7 +671,7 @@ export default function OffenderRegistryPage() {
                           <button type="button"
                             key={p.id}
                             onClick={() => { setSelectedPerson(p); setFormData(prev => ({ ...prev, person_id: String(p.id) })); setPersonResults([]); }}
-                            className="w-full text-left px-3 py-1.5 text-xs text-rmpg-300 hover:bg-rmpg-700/40 hover:text-white border-b border-rmpg-800"
+                            className="w-full text-left px-3 py-1.5 text-xs text-rmpg-300 hover:bg-rmpg-700/40 hover:text-rmpg-100 border-b border-rmpg-800"
                           >
                             {p.first_name} {p.last_name} {p.dob ? `(${parseTimestamp(p.dob).toLocaleDateString()})` : ''}
                           </button>
@@ -685,13 +685,13 @@ export default function OffenderRegistryPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Alert Type</label>
-                  <select id="ff-offenderregistrypage-6" value={formData.alert_type} onChange={e => setFormData(p => ({ ...p, alert_type: e.target.value as OffenderAlertType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
+                  <select id="ff-offenderregistrypage-6" value={formData.alert_type} onChange={e => setFormData(p => ({ ...p, alert_type: e.target.value as OffenderAlertType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">
                     {ALERT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Severity</label>
-                  <select id="ff-offenderregistrypage-7" value={formData.severity} onChange={e => setFormData(p => ({ ...p, severity: e.target.value as AlertSeverity }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
+                  <select id="ff-offenderregistrypage-7" value={formData.severity} onChange={e => setFormData(p => ({ ...p, severity: e.target.value as AlertSeverity }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">
                     <option value="info">Info</option><option value="caution">Caution</option><option value="warning">Warning</option><option value="danger">Danger</option>
                   </select>
                 </div>
@@ -699,13 +699,13 @@ export default function OffenderRegistryPage() {
 
               <div>
                 <label className="field-label">Description *</label>
-                <textarea id="ff-offenderregistrypage-8" value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${formErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
+                <textarea id="ff-offenderregistrypage-8" value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none resize-none ${formErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {formErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.description}</p>}
               </div>
 
               <div>
                 <label className="field-label">Expiration Date</label>
-                <input id="ff-offenderregistrypage-9" type="date" value={formData.expiration_date} onChange={e => setFormData(p => ({ ...p, expiration_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                <input id="ff-offenderregistrypage-9" type="date" value={formData.expiration_date} onChange={e => setFormData(p => ({ ...p, expiration_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">

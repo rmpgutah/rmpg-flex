@@ -427,7 +427,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
           <button type="button"
             onClick={() => navigate('/map')}
-            className="text-rmpg-400 hover:text-white"
+            className="text-rmpg-400 hover:text-rmpg-100"
             style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
             title="Open full map"
           >
@@ -436,7 +436,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           {onClose && (
             <button type="button"
               onClick={onClose}
-              className="text-rmpg-400 hover:text-white"
+              className="text-rmpg-400 hover:text-rmpg-100"
               style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
               title="Close mini-map"
             >
@@ -457,7 +457,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
           <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-          <span style={{ fontSize: 8, color: '#666666' }}>{activeRoute.distance}</span>
+          <span style={{ fontSize: 8, color: 'var(--rmpg-500)' }}>{activeRoute.distance}</span>
         </div>
       )}
 
@@ -475,7 +475,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           {/* ETA + miles, above */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
-            padding: '2px 6px', borderBottom: '1px solid #1a1a1a', background: '#141414',
+            padding: '2px 6px', borderBottom: '1px solid #1a1a1a', background: 'var(--surface-base)',
           }}>
             <span style={{ fontSize: 8, color: '#888888', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               {activeRoute.unitCallSign}→{activeRoute.callNumber}

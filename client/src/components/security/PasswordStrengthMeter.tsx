@@ -51,7 +51,7 @@ export default function PasswordStrengthMeter({ password, showRequirements = tru
               key={i}
               className="flex-1 transition-colors duration-300"
               style={{
-                background: i <= strength.score ? strength.color : '#222222',
+                background: i <= strength.score ? strength.color : 'var(--border-subtle)',
               }}
             />
           ))}
@@ -75,7 +75,7 @@ export default function PasswordStrengthMeter({ password, showRequirements = tru
               <div
                 key={req.label}
                 className="flex items-center gap-1 text-[9px]"
-                style={{ color: met ? '#22c55e' : '#666666' }}
+                style={{ color: met ? '#22c55e' : 'var(--rmpg-500)' }}
               >
                 {met ? (
                   <Check className="w-2.5 h-2.5" />

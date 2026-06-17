@@ -29,7 +29,7 @@ export default function ClosestUnitPanel({
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [dispatchedUnits, setDispatchedUnits] = useState<Set<string>>(new Set());
 
-  const pColor = PRIORITY_HEX[call.priority] || '#666666';
+  const pColor = PRIORITY_HEX[call.priority] || 'var(--rmpg-500)';
 
   const handleDispatch = async (unitId: string) => {
     setDispatchingUnitId(unitId);
@@ -64,7 +64,7 @@ export default function ClosestUnitPanel({
         right: 12,
         width: 320,
         maxHeight: 'calc(100% - 64px)',
-        background: '#050505',
+        background: 'var(--surface-overlay)',
         border: `1px solid ${pColor}40`,
         borderRadius: 2,
         boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
@@ -86,17 +86,17 @@ export default function ClosestUnitPanel({
         <button type="button"
           onClick={onClose}
           aria-label="Close closest units panel"
-          className="p-0.5 hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] rounded-sm"
+          className="p-0.5 hover:bg-surface-raised transition-all duration-150 active:scale-[0.97] rounded-sm"
           style={{ borderRadius: 2 }}
         >
-          <X className="w-3.5 h-3.5 text-rmpg-500 hover:text-white" />
+          <X className="w-3.5 h-3.5 text-rmpg-500 hover:text-rmpg-100" />
         </button>
       </div>
 
       {/* Call Info */}
       <div
         className="px-3 py-2 shrink-0"
-        style={{ borderBottom: '1px solid #2b2b2b30', background: '#0a0a0a' }}
+        style={{ borderBottom: '1px solid #2b2b2b30', background:"var(--surface-sunken)" }}
       >
         <div className="flex items-center gap-2 mb-1">
           <span
@@ -114,7 +114,7 @@ export default function ClosestUnitPanel({
             {call.call_number}
           </span>
         </div>
-        <div className="text-[9px] font-semibold" style={{ color: '#e0e0e0' }}>
+        <div className="text-[9px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
           {formatIncidentType(call.incident_type)}
         </div>
         <div className="text-[8px] mt-0.5" style={{ color: '#999999' }}>
@@ -123,21 +123,21 @@ export default function ClosestUnitPanel({
       </div>
 
       {/* Results List */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         {results.length === 0 ? (
           <div className="flex flex-col items-center text-center py-8 gap-2">
-            <Navigation className="w-6 h-6" style={{ color: '#666666', opacity: 0.4 }} />
-            <div className="text-[10px] font-bold" style={{ color: '#666666' }}>
+            <Navigation className="w-6 h-6" style={{ color: 'var(--rmpg-500)', opacity: 0.4 }} />
+            <div className="text-[10px] font-bold" style={{ color: 'var(--rmpg-500)' }}>
               No available units found
             </div>
-            <div className="text-[8px]" style={{ color: '#666666' }}>
+            <div className="text-[8px]" style={{ color: 'var(--rmpg-500)' }}>
               All units are currently assigned or have no position data
             </div>
           </div>
         ) : (
           results.map((result, idx) => {
             const { unit, distanceMiles, estimatedMinutes } = result;
-            const statusColor = UNIT_STATUS_HEX[unit.status] || '#666666';
+            const statusColor = UNIT_STATUS_HEX[unit.status] || 'var(--rmpg-500)';
             const statusLabel = UNIT_STATUS_LABELS[unit.status] || unit.status;
             const isDispatching = dispatchingUnitId === unit.id;
             const isDispatched = dispatchedUnits.has(unit.id);
@@ -145,17 +145,17 @@ export default function ClosestUnitPanel({
             return (
               <div
                 key={unit.id}
-                className="px-3 py-2 hover:bg-[#181818]/30 transition-colors duration-100"
+                className="px-3 py-2 hover:bg-surface-raised/30 transition-colors duration-100"
                 style={{
                   borderBottom: idx < results.length - 1 ? '1px solid #2b2b2b20' : undefined,
-                  background: idx % 2 === 0 ? '#050505' : '#191919',
+                  background: idx % 2 === 0 ? 'var(--surface-overlay)' : '#191919',
                 }}
               >
                 <div className="flex items-center gap-2">
                   {/* Rank */}
                   <span
                     className="text-[8px] font-black w-4 text-center shrink-0"
-                    style={{ color: '#666666' }}
+                    style={{ color: 'var(--rmpg-500)' }}
                   >
                     #{idx + 1}
                   </span>
@@ -283,7 +283,7 @@ export default function ClosestUnitPanel({
       <div
         className="px-3 py-1.5 text-[7px] font-bold uppercase tracking-wider shrink-0"
         style={{
-          color: '#666666',
+          color: 'var(--rmpg-500)',
           borderTop: '1px solid #2b2b2b30',
           background: '#0a0a0a',
           letterSpacing: '0.8px',

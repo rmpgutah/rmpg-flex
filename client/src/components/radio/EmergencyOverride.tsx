@@ -121,7 +121,7 @@ export default function EmergencyOverride({ onActivate, onDeactivate }: Emergenc
             onClick={endEmergency}
             className="w-full py-1.5 rounded-[2px] text-[9px] font-bold uppercase tracking-wide transition-colors border"
             style={{
-              background: '#111111',
+              background: 'var(--surface-base)',
               color: '#dc2626',
               borderColor: '#dc2626',
             }}
@@ -166,7 +166,7 @@ export default function EmergencyOverride({ onActivate, onDeactivate }: Emergenc
               </div>
             </button>
           </div>
-          <div className="text-[8px] text-[#555555] text-center mt-1 italic">
+          <div className="text-[8px] text-rmpg-500 text-center mt-1 italic">
             Hold for 2 seconds
           </div>
         </>

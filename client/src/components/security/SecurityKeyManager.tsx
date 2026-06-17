@@ -156,7 +156,7 @@ export default function SecurityKeyManager() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-4">
-        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#666666' }} />
+        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: 'var(--rmpg-500)' }} />
       </div>
     );
   }
@@ -192,7 +192,7 @@ export default function SecurityKeyManager() {
             <div
               key={cred.id}
               className="flex items-center gap-3 px-3 py-2 panel-beveled"
-              style={{ background: '#0a0a0a' }}
+              style={{ background:"var(--surface-sunken)" }}
             >
               <div className="p-1.5 panel-inset" style={{ color: '#d97706', background: 'rgba(217,119,6,0.1)' }}>
                 {cred.deviceType === 'multiDevice' ? (
@@ -203,11 +203,11 @@ export default function SecurityKeyManager() {
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="text-[11px] font-semibold truncate" style={{ color: '#e0e0e0' }}>
+                <div className="text-[11px] font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
                   {cred.name}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5">
-                  <span className="text-[9px] font-mono" style={{ color: '#666666' }}>
+                  <span className="text-[9px] font-mono" style={{ color: 'var(--rmpg-500)' }}>
                     {transportLabel(cred.transports)}
                   </span>
                   <span className="text-[9px]" style={{ color: '#555555' }}>
@@ -237,7 +237,7 @@ export default function SecurityKeyManager() {
       ) : (
         <div className="text-center py-4">
           <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: '#2e2e2e' }} />
-          <p className="text-[10px]" style={{ color: '#666666' }}>No security keys registered</p>
+          <p className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>No security keys registered</p>
           <p className="text-[9px] mt-1" style={{ color: '#555555' }}>
             Register a YubiKey, Touch ID, or Windows Hello to use as 2FA
           </p>
@@ -280,7 +280,7 @@ export default function SecurityKeyManager() {
               setNewKeyName('');
             }}
             className="toolbar-btn h-8 px-2 text-[10px]"
-            style={{ color: '#666666' }}
+            style={{ color: 'var(--rmpg-500)' }}
           >
             Cancel
           </button>

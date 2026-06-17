@@ -165,7 +165,7 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
                   </span>
 
                   {activeEntry && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-gray-900/30 text-gray-400 border border-gray-700/30" title="Time clocked in">
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-surface-sunken/30 text-rmpg-400 border border-border-default/30" title="Time clocked in">
                       <Clock className="w-2.5 h-2.5" aria-hidden="true" />
                       {getElapsedHours(activeEntry.clock_in)}
                     </span>

@@ -18,12 +18,12 @@ export function isLegacyBlackForced(): boolean {
 
 // Night (dark) = steel-blue-charcoal base. Day (light) = Spillman chrome silver.
 const THEME_CHROME_COLORS: Record<ThemePreference, string> = {
-  dark: '#0d1722',   // night — steel-blue-charcoal base
+  dark: 'var(--surface-base)',   // night — steel-blue-charcoal base
   light: '#d6d3c8',  // day — Spillman chrome silver
 };
 
 const THEME_BODY_BACKGROUNDS: Record<ThemePreference, string> = {
-  dark: '#0d1722',
+  dark: 'var(--surface-base)',
   light: '#ece9dd',
 };
 

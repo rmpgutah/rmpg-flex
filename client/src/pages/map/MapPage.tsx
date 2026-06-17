@@ -153,8 +153,8 @@ const INTEL_LAYER_CLASSES: Record<string, { active: string; }> = {
 const PRIORITY_PILL_CLASSES: Record<string, { active: string; }> = {
   red: { active: 'bg-red-900/40 text-red-400 border border-red-700/40' },
   amber: { active: 'bg-amber-900/40 text-amber-400 border border-amber-700/40' },
-  blue: { active: 'bg-gray-900/40 text-gray-400 border border-gray-700/40' },
-  gray: { active: 'bg-[#0c0c0c]/40 text-gray-400 border border-gray-700/40' },
+  blue: { active: 'bg-gray-900/40 text-gray-400 border border-border-default/40' },
+  gray: { active: 'bg-[#0c0c0c]/40 text-gray-400 border border-border-default/40' },
 };
 
 // Default map center (Salt Lake City)
@@ -3832,7 +3832,7 @@ export default function MapPage() {
                   aria-label="Search address"
                   className={`text-[11px] pl-8 pr-8 py-1.5 w-[240px] focus:outline-none backdrop-blur-md shadow-lg font-mono transition-colors ${
                     isLightMapStyle(mapStyle)
-                      ? 'bg-white/80 border border-gray-300 text-gray-900 placeholder:text-rmpg-400 focus:border-gray-400 focus:bg-white/90'
+                      ? 'bg-white/80 border border-gray-300 text-gray-900 placeholder:text-rmpg-400 focus:border-rmpg-400 focus:bg-white/90'
                       : 'bg-black/30 border border-white/15 text-white placeholder:text-white/40 focus:border-white/40 focus:bg-black/50'
                   }`}
                   style={{ borderRadius: 2 }}
@@ -4179,7 +4179,7 @@ export default function MapPage() {
                         onClick={() => setBreadcrumbHours(h)}
                         className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                           breadcrumbHours === h
-                            ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
+                            ? 'bg-gray-900/50 text-gray-400 border border-border-default/50'
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
@@ -4214,7 +4214,7 @@ export default function MapPage() {
                         onClick={() => setBreadcrumbColorMode(mode)}
                         className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                           breadcrumbColorMode === mode
-                            ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
+                            ? 'bg-gray-900/50 text-gray-400 border border-border-default/50'
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
@@ -4323,7 +4323,7 @@ export default function MapPage() {
                             setPlaybackIdx(0);
                             setIsPlaying(false);
                           }}
-                          className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-gray-600"
+                          className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-rmpg-600"
                           style={{ borderRadius: 2 }}
                         >
                           <option value="">Replay trail...</option>
@@ -4386,7 +4386,7 @@ export default function MapPage() {
                                   onClick={() => setPlaybackSpeed(spd)}
                                   className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                                     playbackSpeed === spd
-                                      ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
+                                      ? 'bg-gray-900/50 text-gray-400 border border-border-default/50'
                                       : 'text-rmpg-500 hover:text-rmpg-300'
                                   }`}
                                 >
@@ -5991,7 +5991,7 @@ export default function MapPage() {
               className={`backdrop-blur-md shadow-xl transition-colors ${
                 isLightMapStyle(mapStyle)
                   ? 'bg-white/90 border border-gray-300 hover:bg-gray-50'
-                  : 'bg-surface-deep/95 border border-gray-500/50 hover:bg-gray-900/30'
+                  : 'bg-surface-deep/95 border border-rmpg-500/50 hover:bg-gray-900/30'
               }`}
               style={isMobile
                 ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
@@ -6171,7 +6171,7 @@ export default function MapPage() {
                           />
                           <span className="text-[11px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
                           {unit.gps_source === 'clearpathgps' && (
-                            <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                            <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-border-default/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                           )}
                           <span className="text-[9px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                         </div>
@@ -6239,7 +6239,7 @@ export default function MapPage() {
                           {call.status === 'dispatched' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleCallStatusChange(call.id, 'enroute'); }}
-                              className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-gray-900/30 text-gray-400 border border-gray-700/40 hover:bg-gray-800/40 transition-colors"
+                              className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-gray-900/30 text-gray-400 border border-border-default/40 hover:bg-gray-800/40 transition-colors"
                             >
                               EN ROUTE
                             </button>
@@ -6478,7 +6478,7 @@ export default function MapPage() {
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80` }} />
                         <span className="text-[12px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
                         {unit.gps_source === 'clearpathgps' && (
-                          <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                          <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-border-default/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                         )}
                         <span className="text-[10px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                       </div>

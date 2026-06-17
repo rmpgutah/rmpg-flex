@@ -148,7 +148,7 @@ export default function CommandCenterPage() {
                   <div key={alert.id} className="flex items-center gap-2 px-2 py-1 text-[10px] font-mono bg-red-900/10 border border-red-900/30">
                     <AlertTriangle style={{ width: 10, height: 10, color: '#ef4444' }} />
                     <span className="text-red-400 font-bold">{alert.title}</span>
-                    <span className="text-rmpg-400 truncate flex-1">{alert.details}</span>
+                    <span className="text-rmpg-400 min-w-0 truncate flex-1">{alert.details}</span>
                   </div>
                 ))}
               </div>
@@ -220,7 +220,7 @@ export default function CommandCenterPage() {
                     >
                       <span className="rounded-full flex-shrink-0" style={{ width: 6, height: 6, background: color, boxShadow: `0 0 4px ${color}` }} />
                       <div className="min-w-0">
-                        <span className="text-[10px] font-bold font-mono text-white block truncate">{unit.call_sign}</span>
+                        <span className="text-[10px] font-bold font-mono text-rmpg-100 block truncate">{unit.call_sign}</span>
                         <span className="text-[8px] uppercase font-bold" style={{ color }}>{unit.status.replace(/_/g, ' ')}</span>
                       </div>
                     </div>

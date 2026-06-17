@@ -258,11 +258,11 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit department' : 'New department'}>
           <div className="bg-surface-base panel-beveled w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#242424]">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Department' : 'New Department'}
               </h3>
-              <IconButton onClick={() => setShowForm(false)} className="p-1 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Close dialog"><X className="w-4 h-4" /></IconButton>
+              <IconButton onClick={() => setShowForm(false)} className="p-1 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Close dialog"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>

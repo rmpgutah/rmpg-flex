@@ -101,7 +101,7 @@ export default function RouteComparePanel({
                 onChange={(e) => onChangeA(e.target.value || null)}
                 style={{
                   width: '100%',
-                  background: '#141414',
+                  background: 'var(--surface-base)',
                   border: '1px solid #2b2b2b',
                   color: '#d1d5db',
                   fontSize: 10,
@@ -126,7 +126,7 @@ export default function RouteComparePanel({
                 onChange={(e) => onChangeB(e.target.value || null)}
                 style={{
                   width: '100%',
-                  background: '#141414',
+                  background: 'var(--surface-base)',
                   border: '1px solid #2b2b2b',
                   color: '#d1d5db',
                   fontSize: 10,

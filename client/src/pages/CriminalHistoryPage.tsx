@@ -204,7 +204,7 @@ export default function CriminalHistoryPage() {
   useEffect(() => { document.title = 'Criminal History \u2014 RMPG Flex'; }, []);
 
   return (
-    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+    <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden">
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs flex items-center gap-2" role="alert">
           <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
@@ -245,7 +245,7 @@ export default function CriminalHistoryPage() {
 
       {/* Mobile search bar */}
       {isMobile && (
-        <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #2b2b2b' }}>
+        <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid #2b2b2b' }}>
           <select id="ff-criminalhistorypage-2" className="select-dark text-[10px] w-16 min-h-[36px]" value={searchType} onChange={(e) => setSearchType(e.target.value as any)}>
             <option value="name">Name</option>
             <option value="dob">DOB</option>
@@ -289,7 +289,7 @@ export default function CriminalHistoryPage() {
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-white">
+                <span className="text-[11px] font-bold text-rmpg-100">
                   {p.last_name}, {p.first_name} {p.middle_name || ''}
                 </span>
                 <ChevronRight className="w-3 h-3 text-rmpg-500" />
@@ -321,7 +321,7 @@ export default function CriminalHistoryPage() {
               {/* Mobile back button */}
               {isMobile && (
                 <button type="button" onClick={() => { setSelectedPerson(null); setHistory([]); }}
-                  className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                  className="text-rmpg-400 hover:text-rmpg-100 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                   <ChevronRight className="w-3 h-3 rotate-180" /> Back to Results
                 </button>
               )}
@@ -329,7 +329,7 @@ export default function CriminalHistoryPage() {
               <div className="panel-surface p-4">
                 <div className={`${isMobile ? '' : 'flex items-start justify-between'}`}>
                   <div>
-                    <h2 className={`${isMobile ? 'text-base' : 'text-lg'} font-black text-white`}>
+                    <h2 className={`${isMobile ? 'text-base' : 'text-lg'} font-black text-rmpg-100`}>
                       {selectedPerson.last_name}, {selectedPerson.first_name} {selectedPerson.middle_name || ''}
                     </h2>
                     <div className="flex items-center gap-4 mt-1 text-[10px] text-rmpg-300 flex-wrap">
@@ -456,8 +456,8 @@ export default function CriminalHistoryPage() {
                             <p className="text-[10px] text-rmpg-300 mt-1">{entry.description}</p>
                             {isExpanded && (
                               <div className="mt-2 pt-2 border-t border-rmpg-700 space-y-1">
-                                {entry.status && <div className="text-[9px] text-rmpg-400">Status: <span className="text-white">{toDisplayLabel(entry.status)}</span></div>}
-                                {entry.officer_name && <div className="text-[9px] text-rmpg-400">Officer: <span className="text-white">{entry.officer_name}</span></div>}
+                                {entry.status && <div className="text-[9px] text-rmpg-400">Status: <span className="text-rmpg-100">{toDisplayLabel(entry.status)}</span></div>}
+                                {entry.officer_name && <div className="text-[9px] text-rmpg-400">Officer: <span className="text-rmpg-100">{entry.officer_name}</span></div>}
                                 {entry.location && <div className="text-[9px] text-rmpg-400 flex items-center gap-1"><MapPin className="w-2.5 h-2.5" />{formatAddressDisplay(entry.location)}</div>}
                               </div>
                             )}

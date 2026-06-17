@@ -326,7 +326,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100 transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -393,7 +393,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-bold text-white truncate">{prop.name}</h4>
+                  <h4 className="text-sm font-bold text-rmpg-100 truncate">{prop.name}</h4>
                   {prop.hazard_notes && <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />}
                   <span className={`ml-auto px-1.5 py-0.5 text-[8px] font-bold border flex-shrink-0 ${
                     prop.is_active
@@ -505,7 +505,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
           <div className="ml-auto flex items-center gap-1">
             {(!showArchived || user?.role === 'admin') && (
               <>
-                <button type="button" onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" title="Edit">
+                <button type="button" onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors" title="Edit">
                   <Pencil className="w-3 h-3" />
                 </button>
                 <button type="button" onClick={() => setDeleteTarget({ type: 'property', id: selectedProperty.id, label: selectedProperty.name })} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-red-400 transition-colors" title="Delete">
@@ -531,7 +531,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Client ──────────────────────────── */}
         {selectedProperty.client_name && (
           <CollapsibleSection title="Client" icon={Users} defaultOpen>
-            <p className="text-sm text-white font-semibold">{selectedProperty.client_name}</p>
+            <p className="text-sm text-rmpg-100 font-semibold">{selectedProperty.client_name}</p>
           </CollapsibleSection>
         )}
 
@@ -622,7 +622,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Access Instructions (conditional) ── */}
         {selectedProperty.access_instructions && (
           <CollapsibleSection title="Access Instructions" icon={MapPin}>
-            <p className="text-xs text-gray-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.access_instructions}</p>
+            <p className="text-xs text-rmpg-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.access_instructions}</p>
           </CollapsibleSection>
         )}
 

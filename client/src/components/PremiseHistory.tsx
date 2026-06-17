@@ -168,7 +168,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       case 'P1': return '#ef4444';
       case 'P2': return '#f97316';
       case 'P3': return '#eab308';
-      default: return '#666666';
+      default: return 'var(--rmpg-500)';
     }
   };
 
@@ -188,7 +188,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           </span>
         </div>
         {onClose && (
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white">
+          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100">
             <X style={{ width: 12, height: 12 }} />
           </button>
         )}
@@ -297,7 +297,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
                 {call.priority}
               </span>
               <span className="text-[10px] font-mono text-rmpg-300">{call.call_number}</span>
-              <span className="text-[10px] font-semibold text-white">
+              <span className="text-[10px] font-semibold text-rmpg-100">
                 {formatIncidentType(call.incident_type)}
               </span>
             </div>

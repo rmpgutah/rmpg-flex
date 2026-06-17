@@ -26,7 +26,7 @@ export interface EditableCapture {
 interface VerifyResponse { success?: boolean; hits?: Array<{ severity: string; detail: string }>; error?: string }
 interface HistoryRow { id: number; action: string; details: string | null; created_at: string; user_name: string | null }
 
-const FIELD = 'bg-[#050505] border border-[#222222] px-2 py-1.5 text-[12px] text-gray-200 focus:border-[#d4a017] outline-none w-full';
+const FIELD = 'bg-surface-overlay border border-border-default px-2 py-1.5 text-[12px] text-rmpg-200 focus:border-[#d4a017] outline-none w-full';
 const LABEL = 'text-[9px] uppercase tracking-wider text-[#888888] mb-0.5 block';
 
 export default function CaptureReviewEditor({
@@ -86,19 +86,19 @@ export default function CaptureReviewEditor({
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-[#0b0b0b] border border-[#2a2a2a] w-full sm:max-w-md max-h-[92vh] overflow-y-auto">
-        <div className="px-3 py-2 border-b border-[#1a1a1a] flex items-center justify-between sticky top-0 bg-[#0b0b0b]">
+      <div className="bg-surface-sunken border border-border-default w-full sm:max-w-md max-h-[92vh] overflow-y-auto">
+        <div className="px-3 py-2 border-b border-border-default flex items-center justify-between sticky top-0 bg-surface-sunken">
           <span className="text-[10px] font-semibold tracking-wider text-[#d4a017]">
             REVIEW &amp; VERIFY{wasDecided ? ' · CHANGE' : ''}
           </span>
-          <button type="button" onClick={onClose} className="text-[#888] hover:text-white" aria-label="Close">
+          <button type="button" onClick={onClose} className="text-[#888] hover:text-rmpg-100" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="p-3 space-y-3">
           {img && (
-            <img src={authedImageUrl(img)} alt="capture" className="w-full max-h-48 object-contain bg-black border border-[#222]" />
+            <img src={authedImageUrl(img)} alt="capture" className="w-full max-h-48 object-contain bg-black border border-border-default" />
           )}
 
           {/* Plate — the headline correction. */}
@@ -163,19 +163,19 @@ export default function CaptureReviewEditor({
 
           {/* Verify/edit history — the audited "change function" made visible. */}
           {history && history.length > 0 && (
-            <div className="border border-[#1a1a1a]">
+            <div className="border border-border-default">
               <button type="button" onClick={() => setShowHistory((v) => !v)}
                 className="w-full px-2 py-1 flex items-center justify-between text-[9px] uppercase tracking-wider text-[#888888] hover:text-[#aaa]">
                 <span className="flex items-center gap-1"><History className="w-3 h-3" /> History ({history.length})</span>
                 <span>{showHistory ? '−' : '+'}</span>
               </button>
               {showHistory && (
-                <ul className="border-t border-[#1a1a1a] divide-y divide-[#141414]">
+                <ul className="border-t border-border-default divide-y divide-[#141414]">
                   {history.map((h) => (
                     <li key={h.id} className="px-2 py-1 text-[10px]">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[#d4a017]">{h.user_name || 'Officer'}</span>
-                        <span className="text-[#666]">{String(h.created_at).slice(5, 16)}</span>
+                        <span className="text-rmpg-500">{String(h.created_at).slice(5, 16)}</span>
                       </div>
                       {h.details && <div className="text-[#999] mt-0.5 break-words">{h.details}</div>}
                     </li>

@@ -184,7 +184,7 @@ export default function UseOfForcePage() {
             className={`px-3 py-2 border-b border-rmpg-800 cursor-pointer transition-colors ${selected?.id === r.id ? 'bg-surface-raised border-l-2 border-l-red-500' : 'hover:bg-surface-raised'}`}>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 flex-shrink-0" style={{ background: STATUS_COLORS[r.status] || '#888', borderRadius: '1px' }} />
-              <span className="text-[10px] font-bold text-white uppercase">{(r.force_type || '').replace(/_/g, ' ')}</span>
+              <span className="text-[10px] font-bold text-rmpg-100 uppercase">{(r.force_type || '').replace(/_/g, ' ')}</span>
               <span className="ml-auto text-[9px] text-rmpg-500">{formatDate(r.created_at)}</span>
             </div>
             <div className="text-[9px] text-rmpg-400 mt-0.5">
@@ -213,7 +213,7 @@ export default function UseOfForcePage() {
     <div className="p-4 space-y-4 overflow-y-auto h-full">
       <div className="flex items-center gap-2">
         <div className="w-3 h-3" style={{ background: STATUS_COLORS[selected.status] || '#888', borderRadius: '1px' }} />
-        <h2 className="text-sm font-bold text-white uppercase">{(selected.force_type || '').replace(/_/g, ' ')} — UoF #{selected.id}</h2>
+        <h2 className="text-sm font-bold text-rmpg-100 uppercase">{(selected.force_type || '').replace(/_/g, ' ')} — UoF #{selected.id}</h2>
         <span className="ml-auto text-[9px] font-bold uppercase px-2 py-0.5 border" style={{ color: STATUS_COLORS[selected.status], borderColor: STATUS_COLORS[selected.status] + '60' }}>
           {formatLabel(selected.status)}
         </span>
@@ -223,13 +223,13 @@ export default function UseOfForcePage() {
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1">
           <div className="text-[9px] text-rmpg-500 uppercase font-bold">Reporting Officer</div>
-          <div className="text-xs text-white">{selected.officer_name || 'Unknown'}</div>
+          <div className="text-xs text-rmpg-100">{selected.officer_name || 'Unknown'}</div>
           {selected.officer_badge && <div className="text-[9px] text-rmpg-400">Badge: {selected.officer_badge}</div>}
         </div>
         <div className="space-y-1">
           <div className="text-[9px] text-rmpg-500 uppercase font-bold">Subject</div>
           {selected.subject_first_name ? (
-            <div className="text-xs text-white">{selected.subject_first_name} {selected.subject_last_name}</div>
+            <div className="text-xs text-rmpg-100">{selected.subject_first_name} {selected.subject_last_name}</div>
           ) : <div className="text-xs text-rmpg-400">Not linked</div>}
         </div>
       </div>
@@ -238,9 +238,9 @@ export default function UseOfForcePage() {
       <div className="border border-rmpg-700 bg-surface-sunken p-3 space-y-2">
         <div className="text-[9px] text-red-400 uppercase font-bold">Force Details</div>
         <div className="grid grid-cols-2 gap-3 text-xs">
-          <div><span className="text-rmpg-500 text-[9px]">Type:</span> <span className="text-white capitalize">{(selected.force_type || '').replace(/_/g, ' ')}</span></div>
-          <div><span className="text-rmpg-500 text-[9px]">Level:</span> <span className="text-white">{selected.force_level || '—'}</span></div>
-          <div><span className="text-rmpg-500 text-[9px]">Weapons Used:</span> <span className="text-white">{selected.weapons_used || 'None'}</span></div>
+          <div><span className="text-rmpg-500 text-[9px]">Type:</span> <span className="text-rmpg-100 capitalize">{(selected.force_type || '').replace(/_/g, ' ')}</span></div>
+          <div><span className="text-rmpg-500 text-[9px]">Level:</span> <span className="text-rmpg-100">{selected.force_level || '—'}</span></div>
+          <div><span className="text-rmpg-500 text-[9px]">Weapons Used:</span> <span className="text-rmpg-100">{selected.weapons_used || 'None'}</span></div>
           <div><span className="text-rmpg-500 text-[9px]">Body Camera:</span> <span className={selected.body_camera_active ? 'text-green-400' : 'text-red-400'}>{selected.body_camera_active ? 'Active' : 'Inactive'}</span></div>
           <div><span className="text-rmpg-500 text-[9px]">De-escalation:</span> <span className={selected.de_escalation_attempted ? 'text-green-400' : 'text-amber-400'}>{selected.de_escalation_attempted ? 'Yes' : 'No'}</span></div>
           {selected.incident_number && <div><span className="text-rmpg-500 text-[9px]">Incident:</span> <span className="text-brand-400">{selected.incident_number}</span></div>}
@@ -251,8 +251,8 @@ export default function UseOfForcePage() {
       {(selected.subject_injuries || selected.officer_injuries) && (
         <div className="border border-red-700/30 bg-red-900/10 p-3 space-y-2">
           <div className="text-[9px] text-red-400 uppercase font-bold">Injuries</div>
-          {selected.subject_injuries && <div className="text-xs"><span className="text-rmpg-400">Subject:</span> <span className="text-white">{selected.subject_injuries}</span></div>}
-          {selected.officer_injuries && <div className="text-xs"><span className="text-rmpg-400">Officer:</span> <span className="text-white">{selected.officer_injuries}</span></div>}
+          {selected.subject_injuries && <div className="text-xs"><span className="text-rmpg-400">Subject:</span> <span className="text-rmpg-100">{selected.subject_injuries}</span></div>}
+          {selected.officer_injuries && <div className="text-xs"><span className="text-rmpg-400">Officer:</span> <span className="text-rmpg-100">{selected.officer_injuries}</span></div>}
         </div>
       )}
 
@@ -312,7 +312,7 @@ export default function UseOfForcePage() {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowForm(false)}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative w-full max-w-2xl mx-4 shadow-md panel-beveled" style={{ background: '#0a0a0a' }} onClick={e => e.stopPropagation()}>
+          <div className="relative w-full max-w-2xl mx-4 shadow-md panel-beveled" style={{ background:"var(--surface-sunken)" }} onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">
                 <Shield className="title-icon" />

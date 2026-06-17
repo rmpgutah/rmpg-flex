@@ -107,7 +107,7 @@ export default function Force2FASetupModal() {
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
             <ShieldCheck style={{ width: 20, height: 20, color: '#888888' }} />
-            <div className="text-lg font-bold text-white">Two-Factor Authentication Required</div>
+            <div className="text-lg font-bold text-rmpg-100">Two-Factor Authentication Required</div>
           </div>
           <div className="text-xs text-rmpg-400 max-w-sm mx-auto">
             Your role requires two-factor authentication via Google Authenticator (or compatible app).
@@ -128,12 +128,12 @@ export default function Force2FASetupModal() {
           <div className="space-y-4">
             <div
               className="p-3 text-[10px] space-y-2"
-              style={{ background: '#050505', border: '1px solid #242424', color: '#888888' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid #242424', color: '#888888' }}
             >
-              <div className="font-bold text-[9px] uppercase tracking-wider mb-2" style={{ color: '#e0e0e0' }}>
+              <div className="font-bold text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>
                 What You'll Need
               </div>
-              <div>1. Install <strong className="text-white">Google Authenticator</strong> on your phone (iOS or Android)</div>
+              <div>1. Install <strong className="text-rmpg-100">Google Authenticator</strong> on your phone (iOS or Android)</div>
               <div>2. Scan a QR code with the app</div>
               <div>3. Enter the 6-digit code from the app to verify</div>
               <div>4. Save your backup recovery codes</div>
@@ -151,9 +151,9 @@ export default function Force2FASetupModal() {
             <button type="button"
               onClick={handleDefer}
               className="w-full flex items-center justify-center gap-2 py-2 text-[10px] uppercase tracking-wider font-bold transition-colors"
-              style={{ color: '#666666', background: 'transparent', border: 'none' }}
+              style={{ color: 'var(--rmpg-500)', background: 'transparent', border: 'none' }}
               onMouseEnter={e => (e.currentTarget.style.color = '#888888')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#666666')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'var(--rmpg-500)')}
             >
               <Clock style={{ width: 12, height: 12 }} />
               Set Up Later
@@ -167,7 +167,7 @@ export default function Force2FASetupModal() {
             <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
               Step 1: Scan QR Code
             </div>
-            <p className="text-[10px]" style={{ color: '#666666' }}>
+            <p className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>
               Open Google Authenticator and scan this QR code to add your account.
             </p>
 
@@ -185,7 +185,7 @@ export default function Force2FASetupModal() {
             <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#888888' }}>
               Step 2: Enter Verification Code
             </div>
-            <p className="text-[10px]" style={{ color: '#666666' }}>
+            <p className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>
               Enter the 6-digit code shown in Google Authenticator.
             </p>
 
@@ -229,7 +229,7 @@ export default function Force2FASetupModal() {
                   <div
                     key={i}
                     className="text-center font-mono text-xs py-1"
-                    style={{ background: '#050505', border: '1px solid #242424', color: '#e0e0e0' }}
+                    style={{ background: 'var(--surface-overlay)', border: '1px solid #242424', color: 'var(--text-secondary)' }}
                   >
                     {code}
                   </div>
@@ -237,7 +237,7 @@ export default function Force2FASetupModal() {
               </div>
             </div>
 
-            <p className="text-[9px] text-center" style={{ color: '#666666' }}>
+            <p className="text-[9px] text-center" style={{ color: 'var(--rmpg-500)' }}>
               If you lose your phone, use one of these one-time codes to log in.
               Each code can only be used once.
             </p>

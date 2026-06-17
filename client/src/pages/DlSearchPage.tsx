@@ -740,7 +740,7 @@ export default function DlSearchPage() {
   }, [ocrResult, addToast, fileCardImagesTo]);
 
   const sourceBadge = (_src: string) => (
-    <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-gray-900/50 text-gray-400 border border-gray-700/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>
+    <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>
   );
 
   const statusBadge = (status: string) => {
@@ -814,7 +814,7 @@ export default function DlSearchPage() {
   useEffect(() => { document.title = 'DL Search \u2014 RMPG Flex'; }, []);
 
   return (
-    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+    <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden">
       {/* Hidden file input for DL OCR — always in DOM so toolbar button works */}
       <input id="ff-dlsearchpage-5"
         ref={fileInputRef}
@@ -898,7 +898,7 @@ export default function DlSearchPage() {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={ocrLoading}
-                      className="flex items-center gap-1.5 text-[9px] text-[#8899aa] hover:text-white"
+                      className="flex items-center gap-1.5 text-[9px] text-rmpg-400 hover:text-rmpg-100"
                     >
                       <Upload size={11} /> or upload a photo
                     </button>
@@ -918,7 +918,7 @@ export default function DlSearchPage() {
                             }}
                             className="w-full flex items-center justify-between gap-2 px-2 py-1 text-left hover:bg-surface-raised border-b border-border-subtle"
                           >
-                            <span className="text-[10px] text-[#c0ccdd] truncate">{s.name || 'UNKNOWN'}</span>
+                            <span className="text-[10px] text-rmpg-300 truncate">{s.name || 'UNKNOWN'}</span>
                             <span className="text-[8px] font-mono text-rmpg-500 flex-shrink-0">{s.dl_state} {s.dl_number} · {new Date(s.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{/* new-date-ok: s.ts is an epoch-ms number (Date.now()), not a server string */}</span>
                           </button>
                         ))}
@@ -926,9 +926,9 @@ export default function DlSearchPage() {
                     </div>
                   )}
                   <div className="space-y-1 text-[9px] text-rmpg-500 leading-relaxed">
-                    <p><span className="text-[#c0ccdd] font-semibold">→ Scan the BACK of the card</span> — the PDF417 barcode gives an exact, DMV-encoded read of every field (full English readout).</p>
-                    <p>→ Existing person records are <span className="text-[#c0ccdd] font-semibold">pulled automatically</span> on a DL-number or name+DOB match.</p>
-                    <p>→ No record? <span className="text-[#c0ccdd] font-semibold">Upload to Records</span> creates the person + DL record in one tap.</p>
+                    <p><span className="text-rmpg-300 font-semibold">→ Scan the BACK of the card</span> — the PDF417 barcode gives an exact, DMV-encoded read of every field (full English readout).</p>
+                    <p>→ Existing person records are <span className="text-rmpg-300 font-semibold">pulled automatically</span> on a DL-number or name+DOB match.</p>
+                    <p>→ No record? <span className="text-rmpg-300 font-semibold">Upload to Records</span> creates the person + DL record in one tap.</p>
                     <p>→ Front-of-card photos fall back to OCR extraction.</p>
                   </div>
                   {!isMobile && (
@@ -938,8 +938,8 @@ export default function DlSearchPage() {
                         <PhoneScanQr />
                       </div>
                       <div className="text-[9px] text-rmpg-500 leading-relaxed">
-                        <p className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider mb-0.5">Use your phone as the scanner</p>
-                        <p>Scan this QR with your phone, sign in, and scan the license there — the results <span className="text-[#c0ccdd] font-semibold">appear on this screen automatically</span> (same login, within seconds).</p>
+                        <p className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-0.5">Use your phone as the scanner</p>
+                        <p>Scan this QR with your phone, sign in, and scan the license there — the results <span className="text-rmpg-300 font-semibold">appear on this screen automatically</span> (same login, within seconds).</p>
                       </div>
                     </div>
                   )}
@@ -965,7 +965,7 @@ export default function DlSearchPage() {
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-white">
+                <span className="text-[11px] font-bold text-rmpg-100">
                   {r.last_name}, {r.first_name} {r.middle_name || ''}
                 </span>
                 <ChevronRight className="w-3 h-3 text-rmpg-500" />
@@ -995,7 +995,7 @@ export default function DlSearchPage() {
               {/* Mobile back button */}
               {isMobile && (
                 <button type="button" onClick={() => setSelected(null)}
-                  className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                  className="text-rmpg-400 hover:text-rmpg-100 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                   <ChevronRight className="w-3 h-3 rotate-180" /> Back to Results
                 </button>
               )}
@@ -1004,7 +1004,7 @@ export default function DlSearchPage() {
               <div className="panel-surface p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h2 className={`${isMobile ? 'text-base' : 'text-lg'} font-black text-white`}>
+                    <h2 className={`${isMobile ? 'text-base' : 'text-lg'} font-black text-rmpg-100`}>
                       {selected.last_name}, {selected.first_name} {selected.middle_name || ''} {selected.suffix || ''}
                     </h2>
                     <div className="flex items-center gap-2 mt-1">
@@ -1045,30 +1045,30 @@ export default function DlSearchPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 p-3 bg-rmpg-800/20 border border-rmpg-700/30">
                   <div>
                     <span className="field-label">Class</span>
-                    <p className="text-[11px] font-bold text-white">{selected.dl_class || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.dl_class || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Status</span>
-                    <p className="text-[11px] font-bold text-white">{selected.dl_status || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.dl_status || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Expiration</span>
-                    <p className="text-[11px] font-bold text-white">{formatDate(selected.dl_expiration)}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{formatDate(selected.dl_expiration)}</p>
                   </div>
                   <div>
                     <span className="field-label">Issue Date</span>
-                    <p className="text-[11px] font-bold text-white">{formatDate(selected.dl_issue_date)}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{formatDate(selected.dl_issue_date)}</p>
                   </div>
                   {selected.dl_restrictions && (
                     <div className="col-span-2">
                       <span className="field-label">Restrictions</span>
-                      <p className="text-[11px] font-bold text-white">{selected.dl_restrictions}</p>
+                      <p className="text-[11px] font-bold text-rmpg-100">{selected.dl_restrictions}</p>
                     </div>
                   )}
                   {selected.dl_endorsements && (
                     <div className="col-span-2">
                       <span className="field-label">Endorsements</span>
-                      <p className="text-[11px] font-bold text-white">{selected.dl_endorsements}</p>
+                      <p className="text-[11px] font-bold text-rmpg-100">{selected.dl_endorsements}</p>
                     </div>
                   )}
                 </div>
@@ -1082,33 +1082,33 @@ export default function DlSearchPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
                     <span className="field-label">Date of Birth</span>
-                    <p className="text-[11px] font-bold text-white flex items-center gap-1">
+                    <p className="text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
                       <Calendar className="w-3 h-3 text-rmpg-400" /> {formatDate(selected.date_of_birth)}
                     </p>
                   </div>
                   <div>
                     <span className="field-label">Gender</span>
-                    <p className="text-[11px] font-bold text-white">{selected.gender || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.gender || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Height</span>
-                    <p className="text-[11px] font-bold text-white">{selected.height || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.height || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Weight</span>
-                    <p className="text-[11px] font-bold text-white">{selected.weight || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.weight || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Eye Color</span>
-                    <p className="text-[11px] font-bold text-white">{selected.eye_color || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.eye_color || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Hair Color</span>
-                    <p className="text-[11px] font-bold text-white">{selected.hair_color || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.hair_color || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Race</span>
-                    <p className="text-[11px] font-bold text-white">{selected.race || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.race || '—'}</p>
                   </div>
                   {selected.fetched_at && (
                     <div>
@@ -1128,7 +1128,7 @@ export default function DlSearchPage() {
                   <div className="space-y-2">
                     {selected.addresses.map((addr, i) => (
                       <div key={i} className="p-2 bg-rmpg-800/20 border border-rmpg-700/30">
-                        <p className="text-[11px] text-white font-bold">{addr.address || '—'}</p>
+                        <p className="text-[11px] text-rmpg-100 font-bold">{addr.address || '—'}</p>
                         {addr.address2 && <p className="text-[10px] text-rmpg-300">{addr.address2}</p>}
                         <p className="text-[10px] text-rmpg-300">
                           {[addr.city, addr.state, addr.postal_code].filter(Boolean).join(', ')}
@@ -1157,16 +1157,16 @@ export default function DlSearchPage() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-sunken">
               <div className="flex items-center gap-2">
                 <Database size={14} className="text-[#d4a017]" />
-                <span className="text-[12px] font-bold text-white uppercase tracking-wider">Data Sources</span>
+                <span className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider">Data Sources</span>
                 <span className="text-[8px] text-rmpg-500 uppercase">admin</span>
               </div>
-              <button type="button" onClick={() => setShowSources(false)} className="text-rmpg-500 hover:text-white"><X size={16} /></button>
+              <button type="button" onClick={() => setShowSources(false)} className="text-rmpg-500 hover:text-rmpg-100"><X size={16} /></button>
             </div>
             <div className="p-4 space-y-4">
               {/* Utah SOR feed */}
               <div className="border border-border-subtle rounded-sm bg-surface-sunken">
                 <div className="px-3 py-1.5 border-b border-border-subtle flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Utah Sex Offender Registry Feed</span>
+                  <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Utah Sex Offender Registry Feed</span>
                   <span className="text-[8px] text-rmpg-500">{sourcesCfg?.sor_records ?? 0} records</span>
                 </div>
                 <div className="p-3 space-y-2">
@@ -1182,7 +1182,7 @@ export default function DlSearchPage() {
                   {sourcesCfg?.sor_last_run && (
                     <p className="text-[8px] text-rmpg-500">Last poll: {sourcesCfg.sor_last_run.status} · {sourcesCfg.sor_last_run.records_upserted} upserted · {parseTimestamp(sourcesCfg.sor_last_run.ran_at).toLocaleString()}</p>
                   )}
-                  <button type="button" onClick={runSorPoll} className="px-2.5 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-[#c0ccdd] hover:text-white">Run poll now</button>
+                  <button type="button" onClick={runSorPoll} className="px-2.5 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-rmpg-300 hover:text-rmpg-100">Run poll now</button>
 
                   {/* Bulk import — for agencies with no live feed: paste the
                       data you lawfully hold (BCI export, OffenderWatch dump). */}
@@ -1199,7 +1199,7 @@ export default function DlSearchPage() {
                       type="button"
                       onClick={importSor}
                       disabled={sorImporting || !sorImportText.trim()}
-                      className="px-2.5 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-[#c0ccdd] hover:text-white disabled:opacity-40"
+                      className="px-2.5 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-rmpg-300 hover:text-rmpg-100 disabled:opacity-40"
                     >{sorImporting ? 'Importing…' : 'Import records'}</button>
                   </div>
                 </div>
@@ -1208,7 +1208,7 @@ export default function DlSearchPage() {
               {/* CourtListener */}
               <div className="border border-border-subtle rounded-sm bg-surface-sunken">
                 <div className="px-3 py-1.5 border-b border-border-subtle flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">CourtListener / PACER</span>
+                  <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">CourtListener / PACER</span>
                   <span className="text-[8px] text-rmpg-500">{sourcesCfg?.court_cache ?? 0} cached</span>
                 </div>
                 <div className="p-3 space-y-2">
@@ -1226,7 +1226,7 @@ export default function DlSearchPage() {
               <button type="button" onClick={saveSources} disabled={sourcesSaving} className="flex items-center gap-2 px-4 py-2 bg-[#d4a017] hover:bg-[#b88a12] disabled:opacity-40 rounded-sm text-[11px] font-bold text-black">
                 {sourcesSaving ? <Loader2 size={13} className="animate-spin" /> : null} Save
               </button>
-              <button type="button" onClick={() => setShowSources(false)} className="px-4 py-2 bg-surface-raised hover:bg-surface-overlay border border-border-subtle rounded-sm text-[11px] text-[#8899aa] hover:text-white">Close</button>
+              <button type="button" onClick={() => setShowSources(false)} className="px-4 py-2 bg-surface-raised hover:bg-surface-overlay border border-border-subtle rounded-sm text-[11px] text-rmpg-400 hover:text-rmpg-100">Close</button>
             </div>
           </div>
         </div>
@@ -1238,23 +1238,23 @@ export default function DlSearchPage() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-sunken">
               <div className="flex items-center gap-2">
                 <History size={14} className="text-[#d4a017]" />
-                <span className="text-[12px] font-bold text-white uppercase tracking-wider">Scan History</span>
+                <span className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider">Scan History</span>
                 <span className="text-[8px] text-rmpg-500 uppercase">audit log</span>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => { const n = !scanHistoryMine; setScanHistoryMine(n); loadScanHistory(n); }}
-                  className={`px-2 py-1 rounded-sm text-[9px] font-bold border ${scanHistoryMine ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'bg-surface-raised text-[#c0ccdd] border-rmpg-700 hover:text-white'}`}
+                  className={`px-2 py-1 rounded-sm text-[9px] font-bold border ${scanHistoryMine ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'bg-surface-raised text-rmpg-300 border-rmpg-700 hover:text-rmpg-100'}`}
                 >
                   {scanHistoryMine ? 'My Scans' : 'All Scans'}
                 </button>
-                <button type="button" onClick={() => setShowScanHistory(false)} className="text-rmpg-500 hover:text-white"><X size={16} /></button>
+                <button type="button" onClick={() => setShowScanHistory(false)} className="text-rmpg-500 hover:text-rmpg-100"><X size={16} /></button>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto">
               {scanHistoryLoading ? (
-                <div className="flex items-center justify-center py-10 text-[11px] text-[#8899aa] gap-2"><Loader2 size={14} className="animate-spin" /> Loading...</div>
+                <div className="flex items-center justify-center py-10 text-[11px] text-rmpg-400 gap-2"><Loader2 size={14} className="animate-spin" /> Loading...</div>
               ) : !scanHistory || scanHistory.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-[11px] text-rmpg-500 gap-2">
                   <History size={22} className="text-[#333333]" />
@@ -1279,14 +1279,14 @@ export default function DlSearchPage() {
                       const flagged = !!(pf.sex_offender || pf.watchlist || pf.supervision) || dangerSrcs.length > 0;
                       return (
                         <tr key={s.id} className={`border-t border-[#141414] text-[10px] ${flagged ? 'bg-red-900/10' : ''}`}>
-                          <td className="px-3 py-[3px] text-[#8899aa] whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                          <td className="px-3 py-[3px] text-white">
+                          <td className="px-3 py-[3px] text-rmpg-400 whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                          <td className="px-3 py-[3px] text-rmpg-100">
                             {s.person_id
                               ? <button type="button" className="hover:text-[#d4a017] hover:underline" onClick={() => { setShowScanHistory(false); navigate(`/records?tab=persons&personId=${s.person_id}`); }}>{s.subject_name || 'unknown'}</button>
                               : (s.subject_name || 'unknown')}
                           </td>
-                          <td className="px-3 py-[3px] text-[#8899aa] font-mono">{s.dl_number ? `${s.dl_number} ${s.dl_state || ''}` : '—'}</td>
-                          <td className="px-3 py-[3px] text-[#8899aa]">{s.officer}</td>
+                          <td className="px-3 py-[3px] text-rmpg-400 font-mono">{s.dl_number ? `${s.dl_number} ${s.dl_state || ''}` : '—'}</td>
+                          <td className="px-3 py-[3px] text-rmpg-400">{s.officer}</td>
                           <td className="px-3 py-[3px]">
                             {flagged ? (
                               <span className="text-[8px] font-bold uppercase px-1 py-px bg-red-900/50 text-red-300 border border-red-600/70 inline-flex items-center gap-1">
@@ -1345,14 +1345,14 @@ export default function DlSearchPage() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-sunken">
               <div className="flex items-center gap-2">
                 <ScanLine size={14} className="text-[#d4a017]" />
-                <span className="text-[12px] font-bold text-white uppercase tracking-wider">
+                <span className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider">
                   {scanReadout ? 'DL Scanner — PDF417 Read' : 'DL Scanner — OCR Read'}
                 </span>
                 {scanReadout && (
                   <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-green-900/50 text-green-400 border border-green-700/50">DMV-Encoded</span>
                 )}
               </div>
-              <button type="button" onClick={() => setShowOcrPreview(false)} className="text-rmpg-500 hover:text-white">
+              <button type="button" onClick={() => setShowOcrPreview(false)} className="text-rmpg-500 hover:text-rmpg-100">
                 <X size={16} />
               </button>
             </div>
@@ -1398,7 +1398,7 @@ export default function DlSearchPage() {
                       className={`flex items-center gap-2 px-3 py-1.5 border text-[10px] font-bold uppercase tracking-wide ${
                         a.level === 'danger' ? 'bg-red-900/30 border-red-700/50 text-red-400'
                         : a.level === 'warning' ? 'bg-amber-900/30 border-amber-700/50 text-amber-400'
-                        : 'bg-surface-raised border-rmpg-700 text-[#8899aa]'
+                        : 'bg-surface-raised border-rmpg-700 text-rmpg-400'
                       }`}
                     >
                       <AlertTriangle size={12} className="flex-shrink-0" />
@@ -1413,7 +1413,7 @@ export default function DlSearchPage() {
                 <div className="border border-border-subtle rounded-sm bg-surface-sunken flex items-center gap-3 p-2">
                   {cardImages.front && <ImgThumb blob={cardImages.front} label="FRONT" />}
                   {cardImages.back && <ImgThumb blob={cardImages.back} label="BACK" />}
-                  <span className="text-[9px] text-[#8899aa] leading-snug">
+                  <span className="text-[9px] text-rmpg-400 leading-snug">
                     ID card image{cardImages.front && cardImages.back ? 's' : ''} captured —
                     {cardSavedTo ? <span className="text-[#7fb069]"> filed to record #{cardSavedTo}</span> : ' will be filed to the person record on create / pull.'}
                   </span>
@@ -1422,7 +1422,7 @@ export default function DlSearchPage() {
 
               {/* ── Records-system match ── */}
               <div className="border border-border-subtle rounded-sm bg-surface-sunken">
-                <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+                <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Database size={11} /> Records System
                 </div>
                 <div className="p-2 space-y-1.5">
@@ -1434,20 +1434,20 @@ export default function DlSearchPage() {
                       <button
                         type="button"
                         onClick={() => { setShowOcrPreview(false); navigate(`/records?tab=persons&personId=${uploadedRecord}`); }}
-                        className="px-2.5 py-1 bg-green-600 hover:bg-green-500 rounded-sm text-[10px] font-bold text-white"
+                        className="px-2.5 py-1 bg-green-600 hover:bg-green-500 rounded-sm text-[10px] font-bold text-rmpg-100"
                       >
                         Open Record
                       </button>
                     </div>
                   ) : matchLoading ? (
-                    <div className="flex items-center gap-2 text-[10px] text-[#8899aa] px-2 py-1.5">
+                    <div className="flex items-center gap-2 text-[10px] text-rmpg-400 px-2 py-1.5">
                       <Loader2 size={12} className="animate-spin" /> Searching records for this subject...
                     </div>
                   ) : scanMatches && scanMatches.length > 0 ? (
                     scanMatches.map((p) => (
                       <div key={p.id} className="flex items-center justify-between gap-2 px-2 py-1.5 bg-surface-raised border border-rmpg-700">
                         <div className="min-w-0">
-                          <div className="text-[11px] text-white font-bold truncate">
+                          <div className="text-[11px] text-rmpg-100 font-bold truncate">
                             {p.last_name}, {p.first_name} <span className="text-rmpg-500 font-normal">#{p.id}</span>
                           </div>
                           <div className="text-[8px] text-[#d4a017] font-bold uppercase tracking-wider flex items-center gap-1.5">
@@ -1456,7 +1456,7 @@ export default function DlSearchPage() {
                               <span className="px-1 py-px bg-red-900/60 text-red-300 border border-red-600/70 font-bold">{p.active_warrants} ACTIVE WARRANT{p.active_warrants > 1 ? 'S' : ''}</span>
                             )}
                             {p.active_warrants === 0 && p.total_warrants > 0 && (
-                              <span className="px-1 py-px bg-surface-raised text-[#8899aa] border border-rmpg-700">{p.total_warrants} prior warrant{p.total_warrants > 1 ? 's' : ''}</span>
+                              <span className="px-1 py-px bg-surface-raised text-rmpg-400 border border-rmpg-700">{p.total_warrants} prior warrant{p.total_warrants > 1 ? 's' : ''}</span>
                             )}
                           </div>
                         </div>
@@ -1471,7 +1471,7 @@ export default function DlSearchPage() {
                       </div>
                     ))
                   ) : (
-                    <div className="text-[10px] text-[#8899aa] px-2 py-1.5 flex items-center gap-1.5">
+                    <div className="text-[10px] text-rmpg-400 px-2 py-1.5 flex items-center gap-1.5">
                       <AlertTriangle size={11} className="text-amber-500" /> No existing record found — upload below to create one.
                     </div>
                   )}
@@ -1481,7 +1481,7 @@ export default function DlSearchPage() {
               {/* ── Deep records sweep (hard-to-find LE sources) ── */}
               {(deepSweepLoading || (deepSweep && deepSweep.total > 0)) && (
                 <div className="border border-border-subtle rounded-sm bg-surface-sunken">
-                  <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+                  <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1.5">
                     <Search size={11} /> Deep Records Sweep
                     {deepSweepLoading
                       ? <Loader2 size={10} className="animate-spin" />
@@ -1489,7 +1489,7 @@ export default function DlSearchPage() {
                   </div>
                   {deepSweep && deepSweep.sources.map((src: any) => (
                     <div key={src.key} className="border-b border-border-subtle last:border-b-0">
-                      <div className={`px-3 py-1 text-[8px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${src.danger ? 'text-red-400' : 'text-[#8899aa]'}`}>
+                      <div className={`px-3 py-1 text-[8px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${src.danger ? 'text-red-400' : 'text-rmpg-400'}`}>
                         {src.danger && <AlertTriangle size={10} />}
                         {src.label} ({src.rows.length})
                         {src.key === 'utah_sor' && (
@@ -1501,7 +1501,7 @@ export default function DlSearchPage() {
                         )}
                       </div>
                       {src.rows.map((row: any) => (
-                        <div key={`${src.key}-${row.id}`} className={`px-3 py-1 text-[10px] border-t border-border-subtle flex items-start gap-1.5 ${row.danger ? 'text-red-300 bg-red-900/10' : 'text-[#c0ccdd]'}`}>
+                        <div key={`${src.key}-${row.id}`} className={`px-3 py-1 text-[10px] border-t border-border-subtle flex items-start gap-1.5 ${row.danger ? 'text-red-300 bg-red-900/10' : 'text-rmpg-300'}`}>
                           {row.image && (
                             <img src={row.image} alt="Booking photo" className="w-9 h-11 object-cover border border-rmpg-700 bg-black flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                           )}
@@ -1565,7 +1565,7 @@ export default function DlSearchPage() {
                     {chips.length > 0 && (
                       <div className="p-2 flex flex-wrap gap-1">
                         {chips.map((ch) => (
-                          <span key={ch.label} className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${ch.danger ? 'bg-red-900/40 text-red-300 border-red-600/70' : 'bg-surface-raised text-[#c0ccdd] border-rmpg-700'}`}>
+                          <span key={ch.label} className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${ch.danger ? 'bg-red-900/40 text-red-300 border-red-600/70' : 'bg-surface-raised text-rmpg-300 border-rmpg-700'}`}>
                             {ch.label}
                           </span>
                         ))}
@@ -1573,9 +1573,9 @@ export default function DlSearchPage() {
                     )}
                     {lists.map((l) => (
                       <div key={l.title} className="border-t border-border-subtle">
-                        <div className="px-3 py-1 text-[8px] font-bold text-[#8899aa] uppercase tracking-wider">{l.title}</div>
+                        <div className="px-3 py-1 text-[8px] font-bold text-rmpg-400 uppercase tracking-wider">{l.title}</div>
                         {l.rows.map((r, i) => (
-                          <div key={i} className="px-3 py-[3px] text-[10px] text-[#c0ccdd] border-t border-border-subtle leading-snug">{r}</div>
+                          <div key={i} className="px-3 py-[3px] text-[10px] text-rmpg-300 border-t border-border-subtle leading-snug">{r}</div>
                         ))}
                       </div>
                     ))}
@@ -1602,10 +1602,10 @@ export default function DlSearchPage() {
                       {r.image && <img src={r.image} alt="FBI bulletin" className="w-10 h-12 object-cover border border-rmpg-700 bg-black flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-white font-bold">{r.title}</span>
+                          <span className="text-rmpg-100 font-bold">{r.title}</span>
                           {r.warning && <span className="text-[7px] font-bold px-1 py-px bg-red-900/60 text-red-300 border border-red-600/70 uppercase">{r.warning}</span>}
                         </div>
-                        <div className="text-[#8899aa] mt-0.5">{[r.subjects, r.sex, r.race, r.dob && `DOB ${r.dob}`].filter(Boolean).join(' · ')}</div>
+                        <div className="text-rmpg-400 mt-0.5">{[r.subjects, r.sex, r.race, r.dob && `DOB ${r.dob}`].filter(Boolean).join(' · ')}</div>
                         {r.caution && <div className="text-[#a89878] mt-0.5 leading-snug">{r.caution.slice(0, 180)}{r.caution.length > 180 ? '…' : ''}</div>}
                         {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[#d4a017] hover:underline">FBI bulletin ↗</a>}
                       </div>
@@ -1617,7 +1617,7 @@ export default function DlSearchPage() {
               {/* ── Open-source federal court records (CourtListener) ── */}
               {(courtLoading || (courtRecords && courtRecords.length > 0)) && (
                 <div className="border border-border-subtle rounded-sm bg-surface-sunken">
-                  <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+                  <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1.5">
                     <Database size={11} /> Federal Court Records
                     {courtLoading
                       ? <Loader2 size={10} className="animate-spin" />
@@ -1632,9 +1632,9 @@ export default function DlSearchPage() {
                     <div key={i} className={`px-3 py-1 text-[10px] border-t border-border-subtle ${r.is_criminal ? 'bg-red-900/10' : ''}`}>
                       <div className="flex items-center gap-1.5">
                         {r.is_criminal && <span className="text-[7px] font-bold px-1 py-px bg-red-900/50 text-red-300 border border-red-600/70 uppercase">Criminal</span>}
-                        <span className="text-white font-medium">{r.case_name}</span>
+                        <span className="text-rmpg-100 font-medium">{r.case_name}</span>
                       </div>
-                      <div className="text-[#8899aa] mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <div className="text-rmpg-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
                         {[r.court, r.docket_number, r.date_filed].filter(Boolean).join(' · ')}
                         {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[#d4a017] hover:underline">view ↗</a>}
                       </div>
@@ -1646,7 +1646,7 @@ export default function DlSearchPage() {
               {/* ── DL Analysis (shared dlFunctions library / iOS bridge) ── */}
               {scanEval && (
                 <div className="border border-border-subtle rounded-sm bg-surface-sunken">
-                  <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+                  <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1.5">
                     <Shield size={11} /> DL Analysis
                     <span className="text-rmpg-500 normal-case tracking-normal">scan quality {scanEval.quality}%{scanEval.usable ? '' : ' · review'}</span>
                   </div>
@@ -1655,10 +1655,10 @@ export default function DlSearchPage() {
                       DL# {scanEval.dlValid ? 'valid format' : 'format mismatch'}
                     </span>
                     {scanEval.jurisdictionName && (
-                      <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-surface-raised text-[#c0ccdd] border-rmpg-700">{scanEval.jurisdictionName} ({scanEval.country})</span>
+                      <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-surface-raised text-rmpg-300 border-rmpg-700">{scanEval.jurisdictionName} ({scanEval.country})</span>
                     )}
                     {scanEval.age !== null && (
-                      <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-surface-raised text-[#c0ccdd] border-rmpg-700">Age {scanEval.age} · {scanEval.ageBracket}</span>
+                      <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-surface-raised text-rmpg-300 border-rmpg-700">Age {scanEval.age} · {scanEval.ageBracket}</span>
                     )}
                     {scanEval.eligibility.minor && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-red-900/40 text-red-300 border-red-600/70">MINOR</span>}
                     {!scanEval.eligibility.minor && scanEval.eligibility.under21 && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-amber-900/30 text-amber-400 border-amber-700/50">UNDER 21</span>}
@@ -1667,11 +1667,11 @@ export default function DlSearchPage() {
                       License {scanEval.expiry}
                     </span>
                     {scanEval.badges.map((b: string) => (
-                      <span key={b} className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-surface-raised text-[#c0ccdd] border-rmpg-700">{b}</span>
+                      <span key={b} className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-surface-raised text-rmpg-300 border-rmpg-700">{b}</span>
                     ))}
                   </div>
                   {(scanEval.endorsements.length > 0 || scanEval.restrictions.length > 0) && (
-                    <div className="px-3 py-1 border-t border-border-subtle text-[9px] text-[#8899aa] space-y-0.5">
+                    <div className="px-3 py-1 border-t border-border-subtle text-[9px] text-rmpg-400 space-y-0.5">
                       {scanEval.endorsements.length > 0 && <div><span className="text-rmpg-500 uppercase">Endorsements:</span> {scanEval.endorsements.join(', ')}</div>}
                       {scanEval.restrictions.length > 0 && <div><span className="text-rmpg-500 uppercase">Restrictions:</span> {scanEval.restrictions.join(', ')}</div>}
                     </div>
@@ -1698,7 +1698,7 @@ export default function DlSearchPage() {
                             () => addToast('Copy failed', 'error'),
                           );
                         }}
-                        className="px-2 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-[#c0ccdd] hover:text-white"
+                        className="px-2 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-rmpg-300 hover:text-rmpg-100"
                       >
                         Copy Block
                       </button>
@@ -1719,14 +1719,14 @@ export default function DlSearchPage() {
                     {leFields.map((f) => (
                       <div key={f.tag} className="flex items-baseline gap-1.5 text-[10px]" title={f.label}>
                         <span className="text-[#7fb069] w-9 flex-shrink-0 font-bold">{f.tag}/</span>
-                        <span className="text-[#e8e8e8] break-all">{f.value}</span>
+                        <span className="text-rmpg-200 break-all">{f.value}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              <div className="text-[9px] font-bold text-[#8899aa] uppercase tracking-wider mb-2">Extracted Information — Review Before Saving</div>
+              <div className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">Extracted Information — Review Before Saving</div>
               {([
                 ['First Name', ocrResult.first_name],
                 ['Middle Name', ocrResult.middle_name],
@@ -1751,7 +1751,7 @@ export default function DlSearchPage() {
               ] as [string, string][]).filter(([_, val]) => val).map(([label, val]) => (
                 <div key={label} className="flex items-center gap-2 text-[11px]">
                   <span className="text-rmpg-500 w-28 flex-shrink-0 font-mono uppercase text-[9px]">{label}</span>
-                  <span className="text-white font-mono">{val}</span>
+                  <span className="text-rmpg-100 font-mono">{val}</span>
                 </div>
               ))}
               {!scanReadout && Object.entries(ocrResult).filter(([k, v]) => v && !['first_name','middle_name','last_name','date_of_birth','gender','height','weight','eye_color','hair_color','address','city','state','zip','dl_number','dl_state','dl_class','dl_expiry','dl_issue_date','dl_restrictions','dl_endorsements','full_name','source','raw_ocr'].includes(k)).length > 0 && (
@@ -1760,7 +1760,7 @@ export default function DlSearchPage() {
                   {Object.entries(ocrResult).filter(([k, v]) => v && !['first_name','middle_name','last_name','date_of_birth','gender','height','weight','eye_color','hair_color','address','city','state','zip','dl_number','dl_state','dl_class','dl_expiry','dl_issue_date','dl_restrictions','dl_endorsements','full_name','source','raw_ocr'].includes(k)).map(([k, v]) => (
                     <div key={k} className="flex items-center gap-2 text-[10px]">
                       <span className="text-rmpg-500 w-28 flex-shrink-0 font-mono uppercase text-[8px]">{k}</span>
-                      <span className="text-[#8899aa] font-mono">{String(v)}</span>
+                      <span className="text-rmpg-400 font-mono">{String(v)}</span>
                     </div>
                   ))}
                 </div>
@@ -1772,7 +1772,7 @@ export default function DlSearchPage() {
                   <button
                     type="button"
                     onClick={() => setShowFullReadout(v => !v)}
-                    className="w-full flex items-center justify-between px-3 py-1.5 text-[9px] font-bold text-[#8899aa] uppercase tracking-wider hover:text-white"
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-[9px] font-bold text-rmpg-400 uppercase tracking-wider hover:text-rmpg-100"
                   >
                     <span className="flex items-center gap-1.5"><ScanLine size={11} /> Full Barcode Readout — {scanReadout.length} fields decoded</span>
                     <ChevronRight size={12} className={`transition-transform ${showFullReadout ? 'rotate-90' : ''}`} />
@@ -1791,8 +1791,8 @@ export default function DlSearchPage() {
                           {scanReadout.map((row) => (
                             <tr key={row.code} className="border-t border-border-subtle text-[10px] align-top">
                               <td className="px-2 py-[2px] font-mono text-[#d4a017] text-[9px]">{row.code}</td>
-                              <td className="px-2 py-[2px] text-[#8899aa]">{row.label}</td>
-                              <td className="px-2 py-[2px] text-white">
+                              <td className="px-2 py-[2px] text-rmpg-400">{row.label}</td>
+                              <td className="px-2 py-[2px] text-rmpg-100">
                                 {row.english}
                                 {row.english !== row.value && row.value && (
                                   <span className="text-rmpg-500 font-mono text-[8px] ml-1.5">[{row.value}]</span>
@@ -1812,7 +1812,7 @@ export default function DlSearchPage() {
                 <button
                   type="button"
                   onClick={handleCreatePersonFromOcr}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-sm text-[11px] font-bold text-white transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-sm text-[11px] font-bold text-rmpg-100 transition-colors"
                 >
                   <Upload size={14} />
                   {scanMatches && scanMatches.length > 0 ? 'Upload as New Record' : 'Upload to Records'}
@@ -1825,7 +1825,7 @@ export default function DlSearchPage() {
                     value={linkPlate}
                     onChange={(e) => setLinkPlate(e.target.value)}
                     placeholder="Plate (optional)"
-                    className="w-28 px-2 py-2 bg-surface-raised border border-rmpg-700 text-[11px] text-white font-mono uppercase placeholder-gray-600"
+                    className="w-28 px-2 py-2 bg-surface-raised border border-rmpg-700 text-[11px] text-rmpg-100 font-mono uppercase placeholder-gray-600"
                   />
                   <button
                     type="button"
@@ -1859,7 +1859,7 @@ export default function DlSearchPage() {
               <button
                 type="button"
                 onClick={() => setShowOcrPreview(false)}
-                className="px-4 py-2 bg-surface-raised hover:bg-surface-overlay border border-border-subtle rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
+                className="px-4 py-2 bg-surface-raised hover:bg-surface-overlay border border-border-subtle rounded-sm text-[11px] text-rmpg-400 hover:text-rmpg-100 transition-colors"
               >
                 Close
               </button>

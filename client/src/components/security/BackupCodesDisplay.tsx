@@ -67,18 +67,18 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
       {/* Codes grid */}
       <div
         className="grid grid-cols-2 gap-1.5 p-3 font-mono"
-        style={{ background: '#050505', border: '1px solid #2b2b2b' }}
+        style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b' }}
       >
         {codes.map((code, i) => (
           <div
             key={i}
             className="flex items-center gap-2 px-2 py-1"
-            style={{ background: '#0a0a0a' }}
+            style={{ background:"var(--surface-sunken)" }}
           >
-            <span className="text-[9px] w-4 text-right" style={{ color: '#666666' }}>
+            <span className="text-[9px] w-4 text-right" style={{ color: 'var(--rmpg-500)' }}>
               {i + 1}.
             </span>
-            <span className="text-body-sm tracking-wider" style={{ color: '#e0e0e0' }}>
+            <span className="text-body-sm tracking-wider" style={{ color: 'var(--text-secondary)' }}>
               {code}
             </span>
           </div>
@@ -120,7 +120,7 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
         <button type="button"
           onClick={onAcknowledge}
           disabled={!acknowledged}
-          className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+          className="toolbar-btn toolbar-btn-primary w-full h-9 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Continue
         </button>

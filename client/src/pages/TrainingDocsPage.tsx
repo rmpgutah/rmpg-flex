@@ -35,17 +35,17 @@ const CATEGORIES: { key: CompanyDocCategory | 'all'; label: string }[] = [
 
 const CATEGORY_COLORS: Record<string, string> = {
   policy: 'bg-red-900/40 text-red-400 border-red-700/50',
-  procedure: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+  procedure: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
   sop: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   training_manual: 'bg-green-900/40 text-green-400 border-green-700/50',
   form: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
-  reference: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+  reference: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
   general: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
 };
 
 function fileIcon(mimeType?: string) {
   if (!mimeType) return <File className="w-5 h-5 text-rmpg-400" />;
-  if (mimeType.startsWith('image/')) return <FileImage className="w-5 h-5 text-gray-400" />;
+  if (mimeType.startsWith('image/')) return <FileImage className="w-5 h-5 text-rmpg-400" />;
   if (mimeType.startsWith('video/')) return <FileVideo className="w-5 h-5 text-purple-400" />;
   if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('csv'))
     return <FileSpreadsheet className="w-5 h-5 text-green-400" />;
@@ -243,7 +243,7 @@ export default function TrainingDocsPage() {
                     className="w-full text-left mb-2 px-3 py-2 bg-surface-raised hover:bg-surface-raised/80 border border-rmpg-700/50 transition-colors"
                     style={{ borderRadius: '2px' }}
                   >
-                    <div className="text-[11px] font-bold text-white">{form.name}</div>
+                    <div className="text-[11px] font-bold text-rmpg-100">{form.name}</div>
                     <div className="text-[9px] text-rmpg-400 mt-0.5">{form.formNumber}</div>
                     <div className="text-[9px] text-rmpg-500 mt-0.5">{form.description}</div>
                   </button>
@@ -283,7 +283,7 @@ export default function TrainingDocsPage() {
                 {/* Icon */}
                 <div className="flex-shrink-0 mt-0.5">
                   {doc.content_type === 'link' ? (
-                    <ExternalLink className="w-5 h-5 text-gray-400" />
+                    <ExternalLink className="w-5 h-5 text-rmpg-400" />
                   ) : (
                     fileIcon(doc.mime_type)
                   )}

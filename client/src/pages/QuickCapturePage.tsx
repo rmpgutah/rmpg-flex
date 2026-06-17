@@ -14,7 +14,7 @@ interface CaptureResult {
   vehicle_id: number | null; fi_id: number | null; hits: ScreenHit[];
 }
 
-const inputCls = 'w-full bg-[#050505] border border-[#222222] px-2 py-2 text-sm text-gray-200 focus:border-[#d4a017] outline-none';
+const inputCls = 'w-full bg-surface-overlay border border-border-default px-2 py-2 text-sm text-rmpg-200 focus:border-[#d4a017] outline-none';
 
 export default function QuickCapturePage() {
   const [form, setForm] = useState({ first_name: '', last_name: '', dob: '', plate: '', location: '', narrative: '' });
@@ -65,7 +65,7 @@ export default function QuickCapturePage() {
         <div key={h.detail} className="border border-[#d4a017] text-[#d4a017] text-[11px] px-3 py-1">{h.detail}</div>
       ))}
       {result && (
-        <div className="border border-[#222222] text-[11px] text-[#888888] px-3 py-1 flex gap-3">
+        <div className="border border-border-default text-[11px] text-[#888888] px-3 py-1 flex gap-3">
           <span>FI logged{result.person_reused ? ' (known subject)' : ''}.</span>
           {result.person_id && (
             <Link to={`/intel/person/${result.person_id}`} className="text-[#d4a017] hover:underline">Open dossier →</Link>
@@ -88,7 +88,7 @@ export default function QuickCapturePage() {
       </div>
       <textarea value={form.narrative} onChange={set('narrative')} placeholder="Narrative / observations" rows={3} className={inputCls} />
       <button onClick={submit} disabled={busy || (!form.last_name.trim() && !form.plate.trim())}
-        className="w-full py-2 text-sm font-semibold border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1a1a] disabled:opacity-40">
+        className="w-full py-2 text-sm font-semibold border border-[#d4a017] text-[#d4a017] hover:bg-surface-raised disabled:opacity-40">
         {busy ? 'CAPTURING…' : 'CAPTURE + CHECK'}
       </button>
       <div className="text-[9px] text-[#888888]">Creates/updates the person and vehicle records, files an FI, and runs a records check — all in one step.</div>

@@ -383,7 +383,7 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
                   value={values[key] || ''}
                   onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
                   placeholder={configured[key] ? '••••••••••••••••••••' : 'Paste API key here...'}
-                  className="w-full px-3 py-2 pr-8 bg-surface-raised border border-rmpg-700 rounded-sm text-xs text-white font-mono placeholder-[#525252] focus:outline-none focus:border-brand-500"
+                  className="w-full px-3 py-2 pr-8 bg-surface-raised border border-rmpg-700 rounded-sm text-xs text-rmpg-100 font-mono placeholder-[#525252] focus:outline-none focus:border-brand-500"
                 />
                 <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !showKey[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
                   {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -394,7 +394,7 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
                 type="button"
                 onClick={() => handleSave(key)}
                 disabled={!values[key]?.trim() || saving === key}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white rounded-sm transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-rmpg-100 rounded-sm transition-colors"
               >
                 {saving === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                 Save
@@ -727,7 +727,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                 <button type="button"
                   onClick={handleSaveSvc}
                   disabled={savingSvc || !svcApiKey.trim()}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors disabled:opacity-50"
                 >
                   {savingSvc ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3.5 h-3.5" />}
                   Save
@@ -772,10 +772,10 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       <ApiKeyPanel title="AI / Machine Learning" icon={<Cpu className="w-4 h-4 text-purple-400" />} keys={AI_ML_KEYS} />
 
       {/* ── Cloud Storage & Infrastructure ── */}
-      <ApiKeyPanel title="Cloud Storage & Infrastructure" icon={<Cloud className="w-4 h-4 text-gray-400" />} keys={CLOUD_STORAGE_KEYS} />
+      <ApiKeyPanel title="Cloud Storage & Infrastructure" icon={<Cloud className="w-4 h-4 text-rmpg-400" />} keys={CLOUD_STORAGE_KEYS} />
 
       {/* ── Data Services ── */}
-      <ApiKeyPanel title="Data Services" icon={<Database className="w-4 h-4 text-gray-400" />} keys={DATA_SERVICE_KEYS} />
+      <ApiKeyPanel title="Data Services" icon={<Database className="w-4 h-4 text-rmpg-400" />} keys={DATA_SERVICE_KEYS} />
 
       {/* ── RapidAPI & Third-Party ── */}
       <ApiKeyPanel title="RapidAPI & Third-Party" icon={<Key className="w-4 h-4 text-brand-400" />} keys={THIRD_PARTY_KEYS} />
@@ -789,7 +789,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           </div>
           <button type="button"
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             Create API Key
@@ -1015,7 +1015,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                     <button type="button"
                       onClick={handleCreate}
                       disabled={creating || !newKeyName.trim()}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors disabled:opacity-50"
                     >
                       {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Plus className="w-3.5 h-3.5" />}
                       Create
@@ -1032,7 +1032,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                       </code>
                       <button type="button"
                         onClick={() => handleCopy(createdKey)}
-                        className="flex-shrink-0 flex items-center gap-1 px-3 py-2.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
+                        className="flex-shrink-0 flex items-center gap-1 px-3 py-2.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors"
                         title="Copy to clipboard"
                       >
                         {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -1049,7 +1049,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                   <div className="flex justify-end">
                     <button type="button"
                       onClick={closeCreateModal}
-                      className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
+                      className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors"
                     >
                       Close
                     </button>

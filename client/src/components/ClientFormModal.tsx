@@ -241,7 +241,7 @@ export default function ClientFormModal({
             className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
               activeSection === s.id
                 ? 'text-red-400 bg-red-900/20 border border-red-700/40'
-                : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/40 border border-transparent'
+                : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'
             }`}
           >
             {s.label}

@@ -32,9 +32,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   defensive_tactics: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   first_aid: 'bg-green-900/40 text-green-400 border-green-700/50',
   legal: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
-  communication: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
-  driving: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
-  technology: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+  communication: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
+  driving: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
+  technology: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
   leadership: 'bg-brand-900/40 text-brand-400 border-brand-700/50',
   compliance: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
@@ -42,7 +42,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   completed: { bg: 'bg-green-900/50', text: 'text-green-400', border: 'border-green-700/50' },
-  in_progress: { bg: 'bg-gray-900/50', text: 'text-gray-400', border: 'border-gray-700/50' },
+  in_progress: { bg: 'bg-surface-sunken/50', text: 'text-rmpg-400', border: 'border-border-default/50' },
   scheduled: { bg: 'bg-amber-900/50', text: 'text-amber-400', border: 'border-amber-700/50' },
   overdue: { bg: 'bg-red-900/50', text: 'text-red-400', border: 'border-red-700/50' },
   expired: { bg: 'bg-red-900/50', text: 'text-red-400', border: 'border-red-700/50' },
@@ -584,7 +584,7 @@ function DashboardTab({ records, requirements, officers }: {
           <div className="space-y-1 max-h-[300px] overflow-y-auto">
             {stats.officerCompliance.map(o => (
               <div key={o.id} className="flex items-center gap-2 py-1 border-b border-rmpg-700/30">
-                <span className="text-[11px] text-rmpg-100 flex-1 truncate">{o.full_name}</span>
+                <span className="text-[11px] text-rmpg-100 min-w-0 flex-1 truncate">{o.full_name}</span>
                 {o.badge_number && (
                   <span className="text-[9px] font-mono text-rmpg-500">{o.badge_number}</span>
                 )}
@@ -786,7 +786,7 @@ function MandatoryTrainingAlerts() {
                       a.alert_type === 'expired' ? 'bg-red-500' : a.alert_type === 'expiring_soon' ? 'bg-amber-500' : 'bg-rmpg-500'
                     }`} />
                     <span className="text-rmpg-200 w-28 truncate">{a.officer_name}</span>
-                    <span className="text-rmpg-400 flex-1 truncate">{a.course_name}</span>
+                    <span className="text-rmpg-400 min-w-0 flex-1 truncate">{a.course_name}</span>
                     <span className={`text-[9px] font-bold ${
                       a.alert_type === 'expired' ? 'text-red-400' : a.alert_type === 'expiring_soon' ? 'text-amber-400' : 'text-rmpg-500'
                     }`}>

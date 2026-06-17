@@ -437,7 +437,7 @@ export default function DashCamUploadWizard({
               <div
                 className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold border ${
                   isActive
-                    ? 'bg-brand-500 border-brand-400 text-white'
+                    ? 'bg-brand-500 border-brand-400 text-rmpg-100'
                     : isDone
                     ? 'bg-brand-500/30 border-brand-500 text-brand-300'
                     : 'bg-surface-sunken border-rmpg-600 text-rmpg-500'
@@ -607,7 +607,7 @@ export default function DashCamUploadWizard({
                     </div>
                   )}
                 </div>
-                <span className="text-[11px] text-rmpg-200 font-semibold truncate flex-1 text-left">
+                <span className="text-[11px] text-rmpg-200 font-semibold min-w-0 truncate flex-1 text-left">
                   {entry.file.name}
                 </span>
                 <span className="text-[9px] text-rmpg-500 flex-shrink-0">

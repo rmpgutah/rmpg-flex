@@ -36,9 +36,9 @@ function StarRating({ rating, max = 5, size = 14 }: { rating: number; max?: numb
 
 // ── Badge helpers ──────────────────────────────────────────
 const TYPE_COLORS: Record<ReviewType, string> = {
-  annual: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  annual: 'bg-rmpg-500/20 text-rmpg-400 border-rmpg-500/30',
   probationary: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  quarterly: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  quarterly: 'bg-rmpg-500/20 text-rmpg-400 border-rmpg-500/30',
   improvement_plan: 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
@@ -51,7 +51,7 @@ const TYPE_LABELS: Record<ReviewType, string> = {
 
 const STATUS_COLORS: Record<ReviewStatus, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-700/30',
-  submitted: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  submitted: 'bg-rmpg-500/20 text-rmpg-400 border-rmpg-500/30',
   acknowledged: 'bg-green-500/20 text-green-400 border-green-500/30',
   completed: 'bg-green-500/20 text-green-400 border-green-500/30',
 };
@@ -330,7 +330,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                 {/* Header */}
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-white font-medium">
+                    <span className="text-sm text-rmpg-100 font-medium">
                       {formatDate(review.review_period_start)} &ndash;{' '}
                       {formatDate(review.review_period_end)}
                     </span>
@@ -392,12 +392,12 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                       }
                       rows={2}
                       placeholder="Optional comments before acknowledging..."
-                      className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-y"
+                      className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:outline-none resize-y"
                     />
                     <button type="button"
                       onClick={() => handleAcknowledge(review.id)}
                       disabled={ackLoading === review.id}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600/80 hover:bg-green-600 text-white rounded-sm transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600/80 hover:bg-green-600 text-rmpg-100 rounded-sm transition-colors disabled:opacity-50"
                     >
                       {ackLoading === review.id ? (
                         <Loader2 size={12} className="animate-spin" />
@@ -444,23 +444,23 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
       {stats && (
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-center gap-3">
-            <Clock size={18} className="text-gray-400 shrink-0" />
+            <Clock size={18} className="text-rmpg-400 shrink-0" />
             <div>
-              <div className="text-lg font-bold text-white">{stats.upcoming}</div>
+              <div className="text-lg font-bold text-rmpg-100">{stats.upcoming}</div>
               <div className="text-[10px] text-rmpg-400">Upcoming Reviews</div>
             </div>
           </div>
           <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-center gap-3">
             <AlertTriangle size={18} className="text-amber-400 shrink-0" />
             <div>
-              <div className="text-lg font-bold text-white">{stats.overdue}</div>
+              <div className="text-lg font-bold text-rmpg-100">{stats.overdue}</div>
               <div className="text-[10px] text-rmpg-400">Overdue</div>
             </div>
           </div>
           <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-center gap-3">
             <BarChart3 size={18} className="text-yellow-400 shrink-0" />
             <div>
-              <div className="text-lg font-bold text-white">{stats.avgRating || '--'}</div>
+              <div className="text-lg font-bold text-rmpg-100">{stats.avgRating || '--'}</div>
               <div className="text-[10px] text-rmpg-400">Avg Rating</div>
             </div>
           </div>
@@ -485,8 +485,8 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
               return (
                 <div key={cert.id} className={`flex items-center gap-3 px-3 py-1.5 border-b border-rmpg-700/50 ${urgencyColor}`}>
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isExpired ? 'bg-red-500' : daysLeft <= 30 ? 'bg-red-500 animate-pulse' : daysLeft <= 60 ? 'bg-amber-500' : 'bg-yellow-500'}`} />
-                  <span className="text-[11px] text-white font-medium flex-shrink-0 w-36 truncate">{cert.officer_name || cert.full_name || '—'}</span>
-                  <span className="text-[10px] text-rmpg-300 flex-1 truncate">{cert.type} — {cert.credential_number || ''}</span>
+                  <span className="text-[11px] text-rmpg-100 font-medium flex-shrink-0 w-36 truncate">{cert.officer_name || cert.full_name || '—'}</span>
+                  <span className="text-[10px] text-rmpg-300 min-w-0 flex-1 truncate">{cert.type} — {cert.credential_number || ''}</span>
                   <span className="text-[10px] font-bold flex-shrink-0">
                     {isExpired ? `EXPIRED ${Math.abs(daysLeft)}d ago` : `${daysLeft}d remaining`}
                   </span>
@@ -505,7 +505,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select id="ff-reviewstab-0"
           value={filterOfficer}
           onChange={(e) => setFilterOfficer(e.target.value)}
-          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Officers</option>
           {officers.map((o) => (
@@ -517,7 +517,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select id="ff-reviewstab-1"
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
-          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Types</option>
           {Object.entries(TYPE_LABELS).map(([v, l]) => (
@@ -529,7 +529,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select id="ff-reviewstab-2"
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Statuses</option>
           {Object.entries(STATUS_LABELS).map(([v, l]) => (
@@ -547,7 +547,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
             setEditReview(null);
             setModalOpen(true);
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors"
         >
           <Plus size={14} />
           Create Review
@@ -575,7 +575,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
               {/* Content */}
               <div className="flex-1 min-w-0 space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm text-white font-medium">
+                  <span className="text-sm text-rmpg-100 font-medium">
                     {review.officer_name ?? `Officer #${review.officer_id}`}
                   </span>
                   <span
@@ -610,7 +610,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                 {(review.status === 'draft' || review.status === 'submitted' || isGodMode) && (
                   <button type="button"
                     onClick={() => openEditReview(review)}
-                    className="p-1.5 text-rmpg-400 hover:text-white transition-colors"
+                    className="p-1.5 text-rmpg-400 hover:text-rmpg-100 transition-colors"
                     title={isGodMode ? 'Admin: Edit review (any status)' : 'Edit'}
                   >
                     <Pencil size={14} />

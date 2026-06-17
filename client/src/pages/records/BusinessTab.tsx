@@ -250,13 +250,13 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
           <input id="ff-businesstab-0" type="text" className="input-dark pl-9 w-full text-[11px] min-h-[36px]" placeholder="Search businesses by name, DBA, address, EIN..."
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
-          {searchQuery && <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white"><X className="w-3 h-3" /></button>}
+          {searchQuery && <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100"><X className="w-3 h-3" /></button>}
         </div>
       </div>
 
       {/* Stats + Sort + Filter */}
       <div className="px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-4 text-[9px] flex-wrap">
-        <span className="text-rmpg-400 flex items-center gap-1"><Briefcase className="w-3 h-3" /> <strong className="text-white">{filteredBusinesses.length}</strong> Businesses</span>
+        <span className="text-rmpg-400 flex items-center gap-1"><Briefcase className="w-3 h-3" /> <strong className="text-rmpg-100">{filteredBusinesses.length}</strong> Businesses</span>
         <div className="ml-auto flex items-center gap-1">
           <ArrowUpDown className="w-3 h-3 text-rmpg-500" />
           {(['name', 'type', 'newest'] as const).map(s => (
@@ -301,7 +301,7 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-white truncate">{b.name}</span>
+                  <span className="text-sm font-semibold text-rmpg-100 truncate">{b.name}</span>
                   {b.dba_name && <span className="text-[10px] text-amber-400 italic">DBA: {b.dba_name}</span>}
                   {b.status === 'active' && <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Active" />}
                 </div>
@@ -333,7 +333,7 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
       {showFormModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="panel-surface w-full max-w-[95vw] md:max-w-lg mx-4 max-h-[90vh] overflow-y-auto p-4 space-y-3">
-            <h3 className="text-sm font-bold text-white">{editingBusiness ? 'Edit Business' : 'New Business'}</h3>
+            <h3 className="text-sm font-bold text-rmpg-100">{editingBusiness ? 'Edit Business' : 'New Business'}</h3>
             <BusinessForm initial={editingBusiness} onSubmit={handleSubmit} onCancel={() => setShowFormModal(false)} submitting={formSubmitting} />
           </div>
         </div>

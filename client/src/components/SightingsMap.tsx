@@ -100,19 +100,19 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
   }, [located.map((s) => s.id).join(','), loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) {
-    return <div style={{ height }} className="flex items-center justify-center bg-[#0a0a0a] border border-[#222222] text-[10px] text-[#888888]">{error}</div>;
+    return <div style={{ height }} className="flex items-center justify-center bg-surface-sunken border border-border-default text-[10px] text-[#888888]">{error}</div>;
   }
 
   return (
-    <div style={{ position: 'relative', height }} className="border border-[#222222]">
+    <div style={{ position: 'relative', height }} className="border border-border-default">
       <div ref={containerRef} role="application" aria-label="Plate sightings map" style={{ width: '100%', height: '100%' }} />
       {!loaded && (
-        <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center bg-[#0a0a0a]">
+        <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center bg-surface-sunken">
           <RefreshCw className="w-3.5 h-3.5 text-[#383838] animate-spin" />
         </div>
       )}
       {loaded && !located.length && (
-        <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center pointer-events-none text-[10px] text-[#666666]">
+        <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center pointer-events-none text-[10px] text-rmpg-500">
           No GPS-tagged sightings yet
         </div>
       )}

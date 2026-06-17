@@ -13,7 +13,7 @@ function LogoFallback({ height, className }: { height: number; className: string
   return (
     <div
       className={`flex-shrink-0 flex items-center justify-center ${className}`}
-      style={{ height, width: height, background: '#141414', border: '1px solid #222222', borderRadius: 2 }}
+      style={{ height, width: height, background: 'var(--surface-base)', border: '1px solid #222222', borderRadius: 2 }}
     >
       <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#d4a017' }}>
         RMPG

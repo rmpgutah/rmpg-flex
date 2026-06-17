@@ -38,8 +38,8 @@ import { downloadCaseReport } from '../utils/caseReportGenerator';
 import { getSavedViews, persistViews, upsertView, type SavedView } from '../utils/caseSavedViews';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
-  { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
-  { value: 'assigned', label: 'Assigned', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
+  { value: 'open', label: 'Open', color: 'bg-surface-sunken text-rmpg-400 border-border-default' },
+  { value: 'assigned', label: 'Assigned', color: 'bg-surface-sunken text-rmpg-400 border-border-default' },
   { value: 'active', label: 'Active', color: 'bg-green-900/50 text-green-400 border-green-700/50' },
   { value: 'suspended', label: 'Suspended', color: 'bg-amber-900/50 text-amber-400 border-amber-700/50' },
   { value: 'under_review', label: 'Under Review', color: 'bg-purple-900/50 text-purple-400 border-purple-700/50' },
@@ -63,7 +63,7 @@ const TYPE_OPTIONS: { value: CaseType; label: string }[] = [
 
 const PRIORITY_OPTIONS: { value: CasePriority; label: string; color: string }[] = [
   { value: 'low', label: 'Low', color: 'text-rmpg-400' },
-  { value: 'normal', label: 'Normal', color: 'text-gray-400' },
+  { value: 'normal', label: 'Normal', color: 'text-rmpg-400' },
   { value: 'high', label: 'High', color: 'text-amber-400' },
   { value: 'critical', label: 'Critical', color: 'text-red-400' },
 ];
@@ -217,17 +217,17 @@ function LinkedEntityPanel({
                 <input id="ff-casemanagementpage-0" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSearch()}
                   placeholder={`Search ${entityType}...`} aria-label={`Search ${entityType}`}
-                  className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
                 <button type="button" onClick={handleSearch} disabled={searching} className="toolbar-btn toolbar-btn-primary print:hidden">
                   {searching ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search style={{ width: 11, height: 11 }} />}
                   Search
                 </button>
               </div>
-              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-1">
+              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent space-y-1">
                 {searchResults.map((item: any) => (
                   <button type="button" key={item.id} onClick={() => handleLink(item.id)}
                     className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">
-                    <div className="text-[11px] font-bold text-white">
+                    <div className="text-[11px] font-bold text-rmpg-100">
                       {searchFields.map(f => item[f]).filter(Boolean).join(' — ')}
                     </div>
                     <div className="text-[9px] text-rmpg-500">ID: {item.id}</div>
@@ -341,7 +341,7 @@ function LinkedIncidentsGraph({ caseId }: { caseId: string | number }) {
           <Target className="w-3 h-3" /> THIS CASE
         </div>
         {links.map((link: any, idx: number) => {
-          const color = typeColors[link.rel_type] || '#666666';
+          const color = typeColors[link.rel_type] || 'var(--rmpg-500)';
           return (
             <div key={idx} className="flex items-center gap-1">
               <ArrowRight className="w-3 h-3 text-rmpg-600" />
@@ -808,7 +808,7 @@ export default function CaseManagementPage() {
           <div className="flex gap-2 px-2 py-1.5 border-b border-rmpg-700 bg-surface-sunken overflow-x-auto">
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">TOTAL</div>
-              <div className="text-sm font-bold text-white tabular-nums">{stats.total || 0}</div>
+              <div className="text-sm font-bold text-rmpg-100 tabular-nums">{stats.total || 0}</div>
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">ACTIVE</div>
@@ -829,10 +829,10 @@ export default function CaseManagementPage() {
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
               placeholder="Search cases..." aria-label="Search cases..."
-              className="w-full pl-7 pr-7 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none transition-shadow"
+              className="w-full pl-7 pr-7 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none transition-shadow"
             />
             {searchQuery && (
-              <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
+              <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100 transition-colors" aria-label="Clear search">
                 <X style={{ width: 10, height: 10 }} />
               </IconButton>
             )}
@@ -883,13 +883,13 @@ export default function CaseManagementPage() {
               <option value="">Assign to…</option>
               {users.map(u => <option key={u.id} value={String(u.id)}>{u.full_name}</option>)}
             </select>
-            <button type="button" onClick={() => handleBulk('archive')} className="text-[10px] px-2 py-0.5 border border-rmpg-700 text-rmpg-400 hover:text-white transition-colors">Archive</button>
-            <button type="button" onClick={clearSelection} className="text-[10px] px-2 py-0.5 text-rmpg-500 hover:text-white transition-colors ml-auto">Clear</button>
+            <button type="button" onClick={() => handleBulk('archive')} className="text-[10px] px-2 py-0.5 border border-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors">Archive</button>
+            <button type="button" onClick={clearSelection} className="text-[10px] px-2 py-0.5 text-rmpg-500 hover:text-rmpg-100 transition-colors ml-auto">Clear</button>
           </div>
         )}
 
         {/* Case List */}
-        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading cases...</span></div>
           ) : cases.length === 0 ? (
@@ -916,7 +916,7 @@ export default function CaseManagementPage() {
                 className={`flex-1 min-w-0 text-left px-2 py-2 transition-colors ${selected?.id === c.id ? '' : 'hover:bg-rmpg-800/40'}`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-mono font-bold text-white">{c.case_number}</span>
+                  <span className="text-[11px] font-mono font-bold text-rmpg-100">{c.case_number}</span>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <SlaBadge caseRow={c} />
                     <span className={`text-[9px] px-1.5 py-0.5 border ${getStatusColor(c.status)}`}>
@@ -943,9 +943,9 @@ export default function CaseManagementPage() {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-base">
-            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">Prev</button>
+            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-rmpg-100 transition-colors">Prev</button>
             <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">Page {page}/{totalPages}</span>
-            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">Next</button>
+            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-rmpg-100 transition-colors">Next</button>
           </div>
         )}
       </div>
@@ -970,7 +970,7 @@ export default function CaseManagementPage() {
                     key={tab.id}
                     onClick={() => setDetailTab(tab.id)}
                     className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap flex items-center gap-1 ${
-                      detailTab === tab.id ? 'text-white border-b-2 border-brand-500 bg-brand-900/10' : 'text-rmpg-500 hover:text-rmpg-300'
+                      detailTab === tab.id ? 'text-rmpg-100 border-b-2 border-brand-500 bg-brand-900/10' : 'text-rmpg-500 hover:text-rmpg-300'
                     }`}
                   >
                     {tab.label}
@@ -982,7 +982,7 @@ export default function CaseManagementPage() {
               })}
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4">
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-4">
               {detailTab === 'overview' && (
                 <div className="space-y-4">
                   {/* Status + Priority badges */}
@@ -1007,7 +1007,7 @@ export default function CaseManagementPage() {
                         const count = (caseFull.counts as any)[t.countKey!] || 0;
                         return (
                           <button type="button" key={t.id} onClick={() => setDetailTab(t.id)} className="panel-beveled p-2 text-center hover:bg-rmpg-800/40 transition-colors">
-                            <div className="text-sm font-bold text-white tabular-nums">{count}</div>
+                            <div className="text-sm font-bold text-rmpg-100 tabular-nums">{count}</div>
                             <div className="text-[8px] font-mono text-rmpg-500 uppercase">{t.label}</div>
                           </button>
                         );
@@ -1103,7 +1103,7 @@ export default function CaseManagementPage() {
                         {linkedPersons.map((p: any, i: number) => (
                           <div key={i} className="flex items-center gap-2 text-[10px] text-rmpg-300">
                             <User style={{ width: 10, height: 10 }} className="text-rmpg-500" />
-                            <span className="text-white font-bold">{p.last_name}, {p.first_name}</span>
+                            <span className="text-rmpg-100 font-bold">{p.last_name}, {p.first_name}</span>
                             <span className="text-[9px] text-rmpg-500 px-1 border border-rmpg-700 bg-rmpg-800/50">{p.role || 'involved'}</span>
                           </div>
                         ))}
@@ -1125,7 +1125,7 @@ export default function CaseManagementPage() {
                     ].map(([label, value]) => (
                       <div key={label as string}>
                         <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>
-                        <div className="text-xs text-white mt-0.5">{value || '—'}</div>
+                        <div className="text-xs text-rmpg-100 mt-0.5">{value || '—'}</div>
                       </div>
                     ))}
                   </div>
@@ -1150,7 +1150,7 @@ export default function CaseManagementPage() {
                 <LinkedEntityPanel
                   items={caseFull?.calls || []}
                   columns={[
-                    { key: 'call_number', label: 'CFS #', render: (v: any) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
+                    { key: 'call_number', label: 'CFS #', render: (v: any) => <span className="font-mono font-bold text-rmpg-100">{v || '—'}</span> },
                     { key: 'incident_type', label: 'Type' },
                     { key: 'priority', label: 'Priority', render: (v) => <span className="font-bold uppercase">{v || '—'}</span> },
                     { key: 'status', label: 'Status' },
@@ -1169,7 +1169,7 @@ export default function CaseManagementPage() {
                 <LinkedEntityPanel
                   items={caseFull?.incidents || []}
                   columns={[
-                    { key: 'incident_number', label: 'Incident #', render: (v) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
+                    { key: 'incident_number', label: 'Incident #', render: (v) => <span className="font-mono font-bold text-rmpg-100">{v || '—'}</span> },
                     { key: 'incident_type', label: 'Type' },
                     { key: 'status', label: 'Status' },
                     { key: 'location', label: 'Location' },
@@ -1187,7 +1187,7 @@ export default function CaseManagementPage() {
                 <LinkedEntityPanel
                   items={caseFull?.persons || []}
                   columns={[
-                    { key: 'last_name', label: 'Name', render: (_v, row) => <span className="font-bold text-white">{row.last_name}, {row.first_name}</span> },
+                    { key: 'last_name', label: 'Name', render: (_v, row) => <span className="font-bold text-rmpg-100">{row.last_name}, {row.first_name}</span> },
                     { key: 'date_of_birth', label: 'DOB', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
                     { key: 'role', label: 'Role', render: (v) => <span className="text-[9px] px-1 border border-rmpg-700 bg-rmpg-800/50">{v || 'involved'}</span> },
                     { key: 'phone', label: 'Phone' },
@@ -1204,7 +1204,7 @@ export default function CaseManagementPage() {
                 <LinkedEntityPanel
                   items={caseFull?.vehicles || []}
                   columns={[
-                    { key: 'plate_number', label: 'Plate', render: (v) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
+                    { key: 'plate_number', label: 'Plate', render: (v) => <span className="font-mono font-bold text-rmpg-100">{v || '—'}</span> },
                     { key: 'make', label: 'Make' },
                     { key: 'model', label: 'Model' },
                     { key: 'year', label: 'Year' },
@@ -1223,7 +1223,7 @@ export default function CaseManagementPage() {
                 <LinkedEntityPanel
                   items={caseFull?.properties || []}
                   columns={[
-                    { key: 'description', label: 'Description', render: (v) => <span className="text-white">{v || '—'}</span> },
+                    { key: 'description', label: 'Description', render: (v) => <span className="text-rmpg-100">{v || '—'}</span> },
                     { key: 'property_type', label: 'Type' },
                     { key: 'serial_number', label: 'Serial #' },
                     { key: 'status', label: 'Status' },
@@ -1241,7 +1241,7 @@ export default function CaseManagementPage() {
                 <LinkedEntityPanel
                   items={caseFull?.evidence || []}
                   columns={[
-                    { key: 'evidence_number', label: 'Evidence #', render: (v) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
+                    { key: 'evidence_number', label: 'Evidence #', render: (v) => <span className="font-mono font-bold text-rmpg-100">{v || '—'}</span> },
                     { key: 'description', label: 'Description' },
                     { key: 'evidence_type', label: 'Type' },
                     { key: 'location', label: 'Location' },
@@ -1259,7 +1259,7 @@ export default function CaseManagementPage() {
                 <LinkedEntityPanel
                   items={caseFull?.warrants || []}
                   columns={[
-                    { key: 'warrant_number', label: 'Warrant #', render: (v) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
+                    { key: 'warrant_number', label: 'Warrant #', render: (v) => <span className="font-mono font-bold text-rmpg-100">{v || '—'}</span> },
                     { key: 'warrant_type', label: 'Type' },
                     { key: 'status', label: 'Status' },
                     { key: 'subject_name', label: 'Subject' },
@@ -1277,7 +1277,7 @@ export default function CaseManagementPage() {
                 <LinkedEntityPanel
                   items={caseFull?.citations || []}
                   columns={[
-                    { key: 'citation_number', label: 'Citation #', render: (v) => <span className="font-mono font-bold text-white">{v || '—'}</span> },
+                    { key: 'citation_number', label: 'Citation #', render: (v) => <span className="font-mono font-bold text-rmpg-100">{v || '—'}</span> },
                     { key: 'violation', label: 'Violation' },
                     { key: 'status', label: 'Status' },
                     { key: 'violator_name', label: 'Violator' },
@@ -1324,7 +1324,7 @@ export default function CaseManagementPage() {
                             <div className="absolute -left-[21px] w-2.5 h-2.5 rounded-full border-2 border-surface-base" style={{ background: event.color }} />
                             <div className="text-[9px] font-mono text-rmpg-500">{safeDateTimeStr(event.date)}</div>
                             <div className="text-[10px] text-rmpg-300">
-                              <span className="font-bold text-white mr-1" style={{ color: event.color }}>[{event.type}]</span>
+                              <span className="font-bold text-rmpg-100 mr-1" style={{ color: event.color }}>[{event.type}]</span>
                               {event.label}
                             </div>
                           </div>
@@ -1344,7 +1344,7 @@ export default function CaseManagementPage() {
                       onChange={e => setNewNote(e.target.value)}
                       placeholder="Add a case note..."
                       rows={3}
-                      className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 outline-none resize-none"
+                      className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 outline-none resize-none"
                     />
                     <div className="flex justify-end mt-2">
                       <button type="button" onClick={handleAddNote} disabled={noteSubmitting || !newNote.trim()} className="toolbar-btn toolbar-btn-primary print:hidden">
@@ -1357,7 +1357,7 @@ export default function CaseManagementPage() {
                   {notes.map(note => (
                     <div key={note.id} className="panel-beveled p-3">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-bold text-white">{note.author_name || 'Unknown'}</span>
+                        <span className="text-[10px] font-bold text-rmpg-100">{note.author_name || 'Unknown'}</span>
                         <span className="text-[9px] font-mono text-rmpg-500">
                           {safeDateTimeStr(note.created_at, '')}
                         </span>
@@ -1389,7 +1389,7 @@ export default function CaseManagementPage() {
                             onChange={e => setSolvFactors(prev => ({ ...prev, [f.key]: e.target.checked }))}
                             className="accent-brand-500"
                           />
-                          <span className="text-xs text-white flex-1" title={humanizeSolvabilityFactor(f.key)}>{f.label}</span>
+                          <span className="text-xs text-rmpg-100 flex-1" title={humanizeSolvabilityFactor(f.key)}>{f.label}</span>
                           <span className="text-[9px] font-mono text-rmpg-500">+{f.weight}pts</span>
                         </label>
                       ))}
@@ -1439,7 +1439,7 @@ export default function CaseManagementPage() {
                 <label className="field-label">Return Reason *</label>
                 <RichTextArea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={3}
                   placeholder="Explain why this case needs additional work..."
-                  className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                  className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none resize-none" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setShowReturnModal(false)} className="toolbar-btn">Cancel</button>
@@ -1465,17 +1465,17 @@ export default function CaseManagementPage() {
                 <input id="ff-casemanagementpage-5" value={personSearchQuery} onChange={e => setPersonSearchQuery(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handlePersonSearch()}
                   placeholder="Search by name, phone, email..." aria-label="Search by name, phone, email..."
-                  className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
                 <button type="button" onClick={handlePersonSearch} disabled={personSearching} className="toolbar-btn toolbar-btn-primary print:hidden">
                   {personSearching ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search style={{ width: 11, height: 11 }} />}
                   Search
                 </button>
               </div>
-              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-1">
+              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent space-y-1">
                 {personResults.map((p: any) => (
                   <button type="button" key={p.id} onClick={() => handleLinkPerson(p)}
                     className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">
-                    <div className="text-[11px] font-bold text-white">{p.last_name}, {p.first_name}</div>
+                    <div className="text-[11px] font-bold text-rmpg-100">{p.last_name}, {p.first_name}</div>
                     <div className="text-[9px] text-rmpg-500">
                       {p.date_of_birth && <span>DOB: {p.date_of_birth} </span>}
                       {p.phone && <span>Ph: {p.phone}</span>}
@@ -1501,24 +1501,24 @@ export default function CaseManagementPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Title *</label>
-                <input id="ff-casemanagementpage-6" value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                <input id="ff-casemanagementpage-6" value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="field-label">Type</label>
-                  <select id="ff-casemanagementpage-7" value={formData.case_type} onChange={e => setFormData(p => ({ ...p, case_type: e.target.value as CaseType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                  <select id="ff-casemanagementpage-7" value={formData.case_type} onChange={e => setFormData(p => ({ ...p, case_type: e.target.value as CaseType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none">
                     {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Priority</label>
-                  <select id="ff-casemanagementpage-8" value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value as CasePriority }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                  <select id="ff-casemanagementpage-8" value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value as CasePriority }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none">
                     {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Lead Investigator</label>
-                  <select id="ff-casemanagementpage-9" value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} disabled={personnelLoading} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none disabled:opacity-60">
+                  <select id="ff-casemanagementpage-9" value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} disabled={personnelLoading} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none disabled:opacity-60">
                     {personnelLoading ? (
                       <option value="">Loading…</option>
                     ) : (
@@ -1532,7 +1532,7 @@ export default function CaseManagementPage() {
               </div>
               <div>
                 <label className="field-label">Summary</label>
-                <RichTextArea value={formData.summary} onChange={e => setFormData(p => ({ ...p, summary: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                <RichTextArea value={formData.summary} onChange={e => setFormData(p => ({ ...p, summary: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none resize-none" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>

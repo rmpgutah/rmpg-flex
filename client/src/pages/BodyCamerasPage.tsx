@@ -240,13 +240,13 @@ export default function BodyCamerasPage() {
     <div className="flex flex-col h-full animate-fade-in">
 
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-rmpg-700" style={{ background: '#050505' }}>
+      <div className="flex-shrink-0 border-b border-rmpg-700" style={{ background: 'var(--surface-overlay)' }}>
         <PanelTitleBar title="BODY CAMERAS" icon={Video}>
           <RmpgLogo height={16} iconOnly />
           <span className="toolbar-separator" />
           <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 mr-3" role="group" aria-label="Body camera statistics">
             <Video className="w-3 h-3" aria-hidden="true" />
-            <span>Cameras: <strong className="text-white">{cameras.length}</strong></span>
+            <span>Cameras: <strong className="text-rmpg-100">{cameras.length}</strong></span>
             <span className="text-rmpg-600" aria-hidden="true">|</span>
             <span>Videos: <strong className="text-brand-400">{videos.length}</strong></span>
             {pendingReviews > 0 && (<>

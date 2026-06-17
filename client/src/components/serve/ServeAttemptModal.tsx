@@ -244,9 +244,9 @@ export default function ServeAttemptModal({
           <div className="flex flex-col items-center gap-1">
             <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-200 ${
               i < step
-                ? 'bg-green-600 border-green-500 text-white shadow-[0_0_6px_rgba(34,197,94,0.5)]'
+                ? 'bg-green-600 border-green-500 text-rmpg-100 shadow-[0_0_6px_rgba(34,197,94,0.5)]'
                 : i === step
-                  ? 'bg-[#d4a017] border-[#d4a017] text-white shadow-[0_0_6px_#d4a017]'
+                  ? 'bg-[#d4a017] border-[#d4a017] text-rmpg-100 shadow-[0_0_6px_#d4a017]'
                   : 'bg-rmpg-700 border-rmpg-500 text-rmpg-400'
             }`}>
               {i < step ? <CheckCircle className="w-4 h-4" /> : i + 1}
@@ -317,15 +317,15 @@ export default function ServeAttemptModal({
             ) : (
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] p-2">
+                  <div className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-2">
                     <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Latitude</div>
                     <div className="text-sm text-rmpg-100 font-mono">{gps.latitude?.toFixed(6)}</div>
                   </div>
-                  <div className="bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] p-2">
+                  <div className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-2">
                     <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Longitude</div>
                     <div className="text-sm text-rmpg-100 font-mono">{gps.longitude?.toFixed(6)}</div>
                   </div>
-                  <div className="bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] p-2">
+                  <div className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-2">
                     <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Accuracy</div>
                     <div className="text-sm text-rmpg-100 font-mono">{gps.accuracy}m</div>
                   </div>
@@ -355,7 +355,7 @@ export default function ServeAttemptModal({
               <button type="button"
                 onClick={() => setStep(1)}
                 disabled={gps.loading}
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
+                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
               >
                 Confirm Location
               </button>
@@ -383,7 +383,7 @@ export default function ServeAttemptModal({
                         ? 'opacity-40 cursor-not-allowed border-rmpg-700 bg-rmpg-800'
                         : attemptType === card.type
                           ? 'border-[#d4a017] bg-[#d4a017]/5 shadow-[0_0_8px_rgba(212,160,23,0.15)]'
-                          : 'border-[#2b2b2b] bg-[#0c0c0c] hover:border-[#d4a017] hover:bg-[#141414]'
+                          : 'border-rmpg-700 bg-surface-sunken hover:border-[#d4a017] hover:bg-surface-base'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
@@ -424,14 +424,14 @@ export default function ServeAttemptModal({
             <div className="flex justify-between pt-2">
               <button type="button"
                 onClick={() => setStep(0)}
-                className="px-4 py-2 text-sm font-semibold bg-[#181818] hover:bg-[#1a1a1a] text-rmpg-200 rounded-[2px] border border-[#2b2b2b] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
               >
                 Back
               </button>
               <button type="button"
                 onClick={() => setStep(2)}
                 disabled={!attemptType || (attemptType === 'failed' && !failedReason)}
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
+                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
               >
                 Next
               </button>
@@ -481,7 +481,7 @@ export default function ServeAttemptModal({
                         onClick={() => removePhoto(photo.id)}
                         className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                       >
-                        <Trash2 className="w-2.5 h-2.5 text-white" />
+                        <Trash2 className="w-2.5 h-2.5 text-rmpg-100" />
                       </button>
                     </div>
                   ))}
@@ -491,7 +491,7 @@ export default function ServeAttemptModal({
 
             {/* Physical description for personal/substitute */}
             {(attemptType === 'personal' || attemptType === 'substitute') && (
-              <fieldset className="space-y-3 border border-[#2b2b2b] rounded-[2px] p-3">
+              <fieldset className="space-y-3 border border-rmpg-700 rounded-[2px] p-3">
                 <legend className="text-xs font-semibold text-rmpg-300 uppercase px-1">Physical Description</legend>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -552,7 +552,7 @@ export default function ServeAttemptModal({
 
             {/* Substitute-only fields */}
             {attemptType === 'substitute' && (
-              <fieldset className="space-y-3 border border-[#2b2b2b] rounded-[2px] p-3">
+              <fieldset className="space-y-3 border border-rmpg-700 rounded-[2px] p-3">
                 <legend className="text-xs font-semibold text-rmpg-300 uppercase px-1">Person Served</legend>
                 <div>
                   <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">
@@ -596,14 +596,14 @@ export default function ServeAttemptModal({
             <div className="flex justify-between pt-2">
               <button type="button"
                 onClick={() => setStep(1)}
-                className="px-4 py-2 text-sm font-semibold bg-[#181818] hover:bg-[#1a1a1a] text-rmpg-200 rounded-[2px] border border-[#2b2b2b] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
               >
                 Back
               </button>
               <button type="button"
                 onClick={() => setStep(3)}
                 disabled={attemptType === 'substitute' && !personServedName.trim()}
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
+                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
               >
                 Next
               </button>
@@ -630,7 +630,7 @@ export default function ServeAttemptModal({
                     {onGenerateAffidavit && (
                       <button type="button"
                         onClick={() => onGenerateAffidavit(job.id)}
-                        className="px-4 py-2 text-sm font-semibold bg-green-700 hover:bg-green-600 text-white rounded-sm transition-colors"
+                        className="px-4 py-2 text-sm font-semibold bg-green-700 hover:bg-green-600 text-rmpg-100 rounded-sm transition-colors"
                       >
                         Generate Affidavit of Non-Service
                       </button>
@@ -639,7 +639,7 @@ export default function ServeAttemptModal({
                 )}
                 <button type="button"
                   onClick={onClose}
-                  className="px-4 py-2 text-sm font-semibold bg-[#181818] hover:bg-[#1a1a1a] text-rmpg-200 rounded-[2px] border border-[#2b2b2b] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                  className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
                 >
                   Close
                 </button>
@@ -649,7 +649,7 @@ export default function ServeAttemptModal({
                 <h3 className="text-sm font-bold text-[#d4a017]">Review & Submit</h3>
 
                 {/* Summary card */}
-                <div className="bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] p-3 space-y-2 text-sm">
+                <div className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-3 space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-rmpg-400">Recipient</span>
                     <span className="text-rmpg-100 font-semibold">{job.recipient_name}</span>
@@ -718,14 +718,14 @@ export default function ServeAttemptModal({
                 <div className="flex justify-between pt-2">
                   <button type="button"
                     onClick={() => setStep(2)}
-                    className="px-4 py-2 text-sm font-semibold bg-[#181818] hover:bg-[#1a1a1a] text-rmpg-200 rounded-[2px] border border-[#2b2b2b] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                    className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
                   >
                     Back
                   </button>
                   <button type="button"
                     onClick={handleSubmit}
                     disabled={submitting}
-                    className="px-4 py-2 text-sm font-semibold bg-[#d4a017] hover:bg-[#d4a017]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-[#d4a017]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.3)]"
+                    className="px-4 py-2 text-sm font-semibold bg-[#d4a017] hover:bg-[#d4a017]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-[#d4a017]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.3)]"
                   >
                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     Record Service
@@ -745,15 +745,15 @@ export default function ServeAttemptModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Document Service Attempt">
-      <div className="bg-[#141414] panel-beveled rounded-[2px] w-full max-w-lg mx-4 max-h-[90vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
+      <div className="bg-surface-base panel-beveled rounded-[2px] w-full max-w-lg mx-4 max-h-[90vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b] bg-[#0c0c0c]">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-sunken">
           <h2 className="text-sm font-bold text-rmpg-100 tracking-wide">
             Document Service Attempt — {job.recipient_name}
           </h2>
           <button type="button"
             onClick={onClose}
-            className="text-rmpg-400 hover:text-rmpg-200 transition-colors p-1 rounded-[2px] hover:bg-[#181818] focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+            className="text-rmpg-400 hover:text-rmpg-200 transition-colors p-1 rounded-[2px] hover:bg-surface-raised focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
             aria-label="Close modal">
             <X className="w-4 h-4" />
           </button>

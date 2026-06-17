@@ -267,9 +267,9 @@ export default function WebResearchPage() {
   }, []);
 
   return (
-    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+    <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden">
       {/* Header bar */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-rmpg-700" style={{ background: '#050505' }}>
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-rmpg-700" style={{ background: 'var(--surface-overlay)' }}>
         <Globe className="w-4 h-4 text-brand-400" />
         <h1 className="text-sm font-bold text-rmpg-100 tracking-wide uppercase flex-1">Web Research</h1>
 
@@ -639,7 +639,7 @@ export default function WebResearchPage() {
             className="panel-beveled bg-surface-raised p-4 w-80 space-y-3"
             onClick={e => e.stopPropagation()}
           >
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-rmpg-100 flex items-center gap-2">
               <Link2 className="w-4 h-4 text-brand-400" />
               Link to Entity
             </h3>

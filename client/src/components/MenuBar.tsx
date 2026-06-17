@@ -1062,17 +1062,17 @@ export default function MenuBar({
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShow10Codes(false)} role="dialog" aria-modal="true" aria-label="10-Codes Quick Reference">
           <div
             className="panel-beveled w-[700px] max-h-[80vh] overflow-hidden flex flex-col animate-dropdown-appear"
-            style={{ background: '#0a0a0a' }}
+            style={{ background:"var(--surface-sunken)" }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 23: 10-codes header with top accent and version tag */}
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#050505', borderTop: '2px solid #888888' }}>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: 'var(--surface-overlay)', borderTop: '2px solid #888888' }}>
+              <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
                 10-Codes Quick Reference
                 <span className="text-[8px] font-mono text-rmpg-500 bg-rmpg-800 px-1 py-0 border border-rmpg-700">APCO</span>
               </h2>
-              <button type="button" onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-white text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500" aria-label="Close 10-codes reference">ESC</button>
+              <button type="button" onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-rmpg-100 text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500" aria-label="Close 10-codes reference">ESC</button>
             </div>
             <div className="flex-1 overflow-auto p-4 scrollbar-dark">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -1103,7 +1103,7 @@ export default function MenuBar({
                       ['10-20', 'Location / What is your location'],
                     ].map(([code, desc]) => (
                       <div key={code} className="flex items-baseline gap-2 text-xs py-0.5">
-                        <span className="text-white font-mono font-bold w-12 flex-shrink-0">{code}</span>
+                        <span className="text-rmpg-100 font-mono font-bold w-12 flex-shrink-0">{code}</span>
                         <span className="text-rmpg-300">{desc}</span>
                       </div>
                     ))}
@@ -1136,7 +1136,7 @@ export default function MenuBar({
                       ['10-40', 'Silent run — no lights/siren'],
                     ].map(([code, desc]) => (
                       <div key={code} className="flex items-baseline gap-2 text-xs py-0.5">
-                        <span className="text-white font-mono font-bold w-12 flex-shrink-0">{code}</span>
+                        <span className="text-rmpg-100 font-mono font-bold w-12 flex-shrink-0">{code}</span>
                         <span className="text-rmpg-300">{desc}</span>
                       </div>
                     ))}
@@ -1168,7 +1168,7 @@ export default function MenuBar({
                       ['10-60', 'Squad in vicinity'],
                     ].map(([code, desc]) => (
                       <div key={code} className="flex items-baseline gap-2 text-xs py-0.5">
-                        <span className="text-white font-mono font-bold w-12 flex-shrink-0">{code}</span>
+                        <span className="text-rmpg-100 font-mono font-bold w-12 flex-shrink-0">{code}</span>
                         <span className="text-rmpg-300">{desc}</span>
                       </div>
                     ))}
@@ -1202,7 +1202,7 @@ export default function MenuBar({
                       ['10-99', 'Wanted / Stolen indicated'],
                     ].map(([code, desc]) => (
                       <div key={code} className="flex items-baseline gap-2 text-xs py-0.5">
-                        <span className="text-white font-mono font-bold w-12 flex-shrink-0">{code}</span>
+                        <span className="text-rmpg-100 font-mono font-bold w-12 flex-shrink-0">{code}</span>
                         <span className="text-rmpg-300">{desc}</span>
                       </div>
                     ))}
@@ -1210,7 +1210,7 @@ export default function MenuBar({
                 </div>
               </div>
             </div>
-            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#050505' }}>
+            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: 'var(--surface-overlay)' }}>
               <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded-sm text-[8px]">ESC</kbd> to close</span>
             </div>
           </div>
@@ -1220,12 +1220,12 @@ export default function MenuBar({
       {/* ── Quick Timer Prompt Modal ── */}
       {timerPromptOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onClick={() => setTimerPromptOpen(false)}>
-          <div className="panel-beveled w-[280px] animate-dropdown-appear" style={{ background: '#0a0a0a' }} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#050505', borderTop: '2px solid #888888' }}>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+          <div className="panel-beveled w-[280px] animate-dropdown-appear" style={{ background:"var(--surface-sunken)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: 'var(--surface-overlay)', borderTop: '2px solid #888888' }}>
+              <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-brand-400" />Quick Timer
               </h2>
-              <button type="button" onClick={() => setTimerPromptOpen(false)} className="text-rmpg-400 hover:text-white text-xs px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500">ESC</button>
+              <button type="button" onClick={() => setTimerPromptOpen(false)} className="text-rmpg-400 hover:text-rmpg-100 text-xs px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500">ESC</button>
             </div>
             <div className="p-4 space-y-3">
               <label className="block text-xs text-rmpg-300">Duration (minutes)</label>
@@ -1237,18 +1237,18 @@ export default function MenuBar({
                 value={timerMinutesInput}
                 onChange={(e) => setTimerMinutesInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') startQuickTimer(); }}
-                className="w-full bg-surface-sunken border border-rmpg-600 text-white text-sm font-mono px-3 py-2 focus:border-brand-400 focus:outline-none"
+                className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-100 text-sm font-mono px-3 py-2 focus:border-brand-400 focus:outline-none"
               />
               <div className="flex gap-2">
                 {[5, 10, 15, 30].map((m) => (
                   <button key={m} type="button" onClick={() => setTimerMinutesInput(String(m))}
-                    className="flex-1 text-xs py-1 border border-rmpg-600 text-rmpg-300 hover:text-white hover:border-rmpg-400 transition-colors">
+                    className="flex-1 text-xs py-1 border border-rmpg-600 text-rmpg-300 hover:text-rmpg-100 hover:border-rmpg-400 transition-colors">
                     {m}m
                   </button>
                 ))}
               </div>
               <button type="button" onClick={startQuickTimer}
-                className="w-full py-2 text-xs font-bold text-white border border-brand-400 hover:bg-brand-400/10 transition-colors">
+                className="w-full py-2 text-xs font-bold text-rmpg-100 border border-brand-400 hover:bg-brand-400/10 transition-colors">
                 START TIMER
               </button>
             </div>
@@ -1259,7 +1259,7 @@ export default function MenuBar({
       {/* ── Floating Timer Indicator ── */}
       {timerEndTime && (
         <div className="fixed top-[76px] right-4 z-[9990] flex items-center gap-2 px-3 py-1.5 border border-rmpg-600 animate-dropdown-appear"
-          style={{ background: '#0a0a0a', borderTop: '2px solid #d4a017' }}>
+          style={{ background:"var(--surface-sunken)", borderTop: '2px solid #d4a017' }}>
           <Clock className="w-3.5 h-3.5 text-brand-400" />
           <span className="font-mono text-sm text-green-400 tabular-nums">{timerRemaining}</span>
           <button type="button" onClick={cancelQuickTimer} className="text-rmpg-400 hover:text-red-400 text-xs ml-1" title="Cancel timer">&times;</button>

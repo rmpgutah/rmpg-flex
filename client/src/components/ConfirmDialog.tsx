@@ -90,10 +90,10 @@ export default function ConfirmDialog({
 
   const confirmClass =
     confirmVariant === 'danger'
-      ? 'bg-red-700 hover:bg-red-600 border-red-500 text-white'
+      ? 'bg-red-700 hover:bg-red-600 border-red-500 text-rmpg-100'
       : confirmVariant === 'warning'
-        ? 'bg-amber-700 hover:bg-amber-600 border-amber-500 text-white'
-        : 'bg-brand-700 hover:bg-brand-600 border-brand-500 text-white';
+        ? 'bg-amber-700 hover:bg-amber-600 border-amber-500 text-rmpg-100'
+        : 'bg-brand-700 hover:bg-brand-600 border-brand-500 text-rmpg-100';
 
   const HeaderIcon = confirmVariant === 'default' ? Info : AlertTriangle;
   const iconColor = confirmVariant === 'danger' ? 'text-red-400' : confirmVariant === 'warning' ? 'text-amber-400' : 'text-brand-400';
@@ -108,9 +108,9 @@ export default function ConfirmDialog({
         >
           <div className="flex items-center gap-2">
             <HeaderIcon className={`w-4 h-4 ${iconColor}`} />
-            <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">{title}</h2>
+            <h2 id={titleId} className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">{title}</h2>
           </div>
-          <button type="button" onClick={onClose} className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" style={{ touchAction: 'manipulation' }} aria-label="Close">
+          <button type="button" onClick={onClose} className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors" style={{ touchAction: 'manipulation' }} aria-label="Close">
             <X className="w-5 h-5 sm:w-4 sm:h-4" />
           </button>
         </div>

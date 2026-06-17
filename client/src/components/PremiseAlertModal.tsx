@@ -144,7 +144,7 @@ export default function PremiseAlertModal() {
                       <span
                         key={f}
                         className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5"
-                        style={{ background: '#1a1a1a', color: '#d4a017', borderRadius: 2 }}
+                        style={{ background: 'var(--surface-raised)', color: '#d4a017', borderRadius: 2 }}
                       >
                         {f}
                       </span>

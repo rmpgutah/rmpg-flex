@@ -133,7 +133,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
                 return (
                   <div key={cred.id} className="flex items-center gap-1.5 text-[10px]">
                     <span className={credDotColor(cred.status)} />
-                    <span className="text-rmpg-100 flex-1 truncate">{toDisplayLabel(cred.type)}</span>
+                    <span className="text-rmpg-100 min-w-0 flex-1 truncate">{toDisplayLabel(cred.type)}</span>
                     <span className="text-rmpg-400 font-mono">
                       {days > 0
                         ? parseTimestamp(cred.expiry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })

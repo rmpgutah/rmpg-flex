@@ -85,24 +85,24 @@ export default function PageOrganizer({ open, pdfBytes, pages, pageOrder, onClos
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/80" onClick={onClose}>
-      <div className="m-auto bg-[#0a0a0a] border border-[#222222] rounded-[2px] w-[min(1100px,94vw)] h-[min(86vh,900px)] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1a1a1a]">
+      <div className="m-auto bg-surface-sunken border border-border-default rounded-[2px] w-[min(1100px,94vw)] h-[min(86vh,900px)] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default">
           <div className="text-[11px] uppercase tracking-wider text-[#d4a017] font-semibold inline-flex items-center gap-1.5">
             <LayoutGrid className="w-3.5 h-3.5" /> Page organizer — {pageOrder.length} page{pageOrder.length === 1 ? '' : 's'}
           </div>
-          <IconButton onClick={onClose} aria-label="Close organizer" title="Close" className="text-rmpg-400 hover:text-white p-1"><X className="w-4 h-4" /></IconButton>
+          <IconButton onClick={onClose} aria-label="Close organizer" title="Close" className="text-rmpg-400 hover:text-rmpg-100 p-1"><X className="w-4 h-4" /></IconButton>
         </div>
 
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-[#1a1a1a] text-[10px] text-rmpg-300">
-          <button type="button" onClick={toggleAll} className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-[#222] hover:text-white">
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border-default text-[10px] text-rmpg-300">
+          <button type="button" onClick={toggleAll} className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-border-default hover:text-rmpg-100">
             {allSelected ? <CheckSquare className="w-3 h-3" /> : <Square className="w-3 h-3" />} {allSelected ? 'Deselect all' : 'Select all'}
           </button>
           <span className="text-[#d4a017]">{selected.size} selected</span>
           <div className="flex-1" />
           <button type="button" disabled={selected.size === 0} onClick={() => onBulkRotate(targets(), -1)}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-[#222] hover:text-white disabled:opacity-30"><RotateCcw className="w-3 h-3" /> Rotate CCW</button>
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-border-default hover:text-rmpg-100 disabled:opacity-30"><RotateCcw className="w-3 h-3" /> Rotate CCW</button>
           <button type="button" disabled={selected.size === 0} onClick={() => onBulkRotate(targets(), 1)}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-[#222] hover:text-white disabled:opacity-30"><RotateCw className="w-3 h-3" /> Rotate CW</button>
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-border-default hover:text-rmpg-100 disabled:opacity-30"><RotateCw className="w-3 h-3" /> Rotate CW</button>
           <button type="button" disabled={selected.size === 0 || selected.size >= pageOrder.length}
             onClick={() => { if (window.confirm(`Delete ${selected.size} page(s)?`)) { onBulkDelete(targets()); setSelected(new Set()); } }}
             className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-red-900/40 text-red-300 hover:bg-red-900/20 disabled:opacity-30"><Trash2 className="w-3 h-3" /> Delete</button>
@@ -125,14 +125,14 @@ export default function PageOrganizer({ open, pdfBytes, pages, pageOrder, onClos
                   onClick={() => toggle(idx)}
                   className={`relative rounded-sm border p-1.5 cursor-pointer bg-black select-none ${
                     isDrop ? 'border-[#d4a017] border-dashed bg-[#d4a017]/10' :
-                    isSel ? 'border-[#d4a017] ring-1 ring-[#d4a017]' : 'border-[#222] hover:border-[#444]'
+                    isSel ? 'border-[#d4a017] ring-1 ring-[#d4a017]' : 'border-border-default hover:border-rmpg-600'
                   } ${dragIdx === idx ? 'opacity-40' : ''}`}>
                   <button type="button" onClick={(e) => { e.stopPropagation(); toggle(idx); }}
                     aria-label={isSel ? `Deselect page ${idx + 1}` : `Select page ${idx + 1}`}
                     className={`absolute top-2 left-2 z-10 w-4 h-4 rounded-sm border flex items-center justify-center text-[9px] ${isSel ? 'bg-[#d4a017] border-[#d4a017] text-black' : 'bg-black/70 border-[#555] text-transparent'}`}>✓</button>
                   <div className="bg-white aspect-[3/4] flex items-center justify-center overflow-hidden rounded-sm">
                     {original === 0 ? (
-                      <div className="text-[10px] text-gray-400">Blank</div>
+                      <div className="text-[10px] text-rmpg-400">Blank</div>
                     ) : (
                       <canvas ref={(el) => { if (el) refs.current.set(idx, el); else refs.current.delete(idx); }}
                         style={{ transform: `rotate(${meta?.rotation ?? 0}deg)`, maxWidth: '100%', maxHeight: '100%' }} />
@@ -145,7 +145,7 @@ export default function PageOrganizer({ open, pdfBytes, pages, pageOrder, onClos
           </div>
         </div>
 
-        <div className="px-4 py-2 border-t border-[#1a1a1a] text-[9px] text-rmpg-600">
+        <div className="px-4 py-2 border-t border-border-default text-[9px] text-rmpg-600">
           Drag a page onto another to reorder · click a page to select · bulk-rotate or delete the selection from the toolbar above.
         </div>
       </div>

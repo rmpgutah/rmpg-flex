@@ -46,7 +46,7 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  info: 'text-gray-400 bg-gray-950/30 border-gray-800/40',
+  info: 'text-rmpg-400 bg-surface-overlay/30 border-border-subtle/40',
   warning: 'text-amber-400 bg-amber-950/30 border-amber-800/40',
   maintenance: 'text-orange-400 bg-orange-950/30 border-orange-800/40',
   update: 'text-green-400 bg-green-950/30 border-green-800/40',
@@ -297,11 +297,11 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit announcement' : 'New announcement'}>
           <div className="bg-surface-base panel-beveled w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto scrollbar-dark" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#242424] sticky top-0 bg-surface-base z-10">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default sticky top-0 bg-surface-base z-10">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Announcement' : 'New Announcement'}
               </h3>
-              <button type="button" onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog">
+              <button type="button" onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog">
                 <X className="w-4 h-4" />
               </button>
             </div>

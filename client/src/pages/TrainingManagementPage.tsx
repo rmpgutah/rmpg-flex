@@ -57,7 +57,7 @@ export default function TrainingManagementPage() {
     { key: 'category', label: 'Category' }, { key: 'duration_hours', label: 'Hours' }, { key: 'instructor_name', label: 'Instructor' },
     { key: 'actions', label: '', width: '100px', render: (row: any) => (
       <div className="flex gap-2">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-white"><Pencil size={12} /></button>
+        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100"><Pencil size={12} /></button>
         <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }} className="text-red-500 hover:text-red-300"><Trash2 size={12} /></button>
       </div>
     )},
@@ -93,7 +93,7 @@ export default function TrainingManagementPage() {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
           <div className="bg-surface-raised border border-rmpg-600 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Course' : 'New Course'}</h3>
+            <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord ? 'Edit Course' : 'New Course'}</h3>
             <div className="space-y-3">
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Course Name <span className="text-red-500">*</span></label>
                 <input id="ff-trainingmanagementpage-0" className="input-dark mt-1" value={formData.course_name || ''} onChange={e => setFormData({...formData, course_name: e.target.value})} autoFocus /></div>

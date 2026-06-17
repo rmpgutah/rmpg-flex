@@ -394,7 +394,7 @@ export default function FleetAnalysisFormsTab({
                   onClick={() => setDateRange(r)}
                   className="px-2 py-0.5 text-[10px] font-mono border transition-colors"
                   style={{
-                    background: dateRange === r ? '#1a1a1a' : 'transparent',
+                    background: dateRange === r ? 'var(--surface-raised)' : 'transparent',
                     borderColor: dateRange === r ? '#d4a017' : 'var(--border-default)',
                     color: dateRange === r ? '#d4a017' : '#888',
                   }}
@@ -417,7 +417,7 @@ export default function FleetAnalysisFormsTab({
                   onClick={() => setGroupBy(g)}
                   className="px-2 py-0.5 text-[10px] font-mono border transition-colors"
                   style={{
-                    background: groupBy === g ? '#1a1a1a' : 'transparent',
+                    background: groupBy === g ? 'var(--surface-raised)' : 'transparent',
                     borderColor: groupBy === g ? '#d4a017' : 'var(--border-default)',
                     color: groupBy === g ? '#d4a017' : '#888',
                   }}

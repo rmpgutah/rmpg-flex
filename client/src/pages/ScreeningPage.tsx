@@ -73,7 +73,7 @@ export function ScreeningWorkspace() {
       <div className="flex gap-2 text-[11px]">
         {(['search', 'review', 'watchlist', 'sources'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-3 py-1 border border-[#232323] ${tab === t ? 'bg-[#0b0b0b] text-[#d4a017]' : 'text-[#888]'}`}>
+            className={`px-3 py-1 border border-border-default ${tab === t ? 'bg-surface-sunken text-[#d4a017]' : 'text-[#888]'}`}>
             {t.toUpperCase()}
           </button>
         ))}
@@ -84,14 +84,14 @@ export function ScreeningWorkspace() {
           <div className="flex flex-wrap gap-2">
             {/* Manual-entry combobox: pick a registry OR type one (incl. "All sources"). */}
             <input list="screening-source-list" placeholder="Registry (or type — e.g. All sources)" value={sourceText}
-              onChange={(e) => setSourceText(e.target.value)} className="bg-black border border-[#232323] px-2 py-1 text-[11px] min-w-[16rem]" />
+              onChange={(e) => setSourceText(e.target.value)} className="bg-black border border-border-default px-2 py-1 text-[11px] min-w-[16rem]" />
             <datalist id="screening-source-list">
               <option value="All sources" />
               {sources.filter((s) => s.supportsSearch).map((s) => <option key={s.sourceKey} value={s.label} />)}
             </datalist>
-            <input placeholder="Surname" value={name} onChange={(e) => setName(e.target.value)} className="bg-black border border-[#232323] px-2 py-1 text-[11px]" />
-            <input placeholder="Forename" value={forename} onChange={(e) => setForename(e.target.value)} className="bg-black border border-[#232323] px-2 py-1 text-[11px]" />
-            <input placeholder="Nationality" value={nationality} onChange={(e) => setNationality(e.target.value)} className="bg-black border border-[#232323] px-2 py-1 text-[11px]" />
+            <input placeholder="Surname" value={name} onChange={(e) => setName(e.target.value)} className="bg-black border border-border-default px-2 py-1 text-[11px]" />
+            <input placeholder="Forename" value={forename} onChange={(e) => setForename(e.target.value)} className="bg-black border border-border-default px-2 py-1 text-[11px]" />
+            <input placeholder="Nationality" value={nationality} onChange={(e) => setNationality(e.target.value)} className="bg-black border border-border-default px-2 py-1 text-[11px]" />
             <button onClick={search} className="px-3 py-1 border border-[#d4a017] text-[#d4a017] text-[11px]">SEARCH</button>
           </div>
           {sourceError && <div className="text-[#e87558] text-[11px]">{sourceError}</div>}
@@ -147,7 +147,7 @@ export function ScreeningWorkspace() {
                   {canReview ? (
                     <>
                       <button onClick={() => reviewHit(h.id, 'confirm')} className="px-2 py-[2px] border border-[#d4a017] text-[#d4a017] mr-1">CONFIRM</button>
-                      <button onClick={() => reviewHit(h.id, 'dismiss')} className="px-2 py-[2px] border border-[#232323] text-[#888]">DISMISS</button>
+                      <button onClick={() => reviewHit(h.id, 'dismiss')} className="px-2 py-[2px] border border-border-default text-[#888]">DISMISS</button>
                     </>
                   ) : <span className="text-[#888]">—</span>}
                 </td>
@@ -265,7 +265,7 @@ function SourcesTab({ sources }: { sources: SourceInfo[] }) {
                 <td>{String(st?.items_count ?? '—')}</td>
                 <td className="text-right">
                   <button onClick={() => scrapeNow(s.sourceKey)} disabled={busy === s.sourceKey}
-                    className="px-2 py-[1px] border border-[#232323] text-[#d4a017] hover:bg-[#0b0b0b] disabled:opacity-50">
+                    className="px-2 py-[1px] border border-border-default text-[#d4a017] hover:bg-surface-sunken disabled:opacity-50">
                     {busy === s.sourceKey ? '…' : 'Scrape now'}
                   </button>
                 </td>

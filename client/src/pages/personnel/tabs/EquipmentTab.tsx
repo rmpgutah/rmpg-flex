@@ -99,7 +99,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
     { label: 'Issued', value: stats.issued, color: 'text-green-400', bgClass: 'bg-surface-base', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
     { label: 'Returned', value: stats.returned, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
     { label: 'Lost / Damaged', value: stats.lostDamaged, color: 'text-red-400', bgClass: 'bg-surface-base', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
-    { label: 'Maintenance', value: stats.maintenance, color: 'text-gray-400', bgClass: 'bg-surface-base', border: 'border-gray-700/30', topBorder: 'border-t-gray-500' },
+    { label: 'Maintenance', value: stats.maintenance, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-border-default/30', topBorder: 'border-t-gray-500' },
     { label: 'Retired', value: stats.retired, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
   ];
 
@@ -196,7 +196,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
             {checkoutLog.slice(0, 20).map((log) => (
               <div key={log.id} className="flex items-center justify-between px-2 py-1 bg-surface-sunken rounded text-[9px]">
                 <span className="text-rmpg-300">{log.officer_name || '-'}</span>
-                <span className={`font-bold ${log.action === 'checkout' ? 'text-green-400' : log.action === 'return' ? 'text-gray-400' : 'text-amber-400'}`}>
+                <span className={`font-bold ${log.action === 'checkout' ? 'text-green-400' : log.action === 'return' ? 'text-rmpg-400' : 'text-amber-400'}`}>
                   {log.action?.toUpperCase()}
                 </span>
                 <span className="text-rmpg-200">{log.equipment_name}</span>

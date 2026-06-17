@@ -422,7 +422,7 @@ export default function ModuleDirectoryPage() {
         <div className="px-3 pb-3 mb-2" style={{ borderBottom: '1px solid #1a1a1a' }}>
           <div className="flex items-center gap-2">
             <Grid3X3 className="w-4 h-4 text-brand-400" />
-            <span className="text-xs font-bold text-white uppercase tracking-wider">Modules</span>
+            <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Modules</span>
           </div>
           <div className="text-[9px] text-rmpg-500 mt-1 font-mono">{allFunctions.length} Functions</div>
         </div>
@@ -438,7 +438,7 @@ export default function ModuleDirectoryPage() {
               borderLeft: activeCategory === '_favorites' ? '3px solid #d4a017' : '3px solid transparent',
             }}
           >
-            <Star style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_favorites' ? '#d4a017' : '#666666' }} />
+            <Star style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_favorites' ? '#d4a017' : 'var(--rmpg-500)' }} />
             <div className="flex-1 min-w-0">
               <span className="text-[11px] font-medium block truncate">Favorites</span>
               <span className="text-[8px] text-rmpg-600 font-mono">{favorites.size} saved</span>
@@ -457,7 +457,7 @@ export default function ModuleDirectoryPage() {
               borderLeft: activeCategory === '_recent' ? '3px solid #888888' : '3px solid transparent',
             }}
           >
-            <Clock style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_recent' ? '#aaaaaa' : '#666666' }} />
+            <Clock style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_recent' ? '#aaaaaa' : 'var(--rmpg-500)' }} />
             <div className="flex-1 min-w-0">
               <span className="text-[11px] font-medium block truncate">Recent</span>
               <span className="text-[8px] text-rmpg-600 font-mono">{recentFunctions.length} modules</span>
@@ -465,7 +465,7 @@ export default function ModuleDirectoryPage() {
           </button>
         )}
 
-        {showFavorites && <div className="mx-3 my-1 h-px" style={{ background: '#1a1a1a' }} />}
+        {showFavorites && <div className="mx-3 my-1 h-px" style={{ background: 'var(--surface-raised)' }} />}
 
         {visibleCategories.map((cat) => {
           const Icon = cat.icon;
@@ -482,7 +482,7 @@ export default function ModuleDirectoryPage() {
                 borderLeft: active ? '3px solid #888888' : '3px solid transparent',
               }}
             >
-              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? '#aaaaaa' : '#666666' }} />
+              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? '#aaaaaa' : 'var(--rmpg-500)' }} />
               <div className="flex-1 min-w-0">
                 <span className="text-[11px] font-medium block truncate">{cat.label}</span>
                 <span className="text-[8px] text-rmpg-600 font-mono">{cat.functions.length} functions</span>
@@ -493,7 +493,7 @@ export default function ModuleDirectoryPage() {
       </nav>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto" style={{ background: '#0a0a0a' }}>
+      <div className="flex-1 overflow-y-auto" style={{ background:"var(--surface-sunken)" }}>
         <div className="p-4 max-w-5xl mx-auto space-y-4">
           <div className="flex items-center gap-2">
             <div className="relative flex-1" style={{ maxWidth: 400 }}>
@@ -508,7 +508,7 @@ export default function ModuleDirectoryPage() {
                   }
                 }}
                 placeholder="Search functions by name, path, or description..."
-                className="w-full pl-9 pr-3 py-2 text-[11px] bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500 transition-colors"
+                className="w-full pl-9 pr-3 py-2 text-[11px] bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500 transition-colors"
                 autoFocus
               />
             </div>
@@ -654,13 +654,13 @@ export default function ModuleDirectoryPage() {
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold text-white group-hover:text-brand-400 transition-colors truncate">
+              <span className="text-[11px] font-bold text-rmpg-100 group-hover:text-brand-400 transition-colors truncate">
                 {fn.label}
               </span>
               {fn.shortcut && (
                 <span
                   className="text-[8px] font-mono px-1 py-0.5 flex-shrink-0"
-                  style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', color: '#666' }}
+                  style={{ background:"var(--surface-sunken)", border: '1px solid #1a1a1a', color: '#666' }}
                 >
                   {fn.shortcut}
                 </span>

@@ -45,10 +45,10 @@ function ToggleRow({ label, description, checked, onChange }: {
       onClick={() => onChange(!checked)}
       role="switch"
       aria-checked={checked}
-      className="w-full flex items-center justify-between gap-4 px-3 py-2 text-left border-b border-[#1a1a1a] hover:bg-white/[0.02] transition-colors"
+      className="w-full flex items-center justify-between gap-4 px-3 py-2 text-left border-b border-border-default hover:bg-white/[0.02] transition-colors"
     >
       <span className="min-w-0">
-        <span className="block text-[11px] text-white">{label}</span>
+        <span className="block text-[11px] text-rmpg-100">{label}</span>
         {description && <span className="block text-[10px] text-rmpg-400 mt-0.5">{description}</span>}
       </span>
       <span
@@ -69,9 +69,9 @@ function SliderRow({ label, value, min, max, step, format, onChange }: {
   format: (v: number) => string; onChange: (v: number) => void;
 }) {
   return (
-    <div className="px-3 py-2 border-b border-[#1a1a1a]">
+    <div className="px-3 py-2 border-b border-border-default">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[11px] text-white">{label}</span>
+        <span className="text-[11px] text-rmpg-100">{label}</span>
         <span className="text-[10px] font-mono text-brand-400">{format(value)}</span>
       </div>
       <input id="ff-settingspage-0"
@@ -89,8 +89,8 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
   label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void;
 }) {
   return (
-    <div className="px-3 py-2 border-b border-[#1a1a1a]">
-      <span className="block text-[11px] text-white mb-1.5">{label}</span>
+    <div className="px-3 py-2 border-b border-border-default">
+      <span className="block text-[11px] text-rmpg-100 mb-1.5">{label}</span>
       <div className="flex gap-1">
         {options.map((opt) => (
           <button
@@ -99,7 +99,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
             onClick={() => onChange(opt.value)}
             className="flex-1 px-2 py-1 text-[10px] uppercase tracking-wide border transition-colors"
             style={{
-              background: value === opt.value ? '#d4a017' : '#141414',
+              background: value === opt.value ? '#d4a017' : 'var(--surface-base)',
               color: value === opt.value ? '#000' : '#888',
               borderColor: value === opt.value ? '#d4a017' : '#222',
               borderRadius: 2,
@@ -118,15 +118,15 @@ function SoundAssignRow({ label, desc, value, onPick }: {
   label: string; desc: string; value: SoundId; onPick: (s: SoundId) => void;
 }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a1a1a]">
+    <div className="flex items-center gap-2 px-3 py-2 border-b border-border-default">
       <span className="min-w-0 flex-1">
-        <span className="block text-[11px] text-white truncate">{label}</span>
+        <span className="block text-[11px] text-rmpg-100 truncate">{label}</span>
         <span className="block text-[9px] text-rmpg-500 truncate">{desc}</span>
       </span>
       <select id="ff-settingspage-1"
         value={value}
         onChange={(e) => onPick(e.target.value as SoundId)}
-        className="shrink-0 w-[150px] bg-[#141414] border border-[#222] text-[10px] text-white px-1.5 py-1"
+        className="shrink-0 w-[150px] bg-surface-base border border-border-default text-[10px] text-rmpg-100 px-1.5 py-1"
         style={{ borderRadius: 2 }}
         aria-label={`Sound for ${label}`}
       >
@@ -141,7 +141,7 @@ function SoundAssignRow({ label, desc, value, onPick }: {
       <button
         type="button"
         onClick={() => playSound(value)}
-        className="shrink-0 p-1.5 border border-[#222] text-rmpg-400 hover:text-brand-400 hover:border-[#d4a017] transition-colors"
+        className="shrink-0 p-1.5 border border-border-default text-rmpg-400 hover:text-brand-400 hover:border-[#d4a017] transition-colors"
         style={{ borderRadius: 2 }}
         aria-label={`Preview ${label} sound`}
       >
@@ -155,7 +155,7 @@ function SectionCard({ title, icon, children }: {
   title: string; icon: React.ElementType; children: React.ReactNode;
 }) {
   return (
-    <div className="panel-beveled" style={{ background: '#0a0a0a' }}>
+    <div className="panel-beveled" style={{ background:"var(--surface-sunken)" }}>
       <PanelTitleBar title={title} icon={icon} />
       <div>{children}</div>
     </div>
@@ -296,12 +296,12 @@ export default function SettingsPage() {
         <div className="space-y-4">
           <SectionCard title="DISPATCHER VOICE" icon={Mic}>
             {/* Voice picker */}
-            <div className="px-3 py-2 border-b border-[#1a1a1a]">
-              <span className="block text-[11px] text-white mb-1.5">Voice</span>
+            <div className="px-3 py-2 border-b border-border-default">
+              <span className="block text-[11px] text-rmpg-100 mb-1.5">Voice</span>
               <select id="ff-settingspage-2"
                 value={persona.voiceId}
                 onChange={(e) => setPersona({ voiceId: e.target.value })}
-                className="w-full bg-[#141414] border border-[#222] text-[11px] text-white px-2 py-1.5"
+                className="w-full bg-surface-base border border-border-default text-[11px] text-rmpg-100 px-2 py-1.5"
                 style={{ borderRadius: 2 }}
                 aria-label="Dispatcher voice"
               >
@@ -415,7 +415,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => { resetToneMap(); setToneMap(readSlots()); }}
-                className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-[#222] text-rmpg-400 hover:text-white hover:border-[#2e2e2e] transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-rmpg-400 hover:text-rmpg-100 hover:border-rmpg-700 transition-colors"
                 style={{ borderRadius: 2 }}
               >
                 <RotateCcw className="w-3 h-3" /> Reset to Motorola defaults
@@ -430,9 +430,9 @@ export default function SettingsPage() {
               checked={ptt.enabled}
               onChange={(v) => patchPtt({ enabled: v })}
             />
-            <div className="px-3 py-2 border-b border-[#1a1a1a] flex items-center justify-between gap-3">
+            <div className="px-3 py-2 border-b border-border-default flex items-center justify-between gap-3">
               <span className="min-w-0">
-                <span className="block text-[11px] text-white">PTT key</span>
+                <span className="block text-[11px] text-rmpg-100">PTT key</span>
                 <span className="block text-[10px] text-rmpg-400 mt-0.5">Press to bind any key</span>
               </span>
               <button
@@ -441,7 +441,7 @@ export default function SettingsPage() {
                 className="shrink-0 min-w-[120px] px-3 py-1.5 text-[11px] font-mono border transition-colors"
                 style={{
                   borderRadius: 2,
-                  background: capturingKey ? '#3a0d0d' : '#141414',
+                  background: capturingKey ? '#3a0d0d' : 'var(--surface-base)',
                   borderColor: capturingKey ? '#ef4444' : '#222',
                   color: capturingKey ? '#fca5a5' : '#fff',
                 }}
@@ -449,12 +449,12 @@ export default function SettingsPage() {
                 {capturingKey ? 'Press a key…' : keyCodeLabel(ptt.keyCode)}
               </button>
             </div>
-            <div className="px-3 py-2 border-b border-[#1a1a1a]">
-              <span className="block text-[11px] text-white mb-1.5">Transmit channel</span>
+            <div className="px-3 py-2 border-b border-border-default">
+              <span className="block text-[11px] text-rmpg-100 mb-1.5">Transmit channel</span>
               <select id="ff-settingspage-3"
                 value={ptt.channelId == null ? '' : String(ptt.channelId)}
                 onChange={(e) => patchPtt({ channelId: e.target.value === '' ? null : Number(e.target.value) })}
-                className="w-full bg-[#141414] border border-[#222] text-[11px] text-white px-2 py-1.5"
+                className="w-full bg-surface-base border border-border-default text-[11px] text-rmpg-100 px-2 py-1.5"
                 style={{ borderRadius: 2 }}
                 aria-label="PTT transmit channel"
               >
@@ -475,12 +475,12 @@ export default function SettingsPage() {
         {/* ── GPS MAPPER ── */}
         <div className="space-y-4">
           <SectionCard title="MAP — DEFAULT VIEW" icon={MapIcon}>
-            <div className="px-3 py-2 border-b border-[#1a1a1a]">
-              <span className="block text-[11px] text-white mb-1.5">Default map style</span>
+            <div className="px-3 py-2 border-b border-border-default">
+              <span className="block text-[11px] text-rmpg-100 mb-1.5">Default map style</span>
               <select id="ff-settingspage-4"
                 value={mapPrefs.defaultStyle}
                 onChange={(e) => patchMap({ defaultStyle: e.target.value as MapStyleId })}
-                className="w-full bg-[#141414] border border-[#222] text-[11px] text-white px-2 py-1.5"
+                className="w-full bg-surface-base border border-border-default text-[11px] text-rmpg-100 px-2 py-1.5"
                 style={{ borderRadius: 2 }}
                 aria-label="Default map style"
               >
@@ -539,7 +539,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={resetMap}
-                className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-[#222] text-rmpg-400 hover:text-white hover:border-[#2e2e2e] transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-rmpg-400 hover:text-rmpg-100 hover:border-rmpg-700 transition-colors"
                 style={{ borderRadius: 2 }}
               >
                 <RotateCcw className="w-3 h-3" /> Reset map settings

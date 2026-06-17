@@ -182,9 +182,9 @@ function severityBadge(level: string) {
     case 'misdemeanor':
       return 'bg-amber-900/50 text-amber-400 border border-amber-700/50';
     case 'infraction':
-      return 'bg-gray-900/50 text-gray-400 border border-gray-700/50';
+      return 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50';
     default:
-      return 'bg-gray-900/50 text-gray-400 border border-gray-700/50';
+      return 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50';
   }
 }
 
@@ -202,7 +202,7 @@ function typeBadge(type: string) {
     case 'extradition':
       return 'bg-purple-900/50 text-purple-400 border border-purple-700/50';
     default:
-      return 'bg-gray-900/50 text-gray-400 border border-gray-700/50';
+      return 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50';
   }
 }
 
@@ -307,7 +307,7 @@ export default function NationalWarrantSearchPage() {
 
   // ── Render ────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-[#0a0a0a]">
+    <div className="flex flex-col h-full overflow-hidden bg-surface-sunken">
       {/* ─── Header ──────────────────────────────────── */}
       <PanelTitleBar title="NATIONAL WARRANT SEARCH" icon={Globe}>
         <span className="text-[10px] text-rmpg-400 font-mono tracking-wide">
@@ -380,7 +380,7 @@ export default function NationalWarrantSearchPage() {
                 <button
                   type="button"
                   onClick={clearSearch}
-                  className="toolbar-btn text-rmpg-400 hover:text-white px-2 py-1.5 text-xs"
+                  className="toolbar-btn text-rmpg-400 hover:text-rmpg-100 px-2 py-1.5 text-xs"
                   title="Clear search"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -485,7 +485,7 @@ export default function NationalWarrantSearchPage() {
                         height={cellH}
                         rx={2}
                         fill={isHovered ? coverageHoverFill(status) : coverageFill(status)}
-                        stroke={isSelected ? '#a0a0a0' : coverageStroke(status)}
+                        stroke={isSelected ? 'var(--rmpg-400)' : coverageStroke(status)}
                         strokeWidth={isSelected ? 2 : 1}
                         opacity={isHovered ? 1 : 0.85}
                       />
@@ -499,7 +499,7 @@ export default function NationalWarrantSearchPage() {
                           fontSize: 11,
                           fontWeight: 600,
                           fontFamily: 'JetBrains Mono, monospace',
-                          fill: isSelected ? '#a0a0a0' : status === 'active' ? '#86efac' : status === 'pending' ? '#fcd34d' : '#9ca3af',
+                          fill: isSelected ? 'var(--rmpg-400)' : status === 'active' ? '#86efac' : status === 'pending' ? '#fcd34d' : 'var(--rmpg-400)',
                         }}
                       >
                         {st.label}
@@ -519,14 +519,14 @@ export default function NationalWarrantSearchPage() {
                     transform: 'translate(-50%, -100%)',
                   }}
                 >
-                  <div className="text-[10px] font-bold text-white">
+                  <div className="text-[10px] font-bold text-rmpg-100">
                     {US_STATES.find(s => s.code === hoveredState)?.label ?? hoveredState}
                   </div>
                   <div className="text-[10px] text-rmpg-400">
                     Status: <span className={
                       stateCoverage[hoveredState] === 'active' ? 'text-green-400' :
                       stateCoverage[hoveredState] === 'pending' ? 'text-amber-400' :
-                      'text-gray-500'
+                      'text-rmpg-500'
                     }>
                       {stateCoverage[hoveredState] ?? 'No source'}
                     </span>
@@ -564,12 +564,12 @@ export default function NationalWarrantSearchPage() {
             <div className="panel-raised p-2 flex items-center gap-3">
               <Shield className="w-3.5 h-3.5 text-brand-400" />
               <span className="text-xs text-rmpg-200">
-                <span className="font-bold text-white">{totalResults}</span> results
-                across <span className="font-bold text-white">{Object.keys(stateGroups).length + (localResults.length ? 1 : 0)}</span> sources
+                <span className="font-bold text-rmpg-100">{totalResults}</span> results
+                across <span className="font-bold text-rmpg-100">{Object.keys(stateGroups).length + (localResults.length ? 1 : 0)}</span> sources
                 in <span className="text-brand-400">{searchTime}ms</span>
               </span>
               {stateFilter && (
-                <span className="ml-auto text-[10px] bg-gray-900/50 text-gray-400 border border-gray-700/50 px-1.5 py-0.5 rounded">
+                <span className="ml-auto text-[10px] bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 px-1.5 py-0.5 rounded">
                   Filtered: {US_STATES.find(s => s.code === stateFilter)?.label}
                 </span>
               )}
@@ -611,14 +611,14 @@ export default function NationalWarrantSearchPage() {
                 <div key={stateCode} className="panel-raised overflow-hidden">
                   <button
                     onClick={() => toggleGroup(stateCode)}
-                    className="w-full flex items-center gap-2 px-3 py-2 bg-surface-raised border-b border-[#1a1a1a] hover:bg-surface-sunken transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-2 bg-surface-raised border-b border-border-default hover:bg-surface-sunken transition-colors"
                   >
                     <ChevronDown className={`w-3 h-3 text-rmpg-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
                     <MapPin className="w-3.5 h-3.5 text-rmpg-400" />
                     <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">
                       {stateName}
                     </span>
-                    <span className="ml-1 text-[10px] bg-gray-900/50 text-rmpg-400 border border-gray-700/50 px-1.5 py-0.5 rounded font-mono">
+                    <span className="ml-1 text-[10px] bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 px-1.5 py-0.5 rounded font-mono">
                       {warrants.length}
                     </span>
                   </button>
@@ -692,10 +692,10 @@ function WarrantRow({ warrant }: { warrant: any }) {
         <img
           src={warrant.photo_url}
           alt=""
-          className="w-10 h-12 rounded object-cover border border-[#1a1a1a] flex-shrink-0"
+          className="w-10 h-12 rounded object-cover border border-border-default flex-shrink-0"
         />
       ) : (
-        <div className="w-10 h-12 rounded bg-surface-sunken border border-[#1a1a1a] flex items-center justify-center flex-shrink-0">
+        <div className="w-10 h-12 rounded bg-surface-sunken border border-border-default flex items-center justify-center flex-shrink-0">
           <User className="w-4 h-4 text-rmpg-500" />
         </div>
       )}
@@ -703,7 +703,7 @@ function WarrantRow({ warrant }: { warrant: any }) {
       {/* Details */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold text-white">
+          <span className="text-xs font-bold text-rmpg-100">
             {warrantName(warrant)}
           </span>
           {warrant.dob && (
@@ -744,7 +744,7 @@ function WarrantRow({ warrant }: { warrant: any }) {
             </span>
           )}
           {warrant.source && (
-            <span className="text-[10px] bg-surface-sunken text-rmpg-500 border border-[#1a1a1a] px-1.5 py-0.5 rounded">
+            <span className="text-[10px] bg-surface-sunken text-rmpg-500 border border-border-default px-1.5 py-0.5 rounded">
               {warrant.source}
             </span>
           )}

@@ -54,7 +54,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; ledClass: st
   non_compliant:  { label: 'Non-Compliant',  color: '#fbbf24', ledClass: 'led-amber' },
   absconded:      { label: 'Absconded',      color: '#f87171', ledClass: 'led-red'   },
   incarcerated:   { label: 'Incarcerated',   color: '#888888', ledClass: ''          },
-  removed:        { label: 'Removed',        color: '#666666', ledClass: ''          },
+  removed:        { label: 'Removed',        color: 'var(--rmpg-500)', ledClass: ''          },
 };
 
 const RISK_COLORS: Record<string, string> = {
@@ -316,7 +316,7 @@ export default function SexOffenderRegistryPage() {
   // LEFT PANEL — Registry List
   // ============================================================
   const leftPanel = (
-    <div className="flex flex-col h-full" style={{ background: '#050505' }}>
+    <div className="flex flex-col h-full" style={{ background: 'var(--surface-overlay)' }}>
       {/* Stats Strip */}
       <div
         className="flex items-center gap-4 px-3 py-1.5 text-[11px] font-mono flex-shrink-0 overflow-x-auto"
@@ -353,7 +353,7 @@ export default function SexOffenderRegistryPage() {
       {/* Search + Filters */}
       <div
         className="flex items-center gap-2 px-3 py-2 flex-shrink-0 flex-wrap"
-        style={{ background: '#0a0a0a', borderBottom: '1px solid #2b2b2b' }}
+        style={{ background:"var(--surface-sunken)", borderBottom: '1px solid #2b2b2b' }}
       >
         <div className="relative flex-1 min-w-[140px]">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
@@ -362,7 +362,7 @@ export default function SexOffenderRegistryPage() {
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
             placeholder="Search name or registry ID..." aria-label="Search name or registry ID..."
-            className={`w-full pl-7 ${searchInput ? 'pr-7' : 'pr-2'} py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white placeholder-rmpg-500 focus:border-brand-500 focus:outline-none`}
+            className={`w-full pl-7 ${searchInput ? 'pr-7' : 'pr-2'} py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 placeholder-rmpg-500 focus:border-brand-500 focus:outline-none`}
           />
           {searchInput && (
             <IconButton onClick={() => { setSearchInput(''); setSearch(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
@@ -425,7 +425,7 @@ export default function SexOffenderRegistryPage() {
                   {/* Mugshot Thumbnail */}
                   <div
                     className="w-12 h-14 rounded-sm flex-shrink-0 flex items-center justify-center overflow-hidden"
-                    style={{ background: '#141414', border: '1px solid #2a2a2a' }}
+                    style={{ background: 'var(--surface-base)', border: '1px solid #2a2a2a' }}
                   >
                     {r.photo_url ? (
                       <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
@@ -437,7 +437,7 @@ export default function SexOffenderRegistryPage() {
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-white text-xs font-bold truncate">
+                      <span className="text-rmpg-100 text-xs font-bold truncate">
                         {(r.last_name || 'UNKNOWN').toUpperCase()}{r.first_name ? `, ${r.first_name}` : ''}
                       </span>
                       {/* Tier Badge */}
@@ -480,7 +480,7 @@ export default function SexOffenderRegistryPage() {
       {totalPages > 1 && (
         <div
           className="flex items-center justify-between px-3 py-1.5 text-[10px] text-rmpg-500 flex-shrink-0"
-          style={{ background: '#0a0a0a', borderTop: '1px solid #2b2b2b' }}
+          style={{ background:"var(--surface-sunken)", borderTop: '1px solid #2b2b2b' }}
         >
           <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalRecords)} of {totalRecords}</span>
           <div className="flex items-center gap-1">
@@ -507,7 +507,7 @@ export default function SexOffenderRegistryPage() {
   // RIGHT PANEL — Detail Profile
   // ============================================================
   const rightPanel = selected ? (
-    <div className="h-full overflow-y-auto" style={{ background: '#050505' }}>
+    <div className="h-full overflow-y-auto" style={{ background: 'var(--surface-overlay)' }}>
       {/* Close button */}
       <IconButton
         onClick={() => setSelected(null)}
@@ -524,7 +524,7 @@ export default function SexOffenderRegistryPage() {
           {/* Large Mugshot */}
           <div
             className="w-[100px] h-[130px] rounded-sm flex-shrink-0 flex items-center justify-center overflow-hidden"
-            style={{ background: '#050505', border: '2px solid #2a2a2a' }}
+            style={{ background: 'var(--surface-overlay)', border: '2px solid #2a2a2a' }}
           >
             {selected.photo_url ? (
               <img src={selected.photo_url} alt="" className="w-full h-full object-cover" />
@@ -533,7 +533,7 @@ export default function SexOffenderRegistryPage() {
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-white font-bold text-base truncate">
+            <h2 className="text-rmpg-100 font-bold text-base truncate">
               {(selected.last_name || 'UNKNOWN').toUpperCase()}{selected.first_name ? `, ${selected.first_name}` : ''} {selected.middle_name || ''}
             </h2>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -644,7 +644,7 @@ export default function SexOffenderRegistryPage() {
           <DetailSection title="Offenses" icon={<FileText size={12} />}>
             <div className="space-y-2">
               {offs.map((o, i) => (
-                <div key={i} className="p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
+                <div key={i} className="p-2 rounded-sm" style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b' }}>
                   <div className="flex items-center gap-2">
                     <span className="text-red-400 text-[11px] font-mono font-bold">{o.statute}</span>
                     {o.date && <span className="text-[10px] text-rmpg-500">{formatDate(o.date)}</span>}
@@ -799,7 +799,7 @@ export default function SexOffenderRegistryPage() {
       </div>
     </div>
   ) : (
-    <div className="flex flex-col items-center justify-center h-full text-rmpg-500" style={{ background: '#050505' }}>
+    <div className="flex flex-col items-center justify-center h-full text-rmpg-500" style={{ background: 'var(--surface-overlay)' }}>
       <ShieldAlert size={48} className="mb-3 opacity-20" />
       <span className="text-sm">Select a record to view details</span>
     </div>
@@ -821,7 +821,7 @@ export default function SexOffenderRegistryPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full" style={{ background: '#050505' }}>
+    <div className="flex flex-col h-full" style={{ background: 'var(--surface-overlay)' }}>
       {/* Title Bar */}
       <PanelTitleBar
         title="Sex Offender Registry"
@@ -898,13 +898,13 @@ export default function SexOffenderRegistryPage() {
               <h3 className="text-xs font-bold text-[#d4a017] uppercase tracking-widest">
                 Link to Person Record
               </h3>
-              <IconButton onClick={() => setShowLinkPerson(false)} className="text-rmpg-400 hover:text-white" aria-label="Close">
+              <IconButton onClick={() => setShowLinkPerson(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close">
                 <X size={14} />
               </IconButton>
             </div>
             <div className="p-4 space-y-3">
               <p className="text-[11px] text-rmpg-300">
-                Link <span className="text-white font-bold">{selected.first_name} {selected.last_name}</span> to an existing person record in the RMS.
+                Link <span className="text-rmpg-100 font-bold">{selected.first_name} {selected.last_name}</span> to an existing person record in the RMS.
               </p>
               <div className="relative">
                 <Search size={14} className="absolute left-2 top-2 text-rmpg-500" />
@@ -912,7 +912,7 @@ export default function SexOffenderRegistryPage() {
                   value={linkSearch}
                   onChange={(e) => handleLinkPersonSearch(e.target.value)}
                   placeholder="Search persons by name..." aria-label="Search persons by name..."
-                  className="w-full pl-7 pr-3 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500"
+                  className="w-full pl-7 pr-3 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-rmpg-100 placeholder-rmpg-500"
                   style={{ borderRadius: 2 }}
                   autoFocus
                 />
@@ -932,7 +932,7 @@ export default function SexOffenderRegistryPage() {
                       className="w-full flex items-center gap-2 px-2 py-1.5 bg-surface-sunken border border-rmpg-700 hover:bg-rmpg-700 transition-colors text-left disabled:opacity-50"
                     >
                       <User size={12} className="text-rmpg-400 shrink-0" />
-                      <span className="text-[11px] text-white font-bold truncate">
+                      <span className="text-[11px] text-rmpg-100 font-bold truncate">
                         {p.last_name}, {p.first_name}
                       </span>
                       {p.dob && (
@@ -1036,10 +1036,10 @@ function RecordFormModal({
     <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-md"
-        style={{ background: '#0a0a0a', border: '1px solid #2a2a2a' }}
+        style={{ background:"var(--surface-sunken)", border: '1px solid #2a2a2a' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-3" style={{ background: '#141414', borderBottom: '1px solid #2a2a2a' }}>
+        <div className="flex items-center justify-between p-3" style={{ background: 'var(--surface-base)', borderBottom: '1px solid #2a2a2a' }}>
           <h2 className="text-sm font-bold text-[#d4a017] flex items-center gap-2 uppercase tracking-wider">
             <ShieldAlert size={14} className="text-[#d4a017]" />
             {record ? 'Edit Registry Entry' : 'New Registry Entry'}
@@ -1060,7 +1060,7 @@ function RecordFormModal({
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Tier</label>
               <select id="ff-sexoffenderregistrypage-4" value={form.tier} onChange={e => set('tier', parseInt(e.target.value, 10))}
-                className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
+                className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value={1}>Tier 1 — Low</option>
                 <option value={2}>Tier 2 — Moderate</option>
                 <option value={3}>Tier 3 — High</option>
@@ -1069,7 +1069,7 @@ function RecordFormModal({
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Risk Level</label>
               <select id="ff-sexoffenderregistrypage-5" value={form.risk_level} onChange={e => set('risk_level', e.target.value)}
-                className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
+                className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value="">— None —</option>
                 <option value="low">Low</option>
                 <option value="moderate">Moderate</option>
@@ -1099,7 +1099,7 @@ function RecordFormModal({
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Status</label>
               <select id="ff-sexoffenderregistrypage-6" value={form.registration_status} onChange={e => set('registration_status', e.target.value)}
-                className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
+                className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value="compliant">Compliant</option>
                 <option value="non_compliant">Non-Compliant</option>
                 <option value="absconded">Absconded</option>
@@ -1151,7 +1151,7 @@ function FormField({
   label: string; value: string; onChange: (v: string) => void;
   type?: string; placeholder?: string; multiline?: boolean;
 }) {
-  const cls = "w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder-rmpg-500";
+  const cls = "w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder-rmpg-500";
   return (
     <div>
       <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">{label}</label>
@@ -1200,10 +1200,10 @@ function ImportModal({
     <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-xl max-h-[70vh] overflow-y-auto rounded-sm shadow-md"
-        style={{ background: '#0a0a0a', border: '1px solid #2a2a2a' }}
+        style={{ background:"var(--surface-sunken)", border: '1px solid #2a2a2a' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-3" style={{ background: '#141414', borderBottom: '1px solid #2a2a2a' }}>
+        <div className="flex items-center justify-between p-3" style={{ background: 'var(--surface-base)', borderBottom: '1px solid #2a2a2a' }}>
           <h2 className="text-sm font-bold text-[#d4a017] flex items-center gap-2 uppercase tracking-wider">
             <Upload size={14} className="text-[#d4a017]" /> Import Records
           </h2>
@@ -1217,7 +1217,7 @@ function ImportModal({
             value={jsonText}
             onChange={e => { setJsonText(e.target.value); setParsed(null); }}
             rows={8}
-            className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-3 py-2 font-mono focus:border-brand-500 focus:outline-none placeholder-rmpg-500"
+            className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 px-3 py-2 font-mono focus:border-brand-500 focus:outline-none placeholder-rmpg-500"
             placeholder='[{"first_name": "John", "last_name": "Doe", "tier": 2, ...}]'
           />
           {error && <div className="text-red-400 text-[11px]">{error}</div>}

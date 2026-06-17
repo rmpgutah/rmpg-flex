@@ -58,7 +58,7 @@ export default function RiskPage() {
     { key: 'assessed_date', label: 'Date' }, { key: 'status', label: 'Status' },
     { key: 'actions', label: '', width: '100px', render: (row: any) => (
       <div className="flex gap-2">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-white"><Pencil size={12} /></button>
+        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100"><Pencil size={12} /></button>
         <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }} className="text-red-500 hover:text-red-300"><Trash2 size={12} /></button>
       </div>
     )},
@@ -91,7 +91,7 @@ export default function RiskPage() {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
           <div className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Assessment' : 'New Assessment'}</h3>
+            <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord ? 'Edit Assessment' : 'New Assessment'}</h3>
             <div className="space-y-3">
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Entity Type <span className="text-red-500">*</span></label>
                 <input id="ff-riskpage-0" className="input-dark mt-1" value={formData.entity_type || ''} onChange={e => setFormData({...formData, entity_type: e.target.value})} autoFocus placeholder="e.g. premise, officer, vehicle" /></div>

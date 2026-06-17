@@ -782,7 +782,7 @@ export default function DashboardPage() {
                   `stats.active_warrants` is never populated by /reports/dashboard
                   and was permanently 0, contradicting the same metric shown in
                   the Operational Status panel below. */}
-              <div className="text-lg font-bold font-mono tabular-nums text-white">{activeWarrants || stats.active_warrants || 0}</div>
+              <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">{activeWarrants || stats.active_warrants || 0}</div>
               <div className="text-[9px] text-rmpg-400 uppercase font-bold">Active Warrants</div>
             </div>
           </div>
@@ -812,7 +812,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             <Briefcase className="w-4 h-4 text-amber-400" />
             <div>
-              <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.pending_serve || 0}</div>
+              <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">{stats.pending_serve || 0}</div>
               <div className="text-[9px] text-rmpg-400 uppercase font-bold">Pending Serve</div>
             </div>
           </div>
@@ -821,16 +821,16 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             <Target className="w-4 h-4 text-purple-400" />
             <div>
-              <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.open_cases || 0}</div>
+              <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">{stats.open_cases || 0}</div>
               <div className="text-[9px] text-rmpg-400 uppercase font-bold">Open Cases</div>
             </div>
           </div>
         </div>
         <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/records')}>
           <div className="flex items-center gap-2">
-            <Shield className="w-4 h-4 text-gray-400" />
+            <Shield className="w-4 h-4 text-rmpg-400" />
             <div>
-              <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.total_persons || 0}</div>
+              <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">{stats.total_persons || 0}</div>
               <div className="text-[9px] text-rmpg-400 uppercase font-bold">Total Persons</div>
             </div>
           </div>
@@ -926,11 +926,11 @@ export default function DashboardPage() {
                   )}
                   {/* Road Conditions Warning */}
                   {isFreezing && (
-                    <div className="flex items-center gap-2 p-2.5 bg-gray-900/20 border border-gray-700/30 rounded-sm animate-fade-in" role="alert">
-                      <Snowflake className="w-4 h-4 text-gray-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
+                    <div className="flex items-center gap-2 p-2.5 bg-surface-sunken border border-border-subtle rounded-sm animate-fade-in" role="alert">
+                      <Snowflake className="w-4 h-4 text-rmpg-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
                       <div>
-                        <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Road Conditions Warning</div>
-                        <div className="text-[10px] text-gray-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
+                        <div className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Road Conditions Warning</div>
+                        <div className="text-[10px] text-rmpg-400 mt-0.5">Temperature below freezing — watch for ice</div>
                       </div>
                     </div>
                   )}
@@ -1371,10 +1371,10 @@ export default function DashboardPage() {
           aria-label={`Patrol coverage: ${patrolCoverage?.coverage ?? 0}%`}
         >
           <div className="flex items-center gap-1.5 mb-1">
-            <Navigation className="w-3 h-3 text-gray-400" />
+            <Navigation className="w-3 h-3 text-rmpg-400" />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Coverage</span>
           </div>
-          <div className="text-xl font-bold font-mono text-center text-gray-400 tabular-nums">
+          <div className="text-xl font-bold font-mono text-center text-rmpg-300 tabular-nums">
             {patrolCoverage?.coverage ?? 0}%
           </div>
           <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{patrolCoverage?.coveredBeats || 0}/{patrolCoverage?.totalBeats || 0} beats</div>
@@ -1441,7 +1441,7 @@ export default function DashboardPage() {
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] text-rmpg-400">Calls</span>
-                          <span className="text-xs font-bold font-mono text-gray-400 tabular-nums">{s.calls}</span>
+                          <span className="text-xs font-bold font-mono text-rmpg-300 tabular-nums">{s.calls}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] text-rmpg-400">Incidents</span>
@@ -1530,12 +1530,12 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-lg font-bold font-mono text-brand-400 tabular-nums">{psoStats.activeCalls}</div>
                 </div>
-                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-gray-500">
+                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-rmpg-500">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Phone className="w-3 h-3 text-gray-400" />
+                    <Phone className="w-3 h-3 text-rmpg-400" />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Today</span>
                   </div>
-                  <div className="text-lg font-bold font-mono text-gray-400 tabular-nums">{psoStats.todayCalls}</div>
+                  <div className="text-lg font-bold font-mono text-rmpg-300 tabular-nums">{psoStats.todayCalls}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-green-500">
                   <div className="flex items-center gap-1.5 mb-1">

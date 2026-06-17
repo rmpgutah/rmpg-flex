@@ -55,18 +55,18 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       {/* Panel */}
-      <div className="w-full max-w-lg max-h-[85vh] flex flex-col border border-[#3a3a3a] bg-[#0b0b0b]">
+      <div className="w-full max-w-lg max-h-[85vh] flex flex-col border border-border-subtle bg-surface-sunken">
         {/* Header */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-[#232323]">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
           <span className="text-[11px] font-semibold tracking-wider text-[#d4a017]">
             VEHICLE FILE —{' '}
-            <span className="font-mono text-white">{plate}</span>
+            <span className="font-mono text-rmpg-100">{plate}</span>
           </span>
           <button
             type="button"
             aria-label="Close dossier"
             onClick={onClose}
-            className="text-[#888] hover:text-white">
+            className="text-[#888] hover:text-rmpg-100">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -96,9 +96,9 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
             })();
 
             return (
-              <div key={pkg.id} className="flex gap-2 border border-[#232323] bg-black p-1.5">
+              <div key={pkg.id} className="flex gap-2 border border-border-default bg-black p-1.5">
                 {/* Thumbnail */}
-                <div className="shrink-0 w-20 h-16 bg-[#0b0b0b] border border-[#1a1a1a] overflow-hidden">
+                <div className="shrink-0 w-20 h-16 bg-surface-sunken border border-border-default overflow-hidden">
                   {imageUrl ? (
                     <img
                       src={imageUrl}
@@ -115,21 +115,21 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
                 {/* Meta */}
                 <div className="flex-1 min-w-0 space-y-0.5">
                   <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-[11px] font-semibold text-white tracking-wider">
+                    <span className="font-mono text-[11px] font-semibold text-rmpg-100 tracking-wider">
                       {pkg.canonical_plate}
                     </span>
                     <TrustBadge trust={trust} />
                   </div>
                   <div className="flex items-center gap-2 text-[9px] text-[#888]">
                     {pkg.source_type && (
-                      <span className="border border-[#2a2a2a] px-1 py-[1px]">
+                      <span className="border border-border-default px-1 py-[1px]">
                         {pkg.source_type.replace(/_/g, ' ')}
                       </span>
                     )}
                     <span>{fmtDate(pkg.created_at)}</span>
                   </div>
                   {variants.length > 0 && (
-                    <div className="text-[9px] text-[#888] border-t border-[#1a1a1a] pt-0.5 mt-0.5">
+                    <div className="text-[9px] text-[#888] border-t border-border-default pt-0.5 mt-0.5">
                       variants: {variants.join(', ')} — <span className="text-[#d4a017]">verify</span>
                     </div>
                   )}
@@ -141,7 +141,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
 
         {/* Footer */}
         {data && data.packages.length > 0 && (
-          <div className="px-3 py-1.5 border-t border-[#232323] text-[9px] text-[#666]">
+          <div className="px-3 py-1.5 border-t border-border-default text-[9px] text-rmpg-500">
             {data.packages.length} package{data.packages.length !== 1 ? 's' : ''} on file · newest first
           </div>
         )}

@@ -380,7 +380,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           <button type="button"
             onClick={handleSaveConfig}
             disabled={saving}
-            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
+            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
             Save Config
@@ -439,7 +439,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
                 <div className="text-[9px] text-rmpg-500 mb-2">v{downloads.bundles.mac.version} • {(downloads.bundles.mac.size / 1048576).toFixed(0)} MB</div>
                 <a
                   href={`/downloads/${downloads.bundles.mac.filename}`}
-                  className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white inline-flex"
+                  className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-rmpg-100 inline-flex"
                 >
                   <Download className="w-3 h-3" />
                   Download
@@ -461,7 +461,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
                 <div className="text-[9px] text-rmpg-500 mb-2">v{downloads.bundles.win.version} • {(downloads.bundles.win.size / 1048576).toFixed(0)} MB</div>
                 <a
                   href={`/downloads/${downloads.bundles.win.filename}`}
-                  className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white inline-flex"
+                  className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-rmpg-100 inline-flex"
                 >
                   <Download className="w-3 h-3" />
                   Download
@@ -668,7 +668,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           </div>
 
           {status.runningJobs > 0 && (
-            <div className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm bg-gray-950/30 border border-gray-800/40 text-gray-400">
+            <div className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm bg-surface-overlay/30 border border-border-subtle/40 text-rmpg-400">
               <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" role="status" aria-label="Loading" />
               {status.runningJobs} job(s) currently running
             </div>

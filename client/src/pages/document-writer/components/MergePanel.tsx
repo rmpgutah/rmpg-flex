@@ -58,8 +58,8 @@ export default function MergePanel({
   const unmapped = placeholders.filter((p) => resolveKey(p, autoValues) === undefined);
 
   return (
-    <div className="w-[320px] flex-shrink-0 bg-[#0a0a0a] border border-[#222] rounded-[2px] flex flex-col text-rmpg-200 text-xs">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[#1a1a1a]">
+    <div className="w-[320px] flex-shrink-0 bg-surface-sunken border border-border-default rounded-[2px] flex flex-col text-rmpg-200 text-xs">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
         <span className="font-semibold text-rmpg-100 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
           <Merge className="w-3.5 h-3.5 text-[#d4a017]" /> Mail Merge
         </span>
@@ -78,7 +78,7 @@ export default function MergePanel({
                 onChange={(e) => setCallNumber(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') lookupCall(); }}
                 placeholder="Call number…"
-                className="w-full bg-[#0a0a0a] border border-[#222] rounded-[2px] pl-6 pr-2 py-1 text-[11px] focus:border-[#d4a017]/40 focus:outline-none"
+                className="w-full bg-surface-sunken border border-border-default rounded-[2px] pl-6 pr-2 py-1 text-[11px] focus:border-[#d4a017]/40 focus:outline-none"
               />
             </div>
             <button type="button" onClick={lookupCall} disabled={loadingCall}
@@ -88,7 +88,7 @@ export default function MergePanel({
           </div>
           {callError && <div className="text-[10px] text-red-400/80 mt-1">{callError}</div>}
           {call && (
-            <div className="mt-1.5 p-1.5 bg-[#0d0d0d] border border-[#222] rounded-[2px] text-[10px]">
+            <div className="mt-1.5 p-1.5 bg-surface-base border border-border-default rounded-[2px] text-[10px]">
               <div className="text-[#d4a017] font-mono">{String(call.call_number || '')}</div>
               <div className="text-rmpg-300">{String(call.call_type || '')} · {String(call.address || '')}</div>
             </div>
@@ -116,13 +116,13 @@ export default function MergePanel({
                 <div key={p} className="flex items-center gap-1">
                   <code className="text-[10px] text-[#d4a017] w-28 truncate" title={p}>{`{{${p}}}`}</code>
                   {auto !== undefined ? (
-                    <span className="flex-1 text-[10px] text-rmpg-300 truncate" title={auto}>{auto || <span className="text-rmpg-600 italic">empty</span>}</span>
+                    <span className="min-w-0 flex-1 text-[10px] text-rmpg-300 truncate" title={auto}>{auto || <span className="text-rmpg-600 italic">empty</span>}</span>
                   ) : (
                     <input
                       value={manual[p] ?? ''}
                       onChange={(e) => setManual((m) => ({ ...m, [p]: e.target.value }))}
                       placeholder="(manual)"
-                      className="flex-1 bg-[#0a0a0a] border border-[#222] rounded-[2px] px-1.5 py-0.5 text-[10px] focus:border-[#d4a017]/40 focus:outline-none"
+                      className="flex-1 bg-surface-sunken border border-border-default rounded-[2px] px-1.5 py-0.5 text-[10px] focus:border-[#d4a017]/40 focus:outline-none"
                     />
                   )}
                 </div>
@@ -137,10 +137,10 @@ export default function MergePanel({
         </div>
       </div>
 
-      <div className="p-2 border-t border-[#1a1a1a] flex items-center gap-1">
+      <div className="p-2 border-t border-border-default flex items-center gap-1">
         <button type="button" onClick={() => setVersion((v) => v + 1)}
           title="Re-scan document for placeholders"
-          className="px-2 py-1.5 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a] flex items-center gap-1">
+          className="px-2 py-1.5 text-[10px] bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised flex items-center gap-1">
           <RefreshCw className="w-3 h-3" /> Rescan
         </button>
         <button type="button" onClick={doMerge}

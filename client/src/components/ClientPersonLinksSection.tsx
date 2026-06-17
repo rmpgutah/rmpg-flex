@@ -38,14 +38,14 @@ interface ClientPersonLink {
 // ── Relationship display config ─────────────────────
 
 const RELATIONSHIP_OPTIONS = [
-  { value: 'employee', label: 'Employee', color: 'bg-gray-900/40 text-gray-300 border-gray-700/40' },
+  { value: 'employee', label: 'Employee', color: 'bg-surface-sunken/40 text-rmpg-300 border-border-default/40' },
   { value: 'contact', label: 'Contact', color: 'bg-teal-900/40 text-teal-300 border-teal-700/40' },
-  { value: 'tenant', label: 'Tenant', color: 'bg-[#1f1f1f] text-gray-300 border-[#2e2e2e]' },
+  { value: 'tenant', label: 'Tenant', color: 'bg-surface-raised text-rmpg-300 border-rmpg-700' },
   { value: 'owner', label: 'Owner', color: 'bg-green-900/40 text-green-300 border-green-700/40' },
   { value: 'manager', label: 'Manager', color: 'bg-purple-900/40 text-purple-300 border-purple-700/40' },
   { value: 'subject', label: 'Subject', color: 'bg-amber-900/40 text-amber-300 border-amber-700/40' },
   { value: 'trespass_warning', label: 'Trespass Warning', color: 'bg-red-900/40 text-red-300 border-red-700/40' },
-  { value: 'frequent_visitor', label: 'Frequent Visitor', color: 'bg-[#141414] text-gray-300 border-[#2e2e2e]' },
+  { value: 'frequent_visitor', label: 'Frequent Visitor', color: 'bg-surface-base text-rmpg-300 border-rmpg-700' },
   { value: 'banned', label: 'Banned', color: 'bg-red-900/60 text-red-300 border-red-600/60' },
   { value: 'other', label: 'Other', color: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/40' },
 ];
@@ -104,7 +104,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
         <button
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase text-rmpg-300 hover:text-white bg-rmpg-700/40 hover:bg-rmpg-600/40 border border-rmpg-600/40 transition-colors"
+          className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase text-rmpg-300 hover:text-rmpg-100 bg-rmpg-700/40 hover:bg-rmpg-600/40 border border-rmpg-600/40 transition-colors"
         >
           {showAddForm ? <X className="w-2.5 h-2.5" /> : <Plus className="w-2.5 h-2.5" />}
           {showAddForm ? 'Cancel' : 'Link Client'}
@@ -211,7 +211,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
         <button
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase text-rmpg-300 hover:text-white bg-rmpg-700/40 hover:bg-rmpg-600/40 border border-rmpg-600/40 transition-colors"
+          className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase text-rmpg-300 hover:text-rmpg-100 bg-rmpg-700/40 hover:bg-rmpg-600/40 border border-rmpg-600/40 transition-colors"
         >
           {showAddForm ? <X className="w-2.5 h-2.5" /> : <Plus className="w-2.5 h-2.5" />}
           {showAddForm ? 'Cancel' : 'Link Person'}
@@ -457,7 +457,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
               <button
                 type="button"
                 onClick={onCancel}
-                className="px-2 py-1 text-[9px] font-bold uppercase text-rmpg-400 hover:text-white transition-colors"
+                className="px-2 py-1 text-[9px] font-bold uppercase text-rmpg-400 hover:text-rmpg-100 transition-colors"
               >
                 Cancel
               </button>
@@ -465,7 +465,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
                 type="button"
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="px-3 py-1 text-[9px] font-bold uppercase bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-50 transition-colors"
+                className="px-3 py-1 text-[9px] font-bold uppercase bg-brand-600 text-rmpg-100 hover:bg-brand-500 disabled:opacity-50 transition-colors"
               >
                 {submitting ? 'Linking...' : 'Link'}
               </button>

@@ -158,11 +158,11 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" role="group" aria-label="Training compliance overview">
         <div className="panel-beveled p-3 flex items-center gap-3">
-          <div className="w-8 h-8 flex items-center justify-center bg-gray-900/30 border border-gray-700/40 shrink-0" aria-hidden="true">
-            <GraduationCap style={{ width: 14, height: 14 }} className="text-gray-400" />
+          <div className="w-8 h-8 flex items-center justify-center bg-surface-sunken/30 border border-border-default/40 shrink-0" aria-hidden="true">
+            <GraduationCap style={{ width: 14, height: 14 }} className="text-rmpg-400" />
           </div>
           <div>
-            <div className="text-[18px] font-black text-gray-400 tabular-nums leading-tight">{stats.total_officers}</div>
+            <div className="text-[18px] font-black text-rmpg-400 tabular-nums leading-tight">{stats.total_officers}</div>
             <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Total Officers</div>
           </div>
         </div>
@@ -198,7 +198,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       </div>
 
       {/* Category Compliance Bars */}
-      <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-2 border-b border-[#242424] pb-1.5">
+      <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-2 border-b border-border-default pb-1.5">
         <GraduationCap style={{ width: 10, height: 10 }} />
         Compliance by Category
       </div>
@@ -210,7 +210,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
             <div key={cat.category} className="panel-beveled p-2 flex items-center gap-3">
               <div className="flex-1">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] text-white font-semibold capitalize">
+                  <span className="text-[10px] text-rmpg-100 font-semibold capitalize">
                     {cat.category.replace(/_/g, ' ')}
                   </span>
                   <span className="text-[9px] font-mono" style={{ color }}>
@@ -232,7 +232,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       </div>
       <table className="w-full text-[10px]">
         <thead>
-          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background: '#080808' }}>
+          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background:"var(--surface-sunken)" }}>
             <th className="text-left px-3 py-1.5 font-bold">Officer</th>
             <th className="text-left px-3 py-1.5 font-bold">Badge</th>
             <th className="text-left px-3 py-1.5 font-bold">Role</th>
@@ -248,11 +248,11 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
             const statusLabel = o.overdue === 0 ? 'COMPLIANT' : `${o.overdue} OVERDUE`;
             return (
               <tr key={o.user_id} className="border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors" onContextMenu={(e) => openMenu(e, buildOfficerMenu(o))}>
-                <td className="px-3 py-2 font-semibold text-white">{o.full_name}</td>
+                <td className="px-3 py-2 font-semibold text-rmpg-100">{o.full_name}</td>
                 <td className="px-3 py-2 text-rmpg-400 font-mono">{o.badge_number || '—'}</td>
                 <td className="px-3 py-2 text-rmpg-400">{toDisplayLabel(o.role)}</td>
                 <td className="px-3 py-2 text-center font-mono text-rmpg-300">{o.completed}/{o.required}</td>
-                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? '#ef4444' : '#666666' }}>
+                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? '#ef4444' : 'var(--rmpg-500)' }}>
                   {o.overdue}
                 </td>
                 <td className="px-3 py-2">

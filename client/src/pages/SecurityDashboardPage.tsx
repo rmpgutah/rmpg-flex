@@ -124,7 +124,7 @@ export default function SecurityDashboardPage() {
       <div className="flex gap-1 border-b border-rmpg-700 pb-1">
         {TABS.map(t => (
           <button key={t.id} type="button" onClick={() => setActiveTab(t.id)}
-            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${activeTab === t.id ? 'text-[#d4a017] bg-[#d4a017]/10 border border-[#d4a017]/30' : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/40 border border-transparent'}`}>
+            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${activeTab === t.id ? 'text-[#d4a017] bg-[#d4a017]/10 border border-[#d4a017]/30' : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'}`}>
             <t.icon className="w-3 h-3 inline mr-1" />{t.label}
           </button>
         ))}
@@ -140,7 +140,7 @@ export default function SecurityDashboardPage() {
               {loginHistory.slice(0, 10).map(l => (
                 <div key={l.id} className="flex items-center gap-2 text-[10px] py-1 border-b border-rmpg-800">
                   {l.success ? <CheckCircle className="w-3 h-3 text-green-400 flex-shrink-0" /> : <XCircle className="w-3 h-3 text-red-400 flex-shrink-0" />}
-                  <span className="text-white flex-1 truncate">{l.full_name || `User #${l.user_id}`}</span>
+                  <span className="text-rmpg-100 min-w-0 flex-1 truncate">{l.full_name || `User #${l.user_id}`}</span>
                   <span className="text-rmpg-500 font-mono">{l.ip_address}</span>
                   <span className="text-rmpg-500">{formatDateTime(l.created_at)}</span>
                 </div>
@@ -156,8 +156,8 @@ export default function SecurityDashboardPage() {
               <div className="space-y-1 max-h-64 overflow-y-auto">
                 {threats.slice(0, 10).map((t, i) => (
                   <div key={i} className="flex items-center gap-2 text-[10px] py-1 border-b border-rmpg-800">
-                    <AlertTriangle className="w-3 h-3 flex-shrink-0" style={{ color: t.severity === 'critical' ? '#ef4444' : t.severity === 'high' ? '#f59e0b' : '#888' }} />
-                    <span className="text-white flex-1 truncate">{t.description}</span>
+                    <AlertTriangle className={`w-3 h-3 flex-shrink-0 ${t.severity === 'critical' ? 'text-red-400' : t.severity === 'high' ? 'text-amber-400' : 'text-rmpg-400'}`} />
+                    <span className="text-rmpg-100 flex-1 min-w-0 truncate">{t.description}</span>
                     {t.ip_address && <span className="text-rmpg-500 font-mono">{t.ip_address}</span>}
                   </div>
                 ))}
@@ -174,7 +174,7 @@ export default function SecurityDashboardPage() {
                 {blockedIps.map((b, i) => (
                   <div key={i} className="flex items-center gap-2 text-[10px] py-1 border-b border-rmpg-800">
                     <XCircle className="w-3 h-3 text-red-400 flex-shrink-0" />
-                    <span className="text-white font-mono flex-1">{b.ip}</span>
+                    <span className="text-rmpg-100 font-mono flex-1">{b.ip}</span>
                     <span className="text-rmpg-500">{b.reason || 'Rate limited'}</span>
                     <button type="button" className="text-[9px] text-amber-400 hover:underline" onClick={() => handleUnblockIp(b.ip)}>Unblock</button>
                   </div>
@@ -190,7 +190,7 @@ export default function SecurityDashboardPage() {
               <div className="space-y-2">
                 {(passwordCompliance.data || passwordCompliance.users || []).slice(0, 8).map((u: any, i: number) => (
                   <div key={i} className="flex items-center gap-2 text-[10px]">
-                    <span className="text-white flex-1">{u.full_name || u.username}</span>
+                    <span className="text-rmpg-100 flex-1">{u.full_name || u.username}</span>
                     <span className={`font-mono ${(u.password_age || 0) > 90 ? 'text-red-400' : 'text-green-400'}`}>{u.password_age || 0}d</span>
                     <span className={u.totp_enabled ? 'text-green-400' : 'text-red-400'}>{u.totp_enabled ? '2FA' : 'No 2FA'}</span>
                   </div>
@@ -213,7 +213,7 @@ export default function SecurityDashboardPage() {
               {loginHistory.map(l => (
                 <tr key={l.id} className="border-b border-rmpg-800 hover:bg-surface-raised">
                   <td className="px-3 py-[2px]">{l.success ? <CheckCircle className="w-3 h-3 text-green-400" /> : <XCircle className="w-3 h-3 text-red-400" />}</td>
-                  <td className="px-3 py-[2px] text-[11px] text-white">{l.full_name || `User #${l.user_id}`}</td>
+                  <td className="px-3 py-[2px] text-[11px] text-rmpg-100">{l.full_name || `User #${l.user_id}`}</td>
                   <td className="px-3 py-[2px] text-[11px] text-rmpg-300 font-mono">{l.ip_address}</td>
                   <td className="px-3 py-[2px] text-[10px] text-rmpg-500 max-w-[200px] truncate">{l.user_agent}</td>
                   <td className="px-3 py-[2px] text-[10px] text-rmpg-400">{formatDateTime(l.created_at)}</td>
@@ -236,8 +236,8 @@ export default function SecurityDashboardPage() {
             <tbody>
               {threats.map((t, i) => (
                 <tr key={i} className="border-b border-rmpg-800 hover:bg-surface-raised">
-                  <td className="px-3 py-[2px]"><span className="text-[9px] font-bold uppercase" style={{ color: t.severity === 'critical' ? '#ef4444' : t.severity === 'high' ? '#f59e0b' : '#888' }}>{t.severity}</span></td>
-                  <td className="px-3 py-[2px] text-[11px] text-white capitalize">{(t.type || '').replace(/_/g, ' ')}</td>
+                  <td className="px-3 py-[2px]"><span className={`text-[9px] font-bold uppercase ${t.severity === 'critical' ? 'text-red-400' : t.severity === 'high' ? 'text-amber-400' : 'text-rmpg-400'}`}>{t.severity}</span></td>
+                  <td className="px-3 py-[2px] text-[11px] text-rmpg-100 capitalize">{(t.type || '').replace(/_/g, ' ')}</td>
                   <td className="px-3 py-[2px] text-[10px] text-rmpg-300">{t.description}</td>
                   <td className="px-3 py-[2px] text-[10px] text-rmpg-400 font-mono">{t.ip_address || '—'}</td>
                   <td className="px-3 py-[2px] text-[10px] text-rmpg-400">{formatDateTime(t.timestamp)}</td>
@@ -257,7 +257,7 @@ export default function SecurityDashboardPage() {
               {Object.entries(sessionAnalytics.data || sessionAnalytics || {}).map(([k, v]) => (
                 <div key={k} className="flex justify-between">
                   <span className="text-rmpg-400 capitalize">{k.replace(/_/g, ' ')}</span>
-                  <span className="text-white font-mono">{typeof v === 'number' ? v : String(v)}</span>
+                  <span className="text-rmpg-100 font-mono">{typeof v === 'number' ? v : String(v)}</span>
                 </div>
               ))}
             </div>
@@ -276,7 +276,7 @@ export default function SecurityDashboardPage() {
                   background: e.severity === 'critical' ? '#ef4444' : e.severity === 'high' ? '#f59e0b' : e.severity === 'medium' ? '#888888' : '#666',
                   borderRadius: '1px',
                 }} />
-                <span className="text-white flex-1">{e.description || e.action || e.type}</span>
+                <span className="text-rmpg-100 flex-1">{e.description || e.action || e.type}</span>
                 {e.ip_address && <span className="text-rmpg-500 font-mono">{e.ip_address}</span>}
               </div>
             ))}

@@ -122,7 +122,7 @@ const DEFAULT_PRIORITIES: PriorityConfig[] = [
   { level: 'P1', label: 'Emergency', color: '#dc2626', target: '< 3 min' },
   { level: 'P2', label: 'Urgent', color: '#f59e0b', target: '< 5 min' },
   { level: 'P3', label: 'Routine', color: '#888888', target: '< 10 min' },
-  { level: 'P4', label: 'Scheduled', color: '#666666', target: 'Scheduled' },
+  { level: 'P4', label: 'Scheduled', color: 'var(--rmpg-500)', target: 'Scheduled' },
 ];
 
 const DEFAULT_CALL_SOURCES = ['phone', 'radio', 'walk_in', 'alarm', 'patrol', 'online', 'dispatch', 'email', 'servemanager', 'other'];
@@ -134,7 +134,7 @@ const DEFAULT_UNIT_TYPES: UnitTypeConfig[] = [
   { type: 'medical', label: 'Medical', color: '#ef4444' },
   { type: 'bike', label: 'Bike Patrol', color: '#10b981' },
   { type: 'foot', label: 'Foot Patrol', color: '#888888' },
-  { type: 'vehicle', label: 'Vehicle', color: '#666666' },
+  { type: 'vehicle', label: 'Vehicle', color: 'var(--rmpg-500)' },
 ];
 
 const DEFAULT_EVIDENCE_TYPES = [
@@ -158,7 +158,7 @@ const DEFAULT_BRANDING: BrandingConfig = {
   report_subheader_text: 'PRIVATE SECURITY',
   primary_color: '#dc2626',
   accent_color: '#d4a017',
-  header_bg_color: '#1c1c1c',
+  header_bg_color: 'var(--surface-raised)',
 };
 
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
@@ -1167,7 +1167,7 @@ export default function AdminSystemTab({
     return (
       <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
         <div className="bg-rmpg-800 border border-rmpg-600 p-6 max-w-md w-full mx-4">
-          <h3 className="text-sm font-bold text-white mb-2">Delete Dispatch Unit</h3>
+          <h3 className="text-sm font-bold text-rmpg-100 mb-2">Delete Dispatch Unit</h3>
           <p className="text-xs text-rmpg-300 mb-4">
             Are you sure you want to permanently delete unit "{unitName}"? This action cannot be undone.
           </p>
@@ -1274,7 +1274,7 @@ export default function AdminSystemTab({
                 onClick={() => setActiveSection(sec.id)}
                 className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium transition-all duration-150 ${
                   isActive
-                    ? 'bg-brand-900/40 text-white border border-brand-500/50'
+                    ? 'bg-brand-900/40 text-rmpg-100 border border-brand-500/50'
                     : 'text-rmpg-400 hover:bg-rmpg-700/40 hover:text-rmpg-200 border border-transparent'
                 }`}
               >
@@ -1430,7 +1430,7 @@ export default function AdminSystemTab({
                               <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: parsed.color || '#888888' }} />
                             )}
                           </td>
-                          <td className="font-bold text-white font-mono">{parsed.code}</td>
+                          <td className="font-bold text-rmpg-100 font-mono">{parsed.code}</td>
                           <td>
                             {isEditing ? (
                               <input id="ff-adminsystemtab-2"
@@ -1522,7 +1522,7 @@ export default function AdminSystemTab({
                           onChange={(e) => updatePriority(i, 'color', e.target.value)}
                           className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent"
                         />
-                        <span className="text-sm font-bold text-white font-mono">{p.level}</span>
+                        <span className="text-sm font-bold text-rmpg-100 font-mono">{p.level}</span>
                       </div>
                       <div>
                         <label className="text-[9px] text-rmpg-400 uppercase">Label</label>
@@ -1599,7 +1599,7 @@ export default function AdminSystemTab({
                             <button type="button"
                               onClick={() => moveCallSource(i, 'up')}
                               disabled={i === 0}
-                              className="p-0.5 text-rmpg-400 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed"
+                              className="p-0.5 text-rmpg-400 hover:text-rmpg-100 disabled:opacity-20 disabled:cursor-not-allowed"
                               title="Move up"
                             >
                               <ChevronDown className="w-3 h-3 rotate-180" />
@@ -1607,7 +1607,7 @@ export default function AdminSystemTab({
                             <button type="button"
                               onClick={() => moveCallSource(i, 'down')}
                               disabled={i === callSources.length - 1}
-                              className="p-0.5 text-rmpg-400 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed"
+                              className="p-0.5 text-rmpg-400 hover:text-rmpg-100 disabled:opacity-20 disabled:cursor-not-allowed"
                               title="Move down"
                             >
                               <ChevronDown className="w-3 h-3" />
@@ -1682,7 +1682,7 @@ export default function AdminSystemTab({
                         <>
                           <div className="w-4 h-4 rounded-sm flex-shrink-0" style={{ backgroundColor: ut.color }} />
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs text-white font-medium truncate">{ut.label}</div>
+                            <div className="text-xs text-rmpg-100 font-medium truncate">{ut.label}</div>
                             <div className="text-[10px] text-rmpg-500 font-mono">{ut.type}</div>
                           </div>
                           <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -1791,13 +1791,13 @@ export default function AdminSystemTab({
                                 </>
                               ) : (
                                 <>
-                                  <td><span className="font-bold text-white font-mono text-xs">{unit.call_sign}</span></td>
+                                  <td><span className="font-bold text-rmpg-100 font-mono text-xs">{unit.call_sign}</span></td>
                                   <td className="text-rmpg-200 text-xs">{unit.officer_name || <span className="text-rmpg-500">Unassigned</span>}</td>
                                   <td>
                                     <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${
                                       unit.status === 'available' ? 'bg-green-900/40 text-green-400 border-green-700/50' :
                                       unit.status === 'dispatched' ? 'bg-amber-900/40 text-amber-400 border-amber-700/50' :
-                                      unit.status === 'enroute' ? 'bg-gray-900/40 text-gray-400 border-gray-700/50' :
+                                      unit.status === 'enroute' ? 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50' :
                                       unit.status === 'onscene' ? 'bg-purple-900/40 text-purple-400 border-purple-700/50' :
                                       unit.status === 'busy' ? 'bg-red-900/40 text-red-400 border-red-700/50' :
                                       'bg-rmpg-700/40 text-rmpg-400 border-rmpg-600/50'
@@ -1808,7 +1808,7 @@ export default function AdminSystemTab({
                                   <td className="text-xs font-mono text-rmpg-300">{unit.current_call_number || <span className="text-rmpg-500">-</span>}</td>
                                   <td>
                                     <div className="flex items-center gap-1">
-                                      <button type="button" onClick={() => startEditUnit(unit)} className="text-rmpg-400 hover:text-gray-400" title="Edit unit">
+                                      <button type="button" onClick={() => startEditUnit(unit)} className="text-rmpg-400 hover:text-rmpg-400" title="Edit unit">
                                         <Edit className="w-3.5 h-3.5" />
                                       </button>
                                       {!unit.current_call_id && (
@@ -1875,7 +1875,7 @@ export default function AdminSystemTab({
                         <tr key={z.code} onContextMenu={(e) => openMenu(e, buildZoneMenu(z))}>
                           {editingZoneCode === z.code ? (
                             <>
-                              <td className="font-bold text-white font-mono">{z.code}</td>
+                              <td className="font-bold text-rmpg-100 font-mono">{z.code}</td>
                               <td>
                                 <input id="ff-adminsystemtab-22" type="text" className="input-dark text-xs w-full min-h-[36px]" value={editZoneName} onChange={(e) => setEditZoneName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditZone(); if (e.key === 'Escape') cancelEditZone(); }} autoFocus />
                               </td>
@@ -1891,7 +1891,7 @@ export default function AdminSystemTab({
                             </>
                           ) : (
                             <>
-                              <td className="font-bold text-white font-mono">{z.code}</td>
+                              <td className="font-bold text-rmpg-100 font-mono">{z.code}</td>
                               <td className="text-rmpg-200">{z.name}</td>
                               <td className="text-rmpg-300 text-xs">{z.description || '--'}</td>
                               <td>
@@ -2022,7 +2022,7 @@ export default function AdminSystemTab({
                                 </>
                               ) : (
                                 <>
-                                  <td className="font-semibold text-white">{tpl.name}</td>
+                                  <td className="font-semibold text-rmpg-100">{tpl.name}</td>
                                   <td className="text-xs text-rmpg-200">
                                     <span className="font-mono text-brand-400 mr-1">{INCIDENT_TYPE_CODES[tpl.incident_type] || '---'}</span>
                                     {tpl.incident_type.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
@@ -2031,7 +2031,7 @@ export default function AdminSystemTab({
                                     <span className={`font-mono font-bold text-xs ${
                                       tpl.priority === 'P1' ? 'text-red-400' :
                                       tpl.priority === 'P2' ? 'text-amber-400' :
-                                      tpl.priority === 'P3' ? 'text-gray-400' :
+                                      tpl.priority === 'P3' ? 'text-rmpg-400' :
                                       'text-rmpg-400'
                                     }`}>{tpl.priority}</span>
                                   </td>
@@ -2270,7 +2270,7 @@ export default function AdminSystemTab({
                             <td className="px-2 py-1.5 text-rmpg-200 max-w-[250px] truncate">{s.short_title}</td>
                             <td className="px-2 py-1.5">
                               <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase border ${
-                                s.category === 'criminal' ? 'bg-red-900/30 text-red-400 border-red-700/40' : 'bg-gray-900/30 text-gray-400 border-gray-700/40'
+                                s.category === 'criminal' ? 'bg-red-900/30 text-red-400 border-red-700/40' : 'bg-surface-sunken/30 text-rmpg-400 border-border-default/40'
                               }`}>
                                 {s.category === 'criminal' ? 'Criminal' : 'Vehicle'}
                               </span>

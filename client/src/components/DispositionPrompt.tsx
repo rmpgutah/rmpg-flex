@@ -61,7 +61,7 @@ function DispositionPrompt({
         {/* 41: Close button with hover background and transition */}
         <button type="button"
           onClick={onCancel}
-          className="text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 p-0.5 transition-colors rounded-sm"
+          className="text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 p-0.5 transition-colors rounded-sm"
           title="Cancel clear"
           aria-label="Cancel disposition"
         >
@@ -74,7 +74,7 @@ function DispositionPrompt({
         <select id="ff-dispositionprompt-0"
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
-          className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 font-mono focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-none transition-colors"
+          className="flex-1 bg-surface-base border border-rmpg-600 text-rmpg-100 text-[10px] px-2 py-1 font-mono focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-none transition-colors"
           aria-label="Disposition code"
           autoFocus
         >
@@ -92,8 +92,8 @@ function DispositionPrompt({
           disabled={!selected}
           className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
           style={{
-            background: selected ? '#16a34a' : '#222222',
-            color: selected ? '#fff' : '#666666',
+            background: selected ? '#16a34a' : 'var(--border-subtle)',
+            color: selected ? '#fff' : 'var(--rmpg-500)',
             border: `1px solid ${selected ? '#16a34a' : '#2e2e2e'}`,
             cursor: selected ? 'pointer' : 'not-allowed',
             opacity: selected ? 1 : 0.6,
@@ -112,7 +112,7 @@ function DispositionPrompt({
           onChange={(e) => setCreateIncident(e.target.checked)}
           className="w-3 h-3 accent-brand-500"
         />
-        <FileText style={{ width: 10, height: 10, color: createIncident ? '#aaaaaa' : '#666666' }} />
+        <FileText style={{ width: 10, height: 10, color: createIncident ? '#aaaaaa' : 'var(--rmpg-500)' }} />
         <span className={`text-[10px] font-bold uppercase tracking-wider ${createIncident ? 'text-brand-400' : 'text-rmpg-500 group-hover:text-rmpg-300'}`}>
           Create Incident Report from this call
         </span>

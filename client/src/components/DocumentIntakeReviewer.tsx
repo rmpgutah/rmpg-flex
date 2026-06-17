@@ -117,13 +117,13 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
   return (
     <div className="space-y-3">
       {/* Header summary */}
-      <div className="bg-[#141414] border border-[#222] p-3 panel-beveled" style={{ borderRadius: 2 }}>
+      <div className="bg-surface-base border border-border-default p-3 panel-beveled" style={{ borderRadius: 2 }}>
         <div className="flex items-center gap-3 flex-wrap">
           <div>
             <div className="text-[10px] uppercase text-[#888]">Detected Kind</div>
             <div className="text-[15px] font-semibold text-[#d4a017]">{extraction.kind}</div>
           </div>
-          <div className="border-l border-[#222] pl-3">
+          <div className="border-l border-border-default pl-3">
             <div className="text-[10px] uppercase text-[#888]">Tier</div>
             <div className="text-[12px] font-mono">
               {extraction.tier === 'implemented'
@@ -131,22 +131,22 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
                 : <span style={{ color: '#eab308' }}>● stub (low coverage)</span>}
             </div>
           </div>
-          <div className="border-l border-[#222] pl-3">
+          <div className="border-l border-border-default pl-3">
             <div className="text-[10px] uppercase text-[#888]">Confidence</div>
             <div className="text-[12px]" style={{ color: summaryColor.dot }}>
               {(extraction.confidence * 100).toFixed(0)}% — {summaryColor.label}
             </div>
           </div>
-          <div className="border-l border-[#222] pl-3">
+          <div className="border-l border-border-default pl-3">
             <div className="text-[10px] uppercase text-[#888]">Pages</div>
             <div className="text-[12px]">{extraction.pageCount}</div>
           </div>
-          <div className="border-l border-[#222] pl-3">
+          <div className="border-l border-border-default pl-3">
             <div className="text-[10px] uppercase text-[#888]">OCR</div>
             <div className="text-[12px]">{extraction.usedOcr ? 'fallback ran' : 'born-digital'}</div>
           </div>
           {extraction.courtCategory && (
-            <div className="border-l border-[#222] pl-3">
+            <div className="border-l border-border-default pl-3">
               <div className="text-[10px] uppercase text-[#888]">Court Category</div>
               <div className="text-[12px]">{extraction.courtCategory}</div>
             </div>
@@ -155,10 +155,10 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
       </div>
 
       {/* Field list */}
-      <div className="bg-[#141414] border border-[#222] panel-beveled" style={{ borderRadius: 2 }}>
-        <div className="px-3 py-2 border-b border-[#222] text-[10px] uppercase font-semibold text-[#888] flex justify-between">
+      <div className="bg-surface-base border border-border-default panel-beveled" style={{ borderRadius: 2 }}>
+        <div className="px-3 py-2 border-b border-border-default text-[10px] uppercase font-semibold text-[#888] flex justify-between">
           <span>Extracted Fields ({extraction.fields.length})</span>
-          <span className="text-[#666]">edit anything before saving · click ↺ to reset to OCR value</span>
+          <span className="text-rmpg-500">edit anything before saving · click ↺ to reset to OCR value</span>
         </div>
         <div className="divide-y divide-[#222]">
           {extraction.fields.map((f) => {
@@ -168,18 +168,18 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
             return (
               <div key={f.key} className="grid grid-cols-12 gap-2 px-3 py-2 items-center" style={{ background: c.bg }}>
                 <div className="col-span-3">
-                  <div className="text-[11px] font-semibold uppercase text-[#ccc]">
+                  <div className="text-[11px] font-semibold uppercase text-rmpg-300">
                     <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: c.dot }} />
                     {f.matchedAnchor || f.key}
                   </div>
-                  <div className="text-[9px] text-[#666] font-mono mt-0.5">{f.key}</div>
+                  <div className="text-[9px] text-rmpg-500 font-mono mt-0.5">{f.key}</div>
                 </div>
                 <div className="col-span-7">
                   <input id="ff-documentintakereviewer-0"
                     type="text"
                     value={edits[f.key] ?? ''}
                     onChange={(e) => setEdits({ ...edits, [f.key]: e.target.value })}
-                    className="w-full bg-[#0a0a0a] border border-[#2a2a2a] px-2 py-1 text-[11px] text-white"
+                    className="w-full bg-surface-sunken border border-border-default px-2 py-1 text-[11px] text-rmpg-100"
                     style={{ borderRadius: 2 }}
                     placeholder={f.confidence === 0 ? '(not found in PDF — fill in manually)' : ''}
                   />
@@ -214,7 +214,7 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
       )}
 
       {/* Action bar */}
-      <div className="bg-[#141414] border border-[#222] p-3 panel-beveled flex items-center gap-2 flex-wrap" style={{ borderRadius: 2 }}>
+      <div className="bg-surface-base border border-border-default p-3 panel-beveled flex items-center gap-2 flex-wrap" style={{ borderRadius: 2 }}>
         {canSaveDirect ? (
           <button
             type="button"
@@ -238,7 +238,7 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
         <button
           type="button"
           onClick={handleDownloadJson}
-          className="px-3 py-1.5 text-[11px] uppercase border border-[#444] text-[#ccc] hover:bg-[#222] flex items-center gap-1.5"
+          className="px-3 py-1.5 text-[11px] uppercase border border-rmpg-600 text-rmpg-300 hover:bg-surface-raised flex items-center gap-1.5"
           style={{ borderRadius: 2 }}
         >
           <Download className="w-3.5 h-3.5" /> Download JSON
@@ -246,7 +246,7 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
         <button
           type="button"
           onClick={onReset}
-          className="ml-auto px-3 py-1.5 text-[11px] uppercase border border-[#444] text-[#888] hover:text-white"
+          className="ml-auto px-3 py-1.5 text-[11px] uppercase border border-rmpg-600 text-[#888] hover:text-rmpg-100"
           style={{ borderRadius: 2 }}
         >
           Upload Another
@@ -254,7 +254,7 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
       </div>
 
       {/* Raw text preview (collapsed by default) */}
-      <details className="bg-[#0a0a0a] border border-[#222] panel-beveled" style={{ borderRadius: 2 }}>
+      <details className="bg-surface-sunken border border-border-default panel-beveled" style={{ borderRadius: 2 }}>
         <summary className="px-3 py-2 cursor-pointer text-[10px] uppercase text-[#888]">
           Raw OCR text preview ({extraction.rawTextPreview.length.toLocaleString()} chars)
         </summary>

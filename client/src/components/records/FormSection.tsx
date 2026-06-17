@@ -26,7 +26,7 @@ function FormSection({ title, icon: Icon, accent, children, className = '' }: Fo
   const railColor = accent ? BADGE_TONES[accent].border : 'rgba(212,160,23,0.45)';
 
   return (
-    <div className={`relative border border-[#2b2b2b] overflow-hidden ${className}`} style={{ background: '#050505' }}>
+    <div className={`relative border border-rmpg-700 overflow-hidden ${className}`} style={{ background: '#050505' }}>
       <div
         className="absolute left-0 top-0 bottom-0 w-[2px] pointer-events-none"
         style={{ background: railColor, boxShadow: accent ? `0 0 6px ${accentGlow}` : undefined }}

@@ -122,13 +122,13 @@ export default function ResetPasswordPage() {
                 <div className="w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
                   <XCircle className="w-6 h-6 text-red-400" />
                 </div>
-                <h2 className="text-sm font-bold text-white mb-2">Invalid Reset Link</h2>
+                <h2 className="text-sm font-bold text-rmpg-100 mb-2">Invalid Reset Link</h2>
                 <p className="text-[10px] leading-relaxed" style={{ color: '#888888' }}>
                   {tokenError}
                 </p>
                 <a
                   href="/forgot-password"
-                  className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition-all duration-150 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                  className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-100 transition-all duration-150 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
                   style={{
                     background: 'linear-gradient(180deg, #888888 0%, #3a3a3a 100%)',
                     border: '1px solid rgba(136, 136, 136, 0.5)',
@@ -147,9 +147,9 @@ export default function ResetPasswordPage() {
                   <div className="w-10 h-10 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: 'rgba(136, 136, 136, 0.15)', border: '1px solid rgba(136, 136, 136, 0.3)' }}>
                     <Lock className="w-5 h-5" style={{ color: '#999999' }} />
                   </div>
-                  <h2 className="text-sm font-bold text-white mb-1">Set New Password</h2>
+                  <h2 className="text-sm font-bold text-rmpg-100 mb-1">Set New Password</h2>
                   {username && (
-                    <p className="text-[10px] font-mono" style={{ color: '#666666' }}>
+                    <p className="text-[10px] font-mono" style={{ color: 'var(--rmpg-500)' }}>
                       @{username}
                     </p>
                   )}
@@ -183,9 +183,9 @@ export default function ResetPasswordPage() {
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm"
-                        style={{ color: '#666666' }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                        style={{ color: 'var(--rmpg-500)' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                       >
                         {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -222,7 +222,7 @@ export default function ResetPasswordPage() {
                           ) : (
                             <XCircle className="w-3 h-3 flex-shrink-0" style={{ color: '#555555' }} aria-hidden="true" />
                           )}
-                          <span style={{ color: check.met ? '#4ade80' : '#666666' }}>{check.label}</span>
+                          <span style={{ color: check.met ? '#4ade80' : 'var(--rmpg-500)' }}>{check.label}</span>
                           <span className="sr-only">{check.met ? '(met)' : '(not met)'}</span>
                         </div>
                       ))}
@@ -232,7 +232,7 @@ export default function ResetPasswordPage() {
                   <button
                     type="submit"
                     disabled={submitting || !allMet}
-                    className="w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                    className="w-full h-10 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                     style={{
                       background: 'linear-gradient(180deg, #888888 0%, #3a3a3a 100%)',
                       border: '1px solid rgba(136, 136, 136, 0.5)',
@@ -262,13 +262,13 @@ export default function ResetPasswordPage() {
                 <div className="w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
                   <CheckCircle className="w-6 h-6 text-green-400" aria-hidden="true" />
                 </div>
-                <h2 className="text-sm font-bold text-white mb-2">Password Reset Complete</h2>
+                <h2 className="text-sm font-bold text-rmpg-100 mb-2">Password Reset Complete</h2>
                 <p className="text-[10px] leading-relaxed mb-1" style={{ color: '#888888' }}>
                   Your password has been updated. All existing sessions have been signed out for security.
                 </p>
                 <a
                   href="/login"
-                  className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition-all duration-150 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                  className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-100 transition-all duration-150 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
                   style={{
                     background: 'linear-gradient(180deg, #888888 0%, #3a3a3a 100%)',
                     border: '1px solid rgba(136, 136, 136, 0.5)',
@@ -285,9 +285,9 @@ export default function ResetPasswordPage() {
               <a
                 href="/login"
                 className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm py-1"
-                style={{ color: '#666666' }}
+                style={{ color: 'var(--rmpg-500)' }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
               >
                 <ArrowLeft className="w-3 h-3" aria-hidden="true" />
                 Back to Login

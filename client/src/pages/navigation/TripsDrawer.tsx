@@ -87,7 +87,7 @@ function TripRow({ trip, active, showUnit, onOpen }: { trip: Trip; active: boole
     <button
       onClick={onOpen}
       className="w-full text-left bg-surface-raised/40 border px-2 py-1.5 hover:border-brand-600 transition-colors"
-      style={{ borderRadius: 2, borderColor: active ? '#d4a01788' : '#222222' }}
+      style={{ borderRadius: 2, borderColor: active ? '#d4a01788' : 'var(--border-subtle)' }}
     >
       {/* top line: type badge + active pill + date + chevron */}
       <div className="flex items-center gap-1.5">
@@ -109,7 +109,7 @@ function TripRow({ trip, active, showUnit, onOpen }: { trip: Trip; active: boole
           </span>
         )}
         {isResponse && trip.call_type && (
-          <span className="text-[9px] text-rmpg-400 truncate flex-1" title={trip.call_type}>
+          <span className="text-[9px] text-rmpg-400 min-w-0 truncate flex-1" title={trip.call_type}>
             {trip.call_type.replace(/_/g, ' ')}
           </span>
         )}
@@ -223,7 +223,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
         {/* BACK to trip list */}
         <button
           onClick={() => setSelectedTripId(null)}
-          className="absolute z-40 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2 py-1 border border-rmpg-700 bg-surface-deep/95 text-brand-300 hover:border-brand-500 hover:text-white"
+          className="absolute z-40 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2 py-1 border border-rmpg-700 bg-surface-deep/95 text-brand-300 hover:border-brand-500 hover:text-rmpg-100"
           style={{ borderRadius: 2, top: 50, right: 376 }}
           aria-label="Back to trips list"
           title="Back to trips list"
@@ -250,7 +250,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
         <button
           onClick={handleExportPdf}
           disabled={exporting || timeline.length === 0}
-          className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 border border-rmpg-700 text-brand-300 hover:border-brand-500 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-rmpg-700 disabled:hover:text-brand-300"
+          className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 border border-rmpg-700 text-brand-300 hover:border-brand-500 hover:text-rmpg-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-rmpg-700 disabled:hover:text-brand-300"
           style={{ borderRadius: 2 }}
           aria-label="Export trip log PDF"
           title="Export trip log PDF"
@@ -258,7 +258,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
           {exporting ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Printer className="w-2.5 h-2.5" />}
           Export PDF
         </button>
-        <button onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close trips"><X className="w-4 h-4" /></button>
+        <button onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close trips"><X className="w-4 h-4" /></button>
       </div>
 
       {/* timeline */}
@@ -274,7 +274,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
             {unitId != null ? 'No trips logged for this unit yet.' : 'No trips logged yet.'}
             <button
               onClick={reload}
-              className="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 border border-rmpg-700 text-brand-300 hover:border-brand-500 hover:text-white"
+              className="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 border border-rmpg-700 text-brand-300 hover:border-brand-500 hover:text-rmpg-100"
               style={{ borderRadius: 2 }}
             >
               Refresh

@@ -200,7 +200,7 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
         {/* Animated scanning line beneath logo */}
         <div
           className="mt-4 mb-3 overflow-hidden"
-          style={{ width: 140, height: 2, background: '#0a0a0a', borderRadius: 1 }}
+          style={{ width: 140, height: 2, background:"var(--surface-sunken)", borderRadius: 1 }}
         >
           <div
             className="h-full"
@@ -286,7 +286,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 /** 404 Not Found page */
 function NotFoundPage() {
   return (
-    <div className="flex items-center justify-center h-full p-8" style={{ background: '#0a0a0a' }}>
+    <div className="flex items-center justify-center h-full p-8" style={{ background:"var(--surface-sunken)" }}>
       <div className="text-center max-w-md">
         {/* Logo with fallback */}
         <img
@@ -302,7 +302,7 @@ function NotFoundPage() {
         <div className="mb-4">
           <span
             className="text-6xl font-black tracking-tight"
-            style={{ color: '#1a1a1a', textShadow: '0 0 40px rgba(212,160,23,0.15)' }}
+            style={{ color: 'var(--surface-raised)', textShadow: '0 0 40px rgba(212,160,23,0.15)' }}
           >
             404
           </span>
@@ -313,7 +313,7 @@ function NotFoundPage() {
           className="inline-flex items-center gap-2 px-4 py-2 mb-6 border"
           style={{
             background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
-            borderColor: '#222222',
+            borderColor: 'var(--border-subtle)',
             borderRadius: 2,
           }}
         >

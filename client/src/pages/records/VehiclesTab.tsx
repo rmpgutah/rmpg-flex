@@ -446,7 +446,7 @@ function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>
                   <div className="flex items-center justify-between">
                     <div className="font-bold text-green-400 font-mono">{v.plate_number || v.license_plate} {v.state || v.plate_state}</div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[8px] px-1 py-0.5 bg-[#181818] text-rmpg-400 rounded-sm">{v.source}</span>
+                      <span className="text-[8px] px-1 py-0.5 bg-surface-raised text-rmpg-400 rounded-sm">{v.source}</span>
                       {onAutoFill && (
                         <button
                           type="button"
@@ -556,7 +556,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100 transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -578,10 +578,10 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
 
       {/* Stats + Sort + Filter */}
       <div className="px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-4 text-[9px] flex-wrap">
-        <span className="text-rmpg-400 flex items-center gap-1"><Car className="w-3 h-3" /> <strong className="text-white">{stats.total}</strong> Vehicles</span>
+        <span className="text-rmpg-400 flex items-center gap-1"><Car className="w-3 h-3" /> <strong className="text-rmpg-100">{stats.total}</strong> Vehicles</span>
         {stats.stolen > 0 && <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> <strong>{stats.stolen}</strong> Stolen</span>}
         {stats.towed > 0 && <span className="text-amber-400"><strong>{stats.towed}</strong> Towed</span>}
-        {stats.commercial > 0 && <span className="text-gray-400"><strong>{stats.commercial}</strong> Commercial</span>}
+        {stats.commercial > 0 && <span className="text-rmpg-400"><strong>{stats.commercial}</strong> Commercial</span>}
         <div className="ml-auto flex items-center gap-1">
           <ArrowUpDown className="w-3 h-3 text-rmpg-500" />
           {(['plate', 'make', 'newest'] as const).map(s => (
@@ -644,10 +644,10 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-white font-mono">{v.license_plate}</span>
+                  <span className="text-sm font-bold text-rmpg-100 font-mono">{v.license_plate}</span>
                   {v.plate_state && (
                     <span className={`px-1 py-0 text-[8px] font-bold border rounded-sm ${
-                      v.plate_state === 'UT' ? 'bg-gray-900/40 text-gray-300 border-gray-700/50' :
+                      v.plate_state === 'UT' ? 'bg-surface-sunken/40 text-rmpg-300 border-border-default/50' :
                       v.plate_state === 'CA' ? 'bg-amber-900/40 text-amber-300 border-amber-700/50' :
                       'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'
                     }`}>{v.plate_state}</span>
@@ -791,7 +791,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {vehicleAlerts.length > 0 && <AlertBanner alerts={vehicleAlerts} />}
         {/* Feature 41+44 Action Buttons */}
         <div className="flex gap-1 mt-1">
-          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-gray-900/30 border border-gray-700/50 text-gray-400 hover:bg-gray-900/50">
+          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-rmpg-400 hover:bg-surface-sunken/50">
             <FileText style={{ width: 10, height: 10, display: 'inline' }} /> History Report
           </button>
           <button type="button" onClick={handleStolenCheck} className="text-[9px] px-2 py-0.5 bg-red-900/30 border border-red-700/50 text-red-400 hover:bg-red-900/50">
@@ -813,9 +813,9 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         })()}
         {/* Feature 41: History Panel */}
         {vehicleHistory && (
-          <div className="mt-1 p-1.5 text-[10px] bg-gray-900/10 border border-gray-700/30">
+          <div className="mt-1 p-1.5 text-[10px] bg-surface-sunken/10 border border-border-default/30">
             <div className="flex justify-between">
-              <span className="text-gray-400 font-bold">Vehicle History ({vehicleHistory.total_records} records)</span>
+              <span className="text-rmpg-400 font-bold">Vehicle History ({vehicleHistory.total_records} records)</span>
               <button type="button" onClick={() => setVehicleHistory(null)} className="text-rmpg-500">x</button>
             </div>
             {vehicleHistory.incidents?.length > 0 && <div className="text-rmpg-400 mt-0.5">{vehicleHistory.incidents.length} incidents</div>}
@@ -957,7 +957,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             <div className="space-y-1">
               {vehicleIncidents.map((inc: any) => (
                 <div key={inc.id} className="flex items-center gap-2 text-xs px-2 py-1.5 bg-surface-raised border border-rmpg-700">
-                  <span className="text-white font-mono font-bold">{inc.incident_number}</span>
+                  <span className="text-rmpg-100 font-mono font-bold">{inc.incident_number}</span>
                   <span className="px-1 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold">
                     {cleanDisplay(inc.role)}
                   </span>

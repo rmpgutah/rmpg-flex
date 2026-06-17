@@ -26,7 +26,7 @@ export function CitationPdfPreview({ form, mode, onModeChange }: Props) {
           type="button"
           onClick={openModal}
           disabled={isRendering}
-          className="px-3 py-2 text-xs uppercase font-bold border border-[#444] hover:border-[#d4a017] hover:text-[#d4a017]"
+          className="px-3 py-2 text-xs uppercase font-bold border border-rmpg-600 hover:border-[#d4a017] hover:text-[#d4a017]"
         >
           {isRendering ? 'Rendering…' : 'Preview'}
         </button>
@@ -36,7 +36,7 @@ export function CitationPdfPreview({ form, mode, onModeChange }: Props) {
               type="button"
               onClick={() => onModeChange('side')}
               aria-pressed={mode === 'side'}
-              className={`px-3 py-2 text-xs border ${mode === 'side' ? 'border-[#d4a017] text-[#d4a017]' : 'border-[#444] text-[#888]'} hover:border-[#d4a017] hover:text-[#d4a017]`}
+              className={`px-3 py-2 text-xs border ${mode === 'side' ? 'border-[#d4a017] text-[#d4a017]' : 'border-rmpg-600 text-[#888]'} hover:border-[#d4a017] hover:text-[#d4a017]`}
             >
               ◫ Side
             </button>
@@ -44,7 +44,7 @@ export function CitationPdfPreview({ form, mode, onModeChange }: Props) {
               type="button"
               onClick={() => onModeChange('full')}
               aria-pressed={mode === 'full'}
-              className={`px-3 py-2 text-xs border ${mode === 'full' ? 'border-[#d4a017] text-[#d4a017]' : 'border-[#444] text-[#888]'} hover:border-[#d4a017] hover:text-[#d4a017]`}
+              className={`px-3 py-2 text-xs border ${mode === 'full' ? 'border-[#d4a017] text-[#d4a017]' : 'border-rmpg-600 text-[#888]'} hover:border-[#d4a017] hover:text-[#d4a017]`}
             >
               ⛶ Full
             </button>
@@ -56,7 +56,7 @@ export function CitationPdfPreview({ form, mode, onModeChange }: Props) {
         <iframe
           src={blobUrl}
           title="Citation preview"
-          className="w-full h-[600px] border border-[#222] bg-white"
+          className="w-full h-[600px] border border-border-default bg-white"
         />
       )}
 

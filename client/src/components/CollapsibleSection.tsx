@@ -49,7 +49,7 @@ function CollapsibleSection({
   return (
     <div
       data-section-anchor={sectionAnchorId(title)}
-      className={`collapsible-section relative border border-[#2b2b2b] overflow-hidden ${className}`}
+      className={`collapsible-section relative border border-rmpg-700 overflow-hidden ${className}`}
       style={{ background: '#050505' }}
     >
       {/* Left severity rail — subtle gold by default, hot color when accented. */}
@@ -119,7 +119,7 @@ function CollapsibleSection({
         <div className="overflow-hidden min-h-0">
           <div
             className={`pb-3 px-2.5 pt-2 transition-opacity duration-200 ${isOpen ? 'opacity-100' : 'opacity-0'}`}
-            style={{ background: '#050505' }}
+            style={{ background: 'var(--surface-overlay)' }}
             aria-hidden={!isOpen}
           >
             {children}

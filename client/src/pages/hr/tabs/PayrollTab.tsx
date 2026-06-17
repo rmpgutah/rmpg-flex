@@ -90,7 +90,7 @@ const STATUS_COLORS: Record<string, string> = {
   open: '#888888',
   processing: '#f59e0b',
   closed: '#22c55e',
-  draft: '#666666',
+  draft: 'var(--rmpg-500)',
   approved: '#22c55e',
 };
 
@@ -503,8 +503,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             <button type="button" key={t.key} onClick={() => setSubTab(t.key)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-sm transition-colors ${
                 subTab === t.key
-                  ? 'text-white bg-brand-500/20 border border-brand-500/40'
-                  : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/30'
+                  ? 'text-rmpg-100 bg-brand-500/20 border border-brand-500/40'
+                  : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/30'
               }`}>
               <Icon size={13} /> {t.label}
             </button>
@@ -521,7 +521,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {/* Action bar */}
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
               <Calendar size={15} className="text-brand-400" /> Pay Periods
             </h3>
             <div className="flex-1" />
@@ -532,7 +532,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               </button>
             )}
             <button type="button" onClick={fetchPeriods}
-              className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded-sm transition-colors">
+              className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/30 rounded-sm transition-colors">
               <RefreshCw size={12} /> Refresh
             </button>
           </div>
@@ -540,33 +540,33 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
           {/* Create form */}
           {showPeriodForm && (
             <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-4 space-y-3">
-              <h4 className="text-xs font-semibold text-white">Create Pay Period</h4>
+              <h4 className="text-xs font-semibold text-rmpg-100">Create Pay Period</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Name (optional)</label>
                   <input id="ff-payrolltab-0" value={periodForm.name} onChange={e => setPeriodForm(p => ({ ...p, name: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" placeholder="e.g. March 1-15" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" placeholder="e.g. March 1-15" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Start Date *</label>
                   <input id="ff-payrolltab-1" type="date" value={periodForm.start_date} onChange={e => setPeriodForm(p => ({ ...p, start_date: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">End Date *</label>
                   <input id="ff-payrolltab-2" type="date" value={periodForm.end_date} onChange={e => setPeriodForm(p => ({ ...p, end_date: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Pay Date *</label>
                   <input id="ff-payrolltab-3" type="date" value={periodForm.pay_date} onChange={e => setPeriodForm(p => ({ ...p, pay_date: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowPeriodForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-white">Cancel</button>
+                <button type="button" onClick={() => setShowPeriodForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-rmpg-100">Cancel</button>
                 <button type="button" onClick={handleCreatePeriod}
-                  className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors">Create</button>
+                  className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-rmpg-100 rounded-sm transition-colors">Create</button>
               </div>
             </div>
           )}
@@ -592,14 +592,14 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 >
                   <div className="flex items-center gap-3 px-4 py-3">
                     <div className="flex-shrink-0">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[period.status] || '#666666' }} />
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[period.status] || 'var(--rmpg-500)' }} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-white truncate">{period.name}</span>
+                        <span className="text-xs font-semibold text-rmpg-100 truncate">{period.name}</span>
                         <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{
-                          backgroundColor: (STATUS_COLORS[period.status] || '#666666') + '20',
-                          color: STATUS_COLORS[period.status] || '#666666'
+                          backgroundColor: (STATUS_COLORS[period.status] || 'var(--rmpg-500)') + '20',
+                          color: STATUS_COLORS[period.status] || 'var(--rmpg-500)'
                         }}>{(period.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                       </div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
@@ -615,7 +615,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                         {period.status === 'open' && (
                           <>
                             <IconButton onClick={() => handlePopulatePeriod(period.id)} title="Auto-populate employees"
-                              className="p-1 text-rmpg-500 hover:text-gray-400 transition-colors" aria-label="Auto-populate employees"><Users size={13} /></IconButton>
+                              className="p-1 text-rmpg-500 hover:text-rmpg-400 transition-colors" aria-label="Auto-populate employees"><Users size={13} /></IconButton>
                             <IconButton onClick={() => handleClosePeriod(period.id)} title="Close period"
                               className="p-1 text-rmpg-500 hover:text-green-400 transition-colors" aria-label="Close period"><Check size={13} /></IconButton>
                             <IconButton onClick={() => handleDeletePeriod(period.id)} title="Delete"
@@ -639,7 +639,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       {subTab === 'rates' && (
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
               <TrendingUp size={15} className="text-brand-400" /> Active Pay Rates
             </h3>
             <div className="flex-1" />
@@ -654,12 +654,12 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
           {/* Create rate form */}
           {showRateForm && (
             <div className="bg-surface-sunken border border-rmpg-700 rounded-sm p-4 space-y-3">
-              <h4 className="text-xs font-semibold text-white">Set Pay Rate</h4>
+              <h4 className="text-xs font-semibold text-rmpg-100">Set Pay Rate</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Employee *</label>
                   <select id="ff-payrolltab-4" value={rateForm.user_id} onChange={e => setRateForm(r => ({ ...r, user_id: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white">
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100">
                     <option value="">Select employee...</option>
                     {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
                   </select>
@@ -667,7 +667,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Pay Type</label>
                   <select id="ff-payrolltab-5" value={rateForm.pay_type} onChange={e => setRateForm(r => ({ ...r, pay_type: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white">
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100">
                     <option value="hourly">Hourly</option>
                     <option value="salary">Salary</option>
                     <option value="contract">Contract</option>
@@ -676,28 +676,28 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Rate ($/hr) *</label>
                   <input id="ff-payrolltab-6" type="number" step="0.01" value={rateForm.rate} onChange={e => setRateForm(r => ({ ...r, rate: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" placeholder="25.00" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" placeholder="25.00" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">OT Multiplier</label>
                   <input id="ff-payrolltab-7" type="number" step="0.1" value={rateForm.overtime_rate} onChange={e => setRateForm(r => ({ ...r, overtime_rate: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Holiday Multiplier</label>
                   <input id="ff-payrolltab-8" type="number" step="0.1" value={rateForm.holiday_rate} onChange={e => setRateForm(r => ({ ...r, holiday_rate: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Effective Date *</label>
                   <input id="ff-payrolltab-9" type="date" value={rateForm.effective_date} onChange={e => setRateForm(r => ({ ...r, effective_date: e.target.value }))}
-                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowRateForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-white">Cancel</button>
+                <button type="button" onClick={() => setShowRateForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-rmpg-100">Cancel</button>
                 <button type="button" onClick={handleCreateRate}
-                  className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors">Save Rate</button>
+                  className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-rmpg-100 rounded-sm transition-colors">Save Rate</button>
               </div>
             </div>
           )}
@@ -725,7 +725,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 <tbody>
                   {rates.map(rate => (
                     <tr key={rate.id} onContextMenu={(e) => openMenu(e, buildRateMenu(rate))} className="border-b border-rmpg-700/50 hover:bg-brand-500/5">
-                      <td className="px-3 py-2 text-white font-medium">{rate.officer_name}</td>
+                      <td className="px-3 py-2 text-rmpg-100 font-medium">{rate.officer_name}</td>
                       <td className="px-3 py-2">
                         <span className="px-1.5 py-0.5 text-[9px] rounded-sm bg-brand-500/15 text-brand-400 uppercase font-bold">{rate.pay_type}</span>
                       </td>
@@ -749,20 +749,20 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {/* Period selector */}
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
               <Clock size={15} className="text-brand-400" /> Timesheet
             </h3>
             <select id="ff-payrolltab-10" value={selectedPeriod?.id ?? ''} onChange={e => {
               const p = periods.find(pp => pp.id === Number(e.target.value));
               setSelectedPeriod(p || null);
-            }} className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white">
+            }} className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100">
               <option value="">Select pay period...</option>
               {periods.map(p => <option key={p.id} value={p.id}>{p.name} ({p.status})</option>)}
             </select>
             {selectedPeriod && entries.length > 0 && (
               <button type="button"
                 onClick={handleExportCSV}
-                className="flex items-center gap-1 px-2 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded-sm transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/30 rounded-sm transition-colors"
               >
                 <Download size={12} /> Export CSV
               </button>
@@ -771,7 +771,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             {selectedPeriod && (
               <div className="flex items-center gap-3 text-[10px]">
                 <span className="text-rmpg-400">Gross: <span className="text-green-400 font-semibold">{formatCurrency(selectedPeriod.total_gross)}</span></span>
-                <span className="text-rmpg-400">Entries: <span className="text-white font-semibold">{selectedPeriod.entry_count}</span></span>
+                <span className="text-rmpg-400">Entries: <span className="text-rmpg-100 font-semibold">{selectedPeriod.entry_count}</span></span>
               </div>
             )}
           </div>
@@ -809,7 +809,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                     const isEditing = editingEntry === entry.id;
                     return (
                       <tr key={entry.id} onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))} className={`border-b border-rmpg-700/50 ${isEditing ? 'bg-brand-500/5' : 'hover:bg-brand-500/5'}`}>
-                        <td className="px-2 py-2 text-white font-medium whitespace-nowrap">{entry.officer_name}</td>
+                        <td className="px-2 py-2 text-rmpg-100 font-medium whitespace-nowrap">{entry.officer_name}</td>
                         <td className="px-2 py-2 text-right text-rmpg-300 font-mono">{entry.hourly_rate ? formatCurrency(entry.hourly_rate) : '—'}</td>
                         {isEditing ? (
                           <>
@@ -818,15 +818,15 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                                 <input id={`ff-payrolltab-11-${field}`} type="number" step="0.5" min="0"
                                   value={editValues[field] ?? 0}
                                   onChange={e => setEditValues(v => ({ ...v, [field]: Number(e.target.value) }))}
-                                  className="w-16 bg-surface-sunken border border-brand-500/40 rounded-sm px-1.5 py-0.5 text-xs text-white text-right font-mono" />
+                                  className="w-16 bg-surface-sunken border border-brand-500/40 rounded-sm px-1.5 py-0.5 text-xs text-rmpg-100 text-right font-mono" />
                               </td>
                             ))}
                           </>
                         ) : (
                           <>
-                            <td className="px-2 py-2 text-right text-white font-mono">{entry.regular_hours}</td>
+                            <td className="px-2 py-2 text-right text-rmpg-100 font-mono">{entry.regular_hours}</td>
                             <td className="px-2 py-2 text-right text-amber-400 font-mono">{entry.overtime_hours || '—'}</td>
-                            <td className="px-2 py-2 text-right text-gray-400 font-mono">{entry.holiday_hours || '—'}</td>
+                            <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entry.holiday_hours || '—'}</td>
                             <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entry.pto_hours || '—'}</td>
                             <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entry.sick_hours || '—'}</td>
                           </>
@@ -834,8 +834,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                         <td className="px-2 py-2 text-right text-green-400 font-mono font-semibold">{formatCurrency(entry.gross_pay)}</td>
                         <td className="px-2 py-2 text-center">
                           <span className="px-1.5 py-0.5 text-[9px] rounded-full font-medium" style={{
-                            backgroundColor: (STATUS_COLORS[entry.status] || '#666666') + '20',
-                            color: STATUS_COLORS[entry.status] || '#666666'
+                            backgroundColor: (STATUS_COLORS[entry.status] || 'var(--rmpg-500)') + '20',
+                            color: STATUS_COLORS[entry.status] || 'var(--rmpg-500)'
                           }}>{(entry.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                         </td>
                         <td className="px-2 py-2 text-center">
@@ -844,7 +844,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                               {isEditing ? (
                                 <>
                                   <IconButton onClick={() => handleSaveEntry(entry.id)} className="p-0.5 text-green-400 hover:text-green-300" aria-label="Save entry"><Check size={13} /></IconButton>
-                                  <IconButton onClick={() => setEditingEntry(null)} className="p-0.5 text-rmpg-500 hover:text-white" aria-label="Cancel editing"><X size={13} /></IconButton>
+                                  <IconButton onClick={() => setEditingEntry(null)} className="p-0.5 text-rmpg-500 hover:text-rmpg-100" aria-label="Cancel editing"><X size={13} /></IconButton>
                                 </>
                               ) : (
                                 <>
@@ -863,11 +863,11 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 {entries.length > 0 && (
                   <tfoot>
                     <tr className="border-t-2 border-rmpg-700">
-                      <td className="px-2 py-2 text-white font-bold">Totals</td>
+                      <td className="px-2 py-2 text-rmpg-100 font-bold">Totals</td>
                       <td className="px-2 py-2" />
-                      <td className="px-2 py-2 text-right text-white font-mono font-bold">{entries.reduce((s, e) => s + e.regular_hours, 0)}</td>
+                      <td className="px-2 py-2 text-right text-rmpg-100 font-mono font-bold">{entries.reduce((s, e) => s + e.regular_hours, 0)}</td>
                       <td className="px-2 py-2 text-right text-amber-400 font-mono font-bold">{entries.reduce((s, e) => s + e.overtime_hours, 0) || '—'}</td>
-                      <td className="px-2 py-2 text-right text-gray-400 font-mono font-bold">{entries.reduce((s, e) => s + e.holiday_hours, 0) || '—'}</td>
+                      <td className="px-2 py-2 text-right text-rmpg-400 font-mono font-bold">{entries.reduce((s, e) => s + e.holiday_hours, 0) || '—'}</td>
                       <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entries.reduce((s, e) => s + e.pto_hours, 0) || '—'}</td>
                       <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entries.reduce((s, e) => s + e.sick_hours, 0) || '—'}</td>
                       <td className="px-2 py-2 text-right text-green-400 font-mono font-bold">{formatCurrency(entries.reduce((s, e) => s + e.gross_pay, 0))}</td>
@@ -887,7 +887,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       {subTab === 'overtime' && (
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
               <AlertTriangle size={15} /> Overtime Requests
             </h3>
             <div className="flex-1" />
@@ -899,26 +899,26 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
           {/* OT Request Form */}
           {showOtForm && (
             <div className="p-3 border border-brand-500/30 bg-surface-base space-y-2">
-              <div className="text-xs font-bold text-white uppercase">New OT Request</div>
+              <div className="text-xs font-bold text-rmpg-100 uppercase">New OT Request</div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase">Date *</label>
-                  <input id="ff-payrolltab-12" type="date" value={otForm.requested_date} onChange={e => setOtForm(p => ({ ...p, requested_date: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input id="ff-payrolltab-12" type="date" value={otForm.requested_date} onChange={e => setOtForm(p => ({ ...p, requested_date: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
                 </div>
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase">Hours *</label>
-                  <input id="ff-payrolltab-13" type="number" step="0.5" value={otForm.hours_requested} onChange={e => setOtForm(p => ({ ...p, hours_requested: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input id="ff-payrolltab-13" type="number" step="0.5" value={otForm.hours_requested} onChange={e => setOtForm(p => ({ ...p, hours_requested: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
                 </div>
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase">Reason</label>
-                  <input id="ff-payrolltab-14" value={otForm.reason} onChange={e => setOtForm(p => ({ ...p, reason: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input id="ff-payrolltab-14" value={otForm.reason} onChange={e => setOtForm(p => ({ ...p, reason: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
                 </div>
               </div>
               <div className="flex gap-2 pt-1">
                 <button type="button" onClick={handleRequestOt} className="flex items-center gap-1 px-3 py-1 text-xs bg-brand-500/20 text-brand-300 border border-brand-500/30 hover:bg-brand-500/30">
                   <Check size={12} /> Submit Request
                 </button>
-                <button type="button" onClick={() => setShowOtForm(false)} className="px-3 py-1 text-xs text-rmpg-400 hover:text-white">Cancel</button>
+                <button type="button" onClick={() => setShowOtForm(false)} className="px-3 py-1 text-xs text-rmpg-400 hover:text-rmpg-100">Cancel</button>
               </div>
             </div>
           )}
@@ -942,7 +942,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 <tbody>
                   {otRequests.map(ot => (
                     <tr key={ot.id} onContextMenu={(e) => openMenu(e, buildOtMenu(ot))} className="border-b border-rmpg-700 hover:bg-surface-base">
-                      <td className="px-2 py-1.5 text-white">{ot.officer_name}</td>
+                      <td className="px-2 py-1.5 text-rmpg-100">{ot.officer_name}</td>
                       <td className="px-2 py-1.5 text-rmpg-300">{formatDate(ot.requested_date)}</td>
                       <td className="px-2 py-1.5 text-rmpg-300 font-mono">{ot.hours_requested}h</td>
                       <td className="px-2 py-1.5 text-rmpg-400 max-w-[200px] truncate">{ot.reason || '-'}</td>
@@ -981,13 +981,13 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       {subTab === 'leave' && (
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
               <Banknote size={15} className="text-brand-400" /> PTO / Leave Balances
             </h3>
             <span className="text-[9px] text-rmpg-500">Accrual: {PTO_ACCRUAL_PER_PAY_PERIOD} hrs/pay period ({ANNUAL_PTO_ALLOTMENT} hrs/year)</span>
             <div className="flex-1" />
             <button type="button" onClick={fetchLeaveBalances}
-              className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded-sm transition-colors">
+              className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/30 rounded-sm transition-colors">
               <RefreshCw size={12} /> Refresh
             </button>
           </div>
@@ -1017,7 +1017,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                     const pctUsed = accrued > 0 ? (lb.pto_used / accrued) * 100 : 0;
                     return (
                       <tr key={lb.id} onContextMenu={(e) => openMenu(e, buildLeaveMenu(lb))} className="border-b border-rmpg-700/50 hover:bg-surface-raised/30">
-                        <td className="py-2 px-3 text-white font-medium">{lb.full_name}</td>
+                        <td className="py-2 px-3 text-rmpg-100 font-medium">{lb.full_name}</td>
                         <td className="py-2 px-3 text-rmpg-400 font-mono">{lb.badge_number || '—'}</td>
                         <td className="py-2 px-3 text-right text-rmpg-300">{accrued.toFixed(1)}h</td>
                         <td className="py-2 px-3 text-right text-amber-400">{lb.pto_used.toFixed(1)}h</td>

@@ -114,7 +114,7 @@ export default function KeyboardShortcutsHelp({ open, onClose }: Props) {
                   justifyContent: 'center',
                   minWidth: 24,
                   height: 22,
-                  background: '#141414',
+                  background: 'var(--surface-base)',
                   border: '1px solid #2b2b2b',
                   borderBottom: '2px solid #333',
                   borderRadius: 2,

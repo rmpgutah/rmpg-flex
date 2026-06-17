@@ -608,7 +608,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
             {aiOn && detStatus === 'ready' && <span className="text-[8px] tabular-nums">· {tracks.length} tracked</span>}
             {aiOn && detStatus === 'unavailable' && <span className="text-[8px] text-rmpg-500">(telemetry)</span>}
           </button>
-          <button onClick={onClose} className="text-rmpg-400 hover:text-white p-1" aria-label="Close player"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100 p-1" aria-label="Close player"><X className="w-5 h-5" /></button>
         </div>
       </div>
 
@@ -960,7 +960,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
       {rescan.result && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/90 border border-[#d4a017] text-[#d4a017] text-[11px] font-mono tracking-wider flex items-center gap-2">
           <ScanSearch className="w-3.5 h-3.5" /> PLATE RE-SCAN — {rescan.result}
-          <button onClick={() => setRescan({ busy: false, result: null })} className="text-rmpg-500 hover:text-white ml-1" aria-label="Dismiss">×</button>
+          <button onClick={() => setRescan({ busy: false, result: null })} className="text-rmpg-500 hover:text-rmpg-100 ml-1" aria-label="Dismiss">×</button>
         </div>
       )}
       {dossier && <PlateDossier plate={dossier} onClose={() => setDossier(null)} />}

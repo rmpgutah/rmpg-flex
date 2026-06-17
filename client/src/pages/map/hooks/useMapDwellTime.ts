@@ -111,7 +111,7 @@ export function useMapDwellTime(
             call_sign: record.call_sign,
             status: record.status,
             dwell_minutes: record.dwell_minutes,
-            tierColor: tier?.color || '#666666',
+            tierColor: tier?.color || 'var(--rmpg-500)',
             tierRadius: scaledRadius,
             tierStrokeWeight: tier?.strokeWeight || 1,
             tierPulse: tier?.pulse || false,
@@ -142,7 +142,7 @@ export function useMapDwellTime(
         if (!feature || !feature.properties) return;
         const p = feature.properties;
         const tier = getTier(p.dwell_minutes as number);
-        const color = tier?.color || '#666666';
+        const color = tier?.color || 'var(--rmpg-500)';
         const hours = Math.floor(p.dwell_minutes as number / 60);
         const mins = Math.round(p.dwell_minutes as number % 60);
         const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;

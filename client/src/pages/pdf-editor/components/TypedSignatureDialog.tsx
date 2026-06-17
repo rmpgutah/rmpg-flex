@@ -102,10 +102,10 @@ export default function TypedSignatureDialog({ open, mode, defaultName, onClose,
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#141414] border border-[#222222] rounded-[2px] p-4 max-w-[560px] w-full" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] p-4 max-w-[560px] w-full" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-white inline-flex items-center gap-1.5"><TypeIcon className="w-4 h-4 text-[#d4a017]" /> {title}</h3>
-          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-white" aria-label="Close"><X className="w-4 h-4" /></button>
+          <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-1.5"><TypeIcon className="w-4 h-4 text-[#d4a017]" /> {title}</h3>
+          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
 
         <p className="text-[10px] text-rmpg-500 mb-2">
@@ -122,25 +122,25 @@ export default function TypedSignatureDialog({ open, mode, defaultName, onClose,
           onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') confirm(); }}
           placeholder="Full name"
-          className="w-full bg-[#0a0a0a] border border-[#222] text-sm text-white px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017] mb-3"
+          className="w-full bg-surface-sunken border border-border-default text-sm text-rmpg-100 px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017] mb-3"
         />
 
         <div className="flex items-center gap-2 mb-3">
           <label className="inline-flex items-center gap-1 text-[10px] text-rmpg-400">
             Style
             <select id="ff-typedsig-font" value={fontId} onChange={e => setFontId(e.target.value)}
-              className="bg-[#0a0a0a] border border-[#222] text-[10px] text-rmpg-200 px-1.5 py-1 rounded-sm">
+              className="bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1.5 py-1 rounded-sm">
               {FONTS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
             </select>
           </label>
           <label className="inline-flex items-center gap-1 text-[10px] text-rmpg-400">
             Ink
             <input id="ff-typedsig-color" type="color" aria-label="Signature ink color" value={color} onChange={e => setColor(e.target.value)}
-              className="w-7 h-7 bg-transparent border border-[#222] rounded-sm cursor-pointer" />
+              className="w-7 h-7 bg-transparent border border-border-default rounded-sm cursor-pointer" />
           </label>
         </div>
 
-        <div ref={previewRef} className="bg-white border border-[#333] rounded-sm h-[120px] flex items-center justify-center overflow-hidden mb-3">
+        <div ref={previewRef} className="bg-white border border-border-subtle rounded-sm h-[120px] flex items-center justify-center overflow-hidden mb-3">
           {renderText
             ? <span style={{ fontFamily: font.stack, fontSize: 54, color, lineHeight: 1, whiteSpace: 'nowrap' }}>{renderText}</span>
             : <span className="text-[11px] text-[#999]">Preview appears here</span>}

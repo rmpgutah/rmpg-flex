@@ -80,9 +80,9 @@ export default function MyIdPage() {
 
   return (
     <div className="p-4 flex justify-center">
-      <div className="w-full max-w-sm rounded-[2px] border border-[#222] bg-[#0a0a0a] overflow-hidden">
+      <div className="w-full max-w-sm rounded-[2px] border border-border-default bg-surface-sunken overflow-hidden">
         {/* Header band */}
-        <div className="bg-[#141414] border-b border-[#222] px-4 py-3 flex items-center justify-between">
+        <div className="bg-surface-base border-b border-border-default px-4 py-3 flex items-center justify-between">
           <div className="text-[#d4a017] font-semibold tracking-wide text-sm">RMPG OFFICER ID</div>
           <span
             className={`text-[10px] font-semibold px-2 py-[2px] rounded-[2px] ${
@@ -95,7 +95,7 @@ export default function MyIdPage() {
 
         {/* Identity */}
         <div className="px-4 py-4 flex gap-4">
-          <div className="w-24 h-28 flex-shrink-0 rounded-[2px] border border-[#222] bg-[#050505] overflow-hidden flex items-center justify-center">
+          <div className="w-24 h-28 flex-shrink-0 rounded-[2px] border border-border-default bg-surface-overlay overflow-hidden flex items-center justify-center">
             {badge.photo ? (
               <img src={badge.photo} alt={badge.full_name} className="w-full h-full object-cover" />
             ) : (
@@ -103,7 +103,7 @@ export default function MyIdPage() {
             )}
           </div>
           <div className="min-w-0 flex-1 space-y-1">
-            <div className="text-white font-semibold text-base leading-tight">{badge.full_name}</div>
+            <div className="text-rmpg-100 font-semibold text-base leading-tight">{badge.full_name}</div>
             <Field label="Badge" value={badge.badge_number} />
             <Field label="Rank" value={badge.rank} />
             <Field label="Dept" value={badge.department} />
@@ -113,7 +113,7 @@ export default function MyIdPage() {
 
         {/* Live QR */}
         <div className="px-4 pb-4">
-          <div className="rounded-[2px] border border-[#222] bg-white p-3 flex items-center justify-center">
+          <div className="rounded-[2px] border border-border-default bg-white p-3 flex items-center justify-center">
             {qrDataUrl ? (
               <img src={qrDataUrl} alt="Verification QR" width={260} height={260} />
             ) : (
@@ -122,7 +122,7 @@ export default function MyIdPage() {
               </div>
             )}
           </div>
-          <div className="text-[10px] text-[#666] text-center mt-2">
+          <div className="text-[10px] text-rmpg-500 text-center mt-2">
             Refreshes automatically · present to an RMPG verifier
           </div>
         </div>
@@ -134,8 +134,8 @@ export default function MyIdPage() {
 function Field({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="flex gap-2 text-[11px]">
-      <span className="text-[#666] w-12 flex-shrink-0">{label}</span>
-      <span className="text-[#ccc] truncate">{value || '—'}</span>
+      <span className="text-rmpg-500 w-12 flex-shrink-0">{label}</span>
+      <span className="text-rmpg-300 truncate">{value || '—'}</span>
     </div>
   );
 }

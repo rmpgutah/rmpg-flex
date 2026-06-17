@@ -89,15 +89,15 @@ export default function IntelMapPage() {
   return (
     <div className="relative h-full w-full">
       <div ref={ref} className="absolute inset-0" />
-      <div className="absolute top-2 left-2 z-10 bg-[#000000cc] border border-[#232323] rounded-[2px] p-2 space-y-2">
+      <div className="absolute top-2 left-2 z-10 bg-[#000000cc] border border-border-default rounded-[2px] p-2 space-y-2">
         <div className="flex gap-1 items-center">
           {DAYS_OPTS.map((d) => (
             <button key={d} onClick={() => setDays(d)}
-              className={`font-mono text-[9px] px-2 py-[2px] rounded-[2px] border ${days === d ? 'border-[#d4a017] text-[#d4a017]' : 'border-[#2a2a2a] text-[#888]'}`}>
+              className={`font-mono text-[9px] px-2 py-[2px] rounded-[2px] border ${days === d ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-[#888]'}`}>
               {d === 1 ? '24h' : `${d}d`}
             </button>
           ))}
-          {loading && <span className="font-mono text-[9px] text-[#666]">…</span>}
+          {loading && <span className="font-mono text-[9px] text-rmpg-500">…</span>}
         </div>
         <div className="space-y-[2px]">
           {LAYER_DEFS.map((l) => {
@@ -106,14 +106,14 @@ export default function IntelMapPage() {
               <button key={l.key} onClick={() => toggle(l.key)}
                 className={`w-full flex items-center gap-2 px-1 py-[2px] rounded-[2px] ${active[l.key] ? '' : 'opacity-40'}`}>
                 <span className="w-[8px] h-[8px] rounded-full shrink-0" style={{ background: l.color }} />
-                <span className="text-[10px] text-[#cfcfcf] flex-1 text-left">{l.label}</span>
-                <span className="font-mono text-[9px] text-[#666]">{n}</span>
+                <span className="text-[10px] text-rmpg-200 flex-1 text-left">{l.label}</span>
+                <span className="font-mono text-[9px] text-rmpg-500">{n}</span>
               </button>
             );
           })}
         </div>
         {data.geocoding.pending > 0 && (
-          <div className="text-[8px] text-[#777] font-mono pt-1 border-t border-[#1a1a1a]">{data.geocoding.pending} locating… revisit to resolve</div>
+          <div className="text-[8px] text-rmpg-400 font-mono pt-1 border-t border-border-default">{data.geocoding.pending} locating… revisit to resolve</div>
         )}
       </div>
     </div>

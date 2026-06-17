@@ -63,7 +63,7 @@ const LAYERS: LayerMeta[] = [
     file: '/geojson/county.geojson',
     icon: Map,
     description: 'Utah county polygons with census population data',
-    color: '#a0a0a0',
+    color: 'var(--rmpg-400)',
   },
   {
     id: 'municipality',
@@ -146,8 +146,8 @@ function LayerCard({
       className="w-full text-left transition-colors"
       style={{
         padding: '8px 10px',
-        background: active ? '#1a1a1a' : 'transparent',
-        border: `1px solid ${active ? '#2e2e2e' : '#1a1a1a'}`,
+        background: active ? 'var(--surface-raised)' : 'transparent',
+        border: `1px solid ${active ? '#2e2e2e' : 'var(--surface-raised)'}`,
         borderLeft: `3px solid ${active ? layer.color : 'transparent'}`,
         cursor: 'pointer',
         marginBottom: 2,
@@ -155,13 +155,13 @@ function LayerCard({
     >
       <div className="flex items-center gap-2">
         <Icon style={{ width: 13, height: 13, color: layer.color, flexShrink: 0 }} />
-        <span className="text-[11px] font-medium text-white truncate flex-1">{layer.label}</span>
+        <span className="text-[11px] font-medium text-rmpg-100 min-w-0 truncate flex-1">{layer.label}</span>
         {loading ? (
           <RefreshCw style={{ width: 10, height: 10, color: '#666', animation: 'spin 1s linear infinite' }} />
         ) : count !== null ? (
           <span
             className="text-[9px] font-mono px-1.5 py-0.5"
-            style={{ background: '#0a0a0a', color: '#888', border: '1px solid #222' }}
+            style={{ background:"var(--surface-sunken)", color: '#888', border: '1px solid #222' }}
           >
             {count.toLocaleString()}
           </span>
@@ -192,12 +192,12 @@ function FeatureDetailPanel({
   return (
     <div
       className="flex flex-col h-full"
-      style={{ borderLeft: '1px solid #222', minWidth: 220, maxWidth: 300, background: '#0a0a0a' }}
+      style={{ borderLeft: '1px solid #222', minWidth: 220, maxWidth: 300, background:"var(--surface-sunken)" }}
     >
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2 flex-shrink-0"
-        style={{ borderBottom: '1px solid #222', background: '#141414' }}
+        style={{ borderBottom: '1px solid #222', background: 'var(--surface-base)' }}
       >
         <div className="flex items-center gap-2">
           <Info style={{ width: 12, height: 12, color: layerColor }} />
@@ -214,7 +214,7 @@ function FeatureDetailPanel({
       <div className="px-3 py-1.5 flex-shrink-0" style={{ borderBottom: '1px solid #1a1a1a' }}>
         <span
           className="text-[9px] font-mono px-2 py-0.5"
-          style={{ background: '#141414', color: '#888', border: '1px solid #222' }}
+          style={{ background: 'var(--surface-base)', color: '#888', border: '1px solid #222' }}
         >
           {feature.geometry?.type ?? 'Unknown'}
         </span>
@@ -399,7 +399,7 @@ export default function GeoDataViewerPage() {
   const isLoading = loadingLayer === activeLayerId;
 
   return (
-    <div className="flex flex-col h-full" style={{ background: '#0a0a0a', minHeight: 0 }}>
+    <div className="flex flex-col h-full" style={{ background:"var(--surface-sunken)", minHeight: 0 }}>
       {/* Page header */}
       <div style={{ borderBottom: '1px solid #222', flexShrink: 0 }}>
         <PanelTitleBar title="GEO DATA VIEWER" icon={Layers}>
@@ -414,7 +414,7 @@ export default function GeoDataViewerPage() {
               title="Export filtered features as CSV"
               className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
               style={{
-                background: '#141414',
+                background: 'var(--surface-base)',
                 border: '1px solid #2e2e2e',
                 color: sorted.length ? '#aaaaaa' : '#444',
                 cursor: sorted.length ? 'pointer' : 'not-allowed',
@@ -435,7 +435,7 @@ export default function GeoDataViewerPage() {
           style={{
             width: 180,
             borderRight: '1px solid #222',
-            background: '#050505',
+            background: 'var(--surface-overlay)',
             padding: '8px 6px',
           }}
         >
@@ -494,8 +494,8 @@ export default function GeoDataViewerPage() {
                 onClick={() => setShowFilter((v) => !v)}
                 className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
                 style={{
-                  background: showFilter ? '#1a1a1a' : '#111',
-                  border: `1px solid ${showFilter ? '#2e2e2e' : '#1a1a1a'}`,
+                  background: showFilter ? 'var(--surface-raised)' : '#111',
+                  border: `1px solid ${showFilter ? '#2e2e2e' : 'var(--surface-raised)'}`,
                   color: showFilter ? '#aaa' : '#666',
                   cursor: 'pointer',
                 }}
@@ -512,7 +512,7 @@ export default function GeoDataViewerPage() {
                   onChange={(e) => setColumnFilter(e.target.value)}
                   className="text-[10px] outline-none placeholder-[#444]"
                   style={{
-                    background: '#141414',
+                    background: 'var(--surface-base)',
                     border: '1px solid #2e2e2e',
                     color: '#ccc',
                     padding: '2px 6px',
@@ -567,7 +567,7 @@ export default function GeoDataViewerPage() {
               ) : (
                 <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'auto' }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid #1a1a1a', background: '#080808', position: 'sticky', top: 0, zIndex: 1 }}>
+                    <tr style={{ borderBottom: '1px solid #1a1a1a', background:"var(--surface-sunken)", position: 'sticky', top: 0, zIndex: 1 }}>
                       <th
                         className="text-[9px] font-semibold uppercase tracking-wider text-left"
                         style={{ padding: '3px 8px', color: '#555', whiteSpace: 'nowrap', width: 32, borderRight: '1px solid #111' }}
@@ -612,7 +612,7 @@ export default function GeoDataViewerPage() {
                           onClick={() => setSelectedFeature(isSelected ? null : feature)}
                           style={{
                             borderBottom: '1px solid #111',
-                            background: isSelected ? '#141414' : idx % 2 === 0 ? '#080808' : '#0a0a0a',
+                            background: isSelected ? 'var(--surface-base)' : idx % 2 === 0 ? '#080808' : '#0a0a0a',
                             cursor: 'pointer',
                             borderLeft: isSelected ? `2px solid ${activeLayer.color}` : '2px solid transparent',
                           }}

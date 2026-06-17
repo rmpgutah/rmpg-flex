@@ -54,7 +54,7 @@ const CATEGORY_META: Record<string, CatMeta> = {
   wildlife:      { label: 'Wildlife Resources',     short: 'Wildlife',   blurb: 'Title 23A — hunting, fishing, licensing & wildlife offenses',                       icon: Leaf,        accent: '#65a30d' },
   alcohol:       { label: 'Alcoholic Beverage',     short: 'Alcohol',    blurb: 'Title 32B — alcohol control, licensing & related offenses',                        icon: Wine,        accent: '#b45309' },
   protective:    { label: 'Protective Orders',      short: 'Protective', blurb: 'Title 78B ch 7 — protective orders, stalking injunctions & enforcement',            icon: Shield,      accent: '#e11d48' },
-  licensing:     { label: 'Security · PI · Process',short: 'Licensing',  blurb: 'Title 58/78B licensing statutes + implementing administrative rules',               icon: ShieldCheck, accent: '#9ca3af' },
+  licensing:     { label: 'Security · PI · Process',short: 'Licensing',  blurb: 'Title 58/78B licensing statutes + implementing administrative rules',               icon: ShieldCheck, accent: 'var(--rmpg-400)' },
 };
 const CATEGORY_ORDER = ['criminal', 'fraud', 'procedure', 'vehicle', 'controlled', 'public_safety', 'juvenile', 'wildlife', 'alcohol', 'protective', 'licensing'];
 function getCatMeta(cat: string): CatMeta {
@@ -70,7 +70,7 @@ const LEVELS: { key: string; short: string; dot: string }[] = [
   { key: 'class_a_misdemeanor', short: 'Class A', dot: '#fbbf24' },
   { key: 'class_b_misdemeanor', short: 'Class B', dot: '#facc15' },
   { key: 'class_c_misdemeanor', short: 'Class C', dot: '#eab308' },
-  { key: 'infraction', short: 'Infraction', dot: '#9ca3af' },
+  { key: 'infraction', short: 'Infraction', dot: 'var(--rmpg-400)' },
 ];
 
 function StatuteBody({ text }: { text: string }) {
@@ -243,7 +243,7 @@ export default function LawBookPage() {
           { label: 'Classified Offenses', value: stats.offenses, accent: '#fbbf24' },
         ].map((t) => (
           <div key={t.label} className="border border-rmpg-800 bg-surface-raised px-3 py-2" style={{ borderRadius: 2, borderTop: `2px solid ${t.accent}` }}>
-            <div className="text-[18px] font-black tabular-nums leading-none text-white">{tocLoading ? '—' : t.value.toLocaleString()}</div>
+            <div className="text-[18px] font-black tabular-nums leading-none text-rmpg-100">{tocLoading ? '—' : t.value.toLocaleString()}</div>
             <div className="text-[9px] uppercase tracking-wider text-rmpg-500 mt-1">{t.label}</div>
           </div>
         ))}
@@ -254,7 +254,7 @@ export default function LawBookPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => { setCategory('all'); resetToBrowse(); }}
             className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider border"
-            style={{ background: category === 'all' ? '#d4a017' : '#141414', color: category === 'all' ? '#0a0a0a' : '#888888', borderColor: category === 'all' ? '#d4a017' : '#222222', borderRadius: 2 }}>
+            style={{ background: category === 'all' ? '#d4a017' : 'var(--surface-base)', color: category === 'all' ? '#0a0a0a' : '#888888', borderColor: category === 'all' ? '#d4a017' : 'var(--border-subtle)', borderRadius: 2 }}>
             All Law
           </button>
           {categoriesPresent.map((c) => {
@@ -264,7 +264,7 @@ export default function LawBookPage() {
               <button key={c} type="button"
                 onClick={() => { setCategory(c); resetToBrowse(); }}
                 className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider border"
-                style={{ background: active ? meta.accent : '#141414', color: active ? '#0a0a0a' : '#888888', borderColor: active ? meta.accent : '#222222', borderRadius: 2 }}>
+                style={{ background: active ? meta.accent : 'var(--surface-base)', color: active ? '#0a0a0a' : '#888888', borderColor: active ? meta.accent : 'var(--border-subtle)', borderRadius: 2 }}>
                 {meta.short}
               </button>
             );
@@ -273,10 +273,10 @@ export default function LawBookPage() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
             <input value={query} onChange={(e) => setQuery(e.target.value)}
               placeholder='Search — "76-5-102", "assault", "DUI", "arrest", "stalking"…'
-              className="w-full pl-8 pr-8 py-2 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder:text-rmpg-500" style={{ borderRadius: 2 }} />
+              className="w-full pl-8 pr-8 py-2 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder:text-rmpg-500" style={{ borderRadius: 2 }} />
             {(query || level) && (
               <button type="button" onClick={resetToBrowse} aria-label="Clear search"
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100">
                 {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-gold-500" /> : <X className="w-3.5 h-3.5" />}
               </button>
             )}
@@ -290,8 +290,8 @@ export default function LawBookPage() {
               onClick={() => setLevel(level === l.key ? null : l.key)}
               className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold border"
               style={{
-                background: level === l.key ? '#1a1a1a' : '#0a0a0a',
-                borderColor: level === l.key ? l.dot : '#222222',
+                background: level === l.key ? 'var(--surface-raised)' : '#0a0a0a',
+                borderColor: level === l.key ? l.dot : 'var(--border-subtle)',
                 color: level === l.key ? '#fff' : '#888888', borderRadius: 2,
               }}>
               <span className="w-2 h-2 rounded-full" style={{ background: l.dot }} />
@@ -332,7 +332,7 @@ export default function LawBookPage() {
                     <button key={`${r.title}-${r.chapter_code}`} type="button"
                       onClick={() => loadChapter(r.title, r.chapter_code, r.subcategory)}
                       className="w-full text-left px-3 py-1.5 hover:bg-surface-base flex items-baseline gap-2 border-b border-rmpg-900"
-                      style={chapter?.title === r.title && chapter?.code === r.chapter_code ? { background: '#1a1a1a', boxShadow: 'inset 2px 0 0 #d4a017' } : undefined}>
+                      style={chapter?.title === r.title && chapter?.code === r.chapter_code ? { background: 'var(--surface-raised)', boxShadow: 'inset 2px 0 0 #d4a017' } : undefined}>
                       <span className="text-[10px] font-mono text-rmpg-500 shrink-0">{r.title}-{r.chapter_code}</span>
                       <span className="text-[11px] text-rmpg-200 leading-tight">{r.subcategory}</span>
                       <span className="ml-auto text-[9px] font-mono text-rmpg-600 shrink-0">{r.section_count}</span>
@@ -377,7 +377,7 @@ export default function LawBookPage() {
                     className="text-left border border-rmpg-800 bg-surface-base hover:bg-surface-sunken p-3 transition-colors"
                     style={{ borderRadius: 2, borderTop: `2px solid ${meta.accent}` }}>
                     <Icon className="w-5 h-5 mb-2" style={{ color: meta.accent }} />
-                    <div className="text-[12px] font-bold text-white">{meta.label}</div>
+                    <div className="text-[12px] font-bold text-rmpg-100">{meta.label}</div>
                     <div className="text-[10px] text-rmpg-500 leading-snug mt-1">{meta.blurb}</div>
                     <div className="text-[10px] font-mono mt-2" style={{ color: meta.accent }}>{count.toLocaleString()} sections →</div>
                   </button>
@@ -404,7 +404,7 @@ export default function LawBookPage() {
                       className="w-full text-left px-3 py-2 hover:bg-surface-base flex items-start gap-2">
                       {open ? <ChevronDown className="w-3.5 h-3.5 text-rmpg-500 mt-0.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-rmpg-500 mt-0.5 shrink-0" />}
                       <span className="font-mono text-[11px] text-brand-gold-500 shrink-0 w-24">{s.citation}</span>
-                      <span className="text-[12px] text-white leading-tight flex-1">{s.short_title}</span>
+                      <span className="text-[12px] text-rmpg-100 leading-tight flex-1">{s.short_title}</span>
                       {s.plain_summary && <Sparkles className="w-3 h-3 text-brand-gold-500/70 shrink-0 mt-0.5" aria-label="Has plain-language summary" />}
                       {s.code_type === 'rule' && (
                         <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border border-rmpg-600 text-rmpg-400 shrink-0" style={{ borderRadius: 2 }}>Rule</span>

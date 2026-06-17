@@ -103,12 +103,12 @@ export default function VerifyIdPage() {
           <div className="text-[11px] opacity-90 mt-1">{display.detail}</div>
           {officer && (
             <div className="mt-3 flex gap-3 items-center">
-              <div className="w-14 h-16 rounded-[2px] border border-[#222] bg-[#050505] overflow-hidden flex-shrink-0 flex items-center justify-center">
+              <div className="w-14 h-16 rounded-[2px] border border-border-default bg-surface-overlay overflow-hidden flex-shrink-0 flex items-center justify-center">
                 {officer.photo ? <img src={officer.photo} alt={officer.full_name} className="w-full h-full object-cover" />
                   : <span className="text-[#444] text-[9px]">NO PHOTO</span>}
               </div>
               <div className="text-[11px] text-[#ddd] space-y-[2px]">
-                <div className="text-white font-semibold">{officer.full_name}</div>
+                <div className="text-rmpg-100 font-semibold">{officer.full_name}</div>
                 <div>Badge {officer.badge_number || '—'} · {officer.rank || '—'}</div>
                 <div className="text-[#999]">{officer.department || '—'}</div>
               </div>
@@ -126,9 +126,9 @@ export default function VerifyIdPage() {
       {/* Camera */}
       {!display && (
         <div className="space-y-3">
-          <div className="rounded-[2px] border border-[#222] bg-black overflow-hidden aspect-square flex items-center justify-center">
+          <div className="rounded-[2px] border border-border-default bg-black overflow-hidden aspect-square flex items-center justify-center">
             <video ref={videoRef} playsInline muted className={scanning ? 'w-full h-full object-cover' : 'hidden'} />
-            {!scanning && <span className="text-[#666] text-xs">Camera off</span>}
+            {!scanning && <span className="text-rmpg-500 text-xs">Camera off</span>}
           </div>
           {camError && <div className="text-[11px] text-[#e06464]">{camError}</div>}
           {!scanning ? (
@@ -141,26 +141,26 @@ export default function VerifyIdPage() {
           ) : (
             <button
               onClick={stopCamera}
-              className="w-full rounded-[2px] border border-[#222] text-[#ccc] text-sm py-2"
+              className="w-full rounded-[2px] border border-border-default text-rmpg-300 text-sm py-2"
             >
               Stop
             </button>
           )}
 
           {/* Manual fallback */}
-          <div className="pt-2 border-t border-[#1a1a1a] space-y-2">
-            <div className="text-[10px] text-[#666]">Or paste a scanned token</div>
+          <div className="pt-2 border-t border-border-default space-y-2">
+            <div className="text-[10px] text-rmpg-500">Or paste a scanned token</div>
             <textarea
               value={manualToken}
               onChange={(e) => setManualToken(e.target.value)}
               rows={2}
-              className="w-full rounded-[2px] bg-[#050505] border border-[#222] text-[#ccc] text-[11px] p-2"
+              className="w-full rounded-[2px] bg-surface-overlay border border-border-default text-rmpg-300 text-[11px] p-2"
               placeholder="walletId.exp.sig"
             />
             <button
               onClick={() => verifyToken(manualToken.trim())}
               disabled={busy || !manualToken.trim()}
-              className="w-full rounded-[2px] border border-[#222] text-[#ccc] text-sm py-2 disabled:opacity-40"
+              className="w-full rounded-[2px] border border-border-default text-rmpg-300 text-sm py-2 disabled:opacity-40"
             >
               Verify token
             </button>
