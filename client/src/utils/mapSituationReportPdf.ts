@@ -16,7 +16,7 @@ import {
   finalizePoliceReport,
   hexToRgb,
 } from './pdfGenerator';
-import { LAYOUT } from './pdfTokens';
+import { LAYOUT, COLOR } from './pdfTokens';
 import { registerArialFont } from './pdf/fonts/registerArial';
 
 export interface SitRepCall {
@@ -98,7 +98,7 @@ export async function generateMapSituationReport(data: MapSituationReportData): 
 
   // ── Header bar (black, logo + title) ──────────────────────
   let y = margin;
-  doc.setFillColor(0, 0, 0);
+  doc.setFillColor(...COLOR.BG_SECTION_HDR);
   doc.rect(margin, y, contentW, 16, 'F');
   if (logoB64) {
     try { doc.addImage(logoB64, 'PNG', margin + 2, y + 2.5, 11, 11); } catch { /* ignore */ }
@@ -173,7 +173,7 @@ export async function generateMapSituationReport(data: MapSituationReportData): 
   // ── Section helper ────────────────────────────────────────
   const sectionHeader = (title: string) => {
     if (y > pageH - 30) { doc.addPage(); y = margin; }
-    doc.setFillColor(0, 0, 0);
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
     doc.rect(margin, y, contentW, 6, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
