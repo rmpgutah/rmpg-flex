@@ -104,8 +104,8 @@ export default function TypedSignatureDialog({ open, mode, defaultName, onClose,
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[#141414] border border-[#222222] rounded-[2px] p-4 max-w-[560px] w-full" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-white inline-flex items-center gap-1.5"><TypeIcon className="w-4 h-4 text-[#d4a017]" /> {title}</h3>
-          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-white" aria-label="Close"><X className="w-4 h-4" /></button>
+          <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-1.5"><TypeIcon className="w-4 h-4 text-[#d4a017]" /> {title}</h3>
+          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
 
         <p className="text-[10px] text-rmpg-500 mb-2">
@@ -122,7 +122,7 @@ export default function TypedSignatureDialog({ open, mode, defaultName, onClose,
           onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') confirm(); }}
           placeholder="Full name"
-          className="w-full bg-[#0a0a0a] border border-[#222] text-sm text-white px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017] mb-3"
+          className="w-full bg-[#0a0a0a] border border-[#222] text-sm text-rmpg-100 px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017] mb-3"
         />
 
         <div className="flex items-center gap-2 mb-3">

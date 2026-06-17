@@ -155,13 +155,13 @@ function LayerCard({
     >
       <div className="flex items-center gap-2">
         <Icon style={{ width: 13, height: 13, color: layer.color, flexShrink: 0 }} />
-        <span className="text-[11px] font-medium text-white truncate flex-1">{layer.label}</span>
+        <span className="text-[11px] font-medium text-rmpg-100 truncate flex-1">{layer.label}</span>
         {loading ? (
           <RefreshCw style={{ width: 10, height: 10, color: '#666', animation: 'spin 1s linear infinite' }} />
         ) : count !== null ? (
           <span
             className="text-[9px] font-mono px-1.5 py-0.5"
-            style={{ background: '#0a0a0a', color: '#888', border: '1px solid #222' }}
+            style={{ background:"var(--surface-sunken)", color: '#888', border: '1px solid #222' }}
           >
             {count.toLocaleString()}
           </span>
@@ -192,7 +192,7 @@ function FeatureDetailPanel({
   return (
     <div
       className="flex flex-col h-full"
-      style={{ borderLeft: '1px solid #222', minWidth: 220, maxWidth: 300, background: '#0a0a0a' }}
+      style={{ borderLeft: '1px solid #222', minWidth: 220, maxWidth: 300, background:"var(--surface-sunken)" }}
     >
       {/* Header */}
       <div
@@ -399,7 +399,7 @@ export default function GeoDataViewerPage() {
   const isLoading = loadingLayer === activeLayerId;
 
   return (
-    <div className="flex flex-col h-full" style={{ background: '#0a0a0a', minHeight: 0 }}>
+    <div className="flex flex-col h-full" style={{ background:"var(--surface-sunken)", minHeight: 0 }}>
       {/* Page header */}
       <div style={{ borderBottom: '1px solid #222', flexShrink: 0 }}>
         <PanelTitleBar title="GEO DATA VIEWER" icon={Layers}>
@@ -567,7 +567,7 @@ export default function GeoDataViewerPage() {
               ) : (
                 <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'auto' }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid #1a1a1a', background: '#080808', position: 'sticky', top: 0, zIndex: 1 }}>
+                    <tr style={{ borderBottom: '1px solid #1a1a1a', background:"var(--surface-sunken)", position: 'sticky', top: 0, zIndex: 1 }}>
                       <th
                         className="text-[9px] font-semibold uppercase tracking-wider text-left"
                         style={{ padding: '3px 8px', color: '#555', whiteSpace: 'nowrap', width: 32, borderRight: '1px solid #111' }}

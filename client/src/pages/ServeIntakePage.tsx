@@ -688,7 +688,7 @@ export default function ServeIntakePage() {
             <div key={i} className="flex items-center gap-2 px-3 py-2 panel-beveled bg-surface-raised text-xs">
               <FileText className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <span className="text-white font-medium truncate block">{f.name}</span>
+                <span className="text-rmpg-100 font-medium truncate block">{f.name}</span>
                 {fileMeta(f) && (
                   <span className={`text-[9px] font-mono truncate block ${(f.size || 0) > MAX_UPLOAD_BYTES ? 'text-red-400' : 'text-rmpg-600'}`}>{fileMeta(f)}</span>
                 )}
@@ -719,7 +719,7 @@ export default function ServeIntakePage() {
                 aria-label={`Document type for ${f.name}`}
               >
                 {DOCUMENT_TYPES.map(dt => (
-                  <option key={dt.value} value={dt.value} className="bg-surface-raised text-white text-[9px]">{dt.label}</option>
+                  <option key={dt.value} value={dt.value} className="bg-surface-raised text-rmpg-100 text-[9px]">{dt.label}</option>
                 ))}
               </select>
               {f.ocrResult && (
@@ -754,7 +754,7 @@ export default function ServeIntakePage() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#222]">
               <div className="flex items-center gap-2">
                 <Camera className="w-4 h-4 text-brand-400" />
-                <span className="text-xs font-bold text-white uppercase">OCR Extraction Review</span>
+                <span className="text-xs font-bold text-rmpg-100 uppercase">OCR Extraction Review</span>
                 <span className={`text-[10px] font-bold ${confidenceColor(ocrPreview.confidence)}`}>
                   Confidence: {(ocrPreview.confidence * 100).toFixed(0)}%
                 </span>
@@ -765,8 +765,8 @@ export default function ServeIntakePage() {
             </div>
             <div className="p-4 space-y-2">
               <div className="text-[10px] text-rmpg-400 mb-2">
-                Document Type: <span className="text-white font-bold">{ocrPreview.documentType}</span>
-                {' | '} Extracted Fields: <span className="text-white font-bold">{previewFields.length}</span>
+                Document Type: <span className="text-rmpg-100 font-bold">{ocrPreview.documentType}</span>
+                {' | '} Extracted Fields: <span className="text-rmpg-100 font-bold">{previewFields.length}</span>
               </div>
               <div className="w-full h-1.5 bg-[#222] rounded-sm overflow-hidden">
                 <div className={`h-full rounded-sm transition-all ${confidenceBar(ocrPreview.confidence)}`}
@@ -787,12 +787,12 @@ export default function ServeIntakePage() {
                           type="text"
                           value={editingFields[key]}
                           onChange={e => setEditingFields(prev => ({ ...prev, [key]: e.target.value }))}
-                          className="w-full bg-[#111] border border-[#333] rounded-sm px-2 py-0.5 text-xs text-white mt-0.5"
+                          className="w-full bg-[#111] border border-[#333] rounded-sm px-2 py-0.5 text-xs text-rmpg-100 mt-0.5"
                           autoFocus
                         />
                       ) : (
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-white truncate">{field.value}</span>
+                          <span className="text-xs text-rmpg-100 truncate">{field.value}</span>
                           <IconButton
                             onClick={() => setEditingFields(prev => ({ ...prev, [key]: field.value }))}
                             aria-label={`Edit ${key}`}
@@ -925,7 +925,7 @@ export default function ServeIntakePage() {
                   <User className="w-3.5 h-3.5 text-rmpg-400" />
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Person Created</span>
                 </div>
-                <p className="text-sm font-bold text-white">
+                <p className="text-sm font-bold text-rmpg-100">
                   {result.extracted?.name?.first} {result.extracted?.name?.middle} {result.extracted?.name?.last}
                 </p>
                 {result.extracted?.dob && <p className="text-[10px] text-rmpg-400">DOB: {result.extracted.dob}</p>}
@@ -940,7 +940,7 @@ export default function ServeIntakePage() {
                   <Building2 className="w-3.5 h-3.5 text-rmpg-400" />
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Document Link</span>
                 </div>
-                <p className="text-xs text-white">{result.extracted?.address || 'No address extracted'}</p>
+                <p className="text-xs text-rmpg-100">{result.extracted?.address || 'No address extracted'}</p>
                 {result.latitude && result.longitude && (
                   <p className="text-[9px] text-green-400 mt-1">
                     <MapPin className="w-3 h-3 inline" /> {result.latitude.toFixed(6)}, {result.longitude.toFixed(6)}
@@ -953,7 +953,7 @@ export default function ServeIntakePage() {
                   <Phone className="w-3.5 h-3.5 text-rmpg-400" />
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Serve Queue</span>
                 </div>
-                <p className="text-sm font-bold text-white font-mono">{result.call_number}</p>
+                <p className="text-sm font-bold text-rmpg-100 font-mono">{result.call_number}</p>
                 <p className="text-[10px] text-rmpg-400">{result.extracted?.processType ? result.extracted.processType.charAt(0).toUpperCase() + result.extracted.processType.slice(1).replace(/_/g, ' ') : 'PSO Client Request'} — Pending</p>
                 <button onClick={() => navigate('/dispatch')} className="text-[9px] text-brand-400 mt-1 hover:underline">
                   View in Dispatch →
@@ -1010,7 +1010,7 @@ export default function ServeIntakePage() {
                 {result.attempt_plan.map((w) => (
                   <div key={w.attempt} className="flex items-center gap-2 text-[10px] py-[2px]">
                     <span className="text-rmpg-500 font-bold">#{w.attempt}</span>
-                    <span className="text-white font-mono">{w.weekday} {w.date}</span>
+                    <span className="text-rmpg-100 font-mono">{w.weekday} {w.date}</span>
                     <span className="text-brand-400 font-mono">{w.window}</span>
                     <span className="text-rmpg-500">{w.focus}</span>
                   </div>

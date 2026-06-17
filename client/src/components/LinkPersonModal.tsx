@@ -195,7 +195,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
                   className="w-full text-left px-3 py-2 hover:bg-rmpg-800 transition-colors"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-white font-medium">
+                    <span className="text-sm text-rmpg-100 font-medium">
                       {person.last_name}, {person.first_name}
                     </span>
                     {flags.length > 0 && (
@@ -240,7 +240,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
       {selectedPerson && (
         <div className="px-3 py-2 bg-brand-900/20 border border-brand-700/40 flex items-center justify-between">
           <div>
-            <span className="text-sm text-white font-medium">
+            <span className="text-sm text-rmpg-100 font-medium">
               {selectedPerson.last_name}, {selectedPerson.first_name}
             </span>
             <div className="flex gap-3 text-[11px] text-rmpg-400 mt-0.5">
@@ -251,7 +251,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
           <button
             type="button"
             onClick={() => { setSelectedPerson(null); setSearchQuery(''); setWarrantWarning(null); }}
-            className="text-xs text-rmpg-300 hover:text-white"
+            className="text-xs text-rmpg-300 hover:text-rmpg-100"
           >
             Change
           </button>

@@ -46,7 +46,7 @@ const STATUS_COLORS: Record<string, { bg: string; glow: string }> = {
 const PRIORITY_STYLES: Record<string, string> = {
   rush: 'bg-red-900/60 text-red-300 border-red-700/50',
   high: 'bg-amber-900/60 text-amber-300 border-amber-700/50',
-  normal: 'bg-gray-900/60 text-gray-300 border-gray-700/50',
+  normal: 'bg-surface-sunken/60 text-rmpg-300 border-border-default/50',
   low: 'bg-rmpg-800/60 text-rmpg-400 border-rmpg-600/50',
 };
 
@@ -145,7 +145,7 @@ export default React.memo(function ServeJobCard({
           <div className="flex items-center gap-2 min-w-0">
             {/* Status LED */}
             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[job.status]?.bg || 'bg-rmpg-500'} ${STATUS_COLORS[job.status]?.glow || ''}`} aria-label={`Status: ${job.status}`} />
-            <span className="text-sm font-bold text-white truncate">{job.recipient_name}</span>
+            <span className="text-sm font-bold text-rmpg-100 truncate">{job.recipient_name}</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <AttemptDots count={job.attempt_count} max={job.max_attempts} />
@@ -217,7 +217,7 @@ export default React.memo(function ServeJobCard({
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Dispatch Link</span>
                 <button type="button"
-                  className="text-[10px] text-gray-400 hover:text-gray-300 underline"
+                  className="text-[10px] text-rmpg-400 hover:text-rmpg-300 underline"
                   onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${linkedCall.call_number}`, '_blank', 'noopener,noreferrer'); }}
                 >
                   {linkedCall.call_number}
@@ -230,7 +230,7 @@ export default React.memo(function ServeJobCard({
                   <div><span className="text-rmpg-400">Requestor:</span> {linkedCall.pso_requestor_name}</div>
                 )}
                 {linkedCall.contract_id && (
-                  <div><span className="text-rmpg-400">Contract:</span> <span className="font-mono text-gray-400">{linkedCall.contract_id}</span></div>
+                  <div><span className="text-rmpg-400">Contract:</span> <span className="font-mono text-rmpg-400">{linkedCall.contract_id}</span></div>
                 )}
               </div>
               {/* PSO Compliance mini-indicator */}
@@ -256,7 +256,7 @@ export default React.memo(function ServeJobCard({
               <div className="flex items-center gap-1">
                 <Briefcase className="w-3 h-3 text-rmpg-400" />
                 <span className="text-rmpg-400">Case:</span>
-                <span className="font-mono tabular-nums text-gray-400">{job.case_number}</span>
+                <span className="font-mono tabular-nums text-rmpg-400">{job.case_number}</span>
               </div>
             )}
             {job.court_name && (
@@ -359,7 +359,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onNavigate(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-gray-400 hover:bg-gray-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-gray-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-surface-sunken/20"
           title="Navigate"
           aria-label={`Navigate to ${job.recipient_name}`}
         >
@@ -377,7 +377,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onSkipTrace(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-gray-400 hover:bg-gray-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-gray-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-surface-sunken/20"
           title="Skip Trace"
           aria-label={`Skip trace for ${job.recipient_name}`}
         >

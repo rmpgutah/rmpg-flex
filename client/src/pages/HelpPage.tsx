@@ -365,7 +365,7 @@ export default function HelpPage() {
         <div className="px-3 pb-3 mb-2" style={{ borderBottom: '1px solid #1a1a1a' }}>
           <div className="flex items-center gap-2">
             <HelpCircle className="w-4 h-4 text-[#d4a017]" />
-            <span className="text-xs font-bold text-white uppercase tracking-wider">Help Center</span>
+            <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Help Center</span>
           </div>
           <div className="text-[9px] text-rmpg-500 mt-1 font-mono">RMPG Flex v{APP_VERSION}</div>
         </div>
@@ -393,7 +393,7 @@ export default function HelpPage() {
       </nav>
 
       {/* ── Content Area ──────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto p-6" style={{ background: '#0a0a0a' }}>
+      <div className="flex-1 overflow-y-auto p-6" style={{ background:"var(--surface-sunken)" }}>
         <div className="max-w-4xl mx-auto space-y-6">
 
           {/* OVERVIEW */}
@@ -418,11 +418,11 @@ export default function HelpPage() {
                     <div
                       key={card.label}
                       className="p-3 space-y-1"
-                      style={{ background: '#0a0a0a', border: '1px solid #1a1a1a' }}
+                      style={{ background:"var(--surface-sunken)", border: '1px solid #1a1a1a' }}
                     >
                       <div className="flex items-center gap-2">
                         <card.icon className="w-3.5 h-3.5 text-[#d4a017]" />
-                        <span className="text-[11px] font-bold text-white uppercase">{card.label}</span>
+                        <span className="text-[11px] font-bold text-rmpg-100 uppercase">{card.label}</span>
                       </div>
                       <p className="text-[10px] text-rmpg-400 leading-relaxed">{card.desc}</p>
                     </div>
@@ -453,7 +453,7 @@ export default function HelpPage() {
                       {item.step}
                     </div>
                     <div>
-                      <div className="text-[11px] font-bold text-white">{item.title}</div>
+                      <div className="text-[11px] font-bold text-rmpg-100">{item.title}</div>
                       <div className="text-[10px] text-rmpg-400 leading-relaxed">{item.desc}</div>
                     </div>
                   </div>
@@ -530,7 +530,7 @@ export default function HelpPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-bold text-white">{mod.name}</span>
+                            <span className="text-[11px] font-bold text-rmpg-100">{mod.name}</span>
                             <span className="text-[9px] font-mono text-rmpg-600">{mod.path}</span>
                           </div>
                           <p className="text-[10px] text-rmpg-400 leading-relaxed mt-0.5">{mod.description}</p>
@@ -539,7 +539,7 @@ export default function HelpPage() {
                               <span
                                 key={f}
                                 className="text-[9px] px-1.5 py-0.5 text-rmpg-300"
-                                style={{ background: '#0a0a0a', border: '1px solid #1a1a1a' }}
+                                style={{ background:"var(--surface-sunken)", border: '1px solid #1a1a1a' }}
                               >
                                 {f}
                               </span>

@@ -75,7 +75,7 @@ export default function VictimServicesPage() {
     { key: 'protective_order', label: 'PO', render: (r: Victim) => r.protective_order ? <span className="text-green-400">Yes</span> : <span className="text-rmpg-500">No</span> },
     { key: 'actions', label: '', width: '80px', render: (r: Victim) => (
       <div className="flex gap-2">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-rmpg-400 hover:text-white" title="Edit"><Pencil size={12} /></button>
+        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-rmpg-400 hover:text-rmpg-100" title="Edit"><Pencil size={12} /></button>
         <button onClick={(e) => { e.stopPropagation(); setDeleteId(r.id); }} className="text-red-500 hover:text-red-300" title="Delete"><Trash2 size={12} /></button>
       </div>
     )},

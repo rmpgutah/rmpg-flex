@@ -174,7 +174,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
             {/* 76: Person name with monospace styling for consistent readout */}
           <div className="flex items-center gap-1.5">
               <User style={{ width: 10, height: 10, color: item.warrants.length > 0 ? '#ef4444' : '#f59e0b' }} aria-hidden="true" />
-              <span className="text-[11px] font-bold text-white font-mono tracking-tight">
+              <span className="text-[11px] font-bold text-rmpg-100 font-mono tracking-tight">
                 {item.person.last_name}, {item.person.first_name}
               </span>
               {item.person.dob && (
@@ -252,7 +252,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
         <div key={w.id} className="safety-warrant-direct">
           <Scale style={{ width: 10, height: 10, color: '#ef4444' }} />
           <span className="text-[10px] text-red-400 font-bold uppercase">{w.offense_level} WARRANT</span>
-          <span className="text-[10px] text-white">
+          <span className="text-[10px] text-rmpg-100">
             {w.subject_last_name}, {w.subject_first_name}
           </span>
           <span className="text-[10px] text-rmpg-300">{w.charge_description}</span>

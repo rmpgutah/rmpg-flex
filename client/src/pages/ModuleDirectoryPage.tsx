@@ -422,7 +422,7 @@ export default function ModuleDirectoryPage() {
         <div className="px-3 pb-3 mb-2" style={{ borderBottom: '1px solid #1a1a1a' }}>
           <div className="flex items-center gap-2">
             <Grid3X3 className="w-4 h-4 text-brand-400" />
-            <span className="text-xs font-bold text-white uppercase tracking-wider">Modules</span>
+            <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Modules</span>
           </div>
           <div className="text-[9px] text-rmpg-500 mt-1 font-mono">{allFunctions.length} Functions</div>
         </div>
@@ -493,7 +493,7 @@ export default function ModuleDirectoryPage() {
       </nav>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto" style={{ background: '#0a0a0a' }}>
+      <div className="flex-1 overflow-y-auto" style={{ background:"var(--surface-sunken)" }}>
         <div className="p-4 max-w-5xl mx-auto space-y-4">
           <div className="flex items-center gap-2">
             <div className="relative flex-1" style={{ maxWidth: 400 }}>
@@ -508,7 +508,7 @@ export default function ModuleDirectoryPage() {
                   }
                 }}
                 placeholder="Search functions by name, path, or description..."
-                className="w-full pl-9 pr-3 py-2 text-[11px] bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500 transition-colors"
+                className="w-full pl-9 pr-3 py-2 text-[11px] bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500 transition-colors"
                 autoFocus
               />
             </div>
@@ -654,13 +654,13 @@ export default function ModuleDirectoryPage() {
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold text-white group-hover:text-brand-400 transition-colors truncate">
+              <span className="text-[11px] font-bold text-rmpg-100 group-hover:text-brand-400 transition-colors truncate">
                 {fn.label}
               </span>
               {fn.shortcut && (
                 <span
                   className="text-[8px] font-mono px-1 py-0.5 flex-shrink-0"
-                  style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', color: '#666' }}
+                  style={{ background:"var(--surface-sunken)", border: '1px solid #1a1a1a', color: '#666' }}
                 >
                   {fn.shortcut}
                 </span>

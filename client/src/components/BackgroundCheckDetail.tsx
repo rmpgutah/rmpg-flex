@@ -179,7 +179,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
               {court.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
-                    <Gavel className="w-3.5 h-3.5 text-gray-400" />
+                    <Gavel className="w-3.5 h-3.5 text-rmpg-400" />
                     Court / Public Records ({court.length})
                   </div>
                   <div className="space-y-1.5">

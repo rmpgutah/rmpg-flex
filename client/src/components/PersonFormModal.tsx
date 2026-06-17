@@ -555,7 +555,7 @@ export default function PersonFormModal({
             className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
               activeSection === s.id
                 ? 'text-red-400 bg-red-900/20 border border-red-700/40'
-                : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/40 border border-transparent'
+                : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'
             }`}
           >
             {s.label}
@@ -823,7 +823,7 @@ export default function PersonFormModal({
                   <button
                     type="button"
                     onClick={() => setShowSSN(!showSSN)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100 transition-colors"
                     title={showSSN ? 'Hide SSN' : 'Show SSN'}
                   >
                     {showSSN ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -909,7 +909,7 @@ export default function PersonFormModal({
                       onClick={removeIdImage}
                       className="absolute top-1 right-1 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                       title="Remove image">
-                      <X className="w-3 h-3 text-white" />
+                      <X className="w-3 h-3 text-rmpg-100" />
                     </button>
                   </>
                 ) : (

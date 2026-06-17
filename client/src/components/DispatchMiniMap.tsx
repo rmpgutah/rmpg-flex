@@ -427,7 +427,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
           <button type="button"
             onClick={() => navigate('/map')}
-            className="text-rmpg-400 hover:text-white"
+            className="text-rmpg-400 hover:text-rmpg-100"
             style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
             title="Open full map"
           >
@@ -436,7 +436,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           {onClose && (
             <button type="button"
               onClick={onClose}
-              className="text-rmpg-400 hover:text-white"
+              className="text-rmpg-400 hover:text-rmpg-100"
               style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
               title="Close mini-map"
             >

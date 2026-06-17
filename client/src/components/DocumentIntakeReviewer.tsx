@@ -179,7 +179,7 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
                     type="text"
                     value={edits[f.key] ?? ''}
                     onChange={(e) => setEdits({ ...edits, [f.key]: e.target.value })}
-                    className="w-full bg-[#0a0a0a] border border-[#2a2a2a] px-2 py-1 text-[11px] text-white"
+                    className="w-full bg-[#0a0a0a] border border-[#2a2a2a] px-2 py-1 text-[11px] text-rmpg-100"
                     style={{ borderRadius: 2 }}
                     placeholder={f.confidence === 0 ? '(not found in PDF — fill in manually)' : ''}
                   />
@@ -246,7 +246,7 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
         <button
           type="button"
           onClick={onReset}
-          className="ml-auto px-3 py-1.5 text-[11px] uppercase border border-[#444] text-[#888] hover:text-white"
+          className="ml-auto px-3 py-1.5 text-[11px] uppercase border border-[#444] text-[#888] hover:text-rmpg-100"
           style={{ borderRadius: 2 }}
         >
           Upload Another

@@ -104,10 +104,10 @@ export default function AnnotationsPanel(p: Props) {
           <Search className="w-3 h-3 absolute left-1.5 top-1/2 -translate-y-1/2 text-rmpg-500" aria-hidden="true" />
           <input id="ff-annotationspanel-search" value={query} onChange={e => setQuery(e.target.value)}
             placeholder="Search text / note / author…"
-            className="w-full bg-[#0a0a0a] border border-[#222] text-[10px] text-white pl-6 pr-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
+            className="w-full bg-[#0a0a0a] border border-[#222] text-[10px] text-rmpg-100 pl-6 pr-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
           {query && (
             <button type="button" onClick={() => setQuery('')} aria-label="Clear search"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white text-[10px]">×</button>
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100 text-[10px]">×</button>
           )}
         </div>
         <select id="ff-annotationspanel-typefilter" value={typeFilter} onChange={e => setTypeFilter(e.target.value as typeof typeFilter)}
@@ -136,7 +136,7 @@ export default function AnnotationsPanel(p: Props) {
       {pages.map(pageNum => (
         <div key={pageNum}>
           <button type="button" onClick={() => p.onJumpToPage(pageNum)}
-            className="text-[9px] uppercase tracking-wider text-rmpg-400 hover:text-white mb-1 px-1 block w-full text-left">
+            className="text-[9px] uppercase tracking-wider text-rmpg-400 hover:text-rmpg-100 mb-1 px-1 block w-full text-left">
             Page {pageNum} ({byPage.get(pageNum)!.length})
           </button>
           <div className="space-y-0.5">
@@ -156,13 +156,13 @@ export default function AnnotationsPanel(p: Props) {
                   </button>
                   <div className="flex items-center gap-0.5 opacity-40 group-hover:opacity-100 transition-opacity">
                     <button type="button" onClick={() => p.onToggleLock(a.id)} title={a.locked ? 'Unlock' : 'Lock'}
-                      className="p-0.5 text-rmpg-400 hover:text-white">
+                      className="p-0.5 text-rmpg-400 hover:text-rmpg-100">
                       {a.locked ? <Lock className="w-3 h-3 text-[#d4a017]" /> : <Unlock className="w-3 h-3" />}
                     </button>
                     <button type="button" onClick={() => p.onSendBackward(a.id)} title="Send backward"
-                      className="p-0.5 text-rmpg-400 hover:text-white"><ArrowDown className="w-3 h-3" /></button>
+                      className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><ArrowDown className="w-3 h-3" /></button>
                     <button type="button" onClick={() => p.onBringForward(a.id)} title="Bring forward"
-                      className="p-0.5 text-rmpg-400 hover:text-white"><ArrowUp className="w-3 h-3" /></button>
+                      className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><ArrowUp className="w-3 h-3" /></button>
                     <button type="button" onClick={() => p.onDelete(a.id)} title="Delete"
                       className="p-0.5 text-rmpg-400 hover:text-red-400 ml-auto"><Trash2 className="w-3 h-3" /></button>
                   </div>

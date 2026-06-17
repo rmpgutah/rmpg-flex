@@ -122,7 +122,7 @@ export function EmptyConsole({ isConnected, channels }: { isConnected: boolean; 
 
 export function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="stat-card px-2 py-1.5" style={{ background: '#0a0a0a', border: '1px solid var(--rt-border)' }}>
+    <div className="stat-card px-2 py-1.5" style={{ background:"var(--surface-sunken)", border: '1px solid var(--rt-border)' }}>
       <div className="text-[8px] font-mono tracking-[0.2em]" style={{ color: 'var(--rt-muted)' }}>{label}</div>
       <div className="text-base font-mono font-bold tabular-nums leading-tight" style={{ color: 'var(--rt-text)' }}>{value}</div>
     </div>
@@ -132,7 +132,7 @@ export function Stat({ label, value }: { label: string; value: string }) {
 export function Sparkline({ values, highlight }: { values: number[]; highlight?: number }) {
   const max = Math.max(1, ...values);
   return (
-    <div className="flex items-end gap-px h-8 px-2 py-1" style={{ background: '#0a0a0a', border: '1px solid var(--rt-border)' }}>
+    <div className="flex items-end gap-px h-8 px-2 py-1" style={{ background:"var(--surface-sunken)", border: '1px solid var(--rt-border)' }}>
       {values.map((v, i) => {
         const h = Math.max(2, (v / max) * 100);
         const isNow = i === highlight;
@@ -149,7 +149,7 @@ export function Heatmap({ rows }: { rows: number[][] }) {
   const max = Math.max(1, ...rows.flat());
   const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   return (
-    <div className="grid grid-cols-[14px_repeat(24,1fr)] gap-px" style={{ background: '#0a0a0a', padding: 1, border: '1px solid var(--rt-border)' }}>
+    <div className="grid grid-cols-[14px_repeat(24,1fr)] gap-px" style={{ background:"var(--surface-sunken)", padding: 1, border: '1px solid var(--rt-border)' }}>
       {rows.map((row, dayIdx) => (
         <Fragment key={dayIdx}>
           <div className="text-[7px] font-mono flex items-center justify-center" style={{ color: 'var(--rt-muted)' }}>{labels[dayIdx]}</div>

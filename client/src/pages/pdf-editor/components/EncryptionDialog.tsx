@@ -43,7 +43,7 @@ const DEFAULT_CONFIG: EncryptionConfig = {
 };
 
 const labelCls = 'text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1';
-const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]';
+const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]';
 
 export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
   const [cfg, setCfg] = useState<EncryptionConfig>(DEFAULT_CONFIG);
@@ -56,10 +56,10 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[#141414] border border-[#222222] rounded-[2px] p-4 max-w-[640px] w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-white inline-flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
             <Lock className="w-4 h-4 text-[#d4a017]" /> Encrypt PDF
           </h3>
-          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-white" aria-label="Close"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
 
         <p className="text-[10px] text-rmpg-500 mb-3 max-w-prose">
@@ -75,7 +75,7 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
                   onChange={(e) => setCfg({ ...cfg, userPassword: e.target.value })}
                   placeholder="Empty = no prompt to open"
                   className={inputCls + ' pr-7'} />
-                <button type="button" onClick={() => setShowUser((v) => !v)} className="absolute right-1.5 top-1.5 text-rmpg-400 hover:text-white" aria-label="Toggle visibility">
+                <button type="button" onClick={() => setShowUser((v) => !v)} className="absolute right-1.5 top-1.5 text-rmpg-400 hover:text-rmpg-100" aria-label="Toggle visibility">
                   {showUser ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
               </div>
@@ -87,7 +87,7 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
                   onChange={(e) => setCfg({ ...cfg, ownerPassword: e.target.value })}
                   placeholder="Auto-generated random if blank"
                   className={inputCls + ' pr-7'} />
-                <button type="button" onClick={() => setShowOwner((v) => !v)} className="absolute right-1.5 top-1.5 text-rmpg-400 hover:text-white" aria-label="Toggle visibility">
+                <button type="button" onClick={() => setShowOwner((v) => !v)} className="absolute right-1.5 top-1.5 text-rmpg-400 hover:text-rmpg-100" aria-label="Toggle visibility">
                   {showOwner ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
               </div>

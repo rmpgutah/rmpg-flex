@@ -591,7 +591,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             </div>
           )}
           <div>
-            <div className="text-sm font-bold text-white">
+            <div className="text-sm font-bold text-rmpg-100">
               {user.first_name} {user.last_name}
             </div>
             <div className="text-[10px] font-mono" style={{ color: '#888888' }}>
@@ -692,7 +692,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 </div>
                 <div>
                   <label className="field-label">Badge #</label>
-                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#030303', border: '1px solid #242424' }}>
+                  <div className="text-xs text-rmpg-100 px-3 py-1.5" style={{ background: '#030303', border: '1px solid #242424' }}>
                     {user.badge_number || '—'}
                   </div>
                 </div>
@@ -1402,7 +1402,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       style={{ background: '#050505', border: '1px solid #242424' }}
                     >
                       <div>
-                        <div className="text-[11px] text-white font-mono">
+                        <div className="text-[11px] text-rmpg-100 font-mono">
                           {session.ip_address}
                         </div>
                         <div className="text-[9px]" style={{ color: '#666666' }}>
@@ -1433,7 +1433,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <SecurityStatusCard />
 
                   {/* 2FA actions */}
-                  <div className="panel-beveled p-3" style={{ background: '#0a0a0a' }}>
+                  <div className="panel-beveled p-3" style={{ background:"var(--surface-sunken)" }}>
                     <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">
                       Two-Factor Authentication
                     </h3>
@@ -1462,7 +1462,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         </div>
                         <button type="button"
                           onClick={() => setSecurityView('setup-2fa')}
-                          className="toolbar-btn toolbar-btn-primary w-full h-7 text-white text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                          className="toolbar-btn toolbar-btn-primary w-full h-7 text-rmpg-100 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
                         >
                           <Shield className="w-3 h-3" />
                           Set Up 2FA Now
@@ -1562,7 +1562,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <button type="button"
                         onClick={handleRegenBackupCodes}
                         disabled={!regenPassword || regenLoading}
-                        className="toolbar-btn toolbar-btn-primary w-full h-8 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 flex items-center justify-center gap-1.5"
+                        className="toolbar-btn toolbar-btn-primary w-full h-8 text-rmpg-100 text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 flex items-center justify-center gap-1.5"
                       >
                         {regenLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : 'Regenerate Codes'}
                       </button>

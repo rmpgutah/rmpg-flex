@@ -133,7 +133,7 @@ export function RoleDistributionCard({ officers }: { officers: OfficerWithStatus
               <div key={d.name} className="flex items-center gap-2 text-xs">
                 <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: ROLE_HEX[d.name] || '#666666' }} />
                 <span className="text-rmpg-200 capitalize flex-1">{d.name.replace(/_/g, ' ')}</span>
-                <span className="font-mono text-white">{d.value}</span>
+                <span className="font-mono text-rmpg-100">{d.value}</span>
               </div>
             ))}
           </div>
@@ -254,7 +254,7 @@ export function DutyHoursPanel() {
         {data.entries.slice(0, 10).map((o) => (
           <div key={o.officer_id} className="flex items-center justify-between px-2 py-0.5 bg-surface-sunken rounded text-[9px]">
             <span className="text-rmpg-200 flex-1 truncate">{o.officer_name}</span>
-            <span className="font-mono text-gray-400 w-12 text-right">{o.total_hours}h</span>
+            <span className="font-mono text-rmpg-400 w-12 text-right">{o.total_hours}h</span>
             <span className="font-mono text-amber-400 w-14 text-right">{o.total_overtime}h OT</span>
             <span className="text-rmpg-500 w-14 text-right">{o.shifts_completed} shifts</span>
           </div>
@@ -287,7 +287,7 @@ export function CertWarningsPanel() {
         <div className="text-center p-1 bg-red-900/20 rounded"><span className="text-xs font-bold text-red-400">{data.summary.expired}</span><div className="text-[7px] text-rmpg-500">Expired</div></div>
         <div className="text-center p-1 bg-red-900/10 rounded"><span className="text-xs font-bold text-red-300">{data.summary.within_30}</span><div className="text-[7px] text-rmpg-500">30d</div></div>
         <div className="text-center p-1 bg-amber-900/10 rounded"><span className="text-xs font-bold text-amber-400">{data.summary.within_60}</span><div className="text-[7px] text-rmpg-500">60d</div></div>
-        <div className="text-center p-1 bg-gray-900/10 rounded"><span className="text-xs font-bold text-gray-400">{data.summary.within_90}</span><div className="text-[7px] text-rmpg-500">90d</div></div>
+        <div className="text-center p-1 bg-surface-sunken/10 rounded"><span className="text-xs font-bold text-rmpg-400">{data.summary.within_90}</span><div className="text-[7px] text-rmpg-500">90d</div></div>
       </div>
       <div className="space-y-0.5 max-h-[120px] overflow-y-auto scrollbar-dark">
         {data.warnings.slice(0, 8).map((w) => (

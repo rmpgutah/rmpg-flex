@@ -422,7 +422,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{call.pso_service_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
         )}
         {call.case_number && (
-          <span className="text-[9px] font-mono text-gray-300 bg-surface-raised border border-[#2e2e2e] px-1">
+          <span className="text-[9px] font-mono text-rmpg-300 bg-surface-raised border border-[#2e2e2e] px-1">
             {call.case_number}
           </span>
         )}
@@ -474,7 +474,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         {/* Feature 8: Response time for cleared calls */}
         {['cleared', 'closed', 'archived'].includes(call.status) && (() => {
           const rt = calcResponseTime(call);
-          return rt ? <span className="font-mono text-gray-300 ml-auto">RT: {rt}</span> : null;
+          return rt ? <span className="font-mono text-rmpg-300 ml-auto">RT: {rt}</span> : null;
         })()}
       </div>
 
@@ -538,7 +538,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           domestic: 'bg-red-900/40 text-red-300 border-red-700/50',
           weapons: 'bg-orange-900/40 text-orange-300 border-orange-700/50',
           officer_safety: 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50',
-          juvenile: 'bg-gray-900/40 text-gray-300 border-gray-700/50',
+          juvenile: 'bg-surface-sunken/40 text-rmpg-300 border-border-default/50',
           mental_health: 'bg-purple-900/40 text-purple-300 border-purple-700/50',
           gang: 'bg-red-900/40 text-red-400 border-red-600/50',
           drugs: 'bg-green-900/40 text-green-300 border-green-700/50',
@@ -604,7 +604,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
               }
             }}
             disabled={!quickNoteText.trim()}
-            className="text-[8px] px-1.5 py-0.5 bg-brand-600 text-white border border-brand-500 rounded-sm hover:bg-brand-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="text-[8px] px-1.5 py-0.5 bg-brand-600 text-rmpg-100 border border-brand-500 rounded-sm hover:bg-brand-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Add
           </button>
@@ -621,7 +621,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             <button type="button" onClick={() => onStatusChange(call.id, 'dispatched')} className="px-1.5 py-0.5 text-[8px] font-bold bg-amber-900/60 text-amber-300 border border-amber-700/50 hover:bg-amber-800/80 transition-colors" title="Dispatch" aria-label="Dispatch call">D</button>
           )}
           {call.status === 'dispatched' && (
-            <button type="button" onClick={() => onStatusChange(call.id, 'enroute')} className="px-1.5 py-0.5 text-[8px] font-bold bg-gray-900/60 text-gray-300 border border-gray-700/50 hover:bg-gray-800/80 transition-colors" title="En Route" aria-label="Set en route">ER</button>
+            <button type="button" onClick={() => onStatusChange(call.id, 'enroute')} className="px-1.5 py-0.5 text-[8px] font-bold bg-surface-sunken/60 text-rmpg-300 border border-border-default/50 hover:bg-gray-800/80 transition-colors" title="En Route" aria-label="Set en route">ER</button>
           )}
           {call.status === 'enroute' && (
             <button type="button" onClick={() => onStatusChange(call.id, 'onscene')} className="px-1.5 py-0.5 text-[8px] font-bold bg-purple-900/60 text-purple-300 border border-purple-700/50 hover:bg-purple-800/80 transition-colors" title="On Scene" aria-label="Set on scene">OS</button>

@@ -181,8 +181,8 @@ export default function FuelAnalyticsPage() {
       {/* Totals strip */}
       {overview && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-          <Stat icon={Fuel} color="text-gray-400" label="Fills" value={fmtNumber(overview.totals.fill_count)} />
-          <Stat icon={Fuel} color="text-gray-400" label="Gallons" value={fmtNumber(overview.totals.total_gallons, 1)} />
+          <Stat icon={Fuel} color="text-rmpg-400" label="Fills" value={fmtNumber(overview.totals.fill_count)} />
+          <Stat icon={Fuel} color="text-rmpg-400" label="Gallons" value={fmtNumber(overview.totals.total_gallons, 1)} />
           <Stat icon={DollarSign} color="text-green-400" label="Total Cost" value={fmtCurrency(overview.totals.total_cost)} />
           <Stat icon={DollarSign} color="text-amber-400" label="Avg $/Gal" value={overview.totals.avg_cpg != null ? `$${overview.totals.avg_cpg.toFixed(3)}` : '—'} />
           <Stat icon={AlertTriangle} color="text-amber-400" label="Flag Rate" value={overview.totals.flag_rate != null ? `${overview.totals.flag_rate.toFixed(1)}%` : '—'} />

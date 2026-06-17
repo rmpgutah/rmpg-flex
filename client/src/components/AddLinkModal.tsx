@@ -263,13 +263,13 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
           <div className="mt-1 flex items-center gap-2 px-3 py-2 bg-brand-900/20 border border-brand-700/40 rounded-sm">
             <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
             <div className="flex-1 min-w-0">
-              <span className="text-xs font-mono text-white truncate block">{selected.label}</span>
+              <span className="text-xs font-mono text-rmpg-100 truncate block">{selected.label}</span>
               <span className="text-[9px] text-rmpg-400">
                 {TYPE_OPTIONS.find(t => t.value === linkedType)?.label} #{selected.id}
                 {selected.status && <> &middot; <span className={STATUS_COLORS[selected.status] || 'text-rmpg-400'}>{formatEnumValue(selected.status)}</span></>}
               </span>
             </div>
-            <button type="button" onClick={handleClearSelection} className="text-rmpg-500 hover:text-white p-0.5">
+            <button type="button" onClick={handleClearSelection} className="text-rmpg-500 hover:text-rmpg-100 p-0.5">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>

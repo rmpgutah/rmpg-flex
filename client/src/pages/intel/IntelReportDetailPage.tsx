@@ -80,13 +80,13 @@ export default function IntelReportDetailPage() {
       {r.raw_narrative != null && (
         <div>
           <div className="text-[9px] font-semibold" style={{ color: '#888' }}>RAW NARRATIVE (RESTRICTED)</div>
-          <div className="text-[11px] p-2" style={{ background: '#0b0b0b', borderRadius: 2 }}>{r.raw_narrative || '—'}</div>
+          <div className="text-[11px] p-2" style={{ background:"var(--surface-sunken)", borderRadius: 2 }}>{r.raw_narrative || '—'}</div>
         </div>
       )}
       {r.sanitized_narrative && (
         <div>
           <div className="text-[9px] font-semibold" style={{ color: '#888' }}>SANITIZED PRODUCT</div>
-          <div className="text-[11px] p-2" style={{ background: '#0b0b0b', borderRadius: 2 }}>{r.sanitized_narrative}</div>
+          <div className="text-[11px] p-2" style={{ background:"var(--surface-sunken)", borderRadius: 2 }}>{r.sanitized_narrative}</div>
         </div>
       )}
 

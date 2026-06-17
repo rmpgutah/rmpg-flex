@@ -297,7 +297,7 @@ export default function VoiceChannelIndicator() {
           className={`relative flex items-center justify-center bg-[#181818] border rounded font-mono overflow-hidden transition-colors ${
             drive.active
               ? 'gap-2 px-5 py-3 text-base text-[#d4a017] border-[#d4a017] shadow-lg'
-              : 'gap-1.5 px-2.5 py-1.5 text-xs text-gray-400 border-[#373737] hover:border-[#d4a017] hover:text-[#d4a017]'
+              : 'gap-1.5 px-2.5 py-1.5 text-xs text-rmpg-400 border-[#373737] hover:border-[#d4a017] hover:text-[#d4a017]'
           }`}
           style={drive.active ? { minWidth: 96, minHeight: 56 } : undefined}
           title={drive.active
@@ -356,7 +356,7 @@ export default function VoiceChannelIndicator() {
           )}
           {/* Conversation stack — most recent at top */}
           {(transcript || lastCommand || error) && (
-            <div className="flex flex-col gap-1 p-2" style={{ background: '#0a0a0a', borderBottom: '1px solid #2a2a2a' }}>
+            <div className="flex flex-col gap-1 p-2" style={{ background:"var(--surface-sunken)", borderBottom: '1px solid #2a2a2a' }}>
               {transcript && (
                 <div
                   className={`text-[11px] font-mono break-words ${
@@ -405,17 +405,17 @@ export default function VoiceChannelIndicator() {
 
           {/* Help panel — toggles via the ? button */}
           {showHelp && (
-            <div className="p-2.5 text-[10px] font-mono text-gray-300 leading-relaxed" style={{ background: '#0a0a0a', borderBottom: '1px solid #2a2a2a' }}>
+            <div className="p-2.5 text-[10px] font-mono text-rmpg-300 leading-relaxed" style={{ background:"var(--surface-sunken)", borderBottom: '1px solid #2a2a2a' }}>
               <div className="text-[#d4a017] uppercase tracking-wider mb-1">Help</div>
-              <ul className="space-y-0.5 text-gray-400">
+              <ul className="space-y-0.5 text-rmpg-400">
                 <li><span className="text-gray-100">Hold V {drive.active ? '1s' : '3s'}</span> — opens panel + starts listening</li>
                 <li><span className="text-gray-100">In-panel V button</span> — hold to talk · tap for a listen window</li>
                 <li><span className="text-gray-100">Type + Enter</span> — text query (still gets spoken reply)</li>
                 <li><span className="text-gray-100">🔊 / 🔇</span> — dispatch voice on/off for both spoken AND typed input (default ON)</li>
                 <li><span className="text-gray-100">Speak during a reply</span> — barge-in: dispatch stops, listens to you</li>
                 <li><span className="text-gray-100">Esc</span> — close panel</li>
-                <li className="pt-1 text-gray-500">Drive mode auto-engages above 30 mph and re-opens the mic after every reply</li>
-                <li className="text-gray-500">Try: "who's nearest?", "10-97", "run plate ABC123"</li>
+                <li className="pt-1 text-rmpg-500">Drive mode auto-engages above 30 mph and re-opens the mic after every reply</li>
+                <li className="text-rmpg-500">Try: "who's nearest?", "10-97", "run plate ABC123"</li>
               </ul>
             </div>
           )}
@@ -494,7 +494,7 @@ export default function VoiceChannelIndicator() {
               type="button"
               onClick={cycleConfirmMode}
               className={`px-2 text-[11px] font-mono transition-colors ${
-                confirmMode === 'speak' ? 'text-[#d4a017]' : 'text-gray-600 hover:text-gray-300'
+                confirmMode === 'speak' ? 'text-[#d4a017]' : 'text-gray-600 hover:text-rmpg-300'
               }`}
               title={confirmMode === 'speak' ? 'Voice ON — tap to mute (text only)' : 'Voice MUTED — tap to enable speech'}
               aria-label={confirmMode === 'speak' ? 'Mute dispatch voice' : 'Enable dispatch voice'}
@@ -505,7 +505,7 @@ export default function VoiceChannelIndicator() {
             <button
               type="button"
               onClick={() => setShowHelp(s => !s)}
-              className="px-1.5 text-[11px] font-mono text-gray-500 hover:text-[#d4a017] transition-colors"
+              className="px-1.5 text-[11px] font-mono text-rmpg-500 hover:text-[#d4a017] transition-colors"
               title="Toggle help"
               aria-label="Toggle help"
             >
@@ -514,7 +514,7 @@ export default function VoiceChannelIndicator() {
             <button
               type="button"
               onClick={() => { setOpen(false); setShowHelp(false); }}
-              className="px-1.5 text-xs text-gray-500 hover:text-gray-200 transition-colors"
+              className="px-1.5 text-xs text-rmpg-500 hover:text-gray-200 transition-colors"
               title="Close panel (Esc)"
               aria-label="Close voice panel"
             >

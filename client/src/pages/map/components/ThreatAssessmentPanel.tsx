@@ -141,7 +141,7 @@ export default function ThreatAssessmentPanel({
           <button type="button"
             onClick={onAssessCenter}
             disabled={loading}
-            className="flex-1 flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-200 transition-all duration-150 hover:text-white disabled:opacity-50 active:scale-[0.97]"
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-200 transition-all duration-150 hover:text-rmpg-100 disabled:opacity-50 active:scale-[0.97]"
             style={{ background: '#141414', border: '1px solid #282828' }}
             aria-label="Assess threat at map center"
           >
@@ -206,7 +206,7 @@ export default function ThreatAssessmentPanel({
                   >
                     {assessment.level}
                   </div>
-                  <span className="text-[10px] text-rmpg-500 ml-auto tabular-nums font-bold text-white">
+                  <span className="text-[10px] text-rmpg-500 ml-auto tabular-nums font-bold text-rmpg-100">
                     {assessment.recent_incidents} <span className="text-rmpg-500 font-normal">recent</span>
                   </span>
                 </div>
@@ -339,7 +339,7 @@ export default function ThreatAssessmentPanel({
                 <button type="button"
                   onClick={onGetApproachRoutes}
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-300 hover:text-white transition-all duration-150 disabled:opacity-50 active:scale-[0.97]"
+                  className="w-full flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-300 hover:text-rmpg-100 transition-all duration-150 disabled:opacity-50 active:scale-[0.97]"
                   style={{ background: '#141414', border: '1px solid #282828' }}
                   aria-label="Get approach routes"
                 >

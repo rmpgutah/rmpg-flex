@@ -34,7 +34,7 @@ interface Props {
 }
 
 export default function EditorToolbar(p: Props) {
-  const btn = 'p-1.5 rounded-sm text-rmpg-300 hover:text-white hover:bg-rmpg-700/60 transition-colors disabled:opacity-30 disabled:hover:bg-transparent';
+  const btn = 'p-1.5 rounded-sm text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/60 transition-colors disabled:opacity-30 disabled:hover:bg-transparent';
   return (
     <div className="flex items-center gap-1 bg-[#141414] border border-[#222222] rounded-[2px] px-2 py-1.5 flex-shrink-0 flex-wrap md:flex-nowrap">
       <IconButton onClick={p.onOpen} aria-label="Open PDF" title="Open PDF" className={btn}><Upload className="w-4 h-4" /></IconButton>
@@ -50,7 +50,7 @@ export default function EditorToolbar(p: Props) {
 
       <IconButton onClick={p.onZoomOut} aria-label="Zoom out" title="Zoom out" className={btn} disabled={!p.hasDocument}><ZoomOut className="w-4 h-4" /></IconButton>
       <button type="button" onClick={p.onZoomReset} disabled={!p.hasDocument}
-        className="px-2 py-1 text-[10px] text-rmpg-300 hover:text-white hover:bg-rmpg-700/60 rounded-sm disabled:opacity-30 min-w-[48px]"
+        className="px-2 py-1 text-[10px] text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/60 rounded-sm disabled:opacity-30 min-w-[48px]"
         title="Reset zoom"
       >{Math.round(p.zoom * 100)}%</button>
       <IconButton onClick={p.onZoomIn} aria-label="Zoom in" title="Zoom in" className={btn} disabled={!p.hasDocument}><ZoomIn className="w-4 h-4" /></IconButton>
@@ -73,7 +73,7 @@ export default function EditorToolbar(p: Props) {
         <IconButton onClick={p.onTogglePageNumbers}
           aria-label={p.pageNumbersActive ? 'Page numbers on (click to remove)' : 'Stamp "Page N of M" footer'}
           title={p.pageNumbersActive ? 'Page-number footer ON — click to remove' : 'Stamp a "Page N of M" footer on every page'}
-          className={`p-1.5 rounded-sm transition-colors ${p.pageNumbersActive ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/60'}`}
+          className={`p-1.5 rounded-sm transition-colors ${p.pageNumbersActive ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/60'}`}
           disabled={!p.hasDocument}><Hash className="w-4 h-4" /></IconButton>
       )}
 
@@ -90,7 +90,7 @@ export default function EditorToolbar(p: Props) {
           onClick={p.encryptionActive ? p.onClearEncryption ?? p.onEncrypt : p.onEncrypt}
           aria-label={p.encryptionActive ? 'Encryption configured (click to clear)' : 'Encrypt PDF on next save'}
           title={p.encryptionActive ? 'Encryption configured — click to clear' : 'Encrypt PDF on next save'}
-          className={`p-1.5 rounded-sm transition-colors ${p.encryptionActive ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/60'}`}
+          className={`p-1.5 rounded-sm transition-colors ${p.encryptionActive ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/60'}`}
           disabled={!p.hasDocument}
         >
           {p.encryptionActive ? <Lock className="w-4 h-4" /> : <LockOpen className="w-4 h-4" />}

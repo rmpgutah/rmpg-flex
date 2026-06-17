@@ -67,10 +67,10 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
         <div className="sticky top-0 bg-[#0b0b0b] border-b border-[#222222] px-3 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Car className="w-4 h-4 text-[#d4a017]" />
-            <span className="text-xl tracking-[0.2em] text-white font-semibold">{norm}</span>
+            <span className="text-xl tracking-[0.2em] text-rmpg-100 font-semibold">{norm}</span>
             {vehicle?.state && <span className="text-[11px] text-[#888888]">{vehicle.state}</span>}
           </div>
-          <button type="button" onClick={onClose} aria-label="Close dossier" className="text-[#888888] hover:text-white"><X className="w-5 h-5" /></button>
+          <button type="button" onClick={onClose} aria-label="Close dossier" className="text-[#888888] hover:text-rmpg-100"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-3 space-y-3">
@@ -96,7 +96,7 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
           {vehicle ? (
             <div className="border border-[#222222] bg-[#141414] p-2.5">
               <div className="text-[9px] uppercase tracking-wider text-[#888888] mb-1">On file</div>
-              <div className="text-sm text-white">{vehicleDesc || 'Vehicle record'}</div>
+              <div className="text-sm text-rmpg-100">{vehicleDesc || 'Vehicle record'}</div>
               {ownerName && <div className="text-[11px] text-[#aaaaaa] mt-0.5">Owner: {ownerName}</div>}
               {vehicle.is_stolen === 1 && <div className="text-[11px] text-red-400 font-semibold mt-0.5">⚠ FLAGGED STOLEN</div>}
             </div>

@@ -510,7 +510,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               style={{ background: 'linear-gradient(180deg, #991b1b, #7f1d1d)' }}
             >
               <AlertTriangle className="animate-emergency-blink" style={{ width: 20, height: 20, color: '#ffffff' }} />
-              <span className="text-sm font-bold uppercase tracking-widest text-white">
+              <span className="text-sm font-bold uppercase tracking-widest text-rmpg-100">
                 Emergency Panic Alert
               </span>
               <button type="button"
@@ -544,7 +544,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                     >
                       P1
                     </span>
-                    <span className="text-xs font-bold text-white font-mono">
+                    <span className="text-xs font-bold text-rmpg-100 font-mono">
                       {incomingAlert.call_number}
                     </span>
                     <span
@@ -561,14 +561,14 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               )}
 
               {incomingAlert.message && (
-                <div className="text-xs text-center text-white p-2" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
+                <div className="text-xs text-center text-rmpg-100 p-2" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
                   {incomingAlert.message}
                 </div>
               )}
 
               {/* Reverse-geocoded address */}
               {incomingAlert.location_address && (
-                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
+                <div className="text-center text-[10px] font-mono text-rmpg-100 p-1.5" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
                   <MapPin style={{ width: 9, height: 9, display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
                   {incomingAlert.location_address}
                 </div>

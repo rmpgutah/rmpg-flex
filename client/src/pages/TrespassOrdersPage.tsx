@@ -429,7 +429,7 @@ export default function TrespassOrdersPage() {
                   <span className={o.days_remaining < 0 ? 'text-red-400' : o.days_remaining < 14 ? 'text-amber-400' : 'text-green-400'}>
                     {Math.round(o.days_remaining)}d
                   </span>
-                  <span className="text-white">{o.subject_first_name} {o.subject_last_name}</span>
+                  <span className="text-rmpg-100">{o.subject_first_name} {o.subject_last_name}</span>
                   <span className="text-rmpg-500">{o.property_name || formatAddressDisplay(o.location)}</span>
                   <span className="text-rmpg-500 ml-auto">{o.expiration_date}</span>
                 </div>
@@ -441,10 +441,10 @@ export default function TrespassOrdersPage() {
 
       {/* Feature 19: Bulk Create Panel */}
       {bulkMode && (
-        <div className="px-3 py-2 border-b border-gray-700/50 bg-gray-900/10 text-xs">
+        <div className="px-3 py-2 border-b border-border-default bg-surface-sunken text-xs">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-gray-400 font-bold text-[10px] uppercase">Bulk Trespass Order Creation</span>
-            <IconButton onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-gray-500 hover:text-gray-300" aria-label="Cancel bulk mode"><X style={{ width: 12, height: 12 }} /></IconButton>
+            <span className="text-rmpg-400 font-bold text-[10px] uppercase">Bulk Trespass Order Creation</span>
+            <IconButton onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Cancel bulk mode"><X style={{ width: 12, height: 12 }} /></IconButton>
           </div>
           <div className="space-y-1 mb-2">
             {bulkPersons.map((p, i) => (
@@ -465,7 +465,7 @@ export default function TrespassOrdersPage() {
       )}
 
       {/* Toolbar */}
-      <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700`} style={{ background: '#0a0a0a' }}>
+      <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700 bg-surface-base`}>
         <div className={`relative ${isMobile ? 'w-full' : 'flex-1 max-w-xs'}`}>
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
           <input id="ff-trespassorderspage-2" type="text" placeholder="Search orders..." aria-label="Search orders..." className={`input-dark pl-7 w-full ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
@@ -535,7 +535,7 @@ export default function TrespassOrdersPage() {
                     </span>
                   </div>
                 </div>
-                <div className="text-xs text-white font-medium">
+                <div className="text-xs text-rmpg-100 font-medium">
                   <Ban className="w-3 h-3 inline mr-1 text-red-400" />
                   {order.subject_last_name}, {order.subject_first_name}
                 </div>
@@ -569,7 +569,7 @@ export default function TrespassOrdersPage() {
           <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h2 className="text-sm font-bold text-white font-mono">{selectedOrder.order_number}</h2>
+                <h2 className="text-sm font-bold text-rmpg-100 font-mono">{selectedOrder.order_number}</h2>
                 <span className="text-[10px] text-rmpg-400">Issued {safeDateTimeStr(selectedOrder.created_at)}</span>
               </div>
               <div className={`flex items-center ${isMobile ? 'gap-2 flex-wrap' : 'gap-1'}`}>
@@ -618,23 +618,23 @@ export default function TrespassOrdersPage() {
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-white font-medium">{selectedOrder.subject_last_name}, {selectedOrder.subject_first_name}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedOrder.subject_dob ? parseTimestamp(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Property</span><div className="text-white">{selectedOrder.property_name || '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-white">{formatAddressDisplay(selectedOrder.location)}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-white capitalize">{selectedOrder.order_type.replace(/_/g, ' ')}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Status</span><div className="text-white capitalize">{selectedOrder.status.replace(/_/g, ' ')}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-white">{selectedOrder.effective_date ? parseTimestamp(selectedOrder.effective_date).toLocaleDateString() : '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-white">{selectedOrder.expiration_date ? parseTimestamp(selectedOrder.expiration_date).toLocaleDateString() : 'Permanent'}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Issued By</span><div className="text-white">{selectedOrder.issued_by_name || selectedOrder.issued_by_display || '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Authorized By</span><div className="text-white">{selectedOrder.authorized_by || '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-rmpg-100 font-medium">{selectedOrder.subject_last_name}, {selectedOrder.subject_first_name}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-rmpg-100">{selectedOrder.subject_dob ? parseTimestamp(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Property</span><div className="text-rmpg-100">{selectedOrder.property_name || '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-rmpg-100">{formatAddressDisplay(selectedOrder.location)}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-rmpg-100 capitalize">{selectedOrder.order_type.replace(/_/g, ' ')}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Status</span><div className="text-rmpg-100 capitalize">{selectedOrder.status.replace(/_/g, ' ')}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-rmpg-100">{selectedOrder.effective_date ? parseTimestamp(selectedOrder.effective_date).toLocaleDateString() : '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-rmpg-100">{selectedOrder.expiration_date ? parseTimestamp(selectedOrder.expiration_date).toLocaleDateString() : 'Permanent'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Issued By</span><div className="text-rmpg-100">{selectedOrder.issued_by_name || selectedOrder.issued_by_display || '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Authorized By</span><div className="text-rmpg-100">{selectedOrder.authorized_by || '—'}</div></div>
               {(selectedOrder.sector_id || selectedOrder.zone_id || selectedOrder.beat_id) && (
-                <div><span className="text-rmpg-500 text-[10px] uppercase">S/Z/B</span><div className="text-white font-mono">{[selectedOrder.sector_id, selectedOrder.zone_id, selectedOrder.beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
+                <div><span className="text-rmpg-500 text-[10px] uppercase">S/Z/B</span><div className="text-rmpg-100 font-mono">{[selectedOrder.sector_id, selectedOrder.zone_id, selectedOrder.beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
               )}
               {selectedOrder.served_at && (
                 <>
-                  <div><span className="text-rmpg-500 text-[10px] uppercase">Served At</span><div className="text-white">{safeDateTimeStr(selectedOrder.served_at)}</div></div>
-                  <div><span className="text-rmpg-500 text-[10px] uppercase">Served By</span><div className="text-white">{selectedOrder.served_by_name || '—'}</div></div>
+                  <div><span className="text-rmpg-500 text-[10px] uppercase">Served At</span><div className="text-rmpg-100">{safeDateTimeStr(selectedOrder.served_at)}</div></div>
+                  <div><span className="text-rmpg-500 text-[10px] uppercase">Served By</span><div className="text-rmpg-100">{selectedOrder.served_by_name || '—'}</div></div>
                 </>
               )}
             </div>
@@ -664,15 +664,15 @@ export default function TrespassOrdersPage() {
       {/* Form Modal */}
       {formOpen && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => { clearFormDraft(); setFormOpen(false); }}>
-          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#0a0a0a' }}>
+          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700 bg-surface-base">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-[#d4a017] uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
                 {formIsDirty && (
                   <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
                 )}
               </div>
-              <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X style={{ width: 14, height: 14 }} /></IconButton>
+              <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close form"><X style={{ width: 14, height: 14 }} /></IconButton>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               {formWasRestored && (
@@ -696,7 +696,7 @@ export default function TrespassOrdersPage() {
                     <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-rmpg-600 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
                       {personResults.map((p: any) => (
                         <button key={p.id} type="button" onClick={() => selectPerson(p)}
-                          className="w-full text-left px-3 py-1.5 text-xs text-white hover:bg-rmpg-700 flex items-center gap-2">
+                          className="w-full text-left px-3 py-1.5 text-xs text-rmpg-100 hover:bg-rmpg-700 flex items-center gap-2">
                           <User className="w-3 h-3 text-rmpg-400" />
                           {p.last_name}, {p.first_name}
                         </button>
@@ -735,7 +735,7 @@ export default function TrespassOrdersPage() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                  <select id="ff-trespassorderspage-11" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select id="ff-trespassorderspage-11" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                     value={formData.sector_id || ''} onChange={e => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
@@ -743,7 +743,7 @@ export default function TrespassOrdersPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                  <select id="ff-trespassorderspage-12" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select id="ff-trespassorderspage-12" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                     value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {zonesForSection(formData.sector_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
@@ -751,7 +751,7 @@ export default function TrespassOrdersPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                  <select id="ff-trespassorderspage-13" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select id="ff-trespassorderspage-13" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                     value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
                     <option value="">—</option>
                     {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}

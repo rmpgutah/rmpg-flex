@@ -126,7 +126,7 @@ export function Combobox<T>(props: ComboboxProps<T>) {
                   setQuery(getLabel(opt));
                   setOpen(false);
                 }}
-                className={`px-3 py-2 text-xs text-white hover:bg-[#1a1a1a] cursor-pointer ${isActive ? 'bg-[#1a1a1a]' : ''}`}
+                className={`px-3 py-2 text-xs text-rmpg-100 hover:bg-[#1a1a1a] cursor-pointer ${isActive ? 'bg-[#1a1a1a]' : ''}`}
               >
                 {renderOption(opt)}
               </li>

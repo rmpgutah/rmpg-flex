@@ -118,7 +118,7 @@ export default function TimeEntryEditModal({
         <div className="panel-beveled p-3 flex items-center justify-between">
           <div>
             <p className="field-label">Officer</p>
-            <p className="text-sm text-white font-bold">{entry.officer_name || 'Unknown'}</p>
+            <p className="text-sm text-rmpg-100 font-bold">{entry.officer_name || 'Unknown'}</p>
           </div>
           <div className="text-right">
             <p className="field-label">Entry ID</p>

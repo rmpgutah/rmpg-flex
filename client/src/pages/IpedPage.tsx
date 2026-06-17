@@ -73,7 +73,7 @@ interface StatusStats {
 // ── Status Badge Colors ─────────────────────────────────────
 
 const STATUS_STYLES: Record<string, string> = {
-  queued:    'bg-gray-900/50 text-gray-400 border border-gray-700/50',
+  queued:    'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50',
   running:   'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   completed: 'bg-green-900/50 text-green-400 border border-green-700/50',
   failed:    'bg-red-900/50 text-red-400 border border-red-700/50',
@@ -345,13 +345,13 @@ export default function IpedPage() {
       <div className="flex items-center justify-between px-4 py-2 border-b border-[#2b2b2b]">
         <div className="flex items-center gap-2">
           <HardDrive size={16} className="text-brand-blue" />
-          <h1 className="text-sm font-bold text-white tracking-wide uppercase">Digital Forensics</h1>
+          <h1 className="text-sm font-bold text-rmpg-100 tracking-wide uppercase">Digital Forensics</h1>
           <span className="text-[10px] text-rmpg-500 ml-1">IPED</span>
         </div>
         <div className="flex items-center gap-2">
           <button type="button"
             onClick={() => { fetchStatus(); fetchJobs(); fetchHashSets(); }}
-            className="p-1.5 rounded-sm hover:bg-[#181818] text-rmpg-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-sm hover:bg-[#181818] text-rmpg-400 hover:text-rmpg-100 transition-colors"
             title="Refresh all"
           >
             <RefreshCw size={14} />
@@ -382,7 +382,7 @@ export default function IpedPage() {
           <StatCard label="Running" value={stats.runningJobs} icon={Activity} color="text-amber-400" pulse={stats.runningJobs > 0} />
           <StatCard label="Completed" value={stats.completedJobs} icon={CheckCircle} color="text-green-400" />
           <StatCard label="Failed" value={stats.failedJobs} icon={AlertTriangle} color="text-red-400" />
-          <StatCard label="Total Hashes" value={stats.totalHashes} icon={Hash} color="text-gray-400" />
+          <StatCard label="Total Hashes" value={stats.totalHashes} icon={Hash} color="text-rmpg-400" />
           <StatCard label="Flagged" value={stats.flaggedHashes} icon={Shield} color="text-red-400" />
         </div>
 
@@ -391,7 +391,7 @@ export default function IpedPage() {
           <div className="flex items-center justify-between px-3 py-2 border-b border-[#2b2b2b]">
             <div className="flex items-center gap-2">
               <Search size={13} className="text-brand-blue" />
-              <span className="text-xs font-bold text-white uppercase tracking-wide">Hash Search</span>
+              <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wide">Hash Search</span>
             </div>
           </div>
           <div className="p-3 space-y-2">
@@ -402,7 +402,7 @@ export default function IpedPage() {
                 onChange={e => setHashSearchQuery(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleHashSearch()}
                 placeholder="Search MD5, SHA1, or SHA256 hash..." aria-label="Search MD5, SHA1, or SHA256 hash..."
-                className="flex-1 px-2 py-1.5 text-xs bg-[#0c0c0c] border border-[#2b2b2b] text-white placeholder-rmpg-500 font-mono outline-none"
+                className="flex-1 px-2 py-1.5 text-xs bg-[#0c0c0c] border border-[#2b2b2b] text-rmpg-100 placeholder-rmpg-500 font-mono outline-none"
               />
               <button type="button" onClick={handleHashSearch} disabled={hashSearching || !hashSearchQuery.trim()}
                 className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold bg-brand-blue/20 text-brand-blue border border-brand-blue/30 hover:bg-brand-blue/30 disabled:opacity-50 transition-colors">
@@ -426,7 +426,7 @@ export default function IpedPage() {
                       ) : (
                         <Hash size={11} className="text-rmpg-400 flex-shrink-0" />
                       )}
-                      <span className="text-white font-mono text-[9px] truncate">{hr.md5}</span>
+                      <span className="text-rmpg-100 font-mono text-[9px] truncate">{hr.md5}</span>
                       {hr.flagged ? (
                         <span className="text-[8px] px-1 py-0.5 bg-red-900/50 text-red-400 border border-red-700/50 font-bold">FLAGGED</span>
                       ) : null}
@@ -449,7 +449,7 @@ export default function IpedPage() {
           <div className="flex items-center justify-between px-3 py-2 border-b border-[#2b2b2b]">
             <div className="flex items-center gap-2">
               <Database size={13} className="text-brand-blue" />
-              <span className="text-xs font-bold text-white uppercase tracking-wide">Hash Sets</span>
+              <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wide">Hash Sets</span>
               <span className="text-[10px] text-rmpg-500">({hashSets.length})</span>
             </div>
             <button type="button"
@@ -472,7 +472,7 @@ export default function IpedPage() {
                 {hashSets.map((hs) => (
                   <div key={hs.name} className="flex items-center justify-between px-3 py-2 rounded-sm bg-[#0c0c0c] border border-[#2b2b2b] group">
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold text-white truncate">{hs.name}</div>
+                      <div className="text-xs font-semibold text-rmpg-100 truncate">{hs.name}</div>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className={`text-[10px] px-1.5 py-0.5 rounded-sm ${hs.category === 'known_bad' ? 'bg-red-900/40 text-red-400' : 'bg-green-900/40 text-green-400'}`}>
                           {hs.category === 'known_bad' ? 'Known Bad' : hs.category}
@@ -500,7 +500,7 @@ export default function IpedPage() {
           <div className="flex items-center justify-between px-3 py-2 border-b border-[#2b2b2b]">
             <div className="flex items-center gap-2">
               <Server size={13} className="text-brand-blue" />
-              <span className="text-xs font-bold text-white uppercase tracking-wide">Job Queue</span>
+              <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wide">Job Queue</span>
               <span className="text-[10px] text-rmpg-500">({jobsTotal})</span>
             </div>
             <div className="flex items-center gap-2">
@@ -597,7 +597,7 @@ export default function IpedPage() {
                             )}
                             <button type="button"
                               onClick={(e) => { e.stopPropagation(); fetchJobDetail(job.id); }}
-                              className="p-1 rounded-sm text-rmpg-400 hover:text-white hover:bg-[#181818] transition-colors"
+                              className="p-1 rounded-sm text-rmpg-400 hover:text-rmpg-100 hover:bg-[#181818] transition-colors"
                               title="View details"
                             >
                               <Eye size={12} />
@@ -622,14 +622,14 @@ export default function IpedPage() {
                 <button type="button"
                   disabled={jobsPage <= 1}
                   onClick={() => setJobsPage(p => p - 1)}
-                  className="px-2 py-1 text-[10px] rounded-sm bg-[#0c0c0c] border border-[#2b2b2b] text-rmpg-400 hover:text-white disabled:opacity-40 transition-colors"
+                  className="px-2 py-1 text-[10px] rounded-sm bg-[#0c0c0c] border border-[#2b2b2b] text-rmpg-400 hover:text-rmpg-100 disabled:opacity-40 transition-colors"
                 >
                   Prev
                 </button>
                 <button type="button"
                   disabled={jobsPage >= totalPages}
                   onClick={() => setJobsPage(p => p + 1)}
-                  className="px-2 py-1 text-[10px] rounded-sm bg-[#0c0c0c] border border-[#2b2b2b] text-rmpg-400 hover:text-white disabled:opacity-40 transition-colors"
+                  className="px-2 py-1 text-[10px] rounded-sm bg-[#0c0c0c] border border-[#2b2b2b] text-rmpg-400 hover:text-rmpg-100 disabled:opacity-40 transition-colors"
                 >
                   Next
                 </button>
@@ -644,14 +644,14 @@ export default function IpedPage() {
             <div className="flex items-center justify-between px-3 py-2 border-b border-[#2b2b2b]">
               <div className="flex items-center gap-2">
                 <FileText size={13} className="text-brand-blue" />
-                <span className="text-xs font-bold text-white">Job #{selectedJob.id} Detail</span>
+                <span className="text-xs font-bold text-rmpg-100">Job #{selectedJob.id} Detail</span>
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[10px] font-semibold ${STATUS_STYLES[selectedJob.status] || ''}`}>
                   {formatLabel(selectedJob.status)}
                 </span>
               </div>
               <button type="button"
                 onClick={() => { setSelectedJob(null); setJobHashes([]); setJobProgress(null); }}
-                className="p-1 rounded-sm text-rmpg-500 hover:text-white hover:bg-[#181818] transition-colors"
+                className="p-1 rounded-sm text-rmpg-500 hover:text-rmpg-100 hover:bg-[#181818] transition-colors"
               >
                 <X size={14} />
               </button>
@@ -741,13 +741,13 @@ export default function IpedPage() {
                       {selectedJob.items_found != null && (
                         <div className="flex items-center gap-1">
                           <Search size={11} className="text-rmpg-500" />
-                          <span className="text-rmpg-400">Found: <strong className="text-white">{selectedJob.items_found}</strong></span>
+                          <span className="text-rmpg-400">Found: <strong className="text-rmpg-100">{selectedJob.items_found}</strong></span>
                         </div>
                       )}
                       {selectedJob.items_processed != null && (
                         <div className="flex items-center gap-1">
                           <CheckCircle size={11} className="text-rmpg-500" />
-                          <span className="text-rmpg-400">Processed: <strong className="text-white">{selectedJob.items_processed}</strong></span>
+                          <span className="text-rmpg-400">Processed: <strong className="text-rmpg-100">{selectedJob.items_processed}</strong></span>
                         </div>
                       )}
                     </div>
@@ -804,9 +804,9 @@ export default function IpedPage() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b]">
               <div className="flex items-center gap-2">
                 <Plus size={14} className="text-brand-blue" />
-                <span className="text-sm font-bold text-white">Create Processing Job</span>
+                <span className="text-sm font-bold text-rmpg-100">Create Processing Job</span>
               </div>
-              <button type="button" onClick={() => setShowNewJob(false)} className="p-1 rounded-sm text-rmpg-500 hover:text-white hover:bg-[#181818] transition-colors">
+              <button type="button" onClick={() => setShowNewJob(false)} className="p-1 rounded-sm text-rmpg-500 hover:text-rmpg-100 hover:bg-[#181818] transition-colors">
                 <X size={14} />
               </button>
             </div>
@@ -877,14 +877,14 @@ export default function IpedPage() {
             <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[#2b2b2b]">
               <button type="button"
                 onClick={() => setShowNewJob(false)}
-                className="px-3 py-1.5 text-xs rounded-sm bg-[#181818] text-rmpg-400 hover:text-white border border-[#2b2b2b] transition-colors"
+                className="px-3 py-1.5 text-xs rounded-sm bg-[#181818] text-rmpg-400 hover:text-rmpg-100 border border-[#2b2b2b] transition-colors"
               >
                 Cancel
               </button>
               <button type="button"
                 onClick={handleCreateJob}
                 disabled={newJobSubmitting}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-brand-blue text-white hover:bg-brand-blue/80 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-brand-blue text-rmpg-100 hover:bg-brand-blue/80 disabled:opacity-50 transition-colors"
               >
                 {newJobSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                 Create Job
@@ -901,9 +901,9 @@ export default function IpedPage() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b]">
               <div className="flex items-center gap-2">
                 <Upload size={14} className="text-brand-blue" />
-                <span className="text-sm font-bold text-white">Import Hash Set</span>
+                <span className="text-sm font-bold text-rmpg-100">Import Hash Set</span>
               </div>
-              <button type="button" onClick={() => setShowImportHashSet(false)} className="p-1 rounded-sm text-rmpg-500 hover:text-white hover:bg-[#181818] transition-colors">
+              <button type="button" onClick={() => setShowImportHashSet(false)} className="p-1 rounded-sm text-rmpg-500 hover:text-rmpg-100 hover:bg-[#181818] transition-colors">
                 <X size={14} />
               </button>
             </div>
@@ -958,14 +958,14 @@ export default function IpedPage() {
             <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[#2b2b2b]">
               <button type="button"
                 onClick={() => setShowImportHashSet(false)}
-                className="px-3 py-1.5 text-xs rounded-sm bg-[#181818] text-rmpg-400 hover:text-white border border-[#2b2b2b] transition-colors"
+                className="px-3 py-1.5 text-xs rounded-sm bg-[#181818] text-rmpg-400 hover:text-rmpg-100 border border-[#2b2b2b] transition-colors"
               >
                 Cancel
               </button>
               <button type="button"
                 onClick={handleImportHashSet}
                 disabled={importSubmitting}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-brand-blue text-white hover:bg-brand-blue/80 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-brand-blue text-rmpg-100 hover:bg-brand-blue/80 disabled:opacity-50 transition-colors"
               >
                 {importSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
                 Import
@@ -993,7 +993,7 @@ function StatCard({ label, value, icon: Icon, color, pulse }: {
         <Icon size={14} className={pulse ? 'animate-pulse' : ''} />
       </div>
       <div>
-        <p className="text-lg font-bold text-white leading-none">{value.toLocaleString()}</p>
+        <p className="text-lg font-bold text-rmpg-100 leading-none">{value.toLocaleString()}</p>
         <p className="text-[10px] text-rmpg-500 uppercase tracking-wide mt-0.5">{label}</p>
       </div>
     </div>

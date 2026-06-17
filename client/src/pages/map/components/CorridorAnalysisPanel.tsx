@@ -89,7 +89,7 @@ export default function CorridorAnalysisPanel({
             <button type="button"
               onClick={onAnalyzeCorridor}
               disabled={loading}
-              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-gray-600/20 border border-gray-500/30 text-gray-300 hover:bg-gray-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.97]"
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-gray-600/20 border border-gray-500/30 text-rmpg-300 hover:bg-gray-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.97]"
               aria-label="Analyze corridor route"
             >
               {loading ? <Loader2 size={10} className="animate-spin" /> : <Route size={10} />}

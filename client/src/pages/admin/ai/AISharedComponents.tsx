@@ -87,11 +87,11 @@ export function ProviderCard({
     <div className="bg-[#0b0b0b] border border-[#1c1c1c] rounded p-3 space-y-2">
       <div className="flex items-center gap-2">
         <div className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-green-500' : 'bg-rmpg-600'}`} />
-        <span className="text-xs font-medium text-white flex-1">{label}</span>
+        <span className="text-xs font-medium text-rmpg-100 flex-1">{label}</span>
         <button
           onClick={onTest}
           disabled={testResult === 'loading'}
-          className="flex items-center gap-1 text-[10px] px-2 py-1 bg-[#121212] border border-[#1c1c1c] text-rmpg-300 hover:text-white hover:border-brand-500/50 rounded transition-colors disabled:opacity-50"
+          className="flex items-center gap-1 text-[10px] px-2 py-1 bg-[#121212] border border-[#1c1c1c] text-rmpg-300 hover:text-rmpg-100 hover:border-brand-500/50 rounded transition-colors disabled:opacity-50"
         >
           {testResult === 'loading' ? (
             <Loader2 className="w-3 h-3 animate-spin" />
@@ -134,12 +134,12 @@ export function KeyInput({
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder="Enter API key..."
-          className="w-full bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1.5 pr-8 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono"
+          className="w-full bg-[#0b0b0b] border border-[#1c1c1c] text-rmpg-100 text-xs rounded px-2 py-1.5 pr-8 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono"
         />
         <button
           type="button"
           onClick={onToggle}
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-rmpg-500 hover:text-white"
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-rmpg-500 hover:text-rmpg-100"
         >
           {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
         </button>
@@ -157,7 +157,7 @@ export function ModelInput({ value, onChange, placeholder }: { value: string; on
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className="flex-1 bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono"
+        className="flex-1 bg-[#0b0b0b] border border-[#1c1c1c] text-rmpg-100 text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono"
       />
     </div>
   );
@@ -166,7 +166,7 @@ export function ModelInput({ value, onChange, placeholder }: { value: string; on
 export function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="text-center">
-      <div className="text-lg font-bold text-white font-mono">{value}</div>
+      <div className="text-lg font-bold text-rmpg-100 font-mono">{value}</div>
       <div className="text-[10px] text-rmpg-500 mt-0.5">{label}</div>
     </div>
   );
@@ -226,7 +226,7 @@ export function CleanupSection({
         ) : (
           <ChevronRight className="w-3.5 h-3.5 text-rmpg-500" />
         )}
-        <span className="text-xs text-white font-medium">{title}</span>
+        <span className="text-xs text-rmpg-100 font-medium">{title}</span>
         {empty && <span className="text-[10px] text-green-500 ml-1">All clear</span>}
       </button>
       {expanded && !empty && (
@@ -251,7 +251,7 @@ export function ProviderSelect({
     <select id="ff-aisharedcomponents-2"
       value={value}
       onChange={e => onChange(e.target.value)}
-      className={`bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none ${className}`}
+      className={`bg-[#0b0b0b] border border-[#1c1c1c] text-rmpg-100 text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none ${className}`}
     >
       <option value="auto">Auto (Fallback)</option>
       <option value="groq">Groq (LLaMA)</option>

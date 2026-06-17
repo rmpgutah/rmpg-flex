@@ -103,7 +103,7 @@ export default function IntelContextPanel() {
               return (
                 <div className="space-y-3">
                   <div>
-                    <div className="text-[13px] text-white font-bold">{name}</div>
+                    <div className="text-[13px] text-rmpg-100 font-bold">{name}</div>
                     <div className="flex gap-1 flex-wrap mt-[6px]">
                       {(dossier.flags || []).map((f) => (
                         <span key={f} className="font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] bg-[#3a0d0a] text-[#ff6b5e]">{f}</span>

@@ -103,7 +103,7 @@ function WarningTags({ warnings, compact = false }: WarningTagsProps) {
             }}
           >
             <Icon style={{ width: 11, height: 11, flexShrink: 0 }} />
-            <span className="flex-1 truncate">{w.label}</span>
+            <span className="flex-1 min-w-0 truncate">{w.label}</span>
             <span className="text-[8px] opacity-60 normal-case">{w.source}</span>
           </div>
         );

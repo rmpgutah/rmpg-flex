@@ -269,7 +269,7 @@ export default function GeofenceManager({
                       <span className="text-amber-500">enter alert</span>
                     ) : null}
                     {fence.alert_on_exit ? (
-                      <span className="text-gray-400">exit alert</span>
+                      <span className="text-rmpg-400">exit alert</span>
                     ) : null}
                   </div>
 
@@ -285,10 +285,10 @@ export default function GeofenceManager({
                         <div
                           key={i}
                           className="flex items-center justify-between text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
-                          style={{ background: '#0a0a0a' }}
+                          style={{ background:"var(--surface-sunken)" }}
                         >
                           <span className="text-rmpg-300">{a.unitCallSign}</span>
-                          <span className={a.eventType === 'enter' ? 'text-amber-400' : 'text-gray-400'}>
+                          <span className={a.eventType === 'enter' ? 'text-amber-400' : 'text-rmpg-400'}>
                             {a.eventType}
                           </span>
                           <span className="text-rmpg-600">{timeAgo(a.timestamp)}</span>
@@ -312,7 +312,7 @@ export default function GeofenceManager({
                     {onNavigate && centroid && (
                       <button type="button"
                         onClick={() => onNavigate(centroid.lat, centroid.lng)}
-                        className="toolbar-btn p-1 text-gray-400 hover:text-gray-300"
+                        className="toolbar-btn p-1 text-rmpg-400 hover:text-rmpg-300"
                         title="Navigate to zone"
                       >
                         <Navigation size={12} />

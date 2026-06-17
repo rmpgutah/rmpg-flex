@@ -95,7 +95,7 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by incident #, type, location, narrative…"
-            className="w-full bg-[#0a0a0a] border border-[#2a2a2a] pl-7 pr-2 py-1.5 text-[11px] text-white"
+            className="w-full bg-[#0a0a0a] border border-[#2a2a2a] pl-7 pr-2 py-1.5 text-[11px] text-rmpg-100"
             style={{ borderRadius: 2 }}
           />
         </div>

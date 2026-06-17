@@ -101,7 +101,7 @@ export default function UnitRecommendationPanel({
                 />
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-white font-mono">
+                    <span className="text-[11px] font-bold text-rmpg-100 font-mono">
                       {item.unit.call_sign}
                     </span>
                     {item.unit.status !== 'available' && (

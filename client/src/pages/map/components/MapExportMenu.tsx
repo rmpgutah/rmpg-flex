@@ -102,7 +102,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
           <>
             <Download className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${light ? 'text-gray-600' : 'text-rmpg-300'}`} />
             {/* #23: Dropdown chevron with smooth rotation */}
-            {!isMobile && <ChevronDown className={`w-3 h-3 ${light ? 'text-gray-500' : 'text-rmpg-400'} transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />}
+            {!isMobile && <ChevronDown className={`w-3 h-3 ${light ? 'text-rmpg-500' : 'text-rmpg-400'} transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />}
           </>
         )}
       </button>

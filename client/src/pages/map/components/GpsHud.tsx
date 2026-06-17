@@ -269,14 +269,14 @@ export default function GpsHud({ gps, nav, onExport, onClear, onClose }: Props) 
         <button
           onClick={() => onExport('csv')}
           disabled={gps.capturedCount === 0}
-          className="flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold uppercase text-rmpg-300 hover:text-white hover:bg-rmpg-700/60 disabled:opacity-30 transition-colors"
+          className="flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold uppercase text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/60 disabled:opacity-30 transition-colors"
           style={{ borderRadius: 2 }}
           title="Export track as CSV"
         ><Download className="w-2.5 h-2.5" />CSV</button>
         <button
           onClick={() => onExport('geojson')}
           disabled={gps.capturedCount === 0}
-          className="flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold uppercase text-rmpg-300 hover:text-white hover:bg-rmpg-700/60 disabled:opacity-30 transition-colors"
+          className="flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold uppercase text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/60 disabled:opacity-30 transition-colors"
           style={{ borderRadius: 2 }}
           title="Export track as GeoJSON"
         ><Download className="w-2.5 h-2.5" />GEO</button>

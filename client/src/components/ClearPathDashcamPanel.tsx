@@ -42,7 +42,7 @@ export default function ClearPathDashcamPanel({ dashcamCount }: { dashcamCount: 
           <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
           <span className="text-[#888888] font-normal tracking-wide">{label}</span>
         </div>
-        <button type="button" onClick={() => navigate('/admin')} className="text-[#888888] hover:text-white flex items-center gap-1 text-[9px]" title="Configure ClearPath GPS">
+        <button type="button" onClick={() => navigate('/admin')} className="text-[#888888] hover:text-rmpg-100 flex items-center gap-1 text-[9px]" title="Configure ClearPath GPS">
           <Settings className="w-3 h-3" /> Configure
         </button>
       </div>
@@ -67,7 +67,7 @@ export default function ClearPathDashcamPanel({ dashcamCount }: { dashcamCount: 
 function Stat({ icon, value, label }: { icon?: React.ReactNode; value: React.ReactNode; label: string }) {
   return (
     <div className="px-2 py-1.5 text-center">
-      <div className="text-sm font-bold text-white font-mono flex items-center justify-center gap-1">{icon}{value}</div>
+      <div className="text-sm font-bold text-rmpg-100 font-mono flex items-center justify-center gap-1">{icon}{value}</div>
       <div className="text-[8px] uppercase tracking-wider text-[#888888]">{label}</div>
     </div>
   );

@@ -108,8 +108,8 @@ export default function CallHistoryPanel({
         style={{ background: '#050505', borderBottom: '1px solid #282828' }}
       >
         <div className="flex items-center gap-2">
-          <Clock size={13} className="text-gray-400" />
-          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">
+          <Clock size={13} className="text-rmpg-400" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-rmpg-300">
             Call History
           </span>
           {/* #40: Call count badge with border */}
@@ -151,14 +151,14 @@ export default function CallHistoryPanel({
             style={{ background: '#050505', border: '1px solid #282828' }}
           >
             <div className="flex items-center gap-1">
-              <Phone size={10} className="text-gray-400" />
+              <Phone size={10} className="text-rmpg-400" />
               <span className="text-[9px] font-mono text-rmpg-300">
                 {stats.total} calls
               </span>
             </div>
             {stats.avgResponse != null && (
               <div className="flex items-center gap-1">
-                <TrendingUp size={10} className="text-gray-400" />
+                <TrendingUp size={10} className="text-rmpg-400" />
                 <span className="text-[9px] font-mono text-rmpg-300">
                   Avg {formatMinutes(stats.avgResponse)}
                 </span>
@@ -246,7 +246,7 @@ export default function CallHistoryPanel({
                       style={{ borderLeft: `2px solid ${pColor}` }}
                     >
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[9px] font-mono font-bold text-gray-300">
+                        <span className="text-[9px] font-mono font-bold text-rmpg-300">
                           {call.call_number}
                         </span>
                         <div className="flex items-center gap-1.5">

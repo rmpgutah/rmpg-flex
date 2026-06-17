@@ -749,7 +749,7 @@ export default function DashCamDetailPage() {
 
             {/* Unit call sign */}
             {video.unit_call_sign && (
-              <span className="text-gray-400 font-bold tracking-wide">
+              <span className="text-rmpg-400 font-bold tracking-wide">
                 {video.unit_call_sign}
               </span>
             )}
@@ -768,7 +768,7 @@ export default function DashCamDetailPage() {
 
             {/* Info panel toggle */}
             <button type="button" onClick={() => setPanelOpen(p => !p)}
-              className="text-rmpg-400 hover:text-white transition-colors p-0.5" title="Toggle panel (I)">
+              className="text-rmpg-400 hover:text-rmpg-100 transition-colors p-0.5" title="Toggle panel (I)">
               <Info className="w-4 h-4" />
             </button>
           </div>

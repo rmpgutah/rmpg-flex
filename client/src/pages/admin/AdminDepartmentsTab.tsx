@@ -262,7 +262,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Department' : 'New Department'}
               </h3>
-              <IconButton onClick={() => setShowForm(false)} className="p-1 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Close dialog"><X className="w-4 h-4" /></IconButton>
+              <IconButton onClick={() => setShowForm(false)} className="p-1 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Close dialog"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>

@@ -793,7 +793,7 @@ export default function ServePage() {
       <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken flex-wrap" role="toolbar" aria-label="Process Server controls">
         <div className="flex items-center gap-1.5">
           <Briefcase size={16} className="text-[#d4a017]" />
-          {!isMobile && <span className="text-sm font-semibold text-white tracking-wider">PROCESS SERVER</span>}
+          {!isMobile && <span className="text-sm font-semibold text-rmpg-100 tracking-wider">PROCESS SERVER</span>}
           {!isMobile && <span className="block h-px w-full bg-[#d4a017]/30 mt-0.5" />}
         </div>
 
@@ -804,7 +804,7 @@ export default function ServePage() {
             type="date"
             value={selectedDate}
             onChange={e => setSelectedDate(e.target.value)}
-            className="px-2 py-1 text-xs bg-surface-raised border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+            className="px-2 py-1 text-xs bg-surface-raised border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
           />
           {/* Route stats inline (Step 3.5) */}
           {savedRoute && savedRoute.optimized_order_json && (() => {
@@ -833,7 +833,7 @@ export default function ServePage() {
         <div className="flex items-center gap-1.5">
           <button type="button"
             onClick={() => setRoutePlannerOpen(true)}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
             title="Plan Route"
             aria-label="Plan Route"
           >
@@ -843,7 +843,7 @@ export default function ServePage() {
           <button type="button"
             onClick={handleSyncFromSM}
             disabled={syncing}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 disabled:opacity-40 hover:shadow-[0_0_8px_rgba(34,211,238,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 disabled:opacity-40 hover:shadow-[0_0_8px_rgba(34,211,238,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
             title="Sync from ServeManager"
             aria-label="Sync from ServeManager"
           >
@@ -901,7 +901,7 @@ export default function ServePage() {
                   onClick={() => setStatusFilter(f.value)}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-[#888888]/50 ${
                     statusFilter === f.value
-                      ? 'text-white bg-[#888888] border-[#888888] shadow-[0_0_6px_rgba(212,160,23,0.3)]'
+                      ? 'text-rmpg-100 bg-[#888888] border-[#888888] shadow-[0_0_6px_rgba(212,160,23,0.3)]'
                       : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-200'
                   }`}
                 >
@@ -1009,18 +1009,18 @@ export default function ServePage() {
                   {/* Stats bar */}
                   <div className="flex items-center gap-4 flex-wrap px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded-[2px]" role="status" aria-label="Route statistics">
                     <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
-                      <MapPin size={12} className="text-gray-400" />
-                      <span className="font-mono tabular-nums text-white">{totalStops}</span> stops
+                      <MapPin size={12} className="text-rmpg-400" />
+                      <span className="font-mono tabular-nums text-rmpg-100">{totalStops}</span> stops
                     </div>
                     <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
                       <Navigation size={12} className="text-emerald-400" />
-                      <span className="font-mono tabular-nums text-white">
+                      <span className="font-mono tabular-nums text-rmpg-100">
                         {savedRoute.total_distance_miles ? `${Number(savedRoute.total_distance_miles).toFixed(1)} mi` : '--'}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
                       <Calendar size={12} className="text-amber-400" />
-                      <span className="font-mono tabular-nums text-white">
+                      <span className="font-mono tabular-nums text-rmpg-100">
                         {savedRoute.total_time_minutes
                           ? `~${Math.floor(savedRoute.total_time_minutes / 60)}h ${Math.round(savedRoute.total_time_minutes % 60)}m`
                           : '--'}
@@ -1063,7 +1063,7 @@ export default function ServePage() {
                         >
                           {/* Stop number */}
                           <span
-                            className="w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-white flex-shrink-0"
+                            className="w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-rmpg-100 flex-shrink-0"
                             style={{
                               background: isCompleted ? '#22c55e' : isFailed ? '#ef4444' : job.status === 'in_progress' ? '#eab308' : '#888888',
                             }}
@@ -1080,7 +1080,7 @@ export default function ServePage() {
 
                           {/* Info */}
                           <div className="flex-1 min-w-0">
-                            <div className={`text-xs font-medium truncate ${isCompleted ? 'text-rmpg-400 line-through' : 'text-white'}`}>
+                            <div className={`text-xs font-medium truncate ${isCompleted ? 'text-rmpg-400 line-through' : 'text-rmpg-100'}`}>
                               {job.recipient_name}
                             </div>
                             <div className="text-[10px] text-rmpg-500 truncate">
@@ -1107,7 +1107,7 @@ export default function ServePage() {
                   <div className="flex items-center gap-2 pt-2">
                     <button type="button"
                       onClick={() => setRoutePlannerOpen(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
                       aria-label="Open Route Planner"
                     >
                       <Route size={12} />
@@ -1140,7 +1140,7 @@ export default function ServePage() {
                 <p className="text-sm text-rmpg-400 font-medium mb-3">No route planned for this date.</p>
                 <button type="button"
                   onClick={() => setRoutePlannerOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 bg-gray-900/20 hover:bg-gray-900/40 border border-gray-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
                   aria-label="Open Route Planner"
                 >
                   <Route size={12} />
@@ -1168,7 +1168,7 @@ export default function ServePage() {
             {mapReady && jobs.some(j => j.status === 'pending' || j.status === 'in_progress') && (
               <button type="button"
                 onClick={handleNavigateToNext}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] shadow-lg shadow-[#888888]/20 border border-[#888888] transition-all duration-150 hover:shadow-[0_0_16px_rgba(212,160,23,0.3)] focus:outline-none focus:ring-2 focus:ring-[#888888]/50"
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-rmpg-100 bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] shadow-lg shadow-[#888888]/20 border border-[#888888] transition-all duration-150 hover:shadow-[0_0_16px_rgba(212,160,23,0.3)] focus:outline-none focus:ring-2 focus:ring-[#888888]/50"
               >
                 <Navigation size={16} />
                 Navigate to Next
@@ -1185,9 +1185,9 @@ export default function ServePage() {
               <StatCard
                 label="Jobs Remaining"
                 value={(stats?.pending ?? 0) + (stats?.in_progress ?? 0)}
-                color="text-gray-400"
-                bg="bg-gray-900/20"
-                border="border-gray-700/40"
+                color="text-rmpg-400"
+                bg="bg-surface-sunken/20"
+                border="border-border-default/40"
               />
               <StatCard
                 label="Served Today"
@@ -1216,7 +1216,7 @@ export default function ServePage() {
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <div className="px-4 py-3 bg-surface-raised border border-rmpg-700 rounded-[2px] transition-colors hover:border-rmpg-400/30">
                 <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-1">Mileage Today</div>
-                <div className="text-lg font-bold text-white font-mono tabular-nums">
+                <div className="text-lg font-bold text-rmpg-100 font-mono tabular-nums">
                   {routeData?.totalDistance
                     ? `${routeData.totalDistance.toFixed(1)} mi`
                     : stats?.mileage
@@ -1232,7 +1232,7 @@ export default function ServePage() {
               </div>
               <div className="px-4 py-3 bg-surface-raised border border-rmpg-700 rounded-[2px] transition-colors hover:border-rmpg-400/30">
                 <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-1">Route Efficiency</div>
-                <div className="text-lg font-bold text-white font-mono tabular-nums">
+                <div className="text-lg font-bold text-rmpg-100 font-mono tabular-nums">
                   {routeData && stats?.planned_mileage && stats.planned_mileage > 0
                     ? `${Math.round((stats.planned_mileage / (routeData.totalDistance || 1)) * 100)}%`
                     : '--'
@@ -1253,7 +1253,7 @@ export default function ServePage() {
                 <select id="ff-servepage-1"
                   value={costJobId || ''}
                   onChange={e => { const v = parseInt(e.target.value, 10); if (v) handleLoadCostEstimate(v); }}
-                  className="flex-1 px-2 py-1 text-xs bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  className="flex-1 px-2 py-1 text-xs bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                 >
                   <option value="">Select a job...</option>
                   {jobs.map(j => (
@@ -1263,18 +1263,18 @@ export default function ServePage() {
               </div>
               {costEstimate && (
                 <div className="mt-2 space-y-1 text-[10px]">
-                  <div className="flex justify-between"><span className="text-rmpg-400">Base Fee:</span><span className="text-white">${costEstimate.costs.base_fee.toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span className="text-rmpg-400">Base Fee:</span><span className="text-rmpg-100">${costEstimate.costs.base_fee.toFixed(2)}</span></div>
                   {costEstimate.costs.extra_attempts > 0 && (
-                    <div className="flex justify-between"><span className="text-rmpg-400">Extra Attempts ({costEstimate.costs.extra_attempts}):</span><span className="text-white">${costEstimate.costs.extra_attempt_fee.toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span className="text-rmpg-400">Extra Attempts ({costEstimate.costs.extra_attempts}):</span><span className="text-rmpg-100">${costEstimate.costs.extra_attempt_fee.toFixed(2)}</span></div>
                   )}
                   {costEstimate.costs.rush_surcharge > 0 && (
-                    <div className="flex justify-between"><span className="text-amber-400">Rush Surcharge:</span><span className="text-white">${costEstimate.costs.rush_surcharge.toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span className="text-amber-400">Rush Surcharge:</span><span className="text-rmpg-100">${costEstimate.costs.rush_surcharge.toFixed(2)}</span></div>
                   )}
                   {costEstimate.costs.skip_trace_count > 0 && (
-                    <div className="flex justify-between"><span className="text-rmpg-400">Skip Traces ({costEstimate.costs.skip_trace_count}):</span><span className="text-white">${costEstimate.costs.skip_trace_fee.toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span className="text-rmpg-400">Skip Traces ({costEstimate.costs.skip_trace_count}):</span><span className="text-rmpg-100">${costEstimate.costs.skip_trace_fee.toFixed(2)}</span></div>
                   )}
                   {costEstimate.costs.mileage > 0 && (
-                    <div className="flex justify-between"><span className="text-rmpg-400">Mileage ({costEstimate.costs.mileage.toFixed(1)} mi):</span><span className="text-white">${costEstimate.costs.mileage_fee.toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span className="text-rmpg-400">Mileage ({costEstimate.costs.mileage.toFixed(1)} mi):</span><span className="text-rmpg-100">${costEstimate.costs.mileage_fee.toFixed(2)}</span></div>
                   )}
                   <div className="flex justify-between border-t border-rmpg-700 pt-1 font-bold"><span className="text-brand-400">Total:</span><span className="text-brand-300">${costEstimate.costs.total.toFixed(2)}</span></div>
                 </div>
@@ -1334,16 +1334,16 @@ export default function ServePage() {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                   <div><div className="text-lg font-bold tabular-nums font-mono text-green-400" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.success_rate}%</div><div className="text-[9px] text-rmpg-400">Overall</div></div>
-                  <div><div className="text-lg font-bold tabular-nums font-mono text-white" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.total}</div><div className="text-[9px] text-rmpg-400">Total Jobs</div></div>
+                  <div><div className="text-lg font-bold tabular-nums font-mono text-rmpg-100" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.total}</div><div className="text-[9px] text-rmpg-400">Total Jobs</div></div>
                   <div><div className="text-lg font-bold tabular-nums font-mono text-green-400" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.served}</div><div className="text-[9px] text-rmpg-400">Served</div></div>
-                  <div><div className="text-lg font-bold tabular-nums font-mono text-white" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.avg_attempts?.toFixed(1)}</div><div className="text-[9px] text-rmpg-400">Avg Attempts</div></div>
+                  <div><div className="text-lg font-bold tabular-nums font-mono text-rmpg-100" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.avg_attempts?.toFixed(1)}</div><div className="text-[9px] text-rmpg-400">Avg Attempts</div></div>
                 </div>
                 {successRates.by_officer?.length > 0 && (
                   <div>
                     <div className="text-[9px] text-rmpg-400 uppercase font-semibold mb-1">By Officer</div>
                     {successRates.by_officer.map((o: any) => (
                       <div key={o.officer_id} className="text-[10px] flex gap-2 py-0.5">
-                        <span className="text-white flex-1">{o.officer_name || 'Unassigned'}</span>
+                        <span className="text-rmpg-100 flex-1">{o.officer_name || 'Unassigned'}</span>
                         <span className="text-green-400">{o.success_rate}%</span>
                         <span className="text-rmpg-500">{o.served}/{o.total}</span>
                       </div>
@@ -1419,7 +1419,7 @@ export default function ServePage() {
               required
               value={formData.recipient_name}
               onChange={e => handleFormChange('recipient_name', e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+              className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
               placeholder="Full name"
             />
           </div>
@@ -1433,7 +1433,7 @@ export default function ServePage() {
                 value={formData.recipient_address}
                 onChange={val => handleFormChange('recipient_address', val)}
                 placeholder="Street address"
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                 // Picking a suggestion fills the split address fields + the
                 // precise pin. City/ZIP fill blanks only (never clobber a typed
                 // value); the pick's coordinates always win for the chosen
@@ -1462,7 +1462,7 @@ export default function ServePage() {
                 value={formData.recipient_address_2}
                 onChange={e => handleFormChange('recipient_address_2', e.target.value)}
                 placeholder="Apt 4B"
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
               />
             </div>
             </div>
@@ -1472,7 +1472,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.recipient_city}
                 onChange={e => handleFormChange('recipient_city', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -1482,7 +1482,7 @@ export default function ServePage() {
                   type="text"
                   value={formData.recipient_state}
                   onChange={e => handleFormChange('recipient_state', e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                   maxLength={2}
                 />
               </div>
@@ -1492,7 +1492,7 @@ export default function ServePage() {
                   type="text"
                   value={formData.recipient_zip}
                   onChange={e => handleFormChange('recipient_zip', e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                   maxLength={10}
                 />
               </div>
@@ -1506,7 +1506,7 @@ export default function ServePage() {
               <select id="ff-servepage-7"
                 value={formData.document_type}
                 onChange={e => handleFormChange('document_type', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
               >
                 {DOCUMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
@@ -1516,7 +1516,7 @@ export default function ServePage() {
               <select id="ff-servepage-8"
                 value={formData.priority}
                 onChange={e => handleFormChange('priority', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
               >
                 {/* Values must match the serve_queue.priority CHECK
                     (routine/normal/rush/urgent) — 'low'/'high' were rejected. */}
@@ -1535,7 +1535,7 @@ export default function ServePage() {
               <select id="ff-servepage-9"
                 value={formData.time_window}
                 onChange={e => handleFormChange('time_window', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
               >
                 <option value="morning">Morning</option>
                 <option value="afternoon">Afternoon</option>
@@ -1549,7 +1549,7 @@ export default function ServePage() {
                 type="date"
                 value={formData.deadline}
                 onChange={e => handleFormChange('deadline', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
               />
             </div>
           </div>
@@ -1562,7 +1562,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.case_number}
                 onChange={e => handleFormChange('case_number', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
               />
             </div>
             <div>
@@ -1571,7 +1571,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.court_name}
                 onChange={e => handleFormChange('court_name', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
               />
             </div>
             <div>
@@ -1580,7 +1580,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.jurisdiction}
                 onChange={e => handleFormChange('jurisdiction', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
               />
             </div>
           </div>
@@ -1598,7 +1598,7 @@ export default function ServePage() {
                     const picked = clientsList.find(c => c.id === e.target.value);
                     if (picked) handleFormChange('client_name', picked.name);
                   }}
-                  className="w-full mb-1 px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  className="w-full mb-1 px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                   aria-label="Select client"
                 >
                   <option value="">— Select client —</option>
@@ -1609,7 +1609,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.client_name}
                 onChange={e => handleFormChange('client_name', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                 placeholder="Or type a name"
               />
             </div>
@@ -1619,7 +1619,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.attorney_name}
                 onChange={e => handleFormChange('attorney_name', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
               />
             </div>
           </div>
@@ -1634,7 +1634,7 @@ export default function ServePage() {
                 max={10}
                 value={formData.max_attempts}
                 onChange={e => handleFormChange('max_attempts', parseInt(e.target.value, 10) || 3)}
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
               />
             </div>
           </div>
@@ -1646,7 +1646,7 @@ export default function ServePage() {
               value={formData.service_instructions}
               onChange={e => handleFormChange('service_instructions', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors resize-none"
+              className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors resize-none"
               placeholder="Special instructions for service..."
             />
           </div>
@@ -1656,7 +1656,7 @@ export default function ServePage() {
               value={formData.notes}
               onChange={e => handleFormChange('notes', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-white focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors resize-none"
+              className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors resize-none"
               placeholder="Internal notes..."
             />
           </div>

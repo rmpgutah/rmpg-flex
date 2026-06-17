@@ -339,7 +339,7 @@ export default function DocumentsPage() {
           <input id="ff-documentspage-1" type="text" className="input-dark pl-9 w-full text-[11px]" placeholder="Search folders and files..."
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -350,7 +350,7 @@ export default function DocumentsPage() {
       <div className="px-4 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-2 text-[9px] flex-wrap">
         {/* View toggle */}
         <button type="button" onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
-          className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-white transition-colors" title={viewMode === 'list' ? 'Grid view' : 'List view'}>
+          className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-rmpg-100 transition-colors" title={viewMode === 'list' ? 'Grid view' : 'List view'}>
           {viewMode === 'list' ? <Grid3X3 className="w-3.5 h-3.5" /> : <List className="w-3.5 h-3.5" />}
         </button>
         <span className="w-px h-3 bg-rmpg-700" />
@@ -435,7 +435,7 @@ export default function DocumentsPage() {
               >
                 <FolderOpen className="w-5 h-5 text-amber-400 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium text-white truncate block">{folder.name}</span>
+                  <span className="text-sm font-medium text-rmpg-100 truncate block">{folder.name}</span>
                   <span className="text-[9px] text-rmpg-500">
                     {folder.child_count > 0 ? `${folder.child_count} folder${folder.child_count !== 1 ? 's' : ''}` : ''}
                     {folder.child_count > 0 && folder.file_count > 0 ? ' · ' : ''}
@@ -588,7 +588,7 @@ export default function DocumentsPage() {
       {showNewFolder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="panel-surface w-full max-w-sm mx-4 p-4 space-y-3">
-            <h3 className="text-xs font-bold text-white uppercase">New Folder</h3>
+            <h3 className="text-xs font-bold text-rmpg-100 uppercase">New Folder</h3>
             <input id="ff-documentspage-2" type="text" className="input-dark text-xs w-full" placeholder="Folder name..."
               value={newFolderName} onChange={e => setNewFolderName(e.target.value)} autoFocus
               onKeyDown={e => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') setShowNewFolder(false); }} />
@@ -604,7 +604,7 @@ export default function DocumentsPage() {
       {renamingFolder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="panel-surface w-full max-w-sm mx-4 p-4 space-y-3">
-            <h3 className="text-xs font-bold text-white uppercase">Rename Folder</h3>
+            <h3 className="text-xs font-bold text-rmpg-100 uppercase">Rename Folder</h3>
             <input id="ff-documentspage-3" type="text" className="input-dark text-xs w-full" value={renameValue} onChange={e => setRenameValue(e.target.value)} autoFocus
               onKeyDown={e => { if (e.key === 'Enter') renameFolder(); if (e.key === 'Escape') setRenamingFolder(null); }} />
             <div className="flex justify-end gap-2">
@@ -637,10 +637,10 @@ export default function DocumentsPage() {
                   {getFileIcon(f.mime_type)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-bold text-white truncate">{f.original_name}</h3>
+                  <h3 className="text-sm font-bold text-rmpg-100 truncate">{f.original_name}</h3>
                   <p className="text-[10px] text-rmpg-400">{category} · .{ext}</p>
                 </div>
-                <button type="button" onClick={() => setInfoFile(null)} className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-white">
+                <button type="button" onClick={() => setInfoFile(null)} className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-rmpg-100">
                   <X className="w-4 h-4" />
                 </button>
               </div>

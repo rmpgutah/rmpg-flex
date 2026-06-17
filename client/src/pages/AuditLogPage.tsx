@@ -399,10 +399,10 @@ const AuditLogPage: React.FC = () => {
             </div>
             <div className="panel-beveled p-3" style={{ background: '#050505' }}>
               <div className="flex items-center gap-2 mb-2">
-                <Filter className="w-4 h-4 text-gray-400" />
+                <Filter className="w-4 h-4 text-rmpg-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Top User (30d)</span>
               </div>
-              <div className="text-sm font-bold truncate font-mono text-gray-400">
+              <div className="text-sm font-bold truncate font-mono text-rmpg-400">
                 {stats.topUsers[0]?.user_name || 'N/A'}
               </div>
               <div className="text-[10px] text-rmpg-500 mt-0.5">
@@ -692,7 +692,7 @@ const AuditLogPage: React.FC = () => {
                     onClick={() => setPage(pageNum)}
                     className={`px-3 py-2 text-xs border ${
                       page === pageNum
-                        ? 'bg-brand-600 border-brand-500 text-white'
+                        ? 'bg-brand-600 border-brand-500 text-rmpg-100'
                         : 'bg-rmpg-700 hover:bg-rmpg-600 border-rmpg-600'
                     }`}
                   >

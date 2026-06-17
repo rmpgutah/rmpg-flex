@@ -35,7 +35,7 @@ export default function SecurityStatusCard() {
 
   if (loading) {
     return (
-      <div className="panel-beveled p-4 flex items-center justify-center" style={{ background: '#0a0a0a' }}>
+      <div className="panel-beveled p-4 flex items-center justify-center" style={{ background:"var(--surface-sunken)" }}>
         <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#666666' }} />
       </div>
     );
@@ -95,7 +95,7 @@ export default function SecurityStatusCard() {
   const score = computeScore(status);
 
   return (
-    <div className="panel-beveled" style={{ background: '#0a0a0a' }}>
+    <div className="panel-beveled" style={{ background:"var(--surface-sunken)" }}>
       {/* Header */}
       <div className="panel-title-bar flex items-center justify-between">
         <div className="flex items-center gap-2">

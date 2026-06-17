@@ -89,14 +89,14 @@ export default function ClosestUnitPanel({
           className="p-0.5 hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] rounded-sm"
           style={{ borderRadius: 2 }}
         >
-          <X className="w-3.5 h-3.5 text-rmpg-500 hover:text-white" />
+          <X className="w-3.5 h-3.5 text-rmpg-500 hover:text-rmpg-100" />
         </button>
       </div>
 
       {/* Call Info */}
       <div
         className="px-3 py-2 shrink-0"
-        style={{ borderBottom: '1px solid #2b2b2b30', background: '#0a0a0a' }}
+        style={{ borderBottom: '1px solid #2b2b2b30', background:"var(--surface-sunken)" }}
       >
         <div className="flex items-center gap-2 mb-1">
           <span

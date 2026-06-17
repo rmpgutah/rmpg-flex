@@ -33,7 +33,7 @@ const STATUS_STYLE: Record<string, { bar: string; text: string; ring: string; la
   ok:       { bar: 'bg-green-500',  text: 'text-green-400',  ring: 'border-green-700/40',  label: 'OK' },
   low:      { bar: 'bg-amber-500',  text: 'text-amber-400',  ring: 'border-amber-700/40',  label: 'LOW' },
   critical: { bar: 'bg-red-600',    text: 'text-red-400',    ring: 'border-red-700/40',    label: 'CRIT' },
-  unknown:  { bar: 'bg-gray-600',   text: 'text-gray-500',   ring: 'border-gray-700/40',   label: '—' },
+  unknown:  { bar: 'bg-gray-600',   text: 'text-rmpg-500',   ring: 'border-border-default/40',   label: '—' },
 };
 
 export default function FuelGaugeCard({ gauge }: { gauge: FuelGaugeData | null | undefined }) {

@@ -61,7 +61,7 @@ export default function InteragencyPage() {
     { key: 'jurisdiction', label: 'Jurisdiction' }, { key: 'data_share_level', label: 'Share Level' }, { key: 'status', label: 'Status' },
     { key: 'actions', label: '', width: '100px', render: (row: any) => (
       <div className="flex gap-2">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-white"><Pencil size={12} /></button>
+        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100"><Pencil size={12} /></button>
         <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }} className="text-red-500 hover:text-red-300"><Trash2 size={12} /></button>
       </div>
     )},
@@ -95,7 +95,7 @@ export default function InteragencyPage() {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={closeForm}>
           <div className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Partner' : 'New Partner'}</h3>
+            <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord ? 'Edit Partner' : 'New Partner'}</h3>
             <div className="space-y-3">
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Agency Name <span className="text-red-500">*</span></label>
                 <input id="ff-interagencypage-0" className="input-dark mt-1" value={formData.agency_name || ''} onChange={e => setFormData({...formData, agency_name: e.target.value})} autoFocus /></div>

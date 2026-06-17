@@ -256,7 +256,7 @@ export default function AdminRadioTab() {
             <Radio size={18} className="text-[#d4a017]" />
             <div>
               <h2 className="text-sm font-bold text-gray-200 uppercase tracking-wide">Radio Channels</h2>
-              <p className="text-[11px] text-gray-500">
+              <p className="text-[11px] text-rmpg-500">
                 {loading
                   ? 'Loading…'
                   : `${activeCount} active · ${channels.length - activeCount} archived · ${totalTx.toLocaleString()} total transmissions`}
@@ -274,7 +274,7 @@ export default function AdminRadioTab() {
 
       {/* Search */}
       <div className="bg-[#141414] border border-[#181818] rounded-sm p-2 flex items-center gap-2">
-        <Search size={14} className="text-gray-500" />
+        <Search size={14} className="text-rmpg-500" />
         <input id="ff-adminradiotab-0"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -296,16 +296,16 @@ export default function AdminRadioTab() {
       <div className="bg-[#141414] border border-[#181818] rounded-sm overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="animate-spin text-gray-500" size={20} />
+            <Loader2 className="animate-spin text-rmpg-500" size={20} />
           </div>
         ) : sorted.length === 0 ? (
-          <div className="text-center text-xs text-gray-500 italic py-8">
+          <div className="text-center text-xs text-rmpg-500 italic py-8">
             {search ? 'No channels match the filter.' : 'No channels yet — create one to get started.'}
           </div>
         ) : (
           <table className="w-full text-left">
             <thead className="bg-[#0c0c0c] border-b border-[#181818]">
-              <tr className="text-[9px] uppercase text-gray-500 font-semibold">
+              <tr className="text-[9px] uppercase text-rmpg-500 font-semibold">
                 <th className="px-2 py-[3px] w-8"></th>
                 <th className="px-2 py-[3px]">Name</th>
                 <th className="px-2 py-[3px]">Frequency</th>
@@ -338,18 +338,18 @@ export default function AdminRadioTab() {
                         {isArchived && <span className="ml-1.5 text-[9px] uppercase text-gray-600">[archived]</span>}
                         {ch.is_default === 1 && <span className="ml-1.5 text-[9px] uppercase text-[#d4a017]">[default]</span>}
                       </div>
-                      {ch.description && <div className="text-[10px] text-gray-500 truncate max-w-[24rem]">{ch.description}</div>}
+                      {ch.description && <div className="text-[10px] text-rmpg-500 truncate max-w-[24rem]">{ch.description}</div>}
                     </td>
-                    <td className="px-2 py-[2px] text-[11px] text-gray-300 font-mono">{ch.frequency || '—'}</td>
-                    <td className="px-2 py-[2px] text-[11px] text-gray-300 font-mono">{ch.talkgroup || '—'}</td>
-                    <td className="px-2 py-[2px] text-[11px] text-gray-400 text-right font-mono">{ch.sort_order}</td>
-                    <td className="px-2 py-[2px] text-[11px] text-gray-300 text-right font-mono">
+                    <td className="px-2 py-[2px] text-[11px] text-rmpg-300 font-mono">{ch.frequency || '—'}</td>
+                    <td className="px-2 py-[2px] text-[11px] text-rmpg-300 font-mono">{ch.talkgroup || '—'}</td>
+                    <td className="px-2 py-[2px] text-[11px] text-rmpg-400 text-right font-mono">{ch.sort_order}</td>
+                    <td className="px-2 py-[2px] text-[11px] text-rmpg-300 text-right font-mono">
                       <span className="inline-flex items-center gap-1">
                         <MessageSquare size={9} className="text-gray-600" />
                         {(Number(ch.tx_count) || 0).toLocaleString()}
                       </span>
                     </td>
-                    <td className="px-2 py-[2px] text-[10px] text-gray-500">
+                    <td className="px-2 py-[2px] text-[10px] text-rmpg-500">
                       {ch.last_tx_at ? (
                         <span className="inline-flex items-center gap-1">
                           <Clock size={9} />
@@ -402,7 +402,7 @@ export default function AdminRadioTab() {
             </div>
             <div className="p-3 space-y-2.5">
               <div>
-                <label className="block text-[10px] uppercase text-gray-500 mb-0.5">Name *</label>
+                <label className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Name *</label>
                 <input id="ff-adminradiotab-1"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -412,7 +412,7 @@ export default function AdminRadioTab() {
                 />
               </div>
               <div>
-                <label className="block text-[10px] uppercase text-gray-500 mb-0.5">Description</label>
+                <label className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Description</label>
                 <input id="ff-adminradiotab-2"
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
@@ -422,7 +422,7 @@ export default function AdminRadioTab() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] uppercase text-gray-500 mb-0.5">Frequency</label>
+                  <label className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Frequency</label>
                   <input id="ff-adminradiotab-3"
                     value={form.frequency}
                     onChange={(e) => setForm({ ...form, frequency: e.target.value })}
@@ -431,7 +431,7 @@ export default function AdminRadioTab() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase text-gray-500 mb-0.5">Talkgroup</label>
+                  <label className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Talkgroup</label>
                   <input id="ff-adminradiotab-4"
                     value={form.talkgroup}
                     onChange={(e) => setForm({ ...form, talkgroup: e.target.value })}
@@ -442,7 +442,7 @@ export default function AdminRadioTab() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] uppercase text-gray-500 mb-0.5">Color</label>
+                  <label className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Color</label>
                   <div className="flex items-center gap-1.5">
                     <input id="ff-adminradiotab-5"
                       value={form.color}
@@ -469,7 +469,7 @@ export default function AdminRadioTab() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase text-gray-500 mb-0.5">Sort Order</label>
+                  <label className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Sort Order</label>
                   <input id="ff-adminradiotab-6"
                     type="number"
                     value={form.sort_order}
@@ -484,7 +484,7 @@ export default function AdminRadioTab() {
               <button
                 onClick={closeForm}
                 disabled={submitting}
-                className="text-xs text-gray-400 hover:text-gray-200 px-2 py-1 disabled:opacity-50"
+                className="text-xs text-rmpg-400 hover:text-gray-200 px-2 py-1 disabled:opacity-50"
               >
                 Cancel
               </button>

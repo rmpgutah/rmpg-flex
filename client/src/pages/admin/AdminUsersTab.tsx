@@ -307,7 +307,7 @@ export default function AdminUsersTab({
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-white truncate">
+                        <span className="text-sm font-semibold text-rmpg-100 truncate">
                           {user.first_name} {user.last_name}
                         </span>
                         <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold uppercase border ${ROLE_COLORS[user.role]}`}>
@@ -383,7 +383,7 @@ export default function AdminUsersTab({
                   </div>
                 )}
                 <div>
-                  <h2 className="text-lg font-bold text-white">
+                  <h2 className="text-lg font-bold text-rmpg-100">
                     {selectedUser.first_name} {selectedUser.last_name}
                   </h2>
                   <div className="flex items-center gap-3 mt-0.5 text-xs text-rmpg-300">
@@ -451,7 +451,7 @@ export default function AdminUsersTab({
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Terminate
                 </button>
-                <button type="button" onClick={() => setSelectedUser(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors rounded-sm" aria-label="Close user details">
+                <button type="button" onClick={() => setSelectedUser(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors rounded-sm" aria-label="Close user details">
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
@@ -475,8 +475,8 @@ export default function AdminUsersTab({
                 onClick={() => setUserDetailTab(tab.id)}
                 className={`px-3 py-1.5 text-[10px] font-medium transition-all duration-150 whitespace-nowrap relative focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
                   userDetailTab === tab.id
-                    ? 'bg-surface-raised text-white border border-rmpg-700 border-b-surface-raised'
-                    : 'text-rmpg-400 hover:text-white hover:bg-[rgba(42,42,42,0.6)]'
+                    ? 'bg-surface-raised text-rmpg-100 border border-rmpg-700 border-b-surface-raised'
+                    : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-[rgba(42,42,42,0.6)]'
                 }`}
               >
                 {tab.label}

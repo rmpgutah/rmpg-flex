@@ -125,7 +125,7 @@ export default function StatuteAnalyticsPage() {
   useEffect(() => { document.title = 'Statute Analytics \u2014 RMPG Flex'; }, []);
 
   return (
-    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+    <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden">
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
@@ -164,7 +164,7 @@ export default function StatuteAnalyticsPage() {
         <button type="button" onClick={handlePenaltyLookup} className="toolbar-btn text-[10px]">Lookup</button>
         {penaltyResult && (
           <div className="flex items-center gap-2 text-[10px] ml-2">
-            <span className="text-white font-bold">{penaltyResult.citation}</span>
+            <span className="text-rmpg-100 font-bold">{penaltyResult.citation}</span>
             <span className="text-rmpg-400">{penaltyResult.short_title}</span>
             <span className="text-amber-400">{penaltyResult.offense_level?.replace(/_/g, ' ')}</span>
             <span className="text-rmpg-400">Jail: {penaltyResult.penalty_range?.jail_max}</span>
@@ -176,16 +176,16 @@ export default function StatuteAnalyticsPage() {
 
       {/* Feature 37: Top Charged Panel */}
       {topCharged.length > 0 && (
-        <div className="px-3 py-2 border-b border-gray-700/50 bg-gray-900/10 text-xs flex-shrink-0">
+        <div className="px-3 py-2 border-b border-border-default/50 bg-surface-sunken/10 text-xs flex-shrink-0">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-gray-400 font-bold text-[10px] uppercase">Top {topCharged.length} Most Charged Statutes</span>
-            <button type="button" onClick={() => setTopCharged([])} className="text-gray-500 hover:text-gray-300 text-[10px]">Close</button>
+            <span className="text-rmpg-400 font-bold text-[10px] uppercase">Top {topCharged.length} Most Charged Statutes</span>
+            <button type="button" onClick={() => setTopCharged([])} className="text-rmpg-500 hover:text-rmpg-300 text-[10px]">Close</button>
           </div>
           <div className="max-h-40 overflow-y-auto space-y-0.5">
             {topCharged.map((s, i) => (
               <div key={i} className="text-[10px] flex gap-2 items-center">
                 <span className="text-rmpg-500 w-5">{i + 1}.</span>
-                <span className="text-white font-mono w-24">{s.citation}</span>
+                <span className="text-rmpg-100 font-mono w-24">{s.citation}</span>
                 <span className="text-rmpg-300 flex-1 truncate">{s.short_title}</span>
                 <span className="text-brand-400 font-bold">{s.total_count || s.citation_count}</span>
               </div>
@@ -196,7 +196,7 @@ export default function StatuteAnalyticsPage() {
 
       {/* Mobile: day selector */}
       {isMobile && (
-        <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0" style={{ background: '#080808', borderBottom: '1px solid #2b2b2b' }}>
+        <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0" style={{ background:"var(--surface-sunken)", borderBottom: '1px solid #2b2b2b' }}>
           {[30, 60, 90, 180, 365].map(d => (
             <button type="button"
               key={d}
@@ -250,7 +250,7 @@ export default function StatuteAnalyticsPage() {
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
                   <input id="ff-statuteanalyticspage-1"
                     type="text"
-                    className="bg-surface-base border border-rmpg-600 text-white text-[10px] pl-6 pr-2 py-1 w-48 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500/30 transition-colors"
+                    className="bg-surface-base border border-rmpg-600 text-rmpg-100 text-[10px] pl-6 pr-2 py-1 w-48 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500/30 transition-colors"
                     placeholder="Search statutes..." aria-label="Search statutes..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -266,7 +266,7 @@ export default function StatuteAnalyticsPage() {
                         className="absolute inset-y-0 left-0 bg-brand-600/60 transition-all"
                         style={{ width: `${(s.count / maxCount) * 100}%` }}
                       />
-                      <span className="absolute inset-y-0 left-1 flex items-center text-[9px] text-white font-bold truncate pr-8">
+                      <span className="absolute inset-y-0 left-1 flex items-center text-[9px] text-rmpg-100 font-bold truncate pr-8">
                         {s.title}
                       </span>
                       <span className="absolute inset-y-0 right-1 flex items-center text-[9px] font-mono font-bold text-brand-300">
@@ -348,7 +348,7 @@ export default function StatuteAnalyticsPage() {
           {topStatutes.length > 1 && (
             <div className="panel-surface p-3">
               <div className="flex items-center gap-2 mb-3">
-                <BarChart3 className="w-3.5 h-3.5 text-gray-400" />
+                <BarChart3 className="w-3.5 h-3.5 text-rmpg-400" />
                 <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Commonly Paired Statutes</h3>
               </div>
               <div className="space-y-1.5 max-h-48 overflow-auto">
@@ -370,9 +370,9 @@ export default function StatuteAnalyticsPage() {
                   }
                   return pairs.sort((x, y) => y.score - x.score).slice(0, 8).map((p, i) => (
                     <div key={i} className="flex items-center gap-2 py-1 border-b border-[#2b2b2b]/50 last:border-0">
-                      <span className="text-[9px] font-mono text-gray-400 w-20 shrink-0 truncate">{p.a}</span>
+                      <span className="text-[9px] font-mono text-rmpg-400 w-20 shrink-0 truncate">{p.a}</span>
                       <span className="text-[9px] text-rmpg-500">frequently occurs with</span>
-                      <span className="text-[9px] font-mono text-gray-400 w-20 shrink-0 truncate">{p.b}</span>
+                      <span className="text-[9px] font-mono text-rmpg-400 w-20 shrink-0 truncate">{p.b}</span>
                       <span className="text-[9px] font-mono text-rmpg-400 ml-auto">({p.score}x)</span>
                     </div>
                   ));

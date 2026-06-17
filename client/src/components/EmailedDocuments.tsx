@@ -46,13 +46,13 @@ export default function EmailedDocuments({ recordType, recordId, title = 'Emaile
         {title}{items.length ? ` (${items.length})` : ''}
       </div>
       {loading ? (
-        <div className="px-3 py-2 text-gray-500 text-[11px]">Loading…</div>
+        <div className="px-3 py-2 text-rmpg-500 text-[11px]">Loading…</div>
       ) : items.length === 0 ? (
-        <div className="px-3 py-2 text-gray-500 text-[11px] italic">No documents emailed from this record yet.</div>
+        <div className="px-3 py-2 text-rmpg-500 text-[11px] italic">No documents emailed from this record yet.</div>
       ) : (
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="text-gray-400 text-[9px] uppercase border-b border-[#1a1a1a]">
+            <tr className="text-rmpg-400 text-[9px] uppercase border-b border-[#1a1a1a]">
               <th className="text-left px-3 py-[3px] font-semibold">When</th>
               <th className="text-left px-3 py-[3px] font-semibold">Sent by</th>
               <th className="text-left px-3 py-[3px] font-semibold">To</th>
@@ -65,10 +65,10 @@ export default function EmailedDocuments({ recordType, recordId, title = 'Emaile
               const s = STATUS[it.status] ?? STATUS.pending;
               return (
                 <tr key={it.outboxId} className="border-b border-[#141414]">
-                  <td className="px-3 py-[2px] text-gray-300">{(it.sentAt || it.createdAt || '').replace('T', ' ').slice(0, 16)}</td>
-                  <td className="px-3 py-[2px] text-gray-300">{it.sentBy}</td>
-                  <td className="px-3 py-[2px] text-gray-300" title={it.to.join(', ')}>{it.to.join(', ') || '—'}</td>
-                  <td className="px-3 py-[2px] text-gray-300">{it.attachmentName || it.subject || '—'}</td>
+                  <td className="px-3 py-[2px] text-rmpg-300">{(it.sentAt || it.createdAt || '').replace('T', ' ').slice(0, 16)}</td>
+                  <td className="px-3 py-[2px] text-rmpg-300">{it.sentBy}</td>
+                  <td className="px-3 py-[2px] text-rmpg-300" title={it.to.join(', ')}>{it.to.join(', ') || '—'}</td>
+                  <td className="px-3 py-[2px] text-rmpg-300">{it.attachmentName || it.subject || '—'}</td>
                   <td className="px-3 py-[2px]">
                     <span className={`inline-block border px-1 ${s.cls}`} title={it.error || ''}>{s.label}</span>
                   </td>

@@ -73,12 +73,12 @@ export default function DuplicateCandidatesModal({
         >
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-400" />
-            <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">{title}</h2>
+            <h2 id={titleId} className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">{title}</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 min-w-[32px] min-h-[32px] flex items-center justify-center hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors"
+            className="p-1 min-w-[32px] min-h-[32px] flex items-center justify-center hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors"
             aria-label="Close"
           >
             <X className="w-4 h-4" />
@@ -110,7 +110,7 @@ export default function DuplicateCandidatesModal({
                       onDoubleClick={() => { setSelectedId(c.id); onResolve({ action: 'merge', id: c.id }); }}
                       className={`w-full text-left px-3 py-2 text-xs transition-colors focus:outline-none ${
                         isSel
-                          ? 'bg-amber-900/40 text-white border-l-2 border-amber-400'
+                          ? 'bg-amber-900/40 text-rmpg-100 border-l-2 border-amber-400'
                           : 'text-rmpg-200 hover:bg-rmpg-800 border-l-2 border-transparent'
                       }`}
                     >
@@ -144,7 +144,7 @@ export default function DuplicateCandidatesModal({
                 type="button"
                 onClick={() => selectedId != null && onResolve({ action: 'merge', id: selectedId })}
                 disabled={isSubmitting || selectedId == null}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border border-amber-500 bg-amber-700 hover:bg-amber-600 text-white transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border border-amber-500 bg-amber-700 hover:bg-amber-600 text-rmpg-100 transition-colors disabled:opacity-50"
               >
                 {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 Link Selected

@@ -220,9 +220,9 @@ const CITATION_STATUSES: { value: CitationStatus; label: string }[] = [
 ];
 
 const STATUS_BADGE: Record<string, string> = {
-  issued: 'bg-gray-900/50 text-gray-300 border-gray-700/50',
+  issued: 'bg-surface-sunken text-rmpg-300 border-border-default',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
-  payment_plan: 'bg-gray-900/50 text-gray-300 border-gray-700/50',
+  payment_plan: 'bg-surface-sunken text-rmpg-300 border-border-default',
   contested: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
   warrant_issued: 'bg-red-900/60 text-red-300 border-red-700/50',
@@ -882,7 +882,7 @@ export default function CitationsPage() {
         <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-brand-900/30 text-brand-300 border-brand-700/50">
           <Hash size={10} /> {stats.total} Total
         </span>
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-gray-900/30 text-gray-300 border-gray-700/50">
+        <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-surface-sunken text-rmpg-300 border-border-default">
           <FileWarning size={10} /> {stats.by_status?.issued || 0} Issued
         </span>
         <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-green-900/30 text-green-300 border-green-700/50">
@@ -995,7 +995,7 @@ export default function CitationsPage() {
               style={isMobile ? { minHeight: 56 } : undefined}
             >
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-[11px] font-mono font-bold text-white">{c.citation_number}</span>
+                <span className="text-[11px] font-mono font-bold text-rmpg-100">{c.citation_number}</span>
                 <span className={`inline-flex items-center px-1.5 py-0 text-[9px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
                   {c.status.replace(/_/g, ' ')}
                 </span>
@@ -1044,7 +1044,7 @@ export default function CitationsPage() {
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-rmpg-700">
           <Hash size={14} className="text-rmpg-400" />
-          <h2 className="text-sm font-mono font-bold text-white">{c.citation_number}</h2>
+          <h2 className="text-sm font-mono font-bold text-rmpg-100">{c.citation_number}</h2>
           <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
             {c.status.replace(/_/g, ' ')}
           </span>
@@ -1118,7 +1118,7 @@ export default function CitationsPage() {
                   <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-sm border ${
                     c.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
                     c.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
-                    'bg-gray-900/50 text-gray-400 border-gray-700/50'
+                    'bg-surface-sunken text-rmpg-400 border-border-default'
                   }`}>{c.offense_level.replace(/_/g, ' ')}</span>
                 </div>
               )}
@@ -1202,7 +1202,7 @@ export default function CitationsPage() {
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-2">
                 <div className="flex items-center gap-2">
-                  <div className={`text-sm font-bold px-2 py-0.5 rounded ${completeness.grade === 'A' ? 'bg-green-900/50 text-green-400' : completeness.grade === 'B' ? 'bg-gray-900/50 text-gray-400' : completeness.grade === 'C' ? 'bg-amber-900/50 text-amber-400' : 'bg-red-900/50 text-red-400'}`}>{completeness.grade}</div>
+                  <div className={`text-sm font-bold px-2 py-0.5 rounded ${completeness.grade === 'A' ? 'bg-green-900/50 text-green-400' : completeness.grade === 'B' ? 'bg-surface-sunken text-rmpg-400' : completeness.grade === 'C' ? 'bg-amber-900/50 text-amber-400' : 'bg-red-900/50 text-red-400'}`}>{completeness.grade}</div>
                   <div className="flex-1 h-1.5 bg-rmpg-700 rounded-sm overflow-hidden">
                     <div className={`h-full transition-all ${completeness.score >= 80 ? 'bg-green-500' : completeness.score >= 60 ? 'bg-gray-500' : completeness.score >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${completeness.score}%` }} />
                   </div>
@@ -1261,7 +1261,7 @@ export default function CitationsPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-rmpg-400">Speed:</span>
                     <span className="text-red-400 font-bold font-mono text-sm">{(c as any).speed_recorded} MPH</span>
-                    {(c as any).speed_limit && <span className="text-rmpg-400">in a <span className="text-white font-bold">{(c as any).speed_limit} MPH</span> zone</span>}
+                    {(c as any).speed_limit && <span className="text-rmpg-400">in a <span className="text-rmpg-100 font-bold">{(c as any).speed_limit} MPH</span> zone</span>}
                     {(c as any).speed_recorded && (c as any).speed_limit && (
                       <span className="text-[9px] font-bold text-red-400">({(c as any).speed_recorded - (c as any).speed_limit} over)</span>
                     )}
@@ -1280,8 +1280,8 @@ export default function CitationsPage() {
                   {(c as any).construction_zone ? <span className="text-[8px] font-bold text-orange-400 bg-orange-900/30 px-1.5 py-0.5 border border-orange-700/30">CONSTRUCTION ZONE</span> : null}
                   {(c as any).accident_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">ACCIDENT RELATED</span> : null}
                   {(c as any).dui_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">DUI RELATED</span> : null}
-                  {(c as any).is_warning ? <span className="text-[8px] font-bold text-gray-400 bg-gray-900/30 px-1.5 py-0.5 border border-gray-700/30">WARNING ONLY</span> : null}
-                  {(c as any).is_equipment_violation ? <span className="text-[8px] font-bold text-gray-400 bg-surface-sunken/30 px-1.5 py-0.5 border border-gray-700/30">EQUIPMENT VIOLATION</span> : null}
+                  {(c as any).is_warning ? <span className="text-[8px] font-bold text-rmpg-400 bg-surface-sunken px-1.5 py-0.5 border border-border-subtle">WARNING ONLY</span> : null}
+                  {(c as any).is_equipment_violation ? <span className="text-[8px] font-bold text-rmpg-400 bg-surface-sunken/30 px-1.5 py-0.5 border border-border-subtle">EQUIPMENT VIOLATION</span> : null}
                 </div>
               </div>
             </section>
@@ -1733,7 +1733,7 @@ export default function CitationsPage() {
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                <select id="ff-citationspage-21" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white"
+                <select id="ff-citationspage-21" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                   value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
@@ -1741,7 +1741,7 @@ export default function CitationsPage() {
               </div>
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                <select id="ff-citationspage-22" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white"
+                <select id="ff-citationspage-22" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                   value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {zonesForSection(form.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
@@ -1749,7 +1749,7 @@ export default function CitationsPage() {
               </div>
               <div>
                 <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                <select id="ff-citationspage-23" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white"
+                <select id="ff-citationspage-23" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                   value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
                   <option value="">—</option>
                   {beatsForZone(form.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}

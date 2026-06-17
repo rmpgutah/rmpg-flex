@@ -30,7 +30,7 @@ export default function PdfToolsDialog(p: Props) {
 
   const sectionTitle = 'text-[10px] uppercase tracking-wider text-[#d4a017] font-semibold mb-1.5';
   const hint = 'text-[9px] text-rmpg-600';
-  const input = 'bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+  const input = 'bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={p.onClose}>
@@ -39,7 +39,7 @@ export default function PdfToolsDialog(p: Props) {
           <div className="text-[11px] uppercase tracking-wider text-[#d4a017] font-semibold inline-flex items-center gap-1.5">
             <Wrench className="w-3.5 h-3.5" /> PDF Tools
           </div>
-          <IconButton onClick={p.onClose} aria-label="Close" title="Close" className="text-rmpg-400 hover:text-white p-1"><X className="w-4 h-4" /></IconButton>
+          <IconButton onClick={p.onClose} aria-label="Close" title="Close" className="text-rmpg-400 hover:text-rmpg-100 p-1"><X className="w-4 h-4" /></IconButton>
         </div>
 
         {/* Split */}

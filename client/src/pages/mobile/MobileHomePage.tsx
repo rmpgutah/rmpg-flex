@@ -18,7 +18,7 @@ export default function MobileHomePage() {
   const cards = useMobileLayout(user?.role);
 
   return (
-    <div className="min-h-[100dvh] bg-[#0a0a0a] text-white safe-px safe-pb no-overscroll">
+    <div className="min-h-[100dvh] bg-[#0a0a0a] text-rmpg-100 safe-px safe-pb no-overscroll">
       <header className="safe-pt py-3 border-b border-[#222]">
         <h1 className="text-[#d4a017] text-xs font-bold tracking-widest text-center">
           RMPG FLEX · MOBILE

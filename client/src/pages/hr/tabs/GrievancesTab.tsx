@@ -31,10 +31,10 @@ interface Grievance {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  filed: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
+  filed: 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50',
   under_review: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   investigation: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
-  mediation: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
+  mediation: 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50',
   resolved: 'bg-green-900/50 text-green-400 border border-green-700/50',
   dismissed: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-700',
   appealed: 'bg-red-900/50 text-red-400 border border-red-700/50',
@@ -42,7 +42,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: 'text-rmpg-400',
-  normal: 'text-gray-400',
+  normal: 'text-rmpg-400',
   high: 'text-amber-400',
   urgent: 'text-red-400',
 };
@@ -159,7 +159,7 @@ export default function GrievancesTab() {
         saveLabel="Submit Grievance"
       />
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-sm font-bold text-white flex items-center gap-2"><AlertOctagon className="w-4 h-4" /> Grievances</h2>
+        <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2"><AlertOctagon className="w-4 h-4" /> Grievances</h2>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
@@ -232,7 +232,7 @@ export default function GrievancesTab() {
                     <span className="text-[10px] text-rmpg-400 uppercase">{g.type}</span>
                     <span className={`text-[10px] font-medium ${PRIORITY_COLORS[g.priority] || 'text-rmpg-500'}`}>{g.priority}</span>
                   </div>
-                  <h3 className="text-xs font-bold text-white truncate max-w-md">{g.subject}</h3>
+                  <h3 className="text-xs font-bold text-rmpg-100 truncate max-w-md">{g.subject}</h3>
                   <p className="text-[10px] text-rmpg-300 mt-1 line-clamp-2">{g.description}</p>
                   <div className="flex items-center gap-3 mt-2 text-[10px] text-rmpg-400">
                     <span>Filed by: {g.officer_name}</span>

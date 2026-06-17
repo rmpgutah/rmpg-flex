@@ -101,7 +101,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
     <div className="space-y-4 max-w-3xl">
       <div className="flex items-center gap-2">
         <Cloud size={16} className="text-[#d4a017]" />
-        <h2 className="text-[13px] font-bold text-white uppercase tracking-wider">Cloudflare Platform</h2>
+        <h2 className="text-[13px] font-bold text-rmpg-100 uppercase tracking-wider">Cloudflare Platform</h2>
         {status?.token_valid && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 bg-green-900/40 text-green-400 border border-green-700/50 flex items-center gap-1"><ShieldCheck size={10} /> Connected</span>}
         {config?.token_set && status && !status.token_valid && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 bg-red-900/40 text-red-300 border border-red-600/70 flex items-center gap-1"><AlertTriangle size={10} /> Token invalid</span>}
       </div>
@@ -133,7 +133,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
             <button type="button" onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-2 bg-[#d4a017] hover:bg-[#b88a12] disabled:opacity-40 rounded-sm text-[11px] font-bold text-black">
               {saving ? <Loader2 size={13} className="animate-spin" /> : null} Save
             </button>
-            <button type="button" onClick={load} className="flex items-center gap-1.5 px-3 py-2 bg-[#141414] border border-[#2e2e2e] rounded-sm text-[10px] font-bold text-[#c0ccdd] hover:text-white">
+            <button type="button" onClick={load} className="flex items-center gap-1.5 px-3 py-2 bg-[#141414] border border-[#2e2e2e] rounded-sm text-[10px] font-bold text-[#c0ccdd] hover:text-rmpg-100">
               <RefreshCw size={12} /> Refresh
             </button>
           </div>

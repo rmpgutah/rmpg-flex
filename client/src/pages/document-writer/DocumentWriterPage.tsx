@@ -851,20 +851,20 @@ export default function DocumentWriterPage() {
       {recovery && (
         <div className="bg-amber-900/20 border border-amber-700/40 text-amber-200 text-[11px] px-3 py-1.5 rounded-[2px] mt-2 flex items-center gap-2">
           <span>Recovered an unsaved draft ("{recovery.title}").</span>
-          <button type="button" onClick={() => { editor?.commands.setContent(recovery.html); setTitle(recovery.title); setRecovery(null); }} className="ml-auto text-amber-300 hover:text-white text-[10px] underline">Restore</button>
-          <button type="button" onClick={() => { clearDraft(); setRecovery(null); }} className="text-amber-300/70 hover:text-white text-[10px]">Discard</button>
+          <button type="button" onClick={() => { editor?.commands.setContent(recovery.html); setTitle(recovery.title); setRecovery(null); }} className="ml-auto text-amber-300 hover:text-rmpg-100 text-[10px] underline">Restore</button>
+          <button type="button" onClick={() => { clearDraft(); setRecovery(null); }} className="text-amber-300/70 hover:text-rmpg-100 text-[10px]">Discard</button>
         </div>
       )}
       {savedNotice && (
         <div className="bg-green-900/20 border border-green-700/40 text-green-200 text-[11px] px-3 py-1.5 rounded-[2px] mt-2 flex items-center gap-2">
           <span>{savedNotice}</span>
-          <button type="button" onClick={() => navigate('/documents')} className="ml-auto text-green-300 hover:text-white text-[10px]">Open Documents →</button>
+          <button type="button" onClick={() => navigate('/documents')} className="ml-auto text-green-300 hover:text-rmpg-100 text-[10px]">Open Documents →</button>
         </div>
       )}
       {errorNotice && (
         <div className="bg-red-900/20 border border-red-700/40 text-red-200 text-[11px] px-3 py-1.5 rounded-[2px] mt-2 flex items-center gap-2">
           <span>{errorNotice}</span>
-          <button type="button" onClick={() => setErrorNotice(null)} className="ml-auto text-red-300 hover:text-white text-[10px]">Dismiss</button>
+          <button type="button" onClick={() => setErrorNotice(null)} className="ml-auto text-red-300 hover:text-rmpg-100 text-[10px]">Dismiss</button>
         </div>
       )}
 

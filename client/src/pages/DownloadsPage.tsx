@@ -109,7 +109,7 @@ export default function DownloadsPage() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: '#0a0a0a' }}>
+    <div className="min-h-screen" style={{ background:"var(--surface-sunken)" }}>
       {/* Header */}
       <div className="border-b" style={{ borderColor: '#222', background: '#0d0d0d' }}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
@@ -120,7 +120,7 @@ export default function DownloadsPage() {
             style={{ objectFit: 'contain' }}
           />
           <div>
-            <h1 className="text-sm font-bold uppercase tracking-wider text-white">RMPG Flex</h1>
+            <h1 className="text-sm font-bold uppercase tracking-wider text-rmpg-100">RMPG Flex</h1>
             <span className="text-[10px] uppercase tracking-wider" style={{ color: '#666' }}>
               CAD / RMS Dispatch System
             </span>
@@ -142,7 +142,7 @@ export default function DownloadsPage() {
           >
             {loading ? 'Loading...' : info.win ? `v${info.win.version}` : info.mac ? `v${info.mac.version}` : 'v5.8.0'}
           </div>
-          <h2 className="text-3xl font-bold text-white mb-3">Download RMPG Flex</h2>
+          <h2 className="text-3xl font-bold text-rmpg-100 mb-3">Download RMPG Flex</h2>
           <p className="text-sm max-w-lg mx-auto leading-relaxed" style={{ color: '#888' }}>
             Install RMPG Flex on your computer or phone. The full CAD/RMS dispatch system — available as a
             desktop app, Android app, or in any web browser.
@@ -181,7 +181,7 @@ export default function DownloadsPage() {
                 )}
 
                 <Icon className="w-10 h-10 mb-3" style={{ color: '#d4a017' }} />
-                <h3 className="text-base font-bold text-white mb-1">{config.label}</h3>
+                <h3 className="text-base font-bold text-rmpg-100 mb-1">{config.label}</h3>
                 <span className="text-[11px] mb-3" style={{ color: '#666' }}>{config.arch}</span>
 
                 {loading ? (
@@ -228,7 +228,7 @@ export default function DownloadsPage() {
           style={{ background: '#111', border: '1px solid #222', borderRadius: 2 }}
         >
           <div>
-            <h4 className="text-sm font-bold text-white mb-1">Use in Browser</h4>
+            <h4 className="text-sm font-bold text-rmpg-100 mb-1">Use in Browser</h4>
             <p className="text-xs" style={{ color: '#666' }}>
               No download needed. Open the full RMPG Flex web app in any browser on any device.
             </p>

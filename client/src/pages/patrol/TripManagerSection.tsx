@@ -264,7 +264,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
           >
             <Check className="w-3.5 h-3.5" />
           </IconButton>
-          <IconButton aria-label="Cancel" onClick={cancelDraft} className="text-rmpg-400 hover:text-white">
+          <IconButton aria-label="Cancel" onClick={cancelDraft} className="text-rmpg-400 hover:text-rmpg-100">
             <X className="w-3.5 h-3.5" />
           </IconButton>
         </div>
@@ -361,7 +361,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
                             className="text-green-400 hover:text-green-300">
                             <Check className="w-3.5 h-3.5" />
                           </IconButton>
-                          <IconButton aria-label="Cancel edit" onClick={cancelDraft} className="text-rmpg-400 hover:text-white">
+                          <IconButton aria-label="Cancel edit" onClick={cancelDraft} className="text-rmpg-400 hover:text-rmpg-100">
                             <X className="w-3.5 h-3.5" />
                           </IconButton>
                         </div>
@@ -393,7 +393,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
                           >
                             {deletingKey === key ? 'Deleting…' : 'Confirm Delete'}
                           </button>
-                          <IconButton aria-label="Cancel delete" onClick={() => { setConfirmDeleteKey(null); setDeleteReason(''); }} className="text-rmpg-400 hover:text-white">
+                          <IconButton aria-label="Cancel delete" onClick={() => { setConfirmDeleteKey(null); setDeleteReason(''); }} className="text-rmpg-400 hover:text-rmpg-100">
                             <X className="w-3.5 h-3.5" />
                           </IconButton>
                         </div>
@@ -409,7 +409,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
                     <td className="px-2 py-[2px] font-mono text-[10px] text-rmpg-300">{t.call_number || '—'}</td>
                     <td className="px-2 py-[2px] font-mono text-[10px] tabular-nums text-rmpg-200">{tsLocal(t.start_time)}</td>
                     <td className="px-2 py-[2px] font-mono text-[10px] tabular-nums text-rmpg-200">{tsLocal(t.end_time)}</td>
-                    <td className="px-2 py-[2px] font-mono text-[10px] tabular-nums text-right text-white">
+                    <td className="px-2 py-[2px] font-mono text-[10px] tabular-nums text-right text-rmpg-100">
                       {t.distance_mi != null ? t.distance_mi.toFixed(1) : '—'}
                     </td>
                     <td className="px-2 py-[2px] font-mono text-[10px] tabular-nums text-right text-rmpg-300">

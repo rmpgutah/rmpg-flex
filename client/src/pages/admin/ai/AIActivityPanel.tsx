@@ -35,7 +35,7 @@ export default function AIActivityPanel() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <h3 className="text-xs font-semibold text-white uppercase tracking-wide flex items-center gap-2">
+        <h3 className="text-xs font-semibold text-rmpg-100 uppercase tracking-wide flex items-center gap-2">
           <Activity className="w-3.5 h-3.5 text-brand-400" />
           Activity Log
         </h3>
@@ -43,7 +43,7 @@ export default function AIActivityPanel() {
         <select id="ff-aiactivitypanel-0"
           value={filter}
           onChange={e => setFilter(e.target.value)}
-          className="ml-auto bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1 focus:border-brand-500 focus:outline-none"
+          className="ml-auto bg-[#0b0b0b] border border-[#1c1c1c] text-rmpg-100 text-xs rounded px-2 py-1 focus:border-brand-500 focus:outline-none"
         >
           {taskTypes.map(t => (
             <option key={t} value={t}>{t === 'all' ? 'All Types' : t}</option>
@@ -53,7 +53,7 @@ export default function AIActivityPanel() {
         <button
           onClick={fetchActivity}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 text-xs font-medium rounded transition-colors disabled:opacity-50"
         >
           {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
           Refresh
@@ -84,7 +84,7 @@ export default function AIActivityPanel() {
                 <div className="text-rmpg-500 font-mono text-[10px] truncate">
                   {a.created_at ? new Date(a.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
                 </div>
-                <div className="text-white font-mono truncate">{a.task_type}</div>
+                <div className="text-rmpg-100 font-mono truncate">{a.task_type}</div>
                 <div className="text-rmpg-400 truncate">{a.provider}</div>
                 <div className="text-rmpg-400 font-mono">{a.latency_ms}ms</div>
                 <div>

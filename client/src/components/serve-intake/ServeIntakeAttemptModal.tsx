@@ -156,7 +156,7 @@ export default function ServeIntakeAttemptModal({
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#222] sticky top-0 bg-surface-base">
           <div>
             <div className="text-[10px] uppercase tracking-wider text-rmpg-500 font-bold">Log Service Attempt</div>
-            <div className="text-sm text-white font-bold truncate">{recipientName}</div>
+            <div className="text-sm text-rmpg-100 font-bold truncate">{recipientName}</div>
             <div className="text-[10px] text-rmpg-400 truncate">
               {recipientAddress}
               {callNumber && <span className="ml-2 text-brand-400">· {callNumber}</span>}
@@ -179,7 +179,7 @@ export default function ServeIntakeAttemptModal({
             {submittedWindow && !submittedWindow.terminal && (
               <div className="border border-amber-700/50 bg-amber-900/20 rounded-sm p-3 space-y-1">
                 <div className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">Suggested next attempt</div>
-                <div className="text-sm text-white">
+                <div className="text-sm text-rmpg-100">
                   {submittedWindow.dayOffset === 0 ? 'Later today'
                     : submittedWindow.dayOffset === 1 ? 'Tomorrow'
                     : `In ${submittedWindow.dayOffset} days`}
@@ -195,7 +195,7 @@ export default function ServeIntakeAttemptModal({
             )}
             <button
               onClick={onClose}
-              className="w-full px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs uppercase rounded-sm"
+              className="w-full px-4 py-2 bg-brand-600 hover:bg-brand-500 text-rmpg-100 font-bold text-xs uppercase rounded-sm"
             >
               Close
             </button>
@@ -253,7 +253,7 @@ export default function ServeIntakeAttemptModal({
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
                 placeholder="Description, recipient demographics, witness, etc."
-                className="w-full bg-surface-sunken border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:outline-none focus:border-brand-500"
+                className="w-full bg-surface-sunken border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:outline-none focus:border-brand-500"
               />
             </div>
 
@@ -290,7 +290,7 @@ export default function ServeIntakeAttemptModal({
               <button
                 onClick={handleSubmit}
                 disabled={!result || submitting}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-rmpg-800 disabled:text-rmpg-600 text-white font-bold text-xs uppercase rounded-sm transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-rmpg-800 disabled:text-rmpg-600 text-rmpg-100 font-bold text-xs uppercase rounded-sm transition-colors"
               >
                 {submitting ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>

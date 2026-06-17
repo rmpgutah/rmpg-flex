@@ -41,7 +41,7 @@ export function CommitDropdown({ allowedActions, onSelect }: Props) {
               key={action}
               type="button"
               onClick={() => { setOpen(false); onSelect(action); }}
-              className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#1f1f1f]"
+              className="block w-full text-left px-3 py-2 text-xs text-rmpg-100 hover:bg-[#1f1f1f]"
             >
               {LABELS[action]}
             </button>

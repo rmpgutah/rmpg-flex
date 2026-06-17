@@ -135,7 +135,7 @@ export default function IntegrationHub({ onSetupClick }: IntegrationHubProps) {
                     <div className="flex items-center gap-2">
                       {intg.health !== 'unconfigured' && <span className={`led-dot ${healthLed}`} />}
                       <Icon className="w-3.5 h-3.5 text-rmpg-400" />
-                      <span className="text-[11px] text-white font-semibold">{intg.name}</span>
+                      <span className="text-[11px] text-rmpg-100 font-semibold">{intg.name}</span>
                     </div>
                     <span
                       className="text-[8px] font-bold uppercase tracking-wide"

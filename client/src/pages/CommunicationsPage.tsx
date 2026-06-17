@@ -750,11 +750,11 @@ export default function CommunicationsPage() {
                 autoComplete="off"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-transparent border-none outline-none text-xs text-white placeholder-rmpg-500"
+                className="bg-transparent border-none outline-none text-xs text-rmpg-100 placeholder-rmpg-500"
                 style={{ minWidth: '120px', maxWidth: '180px' }}
               />
               {searchQuery && (
-                <button type="button" onClick={() => setSearchQuery('')} className="text-rmpg-500 hover:text-white">
+                <button type="button" onClick={() => setSearchQuery('')} className="text-rmpg-500 hover:text-rmpg-100">
                   <X className="w-3 h-3" />
                 </button>
               )}
@@ -803,15 +803,15 @@ export default function CommunicationsPage() {
                 className={`
                   flex items-center gap-2 px-3 py-1.5 text-xs font-medium transition-all
                   ${activePanel === panel.id
-                    ? 'bg-rmpg-700 text-white border border-rmpg-600 shadow-sm'
-                    : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 border border-transparent'
+                    ? 'bg-rmpg-700 text-rmpg-100 border border-rmpg-600 shadow-sm'
+                    : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/50 border border-transparent'
                   }
                 `}
               >
                 <Icon className="w-3.5 h-3.5" />
                 {panel.label}
                 {panel.badge ? (
-                  <span className="px-1.5 py-0.5 text-[10px] font-bold bg-red-600 text-white rounded-sm min-w-[20px] text-center">
+                  <span className="px-1.5 py-0.5 text-[10px] font-bold bg-red-600 text-rmpg-100 rounded-sm min-w-[20px] text-center">
                     {panel.badge}
                   </span>
                 ) : null}
@@ -824,7 +824,7 @@ export default function CommunicationsPage() {
         <div className="flex items-center gap-3 ml-auto text-[9px] font-mono">
           {activePanel === 'messages' && (
             <>
-              <span className="text-rmpg-400">Conversations: <strong className="text-white">{threadCount}</strong></span>
+              <span className="text-rmpg-400">Conversations: <strong className="text-rmpg-100">{threadCount}</strong></span>
               {unreadCount > 0 && (
                 <span className="flex items-center gap-1 text-red-400 font-bold">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /> {unreadCount} unread
@@ -914,7 +914,7 @@ export default function CommunicationsPage() {
                           <div className="flex items-center justify-between mb-0.5">
                             <div className="flex items-center gap-2 min-w-0 flex-1">
                               {thread.hasUnread && <div className="w-2 h-2 rounded-full bg-brand-400 flex-shrink-0 shadow-sm shadow-brand-400/50" />}
-                              <span className={`text-xs truncate ${thread.hasUnread ? 'font-bold text-white' : 'font-medium text-rmpg-200'}`}>
+                              <span className={`text-xs truncate ${thread.hasUnread ? 'font-bold text-rmpg-100' : 'font-medium text-rmpg-200'}`}>
                                 {thread.participants.filter((p) => p !== user?.full_name).join(', ') || thread.participants[0]}
                               </span>
                               {thread.isBroadcast && (
@@ -936,7 +936,7 @@ export default function CommunicationsPage() {
 
                           {/* Row 2: Subject + message count */}
                           <div className="flex items-center gap-2">
-                            <p className={`text-xs truncate flex-1 ${thread.hasUnread ? 'font-bold text-white' : 'font-medium text-rmpg-300'}`}>
+                            <p className={`text-xs truncate flex-1 ${thread.hasUnread ? 'font-bold text-rmpg-100' : 'font-medium text-rmpg-300'}`}>
                               {thread.subject}
                             </p>
                             {msgCount > 1 && (
@@ -967,7 +967,7 @@ export default function CommunicationsPage() {
                         <ArrowLeft className="w-4 h-4" />
                       </button>
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-bold text-white truncate">{selectedThread.subject}</h3>
+                        <h3 className="text-sm font-bold text-rmpg-100 truncate">{selectedThread.subject}</h3>
                         <p className="text-[10px] text-rmpg-400 truncate">
                           {selectedThread.participants.join(', ')} &mdash; {selectedThread.messages.length} message{selectedThread.messages.length > 1 ? 's' : ''}
                         </p>
@@ -1011,7 +1011,7 @@ export default function CommunicationsPage() {
                                     {getInitials(msg.from_user_name)}
                                   </div>
                                   <div>
-                                    <span className="text-xs font-bold text-white">{msg.from_user_name}</span>
+                                    <span className="text-xs font-bold text-rmpg-100">{msg.from_user_name}</span>
                                     {msg.to_user_name && (
                                       <span className="text-[10px] text-rmpg-400 ml-1.5">
                                         to {msg.to_user_name}
@@ -1126,7 +1126,7 @@ export default function CommunicationsPage() {
                   <h3 className="text-sm font-bold text-red-400 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" /> Create New BOLO
                   </h3>
-                  <button type="button" onClick={() => setShowNewBOLO(false)} className="text-rmpg-300 hover:text-white">
+                  <button type="button" onClick={() => setShowNewBOLO(false)} className="text-rmpg-300 hover:text-rmpg-100">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -1171,7 +1171,7 @@ export default function CommunicationsPage() {
                         <div className="relative">
                           <img src={boloPhotoPreview} alt="Preview" className="w-16 h-16 object-cover border border-rmpg-600" />
                           <button type="button" aria-label="Remove photo" className="absolute -top-1.5 -right-1.5 bg-red-600 rounded-full p-1 min-w-[24px] min-h-[24px] flex items-center justify-center" onClick={() => { setBoloPhotoFile(null); setBoloPhotoPreview(null); }}>
-                            <X className="w-3 h-3 text-white" />
+                            <X className="w-3 h-3 text-rmpg-100" />
                           </button>
                         </div>
                       )}
@@ -1264,7 +1264,7 @@ export default function CommunicationsPage() {
                     <div className="flex items-center gap-3">
                       <AlertTriangle className={`w-5 h-5 ${bolo.priority === 'P1' ? 'text-red-400' : bolo.priority === 'P2' ? 'text-amber-400' : 'text-brand-400'}`} />
                       <div>
-                        <h4 className="text-sm font-bold text-white">{bolo.title}</h4>
+                        <h4 className="text-sm font-bold text-rmpg-100">{bolo.title}</h4>
                         <p className="text-[10px] text-rmpg-400"><span className="font-mono text-green-400">{bolo.bolo_number}</span> | Issued by {bolo.issued_by}</p>
                       </div>
                     </div>
@@ -1428,7 +1428,7 @@ export default function CommunicationsPage() {
               setShowCompose(false);
             } catch (err: any) { addToast(err?.message || 'Failed to save draft', 'error'); }
           }}
-          className="toolbar-btn text-rmpg-400 hover:text-white"
+          className="toolbar-btn text-rmpg-400 hover:text-rmpg-100"
         >
           Save as Draft
         </button>

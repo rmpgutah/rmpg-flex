@@ -79,7 +79,7 @@ export default function GangIntelPage() {
     { key: 'threat_level', label: 'Threat', render: (r: GangMember) => <span className={`badge ${r.threat_level === 'critical' ? 'badge-p1' : r.threat_level === 'high' ? 'badge-p2' : 'badge-p3'}`}>{r.threat_level}</span> },
     { key: 'actions', label: '', width: '80px', render: (r: GangMember) => (
       <div className="flex gap-2">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-rmpg-400 hover:text-white" title="Edit"><Pencil size={12} /></button>
+        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-rmpg-400 hover:text-rmpg-100" title="Edit"><Pencil size={12} /></button>
         <button onClick={(e) => { e.stopPropagation(); setDeleteId(r.id); }} className="text-red-500 hover:text-red-300" title="Delete"><Trash2 size={12} /></button>
       </div>
     )},

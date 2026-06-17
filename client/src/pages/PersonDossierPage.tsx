@@ -19,7 +19,7 @@ const real = (v: unknown) => v != null && !SENTINELS.has(String(v).trim().toLowe
 const show = (v: unknown) => (real(v) ? String(v) : '—');
 
 const KIND_COLOR: Record<string, string> = {
-  call: 'text-[#d4a017]', incident: 'text-orange-400', citation: 'text-gray-300',
+  call: 'text-[#d4a017]', incident: 'text-orange-400', citation: 'text-rmpg-300',
   field_interview: 'text-emerald-400', trespass_order: 'text-red-400',
   warrant: 'text-red-500', arrest: 'text-red-400',
 };
@@ -72,7 +72,7 @@ export default function PersonDossierPage() {
           ? <img src={p.photo_url} alt={name} className="w-20 h-24 object-cover border border-[#222222]" />
           : <div className="w-20 h-24 bg-[#050505] border border-[#222222] flex items-center justify-center text-[9px] text-[#888888]">NO PHOTO</div>}
         <div className="flex-1 min-w-0">
-          <div className="text-lg text-white font-semibold">{name}</div>
+          <div className="text-lg text-rmpg-100 font-semibold">{name}</div>
           <div className="text-[11px] text-[#888888]">
             DOB {show(p.dob)} · {show(p.gender)} · {show(p.race)}
             {real(p.dl_number) && <> · DL {p.dl_number} ({show(p.dl_state)})</>}
@@ -187,7 +187,7 @@ export default function PersonDossierPage() {
           {data.timeline.map((e) => (
             <div key={`${e.kind}:${e.id}`} className="flex items-baseline gap-2 text-[11px] py-[2px] border-b border-[#1a1a1a] last:border-b-0">
               <span className="text-[#888888] w-20 shrink-0">{e.date ? String(e.date).slice(0, 10) : '—'}</span>
-              <span className={`w-28 shrink-0 text-[9px] font-semibold ${KIND_COLOR[e.kind] || 'text-gray-400'}`}>
+              <span className={`w-28 shrink-0 text-[9px] font-semibold ${KIND_COLOR[e.kind] || 'text-rmpg-400'}`}>
                 {e.kind.replace(/_/g, ' ').toUpperCase()}
               </span>
               <span className="text-gray-200">{e.title}</span>

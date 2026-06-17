@@ -314,7 +314,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Notification Rule' : 'New Notification Rule'}
               </h3>
-              <IconButton onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog"><X className="w-4 h-4" /></IconButton>
+              <IconButton onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>

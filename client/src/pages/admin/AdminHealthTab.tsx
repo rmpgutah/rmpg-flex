@@ -207,7 +207,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
   const changeTypeBadge = (type: string) => {
     const styles: Record<string, string> = {
       feature: 'bg-green-900/40 text-green-400 border-green-800/50',
-      enhancement: 'bg-gray-900/40 text-gray-400 border-gray-800/50',
+      enhancement: 'bg-surface-sunken/40 text-rmpg-400 border-gray-800/50',
       fix: 'bg-amber-900/40 text-amber-400 border-amber-800/50',
       security: 'bg-red-900/40 text-red-400 border-red-800/50',
     };
@@ -216,7 +216,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
 
   const versionTypeBadge = (type: string) => {
     if (type === 'major') return 'bg-red-900/30 text-red-400 border-red-800/40';
-    if (type === 'minor') return 'bg-gray-900/30 text-gray-400 border-gray-800/40';
+    if (type === 'minor') return 'bg-surface-sunken/30 text-rmpg-400 border-gray-800/40';
     return 'bg-green-900/30 text-green-400 border-green-800/40';
   };
 
@@ -271,9 +271,9 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
             { label: 'Units On Duty', value: realtimeStats.unitsOnDuty, color: 'text-green-400' },
             { label: 'Pending Incidents', value: realtimeStats.pendingIncidents, color: 'text-amber-400' },
             { label: 'Active BOLOs', value: realtimeStats.activeBolos, color: 'text-orange-400' },
-            { label: 'Active Sessions', value: realtimeStats.activeSessions, color: 'text-gray-400' },
+            { label: 'Active Sessions', value: realtimeStats.activeSessions, color: 'text-rmpg-400' },
             { label: "Today's Activity", value: realtimeStats.todayActivity, color: 'text-purple-400' },
-            { label: "Today's Calls", value: realtimeStats.todayCalls, color: 'text-gray-400' },
+            { label: "Today's Calls", value: realtimeStats.todayCalls, color: 'text-rmpg-400' },
           ].map(item => (
             <div key={item.label} className="bg-surface-sunken p-2 text-center panel-beveled">
               <div className={`text-xl font-bold font-mono ${item.color}`}>{item.value}</div>
@@ -288,15 +288,15 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">DB Size</div>
-            <div className="text-sm font-bold text-white font-mono">{systemHealth.database?.sizeMB ?? '?'} MB</div>
+            <div className="text-sm font-bold text-rmpg-100 font-mono">{systemHealth.database?.sizeMB ?? '?'} MB</div>
           </div>
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">Server Uptime</div>
-            <div className="text-sm font-bold text-white font-mono">{systemHealth.server.uptimeHours ?? 0}h</div>
+            <div className="text-sm font-bold text-rmpg-100 font-mono">{systemHealth.server.uptimeHours ?? 0}h</div>
           </div>
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">Heap Used</div>
-            <div className="text-sm font-bold text-white font-mono">{systemHealth.server.memoryUsageMB?.heapUsed ?? '?'} MB</div>
+            <div className="text-sm font-bold text-rmpg-100 font-mono">{systemHealth.server.memoryUsageMB?.heapUsed ?? '?'} MB</div>
           </div>
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">Recent Errors</div>
@@ -329,7 +329,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
               <tbody>
                 {usersActivity.data.slice(0, 10).map((u: any) => (
                   <tr key={u.id} className="border-b border-rmpg-700/20 hover:bg-surface-raised" onContextMenu={(e) => openMenu(e, buildUserActivityMenu(u))}>
-                    <td className="py-1 px-2 text-white font-bold">{u.full_name}</td>
+                    <td className="py-1 px-2 text-rmpg-100 font-bold">{u.full_name}</td>
                     <td className="py-1 px-2 text-rmpg-400">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</td>
                     <td className="py-1 px-2 text-right font-mono text-brand-400">{u.recent_action_count}</td>
                     <td className="py-1 px-2 text-right font-mono">{u.incidents_30d}</td>
@@ -394,7 +394,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
           label="Uptime"
           value={formatDuration(h.server?.uptime ?? 0)}
           sub={`Node ${h.server?.nodeVersion ?? '?'}`}
-          color="text-gray-400"
+          color="text-rmpg-400"
         />
         <MetricCard
           icon={HardDrive}
@@ -408,7 +408,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
           label="Connected"
           value={String(h.operations.connectedClients)}
           sub={`${h.operations.activeSessions} sessions`}
-          color="text-gray-400"
+          color="text-rmpg-400"
         />
         <MetricCard
           icon={Radio}
@@ -482,7 +482,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
               </div>
               <div className="flex items-center justify-between text-[9px]">
                 <span className="text-rmpg-500">{formatFileSize(host.memory.free)} free</span>
-                <span className={`font-mono font-bold ${ramPercent > 85 ? 'text-red-400' : ramPercent > 65 ? 'text-amber-400' : 'text-gray-400'}`}>
+                <span className={`font-mono font-bold ${ramPercent > 85 ? 'text-red-400' : ramPercent > 65 ? 'text-amber-400' : 'text-rmpg-400'}`}>
                   {ramPercent}%
                 </span>
               </div>
@@ -561,9 +561,9 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
                     <span className="text-[11px] font-mono font-bold text-green-400 ml-auto">{formatFileSize(host.networkIO.rxBytes)}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <ArrowUp className="w-3 h-3 text-gray-400" />
+                    <ArrowUp className="w-3 h-3 text-rmpg-400" />
                     <span className="text-[10px] text-rmpg-400">TX</span>
-                    <span className="text-[11px] font-mono font-bold text-gray-400 ml-auto">{formatFileSize(host.networkIO.txBytes)}</span>
+                    <span className="text-[11px] font-mono font-bold text-rmpg-400 ml-auto">{formatFileSize(host.networkIO.txBytes)}</span>
                   </div>
                 </div>
               </div>
@@ -770,7 +770,7 @@ function ApiUsageStats() {
           {(stats.byAction || []).slice(0, 8).map((a: any) => (
             <div key={a.action} className="flex items-center justify-between py-0.5">
               <span className="text-[10px] text-rmpg-300 truncate">{a.action}</span>
-              <span className="text-[10px] font-mono text-white ml-2">{a.count}</span>
+              <span className="text-[10px] font-mono text-rmpg-100 ml-2">{a.count}</span>
             </div>
           ))}
         </div>
@@ -779,7 +779,7 @@ function ApiUsageStats() {
           {(stats.byUser || []).slice(0, 8).map((u: any, i: number) => (
             <div key={i} className="flex items-center justify-between py-0.5">
               <span className="text-[10px] text-rmpg-300 truncate">{u.full_name || 'System'}</span>
-              <span className="text-[10px] font-mono text-white ml-2">{u.count}</span>
+              <span className="text-[10px] font-mono text-rmpg-100 ml-2">{u.count}</span>
             </div>
           ))}
         </div>
@@ -811,7 +811,7 @@ function ConfigChangeHistory() {
             <span className="text-rmpg-400 w-16 shrink-0">{safeDateStr(h.changed_at)}</span>
             <span className="text-brand-400 font-mono">{h.config_key}</span>
             <span className="text-rmpg-500">by</span>
-            <span className="text-white">{h.changed_by_name || 'Unknown'}</span>
+            <span className="text-rmpg-100">{h.changed_by_name || 'Unknown'}</span>
           </div>
         ))}
       </div>
@@ -839,11 +839,11 @@ function DatabaseBackupStatus() {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <div className="text-[9px] text-rmpg-500">Database Size</div>
-          <div className="text-sm font-bold text-white">{formatFileSize(backup.dbSize || 0)}</div>
+          <div className="text-sm font-bold text-rmpg-100">{formatFileSize(backup.dbSize || 0)}</div>
         </div>
         <div>
           <div className="text-[9px] text-rmpg-500">Last Modified</div>
-          <div className="text-sm font-bold text-white">
+          <div className="text-sm font-bold text-rmpg-100">
             {backup.lastModified ? new Date(backup.lastModified).toLocaleString() : 'N/A'}
           </div>
         </div>
@@ -916,7 +916,7 @@ function MaintenanceModeToggle() {
         value={message}
         onChange={e => setMessage(e.target.value)}
         placeholder="Maintenance message shown to users..."
-        className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none"
+        className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none"
       />
     </div>
   );

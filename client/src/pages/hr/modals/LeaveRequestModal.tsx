@@ -117,7 +117,7 @@ export default function LeaveRequestModal({
   };
 
   const inputClass =
-    'w-full bg-surface-sunken border border-rmpg-700 text-white text-xs px-3 py-2 rounded-sm focus:outline-none focus:border-brand-500 transition-colors';
+    'w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-3 py-2 rounded-sm focus:outline-none focus:border-brand-500 transition-colors';
   const labelClass = 'block text-xs font-medium text-rmpg-300 mb-1';
 
   return (

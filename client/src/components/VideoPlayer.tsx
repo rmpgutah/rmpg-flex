@@ -190,10 +190,10 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
               {/* Top-left: Agency & Officer */}
               <div className="absolute top-2 left-3 pointer-events-none select-none">
                 <div className="bg-black/60 backdrop-blur-sm px-2.5 py-1.5 border border-white/10 rounded-sm">
-                  <p className="font-mono text-[11px] text-white font-bold tracking-wider leading-tight">
+                  <p className="font-mono text-[11px] text-rmpg-100 font-bold tracking-wider leading-tight">
                     ROCKY MOUNTAIN PROTECTIVE GROUP
                   </p>
-                  <p className="font-mono text-[10px] text-gray-400 leading-tight">
+                  <p className="font-mono text-[10px] text-rmpg-400 leading-tight">
                     BWC | {video.officer_name || 'UNKNOWN'} | CAM: {video.camera_serial || 'N/A'}
                   </p>
                 </div>
@@ -216,7 +216,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
               {/* Bottom-left: Timestamp (updates in real-time) */}
               <div className="absolute bottom-12 left-3 pointer-events-none select-none">
                 <div className="bg-black/60 backdrop-blur-sm px-2.5 py-1 border border-white/10 rounded-sm">
-                  <p className="font-mono text-[12px] text-white font-bold tabular-nums tracking-wide">
+                  <p className="font-mono text-[12px] text-rmpg-100 font-bold tabular-nums tracking-wide">
                     {formatHudTime(currentTime)}
                   </p>
                 </div>

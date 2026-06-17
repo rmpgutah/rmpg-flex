@@ -313,7 +313,7 @@ export default function NavPage() {
       />
 
       {/* GPS Status Bar */}
-      <div className="flex items-center gap-3 px-3 py-1.5 border-b border-subtle text-[10px] font-mono" style={{ background: '#0a0a0a' }}>
+      <div className="flex items-center gap-3 px-3 py-1.5 border-b border-subtle text-[10px] font-mono" style={{ background:"var(--surface-sunken)" }}>
         <span style={{ color: gps.isTracking ? '#22c55e' : '#ef4444' }}>
           {gps.isTracking ? 'GPS ON' : 'GPS OFF'}
         </span>
@@ -695,7 +695,7 @@ function CurrentTripPanel({
   return (
     <div className="space-y-3">
       {/* Status Card */}
-      <div className="rounded-sm border border-subtle p-3" style={{ background: '#0a0a0a' }}>
+      <div className="rounded-sm border border-subtle p-3" style={{ background:"var(--surface-sunken)" }}>
         <div className="flex items-center gap-2 mb-2">
           {gps.isTracking ? (
             <CheckCircle size={14} style={{ color: '#22c55e' }} />
@@ -796,7 +796,7 @@ function CurrentTripPanel({
       </div>
 
       {/* Hint card */}
-      <div className="rounded-sm border border-subtle p-2.5" style={{ background: '#0a0a0a' }}>
+      <div className="rounded-sm border border-subtle p-2.5" style={{ background:"var(--surface-sunken)" }}>
         <div className="flex items-center gap-1.5 mb-1.5">
           <Footprints size={10} style={{ color: '#d4a017' }} />
           <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
@@ -859,7 +859,7 @@ function HistoryPanel({
       </div>
 
       {trips.length === 0 ? (
-        <div className="rounded-sm border border-subtle p-6 text-center" style={{ background: '#0a0a0a' }}>
+        <div className="rounded-sm border border-subtle p-6 text-center" style={{ background:"var(--surface-sunken)" }}>
           <Route size={24} className="mx-auto mb-2" style={{ color: '#333' }} />
           <p className="text-[11px] text-rmpg-500">No trips recorded yet</p>
           <p className="text-[10px] text-rmpg-600 mt-1">
@@ -871,7 +871,7 @@ function HistoryPanel({
           <div
             key={trip.id}
             className="rounded-sm border border-subtle p-2.5 transition-colors"
-            style={{ background: '#0a0a0a' }}
+            style={{ background:"var(--surface-sunken)" }}
           >
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-1.5">

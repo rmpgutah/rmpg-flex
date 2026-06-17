@@ -134,7 +134,7 @@ const STATUSES: { value: InvoiceStatus | ''; label: string }[] = [
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
-  sent: 'bg-gray-900/50 text-gray-300 border-gray-700/50',
+  sent: 'bg-surface-sunken/50 text-rmpg-300 border-border-default/50',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
   partial: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   overdue: 'bg-red-900/60 text-red-300 border-red-700/50',
@@ -163,8 +163,8 @@ const PAYMENT_METHODS = [
 ];
 
 const PAYMENT_METHOD_COLORS: Record<string, string> = {
-  check: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
-  ach: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+  check: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
+  ach: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
   wire: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
   credit_card: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   cash: 'bg-green-900/40 text-green-400 border-green-700/50',
@@ -546,10 +546,10 @@ export default function InvoicesPage() {
   const CreatePanel = () => (
     <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-bold text-white flex items-center gap-2">
+        <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2">
           <Plus size={14} className="text-brand-400" /> New Invoice
         </h2>
-        <button type="button" onClick={() => { setMode('list'); setSaveError(''); }} className="text-rmpg-400 hover:text-white text-xs">Cancel</button>
+        <button type="button" onClick={() => { setMode('list'); setSaveError(''); }} className="text-rmpg-400 hover:text-rmpg-100 text-xs">Cancel</button>
       </div>
 
       {saveError && (
@@ -565,7 +565,7 @@ export default function InvoicesPage() {
           <select id="ff-invoicespage-0"
             value={createForm.client_id}
             onChange={e => setCreateForm(f => ({ ...f, client_id: e.target.value }))}
-            className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
+            className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
           >
             <option value="">-- Select Client --</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -580,7 +580,7 @@ export default function InvoicesPage() {
               type="date"
               value={createForm.period_start}
               onChange={e => setCreateForm(f => ({ ...f, period_start: e.target.value }))}
-              className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
+              className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
             />
           </div>
           <div>
@@ -589,7 +589,7 @@ export default function InvoicesPage() {
               type="date"
               value={createForm.period_end}
               onChange={e => setCreateForm(f => ({ ...f, period_end: e.target.value }))}
-              className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
+              className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
             />
           </div>
         </div>
@@ -601,7 +601,7 @@ export default function InvoicesPage() {
             type="date"
             value={createForm.issue_date}
             onChange={e => setCreateForm(f => ({ ...f, issue_date: e.target.value }))}
-            className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
+            className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
           />
         </div>
 
@@ -612,7 +612,7 @@ export default function InvoicesPage() {
             value={createForm.notes}
             onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
             rows={2}
-            className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none resize-none"
+            className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none resize-none"
           />
         </div>
 
@@ -623,14 +623,14 @@ export default function InvoicesPage() {
             value={createForm.internal_notes}
             onChange={e => setCreateForm(f => ({ ...f, internal_notes: e.target.value }))}
             rows={2}
-            className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none resize-none"
+            className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none resize-none"
           />
         </div>
 
         <button type="button"
           onClick={handleCreate}
           disabled={saving}
-          className="w-full flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold py-2 px-4 rounded-sm disabled:opacity-50 transition-colors"
+          className="w-full flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-500 text-rmpg-100 text-xs font-bold py-2 px-4 rounded-sm disabled:opacity-50 transition-colors"
         >
           {saving ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
           Create Invoice
@@ -661,16 +661,16 @@ export default function InvoicesPage() {
           <div>
             <div className="flex items-center gap-2">
               {isMobile && (
-                <IconButton onClick={backToList} className="text-rmpg-400 hover:text-white mr-1" aria-label="Back to list">
+                <IconButton onClick={backToList} className="text-rmpg-400 hover:text-rmpg-100 mr-1" aria-label="Back to list">
                   <ChevronLeft size={16} />
                 </IconButton>
               )}
-              <h2 className="text-sm font-bold text-white font-mono">{inv.invoice_number}</h2>
+              <h2 className="text-sm font-bold text-rmpg-100 font-mono">{inv.invoice_number}</h2>
               <StatusBadge status={inv.status} />
             </div>
             <p className="text-xs text-rmpg-400 mt-0.5">{inv.client_name}</p>
           </div>
-          <IconButton onClick={backToList} className="text-rmpg-500 hover:text-white text-xs hidden md:block" aria-label="Close">
+          <IconButton onClick={backToList} className="text-rmpg-500 hover:text-rmpg-100 text-xs hidden md:block" aria-label="Close">
             <X size={14} />
           </IconButton>
         </div>
@@ -683,7 +683,7 @@ export default function InvoicesPage() {
                 key={a.status}
                 onClick={() => handleStatusChange(inv.id, a.status)}
                 disabled={actionLoading === `status-${inv.id}`}
-                className={`flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white rounded-sm transition-colors ${a.cls} disabled:opacity-50`}
+                className={`flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-rmpg-100 rounded-sm transition-colors ${a.cls} disabled:opacity-50`}
               >
                 {actionLoading === `status-${inv.id}` ? <Loader2 size={10} className="animate-spin" /> : <a.icon size={10} />}
                 {a.label}
@@ -707,15 +707,15 @@ export default function InvoicesPage() {
           <div className="text-[10px] uppercase tracking-wider text-brand-400 font-bold mb-1">Invoice Details</div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
             <div className="text-rmpg-500">Issue Date</div>
-            <div className="text-white">{formatDate(inv.issue_date) || inv.issue_date}</div>
+            <div className="text-rmpg-100">{formatDate(inv.issue_date) || inv.issue_date}</div>
             <div className="text-rmpg-500">Due Date</div>
-            <div className="text-white">{formatDate(inv.due_date) || inv.due_date}</div>
+            <div className="text-rmpg-100">{formatDate(inv.due_date) || inv.due_date}</div>
             <div className="text-rmpg-500">Period</div>
-            <div className="text-white">{inv.period_start} to {inv.period_end}</div>
+            <div className="text-rmpg-100">{inv.period_start} to {inv.period_end}</div>
             <div className="text-rmpg-500">Payment Terms</div>
-            <div className="text-white">{inv.payment_terms || 'Net 30'}</div>
+            <div className="text-rmpg-100">{inv.payment_terms || 'Net 30'}</div>
             <div className="text-rmpg-500">Billing Email</div>
-            <div className="text-white truncate">{inv.billing_email || '--'}</div>
+            <div className="text-rmpg-100 truncate">{inv.billing_email || '--'}</div>
           </div>
         </div>
 
@@ -723,7 +723,7 @@ export default function InvoicesPage() {
         <div className="card-glass p-3">
           <div className="text-[10px] uppercase tracking-wider text-brand-400 font-bold mb-2">Financial Summary</div>
           <div className="space-y-1 text-xs">
-            <div className="flex justify-between"><span className="text-rmpg-400">Subtotal</span><span className="text-white font-mono">{formatCurrency(inv.subtotal)}</span></div>
+            <div className="flex justify-between"><span className="text-rmpg-400">Subtotal</span><span className="text-rmpg-100 font-mono">{formatCurrency(inv.subtotal)}</span></div>
             {inv.discount_amount > 0 && (
               <div className="flex justify-between"><span className="text-rmpg-400">Discount</span><span className="text-red-400 font-mono">-{formatCurrency(inv.discount_amount)}</span></div>
             )}
@@ -731,7 +731,7 @@ export default function InvoicesPage() {
               <div className="flex justify-between"><span className="text-rmpg-400">Late Fee</span><span className="text-amber-400 font-mono">+{formatCurrency(inv.late_fee_amount)}</span></div>
             )}
             <div className="border-t border-[#2b2b2b] my-1" />
-            <div className="flex justify-between font-bold"><span className="text-rmpg-300">Total</span><span className="text-white font-mono">{formatCurrency(inv.total)}</span></div>
+            <div className="flex justify-between font-bold"><span className="text-rmpg-300">Total</span><span className="text-rmpg-100 font-mono">{formatCurrency(inv.total)}</span></div>
             <div className="flex justify-between"><span className="text-rmpg-400">Paid</span><span className="text-green-400 font-mono">{formatCurrency(inv.amount_paid)}</span></div>
             <div className="border-t border-[#2b2b2b] my-1" />
             <div className="flex justify-between font-bold"><span className="text-rmpg-300">Balance Due</span><span className={`font-mono ${inv.balance_due > 0 ? 'text-amber-400' : 'text-green-400'}`}>{formatCurrency(inv.balance_due)}</span></div>
@@ -758,7 +758,7 @@ export default function InvoicesPage() {
               <select id="ff-invoicespage-4"
                 value={lineItemForm.line_type}
                 onChange={e => setLineItemForm(f => ({ ...f, line_type: e.target.value }))}
-                className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
+                className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-rmpg-100"
               >
                 <option value="custom">Custom</option>
                 <option value="service_hours">Service Hours</option>
@@ -772,7 +772,7 @@ export default function InvoicesPage() {
                 placeholder="Description"
                 value={lineItemForm.description}
                 onChange={e => setLineItemForm(f => ({ ...f, description: e.target.value }))}
-                className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
+                className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-rmpg-100"
               />
               <div className="grid grid-cols-2 gap-2">
                 <input id="ff-invoicespage-6"
@@ -780,25 +780,25 @@ export default function InvoicesPage() {
                   placeholder="Qty"
                   value={lineItemForm.quantity}
                   onChange={e => setLineItemForm(f => ({ ...f, quantity: e.target.value }))}
-                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
+                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-rmpg-100"
                 />
                 <input id="ff-invoicespage-7"
                   type="number"
                   placeholder="Unit Price"
                   value={lineItemForm.unit_price}
                   onChange={e => setLineItemForm(f => ({ ...f, unit_price: e.target.value }))}
-                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
+                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-rmpg-100"
                 />
               </div>
               <div className="flex items-center gap-2">
                 <button type="button"
                   onClick={handleAddLineItem}
                   disabled={lineItemSaving}
-                  className="flex-1 flex items-center justify-center gap-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-bold py-1 rounded-sm disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-1 bg-brand-600 hover:bg-brand-500 text-rmpg-100 text-[10px] font-bold py-1 rounded-sm disabled:opacity-50"
                 >
                   {lineItemSaving ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Add Item
                 </button>
-                <button type="button" onClick={() => setShowLineItemForm(false)} className="text-rmpg-500 hover:text-white text-[10px]">Cancel</button>
+                <button type="button" onClick={() => setShowLineItemForm(false)} className="text-rmpg-500 hover:text-rmpg-100 text-[10px]">Cancel</button>
               </div>
             </div>
           )}
@@ -823,10 +823,10 @@ export default function InvoicesPage() {
                       <td className="py-1 pr-2">
                         <span className="text-[9px] text-rmpg-400">{LINE_TYPE_LABELS[item.line_type] || item.line_type}</span>
                       </td>
-                      <td className="py-1 pr-2 text-white max-w-[200px] truncate" title={item.description}>{item.description}</td>
+                      <td className="py-1 pr-2 text-rmpg-100 max-w-[200px] truncate" title={item.description}>{item.description}</td>
                       <td className="py-1 pr-2 text-right text-rmpg-300 font-mono">{item.quantity}</td>
                       <td className="py-1 pr-2 text-right text-rmpg-300 font-mono">{formatCurrency(item.unit_price)}</td>
-                      <td className={`py-1 text-right font-mono font-bold ${item.line_type === 'discount' ? 'text-red-400' : 'text-white'}`}>
+                      <td className={`py-1 text-right font-mono font-bold ${item.line_type === 'discount' ? 'text-red-400' : 'text-rmpg-100'}`}>
                         {formatCurrency(item.amount)}
                       </td>
                       {canEdit && inv.status === 'draft' && (
@@ -875,20 +875,20 @@ export default function InvoicesPage() {
                   step="0.01"
                   value={paymentForm.amount}
                   onChange={e => setPaymentForm(f => ({ ...f, amount: e.target.value }))}
-                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
+                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-rmpg-100"
                 />
                 <input id="ff-invoicespage-9"
                   type="date"
                   value={paymentForm.payment_date}
                   onChange={e => setPaymentForm(f => ({ ...f, payment_date: e.target.value }))}
-                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
+                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-rmpg-100"
                 />
               </div>
               <div className={`grid ${paymentForm.payment_method === 'check' ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
                 <select id="ff-invoicespage-10"
                   value={paymentForm.payment_method}
                   onChange={e => setPaymentForm(f => ({ ...f, payment_method: e.target.value }))}
-                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
+                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-rmpg-100"
                 >
                   {PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
@@ -898,7 +898,7 @@ export default function InvoicesPage() {
                     placeholder="Check #"
                     value={paymentForm.reference_number}
                     onChange={e => setPaymentForm(f => ({ ...f, reference_number: e.target.value }))}
-                    className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
+                    className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-rmpg-100"
                   />
                 )}
                 <input id="ff-invoicespage-12"
@@ -912,7 +912,7 @@ export default function InvoicesPage() {
                       setPaymentForm(f => ({ ...f, reference_number: e.target.value }));
                     }
                   }}
-                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
+                  className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-rmpg-100"
                 />
               </div>
               <input id="ff-invoicespage-13"
@@ -920,17 +920,17 @@ export default function InvoicesPage() {
                 placeholder="Notes (optional)"
                 value={paymentForm.notes}
                 onChange={e => setPaymentForm(f => ({ ...f, notes: e.target.value }))}
-                className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
+                className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-rmpg-100"
               />
               <div className="flex items-center gap-2">
                 <button type="button"
                   onClick={handleAddPayment}
                   disabled={paymentSaving}
-                  className="flex-1 flex items-center justify-center gap-1 bg-green-700 hover:bg-green-600 text-white text-[10px] font-bold py-1 rounded-sm disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-1 bg-green-700 hover:bg-green-600 text-rmpg-100 text-[10px] font-bold py-1 rounded-sm disabled:opacity-50"
                 >
                   {paymentSaving ? <Loader2 size={10} className="animate-spin" /> : <CreditCard size={10} />} Record Payment
                 </button>
-                <button type="button" onClick={() => setShowPaymentForm(false)} className="text-rmpg-500 hover:text-white text-[10px]">Cancel</button>
+                <button type="button" onClick={() => setShowPaymentForm(false)} className="text-rmpg-500 hover:text-rmpg-100 text-[10px]">Cancel</button>
               </div>
             </div>
           )}
@@ -1014,9 +1014,9 @@ export default function InvoicesPage() {
         }`}
       >
         <td className="py-1.5 px-2 font-mono text-brand-300 whitespace-nowrap">{inv.invoice_number}</td>
-        <td className="py-1.5 px-2 text-white truncate max-w-[140px]">{inv.client_name}</td>
+        <td className="py-1.5 px-2 text-rmpg-100 truncate max-w-[140px]">{inv.client_name}</td>
         <td className="py-1.5 px-2"><StatusBadge status={inv.status} /></td>
-        <td className="py-1.5 px-2 text-right font-mono text-white tabular-nums">{formatCurrency(inv.total)}</td>
+        <td className="py-1.5 px-2 text-right font-mono text-rmpg-100 tabular-nums">{formatCurrency(inv.total)}</td>
         <td className="py-1.5 px-2 text-right font-mono text-rmpg-300 hidden lg:table-cell tabular-nums">{formatCurrency(inv.balance_due)}</td>
         <td className="py-1.5 px-2 text-rmpg-400 whitespace-nowrap hidden md:table-cell">{inv.due_date}</td>
         <td className="py-1.5 px-2 text-rmpg-500 whitespace-nowrap hidden xl:table-cell">{inv.issue_date}</td>
@@ -1049,13 +1049,13 @@ export default function InvoicesPage() {
                     placeholder="Search invoices..." aria-label="Search invoices..."
                     value={searchQuery}
                     onChange={e => handleSearchChange(e.target.value)}
-                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm pl-7 pr-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm pl-7 pr-2 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
                   />
                 </div>
                 {canEdit && (
                   <button type="button"
                     onClick={() => setMode('create')}
-                    className="flex items-center gap-1 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold px-3 py-1.5 rounded-sm"
+                    className="flex items-center gap-1 bg-brand-600 hover:bg-brand-500 text-rmpg-100 text-xs font-bold px-3 py-1.5 rounded-sm"
                   >
                     <Plus size={12} /> New
                   </button>
@@ -1065,7 +1065,7 @@ export default function InvoicesPage() {
                 <select id="ff-invoicespage-15"
                   value={filterStatus}
                   onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }}
-                  className="bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
+                  className="bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-rmpg-100"
                 >
                   {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
@@ -1094,8 +1094,8 @@ export default function InvoicesPage() {
                         <StatusBadge status={inv.status} />
                       </div>
                       <div className="flex items-center justify-between mt-1">
-                        <span className="text-xs text-white truncate">{inv.client_name}</span>
-                        <span className="text-xs font-mono text-white">{formatCurrency(inv.total)}</span>
+                        <span className="text-xs text-rmpg-100 truncate">{inv.client_name}</span>
+                        <span className="text-xs font-mono text-rmpg-100">{formatCurrency(inv.total)}</span>
                       </div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">Due {inv.due_date}</div>
                     </div>
@@ -1116,7 +1116,7 @@ export default function InvoicesPage() {
       <div className="flex items-center justify-between gap-3 px-3 py-1.5 border-b border-[#2b2b2b] flex-shrink-0">
         <div className="flex items-center gap-2">
           <DollarSign size={14} className="text-brand-400" />
-          <span className="text-xs font-bold text-white tracking-wide">INVOICES</span>
+          <span className="text-xs font-bold text-rmpg-100 tracking-wide">INVOICES</span>
           <span className="text-[10px] text-rmpg-500 font-mono">({totalCount})</span>
           {stats && stats.overdue_count > 0 && (
             <span className="text-[9px] font-bold px-1.5 py-0.5 bg-red-900/60 text-red-300 border border-red-700/50 rounded-sm">
@@ -1126,13 +1126,13 @@ export default function InvoicesPage() {
         </div>
         <StatsBar />
         <div className="flex items-center gap-2">
-          <IconButton onClick={() => { fetchInvoices(); fetchStats(); }} className="text-rmpg-400 hover:text-white p-1 transition-colors" title="Refresh" aria-label="Refresh">
+          <IconButton onClick={() => { fetchInvoices(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-100 p-1 transition-colors" title="Refresh" aria-label="Refresh">
             <RefreshCw size={12} />
           </IconButton>
           {canEdit && (
             <button type="button"
               onClick={() => { setMode('create'); setSelectedInvoice(null); }}
-              className="flex items-center gap-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-sm transition-colors"
+              className="flex items-center gap-1 bg-brand-600 hover:bg-brand-500 text-rmpg-100 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-sm transition-colors"
             >
               <Plus size={10} /> New Invoice
             </button>
@@ -1150,20 +1150,20 @@ export default function InvoicesPage() {
             placeholder="Search..." aria-label="Search..."
             value={searchQuery}
             onChange={e => handleSearchChange(e.target.value)}
-            className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm pl-6 pr-2 py-1 text-[11px] text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
+            className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm pl-6 pr-2 py-1 text-[11px] text-rmpg-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
           />
         </div>
         <select id="ff-invoicespage-17"
           value={filterStatus}
           onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }}
-          className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none focus:border-brand-500 transition-colors"
+          className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-rmpg-100 focus:outline-none focus:border-brand-500 transition-colors"
         >
           {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         <select id="ff-invoicespage-18"
           value={filterClientId}
           onChange={e => { setFilterClientId(e.target.value); setPage(1); }}
-          className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none focus:border-brand-500 transition-colors max-w-[160px]"
+          className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-rmpg-100 focus:outline-none focus:border-brand-500 transition-colors max-w-[160px]"
         >
           <option value="">All Clients</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -1173,14 +1173,14 @@ export default function InvoicesPage() {
           value={dateFrom}
           onChange={e => { setDateFrom(e.target.value); setPage(1); }}
           placeholder="From"
-          className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none"
+          className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-rmpg-100 focus:outline-none"
         />
         <input id="ff-invoicespage-20"
           type="date"
           value={dateTo}
           onChange={e => { setDateTo(e.target.value); setPage(1); }}
           placeholder="To"
-          className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none"
+          className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-rmpg-100 focus:outline-none"
         />
         {(filterStatus || filterClientId || dateFrom || dateTo || searchQuery) && (
           <button type="button"
@@ -1196,7 +1196,7 @@ export default function InvoicesPage() {
       {error && (
         <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
           <AlertTriangle size={12} /> {error}
-          <IconButton onClick={() => setError('')} className="ml-auto text-red-400 hover:text-white" aria-label="Dismiss error"><X size={12} /></IconButton>
+          <IconButton onClick={() => setError('')} className="ml-auto text-red-400 hover:text-rmpg-100" aria-label="Dismiss error"><X size={12} /></IconButton>
         </div>
       )}
 
@@ -1243,7 +1243,7 @@ export default function InvoicesPage() {
                 <IconButton
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page <= 1}
-                  className="p-0.5 hover:text-white disabled:opacity-30"
+                  className="p-0.5 hover:text-rmpg-100 disabled:opacity-30"
                   aria-label="Previous page"
                 >
                   <ChevronLeft size={12} />
@@ -1251,7 +1251,7 @@ export default function InvoicesPage() {
                 <IconButton
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
-                  className="p-0.5 hover:text-white disabled:opacity-30"
+                  className="p-0.5 hover:text-rmpg-100 disabled:opacity-30"
                   aria-label="Next page"
                 >
                   <ChevronRight size={12} />

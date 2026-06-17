@@ -37,7 +37,7 @@ interface AdminInvoiceTabProps {
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
-  sent: 'bg-gray-900/50 text-gray-300 border-gray-700/50',
+  sent: 'bg-surface-sunken/50 text-rmpg-300 border-border-default/50',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
   partial: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   overdue: 'bg-red-900/60 text-red-300 border-red-700/50',
@@ -47,7 +47,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 const TYPE_ICON: Record<string, React.ReactNode> = {
   contract_base: <FileText className="w-3 h-3 text-brand-400" />,
-  service_hours: <Clock className="w-3 h-3 text-gray-400" />,
+  service_hours: <Clock className="w-3 h-3 text-rmpg-400" />,
   incident_response: <AlertCircle className="w-3 h-3 text-red-400" />,
   dispatch_call: <Hash className="w-3 h-3 text-amber-400" />,
   citation: <FileText className="w-3 h-3 text-purple-400" />,
@@ -366,7 +366,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                       {(inv.status || '').replace(/_/g, ' ')}
                     </span>
                   </td>
-                  <td className="p-1.5 text-right font-mono text-white">{formatCurrency(inv.total)}</td>
+                  <td className="p-1.5 text-right font-mono text-rmpg-100">{formatCurrency(inv.total)}</td>
                   <td className="p-1.5 text-right font-mono text-green-400">{formatCurrency(inv.amount_paid)}</td>
                   <td className="p-1.5 text-right font-mono text-amber-400">{formatCurrency(inv.balance_due)}</td>
                   <td className="p-1.5 text-rmpg-400">{fmtShortDate(inv.due_date)}</td>
@@ -465,7 +465,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 <button type="button" onClick={handleRegenerate} className="toolbar-btn text-amber-400" title="Re-generate line items" disabled={saving}>
                   <RefreshCw className="w-3.5 h-3.5" /> <span className="text-[10px]">Regenerate</span>
                 </button>
-                <button type="button" onClick={() => handleStatusChange('sent')} className="toolbar-btn text-gray-400" disabled={saving}>
+                <button type="button" onClick={() => handleStatusChange('sent')} className="toolbar-btn text-rmpg-400" disabled={saving}>
                   <Send className="w-3.5 h-3.5" /> <span className="text-[10px]">Send</span>
                 </button>
                 <button type="button" onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>
@@ -496,7 +496,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[10px]">
             <div>
               <span className="text-rmpg-500 uppercase block">Client</span>
-              <span className="text-white font-bold">{inv.client_name || clientName}</span>
+              <span className="text-rmpg-100 font-bold">{inv.client_name || clientName}</span>
             </div>
             <div>
               <span className="text-rmpg-500 uppercase block">Period</span>
@@ -590,7 +590,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   <td className="p-1 text-rmpg-300">{item.description}</td>
                   <td className="p-1 text-right text-rmpg-400 font-mono">{item.quantity}</td>
                   <td className="p-1 text-right text-rmpg-400 font-mono">{formatCurrency(item.unit_price)}</td>
-                  <td className={`p-1 text-right font-mono font-bold ${item.amount < 0 ? 'text-green-400' : 'text-white'}`}>
+                  <td className={`p-1 text-right font-mono font-bold ${item.amount < 0 ? 'text-green-400' : 'text-rmpg-100'}`}>
                     {formatCurrency(item.amount)}
                   </td>
                   {inv.status === 'draft' && (
@@ -612,7 +612,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         {/* Totals */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
           <div className="flex flex-col items-end gap-1 text-[10px]">
-            <div className="flex gap-8"><span className="text-rmpg-400 uppercase w-32 text-right">Subtotal:</span><span className="text-white font-mono w-24 text-right">{formatCurrency(inv.subtotal)}</span></div>
+            <div className="flex gap-8"><span className="text-rmpg-400 uppercase w-32 text-right">Subtotal:</span><span className="text-rmpg-100 font-mono w-24 text-right">{formatCurrency(inv.subtotal)}</span></div>
             {inv.discount_amount > 0 && (
               <div className="flex gap-8"><span className="text-green-400 uppercase w-32 text-right">Discount:</span><span className="text-green-400 font-mono w-24 text-right">-{formatCurrency(inv.discount_amount)}</span></div>
             )}
@@ -620,8 +620,8 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
               <div className="flex gap-8"><span className="text-red-400 uppercase w-32 text-right">Late Fee:</span><span className="text-red-400 font-mono w-24 text-right">{formatCurrency(inv.late_fee_amount)}</span></div>
             )}
             <div className="flex gap-8 pt-1 border-t border-rmpg-700 font-bold">
-              <span className="text-white uppercase w-32 text-right">Total:</span>
-              <span className="text-white font-mono w-24 text-right">{formatCurrency(inv.total)}</span>
+              <span className="text-rmpg-100 uppercase w-32 text-right">Total:</span>
+              <span className="text-rmpg-100 font-mono w-24 text-right">{formatCurrency(inv.total)}</span>
             </div>
             {inv.amount_paid > 0 && (
               <div className="flex gap-8"><span className="text-green-400 uppercase w-32 text-right">Paid:</span><span className="text-green-400 font-mono w-24 text-right">-{formatCurrency(inv.amount_paid)}</span></div>

@@ -256,7 +256,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-rmpg-700/50">
         <div className="flex items-center gap-1.5">
           <Database className="w-3.5 h-3.5 text-brand-400" />
-          <span className="text-xs font-bold text-white">Lead Scraper Sources</span>
+          <span className="text-xs font-bold text-rmpg-100">Lead Scraper Sources</span>
           {/* Firecrawl connection status */}
           {firecrawlStatus && (
             <span className="flex items-center gap-1 ml-3 text-[10px]">
@@ -267,7 +267,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
             </span>
           )}
         </div>
-        <button type="button" onClick={onClose} className="text-rmpg-400 hover:text-white" aria-label="Close" title="Close">
+        <button type="button" onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close" title="Close">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -293,7 +293,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
               <React.Fragment key={src.id}>
                 <tr className="border-b border-rmpg-700/30 hover:bg-[#141414]">
                   <td className="px-2 py-1.5">
-                    <div className="text-xs text-white font-medium">{src.display_name}</div>
+                    <div className="text-xs text-rmpg-100 font-medium">{src.display_name}</div>
                     {src.base_url && (
                       <div className="text-[10px] text-rmpg-500 truncate max-w-[180px]">{src.base_url}</div>
                     )}

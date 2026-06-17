@@ -148,7 +148,7 @@ async function fetchDirections(coordSets: [number, number][][]): Promise<{ legs:
 function TimeWindowBadge({ tw }: { tw: ServeJob['time_window'] }) {
   const colors: Record<string, string> = {
     morning: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
-    afternoon: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+    afternoon: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
     evening: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
     anytime: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
   };
@@ -505,7 +505,7 @@ export default function ServeRoutePlanner({
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c]">
           <div className="flex items-center gap-2">
             <Route size={16} className="text-[#d4a017]" />
-            <h2 className="text-sm font-semibold text-white tracking-wider">ROUTE PLANNER</h2>
+            <h2 className="text-sm font-semibold text-rmpg-100 tracking-wider">ROUTE PLANNER</h2>
             <span className="text-[11px] text-rmpg-500 ml-2">{selectedCount} of {stops.length} stops selected</span>
             {officers && officers.length > 0 && (
               <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-[#2b2b2b]">
@@ -513,7 +513,7 @@ export default function ServeRoutePlanner({
                 <select id="ff-serverouteplanner-0"
                   value={selectedOfficerId || ''}
                   onChange={e => { setSelectedOfficerId(Number(e.target.value)); setSavedRouteLoaded(false); }}
-                  className="px-2 py-0.5 text-[11px] bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                  className="px-2 py-0.5 text-[11px] bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-rmpg-100 focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                 >
                   {officers.map(o => (<option key={o.id} value={o.id}>{o.name}</option>))}
                 </select>
@@ -523,7 +523,7 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={selectAll} className="toolbar-btn text-xs px-2 py-1"><CheckSquare className="w-3 h-3" /> All</button>
             <button type="button" onClick={deselectAll} className="toolbar-btn text-xs px-2 py-1"><Square className="w-3 h-3" /> None</button>
-            <X size={20} className="text-rmpg-400 hover:text-white cursor-pointer transition-colors" onClick={onClose} aria-label="Close route planner" />
+            <X size={20} className="text-rmpg-400 hover:text-rmpg-100 cursor-pointer transition-colors" onClick={onClose} aria-label="Close route planner" />
           </div>
         </div>
 
@@ -546,17 +546,17 @@ export default function ServeRoutePlanner({
                   </button>
                   <span className="w-5 text-xs font-mono font-bold text-rmpg-300 flex-shrink-0">{idx + 1}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium text-white truncate">{stop.job.recipient_name}</div>
+                    <div className="text-xs font-medium text-rmpg-100 truncate">{stop.job.recipient_name}</div>
                     <div className="text-[10px] text-rmpg-500 truncate">{stop.job.recipient_address || 'No address'}</div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <PriorityBadge p={stop.job.priority} />
                     <TimeWindowBadge tw={stop.job.time_window} />
                     <div className="flex flex-col gap-0.5 ml-1">
-                      <button type="button" onClick={() => moveStop(idx, -1)} disabled={idx === 0} className="text-rmpg-500 hover:text-white disabled:opacity-30">
+                      <button type="button" onClick={() => moveStop(idx, -1)} disabled={idx === 0} className="text-rmpg-500 hover:text-rmpg-100 disabled:opacity-30">
                         <ChevronUp size={10} />
                       </button>
-                      <button type="button" onClick={() => moveStop(idx, 1)} disabled={idx === stops.length - 1} className="text-rmpg-500 hover:text-white disabled:opacity-30">
+                      <button type="button" onClick={() => moveStop(idx, 1)} disabled={idx === stops.length - 1} className="text-rmpg-500 hover:text-rmpg-100 disabled:opacity-30">
                         <ChevronDown size={10} />
                       </button>
                     </div>
@@ -566,10 +566,10 @@ export default function ServeRoutePlanner({
             </div>
 
             <div className="px-4 py-3 border-t border-[#2b2b2b] bg-[#0c0c0c] space-y-2">
-              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><MapPin size={12} /> Distance:</span><span className="text-white font-mono">{totalDistance.toFixed(1)} mi</span></div>
-              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><Clock size={12} /> Est. Time:</span><span className="text-white font-mono">{Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m</span></div>
-              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-white font-mono">${fuelCost.toFixed(2)}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><Gauge size={12} /> Efficiency:</span><span className="text-white font-mono">{totalDistance > 0 ? `${(selectedCount / totalDistance).toFixed(1)} stops/mi` : '\u2014'}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><MapPin size={12} /> Distance:</span><span className="text-rmpg-100 font-mono">{totalDistance.toFixed(1)} mi</span></div>
+              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><Clock size={12} /> Est. Time:</span><span className="text-rmpg-100 font-mono">{Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m</span></div>
+              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-rmpg-100 font-mono">${fuelCost.toFixed(2)}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><Gauge size={12} /> Efficiency:</span><span className="text-rmpg-100 font-mono">{totalDistance > 0 ? `${(selectedCount / totalDistance).toFixed(1)} stops/mi` : '\u2014'}</span></div>
 
               <div className="flex gap-2 pt-1">
                 <button type="button" onClick={handleApplyAndClose} className="toolbar-btn toolbar-btn-primary text-xs px-4 py-2 flex-1 justify-center">

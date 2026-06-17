@@ -78,7 +78,7 @@ const STATUSES = [
 ];
 
 const STATUS_COLORS: Record<string, string> = {
-  scheduled: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
+  scheduled: 'bg-surface-sunken/50 text-rmpg-400 border-border-default/50',
   continued: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   completed: 'bg-green-900/50 text-green-400 border-green-700/50',
   dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
@@ -300,7 +300,7 @@ export default function CourtRecordsPage() {
               onChange={e => setSearchInput(e.target.value)}
               onKeyDown={handleSearchKeyDown}
               onBlur={() => setSearchTerm(searchInput)}
-              className="w-full pl-7 pr-2 py-1 bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+              className="w-full pl-7 pr-2 py-1 bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
             />
           </div>
 
@@ -308,7 +308,7 @@ export default function CourtRecordsPage() {
           <select id="ff-courtrecordspage-1"
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
-            className="bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+            className="bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
           >
             <option value="">All Statuses</option>
             {STATUSES.map(s => (
@@ -320,7 +320,7 @@ export default function CourtRecordsPage() {
           <select id="ff-courtrecordspage-2"
             value={typeFilter}
             onChange={e => setTypeFilter(e.target.value)}
-            className="bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+            className="bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
           >
             <option value="">All Types</option>
             {EVENT_TYPES.map(t => (
@@ -334,14 +334,14 @@ export default function CourtRecordsPage() {
               type="date"
               value={dateFrom}
               onChange={e => setDateFrom(e.target.value)}
-              className="bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+              className="bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
             />
             <span className="text-[9px] text-rmpg-500">to</span>
             <input id="ff-courtrecordspage-4"
               type="date"
               value={dateTo}
               onChange={e => setDateTo(e.target.value)}
-              className="bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+              className="bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
             />
           </div>
 
@@ -356,7 +356,7 @@ export default function CourtRecordsPage() {
                 setSearchTerm('');
                 setSearchInput('');
               }}
-              className="toolbar-btn text-[9px] text-rmpg-400 hover:text-white"
+              className="toolbar-btn text-[9px] text-rmpg-400 hover:text-rmpg-100"
             >
               <X className="w-3 h-3" /> Clear
             </button>
@@ -426,7 +426,7 @@ export default function CourtRecordsPage() {
                       <ChevronDown className={`w-3 h-3 text-rmpg-500 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
                       {ev.event_number}
                     </div>
-                    <div className="px-2 py-1.5 text-[10px] text-white truncate">{displayName}</div>
+                    <div className="px-2 py-1.5 text-[10px] text-rmpg-100 truncate">{displayName}</div>
                     <div className="px-2 py-1.5 text-[10px] text-rmpg-300 font-mono">
                       {ev.event_date ? formatDate(ev.event_date) : '--'}
                       {ev.event_time && <span className="text-rmpg-500 ml-1">{ev.event_time}</span>}
@@ -580,7 +580,7 @@ export default function CourtRecordsPage() {
                   <select id="ff-courtrecordspage-5"
                     value={formData.event_type}
                     onChange={e => setFormData(p => ({ ...p, event_type: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   >
                     <option value="">Select type...</option>
                     {EVENT_TYPES.map(t => (
@@ -594,7 +594,7 @@ export default function CourtRecordsPage() {
                     type="date"
                     value={formData.event_date}
                     onChange={e => setFormData(p => ({ ...p, event_date: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
               </div>
@@ -607,7 +607,7 @@ export default function CourtRecordsPage() {
                     type="time"
                     value={formData.event_time}
                     onChange={e => setFormData(p => ({ ...p, event_time: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -617,7 +617,7 @@ export default function CourtRecordsPage() {
                     value={formData.courtroom}
                     onChange={e => setFormData(p => ({ ...p, courtroom: e.target.value }))}
                     placeholder="e.g., Room 304"
-                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
               </div>
@@ -631,7 +631,7 @@ export default function CourtRecordsPage() {
                     value={formData.court_name}
                     onChange={e => setFormData(p => ({ ...p, court_name: e.target.value }))}
                     placeholder="e.g., 3rd District Court"
-                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -641,7 +641,7 @@ export default function CourtRecordsPage() {
                     value={formData.judge_name}
                     onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))}
                     placeholder="Judge name"
-                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
               </div>
@@ -655,7 +655,7 @@ export default function CourtRecordsPage() {
                     value={formData.court_case_number}
                     onChange={e => setFormData(p => ({ ...p, court_case_number: e.target.value }))}
                     placeholder="Case number"
-                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -665,7 +665,7 @@ export default function CourtRecordsPage() {
                     value={formData.defendant_name}
                     onChange={e => setFormData(p => ({ ...p, defendant_name: e.target.value }))}
                     placeholder="Defendant name"
-                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
               </div>
@@ -679,7 +679,7 @@ export default function CourtRecordsPage() {
                     value={formData.prosecutor}
                     onChange={e => setFormData(p => ({ ...p, prosecutor: e.target.value }))}
                     placeholder="Prosecutor name"
-                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -689,7 +689,7 @@ export default function CourtRecordsPage() {
                     value={formData.defense_attorney}
                     onChange={e => setFormData(p => ({ ...p, defense_attorney: e.target.value }))}
                     placeholder="Defense attorney name"
-                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                    className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                   />
                 </div>
               </div>
@@ -702,7 +702,7 @@ export default function CourtRecordsPage() {
                   onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))}
                   rows={3}
                   placeholder="Additional notes..."
-                  className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none resize-none"
+                  className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none resize-none"
                 />
               </div>
 
@@ -742,7 +742,7 @@ export default function CourtRecordsPage() {
                 <select id="ff-courtrecordspage-15"
                   value={outcomeData.outcome}
                   onChange={e => setOutcomeData(p => ({ ...p, outcome: e.target.value }))}
-                  className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                  className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                 >
                   <option value="">Select outcome...</option>
                   {OUTCOMES.map(o => (
@@ -758,7 +758,7 @@ export default function CourtRecordsPage() {
                   value={outcomeData.sentence}
                   onChange={e => setOutcomeData(p => ({ ...p, sentence: e.target.value }))}
                   placeholder="e.g., 30 days jail, 1 year probation"
-                  className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                  className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                 />
               </div>
 
@@ -770,7 +770,7 @@ export default function CourtRecordsPage() {
                   value={outcomeData.fine_amount}
                   onChange={e => setOutcomeData(p => ({ ...p, fine_amount: e.target.value }))}
                   placeholder="0.00"
-                  className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
+                  className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
                 />
               </div>
 
@@ -781,7 +781,7 @@ export default function CourtRecordsPage() {
                   onChange={e => setOutcomeData(p => ({ ...p, notes: e.target.value }))}
                   rows={3}
                   placeholder="Additional outcome notes..."
-                  className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none resize-none"
+                  className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-rmpg-100 px-2 py-1.5 placeholder-rmpg-500 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none resize-none"
                 />
               </div>
 
@@ -813,7 +813,7 @@ function DetailRow({ label, value, mono }: { label: string; value: string | null
   return (
     <div className="flex items-start gap-2">
       <span className="text-rmpg-500 w-20 flex-shrink-0">{label}:</span>
-      <span className={`text-white ${mono ? 'font-mono' : ''}`}>{value}</span>
+      <span className={`text-rmpg-100 ${mono ? 'font-mono' : ''}`}>{value}</span>
     </div>
   );
 }

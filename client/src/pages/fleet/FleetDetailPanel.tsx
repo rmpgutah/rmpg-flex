@@ -270,7 +270,7 @@ export default function FleetDetailPanel({
               <Car className="w-5 h-5" style={{ color: STATUS_COLOR[detail.status] }} />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white font-mono">{detail.vehicle_number}</h2>
+              <h2 className="text-lg font-bold text-rmpg-100 font-mono">{detail.vehicle_number}</h2>
               <div className="flex items-center gap-2 mt-0.5 text-xs text-rmpg-300">
                 <span>{[detail.year, detail.make, detail.model].filter(Boolean).join(' ')}</span>
                 {detail.color && <span className="text-rmpg-500">({detail.color})</span>}
@@ -396,7 +396,7 @@ export default function FleetDetailPanel({
             </button>
           )}
           <button type="button"
-            className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
+            className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
             onClick={onClose}
             aria-label="Close vehicle details">
             <X className="w-4 h-4" />
@@ -415,7 +415,7 @@ export default function FleetDetailPanel({
             aria-selected={isActive}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] uppercase font-bold tracking-wider whitespace-nowrap transition-all duration-200 border-b-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
               isActive
-                ? 'text-white border-brand-500 bg-brand-900/10'
+                ? 'text-rmpg-100 border-brand-500 bg-brand-900/10'
                 : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:bg-rmpg-700/20 hover:border-rmpg-500/50'
             }`}
             onClick={() => onTabChange(key)}

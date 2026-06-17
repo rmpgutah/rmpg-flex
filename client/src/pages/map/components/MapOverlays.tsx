@@ -80,7 +80,7 @@ export default function MapOverlays({
             {(['P1', 'P2', 'P3', 'P4'] as const).map(p => (
               <div key={p} className="flex items-center gap-0.5">
                 <div className="w-1.5 h-1.5 rounded-sm shrink-0" style={{ backgroundColor: PRIORITY_COLORS[p] }} />
-                <span className={`text-[7px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-gray-500' : 'text-rmpg-400'}`}>{p}</span>
+                <span className={`text-[7px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-rmpg-500' : 'text-rmpg-400'}`}>{p}</span>
               </div>
             ))}
           </div>
@@ -114,14 +114,14 @@ export default function MapOverlays({
             <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #2b2b2b' }}>
               <Siren className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-red-600' : 'text-red-400'}`} />
               {/* #10: Tabular-nums for monospaced number alignment in stats bar */}
-              <span className={`text-[13px] font-mono font-black tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{callsWithCoords.length}</span>
+              <span className={`text-[13px] font-mono font-black tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-rmpg-100'}`}>{callsWithCoords.length}</span>
               {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold tabular-nums text-red-500 bg-red-500/15 px-1 rounded-sm">P1:{callsByPriority['P1']}</span> : null}
               {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold tabular-nums text-amber-500 bg-amber-500/15 px-1 rounded-sm">P2:{callsByPriority['P2']}</span> : null}
             </div>
 
             <div className="flex items-center gap-1 px-2 py-0.5">
               <Shield className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-green-600' : 'text-green-400'}`} />
-              <span className={`text-[13px] font-mono font-black tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{unitsWithCoords.length}</span>
+              <span className={`text-[13px] font-mono font-black tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-rmpg-100'}`}>{unitsWithCoords.length}</span>
               <div className="flex items-center gap-1.5 ml-1">
                 {([
                   { key: 'available', label: 'AVL', color: '#22c55e' },
@@ -138,8 +138,8 @@ export default function MapOverlays({
 
             {showTrackingLines && trackingLinesRef.current && trackingLinesRef.current.length > 0 && (
               <div className="flex items-center gap-1 px-1.5">
-                <Navigation2 className="w-2.5 h-2.5 text-gray-400" />
-                <span className="text-gray-400 text-[8px] font-mono font-bold">{trackingLinesRef.current.length}</span>
+                <Navigation2 className="w-2.5 h-2.5 text-rmpg-400" />
+                <span className="text-rmpg-400 text-[8px] font-mono font-bold">{trackingLinesRef.current.length}</span>
               </div>
             )}
           </div>
@@ -243,7 +243,7 @@ export default function MapOverlays({
             className={`backdrop-blur-md shadow-xl transition-colors ${
               isLightMapStyle(mapStyle)
                 ? 'bg-white/90 border border-gray-300 hover:bg-gray-50'
-                : 'bg-surface-deep/95 border border-gray-500/50 hover:bg-gray-900/30'
+                : 'bg-surface-deep/95 border border-gray-500/50 hover:bg-surface-sunken/30'
             }`}
             style={isMobile
               ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
@@ -251,7 +251,7 @@ export default function MapOverlays({
             }
             title={`Center on my position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`}
           >
-            <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-gray-400'}`} />
+            <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-rmpg-400'}`} />
           </button>
         )}
         <MapExportMenu

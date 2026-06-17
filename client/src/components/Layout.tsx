@@ -906,7 +906,7 @@ export default function Layout() {
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
 
   return (
-    <div className="flex flex-col text-white overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>
+    <div className="flex flex-col text-rmpg-100 overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
 
@@ -936,7 +936,7 @@ export default function Layout() {
           >
             <div className="text-center space-y-1">
               <Shield className="w-8 h-8 text-brand-400 mx-auto mb-2" />
-              <div className="text-lg font-bold text-white">Operator Identification Required</div>
+              <div className="text-lg font-bold text-rmpg-100">Operator Identification Required</div>
               <div className="text-xs text-rmpg-400">
                 Enter your name to continue. This will appear in the OPR system and all reports.
               </div>
@@ -1056,7 +1056,7 @@ export default function Layout() {
               <RmpgLogo height={44} />
               {/* 2: Tighter line-height on app name for compact branding */}
               <div className="flex flex-col" style={{ lineHeight: 1.1 }}>
-                <span className="text-[14px] font-bold tracking-wider text-white leading-none">RMPG</span>
+                <span className="text-[14px] font-bold tracking-wider text-rmpg-100 leading-none">RMPG</span>
                 <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: 'var(--desktop-shell-subtle-text)' }}>FLEX</span>
               </div>
             </div>
@@ -1094,7 +1094,7 @@ export default function Layout() {
               >
                 <Phone style={{ width: 9, height: 9 }} className={activeCallCount > 0 ? 'text-red-500' : 'text-rmpg-500'} />
                 <span className="text-[9px] font-mono font-bold text-rmpg-400">CALLS:</span>
-                <span className={`text-[9px] font-mono font-bold tabular-nums ${activeCallCount > 0 ? 'text-red-400' : 'text-white'}`}>{activeCallCount}</span>
+                <span className={`text-[9px] font-mono font-bold tabular-nums ${activeCallCount > 0 ? 'text-red-400' : 'text-rmpg-100'}`}>{activeCallCount}</span>
               </button>
 
               {/* 5: BOLO Indicator with improved glow effect */}
@@ -1256,7 +1256,7 @@ export default function Layout() {
                 >
                   {/* User info header */}
                   <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'var(--surface-sunken)' }}>
-                    <div className="text-xs font-bold text-white">
+                    <div className="text-xs font-bold text-rmpg-100">
                       {user?.first_name} {user?.last_name}
                     </div>
                     <div className="text-[9px] font-mono text-rmpg-500 mt-0.5">
@@ -1722,8 +1722,8 @@ export default function Layout() {
           {/* 14: Keyboard shortcuts modal with blue top accent */}
           <div className="bg-surface-base border border-border-default rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default bg-surface-overlay">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
-              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
+              <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
+              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-rmpg-100 transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto scrollbar-dark">
               <div className="space-y-1.5">

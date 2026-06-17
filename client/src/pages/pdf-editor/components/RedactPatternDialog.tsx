@@ -21,7 +21,7 @@ interface Props {
   scanning: boolean;
 }
 
-const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
 
 export default function RedactPatternDialog({ open, onClose, onRun, scanning }: Props) {
   const [picked, setPicked] = useState<Set<string>>(new Set(['ssn', 'phone', 'email']));
@@ -55,7 +55,7 @@ export default function RedactPatternDialog({ open, onClose, onRun, scanning }: 
         <div className="flex items-center gap-2 mb-3">
           <EyeOff className="w-4 h-4 text-[#d4a017]" />
           <div className="text-sm text-rmpg-100 font-semibold">Search & Redact</div>
-          <button type="button" onClick={onClose} aria-label="Close" className="ml-auto text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="ml-auto text-rmpg-400 hover:text-rmpg-100"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="text-[10px] text-rmpg-500 mb-2">

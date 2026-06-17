@@ -29,7 +29,7 @@ import { useToast } from '../components/ToastProvider';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
-  submitted: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
+  submitted: 'bg-surface-sunken/50 text-rmpg-400 border-border-default/50',
   approved: 'bg-green-900/50 text-green-400 border-green-700/50',
   returned: 'bg-red-900/50 text-red-400 border-red-700/50',
   archived: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/50',
@@ -241,7 +241,7 @@ export default function DailyActivityReportsPage() {
         <div className="flex gap-1.5 p-1.5 border-b border-rmpg-700 bg-surface-sunken">
           <div className="flex-1 relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
-            <input id="ff-dailyactivityreportspage-0" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search DARs..." aria-label="Search DARs..." className="w-full pl-7 pr-2 py-1.5 text-xs bg-surface-base border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 outline-none transition-colors" />
+            <input id="ff-dailyactivityreportspage-0" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search DARs..." aria-label="Search DARs..." className="w-full pl-7 pr-2 py-1.5 text-xs bg-surface-base border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 outline-none transition-colors" />
           </div>
           <select id="ff-dailyactivityreportspage-1" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="text-[10px] bg-surface-base border border-rmpg-700 text-rmpg-300 px-2 outline-none focus:border-brand-600 transition-colors">
             <option value="">All Status</option>
@@ -276,7 +276,7 @@ export default function DailyActivityReportsPage() {
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-mono font-bold text-white">{dar.dar_number}</span>
+                  <span className="text-[11px] font-mono font-bold text-rmpg-100">{dar.dar_number}</span>
                   <span className={`text-[9px] px-1.5 py-0.5 border ${STATUS_COLORS[dar.status] || ''}`}>
                     {formatEnumValue(dar.status)}
                   </span>
@@ -298,9 +298,9 @@ export default function DailyActivityReportsPage() {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-sunken">
-            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 hover:text-white disabled:opacity-30 disabled:hover:text-rmpg-400 transition-colors">← Prev</button>
+            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 hover:text-rmpg-100 disabled:opacity-30 disabled:hover:text-rmpg-400 transition-colors">← Prev</button>
             <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">Page {page}/{totalPages}</span>
-            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 hover:text-white disabled:opacity-30 disabled:hover:text-rmpg-400 transition-colors">Next →</button>
+            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 hover:text-rmpg-100 disabled:opacity-30 disabled:hover:text-rmpg-400 transition-colors">Next →</button>
           </div>
         )}
       </div>
@@ -354,7 +354,7 @@ export default function DailyActivityReportsPage() {
               {/* Auto-populated counts */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
-                  ['Calls', parseJson(selected.calls_handled).length, 'text-gray-400'],
+                  ['Calls', parseJson(selected.calls_handled).length, 'text-rmpg-400'],
                   ['Incidents', parseJson(selected.incidents_created).length, 'text-red-400'],
                   ['Citations', parseJson(selected.citations_issued).length, 'text-amber-400'],
                   ['Patrols', parseJson(selected.patrols_completed).length, 'text-green-400'],
@@ -368,9 +368,9 @@ export default function DailyActivityReportsPage() {
 
               {/* Shift Info */}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <div><div className="text-[9px] font-mono text-rmpg-500">Shift Date</div><div className="text-xs text-white">{selected.shift_date ? parseTimestamp(selected.shift_date).toLocaleDateString() : '—'}</div></div>
-                <div><div className="text-[9px] font-mono text-rmpg-500">Start</div><div className="text-xs text-white">{selected.shift_start || '—'}</div></div>
-                <div><div className="text-[9px] font-mono text-rmpg-500">End</div><div className="text-xs text-white">{selected.shift_end || '—'}</div></div>
+                <div><div className="text-[9px] font-mono text-rmpg-500">Shift Date</div><div className="text-xs text-rmpg-100">{selected.shift_date ? parseTimestamp(selected.shift_date).toLocaleDateString() : '—'}</div></div>
+                <div><div className="text-[9px] font-mono text-rmpg-500">Start</div><div className="text-xs text-rmpg-100">{selected.shift_start || '—'}</div></div>
+                <div><div className="text-[9px] font-mono text-rmpg-500">End</div><div className="text-xs text-rmpg-100">{selected.shift_end || '—'}</div></div>
                 <div><div className="text-[9px] font-mono text-rmpg-500">Total Hours</div><div className="text-xs font-bold text-brand-400">{(() => {
                   if (!selected.shift_start || !selected.shift_end) return '—';
                   const [sh, sm] = selected.shift_start.split(':').map(Number);
@@ -410,15 +410,15 @@ export default function DailyActivityReportsPage() {
                     <div>
                       <label htmlFor="dar-narrative" className="text-[9px] text-rmpg-500">Narrative</label>
                       <p className="text-[8px] text-rmpg-600 mb-0.5">Describe all activities during this shift</p>
-                      <RichTextArea id="dar-narrative" value={editNarrative} onChange={e => setEditNarrative(e.target.value)} rows={5} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
+                      <RichTextArea id="dar-narrative" value={editNarrative} onChange={e => setEditNarrative(e.target.value)} rows={5} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
                     </div>
                     <div>
                       <label htmlFor="dar-highlights" className="text-[9px] text-rmpg-500">Highlights</label>
-                      <RichTextArea id="dar-highlights" value={editHighlights} onChange={e => setEditHighlights(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
+                      <RichTextArea id="dar-highlights" value={editHighlights} onChange={e => setEditHighlights(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
                     </div>
                     <div>
                       <label htmlFor="dar-issues" className="text-[9px] text-rmpg-500">Issues Encountered</label>
-                      <RichTextArea id="dar-issues" value={editIssues} onChange={e => setEditIssues(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
+                      <RichTextArea id="dar-issues" value={editIssues} onChange={e => setEditIssues(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
                     </div>
                   </div>
                 ) : (
@@ -462,16 +462,16 @@ export default function DailyActivityReportsPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label htmlFor="dar-shift-date" className="field-label">Shift Date *</label>
-                <input id="dar-shift-date" type="date" value={newDarDate} onChange={e => setNewDarDate(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none min-h-[44px]" />
+                <input id="dar-shift-date" type="date" value={newDarDate} onChange={e => setNewDarDate(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none min-h-[44px]" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="dar-shift-start" className="field-label">Shift Start</label>
-                  <input id="dar-shift-start" type="time" value={newDarShiftStart} onChange={e => setNewDarShiftStart(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none min-h-[44px]" />
+                  <input id="dar-shift-start" type="time" value={newDarShiftStart} onChange={e => setNewDarShiftStart(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none min-h-[44px]" />
                 </div>
                 <div>
                   <label htmlFor="dar-shift-end" className="field-label">Shift End</label>
-                  <input id="dar-shift-end" type="time" value={newDarShiftEnd} onChange={e => setNewDarShiftEnd(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none min-h-[44px]" />
+                  <input id="dar-shift-end" type="time" value={newDarShiftEnd} onChange={e => setNewDarShiftEnd(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none min-h-[44px]" />
                 </div>
               </div>
 
@@ -488,7 +488,7 @@ export default function DailyActivityReportsPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { label: 'Calls Handled', data: autoPopulateData.calls || [], color: 'text-gray-400' },
+                      { label: 'Calls Handled', data: autoPopulateData.calls || [], color: 'text-rmpg-400' },
                       { label: 'Incidents Created', data: autoPopulateData.incidents || [], color: 'text-red-400' },
                       { label: 'Citations Issued', data: autoPopulateData.citations || [], color: 'text-amber-400' },
                       { label: 'Patrols Completed', data: autoPopulateData.patrols || [], color: 'text-green-400' },
@@ -501,12 +501,12 @@ export default function DailyActivityReportsPage() {
                   </div>
                   {autoPopulateData.miles_patrolled != null && (
                     <div className="mt-2 text-[10px] text-rmpg-300">
-                      Miles Patrolled: <span className="text-white font-bold">{autoPopulateData.miles_patrolled || 0}</span>
+                      Miles Patrolled: <span className="text-rmpg-100 font-bold">{autoPopulateData.miles_patrolled || 0}</span>
                     </div>
                   )}
                   {autoPopulateData.arrests != null && (
                     <div className="text-[10px] text-rmpg-300">
-                      Arrests: <span className="text-white font-bold">{(autoPopulateData.arrests || []).length}</span>
+                      Arrests: <span className="text-rmpg-100 font-bold">{(autoPopulateData.arrests || []).length}</span>
                     </div>
                   )}
                   <div className="text-[8px] text-rmpg-500 mt-1">Values can be edited after creation</div>

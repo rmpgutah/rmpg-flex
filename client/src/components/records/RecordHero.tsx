@@ -80,7 +80,7 @@ function RecordHero({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-sm font-bold text-white truncate tracking-wide uppercase">
+            <h2 className="text-sm font-bold text-rmpg-100 truncate tracking-wide uppercase">
               {name}
             </h2>
             <span

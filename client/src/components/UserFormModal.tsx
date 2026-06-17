@@ -222,7 +222,7 @@ export default function UserFormModal({
   };
 
   const isEdit = !!editingUser;
-  const inputCls = 'w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500';
+  const inputCls = 'w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500';
   const labelCls = 'block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1';
 
   return (
@@ -249,7 +249,7 @@ export default function UserFormModal({
             className={`px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors ${
               activeSection === s.id
                 ? 'text-red-400 bg-red-900/20 border border-red-700/40'
-                : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/40 border border-transparent'
+                : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'
             }`}
           >
             {s.label}

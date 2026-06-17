@@ -78,7 +78,7 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
       <div className="flex items-center justify-between px-2.5 py-1.5" style={{ borderBottom: '1px solid #2b2b2b' }}>
         <span className="text-[9px] font-mono font-black tracking-wider text-rmpg-300 uppercase">Legend</span>
           {/* #12: Collapse chevron with rotation animation */}
-        <button type="button" onClick={() => setExpanded(false)} aria-expanded={expanded} className="text-rmpg-400 hover:text-white transition-colors duration-150 p-0.5">
+        <button type="button" onClick={() => setExpanded(false)} aria-expanded={expanded} className="text-rmpg-400 hover:text-rmpg-100 transition-colors duration-150 p-0.5">
           <ChevronDown className="w-3 h-3 transition-transform duration-200" style={{ transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
         </button>
       </div>

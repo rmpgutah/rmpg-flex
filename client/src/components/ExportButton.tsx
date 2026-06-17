@@ -169,7 +169,7 @@ export default function ExportButton({
             type="button"
             onClick={handleExportCSV}
             role="menuitem"
-            className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] text-rmpg-200 bg-transparent border-none hover:bg-[#2e2e2e] hover:text-white transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] text-rmpg-200 bg-transparent border-none hover:bg-[#2e2e2e] hover:text-rmpg-100 transition-colors"
           >
             <Download className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
             <span className="font-bold uppercase tracking-wider text-[10px]">
@@ -185,7 +185,7 @@ export default function ExportButton({
             type="button"
             onClick={handlePrint}
             role="menuitem"
-            className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] text-rmpg-200 bg-transparent border-none hover:bg-[#2e2e2e] hover:text-white transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] text-rmpg-200 bg-transparent border-none hover:bg-[#2e2e2e] hover:text-rmpg-100 transition-colors"
           >
             <Printer className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
             <span className="font-bold uppercase tracking-wider text-[10px]">

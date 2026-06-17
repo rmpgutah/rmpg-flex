@@ -91,7 +91,7 @@ export default function TrustedDevicesList() {
         <div
           key={device.id}
           className="flex items-center gap-3 px-3 py-2 panel-beveled"
-          style={{ background: '#0a0a0a' }}
+          style={{ background:"var(--surface-sunken)" }}
         >
           {/* Device icon */}
           <div className="p-1.5 panel-inset" style={{ color: '#888888', background: 'rgba(136,136,136,0.1)' }}>

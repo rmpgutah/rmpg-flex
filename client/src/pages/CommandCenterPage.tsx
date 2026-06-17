@@ -220,7 +220,7 @@ export default function CommandCenterPage() {
                     >
                       <span className="rounded-full flex-shrink-0" style={{ width: 6, height: 6, background: color, boxShadow: `0 0 4px ${color}` }} />
                       <div className="min-w-0">
-                        <span className="text-[10px] font-bold font-mono text-white block truncate">{unit.call_sign}</span>
+                        <span className="text-[10px] font-bold font-mono text-rmpg-100 block truncate">{unit.call_sign}</span>
                         <span className="text-[8px] uppercase font-bold" style={{ color }}>{unit.status.replace(/_/g, ' ')}</span>
                       </div>
                     </div>

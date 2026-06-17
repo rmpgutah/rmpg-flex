@@ -650,7 +650,7 @@ export default function NavMapView({
 
   // ── Render ─────────────────────────────────────────────────
   return (
-    <div className="relative rounded-sm border border-subtle overflow-hidden" style={{ height, background: '#0a0a0a' }}>
+    <div className="relative rounded-sm border border-subtle overflow-hidden" style={{ height, background:"var(--surface-sunken)" }}>
       <div ref={mapContainerRef} className="absolute inset-0" />
 
       {/* #99 3D look-ahead inset (hidden in low-power mode). */}
@@ -738,7 +738,7 @@ export default function NavMapView({
               <Layers size={14} />
             </button>
             {styleMenuOpen && (
-              <div className="absolute bottom-10 left-0 rounded-sm border border-subtle overflow-hidden" style={{ background: '#0a0a0a', minWidth: 110 }}>
+              <div className="absolute bottom-10 left-0 rounded-sm border border-subtle overflow-hidden" style={{ background:"var(--surface-sunken)", minWidth: 110 }}>
                 {STYLE_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}

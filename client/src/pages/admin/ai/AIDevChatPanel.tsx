@@ -434,7 +434,7 @@ export default function AIDevChatPanel() {
         return (
           <div key={i} className="my-2">
             {lang && (
-              <div className="text-[10px] text-gray-500 bg-[#0c0c0c] border border-[#303030] border-b-0 rounded-t px-2 py-0.5 font-mono">
+              <div className="text-[10px] text-rmpg-500 bg-[#0c0c0c] border border-[#303030] border-b-0 rounded-t px-2 py-0.5 font-mono">
                 {lang}
               </div>
             )}
@@ -463,7 +463,7 @@ export default function AIDevChatPanel() {
             return seg.split(/(\*\*[^*]+\*\*)/g).map((s, k) => {
               if (s.startsWith('**') && s.endsWith('**')) {
                 return (
-                  <strong key={`${j}-${k}`} className="text-white font-semibold">
+                  <strong key={`${j}-${k}`} className="text-rmpg-100 font-semibold">
                     {s.slice(2, -2)}
                   </strong>
                 );
@@ -487,7 +487,7 @@ export default function AIDevChatPanel() {
         <div className="p-3 border-b border-[#303030]">
           <button
             onClick={createNewSession}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#5a5a5a] text-white text-xs font-medium rounded transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#5a5a5a] text-rmpg-100 text-xs font-medium rounded transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             New Chat
@@ -502,9 +502,9 @@ export default function AIDevChatPanel() {
                 activeSession === s.session_id ? 'bg-[#303030]/50' : 'hover:bg-[#141414]'
               }`}
             >
-              <MessageSquare className="w-3.5 h-3.5 text-gray-500 mt-0.5 flex-shrink-0" />
+              <MessageSquare className="w-3.5 h-3.5 text-rmpg-500 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-300 truncate">{s.first_message || 'New conversation'}</p>
+                <p className="text-xs text-rmpg-300 truncate">{s.first_message || 'New conversation'}</p>
                 <p className="text-[10px] text-gray-600">{s.message_count} messages</p>
               </div>
               <button
@@ -529,7 +529,7 @@ export default function AIDevChatPanel() {
             {aiStatus === 'checking' && <Loader2 className="w-3 h-3 text-yellow-500 animate-spin" />}
             {aiStatus === 'online' && <Circle className="w-2.5 h-2.5 text-green-500 fill-green-500" />}
             {aiStatus === 'offline' && <Circle className="w-2.5 h-2.5 text-red-500 fill-red-500" />}
-            <span className="text-[10px] text-gray-400">
+            <span className="text-[10px] text-rmpg-400">
               {aiStatus === 'checking' ? 'Connecting...' : aiStatus === 'online' ? `AI Online — ${aiModel}` : 'AI Offline'}
             </span>
           </div>
@@ -540,7 +540,7 @@ export default function AIDevChatPanel() {
                 <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                 <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
-              <span className="text-[10px] text-gray-400 font-mono">{elapsedSec}s</span>
+              <span className="text-[10px] text-rmpg-400 font-mono">{elapsedSec}s</span>
             </div>
           )}
         </div>
@@ -565,7 +565,7 @@ export default function AIDevChatPanel() {
                       setInput(suggestion);
                       inputRef.current?.focus();
                     }}
-                    className="text-left text-[11px] text-gray-500 hover:text-gray-300 bg-[#141414] hover:bg-[#181818] border border-[#303030] rounded p-2 transition-colors"
+                    className="text-left text-[11px] text-rmpg-500 hover:text-rmpg-300 bg-[#141414] hover:bg-[#181818] border border-[#303030] rounded p-2 transition-colors"
                   >
                     {suggestion}
                   </button>
@@ -578,13 +578,13 @@ export default function AIDevChatPanel() {
             <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'assistant' && (
                 <div className="w-7 h-7 rounded bg-[#888888] flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-4 h-4 text-white" />
+                  <Bot className="w-4 h-4 text-rmpg-100" />
                 </div>
               )}
               <div
                 className={`max-w-[80%] ${
                   msg.role === 'user'
-                    ? 'bg-[#888888] text-white rounded-sm px-3 py-2'
+                    ? 'bg-[#888888] text-rmpg-100 rounded-sm px-3 py-2'
                     : 'bg-[#181818] text-gray-200 rounded-sm px-3 py-2 border border-[#303030]'
                 }`}
               >
@@ -592,12 +592,12 @@ export default function AIDevChatPanel() {
                   {msg.role === 'assistant' ? renderContent(msg.content) : msg.content}
                 </div>
                 {msg.latency_ms ? (
-                  <p className="text-[10px] text-gray-500 mt-1">{(msg.latency_ms / 1000).toFixed(1)}s</p>
+                  <p className="text-[10px] text-rmpg-500 mt-1">{(msg.latency_ms / 1000).toFixed(1)}s</p>
                 ) : null}
               </div>
               {msg.role === 'user' && (
                 <div className="w-7 h-7 rounded bg-[#181818] flex items-center justify-center flex-shrink-0">
-                  <User className="w-4 h-4 text-gray-300" />
+                  <User className="w-4 h-4 text-rmpg-300" />
                 </div>
               )}
             </div>
@@ -607,7 +607,7 @@ export default function AIDevChatPanel() {
           {isStreaming && (
             <div className="flex gap-3 justify-start">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center flex-shrink-0 shadow-lg shadow-gray-500/20">
-                <Bot className={`w-4.5 h-4.5 text-white ${!streamingContent ? 'animate-pulse' : ''}`} />
+                <Bot className={`w-4.5 h-4.5 text-rmpg-100 ${!streamingContent ? 'animate-pulse' : ''}`} />
               </div>
               <div className="max-w-[80%]">
                 {/* Thinking phase — rich visual reasoning display (stays visible during response) */}
@@ -649,7 +649,7 @@ export default function AIDevChatPanel() {
                     </div>
                     {/* Thinking content with terminal-style display */}
                     <div className="p-2">
-                      <div className={`text-[11px] text-gray-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-[#0f0f0f] rounded p-3 border border-[#272727] shadow-inner transition-all duration-300 ${
+                      <div className={`text-[11px] text-rmpg-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-[#0f0f0f] rounded p-3 border border-[#272727] shadow-inner transition-all duration-300 ${
                         streamingContent ? 'max-h-16 opacity-70' : 'max-h-48'
                       }`}
                         style={{ scrollBehavior: 'smooth' }}
@@ -660,15 +660,15 @@ export default function AIDevChatPanel() {
                             return <div key={i} className="text-amber-400 font-bold mt-2 first:mt-0">{line}</div>;
                           }
                           if (line.startsWith('  ├─') || line.startsWith('  └─')) {
-                            return <div key={i} className="text-gray-400/80">{line}</div>;
+                            return <div key={i} className="text-rmpg-400/80">{line}</div>;
                           }
                           if (line.startsWith('📁')) {
-                            return <div key={i} className="text-gray-400/70 text-[10px] mt-0.5">{line}</div>;
+                            return <div key={i} className="text-rmpg-400/70 text-[10px] mt-0.5">{line}</div>;
                           }
                           if (line.match(/^(Tokens|Intent|Engine|Pattern|Theme|Output|Including|Evaluation|Authentication|Checking)/)) {
-                            return <div key={i} className="text-gray-400">{line}</div>;
+                            return <div key={i} className="text-rmpg-400">{line}</div>;
                           }
-                          return <div key={i} className="text-gray-400">{line}</div>;
+                          return <div key={i} className="text-rmpg-400">{line}</div>;
                         }) : (
                           <span className="text-gray-600">Initializing analysis...</span>
                         )}
@@ -683,7 +683,7 @@ export default function AIDevChatPanel() {
                   <div className="bg-[#181818] text-gray-200 rounded-sm px-3 py-2 border border-gray-500/30">
                     <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-[#303030]">
                       <div className="w-2 h-2 bg-gray-500 rounded-full animate-pulse" />
-                      <span className="text-[10px] text-gray-400 font-bold tracking-[0.1em] uppercase">RESPONSE</span>
+                      <span className="text-[10px] text-rmpg-400 font-bold tracking-[0.1em] uppercase">RESPONSE</span>
                       <span className="text-[10px] text-gray-600 font-mono ml-auto">{elapsedSec}s</span>
                     </div>
                     <div className="text-sm whitespace-pre-wrap leading-relaxed">
@@ -699,8 +699,8 @@ export default function AIDevChatPanel() {
                     </div>
                     <div className="px-3 py-2.5">
                       <div className="flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
-                        <span className="text-sm text-gray-400">
+                        <Loader2 className="w-4 h-4 text-rmpg-400 animate-spin" />
+                        <span className="text-sm text-rmpg-400">
                           {elapsedSec < 3 ? 'Connecting to AI model...' :
                            elapsedSec < 10 ? 'Waiting for response...' :
                            'Processing — this may take a moment...'}
@@ -720,20 +720,20 @@ export default function AIDevChatPanel() {
         {/* File context bar */}
         {showFileInput && (
           <div className="px-4 py-2 border-t border-[#303030] bg-[#141414] flex items-center gap-2">
-            <FileCode className="w-4 h-4 text-gray-500" />
+            <FileCode className="w-4 h-4 text-rmpg-500" />
             <input id="ff-aidevchatpanel-0"
               type="text"
               value={fileContext}
               onChange={e => setFileContext(e.target.value)}
               placeholder="Enter file path for context (e.g., client/src/pages/AdminPage.tsx)"
-              className="flex-1 bg-[#0c0c0c] border border-[#303030] text-white text-xs px-2 py-1.5 rounded focus:outline-none focus:border-gray-500"
+              className="flex-1 bg-[#0c0c0c] border border-[#303030] text-rmpg-100 text-xs px-2 py-1.5 rounded focus:outline-none focus:border-gray-500"
             />
             <button
               onClick={() => {
                 setShowFileInput(false);
                 setFileContext('');
               }}
-              className="text-gray-500 hover:text-gray-300"
+              className="text-rmpg-500 hover:text-rmpg-300"
             >
               <X className="w-4 h-4" />
             </button>
@@ -746,7 +746,7 @@ export default function AIDevChatPanel() {
             <button
               onClick={() => setShowFileInput(!showFileInput)}
               className={`p-2 rounded transition-colors ${
-                showFileInput || fileContext ? 'text-gray-400 bg-gray-500/10' : 'text-gray-500 hover:text-gray-300'
+                showFileInput || fileContext ? 'text-rmpg-400 bg-gray-500/10' : 'text-rmpg-500 hover:text-rmpg-300'
               }`}
               title="Attach file context"
             >
@@ -759,7 +759,7 @@ export default function AIDevChatPanel() {
               onKeyDown={handleKeyDown}
               placeholder="Ask about the codebase, request changes, debug issues..."
               rows={1}
-              className="flex-1 bg-[#0c0c0c] border border-[#303030] text-white text-sm px-3 py-2 rounded resize-none focus:outline-none focus:border-gray-500 max-h-32"
+              className="flex-1 bg-[#0c0c0c] border border-[#303030] text-rmpg-100 text-sm px-3 py-2 rounded resize-none focus:outline-none focus:border-gray-500 max-h-32"
               style={{ minHeight: '36px' }}
               onInput={(e) => {
                 const el = e.currentTarget;
@@ -770,13 +770,13 @@ export default function AIDevChatPanel() {
             <button
               onClick={sendMessage}
               disabled={!input.trim() || isStreaming}
-              className="p-2 bg-gray-600 hover:bg-gray-700 disabled:bg-[#181818] disabled:text-gray-500 text-white rounded transition-colors"
+              className="p-2 bg-gray-600 hover:bg-gray-700 disabled:bg-[#181818] disabled:text-rmpg-500 text-rmpg-100 rounded transition-colors"
             >
               {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
           {fileContext && (
-            <p className="text-[10px] text-gray-400 mt-1 ml-10">Context: {fileContext}</p>
+            <p className="text-[10px] text-rmpg-400 mt-1 ml-10">Context: {fileContext}</p>
           )}
         </div>
       </div>

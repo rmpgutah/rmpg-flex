@@ -25,10 +25,10 @@ export function InstallCoachingModal() {
         <h2 className="text-[#d4a017] text-sm font-bold tracking-widest mb-2">
           INSTALL RMPG FLEX
         </h2>
-        <p className="text-white text-sm mb-3">
+        <p className="text-rmpg-100 text-sm mb-3">
           Install this app for full-screen access, faster launch, and offline maps.
         </p>
-        <ol className="text-gray-300 text-xs space-y-1 mb-4 list-decimal list-inside">
+        <ol className="text-rmpg-300 text-xs space-y-1 mb-4 list-decimal list-inside">
           <li>Tap the Share icon at the bottom of Safari.</li>
           <li>Scroll and tap <span className="text-[#d4a017]">Add to Home Screen</span>.</li>
           <li>Tap <span className="text-[#d4a017]">Add</span> in the top-right.</li>
@@ -37,7 +37,7 @@ export function InstallCoachingModal() {
           type="button"
           onClick={dismiss}
           aria-label="Dismiss install prompt"
-          className="w-full h-11 bg-[#1a1a1a] border border-[#222] text-gray-300 text-xs uppercase tracking-widest"
+          className="w-full h-11 bg-[#1a1a1a] border border-[#222] text-rmpg-300 text-xs uppercase tracking-widest"
         >
           Not Now
         </button>

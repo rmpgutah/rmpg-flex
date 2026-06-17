@@ -39,11 +39,11 @@ export default function IntelRail({ counts }: { counts: RailCounts }) {
             <NavLink key={it.to} to={it.to} end={it.end}
               className={({ isActive }) =>
                 `flex items-center gap-[9px] px-[14px] py-[7px] text-[12px] border-l-2 ${
-                  isActive ? 'bg-[#0c0c0c] text-white border-[#d4a017]' : 'text-[#bdbdbd] border-transparent'}`}>
+                  isActive ? 'bg-[#0c0c0c] text-rmpg-100 border-[#d4a017]' : 'text-[#bdbdbd] border-transparent'}`}>
               <span className="w-[14px] text-center text-[#777]">{it.icon}</span>
               <span>{it.label}</span>
               {typeof it.badge === 'number' && it.badge > 0 && (
-                <span className={`ml-auto font-mono text-[9px] rounded-[2px] px-[5px] ${it.badgeRed ? 'bg-[#dc2626] text-white' : 'bg-[#d4a017] text-black'}`}>{it.badge}</span>
+                <span className={`ml-auto font-mono text-[9px] rounded-[2px] px-[5px] ${it.badgeRed ? 'bg-[#dc2626] text-rmpg-100' : 'bg-[#d4a017] text-black'}`}>{it.badge}</span>
               )}
               {it.off && <span className="ml-auto font-mono text-[7px] text-[#888] border border-[#333] rounded-[2px] px-[4px] tracking-wide">OFFLINE</span>}
             </NavLink>

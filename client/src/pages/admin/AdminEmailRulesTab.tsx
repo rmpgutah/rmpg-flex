@@ -165,7 +165,7 @@ export default function AdminEmailRulesTab() {
           ))}
           {rules.length === 0 && (
             <tr>
-              <td colSpan={4} className="py-4 text-center text-gray-500">
+              <td colSpan={4} className="py-4 text-center text-rmpg-500">
                 No rules configured.
               </td>
             </tr>
@@ -179,26 +179,26 @@ export default function AdminEmailRulesTab() {
             placeholder="Rule name"
             value={editing.name || ''}
             onChange={e => setEditing({ ...editing, name: e.target.value })}
-            className="w-full bg-black text-white px-2 py-1"
+            className="w-full bg-black text-rmpg-100 px-2 py-1"
           />
           <input id="ff-adminemailrulestab-1"
             type="number"
             placeholder="Priority"
             value={editing.priority ?? 100}
             onChange={e => setEditing({ ...editing, priority: Number(e.target.value) })}
-            className="w-full bg-black text-white px-2 py-1"
+            className="w-full bg-black text-rmpg-100 px-2 py-1"
           />
           <RichTextArea
             placeholder='Conditions JSON e.g. {"sender_regex":"@ut\\.gov$"}'
             value={editing.conditions_json || ''}
             onChange={e => setEditing({ ...editing, conditions_json: e.target.value })}
-            className="w-full bg-black text-white px-2 py-1 h-20 font-mono text-xs"
+            className="w-full bg-black text-rmpg-100 px-2 py-1 h-20 font-mono text-xs"
           />
           <RichTextArea
             placeholder='Actions JSON e.g. [{"type":"flag"}]'
             value={editing.actions_json || ''}
             onChange={e => setEditing({ ...editing, actions_json: e.target.value })}
-            className="w-full bg-black text-white px-2 py-1 h-20 font-mono text-xs"
+            className="w-full bg-black text-rmpg-100 px-2 py-1 h-20 font-mono text-xs"
           />
           <label className="flex items-center gap-2 text-xs">
             <input id="ff-adminemailrulestab-2"
@@ -231,7 +231,7 @@ export default function AdminEmailRulesTab() {
               CANCEL
             </button>
             {testResult && (
-              <span className="text-xs text-gray-400 ml-2">{testResult}</span>
+              <span className="text-xs text-rmpg-400 ml-2">{testResult}</span>
             )}
           </div>
         </div>

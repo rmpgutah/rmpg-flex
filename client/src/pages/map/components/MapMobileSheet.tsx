@@ -161,8 +161,8 @@ export default function MapMobileSheet({
                 borderRadius: 2,
               }}
             >
-              {showBreadcrumbs ? <Eye className="w-4 h-4 text-gray-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
-              <Route style={{ width: 16, height: 16 }} className="text-gray-400" />
+              {showBreadcrumbs ? <Eye className="w-4 h-4 text-rmpg-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
+              <Route style={{ width: 16, height: 16 }} className="text-rmpg-400" />
               <span className="text-sm text-rmpg-200 flex-1">Breadcrumbs</span>
               {showBreadcrumbs && <div className="w-2 h-2 rounded-full bg-gray-400" style={{ boxShadow: '0 0 6px rgba(34,211,238,0.8)' }} />}
             </button>
@@ -176,7 +176,7 @@ export default function MapMobileSheet({
                       onClick={() => setBreadcrumbHours(h)}
                       className={`flex-1 py-2 text-xs font-bold rounded-sm ${
                         breadcrumbHours === h
-                          ? 'bg-gray-600 text-white'
+                          ? 'bg-gray-600 text-rmpg-100'
                           : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                       }`}
                       style={{ minHeight: 44 }}
@@ -192,7 +192,7 @@ export default function MapMobileSheet({
                       onClick={() => setBreadcrumbColorMode(mode)}
                       className={`flex-1 py-1.5 text-[10px] font-bold rounded-sm ${
                         breadcrumbColorMode === mode
-                          ? 'bg-gray-600 text-white'
+                          ? 'bg-gray-600 text-rmpg-100'
                           : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                       }`}
                       style={{ minHeight: 44 }}
@@ -216,7 +216,7 @@ export default function MapMobileSheet({
                       onClick={() => setMapStyle(key)}
                       className={`py-2 text-[10px] font-bold rounded-sm transition-all ${
                         isActive
-                          ? 'bg-brand-600 text-white'
+                          ? 'bg-brand-600 text-rmpg-100'
                           : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                       }`}
                       style={{ minHeight: 44 }}
@@ -270,7 +270,7 @@ export default function MapMobileSheet({
                     <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80` }} />
                     <span className="text-[12px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
                     {unit.gps_source === 'clearpathgps' && (
-                      <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                      <span className="text-[7px] font-bold px-1 py-0 bg-surface-sunken/40 text-rmpg-400 border border-border-default/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                     )}
                     <span className="text-[10px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                   </div>

@@ -284,7 +284,7 @@ export default function PersonnelDetailPanel({
         <div className="p-3 flex items-start gap-3">
           <OfficerAvatar officer={officer} size="lg" />
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-bold text-white leading-tight truncate">
+            <h2 className="text-lg font-bold text-rmpg-100 leading-tight truncate">
               {officer.last_name}, {officer.first_name}
               {officer.middle_name && officer.middle_name.length > 0 ? ` ${officer.middle_name[0]}.` : ''}
             </h2>
@@ -393,7 +393,7 @@ export default function PersonnelDetailPanel({
           {/* Quick stats — inline, right-aligned */}
           <div className="flex items-center gap-3 sm:gap-4">
             <div className="text-center">
-              <p className="text-sm font-bold font-mono text-white leading-none">{calcYearsOfService(officer.hire_date)}</p>
+              <p className="text-sm font-bold font-mono text-rmpg-100 leading-none">{calcYearsOfService(officer.hire_date)}</p>
               <p className="field-label text-[8px]">Service</p>
             </div>
             <div className="text-center">

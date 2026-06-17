@@ -107,11 +107,11 @@ export const KeyboardShortcuts: React.FC = () => {
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600">
           <div className="flex items-center gap-2">
             <Keyboard className="w-4 h-4 text-brand-400" />
-            <h2 className="text-sm font-bold text-white uppercase tracking-wider">Keyboard Shortcuts</h2>
+            <h2 className="text-sm font-bold text-rmpg-100 uppercase tracking-wider">Keyboard Shortcuts</h2>
           </div>
           <button type="button"
             onClick={() => setIsOpen(false)}
-            className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors"
+            className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-rmpg-100 transition-colors"
             aria-label="Close keyboard shortcuts"
           >
             <X className="w-4 h-4" />

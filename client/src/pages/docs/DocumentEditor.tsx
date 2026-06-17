@@ -131,8 +131,8 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
 
       {/* Toolbar row */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#232323] flex-shrink-0">
-        <button type="button" aria-pressed={!preview} className={`text-[10px] px-2 py-0.5 rounded-sm ${!preview ? 'bg-[#88888830] text-white' : 'text-[#888]'}`} onClick={() => setPreview(false)}>Edit</button>
-        <button type="button" aria-pressed={preview} className={`text-[10px] px-2 py-0.5 rounded-sm ${preview ? 'bg-[#88888830] text-white' : 'text-[#888]'}`} onClick={() => setPreview(true)}>Preview</button>
+        <button type="button" aria-pressed={!preview} className={`text-[10px] px-2 py-0.5 rounded-sm ${!preview ? 'bg-[#88888830] text-rmpg-100' : 'text-[#888]'}`} onClick={() => setPreview(false)}>Edit</button>
+        <button type="button" aria-pressed={preview} className={`text-[10px] px-2 py-0.5 rounded-sm ${preview ? 'bg-[#88888830] text-rmpg-100' : 'text-[#888]'}`} onClick={() => setPreview(true)}>Preview</button>
         <div className="flex-1" />
         {editable && (
           <button type="button" disabled={busy || !dirty} className="toolbar-btn toolbar-btn-primary text-[10px] px-2 py-0.5 flex items-center gap-1 disabled:opacity-40" onClick={save}>

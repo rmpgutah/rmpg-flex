@@ -473,7 +473,7 @@ export default function ConnectionsPage() {
             type="button"
             disabled={!seed || nodes.length === 0}
             onClick={() => setSaveModalOpen(true)}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderRadius: 2 }}
           >
             SAVE INVESTIGATION
@@ -482,7 +482,7 @@ export default function ConnectionsPage() {
             type="button"
             disabled={!seed || nodes.length === 0}
             onClick={handleExportPng}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderRadius: 2 }}
           >
             EXPORT PNG
@@ -491,7 +491,7 @@ export default function ConnectionsPage() {
             type="button"
             disabled={!seed || nodes.length === 0}
             onClick={handleExportPdf}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderRadius: 2 }}
           >
             EXPORT PDF
@@ -500,7 +500,7 @@ export default function ConnectionsPage() {
             <button
               type="button"
               onClick={openLoadDropdown}
-              className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-gray-300 hover:text-[#d4a017]"
+              className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[#d4a017]"
               style={{ borderRadius: 2 }}
             >
               LOAD INVESTIGATION
@@ -512,9 +512,9 @@ export default function ConnectionsPage() {
                 className="absolute right-0 z-40 mt-1 w-80 bg-surface-raised border border-rmpg-700"
                 style={{ borderRadius: 2 }}
               >
-                {loadingInvestigations && <div className="p-3 text-xs text-gray-400">Loading...</div>}
+                {loadingInvestigations && <div className="p-3 text-xs text-rmpg-400">Loading...</div>}
                 {!loadingInvestigations && investigations.length === 0 && (
-                  <div className="p-3 text-xs text-gray-500">No saved investigations yet.</div>
+                  <div className="p-3 text-xs text-rmpg-500">No saved investigations yet.</div>
                 )}
                 {!loadingInvestigations && investigations.length > 0 && (
                   <ul className="max-h-80 overflow-y-auto">
@@ -525,13 +525,13 @@ export default function ConnectionsPage() {
                         className="px-3 py-2 text-sm text-gray-200 cursor-pointer hover:bg-surface-sunken border-b border-border-subtle"
                       >
                         <div className="font-semibold">{inv.name}</div>
-                        {inv.description && <div className="text-xs text-gray-500 mt-0.5">{inv.description}</div>}
+                        {inv.description && <div className="text-xs text-rmpg-500 mt-0.5">{inv.description}</div>}
                       </li>
                     ))}
                   </ul>
                 )}
                 <div className="p-2 border-t border-rmpg-700 text-right">
-                  <button type="button" onClick={() => setLoadDropdownOpen(false)} className="text-xs text-gray-400 hover:text-[#d4a017]">Close</button>
+                  <button type="button" onClick={() => setLoadDropdownOpen(false)} className="text-xs text-rmpg-400 hover:text-[#d4a017]">Close</button>
                 </div>
               </div>
             )}
@@ -571,9 +571,9 @@ export default function ConnectionsPage() {
         >
           <span className="text-[#d4a017] text-xs uppercase font-semibold">{seed.type}</span>
           <span className="font-semibold">{seed.label}</span>
-          <span className="text-gray-500 text-xs ml-auto">#{seed.id}</span>
+          <span className="text-rmpg-500 text-xs ml-auto">#{seed.id}</span>
           <div className="flex items-center gap-2 border-l border-rmpg-700 pl-3">
-            <label htmlFor="depth-slider" className="uppercase font-semibold text-xs text-gray-400">Depth</label>
+            <label htmlFor="depth-slider" className="uppercase font-semibold text-xs text-rmpg-400">Depth</label>
             <input
               id="depth-slider"
               type="range"
@@ -599,7 +599,7 @@ export default function ConnectionsPage() {
           <button
             type="button"
             onClick={() => { setSeed(null); setAnnotations({}); }}
-            className="text-xs text-gray-400 hover:text-[#d4a017]"
+            className="text-xs text-rmpg-400 hover:text-[#d4a017]"
             aria-label="Clear seed"
           >
             CLEAR
@@ -619,12 +619,12 @@ export default function ConnectionsPage() {
           </div>
         )}
         {!seed && (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
+          <div className="absolute inset-0 flex items-center justify-center text-rmpg-500 text-sm">
             Seed a graph by searching above.
           </div>
         )}
         {seed && hasOnlySeed && !loadingGraph && (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
+          <div className="absolute inset-0 flex items-center justify-center text-rmpg-500 text-sm">
             No connections found for {seed.label}.
           </div>
         )}
@@ -783,7 +783,7 @@ export default function ConnectionsPage() {
           <button
             type="button"
             onClick={resetView}
-            className="absolute top-2 right-2 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-gray-300 hover:text-[#d4a017]"
+            className="absolute top-2 right-2 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 hover:text-[#d4a017]"
             style={{ borderRadius: 2 }}
             aria-label="Reset view"
           >
@@ -793,7 +793,7 @@ export default function ConnectionsPage() {
             <button
               type="button"
               onClick={() => { setPathNodes(new Set()); setPathEdges(new Set()); }}
-              className="absolute top-2 right-28 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-gray-300 hover:text-[#d4a017]"
+              className="absolute top-2 right-28 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 hover:text-[#d4a017]"
               style={{ borderRadius: 2 }}
             >
               CLEAR PATH
@@ -801,7 +801,7 @@ export default function ConnectionsPage() {
           )}
           {selectedNodeId && !pathFrom && (
             <div
-              className="absolute bottom-2 left-2 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-gray-300 z-20 max-w-md"
+              className="absolute bottom-2 left-2 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 z-20 max-w-md"
               style={{ borderRadius: 2 }}
             >
               <div className="flex items-center gap-2 flex-wrap">
@@ -827,7 +827,7 @@ export default function ConnectionsPage() {
                 {annotations[selectedNodeId] ? 'Edit note' : 'Add note'}
               </button>
               {annotations[selectedNodeId] && (
-                <span className="text-gray-400 italic border-l border-rmpg-700 pl-2 ml-1">
+                <span className="text-rmpg-400 italic border-l border-rmpg-700 pl-2 ml-1">
                   {annotations[selectedNodeId]}
                 </span>
               )}
@@ -851,7 +851,7 @@ export default function ConnectionsPage() {
               <button
                 type="button"
                 onClick={() => { setPathFrom(null); setPathNodes(new Set()); setPathEdges(new Set()); }}
-                className="text-gray-300 hover:text-[#d4a017] uppercase font-semibold"
+                className="text-rmpg-300 hover:text-[#d4a017] uppercase font-semibold"
                 aria-label="Cancel path"
               >
                 Cancel Path
@@ -870,7 +870,7 @@ export default function ConnectionsPage() {
           {availableTypes.map(t => (
             <label
               key={t}
-              className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer hover:text-[#d4a017]"
+              className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer hover:text-[#d4a017]"
             >
               <input id="ff-connectionspage-1"
                 type="checkbox"
@@ -928,7 +928,7 @@ export default function ConnectionsPage() {
               <button
                 type="button"
                 onClick={() => { setEditingAnnotationFor(null); setAnnotationDraft(''); }}
-                className="px-3 py-1.5 text-xs text-gray-300 hover:text-[#d4a017]"
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-[#d4a017]"
               >
                 Cancel
               </button>
@@ -977,7 +977,7 @@ export default function ConnectionsPage() {
           >
             <h2 className="text-[#d4a017] text-sm uppercase font-semibold">Save Investigation</h2>
 
-            <label className="block text-xs text-gray-300">
+            <label className="block text-xs text-rmpg-300">
               Name
               <input id="ff-connectionspage-2"
                 type="text"
@@ -989,7 +989,7 @@ export default function ConnectionsPage() {
               />
             </label>
 
-            <label className="block text-xs text-gray-300">
+            <label className="block text-xs text-rmpg-300">
               Description
               <RichTextArea
                 className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none h-20"
@@ -1010,7 +1010,7 @@ export default function ConnectionsPage() {
                   setSaveDescription('');
                   setSaveError(null);
                 }}
-                className="px-3 py-1.5 text-xs text-gray-300 hover:text-[#d4a017]"
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-[#d4a017]"
               >
                 Cancel
               </button>

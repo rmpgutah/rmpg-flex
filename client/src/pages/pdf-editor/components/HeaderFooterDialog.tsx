@@ -13,7 +13,7 @@ interface Props {
   onApply: (cfg: HeaderFooterConfig | null) => void;
 }
 
-const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
 const labelCls = 'text-[9px] uppercase tracking-wider text-rmpg-500 block mb-0.5';
 
 export default function HeaderFooterDialog({ open, value, onClose, onApply }: Props) {
@@ -34,7 +34,7 @@ export default function HeaderFooterDialog({ open, value, onClose, onApply }: Pr
         <div className="flex items-center gap-2 mb-3">
           <Heading className="w-4 h-4 text-[#d4a017]" />
           <div className="text-sm text-rmpg-100 font-semibold">Header & Footer</div>
-          <button type="button" onClick={onClose} aria-label="Close" className="ml-auto text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="ml-auto text-rmpg-400 hover:text-rmpg-100"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="text-[9px] text-[#d4a017] uppercase tracking-wider mb-1 font-semibold">Header</div>

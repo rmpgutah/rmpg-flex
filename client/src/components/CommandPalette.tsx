@@ -190,7 +190,7 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Search records, run NCIC, jump to a page…"
-            className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 focus:outline-none"
+            className="flex-1 bg-transparent text-sm text-rmpg-100 placeholder-rmpg-500 focus:outline-none"
             aria-label="Command palette query"
             autoComplete="off" spellCheck={false}
           />

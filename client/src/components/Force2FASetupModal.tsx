@@ -107,7 +107,7 @@ export default function Force2FASetupModal() {
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
             <ShieldCheck style={{ width: 20, height: 20, color: '#888888' }} />
-            <div className="text-lg font-bold text-white">Two-Factor Authentication Required</div>
+            <div className="text-lg font-bold text-rmpg-100">Two-Factor Authentication Required</div>
           </div>
           <div className="text-xs text-rmpg-400 max-w-sm mx-auto">
             Your role requires two-factor authentication via Google Authenticator (or compatible app).
@@ -133,7 +133,7 @@ export default function Force2FASetupModal() {
               <div className="font-bold text-[9px] uppercase tracking-wider mb-2" style={{ color: '#e0e0e0' }}>
                 What You'll Need
               </div>
-              <div>1. Install <strong className="text-white">Google Authenticator</strong> on your phone (iOS or Android)</div>
+              <div>1. Install <strong className="text-rmpg-100">Google Authenticator</strong> on your phone (iOS or Android)</div>
               <div>2. Scan a QR code with the app</div>
               <div>3. Enter the 6-digit code from the app to verify</div>
               <div>4. Save your backup recovery codes</div>

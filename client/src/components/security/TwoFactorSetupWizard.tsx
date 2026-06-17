@@ -156,7 +156,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
             <button type="button"
               onClick={startSetup}
               disabled={loading}
-              className="toolbar-btn toolbar-btn-primary flex-1 h-8 text-white text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+              className="toolbar-btn toolbar-btn-primary flex-1 h-8 text-rmpg-100 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
             >
               {loading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <QrCode className="w-3 h-3" />}
               Begin Setup
@@ -205,7 +205,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
 
           <button type="button"
             onClick={() => setStep('verify')}
-            className="toolbar-btn toolbar-btn-primary w-full h-8 text-white text-[10px] font-bold uppercase tracking-wider"
+            className="toolbar-btn toolbar-btn-primary w-full h-8 text-rmpg-100 text-[10px] font-bold uppercase tracking-wider"
           >
             I've Scanned the Code
           </button>
@@ -250,7 +250,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
             <button type="button"
               onClick={confirmSetup}
               disabled={verifyCode.length !== 6 || loading}
-              className="toolbar-btn toolbar-btn-primary flex-1 h-8 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 flex items-center justify-center gap-1.5"
+              className="toolbar-btn toolbar-btn-primary flex-1 h-8 text-rmpg-100 text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
               {loading ? <RefreshCw className="w-3 h-3 animate-spin" /> : 'Verify & Enable'}
             </button>
