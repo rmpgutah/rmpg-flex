@@ -1,6 +1,6 @@
 // src/utils/footage/captureOrchestrator.ts
 import type { Bindings } from '../../types';
-import { getDb, query, queryFirst, execute, columnExists } from '../db';
+import { getDb, query, queryFirst, execute, executeBatch, columnExists } from '../db';
 import { getClearPathSource } from './clearpathSource';
 import { splitWindow } from './splitWindow';
 import { capChunkCount, batchLimit } from './pacing';
@@ -84,10 +84,14 @@ export async function enqueueFootage(env: Bindings, args: EnqueueArgs): Promise<
 
   // Chunks start in 'pending_request'; the cron's request pass fires the vendor
   // call and advances them to 'requested', then the download pass pulls them.
-  for (const h of capped) {
-    await execute(db, `INSERT INTO footage_chunks
-      (request_id, seq, from_ts, to_ts, channel, status) VALUES (?, ?, ?, ?, ?, 'pending_request')`,
-      requestId, h.seq, h.fromTs, h.toTs, h.channel);
+  // Batch inserts to avoid sequential round-trips (720 chunks for an 8h window
+  // would timeout the Worker with sequential awaits).
+  const BATCH_SZ = 500;
+  for (let i = 0; i < capped.length; i += BATCH_SZ) {
+    await executeBatch(db, capped.slice(i, i + BATCH_SZ).map((h) => ({
+      sql: `INSERT INTO footage_chunks (request_id, seq, from_ts, to_ts, channel, status) VALUES (?, ?, ?, ?, ?, 'pending_request')`,
+      bindings: [requestId, h.seq, h.fromTs, h.toTs, h.channel],
+    })));
   }
   return requestId;
 }
@@ -212,6 +216,59 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
         WHERE request_id = footage_requests.id AND status IN ('pending_request','requested')
       )`).catch(() => {});
   return { downloaded, missing };
+}
+
+/** Detect footage_requests where the chunk rows in DB are fewer than chunk_count
+ *  (truncated by a Worker timeout mid-insert) and create the missing pending_request rows.
+ *  Safe to run every cron tick — INSERT OR IGNORE skips already-existing seqs. */
+export async function resumeTruncatedRequests(env: Bindings): Promise<{ resumed: number; added: number }> {
+  const db = getDb(env);
+  const truncated = await query<{ id: number; from_ts: number; to_ts: number; chunk_count: number; actual: number }>(db, `
+    SELECT rq.id, rq.from_ts, rq.to_ts, rq.chunk_count, COUNT(ch.id) AS actual
+    FROM footage_requests rq
+    LEFT JOIN footage_chunks ch ON ch.request_id = rq.id
+    WHERE rq.status IN ('fulfilling','partial') AND rq.chunk_count > 0
+    GROUP BY rq.id HAVING actual < rq.chunk_count LIMIT 5`,
+  ).catch(() => []);
+  if (!truncated.length) return { resumed: 0, added: 0 };
+
+  let resumed = 0, added = 0;
+  for (const rq of truncated) {
+    const existingSeqs = new Set(
+      (await query<{ seq: number }>(db, 'SELECT seq FROM footage_chunks WHERE request_id=?', rq.id).catch(() => []))
+        .map((r) => r.seq),
+    );
+    // Reconstruct the channel list from existing chunks (mirrors enqueueFootage ordering).
+    const chRows = await query<{ channel: string }>(db,
+      'SELECT DISTINCT channel FROM footage_chunks WHERE request_id=?', rq.id).catch(() => []);
+    const channels = chRows.map((r) => r.channel);
+    if (!channels.length) channels.push('outside');
+
+    const planned: Array<{ seq: number; fromTs: number; toTs: number; channel: string }> = [];
+    for (const ch of channels) {
+      for (const c of splitWindow(rq.from_ts, rq.to_ts, CHUNK_SECONDS)) {
+        planned.push({ seq: planned.length, fromTs: c.fromTs, toTs: c.toTs, channel: ch });
+      }
+    }
+    const missing = planned.filter((p) => !existingSeqs.has(p.seq));
+    if (!missing.length) continue;
+
+    // Re-open so the close-query in pollAndDownload doesn't immediately re-close it.
+    await execute(db, `UPDATE footage_requests SET status='fulfilling', chunk_count=?, updated_at=datetime('now') WHERE id=?`,
+      planned.length, rq.id).catch(() => {});
+
+    const BATCH_SZ = 500;
+    for (let i = 0; i < missing.length; i += BATCH_SZ) {
+      await executeBatch(db, missing.slice(i, i + BATCH_SZ).map((h) => ({
+        sql: `INSERT OR IGNORE INTO footage_chunks (request_id, seq, from_ts, to_ts, channel, status) VALUES (?, ?, ?, ?, ?, 'pending_request')`,
+        bindings: [rq.id, h.seq, h.fromTs, h.toTs, h.channel],
+      }))).catch(() => {});
+      added += missing.slice(i, i + BATCH_SZ).length;
+    }
+    console.log(`[flexcam] resumed request ${rq.id}: added ${missing.length} missing chunks`);
+    resumed++;
+  }
+  return { resumed, added };
 }
 
 /** Per-minute cron entry, throttled by a config flag. */

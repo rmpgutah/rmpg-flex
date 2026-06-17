@@ -666,6 +666,9 @@
 // v993: Full-drive clip playback — fix 401 on <video> src; auth middleware
 //       now accepts ?token=<jwt> on /full-drive/clip/* paths; client appends
 //       JWT from localStorage to all streamUrl values before passing to <video>.
+// v997: FlexCam capture pipeline — batch chunk INSERTs (prevents 720-row
+//       Worker timeout on multi-hour drives); gap-fill cron for truncated
+//       requests; remove on_demand-only gate from full-drive cron pass.
 // v996: ErrorBoundary chunk-reload guard — import shared CHUNK_RELOAD_KEY/
 //       CHUNK_RELOAD_WINDOW_MS/isChunkLoadError from chunkRetry.ts (was
 //       duplicated hardcoded strings); handleReload clears the guard key so
