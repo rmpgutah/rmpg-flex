@@ -49,7 +49,7 @@ export default function BillingReviewTab() {
           </thead>
           <tbody>
             {charges.map((ch) => (
-              <tr key={ch.id} className="border-b border-[#121212] align-top">
+              <tr key={ch.id} className="border-b border-border-subtle align-top">
                 <td className="py-[3px] text-rmpg-300">{ch.defendant_name ?? ch.serve_queue_id} {ch.case_number ? <span className="text-rmpg-500">({ch.case_number})</span> : null}</td>
                 <td className={ch.contract_id ? 'text-rmpg-300' : 'text-[#e0533d]'}>{ch.client_name ?? (ch.contract_id ? `Contract ${ch.contract_id}` : 'UNASSIGNED CONTRACT')}</td>
                 <td className="text-[#888]">

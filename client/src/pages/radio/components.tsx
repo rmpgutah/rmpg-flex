@@ -73,7 +73,7 @@ export function FilterChip({ children, onClick, active, icon }: { children: Reac
 export function SectionHeader({ icon, label, trailing }: { icon: React.ReactNode; label: string; trailing?: React.ReactNode }) {
   return (
     <div className="flex items-center gap-1.5 px-3 py-1.5 flex-shrink-0"
-      style={{ background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)', borderBottom: '1px solid var(--rt-border)' }}>
+      style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)', borderBottom: '1px solid var(--rt-border)' }}>
       {icon}
       <span className="text-[9px] font-mono font-bold tracking-[0.2em] min-w-0 flex-1 truncate" style={{ color: 'var(--rt-text)' }}>{label}</span>
       {trailing}

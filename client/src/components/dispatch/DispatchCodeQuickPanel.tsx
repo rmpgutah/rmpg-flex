@@ -128,9 +128,9 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
   };
 
   return (
-    <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden" style={{ background: '#111', borderColor: 'var(--surface-raised)' }}>
+    <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden" style={{ background: 'var(--surface-overlay)', borderColor: 'var(--surface-raised)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)', background: '#0e0e0e' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)', background: 'var(--surface-overlay)' }}>
         <div className="flex items-center gap-1.5">
           <Hash className="w-3.5 h-3.5 text-brand-400" />
           <span className="text-[10px] font-bold uppercase tracking-wider text-brand-300">Dispatch Codes</span>

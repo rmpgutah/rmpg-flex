@@ -34,7 +34,7 @@ export default function PricingTab() {
           </thead>
           <tbody>
             {items.map((r) => (
-              <tr key={r.id} className="border-b border-[#121212]">
+              <tr key={r.id} className="border-b border-border-subtle">
                 <td className="py-[2px] font-mono text-[#d4a017]">{r.code}</td>
                 <td><input className="bg-surface-sunken border border-border-default px-1 w-full" value={r.label} onChange={(e) => edit(r.id, 'label', e.target.value)} /></td>
                 <td>

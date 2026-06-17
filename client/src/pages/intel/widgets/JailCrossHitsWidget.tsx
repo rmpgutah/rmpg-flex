@@ -12,7 +12,7 @@ export default function JailCrossHitsWidget(
       {rows.map((r) => (
         <button key={r.booking_id} disabled={!r.person_id}
           onClick={() => r.person_id && onSelect('person', r.person_id, r.name)}
-          className="w-full flex items-center gap-2 py-[5px] border-b border-[#131313] last:border-b-0 text-left disabled:cursor-default">
+          className="w-full flex items-center gap-2 py-[5px] border-b border-border-subtle last:border-b-0 text-left disabled:cursor-default">
           {r.match === 'exact'
             ? <span className="font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] bg-[#3a0d0a] text-[#ff6b5e]">MATCH</span>
             : <span className="font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] bg-surface-raised text-[#aaa]">NEW</span>}

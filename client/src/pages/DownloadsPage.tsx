@@ -163,7 +163,7 @@ export default function DownloadsPage() {
                 className="relative flex flex-col items-center p-6 text-center transition-colors"
                 style={{
                   background: 'var(--surface-base)',
-                  border: isRecommended ? '1px solid #d4a017' : '1px solid #222',
+                  border: isRecommended ? '1px solid #d4a017' : '1px solid var(--border-subtle)',
                   borderRadius: 2,
                 }}
               >
@@ -196,7 +196,7 @@ export default function DownloadsPage() {
                       download={installer.filename}
                       className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
                       style={{
-                        background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
+                        background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
                         border: '1px solid #d4a017',
                         color: '#d4a017',
                         borderRadius: 2,
@@ -206,7 +206,7 @@ export default function DownloadsPage() {
                         e.currentTarget.style.borderColor = '#e8b52a';
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)';
+                        e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)';
                         e.currentTarget.style.borderColor = '#d4a017';
                       }}
                     >
@@ -225,7 +225,7 @@ export default function DownloadsPage() {
         {/* Web App Banner */}
         <div
           className="flex items-center justify-between gap-4 p-4 mb-8"
-          style={{ background: '#111', border: '1px solid #222', borderRadius: 2 }}
+          style={{ background: '#111', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
         >
           <div>
             <h4 className="text-sm font-bold text-rmpg-100 mb-1">Use in Browser</h4>
@@ -253,7 +253,7 @@ export default function DownloadsPage() {
         {/* Features */}
         <div
           className="p-5 mb-8"
-          style={{ background: '#111', border: '1px solid #222', borderRadius: 2 }}
+          style={{ background: '#111', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
         >
           <h4 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#d4a017' }}>
             What's Included
@@ -280,7 +280,7 @@ export default function DownloadsPage() {
         {/* Installation Guide */}
         <div
           className="p-5 mb-8"
-          style={{ background: '#111', border: '1px solid #222', borderRadius: 2 }}
+          style={{ background: '#111', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
         >
           <h4 className="text-[11px] font-bold uppercase tracking-wider mb-4" style={{ color: '#d4a017' }}>
             Installation Guide
@@ -342,7 +342,7 @@ export default function DownloadsPage() {
         {/* System Requirements */}
         <div
           className="p-5"
-          style={{ background: '#111', border: '1px solid #222', borderRadius: 2 }}
+          style={{ background: '#111', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
         >
           <h4 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#666' }}>
             System Requirements

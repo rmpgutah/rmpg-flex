@@ -64,7 +64,7 @@ export default function EmailedDocuments({ recordType, recordId, title = 'Emaile
             {items.map((it) => {
               const s = STATUS[it.status] ?? STATUS.pending;
               return (
-                <tr key={it.outboxId} className="border-b border-[#141414]">
+                <tr key={it.outboxId} className="border-b border-border-subtle">
                   <td className="px-3 py-[2px] text-rmpg-300">{(it.sentAt || it.createdAt || '').replace('T', ' ').slice(0, 16)}</td>
                   <td className="px-3 py-[2px] text-rmpg-300">{it.sentBy}</td>
                   <td className="px-3 py-[2px] text-rmpg-300" title={it.to.join(', ')}>{it.to.join(', ') || '—'}</td>

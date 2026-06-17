@@ -116,7 +116,7 @@ export function ScreeningWorkspace() {
               <thead><tr className="text-[9px] text-[#888]"><th className="text-left py-[3px]">NAME</th><th className="text-left">SOURCE</th><th className="text-left">SUMMARY</th><th className="text-left">COUNTRY</th><th className="text-left">DOB</th></tr></thead>
               <tbody>
                 {results.map((r) => (
-                  <tr key={`${r.sourceKey}-${r.externalId}`} className="border-t border-[#121212]">
+                  <tr key={`${r.sourceKey}-${r.externalId}`} className="border-t border-border-subtle">
                     <td className="py-[2px] flex items-center gap-2">{r.photoUrl && <img src={r.photoUrl} alt="" className="w-6 h-6 object-cover" />}{r.displayName}</td>
                     <td className="text-[#888]">{labelFor(r.sourceKey)}</td>
                     <td>{r.summary}</td><td>{r.country ?? '—'}</td><td>{r.dob ?? '—'}</td>
@@ -140,7 +140,7 @@ export function ScreeningWorkspace() {
           <thead><tr className="text-[9px] text-[#888]"><th className="text-left py-[3px]">PERSON</th><th className="text-left">SOURCE</th><th className="text-left">MATCH</th><th className="text-left">FIELDS</th><th /></tr></thead>
           <tbody>
             {hits.map((h) => (
-              <tr key={h.id} className="border-t border-[#121212]">
+              <tr key={h.id} className="border-t border-border-subtle">
                 <td className="py-[2px]">{h.display_name}</td><td>{h.source_key}</td>
                 <td>{Math.round(h.match_score * 100)}%</td><td>{parseFields(h.matched_fields).join(', ')}</td>
                 <td className="text-right">
@@ -173,7 +173,7 @@ function WatchlistTab() {
       <thead><tr className="text-[9px] text-[#888]"><th className="text-left py-[3px]">PERSON</th><th className="text-left">SCOPE</th><th className="text-left">REASON</th></tr></thead>
       <tbody>
         {rows.map((r) => (
-          <tr key={String(r.id)} className="border-t border-[#121212]">
+          <tr key={String(r.id)} className="border-t border-border-subtle">
             <td className="py-[2px]">{String(r.first_name ?? '')} {String(r.last_name ?? '')}</td>
             <td>{String(r.source_scope ?? 'all')}</td><td>{String(r.reason ?? '—')}</td>
           </tr>
@@ -251,7 +251,7 @@ function SourcesTab({ sources }: { sources: SourceInfo[] }) {
             const interval = Number(st?.scan_interval_days ?? 180);
             const next = st?.next_run_at ? String(st.next_run_at) : 'due now';
             return (
-              <tr key={s.sourceKey} className="border-t border-[#121212]">
+              <tr key={s.sourceKey} className="border-t border-border-subtle">
                 <td className="py-[2px]">{s.label}</td>
                 <td>{st && Number(st.enabled) === 0 ? 'no' : 'yes'}</td>
                 <td>

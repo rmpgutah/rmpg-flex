@@ -178,7 +178,7 @@ function DataTable<T>({
         <thead className={spillman ? '' : 'sticky top-0 z-10'}>
           <tr
             className={spillman ? '' : 'border-b border-rmpg-600'}
-            style={spillman ? undefined : { background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}
+            style={spillman ? undefined : { background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}
           >
             {showRowNumbers && (
               <th className={`${headerPadding} text-[10px] font-bold uppercase tracking-wider text-rmpg-400 text-center w-8`} scope="col">#</th>

@@ -412,7 +412,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   }
 
   return (
-    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141414' }}>
+    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid var(--border-subtle)' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
@@ -470,12 +470,12 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {activeRoute?.steps && activeRoute.steps.length > 0 && (
         <div style={{
           position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 11,
-          background: 'rgba(0,0,0,0.94)', borderTop: '1px solid #2e2e2e', pointerEvents: 'auto',
+          background: 'rgba(0,0,0,0.94)', borderTop: '1px solid var(--border-default)', pointerEvents: 'auto',
         }}>
           {/* ETA + miles, above */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
-            padding: '2px 6px', borderBottom: '1px solid #1a1a1a', background: 'var(--surface-base)',
+            padding: '2px 6px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-base)',
           }}>
             <span style={{ fontSize: 8, color: '#888888', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               {activeRoute.unitCallSign}→{activeRoute.callNumber}
@@ -511,7 +511,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {!loaded && !error && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#0a0a0a',
+          background: 'var(--surface-overlay)',
         }}>
           <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
         </div>

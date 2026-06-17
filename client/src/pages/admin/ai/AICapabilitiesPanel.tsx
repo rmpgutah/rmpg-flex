@@ -86,7 +86,7 @@ export default function AICapabilitiesPanel({ config, setConfig, onSaved, setErr
               <button
                 onClick={() => toggleFeature(feat.key)}
                 className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${
-                  enabled ? 'bg-brand-600' : 'bg-[#1c1c1c]'
+                  enabled ? 'bg-brand-600' : 'bg-rmpg-800'
                 }`}
                 aria-label={`Toggle ${feat.label}`}
               >

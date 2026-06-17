@@ -171,7 +171,7 @@ function MenuLevel({ items, onCloseAll, onCloseLevel, autoFocus }: MenuLevelProp
       className="cm-menu py-1 min-w-[200px] rounded-sm overflow-visible"
       style={{
         background: 'var(--surface-base)',
-        border: '1px solid #2a2a2a',
+        border: '1px solid var(--border-default)',
         boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset',
         WebkitBackdropFilter: 'blur(8px)',
         backdropFilter: 'blur(8px)',
@@ -195,7 +195,7 @@ function MenuLevel({ items, onCloseAll, onCloseLevel, autoFocus }: MenuLevelProp
       {items.map((item, i) => {
         const itemKey = item.key ?? `cm-${i}`;
         if (item.separator) {
-          return <div key={itemKey} role="separator" className="border-t border-[#2b2b2b] my-1" />;
+          return <div key={itemKey} role="separator" className="border-t border-border-default my-1" />;
         }
         if (item.header) {
           return (

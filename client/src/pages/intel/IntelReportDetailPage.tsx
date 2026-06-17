@@ -10,7 +10,7 @@ const HANDLING = ['H1', 'H2', 'H3', 'H4', 'H5'];
 const btn = (bg: string, fg = '#000'): React.CSSProperties => ({
   background: bg, color: fg, borderRadius: 2, padding: '4px 10px', fontSize: 11, fontWeight: 600,
 });
-const field: React.CSSProperties = { background: '#0b0b0b', color: '#ddd', border: '1px solid #232323', borderRadius: 2, padding: '4px 6px', fontSize: 11, width: '100%' };
+const field: React.CSSProperties = { background: '#0b0b0b', color: '#ddd', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '4px 6px', fontSize: 11, width: '100%' };
 
 export default function IntelReportDetailPage() {
   const { id } = useParams();
@@ -92,7 +92,7 @@ export default function IntelReportDetailPage() {
 
       {/* Stage actions */}
       {['submitted', 'under_evaluation'].includes(r.status) && (
-        <div className="space-y-2 p-2" style={{ border: '1px solid #232323', borderRadius: 2 }}>
+        <div className="space-y-2 p-2" style={{ border: '1px solid var(--border-subtle)', borderRadius: 2 }}>
           <div className="text-[9px] font-semibold" style={{ color: '#d4a017' }}>EVALUATE — ASSIGN 5×5×5 GRADE</div>
           <div className="flex gap-2">
             <select style={field} value={grade.source_reliability} onChange={(e) => setGrade({ ...grade, source_reliability: e.target.value })}>{REL.map((x) => <option key={x}>{x}</option>)}</select>
@@ -104,7 +104,7 @@ export default function IntelReportDetailPage() {
       )}
 
       {r.status === 'graded' && (
-        <div className="space-y-2 p-2" style={{ border: '1px solid #232323', borderRadius: 2 }}>
+        <div className="space-y-2 p-2" style={{ border: '1px solid var(--border-subtle)', borderRadius: 2 }}>
           <div className="text-[9px] font-semibold" style={{ color: '#d4a017' }}>ANALYZE — SANITIZE + ASSESS</div>
           <textarea placeholder="Sanitized narrative (source protected)" rows={4} style={field}
             value={analysis.sanitized_narrative} onChange={(e) => setAnalysis({ ...analysis, sanitized_narrative: e.target.value })} />
@@ -147,7 +147,7 @@ export default function IntelReportDetailPage() {
       )}
 
       {/* Linked entities */}
-      <div className="space-y-2 p-2" style={{ border: '1px solid #232323', borderRadius: 2 }}>
+      <div className="space-y-2 p-2" style={{ border: '1px solid var(--border-subtle)', borderRadius: 2 }}>
         <div className="text-[9px] font-semibold" style={{ color: '#d4a017' }}>LINKED ENTITIES</div>
         {(r.links || []).length === 0 && <div className="text-[10px]" style={{ color: '#555' }}>No linked entities.</div>}
         {(r.links || []).map((l: any) => (
@@ -173,7 +173,7 @@ export default function IntelReportDetailPage() {
 
       {/* Dissemination log (supervisor-only; server returns [] otherwise) */}
       {(r.dissemination || []).length > 0 && (
-        <div className="space-y-1 p-2" style={{ border: '1px solid #232323', borderRadius: 2 }}>
+        <div className="space-y-1 p-2" style={{ border: '1px solid var(--border-subtle)', borderRadius: 2 }}>
           <div className="text-[9px] font-semibold" style={{ color: '#d4a017' }}>DISSEMINATION LOG</div>
           {r.dissemination.map((d: any) => (
             <div key={d.id} className="text-[10px]" style={{ color: '#aaa' }}>

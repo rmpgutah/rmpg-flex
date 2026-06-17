@@ -49,7 +49,7 @@ export default function ContractsTab() {
         <ul className="mt-2 text-[11px]">
           {contracts.map((c) => (
             <li key={c.id}>
-              <button className={`w-full text-left px-2 py-[3px] border-b border-[#121212] ${selected?.id === c.id ? 'text-[#d4a017]' : 'text-rmpg-300'}`} onClick={() => openContract(c)}>
+              <button className={`w-full text-left px-2 py-[3px] border-b border-border-subtle ${selected?.id === c.id ? 'text-[#d4a017]' : 'text-rmpg-300'}`} onClick={() => openContract(c)}>
                 {c.contract_number ?? `#${c.id}`} — {c.client_name ?? c.client_id} <span className="text-rmpg-500">({c.status})</span>
               </button>
             </li>
@@ -97,7 +97,7 @@ export default function ContractsTab() {
             <div className="overflow-x-auto"><table className="w-full text-[10px]">
               <tbody>
                 {audit.map((a) => (
-                  <tr key={a.id} className="border-b border-[#121212]">
+                  <tr key={a.id} className="border-b border-border-subtle">
                     <td className="text-rmpg-500 py-[2px]">{a.created_at}</td>
                     <td className="text-[#d4a017]">{a.action}</td>
                     <td className="text-[#888]">{a.user_name ?? '—'}</td>

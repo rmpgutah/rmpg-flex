@@ -197,7 +197,7 @@ export default function ButtonHealthOverlay() {
 const btnStyle: React.CSSProperties = {
   background: '#1f3a57',
   color: '#e5e7eb',
-  border: '1px solid #2b4a6b',
+  border: '1px solid var(--border-panel)',
   borderRadius: 2,
   padding: '2px 8px',
   marginLeft: 6,

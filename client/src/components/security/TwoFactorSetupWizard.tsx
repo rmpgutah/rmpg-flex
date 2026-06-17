@@ -192,7 +192,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           {showManual && (
             <div
               className="flex items-center gap-2 p-2 font-mono text-xs"
-              style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-default)' }}
             >
               <span className="flex-1 tracking-widest text-center text-rmpg-300">
                 {manualKey}

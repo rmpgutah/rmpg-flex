@@ -161,7 +161,7 @@ function LayerCard({
         ) : count !== null ? (
           <span
             className="text-[9px] font-mono px-1.5 py-0.5"
-            style={{ background:"var(--surface-sunken)", color: '#888', border: '1px solid #222' }}
+            style={{ background:"var(--surface-sunken)", color: '#888', border: '1px solid var(--border-subtle)' }}
           >
             {count.toLocaleString()}
           </span>
@@ -192,12 +192,12 @@ function FeatureDetailPanel({
   return (
     <div
       className="flex flex-col h-full"
-      style={{ borderLeft: '1px solid #222', minWidth: 220, maxWidth: 300, background:"var(--surface-sunken)" }}
+      style={{ borderLeft: '1px solid var(--border-subtle)', minWidth: 220, maxWidth: 300, background:"var(--surface-sunken)" }}
     >
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2 flex-shrink-0"
-        style={{ borderBottom: '1px solid #222', background: 'var(--surface-base)' }}
+        style={{ borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-base)' }}
       >
         <div className="flex items-center gap-2">
           <Info style={{ width: 12, height: 12, color: layerColor }} />
@@ -214,7 +214,7 @@ function FeatureDetailPanel({
       <div className="px-3 py-1.5 flex-shrink-0" style={{ borderBottom: '1px solid #1a1a1a' }}>
         <span
           className="text-[9px] font-mono px-2 py-0.5"
-          style={{ background: 'var(--surface-base)', color: '#888', border: '1px solid #222' }}
+          style={{ background: 'var(--surface-base)', color: '#888', border: '1px solid var(--border-subtle)' }}
         >
           {feature.geometry?.type ?? 'Unknown'}
         </span>
@@ -401,7 +401,7 @@ export default function GeoDataViewerPage() {
   return (
     <div className="flex flex-col h-full" style={{ background:"var(--surface-sunken)", minHeight: 0 }}>
       {/* Page header */}
-      <div style={{ borderBottom: '1px solid #222', flexShrink: 0 }}>
+      <div style={{ borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
         <PanelTitleBar title="GEO DATA VIEWER" icon={Layers}>
           <div className="flex items-center gap-2 ml-auto">
             <span className="text-[9px] font-mono" style={{ color: '#555' }}>
@@ -415,7 +415,7 @@ export default function GeoDataViewerPage() {
               className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
               style={{
                 background: 'var(--surface-base)',
-                border: '1px solid #2e2e2e',
+                border: '1px solid var(--border-default)',
                 color: sorted.length ? '#aaaaaa' : '#444',
                 cursor: sorted.length ? 'pointer' : 'not-allowed',
               }}
@@ -434,7 +434,7 @@ export default function GeoDataViewerPage() {
           className="flex flex-col flex-shrink-0 overflow-y-auto"
           style={{
             width: 180,
-            borderRight: '1px solid #222',
+            borderRight: '1px solid var(--border-subtle)',
             background: 'var(--surface-overlay)',
             padding: '8px 6px',
           }}
@@ -513,7 +513,7 @@ export default function GeoDataViewerPage() {
                   className="text-[10px] outline-none placeholder-[#444]"
                   style={{
                     background: 'var(--surface-base)',
-                    border: '1px solid #2e2e2e',
+                    border: '1px solid var(--border-default)',
                     color: '#ccc',
                     padding: '2px 6px',
                     width: 120,

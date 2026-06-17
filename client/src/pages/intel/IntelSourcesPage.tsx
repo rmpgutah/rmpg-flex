@@ -6,7 +6,7 @@ interface Source {
   reliability_grade: string; status: string; restricted: number; _restricted?: boolean;
 }
 const TYPES = ['officer_observation', 'confidential_informant', 'anonymous_tip', 'public', 'other_agency', 'osint', 'technical', 'victim', 'witness', 'suspect'];
-const field: React.CSSProperties = { background: '#0b0b0b', color: '#ddd', border: '1px solid #232323', borderRadius: 2, padding: '4px 6px', fontSize: 11 };
+const field: React.CSSProperties = { background: '#0b0b0b', color: '#ddd', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '4px 6px', fontSize: 11 };
 
 export default function IntelSourcesPage() {
   const [rows, setRows] = useState<Source[]>([]);
@@ -53,7 +53,7 @@ export default function IntelSourcesPage() {
         </tr></thead>
         <tbody>
           {rows.map((s) => (
-            <tr key={s.id} style={{ borderTop: '1px solid #232323' }}>
+            <tr key={s.id} style={{ borderTop: '1px solid var(--border-subtle)' }}>
               <td className="py-[2px]" style={{ color: '#d4a017' }}>{s.source_code}</td>
               <td className="py-[2px]">{s.source_type}{s._restricted && <span style={{ color: '#888' }}> 🔒</span>}</td>
               <td className="py-[2px]">{s.display_label || '—'}</td>

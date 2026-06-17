@@ -67,7 +67,7 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
       {/* Codes grid */}
       <div
         className="grid grid-cols-2 gap-1.5 p-3 font-mono"
-        style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b' }}
+        style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-default)' }}
       >
         {codes.map((code, i) => (
           <div
@@ -104,7 +104,7 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
       </div>
 
       {/* Acknowledge checkbox + button */}
-      <div className="pt-2" style={{ borderTop: '1px solid #2b2b2b' }}>
+      <div className="pt-2" style={{ borderTop: '1px solid var(--border-default)' }}>
         <label className="flex items-center gap-2 cursor-pointer mb-3">
           <input id="ff-backupcodesdisplay-0"
             type="checkbox"

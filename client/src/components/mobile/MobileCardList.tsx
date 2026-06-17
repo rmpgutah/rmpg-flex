@@ -149,7 +149,7 @@ export default function MobileCardList<T>({
           className="flex-shrink-0 px-3 py-2"
           style={{
             background: '#0a0a0a',
-            borderBottom: '1px solid #2b2b2b',
+            borderBottom: '1px solid var(--border-default)',
           }}
         >
           <div
@@ -157,7 +157,7 @@ export default function MobileCardList<T>({
             style={{
               height: 40,
               background: 'var(--surface-overlay)',
-              border: '1px solid #2b2b2b',
+              border: '1px solid var(--border-default)',
             }}
           >
             <Search style={{ width: 16, height: 16, color: 'var(--rmpg-500)', flexShrink: 0 }} />

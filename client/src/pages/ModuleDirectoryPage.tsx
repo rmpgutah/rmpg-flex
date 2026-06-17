@@ -415,7 +415,7 @@ export default function ModuleDirectoryPage() {
         style={{
           width: 200,
           background: '#080808',
-          borderRight: '1px solid #222222',
+          borderRight: '1px solid var(--border-subtle)',
           scrollbarWidth: 'none',
         }}
       >
@@ -594,8 +594,8 @@ export default function ModuleDirectoryPage() {
       <div
         className="flex items-center gap-2 px-3 py-1.5 mb-2 select-none"
         style={{
-          background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
-          borderBottom: '1px solid #222222',
+          background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
+          borderBottom: '1px solid var(--border-subtle)',
         }}
       >
         {Icon && <Icon className="w-3.5 h-3.5 text-rmpg-400" aria-hidden="true" />}

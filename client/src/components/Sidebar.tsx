@@ -199,7 +199,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
       style={{
         width: collapsed ? 56 : 220,
         background: 'linear-gradient(180deg, #121212 0%, #0c0c0c 100%)',
-        borderRight: '1px solid #2b2b2b',
+        borderRight: '1px solid var(--border-default)',
       }}
     >
       {/* Scrollable nav sections */}
@@ -217,7 +217,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
 
             {/* Collapsed: thin separator between groups */}
             {collapsed && section.id !== 'ops' && (
-              <div className="mx-3 my-1" style={{ borderTop: '1px solid #2b2b2b' }} />
+              <div className="mx-3 my-1" style={{ borderTop: '1px solid var(--border-default)' }} />
             )}
 
             {section.items.map((item) => {
@@ -265,7 +265,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                       className="absolute left-full ml-2 px-2.5 py-1.5 whitespace-nowrap z-50"
                       style={{
                         background: 'var(--surface-base)',
-                        border: '1px solid #2a2a2a',
+                        border: '1px solid var(--border-default)',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
                         top: '50%',
                         transform: 'translateY(-50%)',
@@ -287,7 +287,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
         className="flex items-center justify-center gap-2 py-2 transition-colors"
         style={{
           height: 36,
-          borderTop: '1px solid #2b2b2b',
+          borderTop: '1px solid var(--border-default)',
           background: 'var(--surface-overlay)',
           color: 'var(--rmpg-500)',
         }}

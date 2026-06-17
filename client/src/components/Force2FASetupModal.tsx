@@ -97,8 +97,8 @@ export default function Force2FASetupModal() {
       <div
         className="w-full max-w-md mx-4 p-6 space-y-5"
         style={{
-          background: '#0a0a0a',
-          border: '1px solid #2b2b2b',
+          background: 'var(--surface-overlay)',
+          border: '1px solid var(--border-default)',
           borderTop: '3px solid #888888',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
@@ -128,7 +128,7 @@ export default function Force2FASetupModal() {
           <div className="space-y-4">
             <div
               className="p-3 text-[10px] space-y-2"
-              style={{ background: 'var(--surface-overlay)', border: '1px solid #242424', color: '#888888' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', color: '#888888' }}
             >
               <div className="font-bold text-[9px] uppercase tracking-wider mb-2 text-rmpg-300">
                 What You'll Need
@@ -229,7 +229,7 @@ export default function Force2FASetupModal() {
                   <div
                     key={i}
                     className="text-center font-mono text-xs py-1"
-                    style={{ background: 'var(--surface-overlay)', border: '1px solid #242424', color: 'var(--text-secondary)' }}
+                    style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
                   >
                     {code}
                   </div>

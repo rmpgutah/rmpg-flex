@@ -675,14 +675,14 @@ function CurrentTripPanel({
           <Link
             to="/navigation"
             className="py-2 max-md:min-h-[44px] rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-            style={{ background: 'var(--surface-base)', color: '#d4a017', border: '1px solid #222' }}
+            style={{ background: 'var(--surface-base)', color: '#d4a017', border: '1px solid var(--border-subtle)' }}
           >
             <Compass size={11} /> Drive Mode
           </Link>
           <button
             onClick={onRefresh}
             className="py-2 max-md:min-h-[44px] rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-            style={{ background: 'var(--surface-base)', color: '#888', border: '1px solid #222' }}
+            style={{ background: 'var(--surface-base)', color: '#888', border: '1px solid var(--border-subtle)' }}
           >
             <RefreshCw size={11} /> Refresh
           </button>
@@ -782,14 +782,14 @@ function CurrentTripPanel({
         <Link
           to="/navigation"
           className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-          style={{ background: 'var(--surface-base)', color: '#d4a017', border: '1px solid #222' }}
+          style={{ background: 'var(--surface-base)', color: '#d4a017', border: '1px solid var(--border-subtle)' }}
         >
           <Compass size={11} /> Drive Mode
         </Link>
         <button
           onClick={onRefresh}
           className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-          style={{ background: 'var(--surface-base)', color: '#888', border: '1px solid #222' }}
+          style={{ background: 'var(--surface-base)', color: '#888', border: '1px solid var(--border-subtle)' }}
         >
           <RefreshCw size={11} /> Refresh
         </button>

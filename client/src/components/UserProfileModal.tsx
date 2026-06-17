@@ -548,8 +548,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       <div
         className="relative w-[520px] max-w-[95vw] max-h-[80vh] flex flex-col"
         style={{
-          background: '#0a0a0a',
-          border: '1px solid #4d4d4d',
+          background: 'var(--surface-overlay)',
+          border: '1px solid var(--border-strong)',
           borderTopColor: '#383838',
           borderLeftColor: '#383838',
           borderBottomColor: 'var(--surface-raised)',
@@ -692,7 +692,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 </div>
                 <div>
                   <label className="field-label">Badge #</label>
-                  <div className="text-xs text-rmpg-100 px-3 py-1.5" style={{ background: 'var(--surface-overlay)', border: '1px solid #242424' }}>
+                  <div className="text-xs text-rmpg-100 px-3 py-1.5" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}>
                     {user.badge_number || '—'}
                   </div>
                 </div>
@@ -859,7 +859,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               </div>
 
               {pwPolicy.length > 0 && (
-                <div className="text-[10px] space-y-0.5 p-2" style={{ color: 'var(--rmpg-500)', background: 'var(--surface-overlay)', border: '1px solid #242424' }}>
+                <div className="text-[10px] space-y-0.5 p-2" style={{ color: 'var(--rmpg-500)', background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}>
                   <div className="font-bold text-[9px] uppercase tracking-wider mb-1" style={{ color: '#888888' }}>
                     Password Requirements
                   </div>
@@ -903,7 +903,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         Notification Preferences
                       </span>
                     </div>
-                    <div className="space-y-1.5" style={{ background: 'var(--surface-overlay)', border: '1px solid #242424', padding: '8px 10px' }}>
+                    <div className="space-y-1.5" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '8px 10px' }}>
                       {[
                         { key: 'dispatch', label: 'Dispatch Alerts' },
                         { key: 'bolo', label: 'BOLO Alerts' },
@@ -940,7 +940,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   </div>
 
                   {/* Feature 23: Notification sound toggle */}
-                  <div className="mt-3" style={{ background: 'var(--surface-overlay)', border: '1px solid #242424', padding: '8px 10px' }}>
+                  <div className="mt-3" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '8px 10px' }}>
                     <label className="flex items-center justify-between cursor-pointer">
                       <span className="text-[11px] text-rmpg-200">Enable Notification Sounds</span>
                       <div className="flex items-center gap-2">
@@ -1355,7 +1355,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               )}
 
               {/* Quick links to devices / history / keys */}
-              <div className="flex gap-2 mt-3 pt-3 flex-wrap" style={{ borderTop: '1px solid #242424' }}>
+              <div className="flex gap-2 mt-3 pt-3 flex-wrap" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <button type="button"
                   onClick={() => setSecurityView('keys')}
                   className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
@@ -1394,7 +1394,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     <div
                       key={session.session_id}
                       className="flex items-center justify-between p-2"
-                      style={{ background: 'var(--surface-overlay)', border: '1px solid #242424' }}
+                      style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
                     >
                       <div>
                         <div className="text-[11px] text-rmpg-100 font-mono">

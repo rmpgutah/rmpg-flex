@@ -71,7 +71,7 @@ export default function IntelReportsPage() {
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} onClick={() => nav(`/intel/reports/${r.id}`)}
-              style={{ cursor: 'pointer', borderTop: '1px solid #232323' }}>
+              style={{ cursor: 'pointer', borderTop: '1px solid var(--border-subtle)' }}>
               <td className="py-[2px]" style={{ color: '#d4a017' }}>{r.report_number}</td>
               <td className="py-[2px]">{r.title}</td>
               <td className="py-[2px] uppercase">{r.status.replace('_', ' ')}

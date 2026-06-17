@@ -33,7 +33,7 @@ function FormSection({ title, icon: Icon, accent, children, className = '' }: Fo
       />
       <div
         className="flex items-center gap-2 px-2.5 py-1.5"
-        style={{ background: 'linear-gradient(180deg, #2b2b2b 0%, #1f1f1f 100%)', borderBottom: '1px solid #0c0c0c' }}
+        style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-panel-alt) 100%)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         {Icon && (
           <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: accentColor, filter: `drop-shadow(0 0 3px ${accentGlow})` }} aria-hidden="true" />

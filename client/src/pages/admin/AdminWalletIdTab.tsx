@@ -109,7 +109,7 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
               const st = credentialRowStatus(r);
               const revoked = r.status !== 'active';
               return (
-                <tr key={r.wallet_id} className="text-[11px] border-b border-[#141414]">
+                <tr key={r.wallet_id} className="text-[11px] border-b border-border-subtle">
                   <td className="py-[3px] pr-2">
                     <span className="text-rmpg-100">{r.full_name}</span>
                     <span className="text-rmpg-500"> · {r.badge_number || '—'}</span>

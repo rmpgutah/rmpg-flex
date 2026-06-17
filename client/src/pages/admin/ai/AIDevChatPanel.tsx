@@ -649,7 +649,7 @@ export default function AIDevChatPanel() {
                     </div>
                     {/* Thinking content with terminal-style display */}
                     <div className="p-2">
-                      <div className={`text-[11px] text-rmpg-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-[#0f0f0f] rounded p-3 border border-[#272727] shadow-inner transition-all duration-300 ${
+                      <div className={`text-[11px] text-rmpg-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-surface-sunken rounded p-3 border border-[#272727] shadow-inner transition-all duration-300 ${
                         streamingContent ? 'max-h-16 opacity-70' : 'max-h-48'
                       }`}
                         style={{ scrollBehavior: 'smooth' }}

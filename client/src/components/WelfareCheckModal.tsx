@@ -85,7 +85,7 @@ export default function WelfareCheckModal() {
       <div
         className={`w-full max-w-xl border-4 p-6 space-y-5 ${urgent ? 'animate-pulse' : ''}`}
         style={{
-          background: '#0a0a0a',
+          background: 'var(--surface-overlay)',
           borderColor: urgent ? '#ef4444' : '#d4a017',
           borderRadius: 2,
           boxShadow: `0 0 50px ${urgent ? '#ef4444' : '#d4a017'}`,
@@ -146,7 +146,7 @@ export default function WelfareCheckModal() {
             onClick={() => handle('snooze')}
             disabled={submitting !== null}
             className="py-4 text-base font-black uppercase tracking-wider disabled:opacity-50"
-            style={{ background: '#444', color: '#fff', borderRadius: 2 }}
+            style={{ background: 'var(--surface-raised)', color: '#fff', borderRadius: 2 }}
           >
             {submitting === 'snooze' ? '…' : 'SNOOZE 5'}
           </button>

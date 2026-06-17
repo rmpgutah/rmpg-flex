@@ -81,7 +81,7 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
 
       {/* Preview box */}
       {preview && (
-        <div className="mt-2 rounded-sm border p-2" style={{ background: '#0e0e0e', borderColor: '#7c3aed30' }}>
+        <div className="mt-2 rounded-sm border p-2" style={{ background: 'var(--surface-overlay)', borderColor: '#7c3aed30' }}>
           <label className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider text-purple-400 mb-1">
             <Brain className="w-2.5 h-2.5" /> AI Draft — Review Before Accepting
           </label>

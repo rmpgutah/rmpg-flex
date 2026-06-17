@@ -72,7 +72,7 @@ export default function DocsLibraryPage() {
           </thead>
           <tbody>
             {items.map((d) => (
-              <tr key={d.id} className="text-[11px] border-b border-[#141414] hover:bg-surface-sunken cursor-pointer" onClick={() => setOpenId(d.id)}>
+              <tr key={d.id} className="text-[11px] border-b border-border-subtle hover:bg-surface-sunken cursor-pointer" onClick={() => setOpenId(d.id)}>
                 <td className="py-[2px] text-[#e5e7eb]">{d.title}</td>
                 <td className="py-[2px]"><span className={d.status === 'finalized' ? 'text-[#d4a017]' : 'text-[#888]'}>{d.status}</span></td>
                 <td className="py-[2px] text-[#888]">{d.owner_username || '—'}</td>

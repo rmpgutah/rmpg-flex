@@ -138,7 +138,7 @@ export default function ModuleTileBar({
       style={{
         height: 58,
         background: 'linear-gradient(180deg, #050505 0%, #000000 100%)',
-        borderBottom: '1px solid #1d1d1d',
+        borderBottom: '1px solid var(--border-subtle)',
         zIndex: 40,
       }}
     >
@@ -269,7 +269,7 @@ export default function ModuleTileBar({
                   zIndex: 50,
                   minWidth: 180,
                   background: 'var(--surface-raised, #0b0b0b)',
-                  border: '1px solid #242424',
+                  border: '1px solid var(--border-subtle)',
                   borderTop: '2px solid #6f6f6f',
                   boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
                   padding: '4px 0',

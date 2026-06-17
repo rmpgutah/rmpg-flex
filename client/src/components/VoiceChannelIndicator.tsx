@@ -356,7 +356,7 @@ export default function VoiceChannelIndicator() {
           )}
           {/* Conversation stack — most recent at top */}
           {(transcript || lastCommand || error) && (
-            <div className="flex flex-col gap-1 p-2" style={{ background:"var(--surface-sunken)", borderBottom: '1px solid #2a2a2a' }}>
+            <div className="flex flex-col gap-1 p-2" style={{ background:"var(--surface-sunken)", borderBottom: '1px solid var(--border-default)' }}>
               {transcript && (
                 <div
                   className={`text-[11px] font-mono break-words ${
@@ -405,7 +405,7 @@ export default function VoiceChannelIndicator() {
 
           {/* Help panel — toggles via the ? button */}
           {showHelp && (
-            <div className="p-2.5 text-[10px] font-mono text-rmpg-300 leading-relaxed" style={{ background:"var(--surface-sunken)", borderBottom: '1px solid #2a2a2a' }}>
+            <div className="p-2.5 text-[10px] font-mono text-rmpg-300 leading-relaxed" style={{ background:"var(--surface-sunken)", borderBottom: '1px solid var(--border-default)' }}>
               <div className="text-[#d4a017] uppercase tracking-wider mb-1">Help</div>
               <ul className="space-y-0.5 text-rmpg-400">
                 <li><span className="text-rmpg-200">Hold V {drive.active ? '1s' : '3s'}</span> — opens panel + starts listening</li>
@@ -437,7 +437,7 @@ export default function VoiceChannelIndicator() {
                   state === 'processing' ? '#251f0e' :
                   state === 'responding' ? '#2a200a' :
                   'var(--surface-raised)',
-                borderRight: '1px solid #2a2a2a',
+                borderRight: '1px solid var(--border-default)',
                 color: stateColor,
                 cursor: state === 'alerting' ? 'not-allowed' : 'pointer',
               }}
@@ -525,7 +525,7 @@ export default function VoiceChannelIndicator() {
           {/* State strip */}
           <div
             className="flex items-center justify-between px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest"
-            style={{ background: 'var(--surface-overlay)', borderTop: '1px solid #1a1a1a' }}
+            style={{ background: 'var(--surface-overlay)', borderTop: '1px solid var(--border-subtle)' }}
           >
             <span style={{ color: stateColor }}>
               {state === 'listening' && (

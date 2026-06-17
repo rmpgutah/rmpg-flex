@@ -499,8 +499,8 @@ export default function LoginPage() {
                   <span className="text-[8px] uppercase tracking-wide" style={{ color: '#4ade80' }}>Password OK</span>
                 </div>
               )}
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d', borderBottom: '1px solid #242424' }} aria-hidden="true">_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d', borderBottom: '1px solid #242424' }} aria-hidden="true">&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid var(--border-strong)', borderBottom: '1px solid var(--border-subtle)' }} aria-hidden="true">_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid var(--border-strong)', borderBottom: '1px solid var(--border-subtle)' }} aria-hidden="true">&#9633;</div>
             </div>
           </div>
 
@@ -687,7 +687,7 @@ export default function LoginPage() {
                 </label>
 
                 {/* Alternative methods */}
-                <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid #2b2b2b' }}>
+                <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid var(--border-default)' }}>
                   <button
                     type="button"
                     onClick={handleBackWebAuthn}
@@ -902,7 +902,7 @@ export default function LoginPage() {
                   {showManualKey && manualKey && (
                     <div
                       className="mt-2 p-2 font-mono text-xs tracking-wider break-all select-all cursor-text"
-                      style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b', color: 'var(--text-secondary)' }}
+                      style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
                     >
                       {manualKey}
                     </div>
@@ -1247,7 +1247,7 @@ export default function LoginPage() {
               </div>
             )}
 
-            <div className="mt-3 pt-2" style={{ borderTop: '1px solid #2b2b2b' }} aria-hidden="true" />
+            <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-default)' }} aria-hidden="true" />
           </div>
 
           {/* Status bar */}
@@ -1323,7 +1323,7 @@ export default function LoginPage() {
             className="text-center py-1.5 px-3"
             style={{
               background: 'var(--surface-base)',
-              border: '1px solid #2b2b2b',
+              border: '1px solid var(--border-default)',
               borderTop: '2px solid #333333',
             }}
           >

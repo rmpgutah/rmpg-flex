@@ -8,7 +8,7 @@ export default function ReviewQueuesWidget({ queues }: { queues: IntelOverview['
   );
   return (
     <WidgetFrame title="⚐ Review Queues" note={String(queues.link_suggestions + queues.resolution_pairs)}>
-      <Link to="/intel/queues" className="flex items-center gap-2 py-[5px] border-b border-[#131313]">
+      <Link to="/intel/queues" className="flex items-center gap-2 py-[5px] border-b border-border-subtle">
         <div className="flex-1"><div className="text-[11px] text-rmpg-200">Narrative link suggestions</div>
           <div className="text-[10px] text-rmpg-500">person/vehicle mentions to confirm</div></div>
         {badge(queues.link_suggestions)}

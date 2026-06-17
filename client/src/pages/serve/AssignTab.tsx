@@ -30,11 +30,11 @@ export default function AssignTab() {
     <div className="p-4 grid grid-cols-[200px_1fr] gap-4">
       <div>
         <div className="text-[9px] font-semibold text-[#888] uppercase mb-1">Officers</div>
-        <button className={`w-full flex justify-between px-2 py-[3px] border-b border-[#141414] ${sel === 'unassigned' ? 'text-[#d4a017]' : 'text-rmpg-300'}`} onClick={() => { setSel('unassigned'); setPicked([]); }}>
+        <button className={`w-full flex justify-between px-2 py-[3px] border-b border-border-subtle ${sel === 'unassigned' ? 'text-[#d4a017]' : 'text-rmpg-300'}`} onClick={() => { setSel('unassigned'); setPicked([]); }}>
           <span>Unassigned</span><span className="text-[#888]">{board.unassigned.length}</span>
         </button>
         {board.officers.map((o) => (
-          <button key={o.id} className={`w-full flex justify-between px-2 py-[3px] border-b border-[#141414] ${sel === o.id ? 'text-[#d4a017]' : 'text-rmpg-300'}`} onClick={() => { setSel(o.id); setPicked([]); }}>
+          <button key={o.id} className={`w-full flex justify-between px-2 py-[3px] border-b border-border-subtle ${sel === o.id ? 'text-[#d4a017]' : 'text-rmpg-300'}`} onClick={() => { setSel(o.id); setPicked([]); }}>
             <span>{o.name}</span>
             <span className="flex gap-1 items-center"><span className="text-[#888]">{o.count}</span>{attentionSummary(o.attention) && <span className="text-[#e0533d] text-[9px]">⚠</span>}</span>
           </button>
@@ -64,7 +64,7 @@ export default function AssignTab() {
           <thead><tr className="text-left text-[9px] text-[#888] border-b border-border-default"><th className="py-[3px]">☐</th><th>Defendant</th><th>Address</th><th>Deadline</th><th>Flags</th></tr></thead>
           <tbody>
             {jobs.map((j) => (
-              <tr key={j.id} className="border-b border-[#121212]" style={{ color: color(j) }}>
+              <tr key={j.id} className="border-b border-border-subtle" style={{ color: color(j) }}>
                 <td className="py-[2px]"><input type="checkbox" checked={picked.includes(j.id)} onChange={() => setPicked((p) => toggleSelect(p, j.id))} /></td>
                 <td>{j.defendant_name ?? j.recipient_name ?? j.id}</td>
                 <td className="text-[#888]">{j.recipient_address ?? '—'}</td>
