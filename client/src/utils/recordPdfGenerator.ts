@@ -1668,7 +1668,7 @@ async function addLocationMapSection(
   const aspect = img.width > 0 && img.height > 0 ? img.width / img.height : 2.2;
   let drawW = ffw;
   let drawH = drawW / aspect;
-  const maxH = 78; // mm — keep the map to ~a third of a page
+  const maxH = 95; // mm — tall enough for the default 1000×440 Mapbox image to fill the full page width
   if (drawH > maxH) {
     drawH = maxH;
     drawW = drawH * aspect;
@@ -5876,7 +5876,13 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     caption: data.address || data.name,
     style: 'mapbox/satellite-streets-v12',
     zoom: 17,
-    details: [{ label: 'PROPERTY', value: data.name || '' }],
+    details: [
+      { label: 'PROPERTY',  value: data.name || '', ratio: 1.2 },
+      { label: 'STATUS',    value: data.is_active === false ? 'INACTIVE' : 'ACTIVE', ratio: 0.65 },
+      { label: 'TYPE',      value: (data.property_type || data.business_type || '').replace(/_/g, ' ').toUpperCase(), ratio: 0.95 },
+      ...(data.owner_name ? [{ label: 'OWNER', value: data.owner_name, ratio: 1.0 }] : []),
+    ],
+    eventIso: data.created_at,
   }, y);
 
   // ── Access & Security ──
