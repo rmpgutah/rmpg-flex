@@ -107,7 +107,7 @@ export default function ReconConnectPage() {
   if (!canAccessReconConnect(user?.role)) {
     return (
       <div className="p-6">
-        <div className="bg-[#141414] border border-[#2e2e2e] p-4 flex items-start gap-3">
+        <div className="bg-surface-base border border-rmpg-700 p-4 flex items-start gap-3">
           <ShieldAlert className="w-5 h-5 text-[#d4a017] shrink-0 mt-0.5" />
           <div>
             <div className="text-[#d4a017] font-semibold text-sm">ACCESS RESTRICTED</div>
@@ -210,9 +210,9 @@ export default function ReconConnectPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="RECON CONNECT — INVESTIGATIVE TOOLKIT" icon={Terminal} />
 
-      <div className="bg-[#141414] border border-[#222] p-4 flex items-start gap-3">
+      <div className="bg-surface-base border border-border-default p-4 flex items-start gap-3">
         <ShieldAlert className="w-5 h-5 text-[#d4a017] shrink-0 mt-0.5" />
-        <div className="text-xs text-[#bbb] leading-relaxed">
+        <div className="text-xs text-rmpg-300 leading-relaxed">
           <div className="text-[#d4a017] font-semibold mb-1">AUTHORIZED USE ONLY</div>
           Recon Connect bundles offensive-security tooling. Use only within the scope of
           lawful investigations, authorized pentesting engagements, or defensive research.
@@ -221,32 +221,32 @@ export default function ReconConnectPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="bg-[#141414] border border-[#222] p-3">
+        <div className="bg-surface-base border border-border-default p-3">
           <div className="text-[9px] text-[#888] uppercase tracking-wider">Detected Platform</div>
           <div className="text-[#d4a017] font-mono text-sm mt-1">{platform.toUpperCase()}</div>
         </div>
-        <div className="bg-[#141414] border border-[#222] p-3">
+        <div className="bg-surface-base border border-border-default p-3">
           <div className="text-[9px] text-[#888] uppercase tracking-wider">Flex Client</div>
           <div className="text-[#d4a017] font-mono text-sm mt-1">{isElectron ? 'DESKTOP (ELECTRON)' : 'WEB BROWSER'}</div>
         </div>
-        <div className="bg-[#141414] border border-[#222] p-3">
+        <div className="bg-surface-base border border-border-default p-3">
           <div className="text-[9px] text-[#888] uppercase tracking-wider">Signed In As</div>
           <div className="text-[#d4a017] font-mono text-sm mt-1">{user?.role?.toUpperCase() ?? 'UNKNOWN'}</div>
         </div>
       </div>
 
-      <div className="bg-[#141414] border border-[#222]">
-        <div className="px-3 py-2 border-b border-[#222] text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold">
+      <div className="bg-surface-base border border-border-default">
+        <div className="px-3 py-2 border-b border-border-default text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold">
           Install on this workstation
         </div>
         <div className="p-3 space-y-2">
-          <code className="block bg-[#050505] border border-[#1a1a1a] p-2 text-[11px] font-mono text-[#d4d4d4] overflow-x-auto">
+          <code className="block bg-surface-overlay border border-border-default p-2 text-[11px] font-mono text-rmpg-200 overflow-x-auto">
             {INSTALL_COMMANDS[platform]}
           </code>
           <div className="flex gap-2">
             <button
               onClick={() => copy('install', INSTALL_COMMANDS[platform])}
-              className="px-3 py-1.5 bg-[#1a1a1a] border border-[#2e2e2e] text-[#d4a017] text-xs hover:bg-[#242424] flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-[#d4a017] text-xs hover:bg-surface-raised flex items-center gap-1.5"
             >
               {copied === 'install' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               {copied === 'install' ? 'Copied' : 'Copy Install Command'}
@@ -254,7 +254,7 @@ export default function ReconConnectPage() {
             <a
               href="https://github.com/Z4nzu/hackingtool#installation"
               target="_blank" rel="noreferrer"
-              className="px-3 py-1.5 bg-[#1a1a1a] border border-[#2e2e2e] text-[#888] text-xs hover:bg-[#242424] flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-[#888] text-xs hover:bg-surface-raised flex items-center gap-1.5"
             >
               <ExternalLink className="w-3.5 h-3.5" /> Full install guide
             </a>
@@ -262,8 +262,8 @@ export default function ReconConnectPage() {
         </div>
       </div>
 
-      <div className="bg-[#141414] border border-[#222]">
-        <div className="px-3 py-2 border-b border-[#222] text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold flex items-center justify-between">
+      <div className="bg-surface-base border border-border-default">
+        <div className="px-3 py-2 border-b border-border-default text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold flex items-center justify-between">
           <span>Recon Connect Terminal</span>
           <span className="text-[#888] normal-case tracking-normal">
             {termState === 'running' ? 'RUNNING' : 'IDLE'}
@@ -274,7 +274,7 @@ export default function ReconConnectPage() {
             <button
               onClick={() => runRecon('install')}
               disabled={!isElectron || termState === 'running'}
-              className="px-3 py-1.5 bg-[#1a1a1a] border border-[#2e2e2e] text-[#d4a017] text-xs hover:bg-[#242424] disabled:opacity-40 flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-[#d4a017] text-xs hover:bg-surface-raised disabled:opacity-40 flex items-center gap-1.5"
             >
               <Download className="w-3.5 h-3.5" />
               Install
@@ -290,14 +290,14 @@ export default function ReconConnectPage() {
             <button
               onClick={stopRecon}
               disabled={termState !== 'running'}
-              className="px-3 py-1.5 bg-[#1a1a1a] border border-[#b33] text-[#ff8888] text-xs hover:bg-[#2a1414] disabled:opacity-40 flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-surface-raised border border-[#b33] text-[#ff8888] text-xs hover:bg-[#2a1414] disabled:opacity-40 flex items-center gap-1.5"
             >
               <Square className="w-3.5 h-3.5" />
               Stop
             </button>
             <button
               onClick={() => copy('install', INSTALL_COMMANDS[platform])}
-              className="ml-auto px-3 py-1.5 bg-[#1a1a1a] border border-[#2e2e2e] text-[#888] text-xs hover:bg-[#242424] flex items-center gap-1.5"
+              className="ml-auto px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-[#888] text-xs hover:bg-surface-raised flex items-center gap-1.5"
               title="Copy the install command if you'd rather run it yourself"
             >
               {copied === 'install' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -305,7 +305,7 @@ export default function ReconConnectPage() {
             </button>
           </div>
           {!isElectron && (
-            <div className="px-2 py-1.5 border border-[#2e2e2e] bg-[#1a1a1a] text-[#d4a017] text-[11px]">
+            <div className="px-2 py-1.5 border border-rmpg-700 bg-surface-raised text-[#d4a017] text-[11px]">
               Open Flex in the desktop app — the in-app terminal only works in Electron.
             </div>
           )}
@@ -313,13 +313,13 @@ export default function ReconConnectPage() {
             ref={termHostRef}
             tabIndex={0}
             onClick={() => termRef.current?.focus()}
-            className="bg-[#050505] border border-[#1a1a1a] h-[420px] overflow-hidden focus-within:border-[#d4a017] cursor-text"
+            className="bg-surface-overlay border border-border-default h-[420px] overflow-hidden focus-within:border-[#d4a017] cursor-text"
           />
           {launchMsg && (
             <div className={`px-2 py-1.5 border text-[11px] ${
               launchMsg.kind === 'ok'  ? 'border-[#2e7d32] bg-[#0f1f10] text-[#7fd38a]' :
               launchMsg.kind === 'err' ? 'border-[#b33] bg-[#1f0a0a] text-[#ff8888]' :
-                                         'border-[#2e2e2e] bg-[#1a1a1a] text-[#d4a017]'
+                                         'border-rmpg-700 bg-surface-raised text-[#d4a017]'
             }`}>
               {launchMsg.text}
             </div>
@@ -345,19 +345,19 @@ export default function ReconConnectPage() {
                 onClick={() => route ? navigate(route) : openCategory(query, name)}
                 disabled={!route && !isElectron}
                 title={route ? `Open native ${name} workspace` : isElectron ? `Filter hackingtool to ${name}` : 'Requires the desktop app'}
-                className="group text-left bg-[#141414] border border-[#222] p-3 flex items-start gap-3 hover:bg-[#1a1a1a] hover:border-[#d4a017] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                className="group text-left bg-surface-base border border-border-default p-3 flex items-start gap-3 hover:bg-surface-raised hover:border-[#d4a017] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
               >
                 <Icon className="w-4 h-4 text-[#d4a017] shrink-0 mt-0.5" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2">
-                    <div className="text-[#d4d4d4] text-xs font-semibold group-hover:text-[#d4a017]">{name}</div>
+                    <div className="text-rmpg-200 text-xs font-semibold group-hover:text-[#d4a017]">{name}</div>
                     <div className="text-[#888] text-[10px] font-mono">{count} tools</div>
                     {isNative && (
                       <span className="text-[8px] font-mono uppercase tracking-wider text-[#d4a017] border border-[#d4a017]/40 px-1 py-[1px]">NATIVE</span>
                     )}
                   </div>
                   <div className="text-[#888] text-[10px] leading-snug mt-0.5">{desc}</div>
-                  <div className="text-[#555] text-[9px] font-mono mt-1 group-hover:text-[#d4a017]">{isNative ? 'Open workspace →' : `/${query} ↵`}</div>
+                  <div className="text-rmpg-500 text-[9px] font-mono mt-1 group-hover:text-[#d4a017]">{isNative ? 'Open workspace →' : `/${query} ↵`}</div>
                 </div>
               </button>
             );

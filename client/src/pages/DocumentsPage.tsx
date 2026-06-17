@@ -743,7 +743,7 @@ function DetailRow({ icon: Icon, label, value, mono }: { icon: React.ElementType
     <div className="flex items-center gap-2 py-1.5 border-b border-rmpg-800/30 text-[11px]">
       <Icon className="w-3 h-3 text-rmpg-500 flex-shrink-0" />
       <span className="text-rmpg-400 w-24 flex-shrink-0">{label}</span>
-      <span className={`text-rmpg-200 flex-1 truncate ${mono ? 'font-mono text-[10px]' : ''}`}>{value}</span>
+      <span className={`text-rmpg-200 min-w-0 flex-1 truncate ${mono ? 'font-mono text-[10px]' : ''}`}>{value}</span>
     </div>
   );
 }

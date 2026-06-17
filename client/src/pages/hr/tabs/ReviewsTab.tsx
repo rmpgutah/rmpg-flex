@@ -486,7 +486,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                 <div key={cert.id} className={`flex items-center gap-3 px-3 py-1.5 border-b border-rmpg-700/50 ${urgencyColor}`}>
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isExpired ? 'bg-red-500' : daysLeft <= 30 ? 'bg-red-500 animate-pulse' : daysLeft <= 60 ? 'bg-amber-500' : 'bg-yellow-500'}`} />
                   <span className="text-[11px] text-rmpg-100 font-medium flex-shrink-0 w-36 truncate">{cert.officer_name || cert.full_name || '—'}</span>
-                  <span className="text-[10px] text-rmpg-300 flex-1 truncate">{cert.type} — {cert.credential_number || ''}</span>
+                  <span className="text-[10px] text-rmpg-300 min-w-0 flex-1 truncate">{cert.type} — {cert.credential_number || ''}</span>
                   <span className="text-[10px] font-bold flex-shrink-0">
                     {isExpired ? `EXPIRED ${Math.abs(daysLeft)}d ago` : `${daysLeft}d remaining`}
                   </span>

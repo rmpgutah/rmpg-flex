@@ -28,15 +28,15 @@ function Field({ label, value }: { label: string; value: unknown }) {
   return (
     <div className="flex gap-2 text-[11px] py-[2px]">
       <span className="text-[#888888] w-24 shrink-0">{label}</span>
-      <span className="text-gray-200">{show(value)}</span>
+      <span className="text-rmpg-200">{show(value)}</span>
     </div>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-[#141414] border border-[#222222]">
-      <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-[#1a1a1a]">{title}</div>
+    <div className="bg-surface-base border border-border-default">
+      <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-border-default">{title}</div>
       <div className="p-2">{children}</div>
     </div>
   );
@@ -67,10 +67,10 @@ export default function PersonDossierPage() {
       <PanelTitleBar title="PERSON DOSSIER" icon={UserSearch} />
 
       {/* Header band */}
-      <div className="bg-[#141414] border border-[#222222] p-3 flex items-start gap-4">
+      <div className="bg-surface-base border border-border-default p-3 flex items-start gap-4">
         {real(p.photo_url)
-          ? <img src={p.photo_url} alt={name} className="w-20 h-24 object-cover border border-[#222222]" />
-          : <div className="w-20 h-24 bg-[#050505] border border-[#222222] flex items-center justify-center text-[9px] text-[#888888]">NO PHOTO</div>}
+          ? <img src={p.photo_url} alt={name} className="w-20 h-24 object-cover border border-border-default" />
+          : <div className="w-20 h-24 bg-surface-overlay border border-border-default flex items-center justify-center text-[9px] text-[#888888]">NO PHOTO</div>}
         <div className="flex-1 min-w-0">
           <div className="text-lg text-rmpg-100 font-semibold">{name}</div>
           <div className="text-[11px] text-[#888888]">
@@ -90,7 +90,7 @@ export default function PersonDossierPage() {
               <span className="text-[9px] font-semibold text-[#d4a017] border border-[#d4a017] px-2 py-[1px]">WATCHED</span>
             )}
             {data.cluster.length > 0 && (
-              <span className="text-[9px] text-[#d4a017] border border-[#222222] px-2 py-[1px]">
+              <span className="text-[9px] text-[#d4a017] border border-border-default px-2 py-[1px]">
                 {data.cluster.length} LINKED IDENTIT{data.cluster.length === 1 ? 'Y' : 'IES'}
               </span>
             )}
@@ -153,7 +153,7 @@ export default function PersonDossierPage() {
             {data.associates.length === 0 && <div className="text-[11px] text-[#888888]">None on record.</div>}
             {data.associates.map((a) => (
               <Link key={a.person_id} to={`/intel/person/${a.person_id}`}
-                className="flex justify-between text-[11px] py-[2px] hover:bg-[#1a1a1a]">
+                className="flex justify-between text-[11px] py-[2px] hover:bg-surface-raised">
                 <span className="text-[#d4a017]">{a.name}</span>
                 <span className="text-[#888888]">{a.shared_events}× ({a.kinds.join(', ')})</span>
               </Link>
@@ -163,7 +163,7 @@ export default function PersonDossierPage() {
           <Section title={`VEHICLES (${data.vehicles.length})`}>
             {data.vehicles.length === 0 && <div className="text-[11px] text-[#888888]">None on record.</div>}
             {data.vehicles.map((v) => (
-              <div key={v.id} className="text-[11px] text-gray-200 py-[2px]">
+              <div key={v.id} className="text-[11px] text-rmpg-200 py-[2px]">
                 {[v.color, v.year, v.make, v.model].filter(real).join(' ')}
                 {real(v.plate_number) && <span className="text-[#d4a017]"> · {v.plate_number}</span>}
               </div>
@@ -174,7 +174,7 @@ export default function PersonDossierPage() {
             {data.addresses.length === 0 && <div className="text-[11px] text-[#888888]">None on record.</div>}
             {data.addresses.map((a, i) => (
               <div key={i} className="text-[11px] py-[2px]">
-                <span className="text-gray-200">{a.address}</span>
+                <span className="text-rmpg-200">{a.address}</span>
                 <span className="text-[#888888]"> — {a.source}</span>
               </div>
             ))}
@@ -185,12 +185,12 @@ export default function PersonDossierPage() {
         <Section title={`CONTACT TIMELINE (${data.timeline.length})`}>
           {data.timeline.length === 0 && <div className="text-[11px] text-[#888888]">No system contacts.</div>}
           {data.timeline.map((e) => (
-            <div key={`${e.kind}:${e.id}`} className="flex items-baseline gap-2 text-[11px] py-[2px] border-b border-[#1a1a1a] last:border-b-0">
+            <div key={`${e.kind}:${e.id}`} className="flex items-baseline gap-2 text-[11px] py-[2px] border-b border-border-default last:border-b-0">
               <span className="text-[#888888] w-20 shrink-0">{e.date ? String(e.date).slice(0, 10) : '—'}</span>
               <span className={`w-28 shrink-0 text-[9px] font-semibold ${KIND_COLOR[e.kind] || 'text-rmpg-400'}`}>
                 {e.kind.replace(/_/g, ' ').toUpperCase()}
               </span>
-              <span className="text-gray-200">{e.title}</span>
+              <span className="text-rmpg-200">{e.title}</span>
               {e.status && <span className="text-[#888888] text-[9px]">({formatLabel(e.status)})</span>}
               {e.subtitle && <span className="text-[#888888] truncate">{e.subtitle}</span>}
             </div>

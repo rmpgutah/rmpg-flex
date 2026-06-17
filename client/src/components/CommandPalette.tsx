@@ -177,12 +177,12 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
       onClick={onClose}
     >
       <div
-        className="bg-[#141414] border border-[#2b2b2b] rounded-sm w-full max-w-xl mx-4 animate-dropdown-appear overflow-hidden"
+        className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-xl mx-4 animate-dropdown-appear overflow-hidden"
         style={{ borderTop: '2px solid #d4a017', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Input */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b2b2b]">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-rmpg-700">
           <Search className="w-4 h-4 flex-shrink-0" style={{ color: '#d4a017' }} />
           <input id="ff-commandpalette-0"
             ref={inputRef}
@@ -195,7 +195,7 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
             autoComplete="off" spellCheck={false}
           />
           {searching && <span className="text-[9px] font-mono text-rmpg-500 animate-pulse">SEARCHING…</span>}
-          <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-rmpg-500 rounded-sm">ESC</kbd>
+          <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-surface-sunken border border-border-default text-rmpg-500 rounded-sm">ESC</kbd>
         </div>
 
         {/* Results */}
@@ -255,7 +255,7 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
         </div>
 
         {/* Footer hint */}
-        <div className="flex items-center gap-4 px-4 py-1.5 border-t border-[#2b2b2b] text-[9px] text-rmpg-600 font-mono">
+        <div className="flex items-center gap-4 px-4 py-1.5 border-t border-rmpg-700 text-[9px] text-rmpg-600 font-mono">
           <span><kbd className="text-rmpg-400">↑↓</kbd> navigate</span>
           <span><kbd className="text-rmpg-400">↵</kbd> open</span>
           <span><kbd className="text-rmpg-400">esc</kbd> close</span>

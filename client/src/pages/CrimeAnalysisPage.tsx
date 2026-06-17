@@ -356,7 +356,7 @@ export default function CrimeAnalysisPage() {
                     return (
                       <div key={idx} className="flex items-center gap-2 px-2 py-1.5 panel-beveled">
                         <span className="text-[9px] font-mono text-rmpg-500 w-4 text-right">{idx + 1}</span>
-                        <span className="text-[10px] text-rmpg-100 flex-1 truncate">{person.name || 'Unknown'}</span>
+                        <span className="text-[10px] text-rmpg-100 min-w-0 flex-1 truncate">{person.name || 'Unknown'}</span>
                         <div className="w-16 h-2 bg-surface-sunken rounded-[1px] overflow-hidden">
                           <div className="h-full rounded-[1px]" style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #ef4444, #dc2626)' }} />
                         </div>

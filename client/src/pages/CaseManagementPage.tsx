@@ -223,7 +223,7 @@ function LinkedEntityPanel({
                   Search
                 </button>
               </div>
-              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-1">
+              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent space-y-1">
                 {searchResults.map((item: any) => (
                   <button type="button" key={item.id} onClick={() => handleLink(item.id)}
                     className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">
@@ -889,7 +889,7 @@ export default function CaseManagementPage() {
         )}
 
         {/* Case List */}
-        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading cases...</span></div>
           ) : cases.length === 0 ? (
@@ -982,7 +982,7 @@ export default function CaseManagementPage() {
               })}
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4">
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-4">
               {detailTab === 'overview' && (
                 <div className="space-y-4">
                   {/* Status + Priority badges */}
@@ -1471,7 +1471,7 @@ export default function CaseManagementPage() {
                   Search
                 </button>
               </div>
-              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-1">
+              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent space-y-1">
                 {personResults.map((p: any) => (
                   <button type="button" key={p.id} onClick={() => handleLinkPerson(p)}
                     className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">

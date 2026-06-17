@@ -822,7 +822,7 @@ export default function AdminUsersTab({
                           {safeDateTimeStr(entry.timestamp)}
                         </span>
                         <span className="text-brand-400 font-medium">{entry.action}</span>
-                        <span className="text-rmpg-300 flex-1 truncate">{entry.details}</span>
+                        <span className="text-rmpg-300 min-w-0 flex-1 truncate">{entry.details}</span>
                       </div>
                     ))}
                   </div>

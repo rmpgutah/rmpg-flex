@@ -101,14 +101,14 @@ export function TableSkeleton({ rows = 8, cols = 6 }: { rows?: number; cols?: nu
   return (
     <div className="panel-beveled bg-surface-base overflow-hidden">
       {/* Header row */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-[#2b2b2b]">
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-rmpg-700">
         {Array.from({ length: cols }).map((_, i) => (
           <Skeleton key={i} variant="text" width={i === 0 ? '100px' : `${60 + Math.random() * 40}px`} className="flex-shrink-0" />
         ))}
       </div>
       {/* Data rows */}
       {Array.from({ length: rows }).map((_, rowIdx) => (
-        <div key={rowIdx} className="flex items-center gap-3 px-4 py-2.5 border-b border-[#2b2b2b]/50">
+        <div key={rowIdx} className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-700/50">
           {Array.from({ length: cols }).map((_, colIdx) => (
             <Skeleton key={colIdx} variant="text" width={colIdx === 0 ? '80px' : `${50 + Math.random() * 50}px`} className="flex-shrink-0" />
           ))}

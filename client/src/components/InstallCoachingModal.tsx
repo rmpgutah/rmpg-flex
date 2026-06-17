@@ -21,7 +21,7 @@ export function InstallCoachingModal() {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 safe-pb">
-      <div className="w-full max-w-md bg-[#141414] border-t border-[#222] p-4 rounded-t-sm">
+      <div className="w-full max-w-md bg-surface-base border-t border-border-default p-4 rounded-t-sm">
         <h2 className="text-[#d4a017] text-sm font-bold tracking-widest mb-2">
           INSTALL RMPG FLEX
         </h2>
@@ -37,7 +37,7 @@ export function InstallCoachingModal() {
           type="button"
           onClick={dismiss}
           aria-label="Dismiss install prompt"
-          className="w-full h-11 bg-[#1a1a1a] border border-[#222] text-rmpg-300 text-xs uppercase tracking-widest"
+          className="w-full h-11 bg-surface-raised border border-border-default text-rmpg-300 text-xs uppercase tracking-widest"
         >
           Not Now
         </button>

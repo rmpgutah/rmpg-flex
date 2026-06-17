@@ -219,7 +219,7 @@ export default function SafetyAlertModal({
 
         {/* Body */}
         <div
-          className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent"
+          className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent"
           style={{ scrollbarWidth: 'thin' }}
         >
           {/* Alert type grid */}

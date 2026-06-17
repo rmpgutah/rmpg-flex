@@ -227,7 +227,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
 
           {/* Search Results Dropdown */}
           {showDropdown && (
-            <div className="absolute z-50 left-0 right-0 mt-1 bg-[#0a0a0a] border border-[#222] rounded-sm shadow-lg max-h-[200px] overflow-auto scrollbar-thin">
+            <div className="absolute z-50 left-0 right-0 mt-1 bg-surface-sunken border border-border-default rounded-sm shadow-lg max-h-[200px] overflow-auto scrollbar-thin">
               {results.length === 0 ? (
                 <div className="px-3 py-3 text-xs text-rmpg-500 text-center">
                   {searchQuery.length < 2 ? 'Type at least 2 characters...' : 'No matching records found'}
@@ -238,7 +238,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
                     key={r.id}
                     type="button"
                     onClick={() => handleSelect(r)}
-                    className="w-full text-left px-3 py-2 hover:bg-[#141414] transition-colors border-b border-[#1a1a1a] last:border-b-0"
+                    className="w-full text-left px-3 py-2 hover:bg-surface-base transition-colors border-b border-border-default last:border-b-0"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs text-rmpg-200 font-mono truncate">{r.label}</span>

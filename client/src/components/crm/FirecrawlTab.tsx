@@ -629,7 +629,7 @@ function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
                   {expandedId === scout.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 </button>
                 <StatusLed status={scout.status} />
-                <span className="text-xs font-medium text-rmpg-100 flex-1 truncate">{scout.name}</span>
+                <span className="text-xs font-medium text-rmpg-100 min-w-0 flex-1 truncate">{scout.name}</span>
                 <span className="text-[10px] text-rmpg-500 font-mono truncate max-w-[200px]">{scout.url}</span>
                 <span className="text-[10px] text-rmpg-500">{fmtDate(scout.last_checked_at)}</span>
                 <SmallBtn onClick={() => runScout(scout.id)} loading={runningIds.has(scout.id)}>
@@ -796,7 +796,7 @@ function AiReadyPanel() {
                 className="w-full flex items-center gap-3 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <span className={`text-sm font-bold font-mono ${scoreColor(item.overall_score)}`}>{item.overall_score}</span>
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url}</span>
                 <span className="text-[10px] text-rmpg-500">{fmtDate(item.created_at)}</span>
               </button>
             ))
@@ -815,7 +815,7 @@ function AiReadyPanel() {
               </div>
               <div className="text-[9px] text-rmpg-500 uppercase tracking-wider">Overall</div>
             </div>
-            <div className="flex-1 text-[10px] text-rmpg-400 font-mono truncate">{result.url}</div>
+            <div className="min-w-0 flex-1 text-[10px] text-rmpg-400 font-mono truncate">{result.url}</div>
           </div>
 
           {/* Score Bars */}
@@ -1233,7 +1233,7 @@ function BrandMonitorPanel() {
                   {expandedId === mon.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 </button>
                 <StatusLed status={mon.status} />
-                <span className="text-xs font-medium text-rmpg-100 flex-1 truncate">{mon.brand_name}</span>
+                <span className="text-xs font-medium text-rmpg-100 min-w-0 flex-1 truncate">{mon.brand_name}</span>
                 <span className="text-[10px] text-rmpg-500">{fmtDate(mon.last_checked_at)}</span>
                 <SmallBtn onClick={() => scanNow(mon.id)} loading={scanningIds.has(mon.id)}>
                   <Play className="w-3 h-3" /> Scan
@@ -1380,7 +1380,7 @@ function PageComparePanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <GitCompareArrows className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">
                   {item.url_a} vs {item.url_b}
                 </span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
@@ -1638,7 +1638,7 @@ function WorkflowsPanel() {
                   {expandedId === wf.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 </button>
                 <StatusLed status={wf.status} />
-                <span className="text-xs font-medium text-rmpg-100 flex-1 truncate">{wf.name}</span>
+                <span className="text-xs font-medium text-rmpg-100 min-w-0 flex-1 truncate">{wf.name}</span>
                 <span className="text-[10px] text-rmpg-400 font-mono">{safeArr(wf.steps).length} steps</span>
                 <SmallBtn onClick={() => runWorkflow(wf.id)} loading={runningIds.has(wf.id)} variant="primary">
                   <Play className="w-3 h-3" /> Run
@@ -1819,7 +1819,7 @@ function SearchEnginePanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <Sparkles className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.query}</span>
+                <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{item.query}</span>
                 <span className="text-[9px] text-rmpg-500 uppercase font-mono shrink-0">{item.depth}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -2129,7 +2129,7 @@ function EnrichPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
           {bulkResults.map(item => (
             <div key={item.id} className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 flex items-center gap-3">
               <Building2 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-              <span className="text-[10px] text-rmpg-100 font-medium truncate flex-1">{item.company_name || item.domain || item.email}</span>
+              <span className="text-[10px] text-rmpg-100 font-medium min-w-0 truncate flex-1">{item.company_name || item.domain || item.email}</span>
               <span className="text-[10px] text-rmpg-400">{item.industry}</span>
               {item.employee_count_estimate != null && (
                 <span className="text-[10px] text-orange-400 font-mono">{item.employee_count_estimate}</span>
@@ -2286,7 +2286,7 @@ function ResearcherPanel({ toolContext, setToolContext, switchTab }: PanelChainP
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <BookOpen className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.topic}</span>
+                <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{item.topic}</span>
                 <span className="text-[9px] text-rmpg-500 uppercase font-mono shrink-0">{item.depth}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -2315,7 +2315,7 @@ function ResearcherPanel({ toolContext, setToolContext, switchTab }: PanelChainP
                     className="w-full flex items-center gap-2 px-3 py-2 text-left"
                   >
                     {expandedFinding === idx ? <ChevronDown className="w-3 h-3 text-rmpg-400" /> : <ChevronRight className="w-3 h-3 text-rmpg-400" />}
-                    <span className="text-[10px] text-rmpg-100 font-medium flex-1 truncate">{finding.title}</span>
+                    <span className="text-[10px] text-rmpg-100 font-medium min-w-0 flex-1 truncate">{finding.title}</span>
                     <div className="flex items-center gap-1 shrink-0">
                       <div className="w-16 h-1.5 bg-rmpg-700 rounded-full overflow-hidden">
                         <div
@@ -2584,7 +2584,7 @@ function ChatbotPanel() {
               <div className="flex items-center gap-2 px-3 py-2">
                 <StatusLed status={bot.scraped_content ? 'active' : 'paused'} />
                 <MessageSquare className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                <span className="text-xs font-medium text-rmpg-100 flex-1 truncate">{bot.name}</span>
+                <span className="text-xs font-medium text-rmpg-100 min-w-0 flex-1 truncate">{bot.name}</span>
                 <span className="text-[10px] text-rmpg-500 font-mono truncate max-w-[180px]">{bot.source_url}</span>
                 <SmallBtn onClick={() => openChat(bot.id)} variant={activeBotId === bot.id ? 'primary' : 'default'} disabled={!bot.scraped_content}>
                   <MessageSquare className="w-3 h-3" /> {activeBotId === bot.id ? 'Close' : 'Ask'}
@@ -2877,7 +2877,7 @@ function ObserverPanel({ toolContext, setToolContext, switchTab }: PanelChainPro
                   {expandedId === watch.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 </button>
                 <StatusLed status={watch.status} />
-                <span className="text-xs font-medium text-rmpg-100 flex-1 truncate">{watch.name}</span>
+                <span className="text-xs font-medium text-rmpg-100 min-w-0 flex-1 truncate">{watch.name}</span>
                 <span className="text-[10px] text-rmpg-500 font-mono truncate max-w-[200px]">{watch.url}</span>
                 <span className="text-[10px] text-rmpg-500">{fmtDate(watch.last_checked_at)}</span>
                 <SmallBtn onClick={() => checkNow(watch.id)} loading={checkingIds.has(watch.id)}>
@@ -3040,7 +3040,7 @@ function DeepSearchPanel({ toolContext, setToolContext, switchTab }: PanelChainP
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <ShieldCheck className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.query}</span>
+                <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{item.query}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
             ))
@@ -3176,7 +3176,7 @@ function LlmsTxtPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <FileText className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url}</span>
                 <span className="text-[10px] text-rmpg-400 shrink-0">{item.pages_analyzed} pages</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -3303,7 +3303,7 @@ function PdfInspectPanel() {
       case 'date': return 'bg-amber-500/10 border-amber-500/30 text-amber-400';
       case 'amount': case 'money': return 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
       case 'location': case 'address': return 'bg-purple-500/10 border-purple-500/30 text-purple-400';
-      case 'email': return 'bg-[#1f1f1f] border-[#2e2e2e] text-rmpg-300';
+      case 'email': return 'bg-surface-raised border-rmpg-700 text-rmpg-300';
       default: return 'bg-rmpg-700/50 border-rmpg-600 text-rmpg-300';
     }
   };
@@ -3349,7 +3349,7 @@ function PdfInspectPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <FileSearch className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url}</span>
                 <span className={`text-[9px] font-bold uppercase px-1.5 py-0 rounded-sm ${
                   item.is_scanned ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400'
                 }`}>
@@ -3670,7 +3670,7 @@ function GraphsPanel() {
                 <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
                   {g.chart_type}
                 </span>
-                <span className="text-[10px] text-rmpg-100 font-medium truncate flex-1">{g.title}</span>
+                <span className="text-[10px] text-rmpg-100 font-medium min-w-0 truncate flex-1">{g.title}</span>
                 <SmallBtn onClick={() => deleteGraph(g.id)} loading={deletingIds.has(g.id)} variant="danger">
                   <Trash2 className="w-3 h-3" />
                 </SmallBtn>
@@ -3921,7 +3921,7 @@ function ConnectorsPanel() {
                 <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border ${typeBadgeColor(c.type)}`}>
                   {(c.type || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())}
                 </span>
-                <span className="text-[10px] text-rmpg-100 font-medium truncate flex-1">{c.name}</span>
+                <span className="text-[10px] text-rmpg-100 font-medium min-w-0 truncate flex-1">{c.name}</span>
                 <span className="text-[9px] text-rmpg-500 font-mono shrink-0">every {c.schedule_hours}h</span>
                 {c.created_at && <span className="text-[9px] text-rmpg-500 shrink-0">{fmtDate(c.created_at)}</span>}
                 <SmallBtn onClick={() => syncNow(c.id)} loading={syncingIds.has(c.id)} variant="primary">
@@ -3945,7 +3945,7 @@ function ConnectorsPanel() {
                           <StatusLed status={s.error ? 'error' : 'active'} />
                           <span className="text-rmpg-300">{s.error ? 'error' : 'success'}</span>
                           <span className="text-orange-400 font-mono">{s.records_fetched} records</span>
-                          {s.error && <span className="text-red-400 truncate flex-1">{s.error}</span>}
+                          {s.error && <span className="text-red-400 min-w-0 truncate flex-1">{s.error}</span>}
                           <span className="text-rmpg-500 shrink-0 ml-auto">{fmtDate(s.created_at)}</span>
                         </div>
                       ))}
@@ -4080,7 +4080,7 @@ function RagEvalPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <Target className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url}</span>
                 <span className={`text-[10px] font-bold ${scoreColor(item.overall_score)}`}>{item.overall_score}%</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -4267,7 +4267,7 @@ function TrendsPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <TrendingUp className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.domain}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.domain}</span>
                 <span className="text-[9px] text-rmpg-500 uppercase font-mono shrink-0">{item.time_range}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -4436,7 +4436,7 @@ function GenUiPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <LayoutDashboard className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url}</span>
                 <span className="text-[9px] text-rmpg-500 uppercase font-mono shrink-0">{item.component_type}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -4515,7 +4515,7 @@ function GenUiPanel() {
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Tailwind Classes</div>
               <div className="flex flex-wrap gap-1">
                 {safeArr(result.tailwind_classes).map((cls, i) => (
-                  <span key={i} className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-[#1f1f1f] border border-[#2e2e2e] text-rmpg-300">
+                  <span key={i} className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-surface-raised border border-rmpg-700 text-rmpg-300">
                     {cls}
                   </span>
                 ))}
@@ -4643,7 +4643,7 @@ function QaClusterPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <Layers className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.total_questions} questions</span>
+                <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{item.total_questions} questions</span>
                 <span className="text-[9px] text-orange-400 font-mono shrink-0">{item.cluster_count} clusters</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -4952,7 +4952,7 @@ function ExtractPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <Database className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{br.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{br.url}</span>
                 <span className="text-[9px] text-orange-400 font-mono shrink-0">{br.fields_found}/{br.fields_found + br.fields_missing}</span>
               </button>
             ))}
@@ -4975,7 +4975,7 @@ function ExtractPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <Database className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url}</span>
                 <span className="text-[9px] text-orange-400 font-mono shrink-0">{item.fields_found}/{item.fields_found + item.fields_missing}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -5178,7 +5178,7 @@ function HtmlToMdPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <FileCode className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url || 'Pasted HTML'}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url || 'Pasted HTML'}</span>
                 <span className="text-[9px] text-rmpg-500 font-mono shrink-0">{item.word_count} words</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -5328,7 +5328,7 @@ function CouponsPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <Ticket className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.brand_or_url}</span>
+                <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{item.brand_or_url}</span>
                 <span className="text-[9px] text-orange-400 font-mono shrink-0">{item.found_count} found</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -5481,7 +5481,7 @@ function BrandExtendPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <Palette className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url}</span>
                 <span className="text-[10px] text-rmpg-100 shrink-0">{item.brand_name}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -5892,12 +5892,12 @@ function ExamplesPanel() {
   };
 
   const categoryColors: Record<string, string> = {
-    scraping: 'bg-[#1f1f1f] border-[#2e2e2e] text-rmpg-300',
+    scraping: 'bg-surface-raised border-rmpg-700 text-rmpg-300',
     search: 'bg-purple-500/10 border-purple-500/30 text-purple-400',
     extraction: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
     monitoring: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
     enrichment: 'bg-pink-500/10 border-pink-500/30 text-pink-400',
-    research: 'bg-[#1f1f1f] border-[#2e2e2e] text-rmpg-300',
+    research: 'bg-surface-raised border-rmpg-700 text-rmpg-300',
   };
 
   if (loading) {
@@ -5984,7 +5984,7 @@ function ExamplesPanel() {
           {examples.map(ex => (
             <div key={ex.id} className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-rmpg-100 flex-1 truncate">{ex.name}</span>
+                <span className="text-xs font-medium text-rmpg-100 min-w-0 flex-1 truncate">{ex.name}</span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${categoryColors[ex.category] || 'bg-rmpg-700 border-rmpg-600 text-rmpg-400'}`}>
                   {(ex.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                 </span>
@@ -6126,7 +6126,7 @@ function LlmsTxtV2Panel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <FileText className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url}</span>
                 <span className="text-[10px] text-orange-400 shrink-0">{item.pages_crawled} pages</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -6371,7 +6371,7 @@ function MendablePanel() {
               <div className="flex items-center gap-2 px-3 py-2">
                 <StatusLed status={bot.scraped_content ? 'active' : 'paused'} />
                 <Bot className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                <span className="text-xs font-medium text-rmpg-100 flex-1 truncate">{bot.name}</span>
+                <span className="text-xs font-medium text-rmpg-100 min-w-0 flex-1 truncate">{bot.name}</span>
                 <span className="text-[10px] text-rmpg-500">{safeArr(bot.source_urls).length} source{safeArr(bot.source_urls).length !== 1 ? 's' : ''}</span>
                 <SmallBtn onClick={() => openChat(bot)} variant={activeBotId === bot.id ? 'primary' : 'default'} disabled={!bot.scraped_content}>
                   <MessageSquare className="w-3 h-3" /> {activeBotId === bot.id ? 'Close' : 'Chat'}
@@ -6563,7 +6563,7 @@ function NewsPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <Newspaper className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.topic}</span>
+                <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{item.topic}</span>
                 <span className="text-[10px] text-orange-400 shrink-0">{safeArr(item.articles).length} articles</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -6579,7 +6579,7 @@ function NewsPanel() {
             <div key={i} className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-rmpg-100 flex-1">{article.title}</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-[#1f1f1f] border border-[#2e2e2e] text-rmpg-300 shrink-0">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-surface-raised border border-rmpg-700 text-rmpg-300 shrink-0">
                   {article.source}
                 </span>
               </div>
@@ -6784,7 +6784,7 @@ function DraftsPanel() {
             {drafts.map(d => (
               <div key={d.id} className="flex items-center gap-2 px-3 py-1.5 bg-surface-raised border border-rmpg-600 rounded-sm hover:bg-rmpg-700/30">
                 <PenTool className="w-3 h-3 text-orange-400 shrink-0" />
-                <button onClick={() => viewDraft(d)} className="text-[10px] text-rmpg-300 truncate flex-1 text-left hover:text-rmpg-100">
+                <button onClick={() => viewDraft(d)} className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1 text-left hover:text-rmpg-100">
                   {d.topic}
                 </button>
                 <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-rmpg-700 text-rmpg-400 uppercase">{d.draft_type}</span>
@@ -7336,7 +7336,7 @@ function AgentsPanel() {
                 </button>
                 <StatusLed status="active" />
                 <Cpu className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                <span className="text-xs font-medium text-rmpg-100 flex-1 truncate">{agent.name}</span>
+                <span className="text-xs font-medium text-rmpg-100 min-w-0 flex-1 truncate">{agent.name}</span>
                 <div className="flex gap-1">
                   {safeArr(agent.tools).map(t => (
                     <span key={t} className="text-[8px] px-1 py-0.5 rounded-sm bg-rmpg-700 text-rmpg-400 uppercase">{t}</span>
@@ -7514,7 +7514,7 @@ function DocExtractPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <FileDown className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url}</span>
                 <span className="text-[9px] text-orange-400 uppercase shrink-0">{item.output_format}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -7707,7 +7707,7 @@ function JobMatchPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <Briefcase className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.search_url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.search_url}</span>
                 <span className="text-[10px] text-orange-400 shrink-0">{item.total_found} jobs</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -7852,7 +7852,7 @@ function MhtmlPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <Archive className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url}</span>
                 <span className="text-[10px] text-rmpg-400 shrink-0">{item.file_size}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -8171,7 +8171,7 @@ function ApiConsolePanel() {
             {safeArr(crawlResult.pages).map((page, i) => (
               <div key={i} className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700 last:border-0">
                 <Globe className="w-3 h-3 text-rmpg-500 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{page.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{page.url}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{(page.content_length / 1024).toFixed(1)}kb</span>
               </div>
             ))}
@@ -8460,7 +8460,7 @@ function GrokEnrichPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <Zap className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.name || item.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.name || item.url}</span>
                 <span className="text-[10px] text-rmpg-400 shrink-0">{item.type}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -9041,7 +9041,7 @@ function MendablePyPanel() {
               <div className="flex items-center gap-2 px-3 py-2">
                 <StatusLed status={idx.scraped_content ? 'active' : 'paused'} />
                 <Database className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                <span className="text-xs font-medium text-rmpg-100 flex-1 truncate">{idx.name}</span>
+                <span className="text-xs font-medium text-rmpg-100 min-w-0 flex-1 truncate">{idx.name}</span>
                 <span className="text-[10px] text-rmpg-500">{idx.page_count} pages</span>
                 <SmallBtn onClick={() => selectIndex(idx)} variant={activeIndexId === idx.id ? 'primary' : 'default'} disabled={!idx.scraped_content}>
                   <Search className="w-3 h-3" /> {activeIndexId === idx.id ? 'Close' : 'Query'}
@@ -9182,7 +9182,7 @@ function CodeAnalyzePanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <FileCode className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.repo_name}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.repo_name}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
             ))
@@ -9344,7 +9344,7 @@ function SkillGenPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <Wand2 className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.skill_name}</span>
+                <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{item.skill_name}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
             ))
@@ -9656,7 +9656,7 @@ function PipelinesPanel() {
                       {runs.map(run => (
                         <div key={run.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800 rounded-sm border border-rmpg-700">
                           <StatusLed status={run.status} />
-                          <span className="text-[10px] text-rmpg-300 truncate flex-1">{run.step_results ? 'completed' : run.status}</span>
+                          <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{run.step_results ? 'completed' : run.status}</span>
                           {run.error && <span className="text-[9px] text-red-400 truncate max-w-[200px]">{run.error}</span>}
                           <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(run.started_at)}</span>
                         </div>
@@ -9872,7 +9872,7 @@ function AiChatPanel() {
             history.map(item => (
               <div key={item.id} className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700 last:border-0">
                 <MessageSquare className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.preview}</span>
+                <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{item.preview}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{item.message_count} msgs</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </div>
@@ -10085,7 +10085,7 @@ function PdfToolsPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <FileType className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 font-mono truncate flex-1">{item.url}</span>
+                <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url}</span>
                 {item.page_count && <span className="text-[10px] text-rmpg-400 shrink-0">{item.page_count} pages</span>}
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -10205,7 +10205,7 @@ function LeadGenPanel() {
       <div className="flex items-center gap-2 mb-3">
         <Users size={16} className="text-[#888888]" />
         <h3 className="text-sm font-bold text-rmpg-100 uppercase tracking-wider">Lead Generation</h3>
-        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#888888]/20 text-[#a0a0a0] font-bold uppercase">Firecrawl</span>
+        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#888888]/20 text-rmpg-400 font-bold uppercase">Firecrawl</span>
       </div>
 
       {configured === false && (
@@ -10218,7 +10218,7 @@ function LeadGenPanel() {
         <select id="ff-firecrawltab-135"
           value={searchType}
           onChange={e => setSearchType(e.target.value as any)}
-          className="px-2 py-2 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[11px] text-rmpg-100"
+          className="px-2 py-2 bg-surface-sunken border border-border-default rounded-sm text-[11px] text-rmpg-100"
         >
           <option value="company">Company</option>
           <option value="person">Person</option>
@@ -10231,7 +10231,7 @@ function LeadGenPanel() {
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
           placeholder={searchType === 'company' ? 'Company name...' : searchType === 'domain' ? 'example.com' : searchType === 'email' ? 'user@example.com' : 'Person name...'}
-          className="flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm text-[11px] text-rmpg-100 placeholder-[#525252] font-mono focus:outline-none focus:border-[#888888]"
+          className="flex-1 px-3 py-2 bg-surface-sunken border border-border-default rounded-sm text-[11px] text-rmpg-100 placeholder-[#525252] font-mono focus:outline-none focus:border-[#888888]"
         />
         <button
           type="button"
@@ -10245,15 +10245,15 @@ function LeadGenPanel() {
       </div>
 
       {results && (
-        <div className="border border-[#1a1a1a] rounded-sm overflow-hidden">
-          <div className="px-3 py-2 bg-[#181818] border-b border-[#1a1a1a] flex items-center justify-between">
-            <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Results</span>
-            <span className="text-[9px] text-[#556677] font-mono">
+        <div className="border border-border-default rounded-sm overflow-hidden">
+          <div className="px-3 py-2 bg-surface-raised border-b border-border-default flex items-center justify-between">
+            <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Results</span>
+            <span className="text-[9px] text-rmpg-500 font-mono">
               {Array.isArray(results.results) ? results.results.length : (results.results && typeof results.results === 'object') ? Object.keys(results.results).length : '—'} entries
             </span>
           </div>
-          <div className="p-3 bg-[#0c0c0c] max-h-[500px] overflow-y-auto">
-            <pre className="text-[10px] text-[#8899aa] font-mono whitespace-pre-wrap break-words">
+          <div className="p-3 bg-surface-sunken max-h-[500px] overflow-y-auto">
+            <pre className="text-[10px] text-rmpg-400 font-mono whitespace-pre-wrap break-words">
               {JSON.stringify(results.results, null, 2)}
             </pre>
           </div>
@@ -10357,7 +10357,7 @@ function AssistantPanel() {
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-rmpg-700/50 border-b border-rmpg-700 last:border-0"
               >
                 <HelpCircle className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="text-[10px] text-rmpg-300 truncate flex-1">{item.question}</span>
+                <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{item.question}</span>
                 {item.search_web && <Globe className="w-3 h-3 text-brand-400 shrink-0" />}
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
@@ -10488,7 +10488,7 @@ function SupportBotPanel() {
             <div key={bot.id} className="bg-surface-raised border border-rmpg-600 rounded-sm px-3 py-2 flex items-center gap-2">
               <StatusLed status={bot.status || 'active'} />
               <Bot className="w-3.5 h-3.5 text-rmpg-300 shrink-0" />
-              <span className="text-xs font-medium text-rmpg-100 flex-1 truncate">{bot.name}</span>
+              <span className="text-xs font-medium text-rmpg-100 min-w-0 flex-1 truncate">{bot.name}</span>
               <span className="text-[10px] text-rmpg-500">{bot.total_conversations || 0} chats</span>
               <SmallBtn onClick={() => setActiveBotId(activeBotId === bot.id ? null : bot.id)} variant={activeBotId === bot.id ? 'primary' : 'default'}>
                 <MessageSquare className="w-3 h-3" /> {activeBotId === bot.id ? 'Close' : 'Chat'}

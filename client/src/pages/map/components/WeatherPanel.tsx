@@ -144,7 +144,7 @@ export default function WeatherPanel({
         <button type="button"
           onClick={onRefresh}
           disabled={loading}
-          className="p-1 rounded-sm text-white/40 hover:text-white/80 hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] disabled:opacity-40"
+          className="p-1 rounded-sm text-white/40 hover:text-rmpg-100/80 hover:bg-surface-raised transition-all duration-150 active:scale-[0.97] disabled:opacity-40"
           title="Refresh weather data"
           aria-label="Refresh weather data"
         >
@@ -156,7 +156,7 @@ export default function WeatherPanel({
         </button>
         <button type="button"
           onClick={onClose}
-          className="p-1 rounded-sm text-white/40 hover:text-red-400 hover:bg-[#181818] transition-all duration-150 active:scale-[0.97]"
+          className="p-1 rounded-sm text-white/40 hover:text-red-400 hover:bg-surface-raised transition-all duration-150 active:scale-[0.97]"
           title="Close panel"
           aria-label="Close environment panel"
         >
@@ -164,7 +164,7 @@ export default function WeatherPanel({
         </button>
       </div>
 
-      <div className="flex flex-col gap-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" style={{ maxHeight: 480 }}>
+      <div className="flex flex-col gap-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent" style={{ maxHeight: 480 }}>
         {/* ── Section 1: Lighting ───────────────────────── */}
         <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #282828' }}>
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
@@ -236,7 +236,7 @@ export default function WeatherPanel({
                 </span>
               )}
               {weatherHazards.snow && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-400/20 text-gray-200 border border-gray-400/30">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-400/20 text-rmpg-200 border border-gray-400/30">
                   <CloudSnow size={10} />
                   SNOW
                 </span>

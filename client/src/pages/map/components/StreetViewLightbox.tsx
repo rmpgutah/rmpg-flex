@@ -90,7 +90,7 @@ export default function StreetViewLightbox({ target, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
           <Eye className="w-3.5 h-3.5 text-brand-400" />
-          <span className="text-[11px] font-bold text-rmpg-200 uppercase tracking-widest flex-1 truncate">
+          <span className="text-[11px] font-bold text-rmpg-200 uppercase tracking-widest min-w-0 flex-1 truncate">
             Street View{target.label ? ` — ${target.label}` : ''}
           </span>
           {target.imageId && (

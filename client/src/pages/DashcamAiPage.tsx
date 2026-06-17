@@ -215,7 +215,7 @@ export default function DashcamAiPage(): React.ReactElement {
           <button
             onClick={refresh}
             disabled={loading}
-            className="ml-2 inline-flex items-center gap-1 px-2 py-1 border border-[#222] hover:border-[#d4a017] hover:text-[#d4a017] disabled:opacity-50 transition-colors"
+            className="ml-2 inline-flex items-center gap-1 px-2 py-1 border border-border-default hover:border-[#d4a017] hover:text-[#d4a017] disabled:opacity-50 transition-colors"
             type="button"
             aria-label="Refresh"
           >
@@ -226,7 +226,7 @@ export default function DashcamAiPage(): React.ReactElement {
       </PanelTitleBar>
 
       {/* Fleet health LED strip */}
-      <div className="px-3 py-2 border-b border-[#222] bg-surface-sunken">
+      <div className="px-3 py-2 border-b border-border-default bg-surface-sunken">
         <div className="flex items-center gap-2 mb-1.5 text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold">
           <Activity className="w-3 h-3" aria-hidden="true" /> Fleet health
         </div>
@@ -241,7 +241,7 @@ export default function DashcamAiPage(): React.ReactElement {
               <div
                 key={u.id}
                 title={`${u.call_sign ?? `unit-${u.unit_id}`} — ${u.status} — last: ${formatRelative(u.last_heartbeat_at)}`}
-                className="inline-flex items-center gap-1.5 px-2 py-1 bg-surface-raised border border-[#222] text-[10px]"
+                className="inline-flex items-center gap-1.5 px-2 py-1 bg-surface-raised border border-border-default text-[10px]"
               >
                 <span className={`inline-block w-2 h-2 rounded-full ${HEALTH_LED[u.status]}`} aria-hidden="true" />
                 <span className="font-mono">{u.call_sign ?? `U${u.unit_id}`}</span>
@@ -254,12 +254,12 @@ export default function DashcamAiPage(): React.ReactElement {
       </div>
 
       {/* Filter bar */}
-      <div className="px-3 py-2 border-b border-[#222] bg-surface-base flex flex-wrap items-center gap-2 text-[11px]">
+      <div className="px-3 py-2 border-b border-border-default bg-surface-base flex flex-wrap items-center gap-2 text-[11px]">
         <Filter className="w-3 h-3 text-rmpg-500" aria-hidden="true" />
         <select id="ff-dashcamaipage-0"
           value={filters.source}
           onChange={e => setFilters({ ...filters, source: e.target.value })}
-          className="bg-surface-sunken border border-[#222] px-2 py-1 text-rmpg-200"
+          className="bg-surface-sunken border border-border-default px-2 py-1 text-rmpg-200"
           aria-label="Filter by source"
         >
           <option value="">All sources</option>
@@ -272,7 +272,7 @@ export default function DashcamAiPage(): React.ReactElement {
         <select id="ff-dashcamaipage-1"
           value={filters.severity}
           onChange={e => setFilters({ ...filters, severity: e.target.value })}
-          className="bg-surface-sunken border border-[#222] px-2 py-1 text-rmpg-200"
+          className="bg-surface-sunken border border-border-default px-2 py-1 text-rmpg-200"
           aria-label="Filter by severity"
         >
           <option value="">All severities</option>
@@ -284,7 +284,7 @@ export default function DashcamAiPage(): React.ReactElement {
         <select id="ff-dashcamaipage-2"
           value={filters.event_type}
           onChange={e => setFilters({ ...filters, event_type: e.target.value })}
-          className="bg-surface-sunken border border-[#222] px-2 py-1 text-rmpg-200"
+          className="bg-surface-sunken border border-border-default px-2 py-1 text-rmpg-200"
           aria-label="Filter by event type"
         >
           <option value="">All types</option>
@@ -306,7 +306,7 @@ export default function DashcamAiPage(): React.ReactElement {
         <select id="ff-dashcamaipage-3"
           value={filters.has_video}
           onChange={e => setFilters({ ...filters, has_video: e.target.value })}
-          className="bg-surface-sunken border border-[#222] px-2 py-1 text-rmpg-200"
+          className="bg-surface-sunken border border-border-default px-2 py-1 text-rmpg-200"
           aria-label="Filter by video presence"
         >
           <option value="">With or without video</option>
@@ -323,7 +323,7 @@ export default function DashcamAiPage(): React.ReactElement {
         {/* Events table */}
         <div className="flex-1 overflow-auto">
           <table className="w-full text-[11px]">
-            <thead className="sticky top-0 bg-surface-raised border-b border-[#222] text-[10px] uppercase tracking-wider text-rmpg-400">
+            <thead className="sticky top-0 bg-surface-raised border-b border-border-default text-[10px] uppercase tracking-wider text-rmpg-400">
               <tr>
                 <th className="text-left py-1.5 px-2 font-semibold">Time</th>
                 <th className="text-left py-1.5 px-2 font-semibold">Unit</th>
@@ -351,7 +351,7 @@ export default function DashcamAiPage(): React.ReactElement {
                 <tr
                   key={ev.id}
                   onClick={() => setSelected(ev)}
-                  className={`border-b border-[#1a1a1a] cursor-pointer hover:bg-surface-raised transition-colors ${selected?.id === ev.id ? 'bg-[#1a2030]' : ''}`}
+                  className={`border-b border-border-default cursor-pointer hover:bg-surface-raised transition-colors ${selected?.id === ev.id ? 'bg-[#1a2030]' : ''}`}
                 >
                   <td className="py-1 px-2 font-mono text-rmpg-300">{formatLocalDate(ev.event_timestamp)}</td>
                   <td className="py-1 px-2">
@@ -387,8 +387,8 @@ export default function DashcamAiPage(): React.ReactElement {
 
         {/* Detail pane (right) */}
         {selected && (
-          <aside className="w-[420px] border-l border-[#222] bg-surface-raised overflow-auto">
-            <div className="p-3 border-b border-[#222] flex items-start justify-between">
+          <aside className="w-[420px] border-l border-border-default bg-surface-raised overflow-auto">
+            <div className="p-3 border-b border-border-default flex items-start justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-rmpg-500">Event #{selected.id}</div>
                 <div className="text-base font-mono text-[#d4a017] mt-0.5">{formatEnumValue(selected.event_type)}</div>
@@ -407,15 +407,15 @@ export default function DashcamAiPage(): React.ReactElement {
                 <button
                   type="button"
                   onClick={() => setPlayerEventId(selected.id)}
-                  className="relative block w-full border border-[#222] hover:border-[#d4a017] transition-colors group"
+                  className="relative block w-full border border-border-default hover:border-[#d4a017] transition-colors group"
                   aria-label="Open forensic dashcam playback"
                 >
                   {selected.still_image_url ? (
                     <img src={authedImageUrl(selected.still_image_url)} alt="Dashcam still" className="w-full aspect-[4/3] object-cover" />
                   ) : (
-                    <div className="w-full aspect-[4/3] bg-[#050505] flex items-center justify-center"><Video className="w-8 h-8 text-[#333]" aria-hidden="true" /></div>
+                    <div className="w-full aspect-[4/3] bg-surface-overlay flex items-center justify-center"><Video className="w-8 h-8 text-[#333]" aria-hidden="true" /></div>
                   )}
-                  <span className="absolute top-1 left-1 text-[8px] font-bold tracking-wider px-1 py-[1px] bg-black/75 text-[#bbb] border border-[#333]">
+                  <span className="absolute top-1 left-1 text-[8px] font-bold tracking-wider px-1 py-[1px] bg-black/75 text-rmpg-300 border border-border-subtle">
                     FORENSIC PLAYBACK
                   </span>
                   {selected.plate && (
@@ -461,7 +461,7 @@ export default function DashcamAiPage(): React.ReactElement {
                 <DetailRow icon={Activity} label="Speed" value={`${selected.speed_mph.toFixed(1)} mph`} />
               )}
               {selected.has_video ? (
-                <div className="mt-3 pt-3 border-t border-[#222]">
+                <div className="mt-3 pt-3 border-t border-border-default">
                   <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold mb-1.5 flex items-center gap-1">
                     <Camera className="w-3 h-3" aria-hidden="true" /> Video evidence
                   </div>

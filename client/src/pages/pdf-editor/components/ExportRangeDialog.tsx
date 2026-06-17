@@ -31,7 +31,7 @@ export default function ExportRangeDialog({ open, pageCount, onClose, onExport }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="bg-[#0d0d0d] border border-[#222222] rounded-[2px] w-[340px] p-4 shadow-xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] w-[340px] p-4 shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <div className="text-[11px] uppercase tracking-wider text-[#d4a017] font-semibold inline-flex items-center gap-1.5">
             <FileOutput className="w-3.5 h-3.5" /> Export page range
@@ -46,13 +46,13 @@ export default function ExportRangeDialog({ open, pageCount, onClose, onExport }
             <span className="block text-[9px] uppercase tracking-wider text-rmpg-500 mb-0.5">From</span>
             <input id="ff-exportrange-from" type="number" min={1} max={pageCount} value={from}
               onChange={e => setFrom(parseInt(e.target.value, 10) || 1)}
-              className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
+              className="w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
           </label>
           <label className="text-[10px] text-rmpg-300 flex-1">
             <span className="block text-[9px] uppercase tracking-wider text-rmpg-500 mb-0.5">To</span>
             <input id="ff-exportrange-to" type="number" min={1} max={pageCount} value={to}
               onChange={e => setTo(parseInt(e.target.value, 10) || pageCount)}
-              className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
+              className="w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
           </label>
         </div>
 

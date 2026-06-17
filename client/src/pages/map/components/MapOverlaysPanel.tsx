@@ -60,7 +60,7 @@ export default function MapOverlaysPanel({ overlays, className = '' }: MapOverla
           const collapsed = collapsedGroups.has(group);
 
           return (
-            <div key={group} className="border-b border-[#1a1a1a] last:border-b-0">
+            <div key={group} className="border-b border-border-default last:border-b-0">
               {/* Group header */}
               <button
                 type="button"
@@ -75,7 +75,7 @@ export default function MapOverlaysPanel({ overlays, className = '' }: MapOverla
               >
                 {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                 {gInfo.label}
-                <span className="ml-auto text-[9px] text-[#555555]">
+                <span className="ml-auto text-[9px] text-rmpg-500">
                   {items.filter((i) => i.active).length}/{items.length}
                 </span>
               </button>
@@ -116,7 +116,7 @@ export default function MapOverlaysPanel({ overlays, className = '' }: MapOverla
                       />
                       <div className="flex-1 min-w-0 text-left">
                         <div className="truncate text-[11px]">{item.label}</div>
-                        <div className="text-[9px] text-[#555555] truncate">{item.description}</div>
+                        <div className="text-[9px] text-rmpg-500 truncate">{item.description}</div>
                       </div>
                       {item.loading && (
                         <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#d4a017' }} />

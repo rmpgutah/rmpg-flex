@@ -68,7 +68,7 @@ export default function MapSidebar({
       {/* #1: Collapse/expand toggle with smooth icon rotation */}
       <button type="button"
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="toolbar-btn flex items-center justify-center h-7 hover:bg-[#181818] transition-colors duration-150"
+        className="toolbar-btn flex items-center justify-center h-7 hover:bg-surface-raised transition-colors duration-150"
         style={{ borderRadius: 0 }}
         aria-expanded={sidebarOpen}
         aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
@@ -139,7 +139,7 @@ export default function MapSidebar({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
             {sidebarTab === 'units' && (
               <div className="divide-y divide-rmpg-700/50" role="tabpanel">
                 {/* Fix 98: units sorted by status (available first) */}
@@ -154,7 +154,7 @@ export default function MapSidebar({
                     <button type="button"
                       key={unit.id}
                       onClick={() => hasCoords && panTo(unit.latitude!, unit.longitude!)}
-                      className={`w-full text-left px-3 py-2.5 hover:bg-[#181818] transition-colors duration-100 ${
+                      className={`w-full text-left px-3 py-2.5 hover:bg-surface-raised transition-colors duration-100 ${
                         hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
                       }`}
                     >
@@ -216,7 +216,7 @@ export default function MapSidebar({
                     <button type="button"
                       key={call.id}
                       onClick={() => hasCoords && panTo(call.latitude!, call.longitude!)}
-                      className={`w-full text-left px-3 py-2.5 hover:bg-[#181818] transition-colors duration-100 border-l-2 ${
+                      className={`w-full text-left px-3 py-2.5 hover:bg-surface-raised transition-colors duration-100 border-l-2 ${
                         hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
                       }`}
                       style={{ borderLeftColor: pColor, borderLeftWidth: 3 }}
@@ -251,7 +251,7 @@ export default function MapSidebar({
                         {call.status === 'dispatched' && (
                           <button type="button"
                             onClick={(e) => { e.stopPropagation(); handleCallStatusChange(call.id, 'enroute'); }}
-                            className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-surface-sunken/30 text-rmpg-400 border border-border-default/40 hover:bg-gray-800/40 transition-colors"
+                            className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-surface-sunken/30 text-rmpg-400 border border-border-default/40 hover:bg-surface-raised/40 transition-colors"
                           >
                             EN ROUTE
                           </button>

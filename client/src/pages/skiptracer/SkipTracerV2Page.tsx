@@ -299,7 +299,7 @@ function CopyBtn({ value, label, copied, copy }: {
   return (
     <button type="button"
       onClick={(e) => { e.stopPropagation(); copy(value, label); }}
-      className="p-0.5 rounded-sm hover:bg-surface-raised/50 text-[#8899aa] hover:text-rmpg-100 transition-colors"
+      className="p-0.5 rounded-sm hover:bg-surface-raised/50 text-rmpg-400 hover:text-rmpg-100 transition-colors"
       title={`Copy ${label}`}
     >
       {copied === label ? <CheckCircle2 size={12} className="text-green-400" /> : <Copy size={12} />}
@@ -331,10 +331,10 @@ function DossierSection({ title, icon: Icon, count, defaultOpen, children }: {
         className="w-full flex items-center gap-2 px-3 py-2 bg-surface-raised hover:bg-surface-overlay transition-colors text-left"
       >
         <Chevron size={12} className="text-rmpg-500 flex-shrink-0" />
-        <Icon size={13} className="text-[#8899aa] flex-shrink-0" />
-        <span className="text-[11px] font-bold text-[#c0ccdd] uppercase tracking-wider flex-1">{title}</span>
+        <Icon size={13} className="text-rmpg-400 flex-shrink-0" />
+        <span className="text-[11px] font-bold text-rmpg-300 uppercase tracking-wider flex-1">{title}</span>
         {count !== undefined && count > 0 && (
-          <span className="text-[9px] font-mono bg-surface-sunken text-[#8899aa] px-1.5 py-0.5 rounded-sm min-w-[20px] text-center">{count}</span>
+          <span className="text-[9px] font-mono bg-surface-sunken text-rmpg-400 px-1.5 py-0.5 rounded-sm min-w-[20px] text-center">{count}</span>
         )}
       </button>
       {open && <div className="p-3 bg-surface-sunken">{children}</div>}
@@ -855,8 +855,8 @@ export default function SkipTracerV2Page() {
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold uppercase tracking-wider border-b-2 transition-colors whitespace-nowrap ${
               isActive
-                ? 'border-[#888888] text-[#a0a0a0] bg-surface-raised'
-                : 'border-transparent text-rmpg-500 hover:text-[#8899aa] hover:bg-surface-raised/50'
+                ? 'border-[#888888] text-rmpg-400 bg-surface-raised'
+                : 'border-transparent text-rmpg-500 hover:text-rmpg-400 hover:bg-surface-raised/50'
             }`}
           >
             <Icon size={13} />
@@ -864,7 +864,7 @@ export default function SkipTracerV2Page() {
           </button>
         );
       })}
-      <div className="ml-auto flex items-center gap-2 px-3 text-[9px] font-mono text-[#556677]">
+      <div className="ml-auto flex items-center gap-2 px-3 text-[9px] font-mono text-rmpg-500">
         <span className="flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
           {sources.filter(s => s.healthy).length}/{sources.length} sources
@@ -878,7 +878,7 @@ export default function SkipTracerV2Page() {
     <div className={`flex flex-col min-h-0 ${isMobile ? 'w-full' : 'w-[380px] min-w-[380px]'} border-r border-border-subtle bg-surface-raised`}>
       <PanelTitleBar title="MicroBilt" icon={Search} statusLed="blue" ledPulse={loading}>
         {result && (
-          <span className="text-[9px] font-mono text-[#556677]">
+          <span className="text-[9px] font-mono text-rmpg-500">
             {result.totalResults} result{result.totalResults !== 1 ? 's' : ''} &middot; {result.durationMs}ms
             {result.totalCost > 0 && <> &middot; ${result.totalCost.toFixed(4)}</>}
           </span>
@@ -889,7 +889,7 @@ export default function SkipTracerV2Page() {
       <div className="p-2 border-b border-border-subtle space-y-2">
         <div className="relative flex items-center gap-1">
           <div className="relative flex-1">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#556677] pointer-events-none" />
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" />
             <input id="ff-skiptracerv2page-0"
               type="text"
               value={query}
@@ -906,7 +906,7 @@ export default function SkipTracerV2Page() {
                 >
                   {inputType}
                 </span>
-                <IconButton onClick={() => setQuery('')} className="absolute right-10 top-1/2 -translate-y-1/2 p-0.5 text-[#556677] hover:text-rmpg-100" aria-label="Clear query">
+                <IconButton onClick={() => setQuery('')} className="absolute right-10 top-1/2 -translate-y-1/2 p-0.5 text-rmpg-500 hover:text-rmpg-100" aria-label="Clear query">
                   <X size={12} />
                 </IconButton>
               </>
@@ -922,7 +922,7 @@ export default function SkipTracerV2Page() {
           <button type="button"
             onClick={() => setBatchOpen(!batchOpen)}
             className={`px-2 py-2 rounded-sm text-[10px] font-bold transition-colors flex items-center gap-1 ${
-              batchOpen ? 'bg-[#888888] text-rmpg-100' : 'bg-surface-raised text-[#8899aa] hover:text-rmpg-100 hover:bg-surface-overlay border border-border-subtle'
+              batchOpen ? 'bg-[#888888] text-rmpg-100' : 'bg-surface-raised text-rmpg-400 hover:text-rmpg-100 hover:bg-surface-overlay border border-border-subtle'
             }`}
             title="Batch search multiple names"
           >
@@ -932,7 +932,7 @@ export default function SkipTracerV2Page() {
 
         {/* Engine selector */}
         <div className="flex items-center gap-1 mt-1">
-          <span className="text-[8px] font-bold text-[#556677] uppercase tracking-wider mr-1">Engine:</span>
+          <span className="text-[8px] font-bold text-rmpg-500 uppercase tracking-wider mr-1">Engine:</span>
           {([
             { id: 'microbilt' as const, label: 'MicroBilt', desc: 'Primary — Full background + SSN trace', color: '#22c55e' },
             { id: 'rapidapi' as const, label: 'RapidAPI', desc: 'Secondary — Basic skip trace', color: '#f59e0b' },
@@ -945,7 +945,7 @@ export default function SkipTracerV2Page() {
               className={`px-2 py-1 rounded-sm text-[9px] font-bold uppercase tracking-wider transition-all ${
                 searchEngine === eng.id
                   ? 'text-rmpg-100 shadow-sm'
-                  : 'text-rmpg-500 hover:text-[#8899aa] bg-surface-sunken border border-border-subtle'
+                  : 'text-rmpg-500 hover:text-rmpg-400 bg-surface-sunken border border-border-subtle'
               }`}
               style={searchEngine === eng.id ? { backgroundColor: eng.color + '33', color: eng.color, border: `1px solid ${eng.color}55` } : undefined}
               title={eng.desc}
@@ -958,7 +958,7 @@ export default function SkipTracerV2Page() {
         {/* Batch search textarea */}
         {batchOpen && (
           <div className="p-2 bg-surface-sunken border border-border-subtle rounded-sm space-y-2">
-            <div className="text-[9px] text-[#8899aa] uppercase tracking-wider font-bold">Batch Search — one name per line</div>
+            <div className="text-[9px] text-rmpg-400 uppercase tracking-wider font-bold">Batch Search — one name per line</div>
             <RichTextArea
               value={batchText}
               onChange={e => setBatchText(e.target.value)}
@@ -967,7 +967,7 @@ export default function SkipTracerV2Page() {
               className="w-full px-2 py-1.5 bg-surface-raised border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono placeholder-[#525252] focus:outline-none focus:border-[#888888] resize-y"
             />
             <div className="flex items-center justify-between">
-              <span className="text-[9px] text-[#556677] font-mono">
+              <span className="text-[9px] text-rmpg-500 font-mono">
                 {batchText.split('\n').filter(l => l.trim()).length} name(s)
               </span>
               <button type="button"
@@ -995,7 +995,7 @@ export default function SkipTracerV2Page() {
         <div className="flex items-center gap-3">
           <button type="button"
             onClick={() => setAdvancedOpen(!advancedOpen)}
-            className="flex items-center gap-1 text-[9px] text-[#556677] hover:text-[#8899aa] uppercase tracking-wider"
+            className="flex items-center gap-1 text-[9px] text-rmpg-500 hover:text-rmpg-400 uppercase tracking-wider"
           >
             <Filter size={10} />
             Advanced Search
@@ -1050,7 +1050,7 @@ export default function SkipTracerV2Page() {
           {selectedCategories.size > 0 && (
             <button type="button"
               onClick={() => setSelectedCategories(new Set())}
-              className="text-[8px] text-[#556677] hover:text-rmpg-100 uppercase tracking-wider px-1 py-0.5"
+              className="text-[8px] text-rmpg-500 hover:text-rmpg-100 uppercase tracking-wider px-1 py-0.5"
             >
               Clear
             </button>
@@ -1088,7 +1088,7 @@ export default function SkipTracerV2Page() {
         {!loading && !error && !result && (
           <div className="flex flex-col items-center justify-center h-48 text-center space-y-3">
             <Shield size={32} className="text-[#1a1a1a]" />
-            <div className="text-[11px] text-[#556677] max-w-[220px]">
+            <div className="text-[11px] text-rmpg-500 max-w-[220px]">
               Enter a name, phone, email, or address. Use Advanced Search for precise field-level queries.
             </div>
             <div className="flex flex-wrap gap-2 justify-center">
@@ -1096,7 +1096,7 @@ export default function SkipTracerV2Page() {
                 <button type="button"
                   key={ex}
                   onClick={() => setQuery(ex)}
-                  className="text-[9px] text-[#888888] hover:text-[#a0a0a0] bg-[#888888]/10 px-2 py-0.5 rounded-sm"
+                  className="text-[9px] text-[#888888] hover:text-rmpg-400 bg-[#888888]/10 px-2 py-0.5 rounded-sm"
                 >
                   {ex}
                 </button>
@@ -1108,7 +1108,7 @@ export default function SkipTracerV2Page() {
         {!loading && result && result.profiles.length === 0 && (
           <div className="flex flex-col items-center justify-center h-48 text-center space-y-2">
             <Search size={24} className="text-[#1a1a1a]" />
-            <div className="text-[11px] text-[#556677]">No results found</div>
+            <div className="text-[11px] text-rmpg-500">No results found</div>
             <div className="text-[9px] text-[#525252]">
               {result.sourcesFailed && result.sourcesFailed.length > 0
                 ? `${result.sourcesFailed.length} source(s) failed — try again or check source config`
@@ -1143,12 +1143,12 @@ export default function SkipTracerV2Page() {
                     <span className="text-[12px] font-bold text-rmpg-100 truncate">{name}</span>
                     {profile.confidenceScore !== undefined && <ConfidenceBadge score={profile.confidenceScore} />}
                   </div>
-                  <div className="flex items-center gap-2 mt-0.5 text-[10px] text-[#8899aa]">
+                  <div className="flex items-center gap-2 mt-0.5 text-[10px] text-rmpg-400">
                     {profile.age && <span>Age {profile.age}</span>}
                     {(profile.city || profile.state) && (
                       <span>{[profile.city, profile.state].filter(Boolean).join(', ')}</span>
                     )}
-                    {dataPoints > 0 && <span className="text-[#556677]">{dataPoints} data points</span>}
+                    {dataPoints > 0 && <span className="text-rmpg-500">{dataPoints} data points</span>}
                   </div>
                 </div>
                 {isSelected && <ArrowRight size={14} className="text-[#888888] flex-shrink-0 mt-0.5" />}
@@ -1157,7 +1157,7 @@ export default function SkipTracerV2Page() {
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {profile.sources.slice(0, 5).map(s => <SourceBadge key={s} source={s} />)}
                   {profile.sources.length > 5 && (
-                    <span className="text-[8px] text-[#556677] self-center">+{profile.sources.length - 5}</span>
+                    <span className="text-[8px] text-rmpg-500 self-center">+{profile.sources.length - 5}</span>
                   )}
                 </div>
               )}
@@ -1189,7 +1189,7 @@ export default function SkipTracerV2Page() {
       {!selected ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center space-y-3 p-8">
           <FileText size={40} className="text-[#1a1a1a]" />
-          <div className="text-[13px] text-[#556677]">Select a person from search results</div>
+          <div className="text-[13px] text-rmpg-500">Select a person from search results</div>
           <div className="text-[10px] text-[#525252] max-w-[280px]">
             Search for a subject and click a result to build their dossier with data from {sources.filter(s => s.healthy).length} active sources
           </div>
@@ -1206,7 +1206,7 @@ export default function SkipTracerV2Page() {
                   </div>
                   <div>
                     <h2 className="text-[18px] font-bold text-rmpg-100 leading-tight">{getDisplayName(selected)}</h2>
-                    <div className="flex items-center gap-3 mt-0.5 text-[11px] text-[#8899aa] flex-wrap">
+                    <div className="flex items-center gap-3 mt-0.5 text-[11px] text-rmpg-400 flex-wrap">
                       {selected.age !== undefined && <span className="flex items-center gap-1"><User size={10} /> Age {selected.age}</span>}
                       {selected.dob && <span className="font-mono">DOB: {selected.dob}</span>}
                       {selected.gender && <span>{selected.gender}</span>}
@@ -1215,7 +1215,7 @@ export default function SkipTracerV2Page() {
                   </div>
                 </div>
                 {selected.aliases && selected.aliases.length > 0 && (
-                  <div className="text-[10px] text-[#556677] mt-2 ml-[60px]">
+                  <div className="text-[10px] text-rmpg-500 mt-2 ml-[60px]">
                     AKA: {selected.aliases.join(' | ')}
                   </div>
                 )}
@@ -1225,7 +1225,7 @@ export default function SkipTracerV2Page() {
                 <button type="button"
                   onClick={handleExportFromSearch}
                   disabled={exporting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-sunken hover:bg-surface-overlay border border-border-subtle rounded-sm text-[10px] font-bold text-[#8899aa] hover:text-rmpg-100 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-sunken hover:bg-surface-overlay border border-border-subtle rounded-sm text-[10px] font-bold text-rmpg-400 hover:text-rmpg-100 transition-colors"
                   title="Save & export as PDF"
                 >
                   {exporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
@@ -1239,7 +1239,7 @@ export default function SkipTracerV2Page() {
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-[10px] font-bold transition-colors border ${
                       linkDropdownOpen
                         ? 'bg-[#888888] text-rmpg-100 border-[#888888]'
-                        : 'bg-surface-sunken text-[#8899aa] hover:text-rmpg-100 border-border-subtle hover:bg-surface-overlay'
+                        : 'bg-surface-sunken text-rmpg-400 hover:text-rmpg-100 border-border-subtle hover:bg-surface-overlay'
                     }`}
                   >
                     <Link2 size={12} />
@@ -1248,7 +1248,7 @@ export default function SkipTracerV2Page() {
                   </button>
                   {linkDropdownOpen && (
                     <div className="absolute right-0 top-full mt-1 w-64 bg-surface-raised border border-border-subtle rounded-sm shadow-xl z-50 p-3 space-y-2">
-                      <div className="text-[9px] font-bold text-[#8899aa] uppercase tracking-wider">Link to Record</div>
+                      <div className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider">Link to Record</div>
                       <div className="flex gap-1">
                         {(['incident', 'case'] as const).map(t => (
                           <button type="button"
@@ -1327,7 +1327,7 @@ export default function SkipTracerV2Page() {
                 <div key={item.label} className="border border-border-subtle rounded-sm bg-surface-sunken p-2 text-center">
                   <I size={14} className="mx-auto mb-1" style={{ color: item.color }} />
                   <div className="text-[14px] font-bold text-rmpg-100 font-mono">{item.count}</div>
-                  <div className="text-[8px] text-[#556677] uppercase tracking-wider">{item.label}</div>
+                  <div className="text-[8px] text-rmpg-500 uppercase tracking-wider">{item.label}</div>
                 </div>
               );
             })}
@@ -1344,14 +1344,14 @@ export default function SkipTracerV2Page() {
                 { label: 'SSN Last 4', value: selected.ssn_last4 },
               ].filter(f => f.value).map(f => (
                 <div key={f.label}>
-                  <span className="text-[9px] text-[#556677] uppercase tracking-wider block">{f.label}</span>
+                  <span className="text-[9px] text-rmpg-500 uppercase tracking-wider block">{f.label}</span>
                   <span className="text-rmpg-100 font-mono">{f.value}</span>
                 </div>
               ))}
               {selected.aliases && selected.aliases.length > 0 && (
                 <div className="col-span-2">
-                  <span className="text-[9px] text-[#556677] uppercase tracking-wider block">Aliases</span>
-                  <span className="text-[#c0ccdd] font-mono">{selected.aliases.join(', ')}</span>
+                  <span className="text-[9px] text-rmpg-500 uppercase tracking-wider block">Aliases</span>
+                  <span className="text-rmpg-300 font-mono">{selected.aliases.join(', ')}</span>
                 </div>
               )}
             </div>
@@ -1373,11 +1373,11 @@ export default function SkipTracerV2Page() {
                   return (
                     <tr key={`addr-${addr}-${i}`} className="hover:bg-surface-raised/50">
                       <td className="px-2 py-1.5 text-rmpg-100">{addr}</td>
-                      <td className="px-2 py-1.5 text-[#c0ccdd]">{a.city || '—'}</td>
-                      <td className="px-2 py-1.5 text-[#c0ccdd]">{a.state || '—'}</td>
-                      <td className="px-2 py-1.5 text-[#c0ccdd]">{a.zip || '—'}</td>
+                      <td className="px-2 py-1.5 text-rmpg-300">{a.city || '—'}</td>
+                      <td className="px-2 py-1.5 text-rmpg-300">{a.state || '—'}</td>
+                      <td className="px-2 py-1.5 text-rmpg-300">{a.zip || '—'}</td>
                       <td className="px-2 py-1.5">
-                        <span className={`text-[9px] uppercase ${(a.type || '').toLowerCase() === 'current' ? 'text-green-400' : 'text-[#556677]'}`}>{a.type || '—'}</span>
+                        <span className={`text-[9px] uppercase ${(a.type || '').toLowerCase() === 'current' ? 'text-green-400' : 'text-rmpg-500'}`}>{a.type || '—'}</span>
                       </td>
                       <td className="px-2 py-1.5"><SourceBadge source={a.source} /></td>
                       <td className="px-2 py-1.5">
@@ -1404,17 +1404,17 @@ export default function SkipTracerV2Page() {
                 {selected.phones!.map((p, i) => (
                   <tr key={`phone-${p.number}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5 text-rmpg-100 font-mono">{p.number}</td>
-                    <td className="px-2 py-1.5 text-[#c0ccdd] text-[9px] uppercase">{p.type || '—'}</td>
-                    <td className="px-2 py-1.5 text-[#8899aa]">{p.carrier || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-300 text-[9px] uppercase">{p.type || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-400">{p.carrier || '—'}</td>
                     <td className="px-2 py-1.5">
                       {p.lineStatus && (
-                        <span className={`text-[9px] uppercase font-bold ${p.lineStatus === 'active' ? 'text-green-400' : 'text-[#556677]'}`}>{p.lineStatus}</span>
+                        <span className={`text-[9px] uppercase font-bold ${p.lineStatus === 'active' ? 'text-green-400' : 'text-rmpg-500'}`}>{p.lineStatus}</span>
                       )}
                     </td>
                     <td className="px-2 py-1.5"><SourceBadge source={p.source} /></td>
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-1">
-                        <a href={`tel:${p.number.replace(/\D/g, '')}`} className="p-0.5 rounded-sm hover:bg-white/10 text-[#888888] hover:text-[#a0a0a0] transition-colors" title="Call">
+                        <a href={`tel:${p.number.replace(/\D/g, '')}`} className="p-0.5 rounded-sm hover:bg-white/10 text-[#888888] hover:text-rmpg-400 transition-colors" title="Call">
                           <PhoneCall size={12} />
                         </a>
                         <CopyBtn value={p.number} label={`phone-${i}`} copied={copied} copy={copy} />
@@ -1431,12 +1431,12 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Email & Online" icon={Mail} count={(selected.emails?.length ?? 0) + (selected.socialProfiles?.length ?? 0)}>
               {(selected.emails?.length ?? 0) > 0 && (
                 <div className="space-y-1 mb-3">
-                  <div className="text-[9px] font-bold text-[#556677] uppercase tracking-wider mb-1">Email Addresses</div>
+                  <div className="text-[9px] font-bold text-rmpg-500 uppercase tracking-wider mb-1">Email Addresses</div>
                   {selected.emails!.map((e, i) => {
                     const emailAddr = e.email || e.address || '';
                     return (
                       <div key={`email-${emailAddr}-${i}`} className="flex items-center gap-2 text-[11px] font-mono">
-                        <Mail size={11} className="text-[#556677]" />
+                        <Mail size={11} className="text-rmpg-500" />
                         <span className="text-rmpg-100">{emailAddr}</span>
                         <SourceBadge source={e.source} />
                         {emailAddr && (
@@ -1454,12 +1454,12 @@ export default function SkipTracerV2Page() {
               )}
               {(selected.socialProfiles?.length ?? 0) > 0 && (
                 <div className="space-y-1">
-                  <div className="text-[9px] font-bold text-[#556677] uppercase tracking-wider mb-1">Social Profiles</div>
+                  <div className="text-[9px] font-bold text-rmpg-500 uppercase tracking-wider mb-1">Social Profiles</div>
                   {selected.socialProfiles!.map((sp, i) => (
                     <div key={`social-${sp.platform}-${sp.username}-${i}`} className="flex items-center gap-2 text-[11px]">
-                      <Globe size={11} className="text-[#556677]" />
-                      <span className="text-[#8899aa] font-bold text-[10px] uppercase">{sp.platform}</span>
-                      <a href={sp.url} target="_blank" rel="noopener noreferrer" className="text-[#a0a0a0] hover:underline font-mono truncate">
+                      <Globe size={11} className="text-rmpg-500" />
+                      <span className="text-rmpg-400 font-bold text-[10px] uppercase">{sp.platform}</span>
+                      <a href={sp.url} target="_blank" rel="noopener noreferrer" className="text-rmpg-400 hover:underline font-mono truncate">
                         {sp.username}
                       </a>
                       <ExternalLink size={10} className="text-[#525252]" />
@@ -1477,12 +1477,12 @@ export default function SkipTracerV2Page() {
                 {selected.associates!.map((a, i) => (
                   <tr key={`assoc-${a.name}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5">
-                      <button type="button" onClick={() => searchAssociate(a.name)} className="text-[#a0a0a0] hover:underline font-mono flex items-center gap-1">
+                      <button type="button" onClick={() => searchAssociate(a.name)} className="text-rmpg-400 hover:underline font-mono flex items-center gap-1">
                         {a.name} <Search size={9} className="text-[#525252]" />
                       </button>
                     </td>
-                    <td className="px-2 py-1.5 text-[#c0ccdd]">{a.relationship || '—'}</td>
-                    <td className="px-2 py-1.5 text-[#8899aa] font-mono">{a.phone || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-300">{a.relationship || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-400 font-mono">{a.phone || '—'}</td>
                     <td className="px-2 py-1.5"><SourceBadge source={a.source} /></td>
                     <td className="px-2 py-1.5">
                       {a.phone && <CopyBtn value={a.phone} label={`assoc-phone-${i}`} copied={copied} copy={copy} />}
@@ -1500,22 +1500,22 @@ export default function SkipTracerV2Page() {
                 {selected.courtRecords!.map((c, i) => (
                   <tr key={`court-${c.caseNumber}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5 text-rmpg-100 font-mono">{c.caseNumber || '—'}</td>
-                    <td className="px-2 py-1.5 text-[#c0ccdd] max-w-[120px] truncate" title={c.court}>{c.court || '—'}</td>
-                    <td className="px-2 py-1.5 text-[#c0ccdd]">{c.caseType || c.type || '—'}</td>
-                    <td className="px-2 py-1.5 text-[#c0ccdd] max-w-[150px] truncate" title={c.charge || c.charges?.join('; ')}>
+                    <td className="px-2 py-1.5 text-rmpg-300 max-w-[120px] truncate" title={c.court}>{c.court || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-300">{c.caseType || c.type || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-300 max-w-[150px] truncate" title={c.charge || c.charges?.join('; ')}>
                       {c.charge || c.charges?.join('; ') || '—'}
                     </td>
-                    <td className="px-2 py-1.5 text-[#8899aa] font-mono">{c.filingDate || c.date || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-400 font-mono">{c.filingDate || c.date || '—'}</td>
                     <td className="px-2 py-1.5">
                       <span className={`text-[9px] uppercase font-bold ${
                         (c.status || '').toLowerCase() === 'active' || (c.status || '').toLowerCase() === 'open'
-                          ? 'text-red-400' : 'text-[#556677]'
+                          ? 'text-red-400' : 'text-rmpg-500'
                       }`}>{c.status || '—'}</span>
                     </td>
                     <td className="px-2 py-1.5"><SourceBadge source={c.source} /></td>
                     <td className="px-2 py-1.5">
                       {c.sourceUrl && (
-                        <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-[#a0a0a0] hover:text-rmpg-300">
+                        <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-rmpg-400 hover:text-rmpg-300">
                           <ExternalLink size={11} />
                         </a>
                       )}
@@ -1534,14 +1534,14 @@ export default function SkipTracerV2Page() {
                   <div key={`custody-${c.facility}-${i}`} className="p-2 border border-red-900/30 bg-red-950/10 rounded-sm text-[11px]">
                     <div className="flex items-center gap-2 text-red-300 font-bold">
                       <Shield size={12} /> {c.facility || 'Unknown Facility'}
-                      {c.facilityState && <span className="text-[9px] text-[#8899aa] font-normal">({c.facilityState})</span>}
+                      {c.facilityState && <span className="text-[9px] text-rmpg-400 font-normal">({c.facilityState})</span>}
                     </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1.5 text-[#c0ccdd]">
-                      {c.status && <div><span className="text-[#556677]">Status:</span> {c.status.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())}</div>}
-                      {c.bookingDate && <div><span className="text-[#556677]">Booked:</span> {c.bookingDate}</div>}
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1.5 text-rmpg-300">
+                      {c.status && <div><span className="text-rmpg-500">Status:</span> {c.status.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())}</div>}
+                      {c.bookingDate && <div><span className="text-rmpg-500">Booked:</span> {c.bookingDate}</div>}
                     </div>
                     {c.charges && c.charges.length > 0 && (
-                      <div className="mt-1 text-[10px] text-[#8899aa]">Charges: {c.charges.join('; ')}</div>
+                      <div className="mt-1 text-[10px] text-rmpg-400">Charges: {c.charges.join('; ')}</div>
                     )}
                   </div>
                 ))}
@@ -1556,9 +1556,9 @@ export default function SkipTracerV2Page() {
                 {selected.propertyRecords!.map((p, i) => (
                   <tr key={`prop-${p.address}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5 text-rmpg-100">{[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}</td>
-                    <td className="px-2 py-1.5 text-[#c0ccdd]">{p.propertyType || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-300">{p.propertyType || '—'}</td>
                     <td className="px-2 py-1.5 text-green-400 font-mono">{p.marketValue ? `$${p.marketValue.toLocaleString()}` : '—'}</td>
-                    <td className="px-2 py-1.5 text-[#c0ccdd]">{p.ownerName || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-300">{p.ownerName || '—'}</td>
                     <td className="px-2 py-1.5"><SourceBadge source={p.source} /></td>
                   </tr>
                 ))}
@@ -1573,14 +1573,14 @@ export default function SkipTracerV2Page() {
                 {selected.businesses!.map((b, i) => (
                   <tr key={`biz-${b.name}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5 text-rmpg-100">{b.name}</td>
-                    <td className="px-2 py-1.5 text-[#c0ccdd]">{b.role || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-300">{b.role || '—'}</td>
                     <td className="px-2 py-1.5">
                       <span className={`text-[9px] uppercase font-bold ${
-                        (b.status || '').toLowerCase() === 'active' ? 'text-green-400' : 'text-[#556677]'
+                        (b.status || '').toLowerCase() === 'active' ? 'text-green-400' : 'text-rmpg-500'
                       }`}>{b.status || '—'}</span>
                     </td>
-                    <td className="px-2 py-1.5 text-[#8899aa] font-mono">{b.registrationNumber || b.entityNumber || '—'}</td>
-                    <td className="px-2 py-1.5 text-[#c0ccdd]">{b.jurisdiction || b.state || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-400 font-mono">{b.registrationNumber || b.entityNumber || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-300">{b.jurisdiction || b.state || '—'}</td>
                     <td className="px-2 py-1.5"><SourceBadge source={b.source} /></td>
                   </tr>
                 ))}
@@ -1595,14 +1595,14 @@ export default function SkipTracerV2Page() {
                 {selected.licenses!.map((l, i) => (
                   <tr key={`${l.type}-${l.number}-${l.state}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5 text-rmpg-100">{l.type || '—'}</td>
-                    <td className="px-2 py-1.5 text-[#c0ccdd] font-mono">{l.number || '—'}</td>
-                    <td className="px-2 py-1.5 text-[#c0ccdd]">{l.state || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-300 font-mono">{l.number || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-300">{l.state || '—'}</td>
                     <td className="px-2 py-1.5">
                       <span className={`text-[9px] uppercase font-bold ${
-                        (l.status || '').toLowerCase() === 'active' ? 'text-green-400' : 'text-[#556677]'
+                        (l.status || '').toLowerCase() === 'active' ? 'text-green-400' : 'text-rmpg-500'
                       }`}>{l.status || '—'}</span>
                     </td>
-                    <td className="px-2 py-1.5 text-[#8899aa] font-mono">{l.expirationDate || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-400 font-mono">{l.expirationDate || '—'}</td>
                     <td className="px-2 py-1.5"><SourceBadge source={l.source} /></td>
                   </tr>
                 ))}
@@ -1617,8 +1617,8 @@ export default function SkipTracerV2Page() {
                 {selected.vehicles!.map((v, i) => (
                   <tr key={`${v.vin || ''}-${v.plate || ''}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5 text-rmpg-100">{[v.year, v.make, v.model, v.color].filter(Boolean).join(' ') || '—'}</td>
-                    <td className="px-2 py-1.5 text-[#c0ccdd] font-mono">{v.plate ? `${v.plate}${v.plateState ? ` (${v.plateState})` : ''}` : '—'}</td>
-                    <td className="px-2 py-1.5 text-[#8899aa] font-mono">{v.vin || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-300 font-mono">{v.plate ? `${v.plate}${v.plateState ? ` (${v.plateState})` : ''}` : '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-400 font-mono">{v.vin || '—'}</td>
                     <td className="px-2 py-1.5"><SourceBadge source={v.source} /></td>
                   </tr>
                 ))}
@@ -1650,12 +1650,12 @@ export default function SkipTracerV2Page() {
                           <div className={`text-[11px] font-bold ${matched ? 'text-red-300' : 'text-green-300'}`}>
                             {w.listName || w.type || 'Watchlist'}: {matched ? 'MATCH' : 'CLEAR'}
                           </div>
-                          {w.details && <div className="text-[10px] text-[#8899aa] mt-0.5">{w.details}</div>}
+                          {w.details && <div className="text-[10px] text-rmpg-400 mt-0.5">{w.details}</div>}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         {w.confidence !== undefined && (
-                          <span className="text-[9px] font-mono text-[#556677]">{(w.confidence * 100).toFixed(0)}%</span>
+                          <span className="text-[9px] font-mono text-rmpg-500">{(w.confidence * 100).toFixed(0)}%</span>
                         )}
                         <SourceBadge source={w.source} />
                       </div>
@@ -1667,9 +1667,9 @@ export default function SkipTracerV2Page() {
                     <div className="flex items-center gap-2 text-red-300 font-bold text-[11px]">
                       <AlertTriangle size={14} /> Sex Offender Registry — {so.registryState || 'Unknown State'}
                     </div>
-                    {so.tier && <div className="text-[10px] text-[#8899aa] mt-1">Tier: {so.tier}</div>}
+                    {so.tier && <div className="text-[10px] text-rmpg-400 mt-1">Tier: {so.tier}</div>}
                     {so.offenses && so.offenses.length > 0 && (
-                      <div className="text-[10px] text-[#8899aa] mt-0.5">Offenses: {so.offenses.join('; ')}</div>
+                      <div className="text-[10px] text-rmpg-400 mt-0.5">Offenses: {so.offenses.join('; ')}</div>
                     )}
                   </div>
                 ))}
@@ -1706,10 +1706,10 @@ export default function SkipTracerV2Page() {
                                 {(ev.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                               </span>
                               {ev.date && (
-                                <span className="text-[9px] font-mono text-[#8899aa]">{ev.date}</span>
+                                <span className="text-[9px] font-mono text-rmpg-400">{ev.date}</span>
                               )}
                             </div>
-                            <div className="text-[10px] text-[#c0ccdd] mt-0.5">{ev.detail}</div>
+                            <div className="text-[10px] text-rmpg-300 mt-0.5">{ev.detail}</div>
                           </div>
                         </div>
                       );
@@ -1732,11 +1732,11 @@ export default function SkipTracerV2Page() {
         <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
           <Bookmark size={16} className="text-[#888888]" /> Saved Dossiers
         </h2>
-        <IconButton onClick={loadDossiers} className="text-[#556677] hover:text-rmpg-100 p-1" aria-label="Refresh dossiers"><RefreshCw size={14} /></IconButton>
+        <IconButton onClick={loadDossiers} className="text-rmpg-500 hover:text-rmpg-100 p-1" aria-label="Refresh dossiers"><RefreshCw size={14} /></IconButton>
       </div>
 
       <div className="relative mb-3">
-        <Search size={14} className="absolute left-2.5 top-2 text-[#556677]" />
+        <Search size={14} className="absolute left-2.5 top-2 text-rmpg-500" />
         <input id="ff-skiptracerv2page-3"
           type="text"
           value={dossierSearch}
@@ -1750,7 +1750,7 @@ export default function SkipTracerV2Page() {
       {dossiersLoading ? (
         <div className="space-y-2"><SkeletonCard /><SkeletonCard /><SkeletonCard /></div>
       ) : dossiers.length === 0 ? (
-        <div className="text-center text-[#556677] text-[11px] py-12">No saved dossiers yet</div>
+        <div className="text-center text-rmpg-500 text-[11px] py-12">No saved dossiers yet</div>
       ) : (
         <div className="space-y-2">
           {dossiers.map(d => (
@@ -1758,15 +1758,15 @@ export default function SkipTracerV2Page() {
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   <div className="text-[12px] font-bold text-rmpg-100">{d.subject_name}</div>
-                  <div className="text-[9px] text-[#556677] mt-0.5 font-mono">
+                  <div className="text-[9px] text-rmpg-500 mt-0.5 font-mono">
                     {d.created_at} {d.created_by_name && `by ${d.created_by_name}`}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <IconButton onClick={() => openDossier(d)} className="p-1.5 text-[#556677] hover:text-rmpg-100 hover:bg-surface-raised/50 rounded-sm" title="View" aria-label="View dossier">
+                  <IconButton onClick={() => openDossier(d)} className="p-1.5 text-rmpg-500 hover:text-rmpg-100 hover:bg-surface-raised/50 rounded-sm" title="View" aria-label="View dossier">
                     <Eye size={13} />
                   </IconButton>
-                  <IconButton onClick={() => handleExportPdf(d.id)} className="p-1.5 text-[#556677] hover:text-rmpg-100 hover:bg-surface-raised/50 rounded-sm" title="Export PDF" aria-label="Export dossier PDF">
+                  <IconButton onClick={() => handleExportPdf(d.id)} className="p-1.5 text-rmpg-500 hover:text-rmpg-100 hover:bg-surface-raised/50 rounded-sm" title="Export PDF" aria-label="Export dossier PDF">
                     <Download size={13} />
                   </IconButton>
                 </div>
@@ -1786,13 +1786,13 @@ export default function SkipTracerV2Page() {
         <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
           <History size={16} className="text-[#888888]" /> Search History
         </h2>
-        <IconButton onClick={loadHistory} className="text-[#556677] hover:text-rmpg-100 p-1" aria-label="Refresh history"><RefreshCw size={14} /></IconButton>
+        <IconButton onClick={loadHistory} className="text-rmpg-500 hover:text-rmpg-100 p-1" aria-label="Refresh history"><RefreshCw size={14} /></IconButton>
       </div>
 
       {historyLoading ? (
         <div className="space-y-2"><SkeletonCard /><SkeletonCard /><SkeletonCard /></div>
       ) : history.length === 0 ? (
-        <div className="text-center text-[#556677] text-[11px] py-12">No search history yet</div>
+        <div className="text-center text-rmpg-500 text-[11px] py-12">No search history yet</div>
       ) : (
         <div className="space-y-1.5">
           {history.map(h => {
@@ -1817,7 +1817,7 @@ export default function SkipTracerV2Page() {
                       </span>
                       <span className="text-[11px] text-rmpg-100 font-mono truncate">{queryDisplay}</span>
                     </div>
-                    <div className="text-[9px] text-[#556677] mt-0.5 font-mono flex items-center gap-2 flex-wrap">
+                    <div className="text-[9px] text-rmpg-500 mt-0.5 font-mono flex items-center gap-2 flex-wrap">
                       <Clock size={9} /> {h.created_at}
                       <span>&middot; {h.total_results} results</span>
                       <span>&middot; {h.duration_ms}ms</span>
@@ -1825,7 +1825,7 @@ export default function SkipTracerV2Page() {
                       {h.searcher_name && <span>&middot; {h.searcher_name}</span>}
                     </div>
                   </div>
-                  <IconButton onClick={() => rerunSearch(h)} className="p-1.5 text-[#556677] hover:text-[#a0a0a0] hover:bg-surface-raised/50 rounded-sm" title="Re-run" aria-label="Re-run search">
+                  <IconButton onClick={() => rerunSearch(h)} className="p-1.5 text-rmpg-500 hover:text-rmpg-400 hover:bg-surface-raised/50 rounded-sm" title="Re-run" aria-label="Re-run search">
                     <RefreshCw size={13} />
                   </IconButton>
                 </div>
@@ -1845,7 +1845,7 @@ export default function SkipTracerV2Page() {
         <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
           <Database size={16} className="text-[#888888]" /> Data Sources ({sources.length})
         </h2>
-        <IconButton onClick={loadSources} disabled={sourcesLoading} className="text-[#556677] hover:text-rmpg-100 p-1" aria-label="Refresh sources">
+        <IconButton onClick={loadSources} disabled={sourcesLoading} className="text-rmpg-500 hover:text-rmpg-100 p-1" aria-label="Refresh sources">
           <RefreshCw size={14} className={sourcesLoading ? 'animate-spin' : ''} />
         </IconButton>
       </div>
@@ -1855,7 +1855,7 @@ export default function SkipTracerV2Page() {
           <div key={cat} className="border border-border-subtle rounded-sm bg-surface-sunken p-2 text-center">
             <div className="text-[8px] font-bold uppercase tracking-wider mb-1" style={{ color: categoryColor(cat) }}>{cat}</div>
             <div className="text-[12px] font-bold text-rmpg-100">{counts.healthy}/{counts.total}</div>
-            <div className="text-[8px] text-[#556677]">healthy</div>
+            <div className="text-[8px] text-rmpg-500">healthy</div>
           </div>
         ))}
       </div>
@@ -1876,7 +1876,7 @@ export default function SkipTracerV2Page() {
                       style={{ backgroundColor: categoryColor(s.category) + '22', color: categoryColor(s.category) }}
                     >{(s.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                     {s.costPerLookup > 0
-                      ? <span className="text-[9px] text-[#556677] font-mono">${s.costPerLookup.toFixed(4)}/lookup</span>
+                      ? <span className="text-[9px] text-rmpg-500 font-mono">${s.costPerLookup.toFixed(4)}/lookup</span>
                       : <span className="text-[9px] text-green-400 font-mono">FREE</span>}
                   </div>
                 </div>
@@ -1885,7 +1885,7 @@ export default function SkipTracerV2Page() {
                 <span className={`text-[9px] uppercase font-bold ${s.configured ? 'text-green-500' : 'text-amber-500'}`}>
                   {s.configured ? 'Configured' : 'Needs Key'}
                 </span>
-                <span className={`text-[9px] uppercase font-bold ${s.enabled ? 'text-green-500' : 'text-[#556677]'}`}>
+                <span className={`text-[9px] uppercase font-bold ${s.enabled ? 'text-green-500' : 'text-rmpg-500'}`}>
                   {s.enabled ? 'ON' : 'OFF'}
                 </span>
               </div>
@@ -1904,7 +1904,7 @@ export default function SkipTracerV2Page() {
         <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
           <BarChart3 size={16} className="text-[#888888]" /> Usage Statistics
         </h2>
-        <IconButton onClick={loadStats} disabled={statsLoading} className="text-[#556677] hover:text-rmpg-100 p-1" aria-label="Refresh stats">
+        <IconButton onClick={loadStats} disabled={statsLoading} className="text-rmpg-500 hover:text-rmpg-100 p-1" aria-label="Refresh stats">
           <RefreshCw size={14} className={statsLoading ? 'animate-spin' : ''} />
         </IconButton>
       </div>
@@ -1912,7 +1912,7 @@ export default function SkipTracerV2Page() {
       {statsLoading ? (
         <div className="space-y-2"><SkeletonCard /><SkeletonCard /></div>
       ) : !stats ? (
-        <div className="text-center text-[#556677] text-[11px] py-12">No statistics available</div>
+        <div className="text-center text-rmpg-500 text-[11px] py-12">No statistics available</div>
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
@@ -1923,7 +1923,7 @@ export default function SkipTracerV2Page() {
             ].map(item => (
               <div key={item.label} className="border border-border-subtle rounded-sm bg-surface-sunken p-4 text-center">
                 <div className="text-[24px] font-bold font-mono" style={{ color: item.color }}>{item.value}</div>
-                <div className="text-[10px] text-[#556677] uppercase tracking-wider mt-1">{item.label}</div>
+                <div className="text-[10px] text-rmpg-500 uppercase tracking-wider mt-1">{item.label}</div>
               </div>
             ))}
           </div>
@@ -1935,7 +1935,7 @@ export default function SkipTracerV2Page() {
 
           {stats.topSources.length > 0 && (
             <div className="border border-border-subtle rounded-sm bg-surface-raised">
-              <div className="px-3 py-2 border-b border-border-subtle text-[10px] font-bold text-[#8899aa] uppercase tracking-wider">
+              <div className="px-3 py-2 border-b border-border-subtle text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                 Top Sources by Usage
               </div>
               <div className="p-2 space-y-1">
@@ -1949,7 +1949,7 @@ export default function SkipTracerV2Page() {
                         <div className="h-full rounded-sm transition-all" style={{ width: `${pct}%`, backgroundColor: '#888888' }} />
                         <span className="absolute left-2 top-0.5 text-[10px] text-rmpg-100 font-mono">{s.name}</span>
                       </div>
-                      <span className="text-[10px] text-[#8899aa] font-mono w-8 text-right">{s.count}</span>
+                      <span className="text-[10px] text-rmpg-400 font-mono w-8 text-right">{s.count}</span>
                     </div>
                   );
                 })}

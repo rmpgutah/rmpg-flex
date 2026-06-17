@@ -186,7 +186,7 @@ export default function StatuteAnalyticsPage() {
               <div key={i} className="text-[10px] flex gap-2 items-center">
                 <span className="text-rmpg-500 w-5">{i + 1}.</span>
                 <span className="text-rmpg-100 font-mono w-24">{s.citation}</span>
-                <span className="text-rmpg-300 flex-1 truncate">{s.short_title}</span>
+                <span className="text-rmpg-300 min-w-0 flex-1 truncate">{s.short_title}</span>
                 <span className="text-brand-400 font-bold">{s.total_count || s.citation_count}</span>
               </div>
             ))}
@@ -369,7 +369,7 @@ export default function StatuteAnalyticsPage() {
                     }
                   }
                   return pairs.sort((x, y) => y.score - x.score).slice(0, 8).map((p, i) => (
-                    <div key={i} className="flex items-center gap-2 py-1 border-b border-[#2b2b2b]/50 last:border-0">
+                    <div key={i} className="flex items-center gap-2 py-1 border-b border-rmpg-700/50 last:border-0">
                       <span className="text-[9px] font-mono text-rmpg-400 w-20 shrink-0 truncate">{p.a}</span>
                       <span className="text-[9px] text-rmpg-500">frequently occurs with</span>
                       <span className="text-[9px] font-mono text-rmpg-400 w-20 shrink-0 truncate">{p.b}</span>

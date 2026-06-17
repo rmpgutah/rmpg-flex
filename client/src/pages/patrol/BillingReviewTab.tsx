@@ -43,15 +43,15 @@ export default function BillingReviewTab() {
       {loading ? <div className="text-[11px] text-[#888]">Loading…</div> : (
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="text-left text-[9px] font-semibold text-[#888] border-b border-[#232323]">
+            <tr className="text-left text-[9px] font-semibold text-[#888] border-b border-border-default">
               <th className="py-[3px]">JOB</th><th>CLIENT/CONTRACT</th><th>LINES</th><th>SUBTOTAL</th><th></th>
             </tr>
           </thead>
           <tbody>
             {charges.map((ch) => (
               <tr key={ch.id} className="border-b border-[#121212] align-top">
-                <td className="py-[3px] text-[#ccc]">{ch.defendant_name ?? ch.serve_queue_id} {ch.case_number ? <span className="text-[#666]">({ch.case_number})</span> : null}</td>
-                <td className={ch.contract_id ? 'text-[#ccc]' : 'text-[#e0533d]'}>{ch.client_name ?? (ch.contract_id ? `Contract ${ch.contract_id}` : 'UNASSIGNED CONTRACT')}</td>
+                <td className="py-[3px] text-rmpg-300">{ch.defendant_name ?? ch.serve_queue_id} {ch.case_number ? <span className="text-rmpg-500">({ch.case_number})</span> : null}</td>
+                <td className={ch.contract_id ? 'text-rmpg-300' : 'text-[#e0533d]'}>{ch.client_name ?? (ch.contract_id ? `Contract ${ch.contract_id}` : 'UNASSIGNED CONTRACT')}</td>
                 <td className="text-[#888]">
                   {(ch.lines ?? []).map((l, i) => (
                     <div key={i}>{l.description} — {l.quantity} × {formatUsd(l.unit_price)} = {formatUsd(l.line_total)}</div>

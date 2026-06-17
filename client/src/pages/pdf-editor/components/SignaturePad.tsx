@@ -75,7 +75,7 @@ export default function SignaturePad({ open, onClose, onConfirm }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#141414] border border-[#222222] rounded-[2px] p-4 max-w-[680px] w-full" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] p-4 max-w-[680px] w-full" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-rmpg-100">Draw signature</h3>
           <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
@@ -83,7 +83,7 @@ export default function SignaturePad({ open, onClose, onConfirm }: Props) {
         <p className="text-[10px] text-rmpg-500 mb-2">Sign with your mouse, trackpad, or touch screen. The signature is embedded as a PNG image.</p>
         <canvas
           ref={canvasRef}
-          className="w-full bg-white border border-[#333] rounded-sm cursor-crosshair touch-none"
+          className="w-full bg-white border border-border-subtle rounded-sm cursor-crosshair touch-none"
           onMouseDown={(e) => { const p = toCoords(e); start(p.x, p.y); }}
           onMouseMove={(e) => { const p = toCoords(e); draw(p.x, p.y); }}
           onMouseUp={end}

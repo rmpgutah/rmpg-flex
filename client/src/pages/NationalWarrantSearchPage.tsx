@@ -307,7 +307,7 @@ export default function NationalWarrantSearchPage() {
 
   // ── Render ────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-[#0a0a0a]">
+    <div className="flex flex-col h-full overflow-hidden bg-surface-sunken">
       {/* ─── Header ──────────────────────────────────── */}
       <PanelTitleBar title="NATIONAL WARRANT SEARCH" icon={Globe}>
         <span className="text-[10px] text-rmpg-400 font-mono tracking-wide">
@@ -611,7 +611,7 @@ export default function NationalWarrantSearchPage() {
                 <div key={stateCode} className="panel-raised overflow-hidden">
                   <button
                     onClick={() => toggleGroup(stateCode)}
-                    className="w-full flex items-center gap-2 px-3 py-2 bg-surface-raised border-b border-[#1a1a1a] hover:bg-surface-sunken transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-2 bg-surface-raised border-b border-border-default hover:bg-surface-sunken transition-colors"
                   >
                     <ChevronDown className={`w-3 h-3 text-rmpg-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
                     <MapPin className="w-3.5 h-3.5 text-rmpg-400" />
@@ -692,10 +692,10 @@ function WarrantRow({ warrant }: { warrant: any }) {
         <img
           src={warrant.photo_url}
           alt=""
-          className="w-10 h-12 rounded object-cover border border-[#1a1a1a] flex-shrink-0"
+          className="w-10 h-12 rounded object-cover border border-border-default flex-shrink-0"
         />
       ) : (
-        <div className="w-10 h-12 rounded bg-surface-sunken border border-[#1a1a1a] flex items-center justify-center flex-shrink-0">
+        <div className="w-10 h-12 rounded bg-surface-sunken border border-border-default flex items-center justify-center flex-shrink-0">
           <User className="w-4 h-4 text-rmpg-500" />
         </div>
       )}
@@ -744,7 +744,7 @@ function WarrantRow({ warrant }: { warrant: any }) {
             </span>
           )}
           {warrant.source && (
-            <span className="text-[10px] bg-surface-sunken text-rmpg-500 border border-[#1a1a1a] px-1.5 py-0.5 rounded">
+            <span className="text-[10px] bg-surface-sunken text-rmpg-500 border border-border-default px-1.5 py-0.5 rounded">
               {warrant.source}
             </span>
           )}

@@ -133,7 +133,7 @@ export default function DashcamPage() {
 
       {status && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-surface-raised border border-[#222] p-3">
+          <div className="bg-surface-raised border border-border-default p-3">
             <div className="text-xs text-text-muted flex items-center gap-1">
               <Radio className="w-3 h-3" /> RECEIVER
             </div>
@@ -147,21 +147,21 @@ export default function DashcamPage() {
             </div>
             <div className="text-xs text-text-muted mt-1">Port {status.port}</div>
           </div>
-          <div className="bg-surface-raised border border-[#222] p-3">
+          <div className="bg-surface-raised border border-border-default p-3">
             <div className="text-xs text-text-muted flex items-center gap-1">
               <Monitor className="w-3 h-3" /> DEVICES
             </div>
             <div className="text-lg font-semibold mt-1 text-[#d4a017]">{status.deviceCount}</div>
             <div className="text-xs text-text-muted mt-1">{devices.filter(d => d.is_active).length} active</div>
           </div>
-          <div className="bg-surface-raised border border-[#222] p-3">
+          <div className="bg-surface-raised border border-border-default p-3">
             <div className="text-xs text-text-muted flex items-center gap-1">
               <MapPin className="w-3 h-3" /> PROTOCOL
             </div>
             <div className="text-sm font-semibold mt-1 text-[#d4a017]">H-protocol</div>
             <div className="text-xs text-text-muted mt-1">{status.models?.join(', ')}</div>
           </div>
-          <div className="bg-surface-raised border border-[#222] p-3">
+          <div className="bg-surface-raised border border-border-default p-3">
             <div className="text-xs text-text-muted flex items-center gap-1">
               <Activity className="w-3 h-3" /> UPTIME
             </div>
@@ -174,21 +174,21 @@ export default function DashcamPage() {
 
       <div className="grid grid-cols-3 gap-4" style={{ minHeight: '400px' }}>
         <div className="col-span-2 space-y-3">
-          <div className="bg-surface-raised border border-[#222]">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[#222]">
+          <div className="bg-surface-raised border border-border-default">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold tracking-wider text-text-muted">
                   {tab === 'devices' ? 'DEVICES' : 'EVENTS'}
                 </span>
                 <div className="flex items-center gap-1 ml-2">
                   <button
-                    className={`px-2 py-0.5 text-xs ${tab === 'devices' ? 'bg-[#d4a017] text-black' : 'bg-[#1a1a1a] text-text-muted'}`}
+                    className={`px-2 py-0.5 text-xs ${tab === 'devices' ? 'bg-[#d4a017] text-black' : 'bg-surface-raised text-text-muted'}`}
                     onClick={() => setTab('devices')}
                   >
                     Devices
                   </button>
                   <button
-                    className={`px-2 py-0.5 text-xs ${tab === 'events' ? 'bg-[#d4a017] text-black' : 'bg-[#1a1a1a] text-text-muted'}`}
+                    className={`px-2 py-0.5 text-xs ${tab === 'events' ? 'bg-[#d4a017] text-black' : 'bg-surface-raised text-text-muted'}`}
                     onClick={() => setTab('events')}
                   >
                     Events
@@ -197,7 +197,7 @@ export default function DashcamPage() {
               </div>
               <div className="flex items-center gap-2">
                 {tab === 'devices' && (
-                  <div className="flex items-center gap-1 bg-[#0a0a0a] border border-[#222] px-2 py-0.5">
+                  <div className="flex items-center gap-1 bg-surface-sunken border border-border-default px-2 py-0.5">
                     <Search className="w-3 h-3 text-text-muted" />
                     <input id="ff-dashcampage-0"
                       className="bg-transparent border-none outline-none text-xs text-text-default w-32"
@@ -217,7 +217,7 @@ export default function DashcamPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-text-muted font-semibold tracking-wider border-b border-[#222]">
+                    <tr className="text-text-muted font-semibold tracking-wider border-b border-border-default">
                       <th className="text-left px-3 py-1.5">Device ID</th>
                       <th className="text-left px-3 py-1.5">Label</th>
                       <th className="text-left px-3 py-1.5">Unit</th>
@@ -230,7 +230,7 @@ export default function DashcamPage() {
                     {devices.map((d: any) => (
                       <tr
                         key={d.id}
-                        className={`border-b border-[#1a1a1a] cursor-pointer hover:bg-[#1a1a1a] ${selectedDevice?.id === d.id ? 'bg-[#1a1a1a]' : ''}`}
+                        className={`border-b border-border-default cursor-pointer hover:bg-surface-raised ${selectedDevice?.id === d.id ? 'bg-surface-raised' : ''}`}
                         onClick={() => loadDeviceDetail(d.id)}
                       >
                         <td className="px-3 py-1.5 font-mono text-[#d4a017]">{d.device_id}</td>
@@ -256,7 +256,7 @@ export default function DashcamPage() {
                   </tbody>
                 </table>
                 {total > 50 && (
-                  <div className="flex items-center justify-between px-3 py-2 border-t border-[#222] text-xs text-text-muted">
+                  <div className="flex items-center justify-between px-3 py-2 border-t border-border-default text-xs text-text-muted">
                     <span>{total} total devices</span>
                     <div className="flex gap-2">
                       <button disabled={page <= 1} onClick={() => fetchDevices(page - 1, search)} className="disabled:opacity-30">Prev</button>
@@ -272,7 +272,7 @@ export default function DashcamPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-text-muted font-semibold tracking-wider border-b border-[#222]">
+                    <tr className="text-text-muted font-semibold tracking-wider border-b border-border-default">
                       <th className="text-left px-3 py-1.5">Time</th>
                       <th className="text-left px-3 py-1.5">Device</th>
                       <th className="text-left px-3 py-1.5">Event</th>
@@ -282,7 +282,7 @@ export default function DashcamPage() {
                   </thead>
                   <tbody>
                     {events.map((e: any) => (
-                      <tr key={e.id} className="border-b border-[#1a1a1a]">
+                      <tr key={e.id} className="border-b border-border-default">
                         <td className="px-3 py-1.5 font-mono text-text-muted">{e.event_at}</td>
                         <td className="px-3 py-1.5">
                           <span className="text-[#d4a017]">{e.device_id}</span>
@@ -312,8 +312,8 @@ export default function DashcamPage() {
 
         <div className="space-y-3">
           {selectedDevice && deviceDetail ? (
-            <div className="bg-surface-raised border border-[#222]">
-              <div className="px-3 py-2 border-b border-[#222] flex items-center justify-between">
+            <div className="bg-surface-raised border border-border-default">
+              <div className="px-3 py-2 border-b border-border-default flex items-center justify-between">
                 <span className="text-xs font-semibold tracking-wider text-[#d4a017]">{deviceDetail.device_id}</span>
                 <div className="flex items-center gap-1">
                   <IconButton onClick={() => loadDeviceDetail(selectedDevice.id)} aria-label="Refresh detail">
@@ -329,7 +329,7 @@ export default function DashcamPage() {
                   <div>
                     <span className="text-text-muted">Label</span>
                     <input id="ff-dashcampage-1"
-                      className="w-full bg-[#0a0a0a] border border-[#222] px-2 py-0.5 text-text-default mt-0.5"
+                      className="w-full bg-surface-sunken border border-border-default px-2 py-0.5 text-text-default mt-0.5"
                       value={deviceDetail.label || ''}
                       onChange={e => setDeviceDetail({ ...deviceDetail, label: e.target.value })}
                       onBlur={() => updateDevice(deviceDetail.id, { label: deviceDetail.label })}
@@ -338,7 +338,7 @@ export default function DashcamPage() {
                   <div>
                     <span className="text-text-muted">Unit ID</span>
                     <input id="ff-dashcampage-2"
-                      className="w-full bg-[#0a0a0a] border border-[#222] px-2 py-0.5 text-text-default mt-0.5"
+                      className="w-full bg-surface-sunken border border-border-default px-2 py-0.5 text-text-default mt-0.5"
                       type="number"
                       value={deviceDetail.unit_id || ''}
                       onChange={e => setDeviceDetail({ ...deviceDetail, unit_id: parseInt(e.target.value) || null })}
@@ -363,7 +363,7 @@ export default function DashcamPage() {
                   </div>
                 </div>
 
-                <div className="border-t border-[#222] pt-2">
+                <div className="border-t border-border-default pt-2">
                   <div className="text-text-muted mb-1">Last Position</div>
                   {deviceDetail.last_lat ? (
                     <div className="text-text-default">
@@ -378,7 +378,7 @@ export default function DashcamPage() {
                   )}
                 </div>
 
-                <div className="border-t border-[#222] pt-2">
+                <div className="border-t border-border-default pt-2">
                   <div className="text-text-muted mb-1">
                     Recent Events ({deviceDetail.recent_events?.length || 0})
                   </div>
@@ -394,7 +394,7 @@ export default function DashcamPage() {
                   )}
                 </div>
 
-                <div className="border-t border-[#222] pt-2">
+                <div className="border-t border-border-default pt-2">
                   <div className="text-text-muted">
                     GPS points (24h): <span className="text-text-default">{deviceDetail.gps_count_24h || 0}</span>
                   </div>
@@ -405,7 +405,7 @@ export default function DashcamPage() {
               </div>
             </div>
           ) : (
-            <div className="bg-surface-raised border border-[#222] p-6 flex flex-col items-center justify-center text-text-muted">
+            <div className="bg-surface-raised border border-border-default p-6 flex flex-col items-center justify-center text-text-muted">
               <Camera className="w-8 h-8 mb-2 opacity-30" />
               <div className="text-xs text-center">
                 <p className="font-semibold text-text-default mb-1">Howen / VizTrack Dashcam System</p>
@@ -417,7 +417,7 @@ export default function DashcamPage() {
             </div>
           )}
 
-          <div className="bg-surface-raised border border-[#222] p-3">
+          <div className="bg-surface-raised border border-border-default p-3">
             <div className="text-xs font-semibold tracking-wider text-text-muted mb-2">QUICK TIPS</div>
             <ul className="text-[10px] text-text-muted space-y-1">
               <li>• Devices auto-register on first TCP connection</li>

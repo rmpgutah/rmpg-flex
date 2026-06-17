@@ -173,26 +173,26 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-[11px] font-mono border border-[#222]">
+        <table className="w-full text-[11px] font-mono border border-border-default">
           <thead>
             <tr className="bg-surface-raised text-rmpg-400 text-[9px] uppercase">
-              <th className="px-1.5 py-1 text-left border-b border-[#222]">#</th>
-              <th className="px-1.5 py-1 text-left border-b border-[#222]">First</th>
-              <th className="px-1.5 py-1 text-left border-b border-[#222]">Middle</th>
-              <th className="px-1.5 py-1 text-left border-b border-[#222]">Last</th>
-              <th className="px-1.5 py-1 text-left border-b border-[#222]">DOB</th>
-              <th className="px-1.5 py-1 text-left border-b border-[#222]">Sex</th>
-              <th className="px-1.5 py-1 text-left border-b border-[#222]">Address</th>
-              <th className="px-1.5 py-1 text-left border-b border-[#222]">Contract ID</th>
-              <th className="px-1.5 py-1 text-left border-b border-[#222]">Business Name (optional)</th>
-              <th className="px-1.5 py-1 text-left border-b border-[#222]"></th>
+              <th className="px-1.5 py-1 text-left border-b border-border-default">#</th>
+              <th className="px-1.5 py-1 text-left border-b border-border-default">First</th>
+              <th className="px-1.5 py-1 text-left border-b border-border-default">Middle</th>
+              <th className="px-1.5 py-1 text-left border-b border-border-default">Last</th>
+              <th className="px-1.5 py-1 text-left border-b border-border-default">DOB</th>
+              <th className="px-1.5 py-1 text-left border-b border-border-default">Sex</th>
+              <th className="px-1.5 py-1 text-left border-b border-border-default">Address</th>
+              <th className="px-1.5 py-1 text-left border-b border-border-default">Contract ID</th>
+              <th className="px-1.5 py-1 text-left border-b border-border-default">Business Name (optional)</th>
+              <th className="px-1.5 py-1 text-left border-b border-border-default"></th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r, idx) => {
               const isBiz = r.kind === 'business' || !!r.businessName.trim();
               return (
-                <tr key={idx} className="border-b border-[#1a1a1a]">
+                <tr key={idx} className="border-b border-border-default">
                   <td className="px-1.5 py-1 text-rmpg-500 align-top">{idx + 1}</td>
                   {(['firstName', 'middleName', 'lastName', 'dob', 'sex', 'address', 'contractId', 'businessName'] as const).map((field) => (
                     <td key={field} className="px-0 py-0 align-top">
@@ -212,7 +212,7 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
                           field === 'address' ? '123 Main St, City, ST 00000' :
                           ''
                         }
-                        className="w-full bg-transparent border-0 px-1.5 py-1 text-[11px] text-rmpg-100 focus:outline-none focus:bg-amber-900/10 disabled:bg-[#0a0a0a] disabled:text-rmpg-700"
+                        className="w-full bg-transparent border-0 px-1.5 py-1 text-[11px] text-rmpg-100 focus:outline-none focus:bg-amber-900/10 disabled:bg-surface-sunken disabled:text-rmpg-700"
                         style={{ minWidth: field === 'address' ? 220 : field === 'businessName' ? 180 : field === 'middleName' ? 70 : 100 }}
                       />
                     </td>

@@ -1830,7 +1830,7 @@ export default function PdfEditorPage() {
               className={`px-3 py-2 rounded-sm border text-[11px] shadow-lg max-w-[320px] ${
                 t.kind === 'ok' ? 'bg-green-900/30 border-green-700/50 text-green-200' :
                 t.kind === 'warn' ? 'bg-yellow-900/30 border-yellow-700/50 text-yellow-200' :
-                'bg-[#0d0d0d] border-[#222] text-rmpg-200'
+                'bg-surface-base border-border-default text-rmpg-200'
               }`}>{t.text}</div>
           ))}
         </div>
@@ -1932,7 +1932,7 @@ export default function PdfEditorPage() {
       )}
 
       {!hasDocument && (
-        <div className="flex-1 bg-[#0d0d0d] border border-[#222222] rounded-[2px] p-12 text-center flex flex-col items-center justify-center">
+        <div className="flex-1 bg-surface-base border border-border-default rounded-[2px] p-12 text-center flex flex-col items-center justify-center">
           <FileText className="w-16 h-16 mb-4 text-rmpg-600" />
           <div className="text-base text-rmpg-200 mb-2 font-semibold">PDF Editor</div>
           <div className="text-xs text-rmpg-500 mb-6 max-w-md">View, annotate, redact, sign, stamp, watermark, reorder, rotate, merge — all running locally in your browser. Files never leave the device.</div>
@@ -1950,7 +1950,7 @@ export default function PdfEditorPage() {
           prefs / JSON I/O / print. These are kept out of the main EditorToolbar
           so that toolbar stays tight; quick actions live just below it. */}
       {hasDocument && !viewOnly && (
-        <div className={`flex items-center gap-1 bg-[#0d0d0d] border border-[#222] rounded-[2px] px-2 py-1 mb-2 text-[10px] text-rmpg-300 ${isMobile ? 'flex-wrap overflow-x-auto' : ''}`}>
+        <div className={`flex items-center gap-1 bg-surface-base border border-border-default rounded-[2px] px-2 py-1 mb-2 text-[10px] text-rmpg-300 ${isMobile ? 'flex-wrap overflow-x-auto' : ''}`}>
           {isMobile && (
             <>
               <button type="button" onClick={() => setMobileToolsOpen(v => !v)} title="Toggle tools"
@@ -2013,7 +2013,7 @@ export default function PdfEditorPage() {
           <label className="inline-flex items-center gap-1 px-1" title="PNG export resolution">
             <span className="text-[9px] uppercase tracking-wider text-rmpg-500">DPI</span>
             <select id="ff-pdfeditorpage-pngdpi" value={pngDpi} onChange={e => setPngDpi(parseInt(e.target.value, 10))}
-              className="bg-[#0a0a0a] border border-[#222] text-[10px] text-rmpg-200 px-1 py-0.5 rounded-sm">
+              className="bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1 py-0.5 rounded-sm">
               <option value={72}>72</option>
               <option value={150}>150</option>
               <option value={300}>300</option>
@@ -2027,7 +2027,7 @@ export default function PdfEditorPage() {
           <label className="inline-flex items-center gap-1 px-1" title="Lock the Crop tool to a fixed aspect ratio">
             <span className="text-[9px] uppercase tracking-wider text-rmpg-500">Crop AR</span>
             <select id="ff-pdfeditorpage-cropar" value={cropAspect} onChange={e => setCropAspect(parseFloat(e.target.value))}
-              className={`bg-[#0a0a0a] border text-[10px] px-1 py-0.5 rounded-sm ${cropAspect > 0 ? 'border-[#d4a017] text-[#d4a017]' : 'border-[#222] text-rmpg-200'}`}>
+              className={`bg-surface-sunken border text-[10px] px-1 py-0.5 rounded-sm ${cropAspect > 0 ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-rmpg-200'}`}>
               <option value={0}>Free</option>
               <option value={1}>1:1</option>
               <option value={4 / 3}>4:3</option>
@@ -2064,7 +2064,7 @@ export default function PdfEditorPage() {
           <label className="inline-flex items-center gap-1 px-1" title="Category applied to new sticky notes">
             <span className="text-[9px] uppercase tracking-wider text-rmpg-500">Note</span>
             <select id="ff-pdfeditorpage-stickycat" value={stickyCategory} onChange={e => setStickyCategory(e.target.value as StickyCategory)}
-              className="bg-[#0a0a0a] border border-[#222] text-[10px] text-rmpg-200 px-1 py-0.5 rounded-sm">
+              className="bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1 py-0.5 rounded-sm">
               {(Object.keys(STICKY_CATEGORIES) as StickyCategory[]).map(k => (
                 <option key={k} value={k}>{STICKY_CATEGORIES[k].label}</option>
               ))}
@@ -2077,8 +2077,8 @@ export default function PdfEditorPage() {
               {prefs.annotationPresets.map(ps => (
                 <span key={ps.id} className="inline-flex items-center group">
                   <button type="button" onClick={() => applyPreset(ps)} title={`Apply "${ps.name}" (${ps.color}, ${ps.strokeWidth}px)`}
-                    className="px-1.5 py-0.5 rounded-sm border border-[#222] hover:border-[#d4a017] inline-flex items-center gap-1">
-                    <span className="w-2.5 h-2.5 rounded-sm border border-[#333]" style={{ background: ps.color }} />
+                    className="px-1.5 py-0.5 rounded-sm border border-border-default hover:border-[#d4a017] inline-flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-sm border border-border-subtle" style={{ background: ps.color }} />
                     <span className="text-[9px] max-w-[70px] truncate">{ps.name}</span>
                   </button>
                   <button type="button" onClick={() => deletePreset(ps.id)} aria-label={`Delete preset ${ps.name}`} title="Delete preset"
@@ -2120,7 +2120,7 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Printer className="w-3 h-3" /> Print</button>
           <div className="flex-1" />
           <select id="ff-pdfeditorpage-4" value={prefs.viewMode} onChange={(e) => setPrefs({ ...prefs, viewMode: e.target.value as EditorPreferences['viewMode'] })}
-            className="bg-[#0a0a0a] border border-[#222] text-[10px] text-rmpg-200 px-1.5 py-0.5 rounded-sm">
+            className="bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1.5 py-0.5 rounded-sm">
             <option value="continuous">Continuous</option>
             <option value="single">Single page</option>
             <option value="two-up">Two-up</option>
@@ -2151,7 +2151,7 @@ export default function PdfEditorPage() {
       )}
 
       {hasDocument && viewOnly && (
-        <div className="bg-[#0d0d0d] border border-[#222222] rounded-[2px] px-3 py-1.5 mb-2 flex items-center gap-2 text-[10px] text-rmpg-400">
+        <div className="bg-surface-base border border-border-default rounded-[2px] px-3 py-1.5 mb-2 flex items-center gap-2 text-[10px] text-rmpg-400">
           <span className="text-[#d4a017] font-semibold uppercase tracking-wider">View-only</span>
           <span>— editing tools are hidden. Click "Edit this PDF" to enable annotation, redaction, signatures, and more.</span>
           <button type="button" onClick={enableEditing} className="ml-auto btn-secondary text-[10px]">Edit this PDF</button>
@@ -2163,7 +2163,7 @@ export default function PdfEditorPage() {
           {/* Tool palette: docked on desktop; an off-canvas drawer on mobile so
               the canvas keeps the full width. */}
           {!viewOnly && (!isMobile || mobileToolsOpen) && (
-            <div className={isMobile ? 'absolute left-0 top-0 bottom-0 z-30 bg-[#0a0a0a] border-r border-[#222] shadow-xl' : 'contents'}>
+            <div className={isMobile ? 'absolute left-0 top-0 bottom-0 z-30 bg-surface-sunken border-r border-border-default shadow-xl' : 'contents'}>
               <ToolPalette tool={tool} onTool={setTool} color={color} onColor={setColor} strokeWidth={strokeWidth} onStrokeWidth={setStrokeWidth} />
               {isMobile && (
                 <button type="button" onClick={() => setMobileToolsOpen(false)} aria-label="Close tools"
@@ -2174,7 +2174,7 @@ export default function PdfEditorPage() {
 
           {/* Page thumbnail rail: docked on desktop; drawer on mobile. */}
           {(!isMobile || mobileThumbsOpen) && (
-            <div className={isMobile ? 'absolute left-0 top-0 bottom-0 z-30 bg-[#0a0a0a] border-r border-[#222] shadow-xl overflow-y-auto' : 'contents'}>
+            <div className={isMobile ? 'absolute left-0 top-0 bottom-0 z-30 bg-surface-sunken border-r border-border-default shadow-xl overflow-y-auto' : 'contents'}>
               <ThumbnailSidebar
                 pdfBytes={bytes}
                 pages={state.pages}
@@ -2203,7 +2203,7 @@ export default function PdfEditorPage() {
           )}
 
           <div ref={scrollerRef} onScroll={onScroll}
-            className={`flex-1 overflow-auto bg-[#050505] border border-[#222222] rounded-[2px] p-4 relative ${
+            className={`flex-1 overflow-auto bg-surface-overlay border border-border-default rounded-[2px] p-4 relative ${
               prefs.viewMode === 'two-up' ? 'flex flex-row flex-wrap justify-center gap-4 content-start'
               : prefs.viewMode === 'single' ? 'flex flex-col items-center'
               : 'space-y-4'

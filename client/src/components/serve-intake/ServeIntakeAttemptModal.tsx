@@ -149,11 +149,11 @@ export default function ServeIntakeAttemptModal({
       onClick={onClose}
     >
       <div
-        className="bg-surface-base border border-[#222] rounded-sm w-full max-w-xl max-h-[90vh] overflow-y-auto"
+        className="bg-surface-base border border-border-default rounded-sm w-full max-w-xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#222] sticky top-0 bg-surface-base">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border-default sticky top-0 bg-surface-base">
           <div>
             <div className="text-[10px] uppercase tracking-wider text-rmpg-500 font-bold">Log Service Attempt</div>
             <div className="text-sm text-rmpg-100 font-bold truncate">{recipientName}</div>
@@ -236,7 +236,7 @@ export default function ServeIntakeAttemptModal({
                     className={`flex-1 text-[10px] font-bold px-2 py-1.5 border rounded-sm transition-colors ${
                       attemptType === t.value
                         ? 'border-brand-500 bg-brand-900/40 text-brand-300'
-                        : 'border-[#2e2e2e] text-rmpg-400 hover:bg-surface-raised'
+                        : 'border-rmpg-700 text-rmpg-400 hover:bg-surface-raised'
                     }`}
                   >
                     {t.label}
@@ -253,7 +253,7 @@ export default function ServeIntakeAttemptModal({
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
                 placeholder="Description, recipient demographics, witness, etc."
-                className="w-full bg-surface-sunken border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:outline-none focus:border-brand-500"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:outline-none focus:border-brand-500"
               />
             </div>
 
@@ -283,7 +283,7 @@ export default function ServeIntakeAttemptModal({
               <button
                 onClick={onClose}
                 disabled={submitting}
-                className="px-4 py-2 border border-[#2e2e2e] text-rmpg-400 hover:bg-surface-raised text-xs font-bold uppercase rounded-sm"
+                className="px-4 py-2 border border-rmpg-700 text-rmpg-400 hover:bg-surface-raised text-xs font-bold uppercase rounded-sm"
               >
                 Cancel
               </button>

@@ -261,7 +261,7 @@ export default function MobileShiftPage() {
                   <label key={slot.key}
                     className={[
                       'relative block border min-h-[96px] p-2 text-center cursor-pointer touch-manipulation',
-                      has ? 'border-[#d4a017] bg-[#1a1a0d]' : 'border-[#222] bg-[#0d0d0d]',
+                      has ? 'border-[#d4a017] bg-[#1a1a0d]' : 'border-border-default bg-surface-base',
                     ].join(' ')}>
                     <input
                       ref={(el) => { fileInputs.current[slot.key] = el; }}
@@ -286,7 +286,7 @@ export default function MobileShiftPage() {
                   onClick={() => setFuel(lvl)}
                   className={[
                     'h-12 border text-sm font-bold touch-manipulation',
-                    fuel === lvl ? 'border-[#d4a017] bg-[#1a1a0d] text-[#d4a017]' : 'border-[#222] bg-[#0d0d0d] text-rmpg-300',
+                    fuel === lvl ? 'border-[#d4a017] bg-[#1a1a0d] text-[#d4a017]' : 'border-border-default bg-surface-base text-rmpg-300',
                   ].join(' ')}>{lvl}</button>
               ))}
             </div>
@@ -297,7 +297,7 @@ export default function MobileShiftPage() {
             <input type="number" inputMode="numeric" min={0} step="0.1"
               value={odometer} onChange={(e) => setOdometer(e.target.value)}
               placeholder="e.g. 45230"
-              className="w-full h-12 bg-[#0d0d0d] border border-[#222] text-rmpg-100 text-base font-mono px-3 focus:border-[#d4a017] outline-none" />
+              className="w-full h-12 bg-surface-base border border-border-default text-rmpg-100 text-base font-mono px-3 focus:border-[#d4a017] outline-none" />
             {activePhase === 'post' && ctx.starting_mileage != null && (
               <div className="mt-1 text-[10px] text-rmpg-500">Started at {ctx.starting_mileage.toLocaleString()}</div>
             )}
@@ -309,8 +309,8 @@ export default function MobileShiftPage() {
               {EQUIPMENT_ITEMS.map((it) => {
                 const cur = equipment[it.key];
                 return (
-                  <div key={it.key} className="flex items-center justify-between gap-2 border border-[#1a1a1a] bg-[#0d0d0d] px-2 py-1.5">
-                    <span className="text-gray-200 text-sm flex-1 truncate">{it.label}</span>
+                  <div key={it.key} className="flex items-center justify-between gap-2 border border-border-default bg-surface-base px-2 py-1.5">
+                    <span className="text-rmpg-200 text-sm min-w-0 flex-1 truncate">{it.label}</span>
                     {(['ok', 'missing', 'damaged'] as EquipmentState[]).map((s) => (
                       <button key={s} type="button" onClick={() => setEquipState(it.key, s)}
                         className={[
@@ -319,7 +319,7 @@ export default function MobileShiftPage() {
                             ? s === 'ok' ? 'border-green-600 bg-green-950/40 text-green-300'
                               : s === 'missing' ? 'border-amber-600 bg-amber-950/40 text-amber-300'
                               : 'border-red-700 bg-red-950/40 text-red-300'
-                            : 'border-[#222] bg-[#0d0d0d] text-rmpg-500',
+                            : 'border-border-default bg-surface-base text-rmpg-500',
                         ].join(' ')}>{s}</button>
                     ))}
                   </div>
@@ -333,13 +333,13 @@ export default function MobileShiftPage() {
             <textarea value={damage} onChange={(e) => setDamage(e.target.value)}
               rows={3} maxLength={1000}
               placeholder="Any new dents, broken lights, fluid leaks, missing items, etc."
-              className="w-full bg-[#0d0d0d] border border-[#222] text-rmpg-100 text-sm p-2 focus:border-[#d4a017] outline-none" />
+              className="w-full bg-surface-base border border-border-default text-rmpg-100 text-sm p-2 focus:border-[#d4a017] outline-none" />
           </Section>
 
           {/* SUBMIT */}
           <div className="flex gap-2 mt-4">
             <button type="button" onClick={() => submit(false)} disabled={saving}
-              className="flex-1 h-12 bg-[#1a1a1a] border border-[#222] text-rmpg-300 text-xs uppercase tracking-widest font-bold disabled:opacity-50">
+              className="flex-1 h-12 bg-surface-raised border border-border-default text-rmpg-300 text-xs uppercase tracking-widest font-bold disabled:opacity-50">
               Save progress
             </button>
             <button type="button" onClick={() => submit(true)} disabled={saving}
@@ -356,7 +356,7 @@ export default function MobileShiftPage() {
 // ── Sub-components ─────────────────────────────────────────────────────────
 function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-rmpg-100">
+    <div className="min-h-screen bg-surface-sunken text-rmpg-100">
       <div className="max-w-[480px] mx-auto p-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
         {children}
       </div>
@@ -384,7 +384,7 @@ function DoneView({ ctx }: { ctx: ShiftContext }) {
         <div className="text-rmpg-300 text-[11px] mt-1">Pre-shift and post-shift inspection submitted.</div>
       </div>
       {miles != null && (
-        <div className="border border-[#222] bg-[#0d0d0d] p-3">
+        <div className="border border-border-default bg-surface-base p-3">
           <div className="text-rmpg-500 text-[10px] uppercase">Total miles this shift</div>
           <div className="text-rmpg-100 text-2xl font-mono font-bold">{miles.toFixed(1)}</div>
         </div>

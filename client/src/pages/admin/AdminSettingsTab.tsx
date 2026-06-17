@@ -143,7 +143,7 @@ export default function AdminSettingsTab(_props: Props) {
               {(settings[activeCategory] || []).map((setting) => (
                 <div key={setting.key} className="flex items-start gap-4 py-3 border-b border-border-subtle">
                   <div className="flex-1 min-w-0">
-                    <label className="text-[10px] font-semibold text-[#ccc] block">{setting.label}</label>
+                    <label className="text-[10px] font-semibold text-rmpg-300 block">{setting.label}</label>
                     {setting.description && (
                       <p className="text-[9px] text-rmpg-500 mt-0.5">{setting.description}</p>
                     )}

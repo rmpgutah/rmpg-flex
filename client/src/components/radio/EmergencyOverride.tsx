@@ -166,7 +166,7 @@ export default function EmergencyOverride({ onActivate, onDeactivate }: Emergenc
               </div>
             </button>
           </div>
-          <div className="text-[8px] text-[#555555] text-center mt-1 italic">
+          <div className="text-[8px] text-rmpg-500 text-center mt-1 italic">
             Hold for 2 seconds
           </div>
         </>

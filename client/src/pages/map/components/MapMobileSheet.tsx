@@ -113,7 +113,7 @@ export default function MapMobileSheet({
                 aria-label={`Toggle ${label} layer`}
                 role="switch"
                 aria-checked={layers[key]}
-                className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#181818]"
+                className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-surface-raised"
                 style={{
                   background: layers[key] ? 'rgba(34,197,94,0.08)' : '#0a0a0a',
                   border: '1px solid #2b2b2b',
@@ -134,7 +134,7 @@ export default function MapMobileSheet({
               role="switch"
               aria-checked={showHeatmap}
               aria-label="Toggle heat map"
-              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#181818]"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-surface-raised"
               style={{
                 background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#0a0a0a',
                 border: '1px solid #2b2b2b',
@@ -153,7 +153,7 @@ export default function MapMobileSheet({
               role="switch"
               aria-checked={showBreadcrumbs}
               aria-label="Toggle breadcrumbs"
-              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#181818]"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-surface-raised"
               style={{
                 background: showBreadcrumbs ? 'rgba(34,211,238,0.08)' : '#0a0a0a',
                 border: '1px solid #2b2b2b',
@@ -238,7 +238,7 @@ export default function MapMobileSheet({
               }}
               disabled={!gps?.latitude}
               aria-label="Center on my location"
-              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#181818]"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-surface-raised"
               style={{
                 background: '#0a0a0a',
                 border: '1px solid #2b2b2b',

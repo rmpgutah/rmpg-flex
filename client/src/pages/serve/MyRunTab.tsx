@@ -22,10 +22,10 @@ export default function MyRunTab({ officerId }: { officerId: number }) {
     <div className="p-4 space-y-2">
       <div className="text-[9px] font-semibold text-[#888] uppercase">My Run — {open.length} stop{open.length === 1 ? '' : 's'}</div>
       {loading ? <div className="text-[11px] text-[#888]">Loading…</div> : open.map((j, i) => (
-        <div key={j.id} className="flex items-center gap-3 border border-[#232323] bg-[#0b0b0b] px-3 py-2 text-[11px]">
+        <div key={j.id} className="flex items-center gap-3 border border-border-default bg-surface-sunken px-3 py-2 text-[11px]">
           <span className="text-[#d4a017] font-mono">{i + 1}</span>
           <div className="flex-1">
-            <div className="text-[#ccc]">{j.defendant_name ?? j.recipient_name ?? `Job ${j.id}`} <span className="text-[#666]">{j.priority}</span></div>
+            <div className="text-rmpg-300">{j.defendant_name ?? j.recipient_name ?? `Job ${j.id}`} <span className="text-rmpg-500">{j.priority}</span></div>
             <div className="text-[#888] text-[10px]">{j.recipient_address ?? '—'} · due {j.deadline ?? '—'} · attempts {j.attempt_count ?? 0}</div>
           </div>
           {j.recipient_address && (

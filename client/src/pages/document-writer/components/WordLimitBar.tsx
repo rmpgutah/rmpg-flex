@@ -37,12 +37,12 @@ export default function WordLimitBar({
   const textColor = over ? 'text-red-400' : near ? 'text-amber-400' : 'text-rmpg-300';
 
   return (
-    <div className="flex items-center gap-2 bg-[#0d0d0d] border border-[#222] rounded-[2px] px-2 py-1 mt-1.5">
+    <div className="flex items-center gap-2 bg-surface-base border border-border-default rounded-[2px] px-2 py-1 mt-1.5">
       <Gauge className={`w-3.5 h-3.5 ${textColor} shrink-0`} />
       <span className={`text-[10px] font-medium ${textColor} whitespace-nowrap`}>
         {count.toLocaleString()} / {limit.toLocaleString()} {mode === 'words' ? 'words' : 'chars'}
       </span>
-      <div className="flex-1 h-1.5 bg-[#141414] border border-[#1a1a1a] rounded-[2px] overflow-hidden min-w-[80px]">
+      <div className="flex-1 h-1.5 bg-surface-base border border-border-default rounded-[2px] overflow-hidden min-w-[80px]">
         <div className={`h-full ${barColor} transition-all`} style={{ width: `${pct * 100}%` }} />
       </div>
       <span className={`text-[10px] ${textColor} whitespace-nowrap`}>

@@ -110,8 +110,8 @@ function Segmented({ value, options, onChange, label }: { value: string; options
 
 function GroupCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
-    <section className="bg-[#141414] border border-[#181818] rounded-sm">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#181818]">
+    <section className="bg-surface-base border border-border-default rounded-sm">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border-default">
         {icon}
         <h3 className="text-[11px] font-bold uppercase tracking-wider text-rmpg-300">{title}</h3>
       </div>
@@ -121,7 +121,7 @@ function GroupCard({ icon, title, children }: { icon: React.ReactNode; title: st
 }
 
 const inputCls =
-  'bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm px-2 py-1 text-[11px] text-gray-200 focus:border-[#d4a017] outline-none';
+  'bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-[11px] text-rmpg-200 focus:border-[#d4a017] outline-none';
 
 export default function AdminRadioSettings() {
   const [settings, setSettings] = useState<RadioSettings | null>(null);
@@ -195,16 +195,16 @@ export default function AdminRadioSettings() {
   return (
     <div className="space-y-3 max-w-3xl">
       {/* Action bar */}
-      <div className="bg-[#141414] border border-[#181818] rounded-sm p-3 flex items-center justify-between gap-3 sticky top-0 z-10">
+      <div className="bg-surface-base border border-border-default rounded-sm p-3 flex items-center justify-between gap-3 sticky top-0 z-10">
         <div>
-          <h2 className="text-sm font-bold text-gray-200 uppercase tracking-wide">Radio Settings</h2>
+          <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wide">Radio Settings</h2>
           <p className="text-[11px] text-rmpg-500">
             Org-wide. The AI dispatcher reads these live — changes apply on the next transmission.
           </p>
         </div>
         <div className="flex items-center gap-2">
           {savedAt && <span className="text-[10px] text-emerald-400">Saved ✓</span>}
-          <button onClick={resetDefaults} className="flex items-center gap-1.5 text-rmpg-400 hover:text-gray-200 text-[11px] px-2 py-1.5" title="Reset all to defaults">
+          <button onClick={resetDefaults} className="flex items-center gap-1.5 text-rmpg-400 hover:text-rmpg-200 text-[11px] px-2 py-1.5" title="Reset all to defaults">
             <RotateCcw size={12} /> Defaults
           </button>
           <button

@@ -294,7 +294,7 @@ export default function VoiceChannelIndicator() {
         <button
           type="button"
           onClick={() => { setOpen(true); activateManualListen(); }}
-          className={`relative flex items-center justify-center bg-[#181818] border rounded font-mono overflow-hidden transition-colors ${
+          className={`relative flex items-center justify-center bg-surface-raised border rounded font-mono overflow-hidden transition-colors ${
             drive.active
               ? 'gap-2 px-5 py-3 text-base text-[#d4a017] border-[#d4a017] shadow-lg'
               : 'gap-1.5 px-2.5 py-1.5 text-xs text-rmpg-400 border-[#373737] hover:border-[#d4a017] hover:text-[#d4a017]'
@@ -323,7 +323,7 @@ export default function VoiceChannelIndicator() {
       {/* Open: compact dispatch panel. Wider in drive mode for legibility. */}
       {open && (
         <div
-          className="bg-[#141414] border rounded shadow-lg overflow-hidden flex flex-col"
+          className="bg-surface-base border rounded shadow-lg overflow-hidden flex flex-col"
           style={{
             width: drive.active ? 360 : 280,
             maxWidth: 'calc(100vw - 2rem)',
@@ -471,7 +471,7 @@ export default function VoiceChannelIndicator() {
                 {textInput.trim() && (
                   <button
                     type="submit"
-                    className="px-2 py-2 text-[10px] font-mono font-bold uppercase tracking-wider text-[#d4a017] hover:bg-[#1a1a1a] transition-colors"
+                    className="px-2 py-2 text-[10px] font-mono font-bold uppercase tracking-wider text-[#d4a017] hover:bg-surface-raised transition-colors"
                     title="Send (Enter)"
                   >
                     SEND
@@ -514,7 +514,7 @@ export default function VoiceChannelIndicator() {
             <button
               type="button"
               onClick={() => { setOpen(false); setShowHelp(false); }}
-              className="px-1.5 text-xs text-rmpg-500 hover:text-gray-200 transition-colors"
+              className="px-1.5 text-xs text-rmpg-500 hover:text-rmpg-200 transition-colors"
               title="Close panel (Esc)"
               aria-label="Close voice panel"
             >

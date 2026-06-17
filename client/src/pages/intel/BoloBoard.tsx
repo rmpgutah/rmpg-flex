@@ -38,11 +38,11 @@ export default function BoloBoard() {
 
       {error && <div className="text-[10px] text-[#ff6b5e]">{error}</div>}
       {loading && <div className="text-[11px] text-[#888]">Loading BOLOs…</div>}
-      {!loading && visible.length === 0 && <div className="text-[11px] text-[#555]">No active BOLOs.</div>}
+      {!loading && visible.length === 0 && <div className="text-[11px] text-rmpg-500">No active BOLOs.</div>}
 
       {PRIORITIES.map((p) => groups.g[p].length > 0 && (
         <div key={p}>
-          <div className="font-mono text-[8px] tracking-widest text-[#555] uppercase mb-1">Priority {p}</div>
+          <div className="font-mono text-[8px] tracking-widest text-rmpg-500 uppercase mb-1">Priority {p}</div>
           <div className="grid grid-cols-2 gap-2">
             {groups.g[p].map((b) => <BoloCard key={b.id} bolo={b} canDelete={canDelete} onResolve={resolve} onDelete={remove} />)}
           </div>
@@ -50,7 +50,7 @@ export default function BoloBoard() {
       ))}
       {groups.other.length > 0 && (
         <div>
-          <div className="font-mono text-[8px] tracking-widest text-[#555] uppercase mb-1">Other</div>
+          <div className="font-mono text-[8px] tracking-widest text-rmpg-500 uppercase mb-1">Other</div>
           <div className="grid grid-cols-2 gap-2">
             {groups.other.map((b) => <BoloCard key={b.id} bolo={b} canDelete={canDelete} onResolve={resolve} onDelete={remove} />)}
           </div>

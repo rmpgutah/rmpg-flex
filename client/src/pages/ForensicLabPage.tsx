@@ -1593,7 +1593,7 @@ export default function ForensicLabPage() {
                     {linkSearchResults.map((r: any, i: number) => (
                       <div key={`${r.type}-${r.id}-${i}`} className="flex items-center gap-2 p-2 bg-surface-base rounded-sm border border-rmpg-700 hover:border-brand-500/50 transition-colors">
                         <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-brand-900/20 text-brand-400">{String(r.type).replace(/_/g, ' ')}</span>
-                        <span className="text-xs text-rmpg-200 flex-1 truncate">{r.label || r.name || r.title || `#${r.id}`}</span>
+                        <span className="text-xs text-rmpg-200 min-w-0 flex-1 truncate">{r.label || r.name || r.title || `#${r.id}`}</span>
                         <button type="button" onClick={() => handleLinkEntity(r.type, r.id)} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded-sm hover:bg-green-900/40 transition-colors">
                           <Link2 size={10} className="inline mr-1" />Link
                         </button>
@@ -2056,21 +2056,21 @@ export default function ForensicLabPage() {
             {loading ? (
               <div className="space-y-2">
                 {[...Array(5)].map((_, i) => (
-                  <div key={i} className="panel-beveled bg-surface-sunken p-3 border-l-[3px] border-[#1a1a1a]">
+                  <div key={i} className="panel-beveled bg-surface-sunken p-3 border-l-[3px] border-border-default">
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0 space-y-2">
                         <div className="flex items-center gap-2">
-                          <div className="h-3 w-24 bg-[#1a1a1a] animate-pulse rounded" />
-                          <div className="h-3 w-16 bg-[#1a1a1a] animate-pulse rounded" />
-                          <div className="h-3 w-14 bg-[#1a1a1a] animate-pulse rounded" />
+                          <div className="h-3 w-24 bg-surface-raised animate-pulse rounded" />
+                          <div className="h-3 w-16 bg-surface-raised animate-pulse rounded" />
+                          <div className="h-3 w-14 bg-surface-raised animate-pulse rounded" />
                         </div>
-                        <div className="h-3.5 w-48 bg-[#1a1a1a] animate-pulse rounded" />
+                        <div className="h-3.5 w-48 bg-surface-raised animate-pulse rounded" />
                         <div className="flex items-center gap-3">
-                          <div className="h-2.5 w-20 bg-[#1a1a1a] animate-pulse rounded" />
-                          <div className="h-2.5 w-28 bg-[#1a1a1a] animate-pulse rounded" />
+                          <div className="h-2.5 w-20 bg-surface-raised animate-pulse rounded" />
+                          <div className="h-2.5 w-28 bg-surface-raised animate-pulse rounded" />
                         </div>
                       </div>
-                      <div className="h-5 w-5 bg-[#1a1a1a] animate-pulse rounded" />
+                      <div className="h-5 w-5 bg-surface-raised animate-pulse rounded" />
                     </div>
                   </div>
                 ))}

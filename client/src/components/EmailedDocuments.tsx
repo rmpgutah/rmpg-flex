@@ -41,8 +41,8 @@ export default function EmailedDocuments({ recordType, recordId, title = 'Emaile
   }, [recordType, recordId]);
 
   return (
-    <div className="border border-[#232323] bg-[#0b0b0b]">
-      <div className="px-3 py-2 text-[#d4a017] text-xs font-semibold uppercase border-b border-[#232323]">
+    <div className="border border-border-default bg-surface-sunken">
+      <div className="px-3 py-2 text-[#d4a017] text-xs font-semibold uppercase border-b border-border-default">
         {title}{items.length ? ` (${items.length})` : ''}
       </div>
       {loading ? (
@@ -52,7 +52,7 @@ export default function EmailedDocuments({ recordType, recordId, title = 'Emaile
       ) : (
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="text-rmpg-400 text-[9px] uppercase border-b border-[#1a1a1a]">
+            <tr className="text-rmpg-400 text-[9px] uppercase border-b border-border-default">
               <th className="text-left px-3 py-[3px] font-semibold">When</th>
               <th className="text-left px-3 py-[3px] font-semibold">Sent by</th>
               <th className="text-left px-3 py-[3px] font-semibold">To</th>

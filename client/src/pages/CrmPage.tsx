@@ -672,7 +672,7 @@ export default function CrmPage() {
 
   function renderDashboard() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="OVERWATCH DASHBOARD" icon={LayoutDashboard}>
           <RmpgLogo height={16} iconOnly />
           <ExportButton exportUrl="/api/crm/export/csv" exportFilename="crm.csv" />
@@ -751,7 +751,7 @@ export default function CrmPage() {
                       <div className="text-[9px] text-red-400 font-bold uppercase mb-1">Overdue ({followUps.overdue.length})</div>
                       {followUps.overdue.slice(0, 5).map((l: any) => (
                         <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-red-300">
-                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="min-w-0 flex-1 truncate">{l.business_name}</span>
                           <span className="text-rmpg-500">{l.next_follow_up}</span>
                         </div>
                       ))}
@@ -762,7 +762,7 @@ export default function CrmPage() {
                       <div className="text-[9px] text-amber-400 font-bold uppercase mb-1">Today ({followUps.today.length})</div>
                       {followUps.today.slice(0, 5).map((l: any) => (
                         <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-amber-300">
-                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="min-w-0 flex-1 truncate">{l.business_name}</span>
                           <span className="text-rmpg-500">Score: {l.lead_score}</span>
                         </div>
                       ))}
@@ -773,7 +773,7 @@ export default function CrmPage() {
                       <div className="text-[9px] text-rmpg-400 font-bold uppercase mb-1">Upcoming ({followUps.upcoming.length})</div>
                       {followUps.upcoming.slice(0, 3).map((l: any) => (
                         <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-rmpg-300">
-                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="min-w-0 flex-1 truncate">{l.business_name}</span>
                           <span className="text-rmpg-500">{l.next_follow_up}</span>
                         </div>
                       ))}
@@ -818,7 +818,7 @@ export default function CrmPage() {
                 {expiringContracts.length === 0 ? (
                   <p className="text-xs text-rmpg-400">No contracts expiring soon</p>
                 ) : (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
                     {expiringContracts.map((c: any) => (
                       <div key={c.id} className="flex items-center justify-between text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
                         <div>
@@ -844,7 +844,7 @@ export default function CrmPage() {
                 {recentActivity.length === 0 ? (
                   <p className="text-xs text-rmpg-400">No recent activity</p>
                 ) : (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
                     {recentActivity.slice(0, 10).map((a: any) => (
                       <div key={a.id} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
                         <div className="flex items-center justify-between">
@@ -882,7 +882,7 @@ export default function CrmPage() {
               <Plus className="w-3 h-3" /> New
             </button>
           </PanelTitleBar>
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
             {filteredClients.length === 0 && !isLoading && (
               <div className="text-center py-12 text-rmpg-500">
                 <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
@@ -913,7 +913,7 @@ export default function CrmPage() {
         </div>
 
         {/* Client Detail */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {selectedClient ? (
             <div>
               <div className="panel-title-bar flex items-center justify-between">
@@ -985,7 +985,7 @@ export default function CrmPage() {
                   {clientActivity.length === 0 ? (
                     <p className="text-xs text-rmpg-400">No activity recorded</p>
                   ) : (
-                    <div className="relative pl-5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+                    <div className="relative pl-5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
                       <div className="absolute left-1.5 top-0 bottom-0 w-px bg-rmpg-700" />
                       {clientActivity.map((a: any) => {
                         const dotColor = a.activity_type === 'call' ? 'bg-green-500' :
@@ -1038,7 +1038,7 @@ export default function CrmPage() {
 
   function renderProperties() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="PROPERTIES" icon={MapPin}>
           <input id="ff-crmpage-11" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search properties..." aria-label="Search properties..." value={propertySearch} onChange={e => setPropertySearch(e.target.value)} />
         </PanelTitleBar>
@@ -1077,7 +1077,7 @@ export default function CrmPage() {
 
   function renderContacts() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="CONTACTS" icon={Users}>
           <input id="ff-crmpage-12" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search contacts..." aria-label="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
           <select id="ff-crmpage-13" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={contactRelationship} onChange={e => setContactRelationship(e.target.value)}>
@@ -1130,7 +1130,7 @@ export default function CrmPage() {
 
   function renderInvoices() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="INVOICES" icon={FileText}>
           <select id="ff-crmpage-14" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => setInvoiceFilter(e.target.value)}>
             <option value="">All Statuses</option>
@@ -1187,7 +1187,7 @@ export default function CrmPage() {
 
   function renderTasks() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="TASKS" icon={CheckSquare}>
           <select id="ff-crmpage-15" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 160 }} value={taskFilter} onChange={e => setTaskFilter(e.target.value)}>
             <option value="pending,in_progress">Active</option>

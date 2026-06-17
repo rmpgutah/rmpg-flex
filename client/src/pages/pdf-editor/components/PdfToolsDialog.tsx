@@ -30,11 +30,11 @@ export default function PdfToolsDialog(p: Props) {
 
   const sectionTitle = 'text-[10px] uppercase tracking-wider text-[#d4a017] font-semibold mb-1.5';
   const hint = 'text-[9px] text-rmpg-600';
-  const input = 'bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+  const input = 'bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={p.onClose}>
-      <div className="bg-[#0d0d0d] border border-[#222222] rounded-[2px] w-[400px] max-h-[85vh] overflow-y-auto p-4 shadow-xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] w-[400px] max-h-[85vh] overflow-y-auto p-4 shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <div className="text-[11px] uppercase tracking-wider text-[#d4a017] font-semibold inline-flex items-center gap-1.5">
             <Wrench className="w-3.5 h-3.5" /> PDF Tools
@@ -43,7 +43,7 @@ export default function PdfToolsDialog(p: Props) {
         </div>
 
         {/* Split */}
-        <div className="border border-[#1a1a1a] rounded-sm p-3 mb-3">
+        <div className="border border-border-default rounded-sm p-3 mb-3">
           <div className={sectionTitle}><span className="inline-flex items-center gap-1"><Scissors className="w-3 h-3" /> Split into multiple files</span></div>
           <div className="flex items-center gap-2 mb-2">
             <span className="text-[10px] text-rmpg-300">Every</span>
@@ -60,7 +60,7 @@ export default function PdfToolsDialog(p: Props) {
         </div>
 
         {/* Optimize */}
-        <div className="border border-[#1a1a1a] rounded-sm p-3 mb-3">
+        <div className="border border-border-default rounded-sm p-3 mb-3">
           <div className={sectionTitle}><span className="inline-flex items-center gap-1"><Minimize2 className="w-3 h-3" /> Optimize / compress</span></div>
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-rmpg-400">Re-encode with object streams</span>
@@ -70,7 +70,7 @@ export default function PdfToolsDialog(p: Props) {
         </div>
 
         {/* Page size */}
-        <div className="border border-[#1a1a1a] rounded-sm p-3 mb-3">
+        <div className="border border-border-default rounded-sm p-3 mb-3">
           <div className={sectionTitle}><span className="inline-flex items-center gap-1"><Ruler className="w-3 h-3" /> Set page size</span></div>
           <div className="flex items-center gap-2 mb-2">
             <select id="ff-tools-size" value={size} onChange={e => setSize(e.target.value as keyof typeof PAGE_SIZE_PRESETS)} className={`${input} flex-1`}>
@@ -85,7 +85,7 @@ export default function PdfToolsDialog(p: Props) {
         </div>
 
         {/* Grayscale / invert */}
-        <div className="border border-[#1a1a1a] rounded-sm p-3">
+        <div className="border border-border-default rounded-sm p-3">
           <div className={sectionTitle}><span className="inline-flex items-center gap-1"><Contrast className="w-3 h-3" /> Grayscale / invert page {p.activePage}</span></div>
           <div className="flex items-center gap-2">
             <button type="button" disabled={p.busy} onClick={p.onGrayscale} className="btn-secondary text-[10px] flex-1 disabled:opacity-40">Grayscale</button>

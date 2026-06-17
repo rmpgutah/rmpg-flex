@@ -465,7 +465,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
-                <span className="font-medium text-rmpg-200 truncate flex-1">{h.file_name}</span>
+                <span className="font-medium text-rmpg-200 min-w-0 truncate flex-1">{h.file_name}</span>
                 {h.flagged ? (
                   <span className="px-1.5 py-0.5 text-[8px] font-bold bg-red-900/40 text-red-400 border border-red-700/40 shrink-0">
                     FLAGGED{h.hash_set_name ? `: ${h.hash_set_name}` : ''}

@@ -100,7 +100,7 @@ function MetricCard({
     <button type="button"
       onClick={onClick}
       disabled={!onClick}
-      className="bg-[#141414] border border-[#2b2b2b] rounded-sm p-4 text-left transition-all duration-200 hover:border-[#3c3c3c] hover:shadow-lg hover:brightness-110 disabled:cursor-default focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
+      className="bg-surface-base border border-rmpg-700 rounded-sm p-4 text-left transition-all duration-200 hover:border-[#3c3c3c] hover:shadow-lg hover:brightness-110 disabled:cursor-default focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
       aria-label={`${label}: ${value}`}
     >
       <div className="flex items-center gap-2 mb-2">
@@ -120,7 +120,7 @@ function ProgressBar({ label, pct, color = '#888888' }: { label: string; pct: nu
         <span className="text-xs text-rmpg-300">{label}</span>
         <span className="text-xs font-medium text-rmpg-100">{pct}%</span>
       </div>
-      <div className="h-2 bg-[#0c0c0c] rounded-full overflow-hidden">
+      <div className="h-2 bg-surface-sunken rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
@@ -146,12 +146,12 @@ function BalanceCard({
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
 
   return (
-    <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm p-4 transition-all duration-200 hover:border-[#3c3c3c] hover:brightness-105">
+    <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4 transition-all duration-200 hover:border-[#3c3c3c] hover:brightness-105">
       <div className="text-xs text-rmpg-400 uppercase tracking-wide mb-1">{label}</div>
       <div className="text-2xl font-bold text-rmpg-100 mb-1 font-mono">
         {remaining} <span className="text-sm font-normal text-rmpg-400 font-sans">/ {total} remaining</span>
       </div>
-      <div className="h-2 bg-[#0c0c0c] rounded-full overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% used`}>
+      <div className="h-2 bg-surface-sunken rounded-full overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% used`}>
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${pct}%`, backgroundColor: color }}
@@ -187,7 +187,7 @@ function ManagerDashboard({
       </div>
 
       {/* Compliance */}
-      <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm p-4">
+      <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
         <h3 className="text-sm font-medium text-rmpg-100 mb-3 flex items-center gap-2">
           <ShieldCheck size={14} className="text-rmpg-400" />
           Compliance Overview
@@ -214,7 +214,7 @@ function ManagerDashboard({
       </div>
 
       {/* Recent Activity */}
-      <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm p-4">
+      <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
         <h3 className="text-sm font-medium text-rmpg-100 mb-3 flex items-center gap-2">
           <Activity size={14} className="text-rmpg-400" />
           Recent HR Activity
@@ -228,7 +228,7 @@ function ManagerDashboard({
               return (
                 <div
                   key={item.id}
-                  className="flex items-start gap-3 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm p-2.5 transition-colors duration-150 hover:border-[#3c3c3c]"
+                  className="flex items-start gap-3 bg-surface-sunken border border-rmpg-700 rounded-sm p-2.5 transition-colors duration-150 hover:border-[#3c3c3c]"
                 >
                   <div
                     className="w-1 self-stretch rounded-full flex-shrink-0"
@@ -290,7 +290,7 @@ function OfficerDashboard({
           <BalanceCard label="Personal" used={balances.personal_used} total={balances.personal_total} color="#8b5cf6" />
         </div>
       ) : (
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm p-4">
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
           <p className="text-xs text-rmpg-500">Leave balances not available</p>
         </div>
       )}
@@ -298,7 +298,7 @@ function OfficerDashboard({
       {/* Quick actions */}
       <button type="button"
         onClick={onNavigateToLeave}
-        className="flex items-center gap-2 bg-[#141414] border border-[#2b2b2b] rounded-sm px-4 py-3 text-sm text-rmpg-100 hover:border-brand-500 transition-all duration-200 hover:shadow-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 w-full md:w-auto"
+        className="flex items-center gap-2 bg-surface-base border border-rmpg-700 rounded-sm px-4 py-3 text-sm text-rmpg-100 hover:border-brand-500 transition-all duration-200 hover:shadow-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 w-full md:w-auto"
       >
         <CalendarOff size={14} className="text-amber-400" />
         Request Time Off
@@ -307,11 +307,11 @@ function OfficerDashboard({
 
       {/* Placeholders */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm p-4">
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
           <h3 className="text-xs text-rmpg-400 uppercase tracking-wide mb-2">Next Performance Review</h3>
           <p className="text-xs text-rmpg-500">No upcoming reviews scheduled</p>
         </div>
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm p-4">
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
           <h3 className="text-xs text-rmpg-400 uppercase tracking-wide mb-2">Expiring Credentials</h3>
           <p className="text-xs text-rmpg-500">No credentials expiring soon</p>
         </div>
@@ -356,7 +356,7 @@ export default function HRDashboardTab({
       {isManager && data ? (
         <ManagerDashboard data={data} onNavigateToLeave={onNavigateToLeave} />
       ) : isManager && !data ? (
-        <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm p-4">
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
           <p className="text-xs text-rmpg-500">Unable to load HR dashboard data</p>
         </div>
       ) : (

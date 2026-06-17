@@ -52,7 +52,7 @@ const PRESETS = ['#0a0a0a', '#333333', '#555555', '#777777', '#999999', '#bbbbbb
 
 export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth, onStrokeWidth }: Props) {
   return (
-    <div className="flex flex-col gap-1 bg-[#0d0d0d] border border-[#222222] rounded-[2px] p-1 w-[44px] flex-shrink-0">
+    <div className="flex flex-col gap-1 bg-surface-base border border-border-default rounded-[2px] p-1 w-[44px] flex-shrink-0">
       {TOOLS.map(t => {
         const Icon = t.icon;
         const active = tool === t.id;
@@ -69,7 +69,7 @@ export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth,
         );
       })}
 
-      <div className="h-px bg-[#222222] my-1" />
+      <div className="h-px bg-surface-raised my-1" />
 
       <div className="flex flex-col gap-1 items-center">
         <input id="ff-toolpalette-0"
@@ -77,7 +77,7 @@ export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth,
           aria-label="Stroke color"
           value={color}
           onChange={e => onColor(e.target.value)}
-          className="w-7 h-7 bg-transparent border border-[#222222] rounded-sm cursor-pointer"
+          className="w-7 h-7 bg-transparent border border-border-default rounded-sm cursor-pointer"
           title="Stroke color"
         />
         <div className="flex flex-wrap gap-0.5 w-[36px]">
@@ -88,7 +88,7 @@ export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth,
               onClick={() => onColor(c)}
               aria-label={`Use color ${c}`}
               title={c}
-              className={`w-3.5 h-3.5 rounded-sm border ${color.toLowerCase() === c ? 'border-[#d4a017]' : 'border-[#333]'}`}
+              className={`w-3.5 h-3.5 rounded-sm border ${color.toLowerCase() === c ? 'border-[#d4a017]' : 'border-border-subtle'}`}
               style={{ background: c }}
             />
           ))}

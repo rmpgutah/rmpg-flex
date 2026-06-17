@@ -296,7 +296,7 @@ export default function PlateLogPage() {
         {([['scan', 'SCAN / LOG'], ['gallery', 'CAPTURES']] as const).map(([k, label]) => (
           <button key={k} type="button" onClick={() => setView(k)}
             className={`flex-1 text-[10px] font-semibold tracking-wider py-1.5 border ${
-              view === k ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`}>
+              view === k ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-default text-rmpg-400'}`}>
             {label}
           </button>
         ))}
@@ -318,8 +318,8 @@ export default function PlateLogPage() {
       )}
 
       {scan && (
-        <div className="border border-[#222222] bg-[#0b0b0b]">
-          <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-[#1a1a1a]">
+        <div className="border border-border-default bg-surface-sunken">
+          <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-border-default">
             ALPR CAPTURE{scan.capture.confidence != null ? ` — ${Math.round(scan.capture.confidence * 100)}% confidence` : ''}
           </div>
           <div className="p-3 space-y-2">
@@ -329,7 +329,7 @@ export default function PlateLogPage() {
                 <img
                   src={authedImageUrl(scan.annotated_image_url || scan.image_url)}
                   alt="ALPR capture"
-                  className="w-24 h-24 object-cover border border-[#222222] shrink-0" />
+                  className="w-24 h-24 object-cover border border-border-default shrink-0" />
               )}
               <div className="min-w-0 flex-1">
                 <div className="text-2xl tracking-[0.2em] text-rmpg-100 font-semibold">{scan.capture.plate || '—'}</div>
@@ -344,7 +344,7 @@ export default function PlateLogPage() {
                           {scan.capture.condition}
                         </span>
                       )}
-                      {scan.damage_summary && <span className="text-[11px] text-[#aaaaaa]">{scan.damage_summary}</span>}
+                      {scan.damage_summary && <span className="text-[11px] text-rmpg-300">{scan.damage_summary}</span>}
                     </div>
                     {scan.damage_areas && scan.damage_areas.length > 0 && (
                       <ul className="text-[10px] text-[#888888] pl-4 list-disc">
@@ -375,37 +375,37 @@ export default function PlateLogPage() {
       {/* ── Manual entry result ── */}
       {result && <HitBanners hits={result.hits} />}
       {result && !result.hits.length && (
-        <div className="border border-[#222222] text-[11px] text-[#888888] px-3 py-1">
+        <div className="border border-border-default text-[11px] text-[#888888] px-3 py-1">
           {result.plate}: no hits{result.vehicle ? ` — ${[result.vehicle.color, result.vehicle.year, result.vehicle.make, result.vehicle.model].filter(Boolean).join(' ')} on file` : ' (plate not on file — sighting logged)'}
         </div>
       )}
 
-      <div className="text-[9px] text-[#666666] uppercase tracking-wider text-center">— or enter manually —</div>
+      <div className="text-[9px] text-rmpg-500 uppercase tracking-wider text-center">— or enter manually —</div>
 
       <input
         value={plate}
         onChange={(e) => setPlate(e.target.value.toUpperCase())}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
         placeholder="PLATE"
-        className="w-full bg-[#050505] border border-[#222222] px-3 py-3 text-2xl tracking-[0.3em] text-center text-rmpg-100 font-semibold focus:border-[#d4a017] outline-none uppercase"
+        className="w-full bg-surface-overlay border border-border-default px-3 py-3 text-2xl tracking-[0.3em] text-center text-rmpg-100 font-semibold focus:border-[#d4a017] outline-none uppercase"
       />
       <div className="flex items-center gap-2">
         <MapPin className="w-4 h-4 text-[#888888] shrink-0" />
         <input
           value={location} onChange={(e) => setLocation(e.target.value)}
           placeholder={coords ? `GPS captured (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}) — add detail` : 'Location'}
-          className="flex-1 bg-[#050505] border border-[#222222] px-2 py-1 text-[11px] text-gray-200 focus:border-[#d4a017] outline-none"
+          className="flex-1 bg-surface-overlay border border-border-default px-2 py-1 text-[11px] text-rmpg-200 focus:border-[#d4a017] outline-none"
         />
       </div>
       <input
         value={notes} onChange={(e) => setNotes(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
         placeholder="Notes (optional)"
-        className="w-full bg-[#050505] border border-[#222222] px-2 py-1 text-[11px] text-gray-200 focus:border-[#d4a017] outline-none"
+        className="w-full bg-surface-overlay border border-border-default px-2 py-1 text-[11px] text-rmpg-200 focus:border-[#d4a017] outline-none"
       />
       <button
         onClick={submit} disabled={busy || plate.trim().length < 2}
-        className="w-full py-2 text-sm font-semibold border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1a1a] disabled:opacity-40">
+        className="w-full py-2 text-sm font-semibold border border-[#d4a017] text-[#d4a017] hover:bg-surface-raised disabled:opacity-40">
         {busy ? 'CHECKING…' : 'LOG + CHECK'}
       </button>
 
@@ -413,13 +413,13 @@ export default function PlateLogPage() {
         <div className={`text-[11px] px-2 py-1.5 border flex items-center justify-between ${
           reviewMsg.kind === 'err' ? 'border-red-700 bg-red-950/50 text-red-300'
           : reviewMsg.kind === 'warn' ? 'border-yellow-700 bg-yellow-950/50 text-yellow-200'
-          : 'border-[#2e2e2e] bg-[#141414] text-[#aaaaaa]'}`}>
+          : 'border-rmpg-700 bg-surface-base text-rmpg-300'}`}>
           <span>{reviewMsg.text}</span>
           <button type="button" onClick={() => setReviewMsg(null)} className="text-current opacity-70 ml-2" aria-label="Dismiss">×</button>
         </div>
       )}
       {reviewQueue.length > 0 && (
-        <div className="bg-[#141414] border border-yellow-800">
+        <div className="bg-surface-base border border-yellow-800">
           <div className="px-2 py-[3px] text-[9px] font-semibold text-yellow-400 border-b border-yellow-900 flex items-center justify-between gap-2">
             <label className="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox"
@@ -445,11 +445,11 @@ export default function PlateLogPage() {
             </div>
           )}
           {reviewQueue.map((q) => (
-            <div key={q.id} className={`px-2 py-1.5 border-b border-[#1a1a1a] last:border-b-0 flex items-center gap-2 ${selected.has(q.id) ? 'bg-[#15110055]' : ''}`}>
+            <div key={q.id} className={`px-2 py-1.5 border-b border-border-default last:border-b-0 flex items-center gap-2 ${selected.has(q.id) ? 'bg-[#15110055]' : ''}`}>
               <input type="checkbox" checked={selected.has(q.id)} onChange={() => toggleSel(q.id)}
                 className="accent-[#d4a017] shrink-0" aria-label={`Select ${q.plate || 'capture'}`} />
               {q.image_url && (
-                <img src={authedImageUrl(q.image_url)} alt="" className="w-10 h-10 object-cover border border-[#222] shrink-0" />
+                <img src={authedImageUrl(q.image_url)} alt="" className="w-10 h-10 object-cover border border-border-default shrink-0" />
               )}
               <div className="min-w-0 flex-1">
                 <div className="text-sm tracking-[0.15em] text-rmpg-100 font-semibold">
@@ -481,36 +481,36 @@ export default function PlateLogPage() {
       <ClearPathDashcamPanel dashcamCount={dashcamCount} />
 
       {/* ── Recent sightings: source filter + map toggle + tappable rows ── */}
-      <div className="bg-[#141414] border border-[#222222]">
-        <div className="px-2 py-[3px] border-b border-[#1a1a1a] flex items-center justify-between gap-2">
+      <div className="bg-surface-base border border-border-default">
+        <div className="px-2 py-[3px] border-b border-border-default flex items-center justify-between gap-2">
           <span className="text-[9px] font-semibold text-[#d4a017]">RECENT SIGHTINGS</span>
           <div className="flex items-center gap-1">
             {(['all', ...ALL_SOURCES.map((s) => s.key)] as const).map((k) => (
               <button key={k} type="button" onClick={() => setSourceFilter(k)}
                 className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border tracking-wide ${
-                  sourceFilter === k ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777777]'}`}>
+                  sourceFilter === k ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-default text-[#777777]'}`}>
                 {k === 'all' ? 'ALL' : sightingSource(k === 'dashcam' ? 'ClearPath dashcam' : k === 'camera' ? 'ALPR' : '').label}
               </button>
             ))}
             <button type="button" onClick={() => setShowMap((v) => !v)} title="Toggle map"
-              className={`ml-1 p-0.5 border ${showMap ? 'border-[#d4a017] text-[#d4a017]' : 'border-[#2a2a2a] text-[#777777]'}`}>
+              className={`ml-1 p-0.5 border ${showMap ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-[#777777]'}`}>
               <MapIcon className="w-3 h-3" />
             </button>
           </div>
         </div>
 
-        {showMap && <div className="p-1.5 border-b border-[#1a1a1a]"><SightingsMap sightings={mapSightings} height={220} onPick={setDossierPlate} /></div>}
+        {showMap && <div className="p-1.5 border-b border-border-default"><SightingsMap sightings={mapSightings} height={220} onPick={setDossierPlate} /></div>}
 
         {filteredRecent.length === 0 && <div className="p-2 text-[11px] text-[#888888]">None{sourceFilter !== 'all' ? ' for this source' : ' yet'}.</div>}
         {filteredRecent.map((s) => {
           const src = sightingSource(s.notes);
           return (
             <button key={s.id} type="button" onClick={() => setDossierPlate(s.plate)}
-              className="w-full px-2 py-[3px] text-[11px] text-gray-200 flex items-center gap-2 border-b border-[#1a1a1a] last:border-b-0 hover:bg-[#1a1a1a] text-left">
+              className="w-full px-2 py-[3px] text-[11px] text-rmpg-200 flex items-center gap-2 border-b border-border-default last:border-b-0 hover:bg-surface-raised text-left">
               <span className={`text-[8px] font-bold uppercase px-1 py-0.5 border shrink-0 ${src.badgeClass}`}>{src.label}</span>
               <span className="text-[#d4a017] w-20 shrink-0 font-medium tracking-wide">{s.plate}</span>
-              <span className="text-[#888888] flex-1 truncate">{s.location_text || s.notes || ''}</span>
-              <span className="text-[#666666] shrink-0">{String(s.created_at).slice(5, 16)}</span>
+              <span className="text-[#888888] min-w-0 flex-1 truncate">{s.location_text || s.notes || ''}</span>
+              <span className="text-rmpg-500 shrink-0">{String(s.created_at).slice(5, 16)}</span>
             </button>
           );
         })}

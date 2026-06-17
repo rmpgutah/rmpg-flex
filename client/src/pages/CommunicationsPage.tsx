@@ -936,7 +936,7 @@ export default function CommunicationsPage() {
 
                           {/* Row 2: Subject + message count */}
                           <div className="flex items-center gap-2">
-                            <p className={`text-xs truncate flex-1 ${thread.hasUnread ? 'font-bold text-rmpg-100' : 'font-medium text-rmpg-300'}`}>
+                            <p className={`text-xs min-w-0 truncate flex-1 ${thread.hasUnread ? 'font-bold text-rmpg-100' : 'font-medium text-rmpg-300'}`}>
                               {thread.subject}
                             </p>
                             {msgCount > 1 && (
