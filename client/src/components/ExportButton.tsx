@@ -158,7 +158,7 @@ export default function ExportButton({
             top: '100%',
             right: 0,
             minWidth: '160px',
-            background: '#141414',
+            background: 'var(--surface-base)',
             border: '1px solid #383838',
             borderRadius: 0,
             boxShadow: '0 6px 20px rgba(0, 0, 0, 0.6)',

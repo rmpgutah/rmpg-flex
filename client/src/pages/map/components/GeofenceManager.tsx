@@ -138,7 +138,7 @@ export default function GeofenceManager({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid #282828' }}
       >
         <div className="flex items-center gap-2">
           <Shield size={14} className="text-rmpg-400" />
@@ -214,7 +214,7 @@ export default function GeofenceManager({
               key={fence.id}
               className="rounded-sm hover:bg-surface-raised/50 transition-colors duration-100 cursor-pointer"
               style={{
-                background: '#050505',
+                background: 'var(--surface-overlay)',
                 border: '1px solid #282828',
                 borderLeft: `2px solid ${fence.color || typeStyle.text}`,
                 opacity: isActive ? 1 : 0.5,

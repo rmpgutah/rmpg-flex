@@ -83,7 +83,7 @@ function CloseButton({ onClick }: { onClick: () => void }) {
         width: 36,
         height: 36,
         borderRadius: 2,
-        background: '#141414',
+        background: 'var(--surface-base)',
         border: '1px solid #2e2e2e',
         color: '#888',
       }}
@@ -215,7 +215,7 @@ export default function NavSettingsPanel({
         backdropFilter: 'blur(4px)',
       }}
     >
-      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: '#1a1a1a' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)' }}>
         <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
           Navigation Settings
         </span>

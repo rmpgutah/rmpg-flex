@@ -91,7 +91,7 @@ export default function DocumentIntakePage() {
           onDrop={handleDrop}
           className="bg-surface-sunken border-2 border-dashed p-12 text-center transition-colors"
           style={{
-            borderColor: dragActive ? '#d4a017' : '#2a2a2a',
+            borderColor: dragActive ? '#d4a017' : 'var(--border-default)',
             borderRadius: 2,
             background: dragActive ? 'rgba(212,160,23,0.05)' : '#0a0a0a',
           }}

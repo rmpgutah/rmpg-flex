@@ -142,7 +142,7 @@ export default function RunCardPreview({ incidentType, onCardLoaded }: Props) {
         )}
         {card.recommended_codes.map((c) => (
           <span key={c} className="text-[9px] font-mono px-1.5 py-0.5"
-            style={{ background: '#1a1a1a', color: '#d4a017', borderRadius: 2 }}>
+            style={{ background: 'var(--surface-raised)', color: '#d4a017', borderRadius: 2 }}>
             {c}
           </span>
         ))}

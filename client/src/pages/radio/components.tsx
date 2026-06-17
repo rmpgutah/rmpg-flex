@@ -138,7 +138,7 @@ export function Sparkline({ values, highlight }: { values: number[]; highlight?:
         const isNow = i === highlight;
         return (
           <div key={i} className="spark-bar flex-1" title={`${i.toString().padStart(2, '0')}:00 — ${v} tx`}
-            style={{ height: `${h}%`, background: isNow ? 'var(--rt-accent)' : v === 0 ? '#1a1a1a' : '#2a8a2a', boxShadow: isNow ? '0 0 4px var(--rt-accent)' : 'none' }} />
+            style={{ height: `${h}%`, background: isNow ? 'var(--rt-accent)' : v === 0 ? 'var(--surface-raised)' : '#2a8a2a', boxShadow: isNow ? '0 0 4px var(--rt-accent)' : 'none' }} />
         );
       })}
     </div>
@@ -167,7 +167,7 @@ export function Heatmap({ rows }: { rows: number[][] }) {
 
 export function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="inline-block px-1.5 py-0.5 mx-0.5 text-[9px] font-mono font-bold" style={{ background: '#1a1a1a', border: '1px solid #333', color: 'var(--rt-text)' }}>
+    <kbd className="inline-block px-1.5 py-0.5 mx-0.5 text-[9px] font-mono font-bold" style={{ background: 'var(--surface-raised)', border: '1px solid #333', color: 'var(--rt-text)' }}>
       {children}
     </kbd>
   );

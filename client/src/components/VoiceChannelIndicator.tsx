@@ -363,7 +363,7 @@ export default function VoiceChannelIndicator() {
                     transcriptFinal ? 'text-green-400' : 'text-green-300/60 italic'
                   }`}
                 >
-                  <span className="text-[9px] uppercase tracking-wider text-gray-600 mr-1.5">YOU</span>
+                  <span className="text-[9px] uppercase tracking-wider text-rmpg-500 mr-1.5">YOU</span>
                   {transcript}
                   {!transcriptFinal && <span className="text-green-300/40 ml-0.5">…</span>}
                 </div>
@@ -371,7 +371,7 @@ export default function VoiceChannelIndicator() {
               {lastCommand && (
                 <div
                   className={`text-[11px] font-mono break-words ${
-                    lastCommand.success ? 'text-gray-100' : 'text-red-300'
+                    lastCommand.success ? 'text-rmpg-200' : 'text-red-300'
                   }`}
                 >
                   <span className="text-[9px] uppercase tracking-wider text-[#d4a017] mr-1.5">DSP</span>
@@ -408,12 +408,12 @@ export default function VoiceChannelIndicator() {
             <div className="p-2.5 text-[10px] font-mono text-rmpg-300 leading-relaxed" style={{ background:"var(--surface-sunken)", borderBottom: '1px solid #2a2a2a' }}>
               <div className="text-[#d4a017] uppercase tracking-wider mb-1">Help</div>
               <ul className="space-y-0.5 text-rmpg-400">
-                <li><span className="text-gray-100">Hold V {drive.active ? '1s' : '3s'}</span> — opens panel + starts listening</li>
-                <li><span className="text-gray-100">In-panel V button</span> — hold to talk · tap for a listen window</li>
-                <li><span className="text-gray-100">Type + Enter</span> — text query (still gets spoken reply)</li>
-                <li><span className="text-gray-100">🔊 / 🔇</span> — dispatch voice on/off for both spoken AND typed input (default ON)</li>
-                <li><span className="text-gray-100">Speak during a reply</span> — barge-in: dispatch stops, listens to you</li>
-                <li><span className="text-gray-100">Esc</span> — close panel</li>
+                <li><span className="text-rmpg-200">Hold V {drive.active ? '1s' : '3s'}</span> — opens panel + starts listening</li>
+                <li><span className="text-rmpg-200">In-panel V button</span> — hold to talk · tap for a listen window</li>
+                <li><span className="text-rmpg-200">Type + Enter</span> — text query (still gets spoken reply)</li>
+                <li><span className="text-rmpg-200">🔊 / 🔇</span> — dispatch voice on/off for both spoken AND typed input (default ON)</li>
+                <li><span className="text-rmpg-200">Speak during a reply</span> — barge-in: dispatch stops, listens to you</li>
+                <li><span className="text-rmpg-200">Esc</span> — close panel</li>
                 <li className="pt-1 text-rmpg-500">Drive mode auto-engages above 30 mph and re-opens the mic after every reply</li>
                 <li className="text-rmpg-500">Try: "who's nearest?", "10-97", "run plate ABC123"</li>
               </ul>
@@ -436,7 +436,7 @@ export default function VoiceChannelIndicator() {
                   state === 'listening' ? '#0e2517' :
                   state === 'processing' ? '#251f0e' :
                   state === 'responding' ? '#2a200a' :
-                  '#1a1a1a',
+                  'var(--surface-raised)',
                 borderRight: '1px solid #2a2a2a',
                 color: stateColor,
                 cursor: state === 'alerting' ? 'not-allowed' : 'pointer',
@@ -464,7 +464,7 @@ export default function VoiceChannelIndicator() {
                     'Type or hold V…'
                   }
                   disabled={state === 'alerting' || state === 'processing' || state === 'responding'}
-                  className="flex-1 min-w-0 bg-transparent border-0 outline-none px-2.5 py-2 text-xs font-mono text-gray-100 placeholder-gray-600"
+                  className="flex-1 min-w-0 bg-transparent border-0 outline-none px-2.5 py-2 text-xs font-mono text-rmpg-200 placeholder-gray-600"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -494,7 +494,7 @@ export default function VoiceChannelIndicator() {
               type="button"
               onClick={cycleConfirmMode}
               className={`px-2 text-[11px] font-mono transition-colors ${
-                confirmMode === 'speak' ? 'text-[#d4a017]' : 'text-gray-600 hover:text-rmpg-300'
+                confirmMode === 'speak' ? 'text-[#d4a017]' : 'text-rmpg-500 hover:text-rmpg-300'
               }`}
               title={confirmMode === 'speak' ? 'Voice ON — tap to mute (text only)' : 'Voice MUTED — tap to enable speech'}
               aria-label={confirmMode === 'speak' ? 'Mute dispatch voice' : 'Enable dispatch voice'}
@@ -525,7 +525,7 @@ export default function VoiceChannelIndicator() {
           {/* State strip */}
           <div
             className="flex items-center justify-between px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest"
-            style={{ background: '#050505', borderTop: '1px solid #1a1a1a' }}
+            style={{ background: 'var(--surface-overlay)', borderTop: '1px solid #1a1a1a' }}
           >
             <span style={{ color: stateColor }}>
               {state === 'listening' && (
@@ -535,7 +535,7 @@ export default function VoiceChannelIndicator() {
             </span>
             {radioBusy
               ? <span className="text-purple-400">RADIO ACTIVE — PAUSED</span>
-              : <span className="text-gray-700">HOLD V · TAP V · TYPE</span>}
+              : <span className="text-rmpg-500">HOLD V · TAP V · TYPE</span>}
           </div>
         </div>
       )}

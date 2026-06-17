@@ -454,7 +454,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
             <button type="button"
               onClick={handleCancel}
               className="px-2 py-1 text-[9px] font-bold uppercase"
-              style={{ background: '#222222', border: '1px solid #2a2a2a', color: '#888888' }}
+              style={{ background: 'var(--border-subtle)', border: '1px solid #2a2a2a', color: '#888888' }}
             >
               Cancel
             </button>
@@ -483,7 +483,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               <button type="button"
                 onClick={cancelOwnPanic}
                 className="px-2 py-1 text-[9px] font-bold uppercase"
-                style={{ background: '#1a1a1a', border: '1px solid #f59e0b', color: '#f59e0b' }}
+                style={{ background: 'var(--surface-raised)', border: '1px solid #f59e0b', color: '#f59e0b' }}
                 title="Cancel your panic alert"
               >
                 CANCEL
@@ -522,7 +522,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
             </div>
 
             {/* Body */}
-            <div className="p-4 space-y-3" style={{ background: '#050505', borderTop: '2px solid #ff0000' }}>
+            <div className="p-4 space-y-3" style={{ background: 'var(--surface-overlay)', borderTop: '2px solid #ff0000' }}>
               <div className="text-center">
                 <div className="text-lg font-bold text-red-400 animate-emergency-blink">
                   {incomingAlert.user_name}
@@ -536,7 +536,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
 
               {/* Auto-created dispatch card info */}
               {incomingAlert.call_number && (
-                <div className="text-center p-2" style={{ background: '#050505', border: '1px solid #dc2626' }}>
+                <div className="text-center p-2" style={{ background: 'var(--surface-overlay)', border: '1px solid #dc2626' }}>
                   <div className="flex items-center justify-center gap-2 mb-1">
                     <span
                       className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider animate-emergency-blink"
@@ -561,14 +561,14 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               )}
 
               {incomingAlert.message && (
-                <div className="text-xs text-center text-rmpg-100 p-2" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
+                <div className="text-xs text-center text-rmpg-100 p-2" style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b' }}>
                   {incomingAlert.message}
                 </div>
               )}
 
               {/* Reverse-geocoded address */}
               {incomingAlert.location_address && (
-                <div className="text-center text-[10px] font-mono text-rmpg-100 p-1.5" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
+                <div className="text-center text-[10px] font-mono text-rmpg-100 p-1.5" style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b' }}>
                   <MapPin style={{ width: 9, height: 9, display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
                   {incomingAlert.location_address}
                 </div>
@@ -576,7 +576,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
 
               {/* Raw GPS coordinates */}
               {(incomingAlert.latitude != null && incomingAlert.longitude != null) && (
-                <div className="flex items-center justify-center gap-1 text-[10px] font-mono" style={{ color: '#666666' }}>
+                <div className="flex items-center justify-center gap-1 text-[10px] font-mono" style={{ color: 'var(--rmpg-500)' }}>
                   <MapPin style={{ width: 10, height: 10 }} />
                   {incomingAlert.latitude.toFixed(5)}, {incomingAlert.longitude.toFixed(5)}
                 </div>
@@ -660,7 +660,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                   <button type="button"
                     onClick={resolveCode4}
                     className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
-                    style={{ background: '#1a1a1a', border: '1px solid #2d4a1a', color: '#5a9e3a' }}
+                    style={{ background: 'var(--surface-raised)', border: '1px solid #2d4a1a', color: '#5a9e3a' }}
                   >
                     Code 4 — Resolve
                   </button>
@@ -670,7 +670,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                   <button type="button"
                     onClick={markFalseAlarm}
                     className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
-                    style={{ background: '#1a1a1a', border: '1px solid #444', color: '#888' }}
+                    style={{ background: 'var(--surface-raised)', border: '1px solid #444', color: '#888' }}
                   >
                     Mark False Alarm
                   </button>
@@ -680,7 +680,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                   <button type="button"
                     onClick={forceDeactivate}
                     className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
-                    style={{ background: '#1a1a1a', border: '1px solid #5a1a1a', color: '#c0392b' }}
+                    style={{ background: 'var(--surface-raised)', border: '1px solid #5a1a1a', color: '#c0392b' }}
                   >
                     Force Deactivate (Admin)
                   </button>

@@ -101,13 +101,13 @@ export default function KnowledgeBasePage() {
           <button
             type="button" onClick={() => setTypeFilter(null)}
             className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide border"
-            style={{ borderRadius: 2, color: typeFilter === null ? '#0a0a0a' : '#a0a0a0', background: typeFilter === null ? '#d4a017' : 'transparent', borderColor: typeFilter === null ? '#d4a017' : '#2e2e2e' }}
+            style={{ borderRadius: 2, color: typeFilter === null ? '#0a0a0a' : 'var(--rmpg-400)', background: typeFilter === null ? '#d4a017' : 'transparent', borderColor: typeFilter === null ? '#d4a017' : '#2e2e2e' }}
           >
             All {results.length}
           </button>
           {typeCounts.map(({ type, count }) => {
             const active = typeFilter === type;
-            const color = KB_TYPE_META[type]?.color || '#9ca3af';
+            const color = KB_TYPE_META[type]?.color || 'var(--rmpg-400)';
             return (
               <button
                 key={type} type="button" onClick={() => setTypeFilter(active ? null : type)}
@@ -142,7 +142,7 @@ export default function KnowledgeBasePage() {
         )}
         {shown.map((r) => {
           const Icon = iconFor(r.type);
-          const color = KB_TYPE_META[r.type]?.color || '#9ca3af';
+          const color = KB_TYPE_META[r.type]?.color || 'var(--rmpg-400)';
           return (
             <button
               key={`${r.type}-${r.recordId}`} type="button" onClick={() => open(r)}

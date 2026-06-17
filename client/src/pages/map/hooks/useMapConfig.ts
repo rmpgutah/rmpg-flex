@@ -129,7 +129,7 @@ const DEFAULT_MAP_SETTINGS: MapSettings = {
   layer_beat_stroke_opacity: 0.6,
   layer_beat_stroke_weight: 1.2,
   layer_beat_min_zoom: 10,
-  layer_county_fill: '#141414',
+  layer_county_fill: 'var(--surface-base)',
   layer_county_fill_opacity: 0.15,
   layer_county_stroke: '#444444',
   layer_county_stroke_opacity: 0.5,

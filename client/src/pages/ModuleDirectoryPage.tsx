@@ -438,7 +438,7 @@ export default function ModuleDirectoryPage() {
               borderLeft: activeCategory === '_favorites' ? '3px solid #d4a017' : '3px solid transparent',
             }}
           >
-            <Star style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_favorites' ? '#d4a017' : '#666666' }} />
+            <Star style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_favorites' ? '#d4a017' : 'var(--rmpg-500)' }} />
             <div className="flex-1 min-w-0">
               <span className="text-[11px] font-medium block truncate">Favorites</span>
               <span className="text-[8px] text-rmpg-600 font-mono">{favorites.size} saved</span>
@@ -457,7 +457,7 @@ export default function ModuleDirectoryPage() {
               borderLeft: activeCategory === '_recent' ? '3px solid #888888' : '3px solid transparent',
             }}
           >
-            <Clock style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_recent' ? '#aaaaaa' : '#666666' }} />
+            <Clock style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_recent' ? '#aaaaaa' : 'var(--rmpg-500)' }} />
             <div className="flex-1 min-w-0">
               <span className="text-[11px] font-medium block truncate">Recent</span>
               <span className="text-[8px] text-rmpg-600 font-mono">{recentFunctions.length} modules</span>
@@ -465,7 +465,7 @@ export default function ModuleDirectoryPage() {
           </button>
         )}
 
-        {showFavorites && <div className="mx-3 my-1 h-px" style={{ background: '#1a1a1a' }} />}
+        {showFavorites && <div className="mx-3 my-1 h-px" style={{ background: 'var(--surface-raised)' }} />}
 
         {visibleCategories.map((cat) => {
           const Icon = cat.icon;
@@ -482,7 +482,7 @@ export default function ModuleDirectoryPage() {
                 borderLeft: active ? '3px solid #888888' : '3px solid transparent',
               }}
             >
-              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? '#aaaaaa' : '#666666' }} />
+              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? '#aaaaaa' : 'var(--rmpg-500)' }} />
               <div className="flex-1 min-w-0">
                 <span className="text-[11px] font-medium block truncate">{cat.label}</span>
                 <span className="text-[8px] text-rmpg-600 font-mono">{cat.functions.length} functions</span>

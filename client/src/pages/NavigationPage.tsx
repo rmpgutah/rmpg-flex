@@ -337,7 +337,7 @@ function GForceBall({ longG, latG, peak, size = 66 }: {
     <div className="relative shrink-0" style={{ width: size, height: size }} title="Live G-force — longitudinal vs lateral load · gold ring = session peak">
       <svg viewBox={`0 0 ${size} ${size}`} className="absolute inset-0" aria-hidden="true">
         {[0.5, 1.0].map((g) => (
-          <circle key={g} cx={c} cy={c} r={g * R} fill="none" stroke={g === 1 ? '#2e2e2e' : '#1a1a1a'} strokeWidth="1" />
+          <circle key={g} cx={c} cy={c} r={g * R} fill="none" stroke={g === 1 ? '#2e2e2e' : 'var(--surface-raised)'} strokeWidth="1" />
         ))}
         <line x1={c} y1={c - R} x2={c} y2={c + R} stroke="#181818" strokeWidth="1" />
         <line x1={c - R} y1={c} x2={c + R} y2={c} stroke="#181818" strokeWidth="1" />
@@ -410,7 +410,7 @@ function TacticalScope({ heading, contacts, maxRangeMi, size = 134 }: {
       <svg viewBox={`0 0 ${size} ${size}`} className="absolute inset-0" aria-hidden="true">
         <circle cx={cc} cy={cc} r={R} fill="rgba(34,197,94,0.035)" />
         {rings.map((f, i) => (
-          <circle key={i} cx={cc} cy={cc} r={R * f} fill="none" stroke={i === rings.length - 1 ? '#2e2e2e' : '#1c1c1c'} strokeWidth="1" />
+          <circle key={i} cx={cc} cy={cc} r={R * f} fill="none" stroke={i === rings.length - 1 ? '#2e2e2e' : 'var(--surface-raised)'} strokeWidth="1" />
         ))}
         <line x1={cc} y1={cc - R} x2={cc} y2={cc + R} stroke="#161616" strokeWidth="1" />
         <line x1={cc - R} y1={cc} x2={cc + R} y2={cc} stroke="#161616" strokeWidth="1" />
@@ -736,7 +736,7 @@ export default function NavigationPage() {
             for (const ly of (map.getStyle()?.layers || [])) {
               if (ly.type === 'background') map.setPaintProperty(ly.id, 'background-color', '#000000');
               else if (/water/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', '#04070d');
-              else if (/(^|[-_])(land|landcover|landuse)/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', '#050505');
+              else if (/(^|[-_])(land|landcover|landuse)/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', 'var(--surface-overlay)');
             }
           } catch { /* style recolor is cosmetic — never block the map */ }
           markerRef.current = new mapboxgl.Marker({ color: '#d4a017' })
@@ -1943,7 +1943,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setSearchOpen((v) => !v)}
           className="toolbar-btn flex items-center justify-center"
-          style={{ color: searchOpen ? '#d4a017' : '#a0a0a0' }}
+          style={{ color: searchOpen ? '#d4a017' : 'var(--rmpg-400)' }}
           title="Search destination"
           aria-label="Search destination"
         >

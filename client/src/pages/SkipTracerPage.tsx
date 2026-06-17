@@ -235,7 +235,7 @@ export default function SkipTracerPage() {
         {/* ─── Left Panel: Search Form ──────────────────────── */}
         <div
           className={`${isMobile ? 'flex-shrink-0' : 'w-80'} overflow-y-auto border-r border-rmpg-700`}
-          style={{ background: '#050505' }}
+          style={{ background: 'var(--surface-overlay)' }}
         >
           {/* Search Mode Selector */}
           <div className="p-3 space-y-3">

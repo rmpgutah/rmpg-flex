@@ -430,19 +430,19 @@ export function HudMapControls({
   return (
     <div className="flex items-center gap-1">
       <button type="button" onClick={onRecenter} aria-label="Recenter / follow me" title={followActive ? 'Following — recenter' : 'Re-enable follow-me'}
-        className={btn} style={{ borderRadius: 2, borderColor: followActive ? '#d4a017' : '#3a3a3a', color: followActive ? '#d4a017' : '#a0a0a0', background: followActive ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
+        className={btn} style={{ borderRadius: 2, borderColor: followActive ? '#d4a017' : '#3a3a3a', color: followActive ? '#d4a017' : 'var(--rmpg-400)', background: followActive ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
         <Crosshair className="w-4 h-4" />
       </button>
       <button type="button" onClick={onZoomIn} aria-label="Zoom in" title="Zoom in"
-        className={btn} style={{ borderRadius: 2, borderColor: '#3a3a3a', color: '#a0a0a0', background: 'rgba(20,20,20,0.7)' }}>
+        className={btn} style={{ borderRadius: 2, borderColor: '#3a3a3a', color: 'var(--rmpg-400)', background: 'rgba(20,20,20,0.7)' }}>
         <Plus className="w-4 h-4" />
       </button>
       <button type="button" onClick={onZoomOut} aria-label="Zoom out" title="Zoom out"
-        className={btn} style={{ borderRadius: 2, borderColor: '#3a3a3a', color: '#a0a0a0', background: 'rgba(20,20,20,0.7)' }}>
+        className={btn} style={{ borderRadius: 2, borderColor: '#3a3a3a', color: 'var(--rmpg-400)', background: 'rgba(20,20,20,0.7)' }}>
         <Minus className="w-4 h-4" />
       </button>
       <button type="button" onClick={onTogglePitch} aria-label={pitched ? 'Switch to 2D' : 'Switch to 3D'} title={pitched ? '3D — tap for 2D' : '2D — tap for 3D'}
-        className={btn} style={{ borderRadius: 2, borderColor: pitched ? '#d4a017' : '#3a3a3a', color: pitched ? '#d4a017' : '#a0a0a0', background: pitched ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
+        className={btn} style={{ borderRadius: 2, borderColor: pitched ? '#d4a017' : '#3a3a3a', color: pitched ? '#d4a017' : 'var(--rmpg-400)', background: pitched ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
         <Box className="w-4 h-4" />
         <span className="text-[7px] font-bold ml-0.5">{pitched ? '3D' : '2D'}</span>
       </button>

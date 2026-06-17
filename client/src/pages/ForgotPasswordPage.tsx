@@ -63,7 +63,7 @@ export default function ForgotPasswordPage() {
                     <Mail className="w-5 h-5" style={{ color: '#999999' }} />
                   </div>
                   <h2 className="text-sm font-bold text-rmpg-100 mb-1">Forgot Your Password?</h2>
-                  <p className="text-[10px] leading-relaxed" style={{ color: '#666666' }}>
+                  <p className="text-[10px] leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
                     Enter the email address associated with your account and we'll send you a link to reset your password.
                   </p>
                 </div>
@@ -127,7 +127,7 @@ export default function ForgotPasswordPage() {
                 <p className="text-[10px] leading-relaxed mb-1" style={{ color: '#888888' }}>
                   If an account with that email exists, we've sent a password reset link.
                 </p>
-                <p className="text-[9px]" style={{ color: '#666666' }}>
+                <p className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
                   The link expires in 1 hour. Check your spam folder if you don't see it.
                 </p>
               </div>
@@ -137,9 +137,9 @@ export default function ForgotPasswordPage() {
               <a
                 href="/login"
                 className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors"
-                style={{ color: '#666666' }}
+                style={{ color: 'var(--rmpg-500)' }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
               >
                 <ArrowLeft className="w-3 h-3" />
                 Back to Login

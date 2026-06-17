@@ -85,7 +85,7 @@ export default function UnitRecommendationPanel({
               className={`unit-rec-item ${isTopPick ? 'unit-rec-top-pick' : ''}`}
             >
               {/* Rank badge */}
-              <div className="unit-rec-rank" style={{ color: isTopPick ? '#4ade80' : '#666666' }}>
+              <div className="unit-rec-rank" style={{ color: isTopPick ? '#4ade80' : 'var(--rmpg-500)' }}>
                 {isTopPick ? (
                   <Star style={{ width: 10, height: 10, fill: '#4ade80' }} />
                 ) : (

@@ -33,7 +33,7 @@ export default function QuickCommands({ onCommand }: QuickCommandsProps) {
             style={{
               background: '#0a0a0a',
               color: '#888888',
-              borderColor: '#222222',
+              borderColor: 'var(--border-subtle)',
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.color = '#d4a017';
@@ -41,7 +41,7 @@ export default function QuickCommands({ onCommand }: QuickCommandsProps) {
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.color = '#888888';
-              e.currentTarget.style.borderColor = '#222222';
+              e.currentTarget.style.borderColor = 'var(--border-subtle)';
             }}
           >
             {cmd.label}

@@ -56,7 +56,7 @@ const MARKER_COLORS: Record<string, string> = {
   in_progress: '#eab308',
   served: '#22c55e',
   failed: '#ef4444',
-  skipped: '#666666',
+  skipped: 'var(--rmpg-500)',
   archived: '#555555',
 };
 
@@ -935,7 +935,7 @@ export default function ServePage() {
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Overdue</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" /> {'<'}24h</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> {'<'}3d</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-500 inline-block" /> {'<'}7d</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rmpg-500 inline-block" /> {'<'}7d</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> 7d+</span>
               </div>
             )}

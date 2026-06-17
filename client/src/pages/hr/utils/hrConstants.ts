@@ -19,7 +19,7 @@ export const LEAVE_TYPE_COLORS: Record<string, string> = {
   vacation: '#888888',   // blue
   sick: '#ef4444',       // red
   personal: '#8b5cf6',   // purple
-  bereavement: '#666666', // gray
+  bereavement: 'var(--rmpg-500)', // gray
   training: '#22c55e',   // cyan
   unpaid: '#f59e0b',     // amber
 };
@@ -28,7 +28,7 @@ export const LEAVE_STATUS_COLORS: Record<string, string> = {
   pending: '#f59e0b',
   approved: '#22c55e',
   denied: '#ef4444',
-  cancelled: '#666666',
+  cancelled: 'var(--rmpg-500)',
 };
 
 export const SEVERITY_COLORS: Record<string, string> = {

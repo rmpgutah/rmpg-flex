@@ -413,7 +413,7 @@ export default function MobileDrawer({
         {/* ── Status Footer ── */}
         <div
           className="border-t px-4 py-4"
-          style={{ borderColor: 'var(--border-default)', background: '#050505' }}
+          style={{ borderColor: 'var(--border-default)', background: 'var(--surface-overlay)' }}
         >
           {/* Status indicators row */}
           <div className="flex items-center gap-4 mb-4">

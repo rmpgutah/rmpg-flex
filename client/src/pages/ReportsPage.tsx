@@ -99,13 +99,13 @@ interface OfficerActivityData {
 // Constants
 // ============================================================
 
-const PIE_COLORS = ['#888888', '#d4a017', '#888888', '#a855f7', '#22c55e', '#22c55e', '#666666', '#ec4899', '#8b5cf6'];
+const PIE_COLORS = ['#888888', '#d4a017', '#888888', '#a855f7', '#22c55e', '#22c55e', 'var(--rmpg-500)', '#ec4899', '#8b5cf6'];
 
 const PRIORITY_COLORS: Record<string, string> = {
   P1: '#dc2626',
   P2: '#d4a017',
   P3: '#888888',
-  P4: '#666666',
+  P4: 'var(--rmpg-500)',
 };
 
 const CHART_TOOLTIP_STYLE = {
@@ -925,7 +925,7 @@ export default function ReportsPage() {
   const priorityChartData = (Array.isArray(dashboardData?.callsByPriority) ? dashboardData.callsByPriority : []).map(item => ({
     priority: item.priority,
     count: item.count,
-    fill: PRIORITY_COLORS[item.priority] || '#666666',
+    fill: PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)',
   }));
 
   const responseTimeChartData = (Array.isArray(responseTimesData?.dailyTrend) ? responseTimesData.dailyTrend : []).map(item => ({
@@ -1360,7 +1360,7 @@ export default function ReportsPage() {
                   priority: item.priority,
                   avgMinutes: parseFloat((Number(item.avg_response_minutes) || 0).toFixed(1)),
                   count: item.count,
-                  fill: PRIORITY_COLORS[item.priority] || '#666666',
+                  fill: PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)',
                 }))}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
                   <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
@@ -1369,7 +1369,7 @@ export default function ReportsPage() {
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Bar dataKey="avgMinutes" name="Avg Response (min)" radius={[4, 4, 0, 0]}>
                     {responseTimesData.byPriority.map((item, i) => (
-                      <Cell key={i} fill={PRIORITY_COLORS[item.priority] || '#666666'} />
+                      <Cell key={i} fill={PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)'} />
                     ))}
                   </Bar>
                 </BarChart>

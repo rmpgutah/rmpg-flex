@@ -54,7 +54,7 @@ const CATEGORY_META: Record<string, CatMeta> = {
   wildlife:      { label: 'Wildlife Resources',     short: 'Wildlife',   blurb: 'Title 23A — hunting, fishing, licensing & wildlife offenses',                       icon: Leaf,        accent: '#65a30d' },
   alcohol:       { label: 'Alcoholic Beverage',     short: 'Alcohol',    blurb: 'Title 32B — alcohol control, licensing & related offenses',                        icon: Wine,        accent: '#b45309' },
   protective:    { label: 'Protective Orders',      short: 'Protective', blurb: 'Title 78B ch 7 — protective orders, stalking injunctions & enforcement',            icon: Shield,      accent: '#e11d48' },
-  licensing:     { label: 'Security · PI · Process',short: 'Licensing',  blurb: 'Title 58/78B licensing statutes + implementing administrative rules',               icon: ShieldCheck, accent: '#9ca3af' },
+  licensing:     { label: 'Security · PI · Process',short: 'Licensing',  blurb: 'Title 58/78B licensing statutes + implementing administrative rules',               icon: ShieldCheck, accent: 'var(--rmpg-400)' },
 };
 const CATEGORY_ORDER = ['criminal', 'fraud', 'procedure', 'vehicle', 'controlled', 'public_safety', 'juvenile', 'wildlife', 'alcohol', 'protective', 'licensing'];
 function getCatMeta(cat: string): CatMeta {
@@ -70,7 +70,7 @@ const LEVELS: { key: string; short: string; dot: string }[] = [
   { key: 'class_a_misdemeanor', short: 'Class A', dot: '#fbbf24' },
   { key: 'class_b_misdemeanor', short: 'Class B', dot: '#facc15' },
   { key: 'class_c_misdemeanor', short: 'Class C', dot: '#eab308' },
-  { key: 'infraction', short: 'Infraction', dot: '#9ca3af' },
+  { key: 'infraction', short: 'Infraction', dot: 'var(--rmpg-400)' },
 ];
 
 function StatuteBody({ text }: { text: string }) {
@@ -254,7 +254,7 @@ export default function LawBookPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => { setCategory('all'); resetToBrowse(); }}
             className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider border"
-            style={{ background: category === 'all' ? '#d4a017' : '#141414', color: category === 'all' ? '#0a0a0a' : '#888888', borderColor: category === 'all' ? '#d4a017' : '#222222', borderRadius: 2 }}>
+            style={{ background: category === 'all' ? '#d4a017' : 'var(--surface-base)', color: category === 'all' ? '#0a0a0a' : '#888888', borderColor: category === 'all' ? '#d4a017' : 'var(--border-subtle)', borderRadius: 2 }}>
             All Law
           </button>
           {categoriesPresent.map((c) => {
@@ -264,7 +264,7 @@ export default function LawBookPage() {
               <button key={c} type="button"
                 onClick={() => { setCategory(c); resetToBrowse(); }}
                 className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider border"
-                style={{ background: active ? meta.accent : '#141414', color: active ? '#0a0a0a' : '#888888', borderColor: active ? meta.accent : '#222222', borderRadius: 2 }}>
+                style={{ background: active ? meta.accent : 'var(--surface-base)', color: active ? '#0a0a0a' : '#888888', borderColor: active ? meta.accent : 'var(--border-subtle)', borderRadius: 2 }}>
                 {meta.short}
               </button>
             );
@@ -290,8 +290,8 @@ export default function LawBookPage() {
               onClick={() => setLevel(level === l.key ? null : l.key)}
               className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold border"
               style={{
-                background: level === l.key ? '#1a1a1a' : '#0a0a0a',
-                borderColor: level === l.key ? l.dot : '#222222',
+                background: level === l.key ? 'var(--surface-raised)' : '#0a0a0a',
+                borderColor: level === l.key ? l.dot : 'var(--border-subtle)',
                 color: level === l.key ? '#fff' : '#888888', borderRadius: 2,
               }}>
               <span className="w-2 h-2 rounded-full" style={{ background: l.dot }} />
@@ -332,7 +332,7 @@ export default function LawBookPage() {
                     <button key={`${r.title}-${r.chapter_code}`} type="button"
                       onClick={() => loadChapter(r.title, r.chapter_code, r.subcategory)}
                       className="w-full text-left px-3 py-1.5 hover:bg-surface-base flex items-baseline gap-2 border-b border-rmpg-900"
-                      style={chapter?.title === r.title && chapter?.code === r.chapter_code ? { background: '#1a1a1a', boxShadow: 'inset 2px 0 0 #d4a017' } : undefined}>
+                      style={chapter?.title === r.title && chapter?.code === r.chapter_code ? { background: 'var(--surface-raised)', boxShadow: 'inset 2px 0 0 #d4a017' } : undefined}>
                       <span className="text-[10px] font-mono text-rmpg-500 shrink-0">{r.title}-{r.chapter_code}</span>
                       <span className="text-[11px] text-rmpg-200 leading-tight">{r.subcategory}</span>
                       <span className="ml-auto text-[9px] font-mono text-rmpg-600 shrink-0">{r.section_count}</span>

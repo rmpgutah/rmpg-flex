@@ -24,12 +24,12 @@ import { useMenuActions } from '../utils/contextMenuActions';
 // ── Constants ────────────────────────────────────────────────
 
 const NODE_PALETTE: Record<string, { primary: string; glow: string; dark: string }> = {
-  person:   { primary: '#999999', glow: '#888888', dark: '#222222' },
+  person:   { primary: '#999999', glow: '#888888', dark: 'var(--border-subtle)' },
   vehicle:  { primary: '#ffb74d', glow: '#ff9800', dark: '#6e4a1a' },
   property: { primary: '#4dd0a0', glow: '#00c853', dark: '#1a6e4a' },
   case:     { primary: '#ff6b6b', glow: '#ff1744', dark: '#6e1a1a' },
   incident: { primary: '#ce93d8', glow: '#aa00ff', dark: '#323232' },
-  evidence: { primary: '#999999', glow: '#666666', dark: '#2a2a2a' },
+  evidence: { primary: '#999999', glow: 'var(--rmpg-500)', dark: 'var(--border-default)' },
 };
 
 // Backward-compatible flat color map (used in sidebar UI, filters, search dropdown)
@@ -47,8 +47,8 @@ const RELATIONSHIP_COLORS: Record<string, string> = {
   reporting_party: '#b39ddb',
   location: '#4dd0a0',
   collected_from: '#999999',
-  linked: '#666666', associated: '#555555',
-  involved: '#444444', evidence: '#666666', other: '#444444',
+  linked: 'var(--rmpg-500)', associated: '#555555',
+  involved: '#444444', evidence: 'var(--rmpg-500)', other: '#444444',
 };
 
 const RELATIONSHIP_WEIGHT: Record<string, number> = {
@@ -526,7 +526,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
       </div>
 
       {/* Graph canvas */}
-      <div ref={containerRef} className="flex-1 relative" style={{ background: '#050505' }}>
+      <div ref={containerRef} className="flex-1 relative" style={{ background: 'var(--surface-overlay)' }}>
         <GraphLegend visible={showLegend && filteredGraph.nodes.length > 0} />
         {filteredGraph.nodes.length > 0 ? (
           <ForceGraph2D
@@ -561,7 +561,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
             linkDirectionalParticleColor={(link: any) => {
               const targetId = typeof link.target === 'object' ? (link.target as any).id : link.target;
               const targetNode = filteredGraph.nodes.find((n: any) => n.id === targetId);
-              return targetNode ? (NODE_PALETTE[targetNode.type]?.glow || '#666666') : '#666666';
+              return targetNode ? (NODE_PALETTE[targetNode.type]?.glow || 'var(--rmpg-500)') : 'var(--rmpg-500)';
             }}
             // Seed glow background
             onRenderFramePost={(ctx: CanvasRenderingContext2D, globalScale: number) => {
@@ -653,7 +653,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
   }
 
   const Icon = NODE_ICONS[node.type] || Package;
-  const color = NODE_COLORS[node.type] || '#666666';
+  const color = NODE_COLORS[node.type] || 'var(--rmpg-500)';
 
   // Group edges by connected node type
   const grouped: Record<string, Array<{ edge: GraphEdge; otherNode: GraphNode }>> = {};
@@ -745,7 +745,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
 
         {Object.entries(grouped).map(([type, items]) => {
           const GroupIcon = NODE_ICONS[type] || Package;
-          const groupColor = NODE_COLORS[type] || '#666666';
+          const groupColor = NODE_COLORS[type] || 'var(--rmpg-500)';
           const isCollapsed = collapsed[type];
 
           return (
@@ -901,7 +901,7 @@ export default function ForensicsPage() {
       {/* ── Content ─────────────────────────────────────────── */}
       {!graph && !loading ? (
         /* Empty state */
-        <div className="flex-1 flex items-center justify-center" style={{ background: '#050505' }}>
+        <div className="flex-1 flex items-center justify-center" style={{ background: 'var(--surface-overlay)' }}>
           <div className="text-center px-6">
             <Network className="w-16 h-16 mx-auto mb-4 text-rmpg-800" />
             <h2 className="text-[13px] font-bold text-rmpg-400 mb-1">Connection Analysis</h2>

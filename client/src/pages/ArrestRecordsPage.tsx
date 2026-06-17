@@ -100,11 +100,11 @@ interface PersonResult {
 // ── County colors ─────────────────────────────────────────
 
 const COUNTY_COLORS: Record<string, string> = {
-  weber:     'from-gray-600/20 to-gray-800/10 border-gray-500/30',
+  weber:     'from-gray-600/20 to-gray-800/10 border-rmpg-500/30',
   davis:     'from-emerald-600/20 to-emerald-800/10 border-emerald-500/30',
   iron:      'from-red-600/20 to-red-800/10 border-red-500/30',
   salt_lake: 'from-purple-600/20 to-purple-800/10 border-purple-500/30',
-  summit:    'from-gray-600/20 to-gray-800/10 border-gray-500/30',
+  summit:    'from-gray-600/20 to-gray-800/10 border-rmpg-500/30',
   uinta:     'from-amber-600/20 to-amber-800/10 border-amber-500/30',
 };
 
@@ -114,8 +114,8 @@ const COUNTY_ACCENTS: Record<string, string> = {
 };
 
 const COUNTY_BAR_COLORS: Record<string, string> = {
-  weber: 'bg-gray-500', davis: 'bg-emerald-500', iron: 'bg-red-500',
-  salt_lake: 'bg-purple-500', summit: 'bg-gray-500', uinta: 'bg-amber-500',
+  weber: 'bg-rmpg-500', davis: 'bg-emerald-500', iron: 'bg-red-500',
+  salt_lake: 'bg-purple-500', summit: 'bg-rmpg-500', uinta: 'bg-amber-500',
 };
 
 // ── Sort config ───────────────────────────────────────────

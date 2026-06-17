@@ -656,7 +656,7 @@
 //       (descriptor/address/labels) set to light-medium grey (#b8b8b8) via new
 //       TEXT_SUBHEAD_INVERTED token; primary titles stay white. Section headers
 //       keep their text+underline style (unchanged).
-const CACHE_NAME = 'rmpg-flex-v991';
+const CACHE_NAME = 'rmpg-flex-v992';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

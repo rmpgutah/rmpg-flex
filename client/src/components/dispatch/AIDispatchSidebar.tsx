@@ -27,9 +27,9 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
   if (!selectedCall) return null;
 
   return (
-    <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden" style={{ background: '#111', borderColor: '#1a1a1a' }}>
+    <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden" style={{ background: '#111', borderColor: 'var(--surface-raised)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: '#1a1a1a', background: '#0e0e0e' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)', background: '#0e0e0e' }}>
         <div className="flex items-center gap-1.5">
           <Brain className="w-3.5 h-3.5 text-purple-400" />
           <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300">AI Analysis</span>
@@ -43,7 +43,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
         /* AI Unavailable state */
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="text-center">
-            <Brain className="w-8 h-8 mx-auto mb-2" style={{ opacity: 0.2, color: '#666666' }} />
+            <Brain className="w-8 h-8 mx-auto mb-2" style={{ opacity: 0.2, color: 'var(--rmpg-500)' }} />
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#6b7280] mb-1">AI Unavailable</p>
             <p className="text-[9px] text-rmpg-500 leading-relaxed max-w-[180px] mx-auto">
               No AI analysis available for this call. Analysis runs automatically when calls are created or updated.
@@ -107,11 +107,11 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
           {/* Confidence Meter */}
           {analysis.confidence != null && (
             <div>
-              <label className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color: '#666666' }}>
+              <label className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--rmpg-500)' }}>
                 <span>Confidence</span>
                 <span className="font-mono tabular-nums">{Math.round(analysis.confidence)}%</span>
               </label>
-              <div className="w-full h-1.5 rounded-full" style={{ background: '#1c1c1c' }}>
+              <div className="w-full h-1.5 rounded-full" style={{ background: 'var(--surface-raised)' }}>
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{

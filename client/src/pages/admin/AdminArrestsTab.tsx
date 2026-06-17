@@ -611,7 +611,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                 {/* Source badge */}
                 <div className={`shrink-0 w-1 h-8 rounded-full ${
                   rec.entry_source === 'manual' ? 'bg-brand-500' :
-                  rec.entry_source === 'csv' ? 'bg-gray-500' :
+                  rec.entry_source === 'csv' ? 'bg-rmpg-500' :
                   rec.entry_source === 'scraper' ? 'bg-emerald-500' : 'bg-rmpg-600'
                 }`} />
 

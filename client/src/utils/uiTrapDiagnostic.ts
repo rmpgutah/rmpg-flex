@@ -324,7 +324,7 @@ function showRecoveryToast(actions: string[], headline = 'UI diagnostic captured
       left: '50%',
       transform: 'translateX(-50%)',
       zIndex: '2147483647',
-      background: '#1a1a1a',
+      background: 'var(--surface-raised)',
       color: '#d4a017',
       border: '1px solid #d4a017',
       borderRadius: '2px',

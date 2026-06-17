@@ -244,7 +244,7 @@ function CostBreakdown({ summary }: { summary: FleetCostSummary }) {
   const rows: { label: string; value: number; color: string }[] = [
     { label: 'Fuel',        value: toNum(cat.fuel),        color: 'bg-rmpg-600' },
     { label: 'Maintenance', value: toNum(cat.maintenance), color: 'bg-amber-600' },
-    { label: 'Loan',        value: toNum(cat.loans),       color: 'bg-gray-600' },
+    { label: 'Loan',        value: toNum(cat.loans),       color: 'bg-rmpg-600' },
     { label: 'Insurance',   value: toNum(cat.insurance),   color: 'bg-green-600' },
     { label: 'Accessories', value: toNum(cat.accessories), color: 'bg-purple-600' },
     { label: 'Utilities',   value: toNum(cat.utilities),   color: 'bg-pink-600' },

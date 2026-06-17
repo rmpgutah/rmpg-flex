@@ -341,7 +341,7 @@ function LinkedIncidentsGraph({ caseId }: { caseId: string | number }) {
           <Target className="w-3 h-3" /> THIS CASE
         </div>
         {links.map((link: any, idx: number) => {
-          const color = typeColors[link.rel_type] || '#666666';
+          const color = typeColors[link.rel_type] || 'var(--rmpg-500)';
           return (
             <div key={idx} className="flex items-center gap-1">
               <ArrowRight className="w-3 h-3 text-rmpg-600" />

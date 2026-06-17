@@ -40,7 +40,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 };
 
 function getStatusStyle(status: string) {
-  return STATUS_CONFIG[status] || { label: status, color: '#999999', bg: '#666666' };
+  return STATUS_CONFIG[status] || { label: status, color: '#999999', bg: 'var(--rmpg-500)' };
 }
 
 // ─── Time-ago helper ────────────────────────────────────────
@@ -110,7 +110,7 @@ export default function IncidentReportsPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid #282828' }}
       >
         <div className="flex items-center gap-2">
           <FileText size={12} className="text-emerald-400" />
@@ -145,7 +145,7 @@ export default function IncidentReportsPanel({
             <span className="text-[9px] font-mono text-rmpg-500 animate-pulse">Loading reports...</span>
             <div className="space-y-1 w-full">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="animate-pulse rounded-sm h-8" style={{ background: '#050505', opacity: 1 - i * 0.2 }} />
+                <div key={i} className="animate-pulse rounded-sm h-8" style={{ background: 'var(--surface-overlay)', opacity: 1 - i * 0.2 }} />
               ))}
             </div>
           </div>
@@ -249,7 +249,7 @@ export default function IncidentReportsPanel({
                       <div
                         key={r.id}
                         className="rounded-sm px-1.5 py-1 space-y-0.5 hover:bg-surface-raised/50 transition-colors duration-100"
-                        style={{ background: '#050505', border: '1px solid #282828', borderLeft: `2px solid ${ss.bg}` }}
+                        style={{ background: 'var(--surface-overlay)', border: '1px solid #282828', borderLeft: `2px solid ${ss.bg}` }}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] font-mono text-rmpg-200 truncate flex items-center gap-1">
@@ -296,7 +296,7 @@ export default function IncidentReportsPanel({
             {/* Info note */}
             <div
               className="flex items-start gap-1.5 px-2 py-1.5 rounded"
-              style={{ background: '#050505', border: '1px solid #282828' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
             >
               <Info size={10} className="text-emerald-500 mt-0.5 shrink-0" />
               <span className="text-[9px] font-mono text-rmpg-500 leading-tight">

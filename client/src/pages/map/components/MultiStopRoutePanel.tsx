@@ -117,8 +117,8 @@ export default function MultiStopRoutePanel({
             onChange={(e) => onSelectUnit(e.target.value)}
             style={{
               width: '100%',
-              background: '#050505',
-              color: '#e0e0e0',
+              background: 'var(--surface-overlay)',
+              color: 'var(--text-secondary)',
               border: '1px solid #2e2e2e',
               borderRadius: 2,
               fontSize: 10,
@@ -172,7 +172,7 @@ export default function MultiStopRoutePanel({
                   {s.order}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: '#e0e0e0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.callNumber}
                   </div>
                   {s.label && (
@@ -200,7 +200,7 @@ export default function MultiStopRoutePanel({
               >
                 <GripVertical className="w-3 h-3" style={{ color: '#444', flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: '#e0e0e0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.callNumber}
                   </div>
                   {s.label && (
@@ -250,7 +250,7 @@ export default function MultiStopRoutePanel({
             justifyContent: 'center',
             gap: 6,
             padding: '6px 8px',
-            background: canOptimize ? GOLD : '#1a1a1a',
+            background: canOptimize ? GOLD : 'var(--surface-raised)',
             color: canOptimize ? '#0a0a0a' : '#555',
             border: `1px solid ${canOptimize ? GOLD : '#2e2e2e'}`,
             borderRadius: 2,

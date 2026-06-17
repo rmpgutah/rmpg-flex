@@ -87,7 +87,7 @@ function TripRow({ trip, active, showUnit, onOpen }: { trip: Trip; active: boole
     <button
       onClick={onOpen}
       className="w-full text-left bg-surface-raised/40 border px-2 py-1.5 hover:border-brand-600 transition-colors"
-      style={{ borderRadius: 2, borderColor: active ? '#d4a01788' : '#222222' }}
+      style={{ borderRadius: 2, borderColor: active ? '#d4a01788' : 'var(--border-subtle)' }}
     >
       {/* top line: type badge + active pill + date + chevron */}
       <div className="flex items-center gap-1.5">

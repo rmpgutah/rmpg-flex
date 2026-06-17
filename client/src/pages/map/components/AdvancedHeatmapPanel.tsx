@@ -106,9 +106,9 @@ const COLOR_SCHEME_GRADIENTS: Record<HeatmapColorScheme, string[]> = {
   risk: ['#22c55e', '#eab308', '#f97316', '#ef4444', '#7f1d1d'],
   // Renamed from 'blue' (removed from HeatmapColorScheme union during
   // the Spillman pure-black theme purge) to the current 'gold' variant.
-  gold: ['#cccccc', '#888888', '#555555', '#222222', '#171717'],
+  gold: ['#cccccc', '#888888', '#555555', 'var(--border-subtle)', 'var(--surface-raised)'],
   green: ['#86efac', '#22c55e', '#15803d', '#14532d', '#0a2918'],
-  purple: ['#c4b5fd', '#a855f7', '#7c3aed', '#5b21b6', '#232323'],
+  purple: ['#c4b5fd', '#a855f7', '#7c3aed', '#5b21b6', 'var(--border-subtle)'],
 };
 
 const RESOLUTION_OPTIONS: { key: HeatmapResolution; label: string }[] = [
@@ -317,7 +317,7 @@ export default function AdvancedHeatmapPanel({
                   style={{
                     background: active ? m.accentBg : 'rgba(255,255,255,0.02)',
                     border: active ? `2px solid ${m.accent}` : '1px solid #282828',
-                    color: active ? m.accent : '#666666',
+                    color: active ? m.accent : 'var(--rmpg-500)',
                   }}
                   aria-label={`${m.label} heatmap mode`}
                   title={`${m.label} - ${m.key === 'density' ? 'Show incident density' : m.key === 'risk' ? 'Show risk analysis' : m.key === 'temporal' ? 'Animate by time of day' : 'Compare time periods'}`}
@@ -371,7 +371,7 @@ export default function AdvancedHeatmapPanel({
               </span>
               <span
                 className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm"
-                style={{ background: '#050505', color: '#888888' }}
+                style={{ background: 'var(--surface-overlay)', color: '#888888' }}
               >
                 {formatHourCompact(hourRange[0])} &mdash; {formatHourCompact(hourRange[1])}:59
               </span>
@@ -428,7 +428,7 @@ export default function AdvancedHeatmapPanel({
                     className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-all duration-150 hover:text-rmpg-200 hover:bg-surface-raised/50 active:scale-[0.97]"
                     style={{
                       background: 'rgba(255,255,255,0.03)',
-                      color: '#666666',
+                      color: 'var(--rmpg-500)',
                       border: '1px solid #282828',
                     }}
                   >
@@ -446,7 +446,7 @@ export default function AdvancedHeatmapPanel({
                     onClick={() => toggleDay(idx)}
                     className="py-1.5 rounded-sm text-[9px] font-bold uppercase transition-all duration-150 text-center active:scale-[0.97] hover:bg-surface-raised/50"
                     style={{
-                      background: active ? activeMode.accentBg : '#050505',
+                      background: active ? activeMode.accentBg : 'var(--surface-overlay)',
                       border: `1px solid ${active ? activeMode.accent + '55' : '#1e1e1e'}`,
                       color: active ? activeMode.accent : '#555555',
                     }}
@@ -555,7 +555,7 @@ export default function AdvancedHeatmapPanel({
                     onClick={() => onResolutionChange(opt.key)}
                     className="px-2.5 py-1 rounded-sm text-[9px] font-semibold uppercase tracking-wider transition-all"
                     style={{
-                      background: active ? activeMode.accentBg : '#050505',
+                      background: active ? activeMode.accentBg : 'var(--surface-overlay)',
                       border: `1px solid ${active ? activeMode.accent + '55' : '#1e1e1e'}`,
                       color: active ? activeMode.accent : '#555555',
                     }}
@@ -612,7 +612,7 @@ export default function AdvancedHeatmapPanel({
                 className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-colors hover:text-rmpg-200"
                 style={{
                   background: 'rgba(255,255,255,0.03)',
-                  color: '#666666',
+                  color: 'var(--rmpg-500)',
                   border: '1px solid #282828',
                 }}
               >
@@ -623,7 +623,7 @@ export default function AdvancedHeatmapPanel({
                 className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-colors hover:text-rmpg-200"
                 style={{
                   background: 'rgba(255,255,255,0.03)',
-                  color: '#666666',
+                  color: 'var(--rmpg-500)',
                   border: '1px solid #282828',
                 }}
               >
@@ -633,7 +633,7 @@ export default function AdvancedHeatmapPanel({
           </div>
           <div
             className="max-h-32 overflow-y-auto space-y-0.5 rounded-sm p-1"
-            style={{ background: '#050505', border: '1px solid #282828', scrollbarWidth: 'thin' }}
+            style={{ background: 'var(--surface-overlay)', border: '1px solid #282828', scrollbarWidth: 'thin' }}
           >
             {availableTypes.map((t) => {
               const checked = types.includes(t.incident_type);
@@ -654,7 +654,7 @@ export default function AdvancedHeatmapPanel({
                   </div>
                   <span
                     className="text-[9px] min-w-0 flex-1 truncate"
-                    style={{ color: checked ? '#e0e0e0' : '#666666' }}
+                    style={{ color: checked ? 'var(--text-secondary)' : 'var(--rmpg-500)' }}
                   >
                     {(t.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                   </span>
@@ -680,7 +680,7 @@ export default function AdvancedHeatmapPanel({
               {/* Digital time display */}
               <div
                 className="flex items-center justify-center py-2 rounded-sm"
-                style={{ background: '#050505', border: '1px solid #282828' }}
+                style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
               >
                 <span className="text-[18px] font-mono font-bold" style={{ color: '#f97316' }}>
                   {formatHourCompact(temporalHour)}
@@ -741,7 +741,7 @@ export default function AdvancedHeatmapPanel({
                         onClick={() => onTemporalSpeedChange(s)}
                         className="px-2.5 py-1 rounded-sm text-[9px] font-bold font-mono transition-all"
                         style={{
-                          background: active ? 'rgba(249,115,22,0.15)' : '#050505',
+                          background: active ? 'rgba(249,115,22,0.15)' : 'var(--surface-overlay)',
                           border: `1px solid ${active ? '#f9731655' : '#1e1e1e'}`,
                           color: active ? '#f97316' : '#555555',
                         }}
@@ -754,7 +754,7 @@ export default function AdvancedHeatmapPanel({
               </div>
 
               {/* Progress bar */}
-              <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: '#050505' }}>
+              <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-overlay)' }}>
                 <div
                   className="h-full rounded-full transition-all"
                   style={{
@@ -783,7 +783,7 @@ export default function AdvancedHeatmapPanel({
                       onClick={() => onComparisonDaysChange(p.days)}
                       className="flex-1 py-1.5 rounded-sm text-[10px] font-bold font-mono text-center transition-all"
                       style={{
-                        background: active ? 'rgba(168,85,247,0.15)' : '#050505',
+                        background: active ? 'rgba(168,85,247,0.15)' : 'var(--surface-overlay)',
                         border: `1px solid ${active ? '#a855f755' : '#1e1e1e'}`,
                         color: active ? '#a855f7' : '#555555',
                       }}
@@ -797,7 +797,7 @@ export default function AdvancedHeatmapPanel({
               {/* Color legend */}
               <div
                 className="flex items-center justify-between px-3 py-2 rounded-sm"
-                style={{ background: '#050505', border: '1px solid #282828' }}
+                style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
               >
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#ef4444' }} />
@@ -854,7 +854,7 @@ export default function AdvancedHeatmapPanel({
               {/* Total incidents */}
               <div
                 className="flex items-center justify-between px-3 py-2.5 rounded-sm"
-                style={{ background: '#050505', border: '1px solid #282828' }}
+                style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
               >
                 <span className="text-[8px] uppercase tracking-wider text-rmpg-500 font-semibold">
                   Total Incidents
@@ -875,7 +875,7 @@ export default function AdvancedHeatmapPanel({
                       <span className="text-[9px] text-rmpg-400 w-24 truncate shrink-0">
                         {(t.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                       </span>
-                      <div className="flex-1 h-3 rounded-sm overflow-hidden" style={{ background: '#050505' }}>
+                      <div className="flex-1 h-3 rounded-sm overflow-hidden" style={{ background: 'var(--surface-overlay)' }}>
                         <div
                           className="h-full rounded-sm transition-all"
                           style={{

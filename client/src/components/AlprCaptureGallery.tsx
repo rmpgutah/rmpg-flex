@@ -29,7 +29,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
   const boxes = useMemo(() => detectionBoxes(cap.detections, nat?.w, nat?.h), [cap.detections, nat]);
   const band = confidenceBand(cap.confidence, cap.accepted);
   const source = captureSource(cap);
-  const boxColor = cap.alerted ? '#ef4444' : band === 'high' ? GOLD : '#9ca3af';
+  const boxColor = cap.alerted ? '#ef4444' : band === 'high' ? GOLD : 'var(--rmpg-400)';
 
   // Display plate: prefer canonical_plate (from the trust package) if available.
   const displayPlate = (cap as any).canonical_plate || cap.plate;

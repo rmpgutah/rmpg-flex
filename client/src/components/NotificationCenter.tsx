@@ -465,7 +465,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                   className="group flex items-start gap-2 border-b border-rmpg-700/50 cursor-pointer transition-colors duration-150 hover:bg-rmpg-800/60"
                   style={{
                     padding: '6px 8px',
-                    background: notification.is_read ? '#0a0a0a' : '#141414',
+                    background: notification.is_read ? '#0a0a0a' : 'var(--surface-base)',
                     borderLeft: notification.is_read ? '2px solid transparent' : '2px solid #888888',
                   }}
                   title={route ? `Click to go to ${notification.type.replace(/_/g, ' ')}` : undefined}

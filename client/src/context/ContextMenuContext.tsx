@@ -170,7 +170,7 @@ function MenuLevel({ items, onCloseAll, onCloseLevel, autoFocus }: MenuLevelProp
       role="menu"
       className="cm-menu py-1 min-w-[200px] rounded-sm overflow-visible"
       style={{
-        background: '#141414',
+        background: 'var(--surface-base)',
         border: '1px solid #2a2a2a',
         boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset',
         WebkitBackdropFilter: 'blur(8px)',
@@ -232,7 +232,7 @@ function MenuLevel({ items, onCloseAll, onCloseLevel, autoFocus }: MenuLevelProp
                   ? 'text-rmpg-600 cursor-not-allowed'
                   : item.danger
                     ? 'text-red-400 hover:bg-red-900/25 focus:bg-red-900/25'
-                    : 'text-rmpg-200 hover:bg-[#2e2e2e] hover:text-white focus:bg-[#2e2e2e] focus:text-white'}
+                    : 'text-rmpg-200 hover:bg-rmpg-700 hover:text-rmpg-100 focus:bg-rmpg-700 focus:text-rmpg-100'}
               `}
             >
               {item.icon !== undefined && (

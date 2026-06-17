@@ -131,7 +131,7 @@ export default function ReconConnectPage() {
     const term = new XTerm({
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       fontSize: 12,
-      theme: { background: '#050505', foreground: '#d4d4d4', cursor: '#d4a017' },
+      theme: { background: 'var(--surface-overlay)', foreground: '#d4d4d4', cursor: '#d4a017' },
       cursorBlink: true,
       convertEol: true,
       scrollback: 5000,

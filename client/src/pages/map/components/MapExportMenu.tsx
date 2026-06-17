@@ -44,7 +44,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
 
   const bgBase = light ? 'rgba(255,255,255,0.92)' : sat ? 'rgba(10,10,10,0.92)' : 'rgba(10,10,10,0.95)';
   const borderBase = light ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(43,43,43,0.6)';
-  const textColor = light ? 'text-gray-700' : 'text-rmpg-200';
+  const textColor = light ? 'text-rmpg-500' : 'text-rmpg-200';
   const hoverBg = light ? 'hover:bg-surface-raised' : 'hover:bg-surface-raised';
 
   const handleScreenshot = async () => {
@@ -97,10 +97,10 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
         aria-haspopup="menu"
       >
         {busy ? (
-          <Loader2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${light ? 'text-gray-600' : 'text-rmpg-300'} animate-spin`} />
+          <Loader2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${light ? 'text-rmpg-500' : 'text-rmpg-300'} animate-spin`} />
         ) : (
           <>
-            <Download className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${light ? 'text-gray-600' : 'text-rmpg-300'}`} />
+            <Download className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${light ? 'text-rmpg-500' : 'text-rmpg-300'}`} />
             {/* #23: Dropdown chevron with smooth rotation */}
             {!isMobile && <ChevronDown className={`w-3 h-3 ${light ? 'text-rmpg-500' : 'text-rmpg-400'} transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />}
           </>

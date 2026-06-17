@@ -36,7 +36,7 @@ export default function VoicePersonaSettings() {
 
       <div
         className="space-y-3"
-        style={{ background: '#050505', border: '1px solid #242424', padding: '10px 12px' }}
+        style={{ background: 'var(--surface-overlay)', border: '1px solid #242424', padding: '10px 12px' }}
       >
         {/* Voice picker */}
         <label className="block">
@@ -77,8 +77,8 @@ export default function VoicePersonaSettings() {
                   onClick={() => setPersona({ terseness: t })}
                   className="px-3 py-1 text-[11px] uppercase tracking-wider"
                   style={{
-                    background: active ? '#1a1a1a' : '#0a0a0a',
-                    border: `1px solid ${active ? '#d4a017' : '#222222'}`,
+                    background: active ? 'var(--surface-raised)' : '#0a0a0a',
+                    border: `1px solid ${active ? '#d4a017' : 'var(--border-subtle)'}`,
                     color: active ? '#d4a017' : '#888888',
                     borderRadius: 2,
                   }}
@@ -128,7 +128,7 @@ export default function VoicePersonaSettings() {
           onClick={() => { speak(SAMPLE_LINE).catch(() => { /* best-effort */ }); }}
           className="px-3 py-1 text-[11px] uppercase tracking-wider"
           style={{
-            background: '#1a1a1a',
+            background: 'var(--surface-raised)',
             border: '1px solid #d4a017',
             color: '#d4a017',
             borderRadius: 2,
@@ -151,7 +151,7 @@ export default function VoicePersonaSettings() {
         </div>
         <div
           className="flex items-center justify-between"
-          style={{ background: '#050505', border: '1px solid #242424', padding: '10px 12px' }}
+          style={{ background: 'var(--surface-overlay)', border: '1px solid #242424', padding: '10px 12px' }}
         >
           <span className="text-[11px]" style={{ color: '#dddddd' }}>
             Proactive coaching + event announcements
@@ -163,8 +163,8 @@ export default function VoicePersonaSettings() {
             onClick={() => setPersona({ brainEnabled: !persona.brainEnabled })}
             className="px-3 py-1 text-[11px] uppercase tracking-wider"
             style={{
-              background: persona.brainEnabled ? '#1a1a1a' : '#0a0a0a',
-              border: `1px solid ${persona.brainEnabled ? '#d4a017' : '#222222'}`,
+              background: persona.brainEnabled ? 'var(--surface-raised)' : '#0a0a0a',
+              border: `1px solid ${persona.brainEnabled ? '#d4a017' : 'var(--border-subtle)'}`,
               color: persona.brainEnabled ? '#d4a017' : '#888888',
               borderRadius: 2,
             }}
@@ -172,7 +172,7 @@ export default function VoicePersonaSettings() {
             {persona.brainEnabled ? 'Enabled' : 'Disabled'}
           </button>
         </div>
-        <p className="text-[10px] mt-1" style={{ color: '#666666' }}>
+        <p className="text-[10px] mt-1" style={{ color: 'var(--rmpg-500)' }}>
           When off, no coaching or event-driven speech. New calls & alerts still announce as usual.
         </p>
       </div>

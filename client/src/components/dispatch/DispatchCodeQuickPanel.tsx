@@ -36,7 +36,7 @@ function CodeRow({ code, onApply, isFavorite, onToggleFav }: {
   isFavorite: boolean;
   onToggleFav: (id: number) => void;
 }) {
-  const priDot = code.priority === 'P1' ? 'bg-red-500' : code.priority === 'P2' ? 'bg-amber-500' : code.priority === 'P4' ? 'bg-green-500' : 'bg-gray-500';
+  const priDot = code.priority === 'P1' ? 'bg-red-500' : code.priority === 'P2' ? 'bg-amber-500' : code.priority === 'P4' ? 'bg-green-500' : 'bg-rmpg-500';
   return (
     <button
       type="button"
@@ -128,9 +128,9 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
   };
 
   return (
-    <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden" style={{ background: '#111', borderColor: '#1a1a1a' }}>
+    <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden" style={{ background: '#111', borderColor: 'var(--surface-raised)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: '#1a1a1a', background: '#0e0e0e' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)', background: '#0e0e0e' }}>
         <div className="flex items-center gap-1.5">
           <Hash className="w-3.5 h-3.5 text-brand-400" />
           <span className="text-[10px] font-bold uppercase tracking-wider text-brand-300">Dispatch Codes</span>
@@ -141,7 +141,7 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
       </div>
 
       {/* Search */}
-      <div className="px-2 py-1.5 border-b" style={{ borderColor: '#1a1a1a' }}>
+      <div className="px-2 py-1.5 border-b" style={{ borderColor: 'var(--surface-raised)' }}>
         <div className="relative">
           <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
           <input id="ff-dispatchcodequickpanel-0"
@@ -227,7 +227,7 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
       </div>
 
       {/* Footer with quick stats */}
-      <div className="px-2 py-1 border-t text-[7px] text-rmpg-500 flex items-center justify-between" style={{ borderColor: '#1a1a1a', background:"var(--surface-sunken)" }}>
+      <div className="px-2 py-1 border-t text-[7px] text-rmpg-500 flex items-center justify-between" style={{ borderColor: 'var(--surface-raised)', background:"var(--surface-sunken)" }}>
         <span>Click ★ to favorite</span>
         <span>{codes.filter(c => c.priority === 'P1').length} P1 · {codes.filter(c => c.priority === 'P2').length} P2</span>
       </div>

@@ -201,7 +201,7 @@ export default function ForcePasswordChangeModal() {
                   {rule.met ? (
                     <Check style={{ width: 10, height: 10, color: '#22c55e', flexShrink: 0 }} />
                   ) : (
-                    <AlertCircle style={{ width: 10, height: 10, color: '#666666', flexShrink: 0 }} />
+                    <AlertCircle style={{ width: 10, height: 10, color: 'var(--rmpg-500)', flexShrink: 0 }} />
                   )}
                   <span className={rule.met ? 'text-green-400' : 'text-rmpg-500'}>
                     {rule.label}

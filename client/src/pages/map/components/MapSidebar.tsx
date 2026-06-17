@@ -210,7 +210,7 @@ export default function MapSidebar({
                 {/* Fix 99: calls sorted by priority (P1 first) */}
                 {sortedCalls.map((call) => {
                   const hasCoords = call.latitude != null && call.longitude != null;
-                  const pColor = PRIORITY_COLORS[call.priority] || '#666666';
+                  const pColor = PRIORITY_COLORS[call.priority] || 'var(--rmpg-500)';
                   const { category } = getIncidentCategory(call.incident_type);
                   return (
                     <button type="button"

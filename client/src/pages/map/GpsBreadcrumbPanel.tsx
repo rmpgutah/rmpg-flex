@@ -48,7 +48,7 @@ interface Props {
 const MPS_TO_MPH = 2.23694;
 
 const speedToColor = (mps: number | null): string => {
-  if (mps == null || mps < 0.2) return '#666666';
+  if (mps == null || mps < 0.2) return 'var(--rmpg-500)';
   const mph = mps * MPS_TO_MPH;
   if (mph < 3) return '#999999'; if (mph < 10) return '#22c55e';
   if (mph < 25) return '#22c55e'; if (mph < 35) return '#84cc16';
@@ -60,8 +60,8 @@ const statusToColor = (status: string): string => {
   switch (status) {
     case 'dispatched': return '#f59e0b'; case 'enroute': return '#888888';
     case 'onscene': return '#ef4444'; case 'available': return '#22c55e';
-    case 'busy': return '#8b5cf6'; case 'off_duty': return '#666666';
-    default: return '#666666';
+    case 'busy': return '#8b5cf6'; case 'off_duty': return 'var(--rmpg-500)';
+    default: return 'var(--rmpg-500)';
   }
 };
 

@@ -42,7 +42,7 @@ const CASE_TYPES = [
 ] as const;
 
 const PRIORITIES = [
-  { value: 'routine', label: 'Routine', desc: 'Standard processing — 30 day turnaround', color: '#666666' },
+  { value: 'routine', label: 'Routine', desc: 'Standard processing — 30 day turnaround', color: 'var(--rmpg-500)' },
   { value: 'expedited', label: 'Expedited', desc: 'Priority processing — 14 day turnaround', color: '#888888' },
   { value: 'urgent', label: 'Urgent', desc: 'Urgent case need — 7 day turnaround', color: '#f59e0b' },
   { value: 'rush', label: 'Rush', desc: 'Immediate attention — 48 hour turnaround', color: '#ef4444' },
@@ -56,7 +56,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: str
   analysis_complete: { label: 'Analysis Complete', color: '#34d399', bgColor: 'bg-emerald-900/20', nextAction: 'Results are available — report being drafted' },
   report_draft: { label: 'Report Draft', color: '#a3e635', bgColor: 'bg-lime-900/20', nextAction: 'Report is being reviewed before finalization' },
   report_final: { label: 'Report Final', color: '#22c55e', bgColor: 'bg-green-900/20', nextAction: 'Final report is available' },
-  closed: { label: 'Closed', color: '#666666', bgColor: 'bg-surface-sunken/20', nextAction: 'Case is complete and archived' },
+  closed: { label: 'Closed', color: 'var(--rmpg-500)', bgColor: 'bg-surface-sunken/20', nextAction: 'Case is complete and archived' },
   cancelled: { label: 'Cancelled', color: '#ef4444', bgColor: 'bg-red-900/20', nextAction: 'Case was cancelled' },
 };
 
@@ -739,7 +739,7 @@ export default function ForensicLabPage() {
 
   // ── Helpers ────────────────────────────────────────────
 
-  const getStatusConfig = (status: string) => STATUS_CONFIG[status] || { label: status, color: '#666666', bgColor: 'bg-surface-sunken/20', nextAction: '' };
+  const getStatusConfig = (status: string) => STATUS_CONFIG[status] || { label: status, color: 'var(--rmpg-500)', bgColor: 'bg-surface-sunken/20', nextAction: '' };
   const getCaseTypeLabel = (t: string) => CASE_TYPES.find(c => c.value === t)?.label || t;
   const getPriorityConfig = (p: string) => PRIORITIES.find(pr => pr.value === p) || PRIORITIES[0];
 
@@ -1038,7 +1038,7 @@ export default function ForensicLabPage() {
                 const custodyLog = meta.custody_log || [];
                 const CUSTODY_ACTIONS = ['received', 'transferred', 'stored', 'analyzed', 'returned'] as const;
                 const actionColors: Record<string, string> = {
-                  received: '#aaaaaa', transferred: '#f59e0b', stored: '#a78bfa', analyzed: '#34d399', returned: '#666666',
+                  received: '#aaaaaa', transferred: '#f59e0b', stored: '#a78bfa', analyzed: '#34d399', returned: 'var(--rmpg-500)',
                 };
                 return (
                   <div className="panel-beveled bg-surface-sunken p-3 space-y-3">
@@ -1069,14 +1069,14 @@ export default function ForensicLabPage() {
                           {custodyLog.map((ev, i) => (
                             <div key={ev.id} className="flex gap-3 relative">
                               <div className="w-3 h-3 rounded-full border-2 flex-shrink-0 mt-0.5 z-10" style={{
-                                borderColor: actionColors[ev.action] || '#666666',
-                                backgroundColor: i === 0 ? (actionColors[ev.action] || '#666666') : '#050505',
+                                borderColor: actionColors[ev.action] || 'var(--rmpg-500)',
+                                backgroundColor: i === 0 ? (actionColors[ev.action] || 'var(--rmpg-500)') : 'var(--surface-overlay)',
                               }} />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm" style={{
-                                    backgroundColor: (actionColors[ev.action] || '#666666') + '20',
-                                    color: actionColors[ev.action] || '#666666',
+                                    backgroundColor: (actionColors[ev.action] || 'var(--rmpg-500)') + '20',
+                                    color: actionColors[ev.action] || 'var(--rmpg-500)',
                                   }}>{ev.action}</span>
                                   <span className="text-[10px] text-rmpg-300">
                                     <span className="text-rmpg-200 font-semibold">{ev.from_person}</span>
@@ -1571,7 +1571,7 @@ export default function ForensicLabPage() {
               {/* Link Search */}
               <div className="panel-beveled bg-surface-sunken p-3">
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Link Entity to Case</div>
-                <div className="p-2 bg-surface-sunken/10 border border-gray-800/30 rounded-sm text-[10px] text-rmpg-300 mb-2">
+                <div className="p-2 bg-surface-sunken/10 border border-border-subtle/30 rounded-sm text-[10px] text-rmpg-300 mb-2">
                   <Info size={10} className="inline mr-1" />
                   Search for persons, incidents, evidence, or cases to link to this forensic case.
                 </div>
@@ -1705,7 +1705,7 @@ export default function ForensicLabPage() {
             isDirty={exhibitForm.description.trim().length > 0}
           >
             <div className="space-y-3">
-              <div className="p-2 bg-surface-sunken/10 border border-gray-800/30 rounded-sm text-[10px] text-rmpg-300">
+              <div className="p-2 bg-surface-sunken/10 border border-border-subtle/30 rounded-sm text-[10px] text-rmpg-300">
                 <Info size={10} className="inline mr-1" />
                 Each exhibit is auto-assigned a letter (A, B, C...) for chain of custody tracking.
               </div>
@@ -1833,7 +1833,7 @@ export default function ForensicLabPage() {
             isDirty={custodyForm.from_person.trim().length > 0 || custodyForm.to_person.trim().length > 0}
           >
             <div className="space-y-3">
-              <div className="p-2 bg-surface-sunken/10 border border-gray-800/30 rounded-sm text-[10px] text-rmpg-300">
+              <div className="p-2 bg-surface-sunken/10 border border-border-subtle/30 rounded-sm text-[10px] text-rmpg-300">
                 <Info size={10} className="inline mr-1" />
                 Record every transfer of evidence to maintain a complete chain of custody.
               </div>
@@ -2157,7 +2157,7 @@ export default function ForensicLabPage() {
                   <FileText size={16} className="text-brand-400" />
                   <h3 className="text-sm font-bold text-rmpg-100">Case Information</h3>
                 </div>
-                <div className="p-2 bg-surface-sunken/10 border border-gray-800/30 rounded-sm text-[10px] text-rmpg-300">
+                <div className="p-2 bg-surface-sunken/10 border border-border-subtle/30 rounded-sm text-[10px] text-rmpg-300">
                   <Info size={10} className="inline mr-1" />
                   Start by describing the case. A lab case number will be auto-generated (e.g. FL-2026-0001).
                   Choose the type of forensic examination needed and the priority level.
@@ -2261,7 +2261,7 @@ export default function ForensicLabPage() {
                   <Package size={16} className="text-brand-400" />
                   <h3 className="text-sm font-bold text-rmpg-100">Evidence Intake</h3>
                 </div>
-                <div className="p-2 bg-surface-sunken/10 border border-gray-800/30 rounded-sm text-[10px] text-rmpg-300">
+                <div className="p-2 bg-surface-sunken/10 border border-border-subtle/30 rounded-sm text-[10px] text-rmpg-300">
                   <Info size={10} className="inline mr-1" />
                   Add each piece of evidence as a separate exhibit. Each will be assigned a letter (A, B, C...).
                   You can skip this step and add exhibits later.

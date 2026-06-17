@@ -485,7 +485,7 @@ export default function NationalWarrantSearchPage() {
                         height={cellH}
                         rx={2}
                         fill={isHovered ? coverageHoverFill(status) : coverageFill(status)}
-                        stroke={isSelected ? '#a0a0a0' : coverageStroke(status)}
+                        stroke={isSelected ? 'var(--rmpg-400)' : coverageStroke(status)}
                         strokeWidth={isSelected ? 2 : 1}
                         opacity={isHovered ? 1 : 0.85}
                       />
@@ -499,7 +499,7 @@ export default function NationalWarrantSearchPage() {
                           fontSize: 11,
                           fontWeight: 600,
                           fontFamily: 'JetBrains Mono, monospace',
-                          fill: isSelected ? '#a0a0a0' : status === 'active' ? '#86efac' : status === 'pending' ? '#fcd34d' : '#9ca3af',
+                          fill: isSelected ? 'var(--rmpg-400)' : status === 'active' ? '#86efac' : status === 'pending' ? '#fcd34d' : 'var(--rmpg-400)',
                         }}
                       >
                         {st.label}

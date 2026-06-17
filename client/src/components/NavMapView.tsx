@@ -659,7 +659,7 @@ export default function NavMapView({
           className="absolute rounded-sm border overflow-hidden"
           style={{
             bottom: 8, right: 8, width: 96, height: 72,
-            borderColor: '#2e2e2e', background: '#050505',
+            borderColor: '#2e2e2e', background: 'var(--surface-overlay)',
             opacity: insetReady ? 1 : 0.4, transition: 'opacity 200ms',
             pointerEvents: 'none', zIndex: 2,
           }}
@@ -710,7 +710,7 @@ export default function NavMapView({
               type="button"
               onClick={() => handleZoom(1)}
               className="w-8 h-8 flex items-center justify-center rounded-sm border border-subtle"
-              style={{ background: 'rgba(10,10,10,0.85)', color: '#e0e0e0' }}
+              style={{ background: 'rgba(10,10,10,0.85)', color: 'var(--text-secondary)' }}
               title="Zoom in"
             >
               <ZoomIn size={14} />
@@ -719,7 +719,7 @@ export default function NavMapView({
               type="button"
               onClick={() => handleZoom(-1)}
               className="w-8 h-8 flex items-center justify-center rounded-sm border border-subtle"
-              style={{ background: 'rgba(10,10,10,0.85)', color: '#e0e0e0' }}
+              style={{ background: 'rgba(10,10,10,0.85)', color: 'var(--text-secondary)' }}
               title="Zoom out"
             >
               <ZoomOut size={14} />
@@ -745,7 +745,7 @@ export default function NavMapView({
                     type="button"
                     onClick={() => handleStyleChange(opt.value)}
                     className="block w-full text-left px-2 py-1 text-[10px] font-mono uppercase tracking-wider transition-colors hover:bg-rmpg-800"
-                    style={{ color: style === opt.value ? '#d4a017' : '#e0e0e0', borderBottom: '1px solid #1a1a1a' }}
+                    style={{ color: style === opt.value ? '#d4a017' : 'var(--text-secondary)', borderBottom: '1px solid #1a1a1a' }}
                   >
                     {opt.label}
                   </button>

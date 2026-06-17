@@ -99,7 +99,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
             onClick={() => onChange(opt.value)}
             className="flex-1 px-2 py-1 text-[10px] uppercase tracking-wide border transition-colors"
             style={{
-              background: value === opt.value ? '#d4a017' : '#141414',
+              background: value === opt.value ? '#d4a017' : 'var(--surface-base)',
               color: value === opt.value ? '#000' : '#888',
               borderColor: value === opt.value ? '#d4a017' : '#222',
               borderRadius: 2,
@@ -441,7 +441,7 @@ export default function SettingsPage() {
                 className="shrink-0 min-w-[120px] px-3 py-1.5 text-[11px] font-mono border transition-colors"
                 style={{
                   borderRadius: 2,
-                  background: capturingKey ? '#3a0d0d' : '#141414',
+                  background: capturingKey ? '#3a0d0d' : 'var(--surface-base)',
                   borderColor: capturingKey ? '#ef4444' : '#222',
                   color: capturingKey ? '#fca5a5' : '#fff',
                 }}

@@ -87,7 +87,7 @@ export default function ButtonHealthOverlay() {
     maxHeight: '80vh',
     overflow: 'auto',
     zIndex: 2147483647,
-    background: '#0d1722',
+    background: 'var(--surface-base)',
     color: '#e5e7eb',
     border: '1px solid #d4a017',
     borderRadius: 2,
@@ -141,7 +141,7 @@ export default function ButtonHealthOverlay() {
 
       {report && (
         <div style={{ padding: '8px 10px' }}>
-          <div style={{ marginBottom: 6, color: '#9ca3af' }}>
+          <div style={{ marginBottom: 6, color: 'var(--rmpg-400)' }}>
             {report.url} · {report.viewport[0]}×{report.viewport[1]}
           </div>
           <div style={{ marginBottom: 8 }}>
@@ -154,7 +154,7 @@ export default function ButtonHealthOverlay() {
             <div style={{ color: '#22c55e' }}>✓ All buttons fully clickable on this screen.</div>
           ) : (
             <>
-              <div style={{ color: '#9ca3af', margin: '6px 0 4px' }}>Top click-stealers:</div>
+              <div style={{ color: 'var(--rmpg-400)', margin: '6px 0 4px' }}>Top click-stealers:</div>
               <ul style={{ margin: '0 0 8px', paddingLeft: 16 }}>
                 {report.interceptorTally.slice(0, 5).map(([sig, n]) => (
                   <li key={sig}>
@@ -162,7 +162,7 @@ export default function ButtonHealthOverlay() {
                   </li>
                 ))}
               </ul>
-              <div style={{ color: '#9ca3af', margin: '6px 0 4px' }}>Offenders:</div>
+              <div style={{ color: 'var(--rmpg-400)', margin: '6px 0 4px' }}>Offenders:</div>
               {report.entries.map((e, i) => (
                 <div
                   key={i}
@@ -179,7 +179,7 @@ export default function ButtonHealthOverlay() {
                     </span>{' '}
                     <strong>{e.label}</strong>
                   </div>
-                  <div style={{ color: '#9ca3af' }}>covered by: {e.interceptor}</div>
+                  <div style={{ color: 'var(--rmpg-400)' }}>covered by: {e.interceptor}</div>
                   <div style={{ color: '#6b7280', fontSize: 11 }}>{e.interceptorStyle}</div>
                 </div>
               ))}
