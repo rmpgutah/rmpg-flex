@@ -490,4 +490,27 @@ cpg.get('/media/:id/stream', async (c) => {
   });
 });
 
+// ── Full-drive download (back-to-back clips for a time window) ───────────
+// Triggers a background clip-download for every event in [fromMs, toMs].
+// Returns immediately; the actual downloads run via waitUntil. The client can
+// poll /media-status afterwards to see the updated clip/storage counts.
+cpg.post('/full-drive', adminOnly, async (c) => {
+  try {
+    let body: { device_id?: string; hours_back?: number; from_ts?: number; to_ts?: number } = {};
+    try { body = await c.req.json(); } catch { /* body optional */ }
+    const toMs = Number.isFinite(Number(body.to_ts)) ? Number(body.to_ts) : Date.now();
+    const hoursBack = Math.max(1, Math.min(168, Number(body.hours_back ?? 8)));
+    const fromMs = Number.isFinite(Number(body.from_ts)) ? Number(body.from_ts) : (toMs - hoursBack * 3_600_000);
+    const { syncClearpathMediaRange } = await import('../utils/clearpathSync');
+    c.executionCtx.waitUntil(
+      syncClearpathMediaRange(c.env, { deviceId: body.device_id || undefined, fromMs, toMs, maxClips: 200 })
+        .then((r) => console.log(`[cpg-fulldrive] done: synced=${r.synced} errors=${r.errors}`))
+        .catch((err) => console.error('[cpg-fulldrive] failed:', (err as Error)?.message)),
+    );
+    return c.json({ started: true, from_ts: fromMs, to_ts: toMs, hours: Math.round((toMs - fromMs) / 3_600_000) });
+  } catch (err) {
+    return c.json({ started: false, error: clientErrorMessage(err) }, 500);
+  }
+});
+
 export default cpg;

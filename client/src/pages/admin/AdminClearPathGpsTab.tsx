@@ -149,6 +149,13 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const [savingMedia, setSavingMedia] = useState(false);
   const [actionResult, setActionResult] = useState<string | null>(null);
 
+  // Full-drive download
+  const [showFullDrive, setShowFullDrive] = useState(false);
+  const [fullDriveDeviceId, setFullDriveDeviceId] = useState('');
+  const [fullDriveHours, setFullDriveHours] = useState(8);
+  const [fullDriveRunning, setFullDriveRunning] = useState(false);
+  const [fullDriveResult, setFullDriveResult] = useState<string | null>(null);
+
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
   const cm = useMenuActions();
@@ -530,6 +537,28 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     }
   };
 
+  // ── Trigger full-drive clip download ──
+  const handleFullDrive = async () => {
+    setFullDriveRunning(true);
+    setFullDriveResult(null);
+    try {
+      const body: Record<string, unknown> = { hours_back: fullDriveHours };
+      if (fullDriveDeviceId) body.device_id = fullDriveDeviceId;
+      const r = await apiFetch<{ started: boolean; hours?: number; error?: string }>(
+        '/clearpathgps/full-drive', { method: 'POST', body: JSON.stringify(body) });
+      if (r.error) {
+        setError(r.error);
+      } else {
+        setFullDriveResult(`Full-drive download started for last ${r.hours ?? fullDriveHours}h — clips arrive in the background. Refresh stats in ~1 min.`);
+        setTimeout(async () => { await fetchMediaStatus(); }, 30_000);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Full-drive request failed');
+    } finally {
+      setFullDriveRunning(false);
+    }
+  };
+
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -587,18 +616,6 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   // Units that are not already mapped (exclude null unit_id from the blocked set)
   const mappedUnitIds = new Set(mappings.map(m => m.unit_id).filter((id): id is number => id != null));
   const availableUnits = units.filter(u => !mappedUnitIds.has(u.id));
-
-  if (loading) return <LoadingSpinner />;
-
-
-  if (loading) return <LoadingSpinner />;
-
-
-  if (loading) return <LoadingSpinner />;
-
-
-  if (loading) return <LoadingSpinner />;
-
 
   if (loading) return <LoadingSpinner />;
 
@@ -1185,7 +1202,74 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               )}
               Scan ALPR now
             </button>
+
+            {/* Full-drive download toggle */}
+            <button type="button"
+              onClick={() => { setShowFullDrive(!showFullDrive); setFullDriveResult(null); }}
+              disabled={!status?.enabled}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wide
+                         bg-purple-900/50 hover:bg-purple-800/60 border border-purple-700/50 text-purple-300
+                         disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <Video className="w-3 h-3" />
+              Full Drive
+            </button>
           </div>
+
+          {/* Full-drive panel */}
+          {showFullDrive && (
+            <div className="border border-purple-700/30 bg-purple-950/20 p-3 space-y-2">
+              <div className="text-[10px] text-purple-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Video className="w-3 h-3" /> Full Drive Video Download
+              </div>
+              <p className="text-[10px] text-rmpg-500 leading-relaxed">
+                Downloads all dashcam event clips for a selected time window — clips run back-to-back,
+                ideal for incident review or court evidence. Runs in the background; check Clips Synced after ~1 min.
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                {mappings.length > 1 && (
+                  <select
+                    value={fullDriveDeviceId}
+                    onChange={(e) => setFullDriveDeviceId(e.target.value)}
+                    className="select-dark text-[10px] py-0.5 px-1.5"
+                  >
+                    <option value="">All devices</option>
+                    {mappings.map((m) => (
+                      <option key={m.cpg_device_id} value={m.cpg_device_id}>
+                        {m.cpg_display_name || m.cpg_device_id}{m.call_sign ? ` (${m.call_sign})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <select
+                  value={fullDriveHours}
+                  onChange={(e) => setFullDriveHours(Number(e.target.value))}
+                  className="select-dark text-[10px] py-0.5 px-1.5"
+                >
+                  <option value={2}>Last 2 hours</option>
+                  <option value={4}>Last 4 hours</option>
+                  <option value={8}>Last 8 hours (shift)</option>
+                  <option value={12}>Last 12 hours</option>
+                  <option value={24}>Last 24 hours</option>
+                  <option value={72}>Last 3 days</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={handleFullDrive}
+                  disabled={fullDriveRunning || !status?.enabled}
+                  className="inline-flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wide
+                             bg-purple-700/60 hover:bg-purple-600/60 border border-purple-500/50 text-purple-200
+                             disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {fullDriveRunning
+                    ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
+                    : <Download className="w-3 h-3" />}
+                  {fullDriveRunning ? 'Starting...' : 'Start Download'}
+                </button>
+              </div>
+              {fullDriveResult && <p className="text-[10px] text-green-400">{fullDriveResult}</p>}
+            </div>
+          )}
 
           {actionResult && (
             <p className="mt-1 text-[10px] text-green-400">{actionResult}</p>

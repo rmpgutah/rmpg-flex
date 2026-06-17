@@ -658,7 +658,7 @@
 //       keep their text+underline style (unchanged).
 // Stamped at build time by the stamp-sw-version Vite plugin (vite.config.ts)
 // with the git short SHA → 'rmpg-flex-<sha>'. Dev server serves 'rmpg-flex-BUILD'.
-const CACHE_NAME = 'rmpg-flex-v994';
+const CACHE_NAME = 'rmpg-flex-v995';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
