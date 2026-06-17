@@ -544,7 +544,7 @@ export async function extractFromTextClaude(
   try {
     const reply = await callClaude(key, {
       system: SYSTEM_PROMPT,
-      text: `${buildUserPrompt(trimmed.slice(0, 40000))}\n\nReturn ONLY the JSON object, no prose.`,
+      text: `${buildUserPrompt(trimmed)}\n\nReturn ONLY the JSON object, no prose.`,
       model, maxTokens: 2048,
     });
     const parsed = tryParseModelJson({ response: reply });
