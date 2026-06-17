@@ -199,13 +199,7 @@ function tacticalApproachLines(input: BriefingInput, hint: string): string[] {
   // Refusal + evasion doctrine — applies to every paper type.
   lines.push('REFUSAL: once identity is reasonably confirmed, a refusal to take the papers does not defeat service — announce the nature of the documents, leave them in plain view near the person, and record their words and actions verbatim. Never force papers into hands or wedge them in a door.');
   lines.push('EVASION INDICATORS: vehicle in drive, lights/TV on, movement or voices inside with no answer — document each indicator with time; they are evidence for an alternative-service motion. Neighbor contact is permitted to confirm residency ONLY — never disclose the nature of the documents or case details to third parties.');
-  if (queueRow.notes) lines.push(`Client-specified service windows: ${queueRow.notes}.`);
-  if (queueRow.deadline) {
-    lines.push(`Deadline on file (${queueRow.deadline}): front-load attempts — do not bank on the final days; alternative service needs court lead time if attempts fail.`);
-  } else {
-    lines.push('No service deadline on file — treat per diligence standard (first attempt within 48h; vary day/time across attempts).');
-  }
-  lines.push('Body-camera/GPS on at every attempt; photograph the location on no-answer attempts to support the diligence affidavit.');
+  lines.push('Body-camera/GPS on at every attempt; photograph the location on no-answer attempts to support the diligence affidavit. See ■ SERVICE WINDOWS below for authorized attempt hours.');
   return lines;
 }
 
@@ -224,10 +218,18 @@ const AFFIDAVIT_LINES = [
   'On no-answer: photograph of the door/frontage with timestamp; note evasion indicators observed.',
 ];
 
+// Days from nowIso to deadlineIso (negative = overdue). Ceiling so "today"
+// reads as 1 rather than 0, giving the officer accurate language at a glance.
+function daysUntil(deadlineIso: string, nowIso: string): number {
+  const dl = new Date(deadlineIso + 'T00:00:00Z').getTime(); // new-date-ok: parsing an ISO string from DB, not clock-reading
+  const now = new Date(nowIso).getTime();                    // new-date-ok: nowIso is the caller's already-captured clock value
+  return Math.ceil((dl - now) / 86_400_000);
+}
+
 // Build the full structured "INTAKE BRIEFING" note + (when triggered) a
 // distinct "OFFICER SAFETY" note. Markdown bold (**) is rendered by the
 // Notes tab's renderFormattedText, so section labels stand out.
-function buildBriefingNoteText(input: BriefingInput): string {
+function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
   const { fields, queueRow, isBusiness, agentName, fullLocation, docCount } = input;
   const f = (k: string) => get(fields, k);
   const hint = hazardHintText(fields, queueRow);
@@ -266,6 +268,46 @@ function buildBriefingNoteText(input: BriefingInput): string {
     if (queueRow.court_date) lines.push(`Hearing date: ${queueRow.court_date} — service must be perfected with enough lead time for the recipient's appearance.`);
   }
 
+  // ── TIMELINE: computed urgency for the officer reading this ───
+  // "8 days" is actionable. "2026-07-15" is not. Both appear; days-
+  // remaining turns an abstract date into a concrete scheduling pressure.
+  {
+    const dlDays = queueRow.deadline ? daysUntil(queueRow.deadline, nowIso) : null;
+    const hDays  = queueRow.court_date ? daysUntil(queueRow.court_date, nowIso) : null;
+
+    const hasUrgency = dlDays !== null || hDays !== null
+      || queueRow.priority === 'urgent' || queueRow.priority === 'rush';
+
+    if (hasUrgency) {
+      lines.push('**■ TIMELINE**');
+      if (dlDays !== null) {
+        const tag = dlDays <= 0 ? ' — __PAST DUE — escalate immediately__'
+          : dlDays === 1 ? ' — __1 DAY REMAINING ⚠ URGENT__'
+          : dlDays <= 3 ? ` — __${dlDays} days remaining ⚠ URGENT — attempt today__`
+          : dlDays <= 7 ? ` — ${dlDays} days remaining ⚠ RUSH — front-load attempts`
+          : ` — ${dlDays} days remaining`;
+        lines.push(`• Deadline: ${queueRow.deadline}${tag}`);
+        if (dlDays > 0 && dlDays <= 5) {
+          lines.push('• At this deadline distance, alternative service (URCP 4(d)(5)) requires a court motion that needs 3–5 business days — exhaust personal attempts NOW; do not defer.');
+        }
+      } else {
+        lines.push('• No service deadline on file — treat as routine (first attempt within 48h).');
+      }
+      if (hDays !== null) {
+        const htag = hDays <= 0 ? ' — __hearing has passed__'
+          : hDays <= 7 ? ` — ${hDays} days until hearing ⚠ immediate service required`
+          : ` — ${hDays} days until hearing`;
+        lines.push(`• Court / hearing date: ${queueRow.court_date}${htag}`);
+        if (hDays > 0 && hDays <= 21) {
+          lines.push('• The respondent needs at minimum 21 days from service to appear (URCP 12(a)) — serve immediately or the hearing may need to be continued.');
+        }
+      }
+      if (queueRow.priority === 'urgent' || queueRow.priority === 'rush') {
+        lines.push(`• Priority classification: ${queueRow.priority.toUpperCase()} — this packet has been escalated; do not let it sit in queue beyond today's shift.`);
+      }
+    }
+  }
+
   lines.push('**■ SERVICE AUTHORITY**');
   for (const l of serviceAuthorityLines(isBusiness, hint)) lines.push(`• ${l}`);
 
@@ -278,6 +320,23 @@ function buildBriefingNoteText(input: BriefingInput): string {
       lines.push(`• Attempt ${w.attempt}: ${w.weekday} ${w.date}, ${w.window}  (${w.focus})`);
     }
     lines.push('• Adjust to client-specified windows and field conditions; following the plan satisfies the time-variance diligence standard.');
+  }
+
+  // ── SERVICE WINDOWS — always present so the officer knows the answer ──
+  // to "when can I go?" regardless of whether the client specified one.
+  lines.push('**■ SERVICE WINDOWS**');
+  const clientWindows = (queueRow.notes || '').split('\n')[0]?.trim();
+  if (clientWindows && !clientWindows.startsWith('[OCR')) {
+    // Client imposed a specific window restriction — show verbatim so the
+    // officer has the exact language for the affidavit if challenged.
+    lines.push(`• __Client restriction (verbatim):__ ${clientWindows}`);
+    lines.push('• Do NOT attempt outside these hours — off-hours service may be challenged in court. If you arrive outside the window, note "client-imposed restriction — departed without contact" in the attempt log.');
+    lines.push('• Within the authorized window, vary day and time across attempts — time variance is the diligence standard even when hours are constrained.');
+  } else {
+    // No restriction: give the officer the standard-optimal windows.
+    lines.push('• No client restriction — standard diligence windows apply:');
+    lines.push('• Residential: early morning 07:00–09:00 (pre-work), midday 11:00–13:00, early evening 17:00–20:30 (post-work). Include at least one weekend attempt — residential hit rates peak Saturday 08:00–10:00.');
+    lines.push('• Business: mid-morning 09:00–11:00 and early afternoon 13:00–16:00 during posted business hours. Confirm the entity still operates at the address before tendering.');
   }
 
   lines.push('**■ DILIGENCE STANDARD**');
@@ -426,7 +485,7 @@ export function buildPsoBriefing(input: BriefingInput, nowIso: string): PsoBrief
   notes.push({
     id: `intake-brief-${Date.now() + 1}`,
     author: 'INTAKE',
-    text: buildBriefingNoteText(input),
+    text: buildBriefingNoteText(input, nowIso),
     timestamp: nowIso,
   });
 
