@@ -17,7 +17,7 @@ import {
   CalendarDays, Clipboard, MapPin, Package, UserCheck, FileSearch, PenTool,
   HeartPulse, ShieldAlert, GraduationCap, Server, Palette, Bug, Sparkles, Mic,
   MicOff, Video, ClipboardCheck, Contrast, Droplets, Flame, Leaf, Tv, Brain,
-  SlidersHorizontal, AudioLines, Network, CreditCard, DollarSign, Route,
+  SlidersHorizontal, AudioLines, Network, CreditCard, DollarSign, Route, Film,
 } from 'lucide-react';
 import {
   setVoiceAlertsEnabled, getVoiceAlertsEnabled, demoAllVoiceAlerts,
@@ -517,6 +517,7 @@ export default function MenuBar({
           { type: 'action', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
           { type: 'action', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
           { type: 'action', label: 'Dashcam AI Console', icon: Video, action: () => navigate('/dashcam-ai') },
+          { type: 'action', label: 'Trip Footage (FlexCam)', icon: Film, action: () => navigate('/flexcam') },
           { type: 'action', label: 'Training', icon: GraduationCap, action: () => navigate('/training') },
           { type: 'action', label: 'Training Docs', icon: BookOpen, action: () => navigate('/training-docs') },
           { type: 'separator' },
@@ -743,6 +744,7 @@ export default function MenuBar({
           { type: 'action', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
           { type: 'action', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
           { type: 'action', label: 'Dashcam AI Console', icon: Video, action: () => navigate('/dashcam-ai') },
+          { type: 'action', label: 'Trip Footage (FlexCam)', icon: Film, action: () => navigate('/flexcam') },
           { type: 'separator' },
           { type: 'action', label: 'Training', icon: GraduationCap, action: () => navigate('/training') },
           { type: 'action', label: 'Training Docs', icon: BookOpen, action: () => navigate('/training-docs') },

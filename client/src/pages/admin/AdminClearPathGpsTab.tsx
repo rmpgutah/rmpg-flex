@@ -3,7 +3,7 @@ import {
   Navigation, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Trash2, Zap, AlertTriangle, ToggleLeft, ToggleRight, Link2, Unlink,
   Radio, Clock, Truck, Search, Camera, History, RefreshCw, Video,
-  HardDrive, Download, Play, X as XIcon, ChevronRight,
+  HardDrive, Download, Play, X as XIcon,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeTimeStr, safeDateTimeStr } from '../../utils/dateUtils';
@@ -39,7 +39,6 @@ interface FullDriveJob {
   created_at: string; trips: FullDriveTrip[];
 }
 
-interface TripClip { seq: number; streamUrl: string; from_ts: number; to_ts: number; }
 
 interface MediaSyncStatus {
   media_sync_enabled: boolean;
@@ -180,10 +179,6 @@ const FullDriveJobPanel = memo(function FullDriveJobPanel({
   onClose: () => void;
 }) {
   const [tickNow, setTickNow] = useState(Date.now());
-  const [playingTrip, setPlayingTrip] = useState<{ requestId: number; label: string } | null>(null);
-  const [tripClips, setTripClips] = useState<TripClip[]>([]);
-  const [currentClipIdx, setCurrentClipIdx] = useState(0);
-  const [clipError, setClipError] = useState<string | null>(null);
 
   useEffect(() => {
     if (jobStatus.status === 'done') return;
@@ -191,25 +186,6 @@ const FullDriveJobPanel = memo(function FullDriveJobPanel({
     return () => clearInterval(t);
   }, [jobStatus.status]);
 
-  const handlePlayTrip = async (requestId: number, label: string) => {
-    setPlayingTrip({ requestId, label });
-    setCurrentClipIdx(0);
-    setTripClips([]);
-    setClipError(null);
-    try {
-      const r = await apiFetch<{ clips: TripClip[] }>(`/clearpathgps/full-drive/trips/${requestId}/clips`);
-      // <video> tags can't send Authorization headers — append the JWT as ?token=
-      // The auth middleware accepts it for GET requests on media paths.
-      const jwt = localStorage.getItem('rmpg_token') ?? '';
-      const clips = (r.clips ?? []).map((cl) => ({
-        ...cl,
-        streamUrl: jwt ? `${cl.streamUrl}?token=${encodeURIComponent(jwt)}` : cl.streamUrl,
-      }));
-      setTripClips(clips);
-    } catch (err) {
-      setClipError(err instanceof Error ? err.message : 'Failed to load clips');
-    }
-  };
 
   const totalPct = jobStatus.clips_requested > 0
     ? Math.round((jobStatus.clips_ready / jobStatus.clips_requested) * 100)
@@ -308,13 +284,12 @@ const FullDriveJobPanel = memo(function FullDriveJobPanel({
               <div className="flex items-center gap-1.5 shrink-0">
                 <span className={`text-[9px] font-bold w-7 text-right ${noFootage ? 'text-red-500' : 'text-purple-400'}`}>{pct}%</span>
                 {settled_ && hasClips && trip.footage_request_id && (
-                  <button type="button"
-                    onClick={() => handlePlayTrip(trip.footage_request_id!, trip.label)}
+                  <a href={`/flexcam/${trip.footage_request_id}`} target="_blank" rel="noreferrer"
                     className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase
                                bg-green-800/60 hover:bg-green-700/60 border border-green-600/40 text-green-300
                                transition-colors">
                     <Play className="w-2.5 h-2.5" /> Play
-                  </button>
+                  </a>
                 )}
                 {noFootage && (
                   <RetryTripButton tripId={trip.id} />
@@ -334,54 +309,6 @@ const FullDriveJobPanel = memo(function FullDriveJobPanel({
         Start another full drive
       </button>
 
-      {playingTrip && (
-        <div className="border border-green-700/30 bg-green-950/20 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] font-bold text-green-300 flex items-center gap-1.5">
-              <Play className="w-3 h-3" /> {playingTrip.label}
-            </p>
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] text-rmpg-500">Clip {currentClipIdx + 1} / {tripClips.length}</span>
-              <button type="button" onClick={() => setPlayingTrip(null)}
-                className="text-rmpg-500 hover:text-rmpg-300 transition-colors">
-                <XIcon className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-          {clipError && <p className="text-[10px] text-red-400">{clipError}</p>}
-          {tripClips.length > 0 ? (
-            <>
-              <video key={tripClips[currentClipIdx]?.streamUrl}
-                src={tripClips[currentClipIdx]?.streamUrl}
-                className="w-full max-h-48 bg-black"
-                controls autoPlay
-                onEnded={() => {
-                  if (currentClipIdx < tripClips.length - 1) setCurrentClipIdx((i) => i + 1);
-                }}
-              />
-              <div className="flex items-center gap-2 justify-center">
-                <button type="button" disabled={currentClipIdx === 0}
-                  onClick={() => setCurrentClipIdx((i) => Math.max(0, i - 1))}
-                  className="text-[9px] text-rmpg-400 hover:text-rmpg-200 disabled:opacity-40 transition-colors">
-                  ← Prev
-                </button>
-                <span className="text-[9px] text-rmpg-500">
-                  {new Date(tripClips[currentClipIdx]?.from_ts ?? 0).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}
-                </span>
-                <button type="button" disabled={currentClipIdx >= tripClips.length - 1}
-                  onClick={() => setCurrentClipIdx((i) => Math.min(tripClips.length - 1, i + 1))}
-                  className="text-[9px] text-rmpg-400 hover:text-rmpg-200 disabled:opacity-40 transition-colors">
-                  Next <ChevronRight className="inline w-2.5 h-2.5" />
-                </button>
-              </div>
-            </>
-          ) : !clipError ? (
-            <div className="flex items-center justify-center h-12">
-              <Loader2 className="w-4 h-4 animate-spin text-green-500" />
-            </div>
-          ) : null}
-        </div>
-      )}
     </div>
   );
 });
