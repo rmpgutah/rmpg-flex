@@ -9,7 +9,7 @@
 
 import type { Bindings } from '../types';
 import { getDb, query, queryFirst, execute } from './db';
-import { enqueueFootage, ensureFootageSchema, runRequestPass } from './footage/captureOrchestrator';
+import { enqueueFootage, ensureFootageSchema, runRequestPass, pollAndDownload } from './footage/captureOrchestrator';
 import { getApiConfig, isEnabled } from './clearpathGps';
 
 // A gap of 15+ minutes between GPS pings means the vehicle was stopped / engine off.
@@ -271,4 +271,11 @@ export async function maybePollFullDriveChunks(env: Bindings): Promise<void> {
     return null;
   });
   if (r?.requested) console.log(`[full-drive] requested ${r.requested} chunks`);
+
+  // Also run the download pass so requested → downloaded without flexcam_enabled gate.
+  const d = await pollAndDownload(env).catch((err) => {
+    console.error('[full-drive] download pass failed:', (err as Error).message);
+    return null;
+  });
+  if (d?.downloaded) console.log(`[full-drive] downloaded ${d.downloaded} chunks`);
 }
