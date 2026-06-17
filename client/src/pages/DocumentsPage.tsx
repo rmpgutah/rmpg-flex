@@ -262,12 +262,27 @@ export default function DocumentsPage() {
   }, [files, q, filterType, sortBy]);
 
   // Open a file the same way the row buttons do: PDFs route through the
-  // internal pdf-editor viewer, other previewables open in a new tab.
+  // internal pdf-editor viewer, other previewables open in a new tab, text files in the text editor.
+  const TEXT_MIMES = new Set([
+    'text/plain', 'text/csv', 'text/markdown', 'text/x-markdown',
+    'application/json', 'text/xml', 'application/xml',
+    'text/javascript', 'application/javascript',
+    'text/x-python', 'text/x-sh', 'text/x-yaml', 'application/x-yaml',
+  ]);
+
   const openFile = (file: FileItem) => {
     if (file.mime_type === 'application/pdf') {
       const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name, view: '1' });
       if (currentFolderId != null) params.set('folderId', String(currentFolderId));
       navigate(`/pdf-editor?${params.toString()}`);
+    } else if (file.mime_type === 'text/html') {
+      const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name });
+      if (currentFolderId != null) params.set('folderId', String(currentFolderId));
+      navigate(`/document-writer?${params.toString()}`);
+    } else if (TEXT_MIMES.has(file.mime_type)) {
+      const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name, mime: file.mime_type });
+      if (currentFolderId != null) params.set('folderId', String(currentFolderId));
+      navigate(`/text-editor?${params.toString()}`);
     } else if (canPreview(file.mime_type)) {
       window.open(authedImageUrl(`/api/uploads/${file.file_id}`), '_blank', 'noopener,noreferrer');
     } else {

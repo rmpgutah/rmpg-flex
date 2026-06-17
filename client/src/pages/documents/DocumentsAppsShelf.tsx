@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, FilePlus2, Sparkles, Clock, Eye } from 'lucide-react';
+import { FileText, FilePlus2, FileCode, Sparkles, Clock, Eye } from 'lucide-react';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 
@@ -35,6 +35,7 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
   const m = useMenuActions();
   const [recents, setRecents] = useState<RecentEntry[]>([]);
   const [creatingBlank, setCreatingBlank] = useState(false);
+  const [creatingText, setCreatingText] = useState(false);
 
   // Open a recent file in the PDF editor (shared by the chip onClick + its
   // right-click "Open" menu action).
@@ -98,6 +99,42 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
     }
   };
 
+  const createTextFile = async () => {
+    const rawName = window.prompt('File name (include extension, e.g. notes.txt, config.json, script.py):');
+    if (!rawName?.trim()) return;
+    const name = rawName.trim();
+    const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
+    const mimeMap: Record<string, string> = {
+      txt: 'text/plain', md: 'text/markdown', markdown: 'text/markdown',
+      csv: 'text/csv', json: 'application/json',
+      xml: 'text/xml', html: 'text/html',
+      js: 'text/javascript', ts: 'text/javascript',
+      py: 'text/x-python', sh: 'text/x-sh', yaml: 'text/x-yaml', yml: 'text/x-yaml',
+    };
+    const mimeType = mimeMap[ext] || 'text/plain';
+    setCreatingText(true);
+    try {
+      const token = localStorage.getItem('rmpg_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch('/api/uploads/create', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name, mime_type: mimeType, folder_id: currentFolderId }),
+      });
+      if (!res.ok) { const j = await res.json() as { error?: string }; throw new Error(j.error || `HTTP ${res.status}`); }
+      const created = await res.json() as { file_id: string; original_name: string };
+      const params = new URLSearchParams({ fileId: created.file_id, name: created.original_name, mime: mimeType });
+      if (currentFolderId != null) params.set('folderId', String(currentFolderId));
+      navigate(`/text-editor?${params.toString()}`);
+    } catch (err) {
+      console.error('[apps-shelf] new text file failed', err);
+      alert(`Could not create file: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally {
+      setCreatingText(false);
+    }
+  };
+
   const cardCls = 'group bg-surface-base hover:bg-surface-base border border-border-default hover:border-[#d4a017]/40 rounded-[2px] p-3 transition-colors text-left flex items-start gap-2 min-w-[200px]';
 
   return (
@@ -131,6 +168,13 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
           <div>
             <div className="text-xs text-rmpg-100 font-semibold group-hover:text-[#d4a017]">Document Writer</div>
             <div className="text-[10px] text-rmpg-500">Reports, memos, forms — full word processor with templates</div>
+          </div>
+        </button>
+        <button type="button" onClick={createTextFile} disabled={creatingText} className={cardCls}>
+          <FileCode className="w-5 h-5 text-[#d4a017] flex-shrink-0 mt-0.5" />
+          <div>
+            <div className="text-xs text-rmpg-100 font-semibold group-hover:text-[#d4a017]">{creatingText ? 'Creating…' : 'New Text File'}</div>
+            <div className="text-[10px] text-rmpg-500">Plain text, JSON, CSV, Markdown, code — in-app editor</div>
           </div>
         </button>
         <button type="button" onClick={() => navigate('/docs')} className={cardCls}>

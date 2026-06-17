@@ -176,6 +176,7 @@ const DocumentIntakePage = lazyRetry(() => import('./pages/DocumentIntakePage'))
 const DocumentsPage = lazyRetry(() => import('./pages/DocumentsPage'));
 const PdfEditorPage = lazyRetry(() => import('./pages/pdf-editor'));
 const DocumentWriterPage = lazyRetry(() => import('./pages/document-writer'));
+const TextEditorPage = lazyRetry(() => import('./pages/TextEditorPage'));
 const DocsLibraryPage = lazyRetry(() => import('./pages/docs/DocsLibraryPage'));
 const ForgotPasswordPage = lazyRetry(() => import('./pages/ForgotPasswordPage'));
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
@@ -542,6 +543,7 @@ function AppRoutes() {
             <Route path="/documents" element={<RouteErrorBoundary><DocumentsPage /></RouteErrorBoundary>} />
             <Route path="/pdf-editor" element={<RouteErrorBoundary><PdfEditorPage /></RouteErrorBoundary>} />
             <Route path="/document-writer" element={<RouteErrorBoundary><DocumentWriterPage /></RouteErrorBoundary>} />
+            <Route path="/text-editor" element={<RouteErrorBoundary><TextEditorPage /></RouteErrorBoundary>} />
             <Route path="/docs" element={<RouteErrorBoundary><DocsLibraryPage /></RouteErrorBoundary>} />
             <Route path="/recon-connect" element={<RouteErrorBoundary><ReconConnectPage /></RouteErrorBoundary>} />
             <Route path="/jail" element={<RouteErrorBoundary><JailPage /></RouteErrorBoundary>} />
