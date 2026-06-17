@@ -159,8 +159,12 @@ const FullDriveJobPanel = memo(function FullDriveJobPanel({
   const elapsed = tickNow - Date.parse(jobStatus.created_at);
   const rate = elapsed > 0 && jobStatus.clips_ready > 0 ? jobStatus.clips_ready / elapsed : 0;
   const remaining = jobStatus.clips_requested - jobStatus.clips_ready;
+  // ClearPath must pull historical footage from the camera's SD card before it appears
+  // in the media list — this typically takes 30-90 min depending on connectivity.
+  const waitingForUpload = !rate && elapsed > 3 * 60_000; // no clips after 3 min = camera uploading
   const etaStr = (() => {
     if (jobStatus.status === 'done') return 'Complete';
+    if (waitingForUpload) return 'Awaiting dashcam upload…';
     if (!rate || remaining <= 0) return 'Calculating…';
     const s = Math.round((remaining / rate) / 1000);
     if (s < 60) return `~${s}s remaining`;
@@ -187,10 +191,16 @@ const FullDriveJobPanel = memo(function FullDriveJobPanel({
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-bold text-purple-300">{totalPct}%</span>
           <span className="text-[10px] text-rmpg-400">{jobStatus.clips_ready} / {jobStatus.clips_requested} clips</span>
-          <span className={`text-[10px] font-bold ${jobStatus.status === 'done' ? 'text-green-400' : 'text-yellow-400'}`}>
+          <span className={`text-[10px] font-bold ${jobStatus.status === 'done' ? 'text-green-400' : waitingForUpload ? 'text-orange-400' : 'text-yellow-400'}`}>
             {etaStr}
           </span>
         </div>
+        {waitingForUpload && (
+          <p className="text-[9px] text-rmpg-500 leading-snug">
+            ClearPath is retrieving historical footage from the vehicle dashcam. This can take
+            30–90 min while the vehicle is in cellular range. Clips will appear automatically.
+          </p>
+        )}
       </div>
 
       {jobStatus.trips.map((trip) => {

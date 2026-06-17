@@ -9,7 +9,8 @@ import { retentionCutoffMs } from './retention';
 const R2_PREFIX = 'flexcam/trips/';
 const MAX_DOWNLOADS_PER_RUN = 40;  // download pass cap per cron tick
 const MAX_REQUESTS_PER_RUN = 30;   // request pass cap per cron tick (vendor subrequest safety)
-const MAX_POLL_ATTEMPTS = 30;      // ~30 cron minutes before a chunk is 'missing'
+const MAX_POLL_ATTEMPTS = 30;      // ~30 cron minutes before an event/auto chunk expires
+const MAX_POLL_ATTEMPTS_ON_DEMAND = 720; // ~12 hours for historical footage the camera must upload
 const CHUNK_SECONDS = 40;          // segment length we split a drive into
 
 /** Read an integer config from system_config (category integrations); def on absent/NaN. */
@@ -101,19 +102,20 @@ export async function runRequestPass(env: Bindings): Promise<{ requested: number
   const source = await getClearPathSource(db, env);
   if (!source) return { requested: 0, expired: 0 };
   const limit = batchLimit(await cfgInt(db, 'flexcam_requests_per_run', MAX_REQUESTS_PER_RUN), MAX_REQUESTS_PER_RUN);
-  const pend = await query<{ id: number; from_ts: number; to_ts: number; channel: string; asset_id: number; attempts: number }>(db,
-    `SELECT ch.id, ch.from_ts, ch.to_ts, ch.channel, rq.asset_id, ch.attempts
+  const pend = await query<{ id: number; from_ts: number; to_ts: number; channel: string; asset_id: number; attempts: number; reason: string }>(db,
+    `SELECT ch.id, ch.from_ts, ch.to_ts, ch.channel, rq.asset_id, ch.attempts, rq.reason
        FROM footage_chunks ch JOIN footage_requests rq ON rq.id = ch.request_id
       WHERE ch.status='pending_request' ORDER BY ch.request_id, ch.seq LIMIT ?`, limit).catch(() => []);
   let requested = 0, expired = 0;
   for (const ch of pend) {
+    const maxAttempts = ch.reason === 'on_demand' ? MAX_POLL_ATTEMPTS_ON_DEMAND : MAX_POLL_ATTEMPTS;
     try {
       const vendorId = await source.requestChunk(ch.asset_id, ch.from_ts, ch.to_ts, ch.channel);
       await execute(db, `UPDATE footage_chunks SET status='requested', vendor_media_id=?, attempts=0, updated_at=datetime('now') WHERE id=?`, vendorId, ch.id);
       requested++;
     } catch (e) {
       console.error('[flexcam] requestChunk failed:', (e as Error).message);
-      if (ch.attempts + 1 >= MAX_POLL_ATTEMPTS) {
+      if (ch.attempts + 1 >= maxAttempts) {
         await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
         expired++;
       } else {
@@ -132,14 +134,15 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
   if (!source) return { downloaded: 0, missing: 0 };
 
   const pending = await query<{ id: number; request_id: number; seq: number; from_ts: number; to_ts: number;
-    channel: string; vendor_media_id: string | null; asset_id: number; cpg_device_id: string | null; attempts: number }>(db,
+    channel: string; vendor_media_id: string | null; asset_id: number; cpg_device_id: string | null; attempts: number; reason: string }>(db,
     `SELECT ch.id, ch.request_id, ch.seq, ch.from_ts, ch.to_ts, ch.channel, ch.vendor_media_id, ch.attempts,
-            rq.asset_id, rq.cpg_device_id
+            rq.asset_id, rq.cpg_device_id, rq.reason
      FROM footage_chunks ch JOIN footage_requests rq ON rq.id = ch.request_id
      WHERE ch.status = 'requested' ORDER BY ch.request_id, ch.seq LIMIT ?`, MAX_DOWNLOADS_PER_RUN).catch(() => []);
 
   let downloaded = 0, missing = 0;
   for (const ch of pending) {
+    const maxAttempts = ch.reason === 'on_demand' ? MAX_POLL_ATTEMPTS_ON_DEMAND : MAX_POLL_ATTEMPTS;
     const st = await source.pollChunk(ch.asset_id, {
       seq: ch.seq, vendorId: ch.vendor_media_id, fromTs: ch.from_ts, toTs: ch.to_ts, channel: ch.channel,
     }).catch(() => ({ state: 'requested' as const }));
@@ -176,13 +179,13 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
             await execute(db, `UPDATE footage_chunks SET alpr_status='done' WHERE id=?`, ch.id);
           } catch (e) { console.error('[flexcam-alpr] failed:', (e as Error).message); }
         }
-      } else if (ch.attempts + 1 >= MAX_POLL_ATTEMPTS) {
+      } else if (ch.attempts + 1 >= maxAttempts) {
         await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
         missing++;
       } else {
         await execute(db, `UPDATE footage_chunks SET attempts = attempts + 1, updated_at=datetime('now') WHERE id=?`, ch.id);
       }
-    } else if (st.state === 'missing' || ch.attempts + 1 >= MAX_POLL_ATTEMPTS) {
+    } else if (st.state === 'missing' || ch.attempts + 1 >= maxAttempts) {
       await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
       missing++;
     } else {
