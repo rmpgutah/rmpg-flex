@@ -666,11 +666,6 @@
 // v993: Full-drive clip playback — fix 401 on <video> src; auth middleware
 //       now accepts ?token=<jwt> on /full-drive/clip/* paths; client appends
 //       JWT from localStorage to all streamUrl values before passing to <video>.
-// v1002: FlexCam enhanced player — skip ±10s buttons, speed toggle (0.25–2×),
-//        keyboard shortcuts panel (?), CAPTURE FRAME button (canvas burn + evidence
-//        stamp JPEG download), video HUD overlays (live timestamp / REC / rate /
-//        evidence watermark, togglable), improved "No events detected" fallback
-//        with RE-SCAN button and contextual messaging.
 // v1001: FlexCam auth-link fix — MANIFEST download button in FlexCamFootagePage
 //        and Download icon in FlexCamPage were bare <a href="/api/..."> links
 //        that sent no JWT, returning 401. Both converted to buttons that use

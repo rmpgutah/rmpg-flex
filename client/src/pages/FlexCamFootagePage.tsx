@@ -93,11 +93,6 @@ export default function FlexCamFootagePage() {
   const [pkgMsg, setPkgMsg]         = useState<string | null>(null);
   const [markersLoading, setMarkersLoading] = useState(false);
   const [manifestBusy, setManifestBusy] = useState(false);
-  const [rate, setRate]               = useState(1);
-  const [capturing, setCapturing]     = useState(false);
-  const [capMsg, setCapMsg]           = useState<string | null>(null);
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [overlaysOn, setOverlaysOn]   = useState(true);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const urlCache = useRef<Map<number, string>>(new Map());
   const fullRef  = useRef<HTMLDivElement | null>(null);
@@ -253,71 +248,6 @@ export default function FlexCamFootagePage() {
       setTimeout(() => URL.revokeObjectURL(url), 3000);
     } catch (e) { setErr((e as Error).message); }
     finally { setManifestBusy(false); }
-  }
-
-  // Burn the current frame to canvas (evidence stamp + optional watermark) and download.
-  // Blob-URL src is always same-origin → ctx.drawImage never raises SecurityError.
-  async function captureFrame() {
-    const video = videoRef.current;
-    if (!video || !data || capturing) return;
-    setCapturing(true);
-    try {
-      const W = video.videoWidth || 1280;
-      const H = video.videoHeight || 720;
-      const canvas = document.createElement('canvas');
-      canvas.width = W; canvas.height = H;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      try { ctx.drawImage(video, 0, 0, W, H); } catch { setCapMsg('Frame capture failed (video not ready)'); return; }
-
-      // Evidence stamp strip at bottom.
-      const absTs = new Date(data.request.from_ts + posMs);
-      const tsLabel = absTs.toLocaleString('en-US', {
-        timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric',
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
-      });
-      const lines = [
-        `RMPG FLEXCAM — ${data.request.title ?? `REQUEST ${data.request.id}`}`,
-        `${tsLabel} · ${fmt(posMs)} / ${fmt(total)}`,
-        data.request.evidence_locked
-          ? `EVIDENCE: ${data.request.evidence_number ?? 'LOCKED'}${data.request.classification ? ` · ${data.request.classification}` : ''}`
-          : 'UNCLASSIFIED — NOT EVIDENCE',
-      ];
-      const fs = Math.max(14, Math.round(H * 0.022));
-      const stripH = fs * (lines.length + 0.6) + 12;
-      ctx.fillStyle = 'rgba(0,0,0,0.76)';
-      ctx.fillRect(0, H - stripH, W, stripH);
-      ctx.textBaseline = 'top';
-      lines.forEach((line, i) => {
-        ctx.font = `${i === 0 ? 'bold ' : ''}${fs}px monospace`;
-        ctx.fillStyle = i === 0 ? '#d4a017' : i === 2 && !data.request.evidence_locked ? '#ef4444' : '#e5e5e5';
-        ctx.fillText(line, 12, H - stripH + 6 + i * fs * 1.18);
-      });
-
-      // Diagonal evidence watermark when locked.
-      if (data.request.evidence_locked) {
-        ctx.save();
-        ctx.translate(W / 2, H / 2);
-        ctx.rotate(-Math.PI / 7);
-        ctx.font = `bold ${Math.round(H * 0.09)}px sans-serif`;
-        ctx.fillStyle = 'rgba(212,160,23,0.11)';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(data.request.evidence_number ?? 'EVIDENCE', 0, 0);
-        ctx.restore();
-      }
-
-      canvas.toBlob((b) => {
-        if (!b) return;
-        const url = URL.createObjectURL(b);
-        const a = document.createElement('a');
-        const fname = `flexcam-${data.request.id}-${fmt(posMs).replace(/:/g, '-')}.jpg`;
-        a.href = url; a.download = fname; a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 3000);
-        setCapMsg(`✓ ${fname}`);
-        setTimeout(() => setCapMsg(null), 4000);
-      }, 'image/jpeg', 0.95);
-    } finally { setCapturing(false); }
   }
 
   async function genCourtPkg() {
@@ -670,11 +600,6 @@ export default function FlexCamFootagePage() {
         <button onClick={genCourtPkg} disabled={!data.request.evidence_locked || pkgBusy}
           className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-brand-400 border border-border-default hover:border-brand-500 px-2.5 py-1 transition-colors disabled:opacity-30">
           <FileText className="w-3 h-3" />{pkgBusy ? 'GENERATING…' : 'COURT PACKAGE'}
-        </button>
-        <button onClick={captureFrame} disabled={capturing}
-          title="Burn current frame to JPEG with evidence stamp (no playback needed)"
-          className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-emerald-400 border border-border-default hover:border-emerald-700/50 px-2.5 py-1 transition-colors disabled:opacity-40">
-          <Camera className="w-3 h-3" />{capturing ? 'CAPTURING…' : 'CAPTURE FRAME'}
         </button>
         <button onClick={downloadManifest} disabled={manifestBusy}
           className="flex items-center gap-1 text-[10px] text-rmpg-400 hover:text-brand-400 px-1 transition-colors ml-auto disabled:opacity-40">
