@@ -2014,6 +2014,7 @@ export type WSMessageType =
   // Serve manager
   | 'serve_attempt'
   | 'serve_created'
+  | 'serve_attempt_reminder'
   // Radio events (for cross-integration)
   | 'radio_check'
   | 'radio_check_ack'

@@ -37,6 +37,7 @@ import { buildPsoBriefing, buildOcrContext } from './serveIntakeBriefing';
 import type { IntakeDocMeta, OcrContext } from './serveIntakeBriefing';
 import { planAttemptWindows, escalatePriorityForDeadline } from './serveDiligencePlanner';
 import type { AttemptWindow } from './serveDiligencePlanner';
+import { persistAttemptSchedule } from './serveAttemptScheduler';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 
 // ── Sentinel client for intake-generated properties ──────────
@@ -877,6 +878,14 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
         }
       } catch { /* best-effort — billing never blocks intake */ }
     }
+  }
+
+  // ── 5b. Persist dated attempt schedule ───────────────────
+  // Best-effort: a scheduling failure must never abort the intake commit.
+  if (queueId && attemptPlan.length) {
+    persistAttemptSchedule(db, queueId, attemptPlan, nowIso).catch((err) =>
+      console.error('[serve-schedule] persist failed (non-fatal):', err),
+    );
   }
 
   // ── 6. Junction-table links ──────────────────────────────

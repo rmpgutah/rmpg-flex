@@ -1043,6 +1043,74 @@ si.get('/', async (c) => {
   return c.json(rows);
 });
 
+// ── GET /schedule — upcoming attempt windows (calendar feed) ─
+// Returns all pending/assigned/in_progress queue items' attempt windows
+// for the next 14 days, grouped by date. Used by the dashboard calendar.
+si.get('/schedule', async (c) => {
+  const db = getDb(c.env);
+  const { denverNow } = await import('../utils/serveAttemptScheduler');
+  const now = denverNow();
+  // "14 days out" in the same local-time string format
+  const cutoff = (() => {
+    const d = new Date(Date.now() + 14 * 86_400_000);
+    return new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'America/Denver',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+      hour12: false,
+    }).format(d).replace(' ', 'T');
+  })();
+
+  const rows = await query<{
+    id: number; queue_id: number; attempt_number: number;
+    scheduled_date: string; window_start: string; window_end: string;
+    window_label: string; notify_at: string; notify_before_secs: number;
+    notified: number; dismissed: number;
+    recipient_name: string | null; recipient_address: string | null;
+    recipient_city: string | null; recipient_state: string | null;
+    case_number: string | null; priority: string; deadline: string | null;
+    status: string;
+  }>(
+    db,
+    `SELECT s.id, s.queue_id, s.attempt_number, s.scheduled_date,
+            s.window_start, s.window_end, s.window_label, s.notify_at,
+            s.notify_before_secs, s.notified, s.dismissed,
+            q.recipient_name, q.recipient_address, q.recipient_city, q.recipient_state,
+            q.case_number, q.priority, q.deadline, q.status
+     FROM serve_attempt_schedules s
+     JOIN serve_queue q ON q.id = s.queue_id
+     WHERE s.dismissed = 0
+       AND s.scheduled_date >= ?
+       AND (s.queue_id || 'T' || s.window_start) <= ?
+       AND q.status NOT IN ('served','cancelled','failed')
+     ORDER BY s.scheduled_date ASC, s.window_start ASC`,
+    now.slice(0, 10),
+    cutoff,
+  );
+
+  // Group by date
+  const byDate = new Map<string, typeof rows>();
+  for (const row of rows) {
+    if (!byDate.has(row.scheduled_date)) byDate.set(row.scheduled_date, []);
+    byDate.get(row.scheduled_date)!.push(row);
+  }
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const schedule = [...byDate.entries()].map(([date, slots]) => {
+    const dow = new Date(`${date}T12:00:00Z`).getDay();
+    return { date, weekday: DAYS[dow], slots };
+  });
+  return c.json({ schedule, generated_at: now });
+});
+
+// ── DELETE /schedule/:slotId — dismiss a slot ────────────────
+si.delete('/schedule/:slotId', async (c) => {
+  const slotId = parseInt(c.req.param('slotId'), 10);
+  if (isNaN(slotId)) return c.json({ error: 'Invalid slot id' }, 400);
+  const db = getDb(c.env);
+  await execute(db, 'UPDATE serve_attempt_schedules SET dismissed = 1 WHERE id = ?', slotId);
+  return c.json({ success: true });
+});
+
 // ── GET /:id ────────────────────────────────────────────────
 si.get('/:id', async (c) => {
   const id = parseInt(c.req.param('id'), 10);

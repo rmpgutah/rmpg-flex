@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye, Clock } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye, Clock, CalendarDays } from 'lucide-react';
+import ServeAttemptCalendar from '../components/serve/ServeAttemptCalendar';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { apiFetch } from '../hooks/useApi';
@@ -268,6 +269,8 @@ export default function ServeIntakePage() {
   const [editingFields, setEditingFields] = useState<Record<string, string>>({});
   const [showOcrPreview, setShowOcrPreview] = useState(false);
   const [showAttemptModal, setShowAttemptModal] = useState(false);
+  // Tab: 'intake' = upload flow, 'schedule' = attempt calendar
+  const [activeTab, setActiveTab] = useState<'intake' | 'schedule'>('intake');
   // Pre-submission field overrides: operator edits BEFORE clicking Create.
   // Keys match the server's field key names (e.g. `recipient_first_name`).
   const [editOverrides, setEditOverrides] = useState<Record<string, string>>({});
@@ -673,6 +676,32 @@ export default function ServeIntakePage() {
   return (
     <div className="p-4 space-y-4 max-w-4xl mx-auto">
       <PanelTitleBar title="Process Service Intake" icon={Upload} />
+
+      {/* Tab strip */}
+      <div className="flex gap-0 border-b border-surface-border">
+        {(['intake', 'schedule'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex items-center gap-1.5 px-4 py-[6px] text-[11px] font-semibold uppercase tracking-wide border-b-2 transition-colors -mb-px ${
+              activeTab === tab
+                ? 'border-brand-400 text-brand-300'
+                : 'border-transparent text-rmpg-500 hover:text-rmpg-300'
+            }`}
+          >
+            {tab === 'intake' ? <Upload size={11} /> : <CalendarDays size={11} />}
+            {tab === 'intake' ? 'Intake' : 'Attempt Schedule'}
+          </button>
+        ))}
+      </div>
+
+      {/* Schedule calendar view */}
+      {activeTab === 'schedule' && (
+        <ServeAttemptCalendar />
+      )}
+
+      {/* Intake upload flow — hidden when on schedule tab */}
+      {activeTab === 'intake' && <>
 
       <div
         ref={dropRef}
@@ -1208,6 +1237,7 @@ export default function ServeIntakePage() {
           callNumber={result.call_number}
         />
       )}
+      </>}
     </div>
   );
 }
