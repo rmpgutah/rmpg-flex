@@ -4,8 +4,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  AlertTriangle, CheckCircle2, ChevronLeft, Clock, Download,
-  FileText, Lock, Maximize2, Pause, Play, RotateCcw, Shield, Video,
+  AlertTriangle, Camera, CheckCircle2, ChevronLeft, Clock, Download,
+  FileText, Keyboard, Lock, Maximize2, Pause, Play, RotateCcw,
+  Shield, SkipBack, SkipForward, Video,
 } from 'lucide-react';
 import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { buildTimeline, offsetToSeek, type PlayChunk } from '../utils/flexcamTimeline';
@@ -92,6 +93,11 @@ export default function FlexCamFootagePage() {
   const [pkgMsg, setPkgMsg]         = useState<string | null>(null);
   const [markersLoading, setMarkersLoading] = useState(false);
   const [manifestBusy, setManifestBusy] = useState(false);
+  const [rate, setRate]               = useState(1);
+  const [capturing, setCapturing]     = useState(false);
+  const [capMsg, setCapMsg]           = useState<string | null>(null);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [overlaysOn, setOverlaysOn]   = useState(true);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const urlCache = useRef<Map<number, string>>(new Map());
   const fullRef  = useRef<HTMLDivElement | null>(null);
@@ -109,6 +115,9 @@ export default function FlexCamFootagePage() {
     for (const u of urlCache.current.values()) URL.revokeObjectURL(u);
     urlCache.current.clear();
   }, []);
+
+  // Apply playback speed when rate or video source changes.
+  useEffect(() => { if (videoRef.current) videoRef.current.playbackRate = rate; }, [rate]);
 
   const timeline = useMemo(() => {
     const downloaded = (data?.chunks ?? [])
@@ -246,6 +255,71 @@ export default function FlexCamFootagePage() {
     finally { setManifestBusy(false); }
   }
 
+  // Burn the current frame to canvas (evidence stamp + optional watermark) and download.
+  // Blob-URL src is always same-origin → ctx.drawImage never raises SecurityError.
+  async function captureFrame() {
+    const video = videoRef.current;
+    if (!video || !data || capturing) return;
+    setCapturing(true);
+    try {
+      const W = video.videoWidth || 1280;
+      const H = video.videoHeight || 720;
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      try { ctx.drawImage(video, 0, 0, W, H); } catch { setCapMsg('Frame capture failed (video not ready)'); return; }
+
+      // Evidence stamp strip at bottom.
+      const absTs = new Date(data.request.from_ts + posMs);
+      const tsLabel = absTs.toLocaleString('en-US', {
+        timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+      });
+      const lines = [
+        `RMPG FLEXCAM — ${data.request.title ?? `REQUEST ${data.request.id}`}`,
+        `${tsLabel} · ${fmt(posMs)} / ${fmt(total)}`,
+        data.request.evidence_locked
+          ? `EVIDENCE: ${data.request.evidence_number ?? 'LOCKED'}${data.request.classification ? ` · ${data.request.classification}` : ''}`
+          : 'UNCLASSIFIED — NOT EVIDENCE',
+      ];
+      const fs = Math.max(14, Math.round(H * 0.022));
+      const stripH = fs * (lines.length + 0.6) + 12;
+      ctx.fillStyle = 'rgba(0,0,0,0.76)';
+      ctx.fillRect(0, H - stripH, W, stripH);
+      ctx.textBaseline = 'top';
+      lines.forEach((line, i) => {
+        ctx.font = `${i === 0 ? 'bold ' : ''}${fs}px monospace`;
+        ctx.fillStyle = i === 0 ? '#d4a017' : i === 2 && !data.request.evidence_locked ? '#ef4444' : '#e5e5e5';
+        ctx.fillText(line, 12, H - stripH + 6 + i * fs * 1.18);
+      });
+
+      // Diagonal evidence watermark when locked.
+      if (data.request.evidence_locked) {
+        ctx.save();
+        ctx.translate(W / 2, H / 2);
+        ctx.rotate(-Math.PI / 7);
+        ctx.font = `bold ${Math.round(H * 0.09)}px sans-serif`;
+        ctx.fillStyle = 'rgba(212,160,23,0.11)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(data.request.evidence_number ?? 'EVIDENCE', 0, 0);
+        ctx.restore();
+      }
+
+      canvas.toBlob((b) => {
+        if (!b) return;
+        const url = URL.createObjectURL(b);
+        const a = document.createElement('a');
+        const fname = `flexcam-${data.request.id}-${fmt(posMs).replace(/:/g, '-')}.jpg`;
+        a.href = url; a.download = fname; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+        setCapMsg(`✓ ${fname}`);
+        setTimeout(() => setCapMsg(null), 4000);
+      }, 'image/jpeg', 0.95);
+    } finally { setCapturing(false); }
+  }
+
   async function genCourtPkg() {
     if (!data || pkgBusy) return;
     setPkgBusy(true); setPkgMsg(null);
@@ -281,6 +355,28 @@ export default function FlexCamFootagePage() {
 
   const total    = timeline.totalMs;
   const pct      = total ? Math.min(100, (posMs / total) * 100) : 0;
+
+  // Keyboard shortcuts — Space/K=play, J/L=skip10s, Shift+skip=30s, ,/.=speed, ?=shortcuts.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      switch (e.key) {
+        case ' ': case 'k': e.preventDefault(); togglePlay(); break;
+        case 'ArrowLeft': case 'j':
+          seekToOffset(Math.max(0, posMs - (e.shiftKey ? 30_000 : 10_000)));
+          break;
+        case 'ArrowRight': case 'l':
+          seekToOffset(Math.min(total, posMs + (e.shiftKey ? 30_000 : 10_000)));
+          break;
+        case '>': case '.': setRate((r) => Math.min(2, +(r + 0.25).toFixed(2))); break;
+        case '<': case ',': setRate((r) => Math.max(0.25, +(r - 0.25).toFixed(2))); break;
+        case '?': setShortcutsOpen((v) => !v); break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posMs, total]);
   const markers  = data.markers.filter((m) => m.offset_ms != null);
   const sc       = statusBadge(data.request.status);
   const dlBytes  = data.chunks.filter((c) => c.status === 'downloaded').reduce((s, c) => s + c.bytes, 0);
@@ -319,23 +415,6 @@ export default function FlexCamFootagePage() {
 
       {/* ── Video ───────────────────────────────────────────── */}
       <div ref={fullRef} className="relative bg-black border-b border-border-default flex-shrink-0">
-        {/* Dashcam corner overlays */}
-        <div className="absolute top-2 left-2 z-10 flex items-center gap-2 pointer-events-none">
-          <Shield className="w-3 h-3 text-white/25" />
-          <span className="text-[8px] text-white/35 font-mono tracking-widest uppercase">
-            RMPG FLEXCAM&nbsp;·&nbsp;{new Date(data.request.from_ts).toLocaleDateString('en-US', { timeZone: 'America/Denver' })}
-          </span>
-        </div>
-        {playing && (
-          <div className="absolute top-2 right-10 z-10 flex items-center gap-1 text-[8px] text-red-400 font-mono font-bold pointer-events-none">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block animate-pulse" />REC
-          </div>
-        )}
-        {loading && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 pointer-events-none">
-            <span className="text-[10px] text-brand-400 font-mono animate-pulse tracking-widest">LOADING SEGMENT…</span>
-          </div>
-        )}
         <video
           ref={videoRef}
           className="w-full max-h-[56vh] bg-black"
@@ -346,10 +425,78 @@ export default function FlexCamFootagePage() {
           controls={false}
           playsInline
         />
-        <button onClick={handleFullscreen}
-          className="absolute bottom-2 right-2 z-10 p-1.5 bg-black/50 text-white/40 hover:text-white transition-colors">
-          <Maximize2 className="w-3.5 h-3.5" />
-        </button>
+
+        {/* ── HUD overlays (pointer-events-none so click-to-play still works) */}
+        {overlaysOn && (
+          <div className="absolute inset-0 pointer-events-none select-none">
+            {/* Top-left: unit / date badge */}
+            <div className="absolute top-2 left-2 flex items-center gap-1.5">
+              <Shield className="w-3 h-3 text-white/30" />
+              <span className="text-[8px] text-white/40 font-mono tracking-widest uppercase">
+                RMPG FLEXCAM&nbsp;·&nbsp;{new Date(data.request.from_ts).toLocaleDateString('en-US', { timeZone: 'America/Denver' })}
+              </span>
+            </div>
+
+            {/* Top-right: REC + rate badge */}
+            <div className="absolute top-2 right-10 flex items-center gap-2">
+              {playing && (
+                <span className="flex items-center gap-1 text-[8px] text-red-400 font-mono font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block animate-pulse" />REC
+                </span>
+              )}
+              {rate !== 1 && (
+                <span className="text-[8px] font-mono font-bold text-[#d4a017] bg-black/60 px-1 py-0.5">
+                  {rate.toFixed(2)}×
+                </span>
+              )}
+            </div>
+
+            {/* Bottom-left: live timestamp in trip */}
+            <div className="absolute bottom-10 left-2 flex flex-col gap-0.5">
+              <span className="text-[9px] text-white/60 font-mono tabular-nums bg-black/50 px-1.5 py-0.5">
+                {new Date(data.request.from_ts + posMs).toLocaleString('en-US', {
+                  timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+                })}
+              </span>
+              <span className="text-[8px] text-white/35 font-mono tabular-nums px-1.5">
+                T+{fmt(posMs)} / {fmt(total)}
+              </span>
+            </div>
+
+            {/* Evidence watermark (diagonal) when locked */}
+            {!!data.request.evidence_locked && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span
+                  className="text-[#d4a017]/10 font-bold font-mono tracking-[0.3em] uppercase pointer-events-none"
+                  style={{ fontSize: 'clamp(18px,5vw,56px)', transform: 'rotate(-18deg)', whiteSpace: 'nowrap' }}>
+                  {data.request.evidence_number ?? 'EVIDENCE'}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Fullscreen + overlay toggle */}
+        <div className="absolute bottom-2 right-2 z-10 flex items-center gap-1">
+          <button onClick={() => setOverlaysOn((v) => !v)}
+            title={overlaysOn ? 'Hide HUD overlays' : 'Show HUD overlays'}
+            className={`p-1.5 bg-black/50 transition-colors ${overlaysOn ? 'text-[#d4a017]/70 hover:text-[#d4a017]' : 'text-white/25 hover:text-white/60'}`}>
+            <Shield className="w-3 h-3" />
+          </button>
+          <button onClick={handleFullscreen}
+            className="p-1.5 bg-black/50 text-white/40 hover:text-white transition-colors">
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Loading segment overlay */}
+        {loading && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 pointer-events-none">
+            <span className="text-[10px] text-brand-400 font-mono animate-pulse tracking-widest">LOADING SEGMENT…</span>
+          </div>
+        )}
+
+        {/* No footage state */}
         {!timeline.segments.length && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 gap-2 pointer-events-none">
             <Video className="w-8 h-8 text-rmpg-600" />
@@ -363,25 +510,69 @@ export default function FlexCamFootagePage() {
       {/* ── Transport + scrubber ─────────────────────────────── */}
       <div className="px-3 py-2.5 bg-surface-sunken border-b border-border-default flex-shrink-0 space-y-2">
         {/* Controls row */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Skip back */}
+          <button onClick={() => seekToOffset(Math.max(0, posMs - 10_000))} disabled={!timeline.segments.length}
+            title="Skip back 10s (J)" aria-label="Skip back 10s"
+            className="p-1.5 border border-border-default text-rmpg-400 hover:text-brand-400 hover:border-brand-600 transition-colors disabled:opacity-30">
+            <SkipBack className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Play / Pause */}
           <button onClick={togglePlay} disabled={!timeline.segments.length}
             className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wide
                        border border-blue-700 bg-blue-900/40 text-blue-300 hover:bg-blue-800/50
                        disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
             {playing ? <><Pause className="w-3.5 h-3.5" />PAUSE</> : <><Play className="w-3.5 h-3.5" />PLAY</>}
           </button>
+
+          {/* Skip forward */}
+          <button onClick={() => seekToOffset(Math.min(total, posMs + 10_000))} disabled={!timeline.segments.length}
+            title="Skip forward 10s (L)" aria-label="Skip forward 10s"
+            className="p-1.5 border border-border-default text-rmpg-400 hover:text-brand-400 hover:border-brand-600 transition-colors disabled:opacity-30">
+            <SkipForward className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Playback speed */}
+          <button
+            onClick={() => setRate((r) => {
+              const steps = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
+              const idx = steps.indexOf(+r.toFixed(2));
+              return steps[(idx + 1) % steps.length];
+            })}
+            title="Cycle playback speed (< / >)"
+            className={`px-2 py-1.5 text-[9px] font-mono font-bold border transition-colors ${
+              rate !== 1
+                ? 'border-[#d4a017]/60 text-[#d4a017] bg-[#d4a017]/10 hover:bg-[#d4a017]/20'
+                : 'border-border-default text-rmpg-500 hover:text-brand-400 hover:border-brand-600'}`}>
+            {rate.toFixed(2)}×
+          </button>
+
+          {/* Reconfigure */}
           <button onClick={reconfigure} title="Stop playback, clear cached clips, and reload fresh data"
-            className="flex items-center gap-1 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide
+            className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide
                        border border-border-default text-rmpg-400 hover:text-brand-400 hover:border-brand-600
                        transition-colors">
-            <RotateCcw className="w-3 h-3" />RECONFIGURE
+            <RotateCcw className="w-3 h-3" />RECFG
           </button>
-          <div className="font-mono tabular-nums text-[12px]">
+
+          {/* Time display */}
+          <div className="font-mono tabular-nums text-[12px] ml-1">
             <span className="text-brand-400">{fmt(posMs)}</span>
             <span className="text-rmpg-600 mx-0.5">/</span>
             <span className="text-rmpg-300">{fmt(total)}</span>
           </div>
+
           <div className="flex-1" />
+
+          {/* Shortcuts hint */}
+          <button onClick={() => setShortcutsOpen((v) => !v)}
+            title="Keyboard shortcuts (?)"
+            className={`p-1.5 border transition-colors ${shortcutsOpen ? 'border-brand-500 text-brand-400' : 'border-border-default text-rmpg-600 hover:text-rmpg-400'}`}>
+            <Keyboard className="w-3 h-3" />
+          </button>
+
+          {/* Segment / gap summary */}
           <div className="text-[9px] text-rmpg-500 text-right leading-tight">
             <div>{dlCount}/{data.chunks.length} segs · {fmtBytes(dlBytes)}</div>
             {data.manifest.gaps.length > 0 && (
@@ -389,6 +580,27 @@ export default function FlexCamFootagePage() {
             )}
           </div>
         </div>
+
+        {/* Keyboard shortcuts panel */}
+        {shortcutsOpen && (
+          <div className="bg-surface-sunken border border-border-default px-3 py-2 grid grid-cols-2 gap-x-6 gap-y-0.5 text-[9px]">
+            {([
+              ['Space / K', 'Play / Pause'],
+              ['J / ←', 'Skip back 10s'],
+              ['L / →', 'Skip forward 10s'],
+              ['Shift+J / Shift+←', 'Skip back 30s'],
+              ['Shift+L / Shift+→', 'Skip forward 30s'],
+              ['< or ,', 'Speed down'],
+              ['> or .', 'Speed up'],
+              ['?', 'Toggle this panel'],
+            ] as [string, string][]).map(([key, label]) => (
+              <div key={key} className="flex items-center gap-2">
+                <span className="font-mono text-brand-400 w-28 flex-shrink-0">{key}</span>
+                <span className="text-rmpg-500">{label}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Scrubber */}
         <div className="relative h-8 bg-[#0a0f18] border border-blue-900/40 cursor-pointer select-none"
@@ -459,15 +671,21 @@ export default function FlexCamFootagePage() {
           className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-brand-400 border border-border-default hover:border-brand-500 px-2.5 py-1 transition-colors disabled:opacity-30">
           <FileText className="w-3 h-3" />{pkgBusy ? 'GENERATING…' : 'COURT PACKAGE'}
         </button>
+        <button onClick={captureFrame} disabled={capturing}
+          title="Burn current frame to JPEG with evidence stamp (no playback needed)"
+          className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-emerald-400 border border-border-default hover:border-emerald-700/50 px-2.5 py-1 transition-colors disabled:opacity-40">
+          <Camera className="w-3 h-3" />{capturing ? 'CAPTURING…' : 'CAPTURE FRAME'}
+        </button>
         <button onClick={downloadManifest} disabled={manifestBusy}
           className="flex items-center gap-1 text-[10px] text-rmpg-400 hover:text-brand-400 px-1 transition-colors ml-auto disabled:opacity-40">
           <Download className="w-3 h-3" />{manifestBusy ? 'DOWNLOADING…' : 'MANIFEST'}
         </button>
       </div>
-      {pkgMsg && (
-        <div className={`px-3 py-1.5 text-[10px] font-mono border-b border-border-default ${
-          pkgMsg.startsWith('✓') ? 'text-emerald-400 bg-emerald-900/10' : 'text-amber-400 bg-amber-900/10'}`}>
-          {pkgMsg}
+      {(pkgMsg || capMsg) && (
+        <div className={`px-3 py-1.5 text-[10px] font-mono border-b border-border-default flex items-center gap-3 ${
+          (pkgMsg ?? capMsg ?? '').startsWith('✓') ? 'text-emerald-400 bg-emerald-900/10' : 'text-amber-400 bg-amber-900/10'}`}>
+          {pkgMsg && <span>{pkgMsg}</span>}
+          {capMsg && <span className="text-emerald-400">{capMsg}</span>}
         </div>
       )}
 
@@ -485,11 +703,22 @@ export default function FlexCamFootagePage() {
           </div>
         </div>
         {markers.length === 0 ? (
-          <div className="px-3 py-6 text-center text-[10px] text-rmpg-600">
-            No events detected.{' '}
+          <div className="px-3 py-8 flex flex-col items-center gap-3 text-center">
+            <CheckCircle2 className="w-6 h-6 text-rmpg-700" />
+            <div className="space-y-1">
+              <div className="text-[11px] text-rmpg-500 font-semibold uppercase tracking-wide">
+                No events detected
+              </div>
+              <div className="text-[10px] text-rmpg-700 max-w-[260px]">
+                {markersLoading
+                  ? 'Scanning trip footage for driving events…'
+                  : 'This trip has no flagged events. Re-run the AI scanner to re-check, or events will populate automatically as new data arrives.'}
+              </div>
+            </div>
             <button onClick={rebuildMarkers} disabled={markersLoading}
-              className="underline hover:text-brand-400 disabled:opacity-40">
-              {markersLoading ? 'Rebuilding…' : 'Rebuild markers'}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wide border border-border-default text-rmpg-400 hover:text-brand-400 hover:border-brand-600 transition-colors disabled:opacity-40">
+              <RotateCcw className={`w-3 h-3 ${markersLoading ? 'animate-spin' : ''}`} />
+              {markersLoading ? 'SCANNING…' : 'RE-SCAN FOR EVENTS'}
             </button>
           </div>
         ) : (
