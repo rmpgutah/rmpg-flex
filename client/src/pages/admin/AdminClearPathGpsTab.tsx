@@ -453,14 +453,12 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const handleSyncNow = async () => {
     setSyncing(true);
     try {
-      const result = await apiFetch<{ synced: number; errors: number }>('/clearpathgps/media-sync-now', { method: 'POST' });
-      await fetchMediaStatus();
-      if (result.synced > 0) {
-        setError(null);
-      }
+      await apiFetch<{ started: boolean }>('/clearpathgps/media-sync-now', { method: 'POST' });
+      setError(null);
+      // Sync runs in background — poll stats after a delay
+      setTimeout(() => { fetchMediaStatus().catch(() => {}); setSyncing(false); }, 30_000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Media sync failed');
-    } finally {
       setSyncing(false);
     }
   };

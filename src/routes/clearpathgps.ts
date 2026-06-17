@@ -418,15 +418,13 @@ cpg.put('/media-settings', adminOnly, setMediaSettings);
 cpg.post('/media-settings', adminOnly, setMediaSettings);
 
 cpg.post('/media-sync-now', adminOnly, async (c) => {
-  try {
-    const { syncClearpathMedia } = await import('../utils/clearpathSync');
-    const r = await syncClearpathMedia(c.env);
-    return c.json({ synced: r.synced, errors: r.errors,
-      ...(r.skipped ? { note: `Skipped: ${r.skipped}` } : {}),
-      ...(r.clip_errors ? { clip_errors: r.clip_errors } : {}) });
-  } catch (err) {
-    return c.json({ synced: 0, errors: 1, error: clientErrorMessage(err) });
-  }
+  const { syncClearpathMedia } = await import('../utils/clearpathSync');
+  c.executionCtx.waitUntil(
+    syncClearpathMedia(c.env)
+      .then((r) => console.log(`[cpg-sync] done: synced=${r.synced} errors=${r.errors}`))
+      .catch((err) => console.error('[cpg-sync] failed:', (err as Error)?.message)),
+  );
+  return c.json({ started: true });
 });
 
 // Lightweight still-only ALPR scan — pulls a few dashcam stills, runs ALPR, and
