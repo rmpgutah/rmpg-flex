@@ -302,6 +302,31 @@ export async function withUniqueRetry<T>(
   throw lastErr;
 }
 
+// ── Incident-type classification ─────────────────────────────
+// Maps the extracted document class to a specific CAD incident_type so
+// dispatchers can filter the board by paper type (evictions, subpoenas,
+// protective orders) rather than everything reading as 'civil_paper_service'.
+// Keyword matching mirrors the safety-assessment rules in serveIntakeBriefing
+// so the two are always in agreement about what kind of paper this is.
+function resolveIncidentType(
+  docType: string | null,
+  fields: Record<string, ExtractedField>,
+): string {
+  const hint = [
+    docType,
+    (fields.document_subtype?.value || ''),
+    (fields.documents_to_serve?.value || ''),
+    (fields.process_type?.value || ''),
+    (fields.service_instructions?.value || ''),
+  ].join(' ').toLowerCase();
+  if (/\bevict|unlawful detainer|forcible entry|notice to quit|notice to vacate\b/.test(hint)) return 'eviction_service';
+  if (/\brestrain|protective order|protection order|no.contact order|stalking injunction\b/.test(hint)) return 'protective_order_service';
+  if (/\bsubpoena\b/.test(hint)) return 'subpoena_service';
+  if (/\bgarnish\b/.test(hint)) return 'garnishment_service';
+  if (/\bwarrant\b/.test(hint)) return 'civil_warrant_service';
+  return 'civil_paper_service';
+}
+
 // ── Priority mapping (serve → CAD ladder) ────────────────────
 // CAD CFS priority is P1..P4. Civil-paper service is rarely time-
 // critical; even a rush packet sits at P2 because true P1 is
@@ -732,7 +757,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
         () => nextCallNumber(db),
         (callNo) => createServiceCall(db, {
           call_number: callNo,
-          incident_type: 'civil_paper_service',
+          incident_type: resolveIncidentType(queueRow.document_type, fields),
           priority: cadPriority(queueRow.priority),
           caller_name: caller_name || null,
           caller_phone,
