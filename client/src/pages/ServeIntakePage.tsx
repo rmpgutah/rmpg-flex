@@ -275,6 +275,13 @@ export default function ServeIntakePage() {
   // Pre-submission field overrides: operator edits BEFORE clicking Create.
   // Keys match the server's field key names (e.g. `recipient_first_name`).
   const [editOverrides, setEditOverrides] = useState<Record<string, string>>({});
+  // Active clients for the client selector dropdown.
+  const [clients, setClients] = useState<{id: number; name: string; contact_name: string | null; contact_phone: string | null}[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  useEffect(() => {
+    apiFetch<{id:number;name:string;contact_name:string|null;contact_phone:string|null}[]>('/serve-intake/clients')
+      .then(setClients).catch(() => {});
+  }, []);
   const [dragActive, setDragActive] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -580,6 +587,9 @@ export default function ServeIntakePage() {
         if (Object.keys(nonEmptyOverrides).length > 0) {
           formData.append('field_overrides', JSON.stringify(nonEmptyOverrides));
         }
+        if (selectedClientId) {
+          formData.append('client_id', String(selectedClientId));
+        }
         // performance.now() (monotonic, immune to wall-clock jumps) anchors
         // the ETA. Speed is averaged over the whole transfer so far — see the
         // smoothing note where setUploadStat is called.
@@ -882,6 +892,26 @@ export default function ServeIntakePage() {
                   />
                 </div>
               ))}
+            </div>
+            {/* Client selector — links the serve to an active RMPG client */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Client</p>
+            <div className="mb-3">
+              <select
+                id="ff-intake-client"
+                value={selectedClientId ?? ''}
+                onChange={e => {
+                  const id = e.target.value ? Number(e.target.value) : null;
+                  setSelectedClientId(id);
+                  const name = clients.find(c => c.id === id)?.name ?? '';
+                  setEditOverrides(prev => ({ ...prev, client_name: name }));
+                }}
+                className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+              >
+                <option value="">— Select client (optional) —</option>
+                {clients.map(cl => (
+                  <option key={cl.id} value={cl.id}>{cl.name}{cl.contact_name ? ` · ${cl.contact_name}` : ''}</option>
+                ))}
+              </select>
             </div>
             {/* Case details */}
             <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Case</p>

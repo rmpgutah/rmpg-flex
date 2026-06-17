@@ -305,28 +305,15 @@ export async function withUniqueRetry<T>(
 }
 
 // ── Incident-type classification ─────────────────────────────
-// Maps the extracted document class to a specific CAD incident_type so
-// dispatchers can filter the board by paper type (evictions, subpoenas,
-// protective orders) rather than everything reading as 'civil_paper_service'.
-// Keyword matching mirrors the safety-assessment rules in serveIntakeBriefing
-// so the two are always in agreement about what kind of paper this is.
+// All serve-intake calls appear on the dispatch board as 'pso_client_request'
+// so dispatchers see the unified "PSO Client Request" label rather than a mix
+// of civil-paper sub-types. Sub-type detail is already recorded on serve_queue
+// (document_type) and in the call description, so nothing is lost.
 function resolveIncidentType(
-  docType: string | null,
-  fields: Record<string, ExtractedField>,
+  _docType: string | null,
+  _fields: Record<string, ExtractedField>,
 ): string {
-  const hint = [
-    docType,
-    (fields.document_subtype?.value || ''),
-    (fields.documents_to_serve?.value || ''),
-    (fields.process_type?.value || ''),
-    (fields.service_instructions?.value || ''),
-  ].join(' ').toLowerCase();
-  if (/\bevict|unlawful detainer|forcible entry|notice to quit|notice to vacate\b/.test(hint)) return 'eviction_service';
-  if (/\brestrain|protective order|protection order|no.contact order|stalking injunction\b/.test(hint)) return 'protective_order_service';
-  if (/\bsubpoena\b/.test(hint)) return 'subpoena_service';
-  if (/\bgarnish\b/.test(hint)) return 'garnishment_service';
-  if (/\bwarrant\b/.test(hint)) return 'civil_warrant_service';
-  return 'civil_paper_service';
+  return 'pso_client_request';
 }
 
 // ── Priority mapping (serve → CAD ladder) ────────────────────
@@ -536,6 +523,10 @@ export interface CommitInput {
   // parsed_data. Optional — the legacy /intake path has no per-doc metadata.
   docs?: IntakeDocMeta[];
   allDates?: string[];
+  // Operator-selected client (from the intake form's client dropdown). When
+  // set, it is written directly to serve_queue.client_id and skips the
+  // post-hoc name-based lookup that would otherwise resolve the contract.
+  clientId?: number | null;
   // Full Worker bindings. KV powers the geocode cache; DB + MAP_DATA back the
   // R2 geofence (district resolve); MAPBOX_ACCESS_TOKEN powers cross-street
   // derivation. All geo enrichment is best-effort — a miss never blocks commit.
@@ -870,6 +861,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
     // the serve-queue views carry the OCR context without the full markdown.
     const queueNotes = [queueRow.notes, ocrContext?.queueLine]
       .filter(Boolean).join('\n') || null;
+    const explicitClientId = input.clientId ?? null;
     const ins = await execute(
       db,
       `INSERT INTO serve_queue (
@@ -878,10 +870,10 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
         recipient_lat, recipient_lng,
         property_id, business_id,
         document_type, case_number, court_name, jurisdiction,
-        client_name, attorney_name, priority, deadline,
+        client_id, client_name, attorney_name, priority, deadline,
         service_instructions, notes,
         plaintiff_name, defendant_name, court_date, parsed_data, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
       callId, userId,
       queueRow.recipient_name, person.id || null,
       queueRow.recipient_address, queueRow.recipient_city,
@@ -890,26 +882,30 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       property.id || null, business.id || null,
       queueRow.document_type, queueRow.case_number,
       queueRow.court_name, queueRow.jurisdiction,
-      queueRow.client_name, queueRow.attorney_name,
+      explicitClientId, queueRow.client_name, queueRow.attorney_name,
       queueRow.priority, queueRow.deadline,
       queueRow.service_instructions, queueNotes,
       queueRow.plaintiff, queueRow.defendant, queueRow.court_date, parsedData,
     );
     queueId = Number(ins.meta.last_row_id);
 
-    // Auto-link the billing contract by client name (best-effort) so serve
-    // charges compute against the right rate card + per-contract overrides
-    // without a manager assigning it by hand. Active client → its newest active
-    // contract. A miss just leaves contract_id null (base rate card applies).
-    if (queueId && queueRow.client_name) {
+    // Auto-link the billing contract. When an explicit client was selected on
+    // intake, go straight to the contract lookup; otherwise fall back to
+    // name-matching. Best-effort — never blocks intake.
+    if (queueId) {
       try {
-        const cli = await queryFirst<{ id: number }>(
-          db, "SELECT id FROM clients WHERE LOWER(name) = LOWER(?) AND status = 'active' LIMIT 1",
-          queueRow.client_name.trim());
-        if (cli?.id) {
+        const resolvedClientId = explicitClientId ?? (queueRow.client_name
+          ? (await queryFirst<{ id: number }>(
+              db, "SELECT id FROM clients WHERE LOWER(name) = LOWER(?) AND status = 'active' LIMIT 1",
+              queueRow.client_name.trim()))?.id ?? null
+          : null);
+        if (resolvedClientId) {
+          if (!explicitClientId) {
+            await execute(db, 'UPDATE serve_queue SET client_id = ? WHERE id = ?', resolvedClientId, queueId);
+          }
           const con = await queryFirst<{ id: number }>(
             db, "SELECT id FROM client_contracts WHERE client_id = ? AND status = 'active' ORDER BY start_date DESC LIMIT 1",
-            cli.id);
+            resolvedClientId);
           if (con?.id) await execute(db, 'UPDATE serve_queue SET contract_id = ? WHERE id = ?', con.id, queueId);
         }
       } catch { /* best-effort — billing never blocks intake */ }

@@ -496,6 +496,12 @@ si.post('/upload', async (c) => {
     } catch { /* ignore malformed overrides blob */ }
   }
 
+  // Operator-selected client_id (integer FK) sent as a separate FormData field
+  // so it doesn't get coerced through the string-only field_overrides path.
+  const clientIdRaw = form.get('client_id');
+  const clientId = typeof clientIdRaw === 'string' && /^\d+$/.test(clientIdRaw.trim())
+    ? Number(clientIdRaw.trim()) : null;
+
   // Expose under the same name the rest of the handler already reads.
   const combined = { error: combinedError } as { error: string | null };
 
@@ -565,6 +571,7 @@ si.post('/upload', async (c) => {
       userId: user.id,
       documentSummary: docSummary,
       docCount: documents.length,
+      clientId,
       // Per-document OCR provenance → "OCR & EXTRACTION CONTEXT" note on the
       // call + compact line on serve_queue.notes + parsed_data._intake audit.
       docs: documents.map((d) => ({
@@ -1160,6 +1167,17 @@ si.get('/record-lookup', async (c) => {
   }
 
   return c.json({ property, business });
+});
+
+// ── GET /clients — active clients for the intake client selector ──
+si.get('/clients', async (c) => {
+  const db = getDb(c.env);
+  const rows = await query<{ id: number; name: string; contact_name: string | null; contact_phone: string | null }>(
+    db,
+    `SELECT id, name, contact_name, contact_phone
+       FROM clients WHERE status = 'active' ORDER BY name ASC`,
+  );
+  return c.json(rows);
 });
 
 // ── GET /:id ────────────────────────────────────────────────
