@@ -777,15 +777,7 @@ function buildCallDescription(
   const jobNum = f('job_number');
   if (jobNum) parts.push(`Job #${jobNum}`);
 
-  // ── 10. Service windows (short form) ─────────────────────────
-  const windows = (f('service_windows') || row.notes || '').split('\n')[0]?.trim();
-  if (windows && windows.length <= 60) parts.push(`Windows: ${windows}`);
-
-  // ── 11. Recipient phone ───────────────────────────────────────
-  const rcptPhone = f('recipient_phone');
-  if (rcptPhone) parts.push(`Rcpt: ${rcptPhone}`);
-
-  // ── 12. Document count ───────────────────────────────────────
+  // ── 10. Document count ───────────────────────────────────────
   if (docCount) parts.push(`${docCount} doc${docCount > 1 ? 's' : ''} on file`);
 
   return parts.join(' · ');
