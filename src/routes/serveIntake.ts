@@ -694,23 +694,92 @@ function buildExtractedBlock(fields: Record<string, { value: string; confidence:
   };
 }
 
-// Description string written to calls_for_service.description. Kept
-// short — dispatchers see this in the call queue, so the case number
-// and recipient name need to come first.
+// Description written to calls_for_service.description — the dispatcher's
+// one-line situational picture shown in the call queue BEFORE they open the
+// call. Structured as ordered dot-segments so every critical fact is legible
+// at a scan: paper type → who → where → case → parties → hiring party →
+// deadline (with urgency tag) → job # → doc count.
 function buildCallDescription(
   row: ReturnType<typeof fieldsToQueueRow>,
   fields: Record<string, { value: string; confidence: number }>,
   docCount: number,
 ): string {
+  const f = (k: string) => (fields[k]?.value || '').trim();
   const parts: string[] = [];
-  parts.push(`Process service: ${row.document_type || 'Civil paper'}`);
-  if (row.case_number) parts.push(`Case ${row.case_number}`);
-  if (row.recipient_name) parts.push(`Recipient: ${row.recipient_name}`);
-  const agent = (fields.registered_agent_name?.value || '').trim();
-  if (agent) parts.push(`R/A: ${agent}`);
-  if (row.court_name) parts.push(row.court_name);
-  if (row.deadline) parts.push(`Due ${row.deadline}`);
-  if (docCount) parts.push(`${docCount} document${docCount > 1 ? 's' : ''} on file`);
+
+  // ── 1. Paper type ─────────────────────────────────────────────
+  // Use the more-specific subtype when the extractor found one (e.g.
+  // "Summons + Complaint" is more useful than just "court_filing").
+  const docType = f('document_subtype') || row.document_type || 'Civil paper';
+  const isBusiness = f('recipient_type').toLowerCase() === 'business';
+  parts.push(`SERVE / ${docType}${isBusiness ? ' (Corporate)' : ''}`);
+
+  // ── 2. Target party ──────────────────────────────────────────
+  // For individuals: full name + DOB (identity confirmation before tender).
+  // For businesses: entity name + registered agent (who we need at the door).
+  const agentName = f('registered_agent_name');
+  const bizName = f('recipient_business_name');
+  if (isBusiness) {
+    const entity = bizName || row.recipient_name;
+    if (entity) {
+      parts.push(entity + (agentName ? ` (R/A: ${agentName})` : ''));
+    }
+  } else if (row.recipient_name) {
+    const dob = f('recipient_dob');
+    parts.push(row.recipient_name + (dob ? ` DOB ${dob}` : ''));
+  }
+
+  // ── 3. Service address with city/state for quick district context ─
+  const addrCity = [
+    row.recipient_address,
+    [row.recipient_city, row.recipient_state].filter(Boolean).join(' '),
+  ].filter(Boolean).join(', ');
+  if (addrCity) parts.push(addrCity);
+
+  // ── 4. Case # + court ────────────────────────────────────────
+  const caseStr = [
+    row.case_number ? `Case ${row.case_number}` : '',
+    row.court_name || '',
+  ].filter(Boolean).join(' — ');
+  if (caseStr) parts.push(caseStr);
+
+  // ── 5. Parties (plaintiff v. defendant) ──────────────────────
+  // Both are normally present on a summons/complaint; evictions may have
+  // only a plaintiff (landlord). Shows the legal relationship at a glance.
+  if (row.plaintiff && row.defendant) {
+    parts.push(`${row.plaintiff} v. ${row.defendant}`);
+  } else if (row.plaintiff) {
+    parts.push(`Plaintiff: ${row.plaintiff}`);
+  }
+
+  // ── 6. Hiring party + callback ───────────────────────────────
+  // Client name preferred (the firm paying); attorney name as fallback.
+  const hiringParty = row.client_name || row.attorney_name;
+  const attyPhone = f('attorney_phone');
+  if (hiringParty) {
+    parts.push(`Atty: ${hiringParty}${attyPhone ? ` (${attyPhone})` : ''}`);
+  } else if (attyPhone) {
+    parts.push(`Callback: ${attyPhone}`);
+  }
+
+  // ── 7. Deadline + urgency tag ────────────────────────────────
+  if (row.deadline) {
+    const urgency = row.priority === 'urgent' ? ' ⚠ URGENT'
+      : row.priority === 'rush' ? ' ⚠ RUSH'
+      : '';
+    parts.push(`Due ${row.deadline}${urgency}`);
+  }
+
+  // ── 8. Hearing / court date ──────────────────────────────────
+  if (row.court_date) parts.push(`Hearing ${row.court_date}`);
+
+  // ── 9. Client job # ──────────────────────────────────────────
+  const jobNum = f('job_number');
+  if (jobNum) parts.push(`Job #${jobNum}`);
+
+  // ── 10. Document count ───────────────────────────────────────
+  if (docCount) parts.push(`${docCount} doc${docCount > 1 ? 's' : ''} on file`);
+
   return parts.join(' · ');
 }
 
