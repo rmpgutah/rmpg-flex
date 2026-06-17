@@ -39,6 +39,7 @@ import { planAttemptWindows, escalatePriorityForDeadline } from './serveDiligenc
 import type { AttemptWindow } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
+import { findLocationNote } from './serveLocationNotes';
 
 // ── Sentinel client for intake-generated properties ──────────
 // properties.client_id is NOT NULL and FKs to clients(id). Process-
