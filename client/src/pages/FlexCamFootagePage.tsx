@@ -91,6 +91,7 @@ export default function FlexCamFootagePage() {
   const [pkgBusy, setPkgBusy]       = useState(false);
   const [pkgMsg, setPkgMsg]         = useState<string | null>(null);
   const [markersLoading, setMarkersLoading] = useState(false);
+  const [manifestBusy, setManifestBusy] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const urlCache = useRef<Map<number, string>>(new Map());
   const fullRef  = useRef<HTMLDivElement | null>(null);
@@ -227,6 +228,22 @@ export default function FlexCamFootagePage() {
       reload();
     } catch (e) { setErr((e as Error).message); }
     finally { setMarkersLoading(false); }
+  }
+
+  async function downloadManifest() {
+    if (!data || manifestBusy) return;
+    setManifestBusy(true);
+    try {
+      const json = await apiFetch<unknown>(`/flexcam/footage/${data.request.id}`);
+      const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `footage-manifest-${data.request.id}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    } catch (e) { setErr((e as Error).message); }
+    finally { setManifestBusy(false); }
   }
 
   async function genCourtPkg() {
@@ -442,10 +459,10 @@ export default function FlexCamFootagePage() {
           className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-brand-400 border border-border-default hover:border-brand-500 px-2.5 py-1 transition-colors disabled:opacity-30">
           <FileText className="w-3 h-3" />{pkgBusy ? 'GENERATING…' : 'COURT PACKAGE'}
         </button>
-        <a href={`/api/flexcam/footage/${data.request.id}`} target="_blank" rel="noreferrer"
-          className="flex items-center gap-1 text-[10px] text-rmpg-400 hover:text-brand-400 px-1 transition-colors ml-auto">
-          <Download className="w-3 h-3" />MANIFEST
-        </a>
+        <button onClick={downloadManifest} disabled={manifestBusy}
+          className="flex items-center gap-1 text-[10px] text-rmpg-400 hover:text-brand-400 px-1 transition-colors ml-auto disabled:opacity-40">
+          <Download className="w-3 h-3" />{manifestBusy ? 'DOWNLOADING…' : 'MANIFEST'}
+        </button>
       </div>
       {pkgMsg && (
         <div className={`px-3 py-1.5 text-[10px] font-mono border-b border-border-default ${

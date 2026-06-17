@@ -666,6 +666,11 @@
 // v993: Full-drive clip playback — fix 401 on <video> src; auth middleware
 //       now accepts ?token=<jwt> on /full-drive/clip/* paths; client appends
 //       JWT from localStorage to all streamUrl values before passing to <video>.
+// v1001: FlexCam auth-link fix — MANIFEST download button in FlexCamFootagePage
+//        and Download icon in FlexCamPage were bare <a href="/api/..."> links
+//        that sent no JWT, returning 401. Both converted to buttons that use
+//        apiFetch → blob → URL.createObjectURL → a.click() for authenticated
+//        JSON manifest download. Same pattern as the markers rebuild fix (v1000).
 // v1000: FlexCam reconfigure button — stops playback, revokes all cached blob
 //        URLs, resets state, and re-fetches fresh request data so the officer
 //        can restart without leaving the page. Markers rebuild fixed to use
