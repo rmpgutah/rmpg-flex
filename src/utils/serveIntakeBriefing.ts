@@ -30,6 +30,8 @@
 
 import type { ExtractedField, QueueRow } from './serveIntakeExtract';
 import type { AttemptWindow } from './serveDiligencePlanner';
+import type { ServiceLocationNote } from './serveLocationNotes';
+import { noteConstraintSummary } from './serveLocationNotes';
 
 // ── Operator policy switches ─────────────────────────────────
 const FLAG_EVICTION = true;        // eviction / unlawful detainer → HIGH
@@ -123,7 +125,8 @@ export interface BriefingInput {
   agentName: string;            // registered agent (corporate service)
   fullLocation: string;         // assembled address string
   docCount: number;
-  attemptPlan?: AttemptWindow[]; // diligence planner output (dated windows)
+  attemptPlan?: AttemptWindow[];       // diligence planner output (dated windows)
+  locationNote?: ServiceLocationNote | null; // system notation for this address/entity
 }
 
 export interface BriefingNote {
@@ -310,6 +313,17 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
 
   lines.push('**■ SERVICE AUTHORITY**');
   for (const l of serviceAuthorityLines(isBusiness, hint)) lines.push(`• ${l}`);
+
+  if (input.locationNote) {
+    const note = input.locationNote;
+    lines.push('**■ SERVICE CONSTRAINTS** _(recorded system notation — must be observed)_');
+    lines.push(`• ${note.note_text}`);
+    const summary = noteConstraintSummary(note);
+    if (summary && summary !== note.note_type) {
+      lines.push(`• Structured constraint: **${summary}**`);
+    }
+    lines.push('• Attempt windows above have been adjusted to comply with these constraints. Any attempt outside the noted hours or days may be legally challenged — document attempts with timestamps.');
+  }
 
   lines.push('**■ TACTICAL APPROACH**');
   for (const l of tacticalApproachLines(input, hint)) lines.push(`• ${l}`);
