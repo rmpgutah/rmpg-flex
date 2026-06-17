@@ -3086,6 +3086,61 @@ body.fx-noise::after {
     --text-muted: #666666 !important;
     --brand-blue: #333333 !important;
     --brand-gold: #8a6b0a !important;
+
+    /* --- RGB channel overrides for Tailwind token classes (bg-surface-*, text-rmpg-*, etc.)
+         The night palette leaves these at dark values; without these overrides, any component
+         using `bg-surface-overlay` or `text-rmpg-50` prints dark on white. --- */
+
+    /* Surface channels — all white for print */
+    --surface-base-rgb: 255 255 255 !important;
+    --surface-raised-rgb: 255 255 255 !important;
+    --surface-sunken-rgb: 255 255 255 !important;
+    --surface-overlay-rgb: 255 255 255 !important;
+    --surface-deep-rgb: 255 255 255 !important;
+
+    /* rmpg scale — INVERTED: low index = dark ink, high index = white/near-white paper */
+    --rmpg-50-rgb: 20 20 20 !important;
+    --rmpg-100-rgb: 40 40 40 !important;
+    --rmpg-200-rgb: 60 60 60 !important;
+    --rmpg-300-rgb: 80 80 80 !important;
+    --rmpg-400-rgb: 100 100 100 !important;
+    --rmpg-500-rgb: 130 130 130 !important;
+    --rmpg-600-rgb: 170 170 170 !important;
+    --rmpg-700-rgb: 210 210 210 !important;
+    --rmpg-800-rgb: 232 232 232 !important;
+    --rmpg-900-rgb: 245 245 245 !important;
+    --rmpg-950-rgb: 255 255 255 !important;
+
+    /* brand scale — INVERTED (mirrors rmpg) */
+    --brand-50-rgb: 20 20 20 !important;
+    --brand-100-rgb: 40 40 40 !important;
+    --brand-200-rgb: 60 60 60 !important;
+    --brand-300-rgb: 80 80 80 !important;
+    --brand-400-rgb: 100 100 100 !important;
+    --brand-500-rgb: 130 130 130 !important;
+    --brand-600-rgb: 170 170 170 !important;
+    --brand-700-rgb: 210 210 210 !important;
+    --brand-800-rgb: 232 232 232 !important;
+    --brand-900-rgb: 245 245 245 !important;
+
+    /* blue scale — INVERTED (mirrors rmpg) */
+    --blue-50-rgb: 20 20 20 !important;
+    --blue-100-rgb: 40 40 40 !important;
+    --blue-200-rgb: 60 60 60 !important;
+    --blue-300-rgb: 80 80 80 !important;
+    --blue-400-rgb: 100 100 100 !important;
+    --blue-500-rgb: 130 130 130 !important;
+    --blue-600-rgb: 170 170 170 !important;
+    --blue-700-rgb: 210 210 210 !important;
+    --blue-800-rgb: 232 232 232 !important;
+    --blue-900-rgb: 245 245 245 !important;
+
+    /* brand-gold — darkened for legibility on white paper */
+    --brand-gold-300-rgb: 138 107 10 !important;
+    --brand-gold-400-rgb: 120 93 8 !important;
+    --brand-gold-500-rgb: 100 77 6 !important;
+    --brand-gold-600-rgb: 82 63 5 !important;
+    --brand-gold-700-rgb: 65 50 3 !important;
   }
 
   html {
