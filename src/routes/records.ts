@@ -2044,8 +2044,8 @@ records.get('/links', async (c) => {
         );
         if (veh) linked_meta = veh as Record<string, unknown>;
       } else if (linkedType === 'person') {
-        const per = await queryFirst<{ date_of_birth?: string }>(
-          db, 'SELECT date_of_birth FROM persons WHERE id = ?', linkedId,
+        const per = await queryFirst<{ dob?: string }>(
+          db, 'SELECT dob FROM persons WHERE id = ?', linkedId,
         );
         const wRow = await queryFirst<{ cnt: number }>(
           db, "SELECT COUNT(*) AS cnt FROM warrants WHERE person_id = ? AND LOWER(status) = 'active'", linkedId,
