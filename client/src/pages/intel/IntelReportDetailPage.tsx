@@ -72,7 +72,7 @@ export default function IntelReportDetailPage() {
         </h1>
         <span className="uppercase text-[11px]" style={{ color: '#888' }}>{r.status?.replace('_', ' ')}</span>
       </div>
-      <div className="text-[11px]" style={{ color: '#aaa' }}>
+      <div className="text-[11px]" style={{ color: 'var(--rmpg-400)' }}>
         Grade: {r.grade_label} · Confidence: {r.confidence} · Handling: {r.handling_code || '—'} · Threat: {r.threat_level}
         {r.review_date && <> · Review: {r.review_date}</>}
       </div>
@@ -127,23 +127,23 @@ export default function IntelReportDetailPage() {
             handling_code: r.handling_code, threat_level: r.threat_level,
             sanitized_narrative: r.sanitized_narrative, assessment: r.assessment,
             disseminated_at: r.disseminated_at, links: r.links || [],
-          })} style={btn('#0b0b0b', '#d4a017')}>EXPORT PDF</button>
+          })} style={btn('var(--surface-overlay)', '#d4a017')}>EXPORT PDF</button>
           {['H2', 'H3', 'H4'].includes(r.handling_code) && (
             <button onClick={() => {
               const recipient_label = prompt('Share with (agency / recipient):');
               if (!recipient_label) return;
               const reason = prompt('Reason for external share:') || '';
               act('/share', { recipient_label, reason, recipient_type: 'agency' });
-            }} style={btn('#0b0b0b', '#22d3ee')}>SHARE EXTERNALLY</button>
+            }} style={btn('var(--surface-overlay)', '#22d3ee')}>SHARE EXTERNALLY</button>
           )}
           <button onClick={() => { const reason = prompt('Recall reason:'); if (reason) act('/recall', { reason }); }}
-            style={btn('#0b0b0b', '#ef4444')}>RECALL</button>
+            style={btn('var(--surface-overlay)', '#ef4444')}>RECALL</button>
         </div>
       )}
 
       {['submitted', 'under_evaluation', 'graded'].includes(r.status) && (
         <button onClick={() => { const reason = prompt('Reject reason:'); if (reason) act('/reject', { reason }); }}
-          style={btn('#0b0b0b', '#ef4444')}>REJECT</button>
+          style={btn('var(--surface-overlay)', '#ef4444')}>REJECT</button>
       )}
 
       {/* Linked entities */}
@@ -167,7 +167,7 @@ export default function IntelReportDetailPage() {
             onChange={(e) => setLinkDraft({ ...linkDraft, entity_id: e.target.value })} />
           <input placeholder="role" style={field} value={linkDraft.role}
             onChange={(e) => setLinkDraft({ ...linkDraft, role: e.target.value })} />
-          <button onClick={addLink} style={btn('#0b0b0b', '#d4a017')}>LINK</button>
+          <button onClick={addLink} style={btn('var(--surface-overlay)', '#d4a017')}>LINK</button>
         </div>
       </div>
 
@@ -176,7 +176,7 @@ export default function IntelReportDetailPage() {
         <div className="space-y-1 p-2" style={{ border: '1px solid var(--border-subtle)', borderRadius: 2 }}>
           <div className="text-[9px] font-semibold" style={{ color: '#d4a017' }}>DISSEMINATION LOG</div>
           {r.dissemination.map((d: any) => (
-            <div key={d.id} className="text-[10px]" style={{ color: '#aaa' }}>
+            <div key={d.id} className="text-[10px]" style={{ color: 'var(--rmpg-400)' }}>
               {d.channel} → {d.recipient_label || `user #${d.recipient_id}`}{d.reason ? ` · ${d.reason}` : ''}
             </div>
           ))}

@@ -538,7 +538,7 @@ export default function ServeRoutePlanner({
             </div>
             {error && <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-300 text-[10px]">{error}</div>}
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
               {stops.map((stop, idx) => (
                 <div key={stop.job.id} className={`flex items-center gap-2 px-3 py-2 border-b border-border-default transition-colors ${stop.selected ? 'bg-surface-base' : 'opacity-50'}`}>
                   <button type="button" onClick={() => toggleStop(idx)} className="flex-shrink-0 p-0.5">

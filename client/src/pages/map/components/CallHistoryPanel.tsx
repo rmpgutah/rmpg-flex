@@ -105,7 +105,7 @@ export default function CallHistoryPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         <div className="flex items-center gap-2">
           <Clock size={13} className="text-rmpg-400" />
@@ -148,7 +148,7 @@ export default function CallHistoryPanel({
           {/* Summary stats row */}
           <div
             className="rounded-sm p-2 flex items-center gap-3"
-            style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
+            style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
           >
             <div className="flex items-center gap-1">
               <Phone size={10} className="text-rmpg-400" />
@@ -169,7 +169,7 @@ export default function CallHistoryPanel({
           {/* Priority breakdown */}
           <div
             className="rounded-sm p-2"
-            style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
+            style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
           >
             <div className="text-[10px] uppercase tracking-wider text-rmpg-500 mb-1.5">
               Priority
@@ -195,7 +195,7 @@ export default function CallHistoryPanel({
           {stats.topTypes.length > 0 && (
             <div
               className="rounded-sm p-2"
-              style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
             >
               <div className="text-[10px] uppercase tracking-wider text-rmpg-500 mb-1.5">
                 Top Types
@@ -227,7 +227,7 @@ export default function CallHistoryPanel({
           {stats.recent.length > 0 && (
             <div
               className="rounded-sm"
-              style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
             >
               <div className="text-[10px] uppercase tracking-wider text-rmpg-500 px-2 pt-2 pb-1">
                 Recent Calls

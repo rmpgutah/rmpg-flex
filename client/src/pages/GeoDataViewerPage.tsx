@@ -147,7 +147,7 @@ function LayerCard({
       style={{
         padding: '8px 10px',
         background: active ? 'var(--surface-raised)' : 'transparent',
-        border: `1px solid ${active ? '#2e2e2e' : 'var(--surface-raised)'}`,
+        border: `1px solid ${active ? 'var(--border-default)' : 'var(--surface-raised)'}`,
         borderLeft: `3px solid ${active ? layer.color : 'transparent'}`,
         cursor: 'pointer',
         marginBottom: 2,
@@ -211,7 +211,7 @@ function FeatureDetailPanel({
       </div>
 
       {/* Geometry badge */}
-      <div className="px-3 py-1.5 flex-shrink-0" style={{ borderBottom: '1px solid #1a1a1a' }}>
+      <div className="px-3 py-1.5 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
         <span
           className="text-[9px] font-mono px-2 py-0.5"
           style={{ background: 'var(--surface-base)', color: '#888', border: '1px solid var(--border-subtle)' }}
@@ -225,7 +225,7 @@ function FeatureDetailPanel({
         <div className="overflow-x-auto"><table className="w-full" style={{ borderCollapse: 'collapse' }}>
           <tbody>
             {entries.map(([key, val]) => (
-              <tr key={key} style={{ borderBottom: '1px solid #111' }}>
+              <tr key={key} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                 <td
                   className="py-1 pr-2 align-top text-[9px] font-mono uppercase tracking-wide"
                   style={{ color: 'var(--rmpg-500)', whiteSpace: 'nowrap' }}
@@ -416,7 +416,7 @@ export default function GeoDataViewerPage() {
               style={{
                 background: 'var(--surface-base)',
                 border: '1px solid var(--border-default)',
-                color: sorted.length ? '#aaaaaa' : '#444',
+                color: sorted.length ? 'var(--rmpg-400)' : 'var(--rmpg-600)',
                 cursor: sorted.length ? 'pointer' : 'not-allowed',
               }}
             >
@@ -466,7 +466,7 @@ export default function GeoDataViewerPage() {
               className="flex items-center gap-2 flex-shrink-0 flex-wrap"
               style={{
                 padding: '6px 10px',
-                borderBottom: '1px solid #1a1a1a',
+                borderBottom: '1px solid var(--border-subtle)',
                 background: 'var(--surface-overlay)',
               }}
             >
@@ -478,7 +478,7 @@ export default function GeoDataViewerPage() {
                   placeholder="Search features..."
                   value={search}
                   onChange={(e) => handleSearch(e.target.value)}
-                  className="flex-1 text-[10px] bg-transparent outline-none placeholder-[#444]"
+                  className="flex-1 text-[10px] bg-transparent outline-none placeholder-rmpg-600"
                   style={{ color: 'var(--rmpg-300)', border: 'none' }}
                 />
                 {search && (
@@ -494,9 +494,9 @@ export default function GeoDataViewerPage() {
                 onClick={() => setShowFilter((v) => !v)}
                 className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
                 style={{
-                  background: showFilter ? 'var(--surface-raised)' : '#111',
-                  border: `1px solid ${showFilter ? '#2e2e2e' : 'var(--surface-raised)'}`,
-                  color: showFilter ? '#aaa' : '#666',
+                  background: showFilter ? 'var(--surface-raised)' : 'var(--surface-overlay)',
+                  border: `1px solid ${showFilter ? 'var(--border-default)' : 'var(--surface-raised)'}`,
+                  color: showFilter ? 'var(--rmpg-400)' : 'var(--rmpg-500)',
                   cursor: 'pointer',
                 }}
               >
@@ -510,11 +510,11 @@ export default function GeoDataViewerPage() {
                   placeholder="Filter columns..."
                   value={columnFilter}
                   onChange={(e) => setColumnFilter(e.target.value)}
-                  className="text-[10px] outline-none placeholder-[#444]"
+                  className="text-[10px] outline-none placeholder-rmpg-600"
                   style={{
                     background: 'var(--surface-base)',
                     border: '1px solid var(--border-default)',
-                    color: '#ccc',
+                    color: 'var(--rmpg-300)',
                     padding: '2px 6px',
                     width: 120,
                   }}
@@ -530,7 +530,7 @@ export default function GeoDataViewerPage() {
                     type="button"
                     disabled={page <= 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    style={{ color: page > 1 ? '#888' : '#333', lineHeight: 0, cursor: page > 1 ? 'pointer' : 'default' }}
+                    style={{ color: page > 1 ? '#888' : 'var(--rmpg-700)', lineHeight: 0, cursor: page > 1 ? 'pointer' : 'default' }}
                   >
                     <ChevronLeft style={{ width: 11, height: 11 }} />
                   </button>
@@ -541,14 +541,14 @@ export default function GeoDataViewerPage() {
                     type="button"
                     disabled={page >= totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    style={{ color: page < totalPages ? '#888' : '#333', lineHeight: 0, cursor: page < totalPages ? 'pointer' : 'default' }}
+                    style={{ color: page < totalPages ? '#888' : 'var(--rmpg-700)', lineHeight: 0, cursor: page < totalPages ? 'pointer' : 'default' }}
                   >
                     <ChevronRightIcon style={{ width: 11, height: 11 }} />
                   </button>
                 </div>
               )}
 
-              <span className="text-[9px] font-mono" style={{ color: '#444' }}>
+              <span className="text-[9px] font-mono" style={{ color: 'var(--rmpg-500)' }}>
                 {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, sorted.length)} of {sorted.length.toLocaleString()}
               </span>
             </div>
@@ -567,10 +567,10 @@ export default function GeoDataViewerPage() {
               ) : (
                 <div className="overflow-x-auto"><table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'auto' }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid #1a1a1a', background:"var(--surface-sunken)", position: 'sticky', top: 0, zIndex: 1 }}>
+                    <tr style={{ borderBottom: '1px solid var(--border-subtle)', background:"var(--surface-sunken)", position: 'sticky', top: 0, zIndex: 1 }}>
                       <th
                         className="text-[9px] font-semibold uppercase tracking-wider text-left"
-                        style={{ padding: '3px 8px', color: 'var(--rmpg-500)', whiteSpace: 'nowrap', width: 32, borderRight: '1px solid #111' }}
+                        style={{ padding: '3px 8px', color: 'var(--rmpg-500)', whiteSpace: 'nowrap', width: 32, borderRight: '1px solid var(--border-subtle)' }}
                       >
                         #
                       </th>
@@ -585,7 +585,7 @@ export default function GeoDataViewerPage() {
                               padding: '3px 8px',
                               color: isSorted ? activeLayer.color : '#666',
                               whiteSpace: 'nowrap',
-                              borderRight: '1px solid #111',
+                              borderRight: '1px solid var(--border-subtle)',
                             }}
                           >
                             <div className="flex items-center gap-1">
@@ -611,13 +611,13 @@ export default function GeoDataViewerPage() {
                           key={idx}
                           onClick={() => setSelectedFeature(isSelected ? null : feature)}
                           style={{
-                            borderBottom: '1px solid #111',
+                            borderBottom: '1px solid var(--border-subtle)',
                             background: isSelected ? 'var(--surface-base)' : idx % 2 === 0 ? '#080808' : '#0a0a0a',
                             cursor: 'pointer',
                             borderLeft: isSelected ? `2px solid ${activeLayer.color}` : '2px solid transparent',
                           }}
                         >
-                          <td className="text-[9px] font-mono" style={{ padding: '2px 8px', color: '#444', borderRight: '1px solid #111' }}>
+                          <td className="text-[9px] font-mono" style={{ padding: '2px 8px', color: 'var(--rmpg-500)', borderRight: '1px solid var(--border-subtle)' }}>
                             {rowIdx}
                           </td>
                           {visibleColumns.map((col) => (
@@ -631,7 +631,7 @@ export default function GeoDataViewerPage() {
                                 maxWidth: 180,
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
-                                borderRight: '1px solid #111',
+                                borderRight: '1px solid var(--border-subtle)',
                               }}
                               title={formatPropValue(feature.properties?.[col])}
                             >
@@ -639,7 +639,7 @@ export default function GeoDataViewerPage() {
                             </td>
                           ))}
                           <td style={{ padding: '2px 8px', textAlign: 'center' }}>
-                            <Eye style={{ width: 10, height: 10, color: isSelected ? activeLayer.color : '#333' }} />
+                            <Eye style={{ width: 10, height: 10, color: isSelected ? activeLayer.color : 'var(--rmpg-600)' }} />
                           </td>
                         </tr>
                       );

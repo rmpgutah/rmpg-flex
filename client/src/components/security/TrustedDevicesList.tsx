@@ -76,7 +76,7 @@ export default function TrustedDevicesList() {
   if (devices.length === 0) {
     return (
       <div className="text-center py-6">
-        <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: '#2e2e2e' }} />
+        <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--rmpg-500)' }} />
         <p className="text-[10px] text-rmpg-500">No trusted devices</p>
         <p className="text-[9px] mt-1" style={{ color: 'var(--rmpg-500)' }}>
           Trust a device during login to skip 2FA for 30 days
@@ -125,7 +125,7 @@ export default function TrustedDevicesList() {
             onClick={() => revokeDevice(device.id)}
             disabled={revoking === device.id}
             className="toolbar-btn flex items-center gap-1 text-[9px]"
-            style={{ color: revoking === device.id ? '#555555' : '#ef4444' }}
+            style={{ color: revoking === device.id ? 'var(--rmpg-500)' : '#ef4444' }}
             title="Revoke trust"
           >
             <Trash2 className="w-3 h-3" />

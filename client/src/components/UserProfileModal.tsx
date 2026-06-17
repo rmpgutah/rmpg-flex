@@ -550,8 +550,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
         style={{
           background: 'var(--surface-overlay)',
           border: '1px solid var(--border-strong)',
-          borderTopColor: '#383838',
-          borderLeftColor: '#383838',
+          borderTopColor: 'var(--border-default)',
+          borderLeftColor: 'var(--border-default)',
           borderBottomColor: 'var(--surface-raised)',
           borderRightColor: 'var(--surface-raised)',
           boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
@@ -627,7 +627,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
           {activeTab === 'profile' && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -738,7 +738,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
       </div>
 
       {/* Connections list */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1">
         <div className="text-[9px] text-rmpg-500 uppercase tracking-wider px-1 mb-1">
           Connections ({edges.length})
         </div>

@@ -520,7 +520,7 @@ export default function CourtTrackerPage() {
 
         {/* Feature 1: Calendar View */}
         {activeView === 'calendar' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-2">
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-2">
             <div className="flex items-center justify-between mb-2">
               <IconButton onClick={() => { if (calendarMonth === 1) { setCalendarMonth(12); setCalendarYear(y => y - 1); } else setCalendarMonth(m => m - 1); }} className="toolbar-btn p-1" aria-label="Previous month">
                 <ChevronLeft style={{ width: 14, height: 14 }} />
@@ -574,7 +574,7 @@ export default function CourtTrackerPage() {
 
         {/* Feature 10: Statistics View */}
         {activeView === 'stats' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-3 space-y-3">
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-3 space-y-3">
             {statsLoading ? (
               <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : stats ? (
@@ -638,7 +638,7 @@ export default function CourtTrackerPage() {
 
         {/* Event List (upcoming + list views) */}
         {(activeView === 'upcoming' || activeView === 'list') && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
             {loading && activeView === 'list' ? (
               <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : displayEvents.length === 0 ? (
@@ -692,7 +692,7 @@ export default function CourtTrackerPage() {
       </div>
 
       {/* Right Panel */}
-      <div className="flex-1 flex flex-col bg-surface-base">
+      <div className="flex-1 min-h-0 flex flex-col bg-surface-base">
         {selected ? (
           <>
             <PanelTitleBar title={`${selected.event_number} -- ${EVENT_TYPES.find(t => t.value === selected.event_type)?.label}`} icon={Gavel}>
@@ -716,7 +716,7 @@ export default function CourtTrackerPage() {
               )}
             </PanelTitleBar>
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
               {/* Badges */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${EVENT_TYPE_COLORS[selected.event_type] || ''}`}>

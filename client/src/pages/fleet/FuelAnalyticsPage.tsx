@@ -130,7 +130,7 @@ export default function FuelAnalyticsPage() {
   useEffect(() => { load(windowDays); /* eslint-disable-next-line */ }, [windowDays]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-surface-base">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-surface-base">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">

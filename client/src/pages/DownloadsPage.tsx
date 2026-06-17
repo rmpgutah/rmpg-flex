@@ -239,11 +239,11 @@ export default function DownloadsPage() {
             style={{
               background: 'var(--surface-raised)',
               border: '1px solid var(--border-default)',
-              color: '#ccc',
+              color: 'var(--rmpg-300)',
               borderRadius: 2,
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--border-default)'; e.currentTarget.style.borderColor = '#555'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-raised)'; e.currentTarget.style.borderColor = '#333'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--border-default)'; e.currentTarget.style.borderColor = 'var(--rmpg-500)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-raised)'; e.currentTarget.style.borderColor = 'var(--border-subtle)'; }}
           >
             Open Web App
             <ChevronRight className="w-3.5 h-3.5" />
@@ -269,7 +269,7 @@ export default function DownloadsPage() {
               'Reports, analytics & audit trail',
               'Automatic updates — always stay on the latest version',
             ].map((feature, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs" style={{ color: '#999' }}>
+              <div key={i} className="flex items-center gap-2 text-xs" style={{ color: 'var(--rmpg-400)' }}>
                 <span style={{ color: '#4ade80' }}>&#10003;</span>
                 {feature}
               </div>
@@ -311,14 +311,14 @@ export default function DownloadsPage() {
                 <span
                   className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-[11px] font-bold"
                   style={{
-                    background: '#1f1f1f',
+                    background: 'var(--surface-overlay)',
                     color: '#d4a017',
                     borderRadius: 2,
                   }}
                 >
                   {i + 1}
                 </span>
-                <span className="text-xs leading-relaxed" style={{ color: '#999' }}>
+                <span className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-400)' }}>
                   {step}
                 </span>
               </div>
@@ -349,15 +349,15 @@ export default function DownloadsPage() {
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
-              <strong style={{ color: '#aaa' }}>Windows:</strong> Windows 10 or later<br />
+              <strong style={{ color: 'var(--rmpg-400)' }}>Windows:</strong> Windows 10 or later<br />
               64-bit (x64) processor
             </div>
             <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
-              <strong style={{ color: '#aaa' }}>macOS:</strong> macOS 10.15 (Catalina) or later<br />
+              <strong style={{ color: 'var(--rmpg-400)' }}>macOS:</strong> macOS 10.15 (Catalina) or later<br />
               Apple Silicon (M1/M2/M3/M4) or Intel
             </div>
             <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
-              <strong style={{ color: '#aaa' }}>Android:</strong> Android 8.0 (Oreo) or later<br />
+              <strong style={{ color: 'var(--rmpg-400)' }}>Android:</strong> Android 8.0 (Oreo) or later<br />
               Any modern smartphone or tablet
             </div>
           </div>
@@ -365,7 +365,7 @@ export default function DownloadsPage() {
       </div>
 
       {/* Footer */}
-      <div className="text-center py-8 text-[10px] tracking-wider" style={{ color: '#444' }}>
+      <div className="text-center py-8 text-[10px] tracking-wider" style={{ color: 'var(--rmpg-600)' }}>
         <span id="footer-version">
           RMPG Flex v
           {loading ? '...' : info.win ? info.win.version : info.mac ? info.mac.version : '5.8.0'}

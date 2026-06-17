@@ -115,7 +115,7 @@ export default function DispatchAlertBanner({ alerts, onDismiss, onDismissAll }:
           {alerts.length > 2 && (
             <button
               onClick={onDismissAll}
-              className="w-full text-center text-xs font-mono text-zinc-400 hover:text-rmpg-100 bg-zinc-900/80 border border-zinc-700/50 rounded px-3 py-1 transition-colors"
+              className="w-full text-center text-xs font-mono text-rmpg-400 hover:text-rmpg-100 bg-surface-overlay/80 border border-rmpg-700/50 rounded px-3 py-1 transition-colors"
             >
               Dismiss all ({alerts.length})
             </button>

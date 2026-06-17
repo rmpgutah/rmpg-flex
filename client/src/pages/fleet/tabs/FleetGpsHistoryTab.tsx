@@ -147,7 +147,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-5 h-5 text-rmpg-400 animate-spin" />

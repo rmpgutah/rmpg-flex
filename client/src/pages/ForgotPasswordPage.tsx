@@ -50,8 +50,8 @@ export default function ForgotPasswordPage() {
             <ShieldCheck className="w-3 h-3" style={{ color: 'var(--rmpg-400)' }} />
             <span>PASSWORD RESET</span>
             <div className="ml-auto flex items-center gap-1">
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid var(--border-strong)' }}>_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid var(--border-strong)' }}>&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-strong)' }}>_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-strong)' }}>&#9633;</div>
             </div>
           </div>
 
@@ -80,7 +80,7 @@ export default function ForgotPasswordPage() {
                       Email Address
                     </label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#383838' }} />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: 'var(--rmpg-500)' }} />
                       <input
                         id="reset-email"
                         type="email"
@@ -148,7 +148,7 @@ export default function ForgotPasswordPage() {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-[8px] mt-4" style={{ color: '#2e2e2e' }}>
+        <p className="text-center text-[8px] mt-4" style={{ color: 'var(--rmpg-500)' }}>
           RMPG Flex &mdash; Rocky Mountain Protective Group
         </p>
       </div>

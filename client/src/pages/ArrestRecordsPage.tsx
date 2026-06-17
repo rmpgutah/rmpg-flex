@@ -630,7 +630,7 @@ export default function ArrestRecordsPage() {
       </div>
 
       {/* Records list */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark" role="list" aria-label="Arrest records">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark" role="list" aria-label="Arrest records">
         {recordsLoading ? (
           <div className="flex flex-col items-center gap-3 text-[10px] text-rmpg-500 py-12 justify-center">
             <Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading arrest records" />

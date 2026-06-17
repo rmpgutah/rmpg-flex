@@ -239,7 +239,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
       </div>
 
       {/* list */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark px-2 py-2 space-y-1.5">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark px-2 py-2 space-y-1.5">
         {loading && calls.length === 0 && (
           <div className="flex items-center justify-center gap-2 text-[11px] text-rmpg-500 py-6">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading runs…
@@ -287,10 +287,10 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
                 {stages.map((s, i) => (
                   <div key={s.k} className="flex items-center flex-1 min-w-0">
                     <div className="flex flex-col items-center flex-1 min-w-0">
-                      <span className="text-[7px] uppercase tracking-wider leading-none" style={{ color: s.t ? '#d4a017' : '#444' }}>{s.k}</span>
-                      <span className="text-[8px] font-mono leading-tight" style={{ color: s.t ? '#bdbdbd' : '#3a3a3a' }}>{s.t || '··'}</span>
+                      <span className="text-[7px] uppercase tracking-wider leading-none" style={{ color: s.t ? '#d4a017' : 'var(--rmpg-700)' }}>{s.k}</span>
+                      <span className="text-[8px] font-mono leading-tight" style={{ color: s.t ? 'var(--rmpg-300)' : 'var(--rmpg-700)' }}>{s.t || '··'}</span>
                     </div>
-                    {i < stages.length - 1 && <div className="h-px w-2 shrink-0" style={{ background: stages[i + 1].t ? '#d4a01755' : '#222' }} />}
+                    {i < stages.length - 1 && <div className="h-px w-2 shrink-0" style={{ background: stages[i + 1].t ? '#d4a01755' : 'var(--border-subtle)' }} />}
                   </div>
                 ))}
               </div>

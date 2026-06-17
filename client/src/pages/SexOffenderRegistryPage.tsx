@@ -394,7 +394,7 @@ export default function SexOffenderRegistryPage() {
       </div>
 
       {/* Record List */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 min-h-0 overflow-y-auto min-h-0">
         {loading ? (
           <div className="flex items-center justify-center h-32 text-rmpg-500">
             <Loader2 size={20} className="animate-spin mr-2" /> Loading...

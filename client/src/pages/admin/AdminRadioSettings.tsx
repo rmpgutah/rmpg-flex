@@ -72,8 +72,8 @@ function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange
         onClick={() => onChange(!checked)}
         className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-sm transition-colors flex-shrink-0"
         style={{
-          background: checked ? 'rgba(212,160,23,0.12)' : '#0c0c0c',
-          border: `1px solid ${checked ? '#d4a017' : '#222'}`,
+          background: checked ? 'rgba(212,160,23,0.12)' : 'var(--surface-sunken)',
+          border: `1px solid ${checked ? '#d4a017' : 'var(--border-subtle)'}`,
           color: checked ? '#d4a017' : '#888',
         }}
       >

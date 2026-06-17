@@ -328,7 +328,7 @@ export default function AdminRadioTab() {
                     <td className="px-2 py-[2px]">
                       <span
                         className="inline-block w-3 h-3 rounded-sm border border-rmpg-700"
-                        style={{ backgroundColor: ch.color || '#333333' }}
+                        style={{ backgroundColor: ch.color || 'var(--border-default)' }}
                         title={ch.color || 'no color'}
                       />
                     </td>
@@ -452,7 +452,7 @@ export default function AdminRadioTab() {
                     />
                     <span
                       className="inline-block w-6 h-6 rounded-sm border border-rmpg-700 flex-shrink-0"
-                      style={{ backgroundColor: form.color || '#333333' }}
+                      style={{ backgroundColor: form.color || 'var(--border-default)' }}
                     />
                   </div>
                   <div className="flex gap-1 mt-1">

@@ -125,7 +125,7 @@ export default function PersonnelDashboard({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-dark">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 scrollbar-dark">
       {/* Hero KPI row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <Kpi icon={Users} value={officers.length} label="Total Personnel" color="text-rmpg-100" topBorder="border-t-brand-500" onClick={() => onNavigate('roster')} />

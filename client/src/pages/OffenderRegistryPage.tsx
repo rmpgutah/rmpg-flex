@@ -122,7 +122,7 @@ function CdocSearchPanel() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {selectedOffender ? (
           <div className="p-3 space-y-3">
             <button type="button" onClick={() => setSelectedOffender(null)} className="text-[10px] text-brand-400 hover:text-brand-300 flex items-center gap-1">
@@ -476,7 +476,7 @@ export default function OffenderRegistryPage() {
         </div>
 
         {/* Alert List */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
           ) : alerts.length === 0 ? (
@@ -527,7 +527,7 @@ export default function OffenderRegistryPage() {
       </div>
 
       {/* ── Right Panel ── */}
-      <div className="flex-1 flex flex-col bg-surface-base">
+      <div className="flex-1 min-h-0 flex flex-col bg-surface-base">
         {selected ? (
           <>
             <PanelTitleBar title={`Alert — ${selected.person_name || `Person #${selected.person_id}`}`} icon={ShieldAlert}>
@@ -536,7 +536,7 @@ export default function OffenderRegistryPage() {
               </button>
             </PanelTitleBar>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
               {/* Badges */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${SEVERITY_COLORS[selected.severity] || ''}`}>
@@ -619,7 +619,7 @@ export default function OffenderRegistryPage() {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 min-h-0 flex flex-col">
             {/* CDOC Search */}
             <CdocSearchPanel />
           </div>

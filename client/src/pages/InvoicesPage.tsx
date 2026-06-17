@@ -1038,7 +1038,7 @@ export default function InvoicesPage() {
         ) : mode === 'create' ? (
           <CreatePanel />
         ) : (
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {/* Toolbar */}
             <div className="p-2 space-y-2 border-b border-rmpg-700">
               <div className="flex items-center gap-2">
@@ -1081,7 +1081,7 @@ export default function InvoicesPage() {
               ) : invoices.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-rmpg-500"><DollarSign size={32} className="mb-2 opacity-30" /><p className="text-xs">No invoices found</p></div>
               ) : (
-                <div className="divide-y divide-[#2b2b2b]/40">
+                <div className="divide-y divide-[var(--border-subtle)]">
                   {invoices.map(inv => (
                     <div
                       key={inv.id}
@@ -1262,7 +1262,7 @@ export default function InvoicesPage() {
         </div>
 
         {/* Right: detail or create */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {mode === 'create' ? (
             <CreatePanel />
           ) : mode === 'detail' && selectedInvoice ? (

@@ -57,7 +57,7 @@ const MARKER_COLORS: Record<string, string> = {
   served: '#22c55e',
   failed: '#ef4444',
   skipped: 'var(--rmpg-500)',
-  archived: '#555555',
+  archived: 'var(--rmpg-500)',
 };
 
 const DOCUMENT_TYPES = [
@@ -833,7 +833,7 @@ export default function ServePage() {
         <div className="flex items-center gap-1.5">
           <button type="button"
             onClick={() => setRoutePlannerOpen(true)}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-rmpg-500/50"
             title="Plan Route"
             aria-label="Plan Route"
           >
@@ -843,7 +843,7 @@ export default function ServePage() {
           <button type="button"
             onClick={handleSyncFromSM}
             disabled={syncing}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 disabled:opacity-40 hover:shadow-[0_0_8px_rgba(34,211,238,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 disabled:opacity-40 hover:shadow-[0_0_8px_rgba(34,211,238,0.15)] focus:outline-none focus:ring-1 focus:ring-rmpg-500/50"
             title="Sync from ServeManager"
             aria-label="Sync from ServeManager"
           >
@@ -941,7 +941,7 @@ export default function ServePage() {
             )}
 
             {/* Job list */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-dark">
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2 scrollbar-dark">
               {loading && jobs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-xs text-rmpg-400">
                   <Loader2 size={16} className="animate-spin mr-2 text-[#888888]" />
@@ -1107,7 +1107,7 @@ export default function ServePage() {
                   <div className="flex items-center gap-2 pt-2">
                     <button type="button"
                       onClick={() => setRoutePlannerOpen(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-rmpg-500/50"
                       aria-label="Open Route Planner"
                     >
                       <Route size={12} />
@@ -1140,7 +1140,7 @@ export default function ServePage() {
                 <p className="text-sm text-rmpg-400 font-medium mb-3">No route planned for this date.</p>
                 <button type="button"
                   onClick={() => setRoutePlannerOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-gray-500/50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-rmpg-500/50"
                   aria-label="Open Route Planner"
                 >
                   <Route size={12} />

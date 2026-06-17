@@ -170,7 +170,7 @@ export default function CaptureReviewEditor({
                 <span>{showHistory ? '−' : '+'}</span>
               </button>
               {showHistory && (
-                <ul className="border-t border-border-default divide-y divide-[#141414]">
+                <ul className="border-t border-border-default divide-y divide-[var(--border-subtle)]">
                   {history.map((h) => (
                     <li key={h.id} className="px-2 py-1 text-[10px]">
                       <div className="flex items-center justify-between gap-2">

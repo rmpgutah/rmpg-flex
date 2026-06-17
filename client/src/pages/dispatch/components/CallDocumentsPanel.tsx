@@ -67,7 +67,7 @@ export default function CallDocumentsPanel({ callId }: Props) {
         </div>
       </div>
 
-      <div className="space-y-1 flex-1 overflow-y-auto">
+      <div className="space-y-1 flex-1 min-h-0 overflow-y-auto">
         {loading ? (
           <div className="flex items-center text-[#888] text-[10px]"><Loader2 className="w-3 h-3 animate-spin mr-1" /> Loading…</div>
         ) : items.length === 0 ? (

@@ -156,21 +156,21 @@ function coverageFill(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return '#166534'; // green-800
     case 'pending': return '#78350f'; // amber-900
-    default: return '#282828'; // gray-800
+    default: return 'var(--border-subtle)';
   }
 }
 function coverageStroke(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return '#22c55e';
     case 'pending': return '#f59e0b';
-    default: return '#545454';
+    default: return 'var(--rmpg-600)';
   }
 }
 function coverageHoverFill(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return '#15803d';
     case 'pending': return '#92400e';
-    default: return '#404040';
+    default: return 'var(--border-default)';
   }
 }
 
@@ -324,7 +324,7 @@ export default function NationalWarrantSearchPage() {
       </PanelTitleBar>
 
       {/* ─── Scrollable Content ──────────────────────── */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark p-3 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark p-3 space-y-3">
 
         {/* ─── Search Form ────────────────────────────── */}
         <form onSubmit={handleSearch} className="panel-raised p-3 space-y-2">
@@ -437,7 +437,7 @@ export default function NationalWarrantSearchPage() {
                 <span className="text-rmpg-400">Pending</span>
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#282828', border: '1px solid #545454' }} />
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-default)' }} />
                 <span className="text-rmpg-400">No Source</span>
               </span>
             </div>
@@ -592,7 +592,7 @@ export default function NationalWarrantSearchPage() {
                   </span>
                 </button>
                 {!collapsedGroups.has('LOCAL') && (
-                  <div className="divide-y divide-[#1a1a1a]">
+                  <div className="divide-y divide-[var(--border-subtle)]">
                     {localResults.map((w: any, i: number) => (
                       <WarrantRow key={`local-${i}`} warrant={w} />
                     ))}
@@ -623,7 +623,7 @@ export default function NationalWarrantSearchPage() {
                     </span>
                   </button>
                   {!isCollapsed && (
-                    <div className="divide-y divide-[#1a1a1a]">
+                    <div className="divide-y divide-[var(--border-subtle)]">
                       {warrants.map((w: any, i: number) => (
                         <WarrantRow key={`${stateCode}-${i}`} warrant={w} />
                       ))}

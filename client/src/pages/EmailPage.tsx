@@ -1156,7 +1156,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   return (
     <div className="fixed inset-0 z-50 print:hidden flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onKeyDown={handleKeyDown}>
       <div
-        className={`bg-surface-base border border-rmpg-700 rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141414]' : ''}`}
+        className={`bg-surface-base border border-rmpg-700 rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[var(--surface-sunken)]' : ''}`}
         onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
@@ -1663,7 +1663,7 @@ function HeadersModal({ messageId, onClose }: { messageId: string; onClose: () =
           <input value={hFilter} onChange={e => setHFilter(e.target.value)} placeholder="Filter headers (e.g. spf, dkim, received)…"
             className="input-dark w-full text-[10px] px-2 py-1 min-h-[32px]" aria-label="Filter headers" />
         </div>
-        <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {loading ? <Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /> : (
             <div className="space-y-1 font-mono text-[10px]">
               {internetMessageId && <div className="text-rmpg-400 break-all"><span className="text-brand-400">Message-ID:</span> {internetMessageId}</div>}
@@ -2636,7 +2636,7 @@ export default function EmailPage() {
         )}
 
         {/* Folder list */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent py-1">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent py-1">
           {topLevelFolders.map(f => renderFolderItem(f))}
         </div>
 
@@ -2849,7 +2849,7 @@ export default function EmailPage() {
         )}
 
         {/* Message List (threaded) */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {loading && displayedMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
           ) : displayedMessages.length === 0 ? (
@@ -2987,7 +2987,7 @@ export default function EmailPage() {
         onMouseDown={() => { resizingRef.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }} />
 
       {/* ─── Reading Pane ─── */}
-      <div className={`flex-1 flex flex-col bg-surface-sunken overflow-hidden ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`flex-1 min-h-0 flex flex-col bg-surface-sunken overflow-hidden ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
         {fullMessage ? (
           <>
             {/* Message Header */}

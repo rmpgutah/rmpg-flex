@@ -44,7 +44,7 @@ export default function AnalysisPanel({ editor, onClose }: { editor: Editor; onC
   );
 
   const Stat = ({ label, value, hint }: { label: string; value: string | number; hint?: string }) => (
-    <div className="flex items-baseline justify-between border-b border-[#161616] py-1">
+    <div className="flex items-baseline justify-between border-b border-border-subtle py-1">
       <span className="text-[10px] text-rmpg-500">{label}</span>
       <span className="text-[11px] text-rmpg-100 tabular-nums">{value}{hint && <span className="text-rmpg-600 ml-1 text-[9px]">{hint}</span>}</span>
     </div>

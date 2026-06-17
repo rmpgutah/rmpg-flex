@@ -110,7 +110,7 @@ export default function IncidentReportsPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         <div className="flex items-center gap-2">
           <FileText size={12} className="text-emerald-400" />
@@ -249,7 +249,7 @@ export default function IncidentReportsPanel({
                       <div
                         key={r.id}
                         className="rounded-sm px-1.5 py-1 space-y-0.5 hover:bg-surface-raised/50 transition-colors duration-100"
-                        style={{ background: 'var(--surface-overlay)', border: '1px solid #282828', borderLeft: `2px solid ${ss.bg}` }}
+                        style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderLeft: `2px solid ${ss.bg}` }}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] font-mono text-rmpg-200 truncate flex items-center gap-1">
@@ -296,7 +296,7 @@ export default function IncidentReportsPanel({
             {/* Info note */}
             <div
               className="flex items-start gap-1.5 px-2 py-1.5 rounded"
-              style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
             >
               <Info size={10} className="text-emerald-500 mt-0.5 shrink-0" />
               <span className="text-[9px] font-mono text-rmpg-500 leading-tight">

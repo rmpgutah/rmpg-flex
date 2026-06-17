@@ -383,7 +383,7 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
                   value={values[key] || ''}
                   onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
                   placeholder={configured[key] ? '••••••••••••••••••••' : 'Paste API key here...'}
-                  className="w-full px-3 py-2 pr-8 bg-surface-raised border border-rmpg-700 rounded-sm text-xs text-rmpg-100 font-mono placeholder-[#525252] focus:outline-none focus:border-brand-500"
+                  className="w-full px-3 py-2 pr-8 bg-surface-raised border border-rmpg-700 rounded-sm text-xs text-rmpg-100 font-mono placeholder-rmpg-600 focus:outline-none focus:border-brand-500"
                 />
                 <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !showKey[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
                   {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}

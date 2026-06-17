@@ -99,7 +99,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
     { label: 'Issued', value: stats.issued, color: 'text-green-400', bgClass: 'bg-surface-base', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
     { label: 'Returned', value: stats.returned, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
     { label: 'Lost / Damaged', value: stats.lostDamaged, color: 'text-red-400', bgClass: 'bg-surface-base', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
-    { label: 'Maintenance', value: stats.maintenance, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-border-default/30', topBorder: 'border-t-gray-500' },
+    { label: 'Maintenance', value: stats.maintenance, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-border-default/30', topBorder: 'border-t-rmpg-500' },
     { label: 'Retired', value: stats.retired, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
   ];
 
@@ -121,7 +121,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
   useEffect(() => { document.title = 'Personnel - Equipment \u2014 RMPG Flex'; }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

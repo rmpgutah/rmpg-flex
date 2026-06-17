@@ -262,7 +262,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
       </div>
 
       {/* timeline */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark px-2 py-2 space-y-1.5">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark px-2 py-2 space-y-1.5">
         {unitId == null && (
           <div className="text-[9px] text-rmpg-600 px-2 pb-1 text-center">
             No unit assigned — showing the agency-wide trip log. Go on-duty to log your own.

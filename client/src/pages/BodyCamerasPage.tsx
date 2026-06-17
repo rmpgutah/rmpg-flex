@@ -267,7 +267,7 @@ export default function BodyCamerasPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark">
         {loading && (
           <div className="flex items-center justify-center flex-1 py-20">
             <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />

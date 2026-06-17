@@ -102,13 +102,13 @@ export default function AnalysisDashboardPanel({
         width: 320,
         maxHeight: 'calc(100dvh - 160px)',
         background: '#0a0a0a',
-        border: '1px solid #282828',
+        border: '1px solid var(--border-subtle)',
       }}
     >
       {/* ── Header ─────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-3 py-2 shrink-0"
-        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         <div className="flex items-center gap-2">
           <Brain size={14} className="text-purple-400" />
@@ -414,7 +414,7 @@ function MetricCell({
   return (
     <div
       className="flex flex-col items-center justify-center py-2 px-1 rounded-sm panel-inset"
-      style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
+      style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
     >
       {/* #52: Metric cell value with text shadow glow */}
       <span className="text-[14px] font-mono font-bold leading-none tabular-nums" style={{ color, textShadow: `0 0 8px ${color}30` }}>
@@ -439,9 +439,9 @@ function SectionBlock({
   return (
     <div
       className="rounded-sm p-2 panel-inset"
-      style={{ background:"var(--surface-sunken)", border: '1px solid #282828' }}
+      style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-subtle)' }}
     >
-      <div className="flex items-center gap-1.5 mb-1.5 pb-1" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, #282828, #3c3c3c, #282828) 1' }}>
+      <div className="flex items-center gap-1.5 mb-1.5 pb-1" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, var(--border-subtle), #3c3c3c, var(--border-subtle)) 1' }}>
         {icon}
         <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-rmpg-400">
           {title}

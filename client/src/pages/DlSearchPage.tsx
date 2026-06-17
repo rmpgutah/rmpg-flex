@@ -1252,7 +1252,7 @@ export default function DlSearchPage() {
                 <button type="button" onClick={() => setShowScanHistory(false)} className="text-rmpg-500 hover:text-rmpg-100"><X size={16} /></button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               {scanHistoryLoading ? (
                 <div className="flex items-center justify-center py-10 text-[11px] text-rmpg-400 gap-2"><Loader2 size={14} className="animate-spin" /> Loading...</div>
               ) : !scanHistory || scanHistory.length === 0 ? (

@@ -1298,7 +1298,7 @@ export default function AdminSystemTab({
       </div>
 
       {/* ====== CONTENT PANEL (full width) ====== */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark p-4" role="tabpanel">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark p-4" role="tabpanel">
       {loadingConfig ? (
         <LoadingSpinner />
       ) : (

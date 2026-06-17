@@ -103,7 +103,7 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
           className="ml-auto bg-surface-overlay border border-rmpg-700 text-rmpg-200 text-[11px] px-2 py-0.5 w-48 focus:border-[#d4a017] outline-none"
         />
       </div>
-      <div className="divide-y divide-[#1a1a1a]">
+      <div className="divide-y divide-[var(--border-subtle)]">
         {filtered.map((tool) => {
           const isOpen = expanded === tool.className;
           const lines = output[tool.className] || [];

@@ -202,7 +202,7 @@ export default function AIPromptWorkshopPanel() {
                 min={0} max={2} step={0.05}
                 value={tempOverride ?? 0.7}
                 onChange={e => setTempOverride(parseFloat(e.target.value))}
-                className="w-24 h-1 bg-rmpg-700 rounded appearance-none cursor-pointer accent-gray-500"
+                className="w-24 h-1 bg-rmpg-700 rounded appearance-none cursor-pointer accent-rmpg-500"
               />
               <span className="text-[10px] text-rmpg-400 font-mono w-8">{tempOverride?.toFixed(2) ?? '—'}</span>
               {tempOverride !== null && (
@@ -222,7 +222,7 @@ export default function AIPromptWorkshopPanel() {
               <button
                 onClick={runCompare}
                 disabled={running || comparing || (!systemPrompt.trim() && !userMessage.trim())}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-[#404040] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-border-default disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {comparing ? <Loader2 className="w-3 h-3 animate-spin" /> : <GitCompare className="w-3 h-3" />}
                 Compare
@@ -353,7 +353,7 @@ export default function AIPromptWorkshopPanel() {
           </div>
         ) : (
           <button onClick={() => setShowSaveForm(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-[#404040] transition-colors">
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-border-default transition-colors">
             <Save className="w-3 h-3" /> Save as Template
           </button>
         )}

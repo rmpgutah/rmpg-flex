@@ -253,7 +253,7 @@ export default function DailyActivityReportsPage() {
         </div>
 
         {/* DAR List */}
-        <div className="flex-1 overflow-y-auto scrollbar-dark" role="list" aria-label="Daily activity reports">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark" role="list" aria-label="Daily activity reports">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading daily activity reports" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
           ) : dars.length === 0 ? (
@@ -306,7 +306,7 @@ export default function DailyActivityReportsPage() {
       </div>
 
       {/* ── Right Panel ── */}
-      <div className="flex-1 flex flex-col bg-surface-base">
+      <div className="flex-1 min-h-0 flex flex-col bg-surface-base">
         {selected ? (
           <>
             <PanelTitleBar title={`${selected.dar_number} — ${selected.shift_date ? parseTimestamp(selected.shift_date).toLocaleDateString() : ''}`} icon={ClipboardCheck}>
@@ -330,7 +330,7 @@ export default function DailyActivityReportsPage() {
               )}
             </PanelTitleBar>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
               {/* Status + Info */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border font-bold ${STATUS_COLORS[selected.status] || ''}`}>

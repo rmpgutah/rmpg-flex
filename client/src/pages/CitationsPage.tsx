@@ -967,7 +967,7 @@ export default function CitationsPage() {
       </div>
 
       {/* List body */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12 gap-2">
             <Loader2 size={20} className="animate-spin text-brand-400" role="status" aria-label="Loading" />
@@ -1099,7 +1099,7 @@ export default function CitationsPage() {
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
           {/* Violation */}
           <section>
             <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
@@ -1420,7 +1420,7 @@ export default function CitationsPage() {
       </div>
 
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-5">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-5">
         {saveError && (
           <div className="bg-red-900/40 border border-red-700/50 px-3 py-2 text-xs text-red-300 flex items-center gap-2">
             <AlertTriangle size={14} /> {saveError}

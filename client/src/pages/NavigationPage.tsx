@@ -369,7 +369,7 @@ function StatTile({ label, value, accent, dim }: { label: string; value: string;
       <div className="text-[8px] uppercase tracking-wider text-rmpg-600 leading-none truncate">{label}</div>
       <div
         className="font-mono font-bold text-[13px] leading-tight mt-0.5 truncate tabular-nums"
-        style={{ color: accent || (dim ? '#6b6b6b' : '#d4d4d4') }}
+        style={{ color: accent || (dim ? 'var(--rmpg-600)' : 'var(--rmpg-300)') }}
       >
         {value}
       </div>
@@ -2233,7 +2233,7 @@ export default function NavigationPage() {
             </div>
             {crashOn && crashes.length > 0 && (
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full shrink-0 border" style={{ borderColor: '#e5e7eb', background: 'transparent' }} />
+                <span className="w-2 h-2 rounded-full shrink-0 border" style={{ borderColor: 'var(--border-default)', background: 'transparent' }} />
                 <span className="text-[8px] uppercase tracking-wider text-rmpg-600 flex-1">Crashes ½mi</span>
                 <span className="text-[10px] font-mono font-bold" style={{ color: crashNearby >= 10 ? '#ef4444' : crashNearby >= 4 ? '#f59e0b' : '#888' }}>{crashNearby}</span>
               </div>

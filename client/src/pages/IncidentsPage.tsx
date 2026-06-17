@@ -1401,7 +1401,7 @@ export default function IncidentsPage() {
       })()}
 
       {/* Detail Body — Collapsible Sections */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-4">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-4">
         {/* Returned Warning */}
         {selectedIncident.status === 'returned' && selectedIncident.review_notes && (
           <div className="p-3 bg-red-900/20 border border-red-700/40 mb-3">

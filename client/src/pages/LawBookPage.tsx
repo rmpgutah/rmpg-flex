@@ -290,7 +290,7 @@ export default function LawBookPage() {
               onClick={() => setLevel(level === l.key ? null : l.key)}
               className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold border"
               style={{
-                background: level === l.key ? 'var(--surface-raised)' : '#0a0a0a',
+                background: level === l.key ? 'var(--surface-raised)' : 'var(--surface-sunken)',
                 borderColor: level === l.key ? l.dot : 'var(--border-subtle)',
                 color: level === l.key ? '#fff' : '#888888', borderRadius: 2,
               }}>

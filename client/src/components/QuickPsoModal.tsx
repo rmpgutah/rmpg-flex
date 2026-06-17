@@ -389,10 +389,10 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 disabled={isSubmitting || !formData.location}
                 className="toolbar-btn"
                 style={{
-                  background: isSubmitting ? '#4a4a4a' : 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
+                  background: isSubmitting ? 'var(--rmpg-700)' : 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
                   borderColor: '#7c3aed',
-                  borderBottomColor: '#212121',
-                  borderRightColor: '#212121',
+                  borderBottomColor: 'var(--surface-overlay)',
+                  borderRightColor: 'var(--surface-overlay)',
                   color: '#ffffff',
                   opacity: !formData.location ? 0.5 : 1,
                 }}

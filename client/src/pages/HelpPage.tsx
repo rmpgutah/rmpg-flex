@@ -362,7 +362,7 @@ export default function HelpPage() {
           scrollbarWidth: 'none',
         }}
       >
-        <div className="px-3 pb-3 mb-2" style={{ borderBottom: '1px solid #1a1a1a' }}>
+        <div className="px-3 pb-3 mb-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
           <div className="flex items-center gap-2">
             <HelpCircle className="w-4 h-4 text-[#d4a017]" />
             <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Help Center</span>
@@ -393,7 +393,7 @@ export default function HelpPage() {
       </nav>
 
       {/* ── Content Area ──────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto p-6" style={{ background:"var(--surface-sunken)" }}>
+      <div className="flex-1 min-h-0 overflow-y-auto p-6" style={{ background:"var(--surface-sunken)" }}>
         <div className="max-w-4xl mx-auto space-y-6">
 
           {/* OVERVIEW */}
@@ -476,7 +476,7 @@ export default function HelpPage() {
                     className="p-3"
                     style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}
                   >
-                    <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2 pb-1" style={{ borderBottom: '1px solid #1a1a1a' }}>
+                    <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2 pb-1" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                       {group.title}
                     </h3>
                     <div className="space-y-1.5">

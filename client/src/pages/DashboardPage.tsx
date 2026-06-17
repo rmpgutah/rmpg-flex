@@ -745,7 +745,7 @@ export default function DashboardPage() {
           { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: 'var(--stat-accent-red)' },
           { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: 'var(--stat-accent-amber)' },
           { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: 'var(--spm-text-muted)' },
-          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: 'var(--pri-scheduled)' },
+          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-rmpg-500', count: stats.calls_by_priority.P4, valueColor: 'var(--pri-scheduled)' },
         ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
           <div
             key={key}
@@ -1003,7 +1003,7 @@ export default function DashboardPage() {
                 { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: 'var(--stat-accent-red)' },
                 { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: 'var(--stat-accent-amber)' },
                 { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: 'var(--spm-text-muted)' },
-                { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: 'var(--pri-scheduled)' },
+                { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-rmpg-500', count: stats.calls_by_priority.P4, valueColor: 'var(--pri-scheduled)' },
               ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
                 <div
                   key={key}

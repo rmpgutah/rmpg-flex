@@ -433,7 +433,7 @@ export default function SignaturePad({
             </div>
             {/* Signature line */}
             <div className="w-full px-4 mb-4">
-              <div style={{ borderTop: '1px solid #ccc' }} />
+              <div style={{ borderTop: '1px solid var(--border-subtle)' }} />
             </div>
             {/* Input field */}
             <input id="ff-signaturepad-0"

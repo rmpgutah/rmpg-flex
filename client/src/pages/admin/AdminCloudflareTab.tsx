@@ -88,7 +88,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
         {rows.length === 0
           ? <div className="px-3 py-2 text-[10px] text-rmpg-500">none / no read scope</div>
           : rows.map((r, i) => (
-            <div key={i} className="px-3 py-1 text-[10px] text-rmpg-300 border-t border-[#101010] flex justify-between gap-2">
+            <div key={i} className="px-3 py-1 text-[10px] text-rmpg-300 border-t border-border-subtle flex justify-between gap-2">
               <span className="truncate">{r.name || r.title || r.id}</span>
               {r.size != null && <span className="text-rmpg-500 font-mono flex-shrink-0">{(r.size / 1e6).toFixed(1)} MB</span>}
             </div>

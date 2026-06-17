@@ -311,7 +311,7 @@ export default function NotificationsPage() {
         </div>
 
         {/* Main notification list */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {showPrefs && prefs ? (
             <div className="p-4 max-w-xl">
               <h2 className="text-sm font-bold text-rmpg-100 mb-4">Notification Preferences</h2>

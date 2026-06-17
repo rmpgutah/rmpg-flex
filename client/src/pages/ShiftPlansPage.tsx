@@ -36,7 +36,7 @@ function todayStr() {
 // ── Status badge helper ────────────────────────────────────
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  draft:     { bg: 'rgba(107,114,128,0.15)', text: '#999999', border: '#555555' },
+  draft:     { bg: 'rgba(107,114,128,0.15)', text: 'var(--rmpg-400)', border: 'var(--rmpg-600)' },
   active:    { bg: 'rgba(34,197,94,0.15)',    text: '#22c55e', border: '#16a34a' },
   completed: { bg: 'rgba(136, 136, 136,0.15)',   text: '#888888', border: '#888888' },
   archived:  { bg: 'rgba(100,116,139,0.15)',  text: '#888888', border: 'var(--rmpg-500)' },

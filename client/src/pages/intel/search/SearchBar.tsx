@@ -32,7 +32,7 @@ export default function SearchBar({ value, onChange, onSave }: {
       <div className="text-[9px] text-rmpg-500 font-mono mt-1 px-1 truncate">{HINT}</div>
 
       {open && (saved.length > 0 || recent.length > 0) && (
-        <div className="absolute z-20 left-0 right-0 mt-1 bg-[#060606] border border-border-default rounded-[2px] max-h-[260px] overflow-y-auto">
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-surface-overlay border border-border-default rounded-[2px] max-h-[260px] overflow-y-auto">
           {saved.length > 0 && <div className="font-mono text-[8px] tracking-widest text-rmpg-500 uppercase px-3 pt-2">Saved</div>}
           {saved.map((s) => (
             <button key={s.id} onMouseDown={() => onChange(s.query_text)}

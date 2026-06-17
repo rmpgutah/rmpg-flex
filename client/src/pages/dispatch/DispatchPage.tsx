@@ -3498,7 +3498,7 @@ export default function DispatchPage() {
         )}
 
         {/* Call List */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable', scrollSnapType: 'y proximity', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}>
+        <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable', scrollSnapType: 'y proximity', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}>
           {filteredCalls.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-[var(--spm-text-muted)]">
               <div className="p-3.5 rounded-sm mb-3" style={{ background: 'color-mix(in srgb, var(--surface-sunken) 31%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-border) 19%, transparent)' }}>
@@ -3574,7 +3574,7 @@ export default function DispatchPage() {
         {/* ------------------------------------------------------------ */}
         <div className="flex-1 flex border-b border-[var(--spm-border)] min-h-0">
           {/* Call Detail Panel */}
-          <div ref={callDetailRef} className={`flex-1 flex flex-col overflow-hidden min-w-0${isEditing ? ' edit-mode-active' : ''}`}>
+          <div ref={callDetailRef} className={`flex-1 min-h-0 flex flex-col overflow-hidden min-w-0${isEditing ? ' edit-mode-active' : ''}`}>
           {selectedCall ? (
             <>
               {/* Detail Header — PanelTitleBar style */}
@@ -4129,7 +4129,7 @@ export default function DispatchPage() {
               </div>
 
               {/* Detail Body — Scrollable, tab-controlled */}
-              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 {/* ── CALL INFO SECTION (Info + Persons tab) ─── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 flex-shrink-0" style={{ display: detailTab === 'info' || detailTab === 'persons' ? undefined : 'none' }}>
                   {/* Left Column: Core Info */}
@@ -5818,7 +5818,7 @@ export default function DispatchPage() {
                   <label className="field-label !flex items-center gap-1.5 mb-2 flex-shrink-0" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                     <MessageSquare className="w-3 h-3" /> Notes
                   </label>
-                  <div className="space-y-1 mb-3 flex-1 overflow-y-auto">
+                  <div className="space-y-1 mb-3 flex-1 min-h-0 overflow-y-auto">
                     {(Array.isArray(selectedCall.notes) ? selectedCall.notes : []).length === 0 ? (
                       <div className="flex flex-col items-center py-8 text-[var(--spm-text-muted)]">
                         <div className="p-2.5 rounded-sm mb-2.5" style={{ background: 'color-mix(in srgb, var(--surface-sunken) 25%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-border) 19%, transparent)' }}>

@@ -53,7 +53,7 @@ function ToggleRow({ label, description, checked, onChange }: {
       </span>
       <span
         className="shrink-0 w-9 h-5 flex items-center px-0.5 transition-colors"
-        style={{ background: checked ? '#d4a017' : '#2e2e2e', borderRadius: 2 }}
+        style={{ background: checked ? '#d4a017' : 'var(--border-default)', borderRadius: 2 }}
       >
         <span
           className="w-4 h-4 bg-black transition-transform"

@@ -5217,7 +5217,7 @@ export default function MapPage() {
                                                 setAssignUnitIds((prev) => prev.filter((id) => id !== unit.id));
                                               }
                                             }}
-                                            className="w-2.5 h-2.5 accent-gray-500"
+                                            className="w-2.5 h-2.5 accent-rmpg-500"
                                           />
                                           <span className="text-[8px] flex-1">{unit.call_sign}</span>
                                           {unit.officer_name && (
@@ -6149,7 +6149,7 @@ export default function MapPage() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
+            <div className="flex-1 min-h-0 overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
               {sidebarTab === 'units' && (
                 <div className="divide-y divide-rmpg-700/50">
                   {filteredUnits.map((unit) => {

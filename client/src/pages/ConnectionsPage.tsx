@@ -650,7 +650,7 @@ export default function ConnectionsPage() {
                 <line
                   key={`edge-${i}`}
                   x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
-                  stroke={inPath ? '#22c55e' : '#333'}
+                  stroke={inPath ? '#22c55e' : 'var(--rmpg-600)'}
                   strokeWidth={inPath ? 3 : 1.5}
                   strokeDasharray={inPath ? undefined : '4,3'}
                   opacity={dim ? 0.2 : 1}

@@ -199,7 +199,7 @@ export default function CrimeAnalysisPage() {
         </div>
       </PanelTitleBar>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {/* ── Summary Cards ──────────────────────────────────── */}
         <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3 mb-4`}>
           {[
@@ -382,7 +382,7 @@ export default function CrimeAnalysisPage() {
                     const pct = Math.min(100, ((metric.avg_minutes ?? 0) / target) * 100);
                     const overTarget = (metric.avg_minutes ?? 0) > target;
                     const barColor = overTarget ? '#ef4444' : metric.priority === 'critical' ? '#f59e0b' : '#10b981';
-                    const labelColor = metric.priority === 'critical' ? '#ef4444' : metric.priority === 'high' ? '#f59e0b' : metric.priority === 'normal' ? '#888888' : '#999999';
+                    const labelColor = metric.priority === 'critical' ? '#ef4444' : metric.priority === 'high' ? '#f59e0b' : metric.priority === 'normal' ? '#888888' : 'var(--rmpg-400)';
                     return (
                       <div key={idx} className="px-2 py-2 panel-beveled space-y-1">
                         <div className="flex items-center justify-between">

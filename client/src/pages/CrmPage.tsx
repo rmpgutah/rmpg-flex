@@ -672,7 +672,7 @@ export default function CrmPage() {
 
   function renderDashboard() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="OVERWATCH DASHBOARD" icon={LayoutDashboard}>
           <RmpgLogo height={16} iconOnly />
           <ExportButton exportUrl="/api/crm/export/csv" exportFilename="crm.csv" />
@@ -882,7 +882,7 @@ export default function CrmPage() {
               <Plus className="w-3 h-3" /> New
             </button>
           </PanelTitleBar>
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
             {filteredClients.length === 0 && !isLoading && (
               <div className="text-center py-12 text-rmpg-500">
                 <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
@@ -913,7 +913,7 @@ export default function CrmPage() {
         </div>
 
         {/* Client Detail */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {selectedClient ? (
             <div>
               <div className="panel-title-bar flex items-center justify-between">
@@ -1038,7 +1038,7 @@ export default function CrmPage() {
 
   function renderProperties() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="PROPERTIES" icon={MapPin}>
           <input id="ff-crmpage-11" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search properties..." aria-label="Search properties..." value={propertySearch} onChange={e => setPropertySearch(e.target.value)} />
         </PanelTitleBar>
@@ -1077,7 +1077,7 @@ export default function CrmPage() {
 
   function renderContacts() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="CONTACTS" icon={Users}>
           <input id="ff-crmpage-12" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search contacts..." aria-label="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
           <select id="ff-crmpage-13" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={contactRelationship} onChange={e => setContactRelationship(e.target.value)}>
@@ -1130,7 +1130,7 @@ export default function CrmPage() {
 
   function renderInvoices() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="INVOICES" icon={FileText}>
           <select id="ff-crmpage-14" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => setInvoiceFilter(e.target.value)}>
             <option value="">All Statuses</option>
@@ -1187,7 +1187,7 @@ export default function CrmPage() {
 
   function renderTasks() {
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         <PanelTitleBar title="TASKS" icon={CheckSquare}>
           <select id="ff-crmpage-15" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 160 }} value={taskFilter} onChange={e => setTaskFilter(e.target.value)}>
             <option value="pending,in_progress">Active</option>

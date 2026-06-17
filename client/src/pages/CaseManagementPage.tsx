@@ -272,7 +272,7 @@ function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
       <div className="flex items-center gap-4">
         <div className="relative w-16 h-16">
           <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#141414" strokeWidth="3" />
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="var(--border-subtle)" strokeWidth="3" />
             <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={ratingColor} strokeWidth="3" strokeDasharray={`${data.score}, 100`} strokeLinecap="round" />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">

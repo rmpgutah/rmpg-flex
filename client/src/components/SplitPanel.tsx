@@ -129,7 +129,7 @@ export default function SplitPanel({
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
                 background: mobileTab === 'left' ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
-                color: mobileTab === 'left' ? '#fff' : '#777777',
+                color: mobileTab === 'left' ? '#fff' : 'var(--rmpg-500)',
                 borderBottom: mobileTab === 'left' ? '2px solid #888888' : '2px solid transparent',
               }}
             >
@@ -140,7 +140,7 @@ export default function SplitPanel({
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
                 background: mobileTab === 'right' ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
-                color: mobileTab === 'right' ? '#fff' : '#777777',
+                color: mobileTab === 'right' ? '#fff' : 'var(--rmpg-500)',
                 borderBottom: mobileTab === 'right' ? '2px solid #888888' : '2px solid transparent',
               }}
             >
@@ -199,10 +199,10 @@ export default function SplitPanel({
           onMouseDown={handleMouseDown}
           onTouchStart={(e) => { e.preventDefault(); handleMouseDown(e.touches[0] as any); }}
           onMouseEnter={(e) => {
-            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #2a2a2a, #4d4d4d, #2a2a2a)';
+            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, var(--border-subtle), var(--border-strong), var(--border-subtle))';
           }}
           onMouseLeave={(e) => {
-            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #242424, #2a2a2a, #242424)';
+            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, var(--surface-raised), var(--border-subtle), var(--surface-raised))';
           }}
         />
       )}

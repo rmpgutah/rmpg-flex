@@ -94,7 +94,7 @@ function DispositionPrompt({
           style={{
             background: selected ? '#16a34a' : 'var(--border-subtle)',
             color: selected ? '#fff' : 'var(--rmpg-500)',
-            border: `1px solid ${selected ? '#16a34a' : '#2e2e2e'}`,
+            border: `1px solid ${selected ? '#16a34a' : 'var(--border-default)'}`,
             cursor: selected ? 'pointer' : 'not-allowed',
             opacity: selected ? 1 : 0.6,
           }}

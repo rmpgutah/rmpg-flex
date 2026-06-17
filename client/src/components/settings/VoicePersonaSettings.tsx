@@ -50,7 +50,7 @@ export default function VoicePersonaSettings() {
             style={{
               background: 'var(--surface-overlay)',
               border: '1px solid var(--border-subtle)',
-              color: '#dddddd',
+              color: 'var(--rmpg-300)',
               borderRadius: 2,
             }}
           >
@@ -153,7 +153,7 @@ export default function VoicePersonaSettings() {
           className="flex items-center justify-between"
           style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '10px 12px' }}
         >
-          <span className="text-[11px]" style={{ color: '#dddddd' }}>
+          <span className="text-[11px]" style={{ color: 'var(--rmpg-300)' }}>
             Proactive coaching + event announcements
           </span>
           <button

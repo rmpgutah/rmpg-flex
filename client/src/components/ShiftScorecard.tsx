@@ -137,7 +137,7 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
                 style={{
                   position: 'relative', width: 56, height: 56, borderRadius: '50%',
                   background: 'var(--surface-overlay)', fontFamily: 'monospace', fontSize: 18,
-                  fontWeight: 700, color: '#e2e8f0',
+                  fontWeight: 700, color: 'var(--rmpg-200)',
                 }}
               >
                 {pct}

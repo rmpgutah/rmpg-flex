@@ -129,8 +129,8 @@ const DOCUMENT_TYPES = [
   { value: 'eviction', label: 'Eviction/UD', color: 'bg-yellow-900/40 text-yellow-400 border-yellow-700/40' },
   { value: 'restraining_order', label: 'Restraining Order', color: 'bg-rose-900/40 text-rose-400 border-rose-700/40' },
   { value: 'identification', label: 'ID/Passport', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
-  { value: 'correspondence', label: 'Correspondence', color: 'bg-slate-900/40 text-slate-400 border-slate-700/40' },
-  { value: 'other', label: 'Other', color: 'bg-neutral-900/40 text-neutral-400 border-neutral-700/40' },
+  { value: 'correspondence', label: 'Correspondence', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
+  { value: 'other', label: 'Other', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
 ];
 
 function confidenceColor(conf: number): string {

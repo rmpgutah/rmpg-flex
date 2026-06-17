@@ -226,7 +226,7 @@ export default function SecurityKeyManager() {
                 onClick={() => handleRevoke(cred.id)}
                 disabled={revoking === cred.id}
                 className="toolbar-btn flex items-center gap-1 text-[9px]"
-                style={{ color: revoking === cred.id ? '#555555' : '#ef4444' }}
+                style={{ color: revoking === cred.id ? 'var(--rmpg-500)' : '#ef4444' }}
                 title="Remove key"
               >
                 <Trash2 className="w-3 h-3" />
@@ -236,7 +236,7 @@ export default function SecurityKeyManager() {
         </div>
       ) : (
         <div className="text-center py-4">
-          <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: '#2e2e2e' }} />
+          <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--rmpg-500)' }} />
           <p className="text-[10px] text-rmpg-500">No security keys registered</p>
           <p className="text-[9px] mt-1" style={{ color: 'var(--rmpg-500)' }}>
             Register a YubiKey, Touch ID, or Windows Hello to use as 2FA

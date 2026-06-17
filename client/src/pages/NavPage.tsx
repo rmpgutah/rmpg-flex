@@ -611,7 +611,7 @@ function CurrentTripPanel({
           {etaView && (
             <div
               className="flex items-center justify-between mb-3 px-2 py-1.5 rounded-sm border"
-              style={{ borderColor: '#222', background: 'var(--surface-overlay)' }}
+              style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-overlay)' }}
             >
               <div className="flex items-center gap-1.5">
                 <Clock size={11} style={{ color: etaView.color }} />
@@ -860,7 +860,7 @@ function HistoryPanel({
 
       {trips.length === 0 ? (
         <div className="rounded-sm border border-subtle p-6 text-center" style={{ background:"var(--surface-sunken)" }}>
-          <Route size={24} className="mx-auto mb-2" style={{ color: '#333' }} />
+          <Route size={24} className="mx-auto mb-2" style={{ color: 'var(--rmpg-500)' }} />
           <p className="text-[11px] text-rmpg-500">No trips recorded yet</p>
           <p className="text-[10px] text-rmpg-600 mt-1">
             Trips are auto-detected when you start moving or can be started manually.

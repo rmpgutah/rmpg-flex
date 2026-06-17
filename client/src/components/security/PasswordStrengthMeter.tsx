@@ -19,7 +19,7 @@ const requirements: Requirement[] = [
 ];
 
 function getStrength(password: string): { score: number; label: string; color: string } {
-  if (!password) return { score: 0, label: '', color: '#2e2e2e' };
+  if (!password) return { score: 0, label: '', color: 'var(--rmpg-600)' };
 
   let score = 0;
   if (password.length >= 8) score++;
@@ -32,7 +32,7 @@ function getStrength(password: string): { score: number; label: string; color: s
   if (score === 2) return { score, label: 'FAIR', color: '#d4a017' };
   if (score === 3) return { score, label: 'GOOD', color: '#888888' };
   if (score >= 4) return { score, label: 'STRONG', color: '#22c55e' };
-  return { score: 0, label: '', color: '#2e2e2e' };
+  return { score: 0, label: '', color: 'var(--rmpg-600)' };
 }
 
 export default function PasswordStrengthMeter({ password, showRequirements = true }: Props) {
