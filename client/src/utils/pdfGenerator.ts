@@ -2540,8 +2540,8 @@ interface IncidentData {
   process_service_result?: string;
   // GPS breadcrumb trail (auto-fetched before generation)
   breadcrumb_trail?: {
-    points: { lat: number; lng: number; time: string; speed_mph: number | null; road_name?: string | null; nearest_intersection?: string | null; source?: string; call_sign?: string; officer_name?: string }[];
-    stats: { total_points: number; total_distance_miles: number; duration_minutes: number; avg_speed_mph: number; max_speed_mph: number; source_breakdown?: Record<string, number> };
+    points: { lat: number; lng: number; time: string; speed: number | null; status: string | null; call_type: string | null; road_name: string | null; intersection: string | null; call_sign?: string | null; officer_name?: string | null }[];
+    stats?: { total_points: number; total_distance_miles: number; duration_minutes: number; avg_speed_mph: number; max_speed_mph: number; source_breakdown?: Record<string, number> };
   };
   // Source + dispatch code
   source?: string;
@@ -2578,17 +2578,19 @@ function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, pri
 
   if (trail && trail.points.length > 0) {
     const stats = trail.stats;
-    y = addThreeColumnFields(doc, [
-      { label: 'Total Distance', value: `${stats.total_distance_miles} mi` },
-      { label: 'Duration', value: `${stats.duration_minutes} min` },
-      { label: 'Avg Speed', value: `${stats.avg_speed_mph} mph` },
-      { label: 'Max Speed', value: `${stats.max_speed_mph} mph` },
-      { label: 'Breadcrumb Points', value: String(stats.total_points) },
-      { label: 'Sources', value: stats.source_breakdown
-        ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
-        : '' },
-    ], y);
-    y += SPACING.SM;
+    if (stats) {
+      y = addThreeColumnFields(doc, [
+        { label: 'Total Distance', value: `${stats.total_distance_miles} mi` },
+        { label: 'Duration', value: `${stats.duration_minutes} min` },
+        { label: 'Avg Speed', value: `${stats.avg_speed_mph} mph` },
+        { label: 'Max Speed', value: `${stats.max_speed_mph} mph` },
+        { label: 'Breadcrumb Points', value: String(stats.total_points) },
+        { label: 'Sources', value: stats.source_breakdown
+          ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
+          : '' },
+      ], y);
+      y += SPACING.SM;
+    }
 
     // Sampled breadcrumb table — max 50 rows for readability
     const maxRows = 50;
@@ -2607,19 +2609,20 @@ function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, pri
       try {
         timeStr = parseTimestamp(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
       } catch { timeStr = p.time; }
-      // Prefer road name + nearest intersection, fall back to raw coordinates.
+      // Prefer road name + intersection, fall back to raw coordinates.
       // Guard coords so a single non-numeric point can't crash the whole PDF.
       const latN = toNum(p.lat), lngN = toNum(p.lng);
       let locationStr = (latN != null && lngN != null) ? `${latN.toFixed(5)}, ${lngN.toFixed(5)}` : '—';
       if (p.road_name) {
         locationStr = p.road_name;
-        if (p.nearest_intersection) locationStr += ` / ${p.nearest_intersection}`;
+        if (p.intersection) locationStr += ` / ${p.intersection}`;
       }
+      const speedMph = p.speed != null ? Math.round(p.speed * 2.237) : null;
       return [
         timeStr,
         locationStr,
-        p.speed_mph != null ? `${p.speed_mph} mph` : '-',
-        (p.source || 'unknown').toUpperCase(),
+        speedMph != null ? `${speedMph} mph` : '-',
+        (p.status || p.call_type || 'unknown').toUpperCase(),
       ];
     });
 
