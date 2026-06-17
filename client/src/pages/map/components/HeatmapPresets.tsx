@@ -96,7 +96,7 @@ export default function HeatmapPresets({ current, onApply }: Props) {
     >
       <div className="flex items-center gap-1 flex-wrap">
         {presets.length === 0 && !isNaming && (
-          <span style={{ fontSize: 9, color: '#6b7280', fontStyle: 'italic' }}>
+          <span style={{ fontSize: 9, color: 'var(--rmpg-500)', fontStyle: 'italic' }}>
             No saved presets
           </span>
         )}
@@ -119,7 +119,7 @@ export default function HeatmapPresets({ current, onApply }: Props) {
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#d1d5db',
+                color: 'var(--rmpg-300)',
                 fontSize: 9,
                 fontWeight: 900,
                 cursor: 'pointer',
@@ -137,7 +137,7 @@ export default function HeatmapPresets({ current, onApply }: Props) {
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#6b7280',
+                color: 'var(--rmpg-500)',
                 fontSize: 9,
                 cursor: 'pointer',
                 padding: 0,
@@ -221,7 +221,7 @@ export default function HeatmapPresets({ current, onApply }: Props) {
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#6b7280',
+                color: 'var(--rmpg-500)',
                 fontSize: 10,
                 cursor: 'pointer',
                 padding: 0,

@@ -2259,7 +2259,7 @@ export default function DispatchPage() {
               {/* Location */}
               <div className="flex items-center gap-2 text-sm text-rmpg-300 mb-2">
                 <MapPin className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate">{call.location || 'Unknown'}</span>
+                <span className="min-w-0 truncate">{call.location || 'Unknown'}</span>
               </div>
               {/* Footer */}
               <div className="flex items-center justify-between text-sm text-rmpg-400">
@@ -5918,7 +5918,7 @@ export default function DispatchPage() {
                           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.borderColor = 'transparent'; }}
                         >
                           <span className="font-mono text-green-400 text-xs font-bold tabular-nums" style={{ textShadow: '0 0 6px rgba(74,222,128,0.15)' }}>{inc.incident_number}</span>
-                          <span className="text-xs text-rmpg-200 truncate">{formatIncidentType(inc.type || inc.incident_type || '--')}</span>
+                          <span className="min-w-0 text-xs text-rmpg-200 truncate">{formatIncidentType(inc.type || inc.incident_type || '--')}</span>
                           <span className="text-xs text-rmpg-400 uppercase font-semibold">{(inc.status || '--').replace(/_/g, ' ')}</span>
                           {inc.officer_name && (
                             <span className="text-xs text-rmpg-300 ml-auto flex items-center gap-1">

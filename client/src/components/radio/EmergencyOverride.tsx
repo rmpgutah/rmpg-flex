@@ -94,8 +94,8 @@ export default function EmergencyOverride({ onActivate, onDeactivate }: Emergenc
     <div
       className="rounded-[2px] p-2"
       style={{
-        background: '#0d0d0d',
-        border: isActive ? '2px solid #dc2626' : '1px solid #222222',
+        background: 'var(--surface-overlay)',
+        border: isActive ? '2px solid #dc2626' : '1px solid var(--border-subtle)',
       }}
     >
       <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">

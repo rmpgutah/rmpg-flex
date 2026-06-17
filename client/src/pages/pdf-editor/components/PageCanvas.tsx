@@ -288,7 +288,7 @@ export default function PageCanvas(props: Props) {
     }
     if (tool === 'stamp') {
       const w = 220; const h = 64;
-      onAddAnnotation({ id: uid(), type: 'stamp', page: visualPageNumber, x: p.x, y: p.y, w, h, label: pendingStamp ?? 'CONFIDENTIAL', color: '#555555' });
+      onAddAnnotation({ id: uid(), type: 'stamp', page: visualPageNumber, x: p.x, y: p.y, w, h, label: pendingStamp ?? 'CONFIDENTIAL', color: 'var(--rmpg-500)' });
       return;
     }
     if (tool === 'check' || tool === 'cross') {

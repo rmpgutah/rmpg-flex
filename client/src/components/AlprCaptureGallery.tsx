@@ -56,7 +56,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
             onError={() => setImgError(true)}
             className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-[#444]">
+          <div className="w-full h-full flex items-center justify-center text-rmpg-700">
             <ScanSearch className="w-8 h-8" />
           </div>
         )}
@@ -186,14 +186,14 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
               {t.label}
             </button>
           ))}
-          <span className="w-px h-4 bg-[#2a2a2a] mx-0.5" />
+          <span className="w-px h-4 bg-border-default mx-0.5" />
           {BAND_TABS.map((t) => (
             <button key={t.key} onClick={() => setFilter((f) => ({ ...f, band: t.key }))}
               className={`text-[9px] px-2 py-1 border ${filter.band === t.key ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-default text-[#888]'}`}>
               {t.label}
             </button>
           ))}
-          <span className="w-px h-4 bg-[#2a2a2a] mx-0.5" />
+          <span className="w-px h-4 bg-border-default mx-0.5" />
           <button onClick={() => setFilter((f) => ({ ...f, hits: f.hits === 'hits' ? 'all' : 'hits' }))}
             className={`text-[9px] px-2 py-1 border flex items-center gap-1 ${filter.hits === 'hits' ? 'border-red-600 text-red-300 bg-red-950/50' : 'border-border-default text-[#888]'}`}>
             <AlertTriangle className="w-2.5 h-2.5" /> HITS{hitCount ? ` (${hitCount})` : ''}

@@ -18,7 +18,7 @@ export default function ResultCard({ clustered, onSelect, onOpen, highlighted }:
       {h.type === 'person' && (
         h.photo_url
           ? <img src={authedImageUrl(h.photo_url)} alt="" className="w-9 h-11 object-cover rounded-[2px] border border-border-default shrink-0" />
-          : <div className="w-9 h-11 bg-[#161616] border border-border-default rounded-[2px] shrink-0" />
+          : <div className="w-9 h-11 bg-surface-sunken border border-border-default rounded-[2px] shrink-0" />
       )}
       <button className="flex-1 min-w-0 text-left" onClick={() => onSelect(h.type, h.id, h.label)}>
         <div className="flex items-center gap-2">
@@ -35,7 +35,7 @@ export default function ResultCard({ clustered, onSelect, onOpen, highlighted }:
           ))}
         </div>
         <div className="flex items-center gap-2 mt-[3px]">
-          <div className="h-[3px] w-[60px] bg-[#161616] rounded-[2px] overflow-hidden" data-testid="relevance-bar">
+          <div className="h-[3px] w-[60px] bg-surface-sunken rounded-[2px] overflow-hidden" data-testid="relevance-bar">
             <div className="h-full bg-[#d4a017]" style={{ width: `${Math.max(8, Math.min(100, h.score))}%` }} />
           </div>
           {h.date && <span className="font-mono text-[8px] text-rmpg-500">{h.date}</span>}

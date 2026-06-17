@@ -683,7 +683,7 @@ export default function AdminUsersTab({
                       Reset 2FA
                     </button>
                   </div>
-                  <p className="text-[9px] mt-2" style={{ color: '#555555' }}>
+                  <p className="text-[9px] mt-2" style={{ color: 'var(--rmpg-500)' }}>
                     Resetting 2FA will delete the user's TOTP secret, backup codes, and trusted devices.
                   </p>
                 </div>

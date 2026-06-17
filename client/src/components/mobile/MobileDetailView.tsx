@@ -162,8 +162,8 @@ export default function MobileDetailView({
             height: 48,
             paddingLeft: 4,
             paddingRight: 8,
-            background: 'linear-gradient(180deg, #181818 0%, #141414 100%)',
-            borderBottom: '1px solid #2b2b2b',
+            background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
+            borderBottom: '1px solid var(--border-default)',
           }}
         >
           {/* Blue accent */}
@@ -180,7 +180,7 @@ export default function MobileDetailView({
             <button type="button"
               onClick={onClose}
               className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11"
-              style={{ color: '#aaaaaa' }}
+              style={{ color: 'var(--rmpg-400)' }}
               aria-label="Go back"
             >
               <ArrowLeft style={{ width: 20, height: 20 }} />
@@ -204,7 +204,7 @@ export default function MobileDetailView({
               <button type="button"
                 onClick={() => setMenuOpen((v) => !v)}
                 className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11"
-                style={{ color: '#aaaaaa' }}
+                style={{ color: 'var(--rmpg-400)' }}
                 aria-label="More actions"
               >
                 <MoreVertical style={{ width: 20, height: 20 }} />
@@ -222,7 +222,7 @@ export default function MobileDetailView({
                     className="absolute right-0 top-full mt-1 z-50 py-1 min-w-[180px]"
                     style={{
                       background: 'var(--surface-base)',
-                      border: '1px solid #2a2a2a',
+                      border: '1px solid var(--border-default)',
                       boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                     }}
                   >
@@ -266,8 +266,8 @@ export default function MobileDetailView({
           <div
             className="flex-shrink-0"
             style={{
-              borderTop: '1px solid #2b2b2b',
-              background: '#0a0a0a',
+              borderTop: '1px solid var(--border-default)',
+              background: 'var(--surface-overlay)',
               paddingBottom: 'env(safe-area-inset-bottom)',
             }}
           >

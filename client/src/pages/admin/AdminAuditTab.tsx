@@ -160,7 +160,7 @@ export default function AdminAuditTab({
       </div>
 
       <div className="flex-1 overflow-auto scrollbar-dark">
-        <table className="table-dark" aria-label="Audit log entries">
+        <div className="overflow-x-auto"><table className="table-dark" aria-label="Audit log entries">
           <thead className="sticky top-0 z-10">
             <tr>
               <th className="whitespace-nowrap" scope="col">Timestamp</th>
@@ -197,7 +197,7 @@ export default function AdminAuditTab({
               </tr>
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   );

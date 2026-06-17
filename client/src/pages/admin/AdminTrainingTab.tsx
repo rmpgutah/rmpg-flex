@@ -230,7 +230,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">
         Officer Training Status
       </div>
-      <table className="w-full text-[10px]">
+      <div className="overflow-x-auto"><table className="w-full text-[10px]">
         <thead>
           <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background:"var(--surface-sunken)" }}>
             <th className="text-left px-3 py-1.5 font-bold">Officer</th>
@@ -267,7 +267,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
             );
           })}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

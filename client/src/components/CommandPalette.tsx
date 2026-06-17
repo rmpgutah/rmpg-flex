@@ -239,8 +239,8 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
                   >
                     <Icon className="w-4 h-4 flex-shrink-0" style={{ color: isActive ? '#e8b820' : '#888888' }} />
                     <span className="flex flex-col min-w-0 flex-1">
-                      <span className="text-sm truncate" style={{ color: isActive ? '#fff' : 'var(--rmpg-300)' }}>{it.label}</span>
-                      {it.sublabel && <span className="text-[10px] text-rmpg-500 truncate">{it.sublabel}</span>}
+                      <span className="min-w-0 text-sm truncate" style={{ color: isActive ? '#fff' : 'var(--rmpg-300)' }}>{it.label}</span>
+                      {it.sublabel && <span className="min-w-0 text-[10px] text-rmpg-500 truncate">{it.sublabel}</span>}
                     </span>
                     {it.badge && (
                       <span className="text-[9px] font-mono text-rmpg-500 ml-auto flex-shrink-0">{it.badge}</span>

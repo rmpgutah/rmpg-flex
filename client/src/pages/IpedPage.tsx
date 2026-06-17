@@ -528,7 +528,7 @@ export default function IpedPage() {
             ) : jobs.length === 0 ? (
               <p className="text-xs text-rmpg-500 text-center py-8">No jobs found.</p>
             ) : (
-              <table className="w-full text-xs">
+              <div className="overflow-x-auto"><table className="w-full text-xs">
                 <thead>
                   <tr className="text-[10px] text-rmpg-500 uppercase tracking-wider border-b border-rmpg-700">
                     <th className="text-left px-3 py-2 font-semibold">ID</th>
@@ -608,7 +608,7 @@ export default function IpedPage() {
                     );
                   })}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
 
@@ -758,7 +758,7 @@ export default function IpedPage() {
                     <div>
                       <span className="text-[10px] text-rmpg-500 uppercase block mb-2">Hash Results ({jobHashes.length})</span>
                       <div className="overflow-auto max-h-48 border border-rmpg-700 rounded-sm">
-                        <table className="w-full text-[10px]">
+                        <div className="overflow-x-auto"><table className="w-full text-[10px]">
                           <thead>
                             <tr className="text-rmpg-500 uppercase border-b border-rmpg-700 bg-surface-sunken">
                               <th className="text-left px-2 py-1">File</th>
@@ -786,7 +786,7 @@ export default function IpedPage() {
                               </tr>
                             ))}
                           </tbody>
-                        </table>
+                        </table></div>
                       </div>
                     </div>
                   )}

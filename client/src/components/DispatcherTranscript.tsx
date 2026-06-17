@@ -75,8 +75,8 @@ export default function DispatcherTranscript() {
             width: 420,
             maxHeight: '40vh',
             overflowY: 'auto',
-            background: '#0a0a0a',
-            border: '1px solid #222222',
+            background: 'var(--surface-overlay)',
+            border: '1px solid var(--border-subtle)',
             borderRadius: 2,
             zIndex: 50,
             boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
@@ -88,7 +88,7 @@ export default function DispatcherTranscript() {
               justifyContent: 'space-between',
               alignItems: 'center',
               padding: '6px 8px',
-              borderBottom: '1px solid #222222',
+              borderBottom: '1px solid var(--border-subtle)',
               background: 'linear-gradient(180deg, #1a1a1a, #242424)',
             }}
           >
@@ -115,7 +115,7 @@ export default function DispatcherTranscript() {
             </div>
           </div>
           {entries.length === 0 ? (
-            <div style={{ padding: 12, color: '#666', fontSize: 11 }}>No announcements yet.</div>
+            <div style={{ padding: 12, color: 'var(--rmpg-500)', fontSize: 11 }}>No announcements yet.</div>
           ) : (
             <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
               {entries.map((e) => (

@@ -26,7 +26,7 @@ import { getPttPrefs, keyCodeLabel, PTT_PREFS_EVENT, type PttPreferences } from 
 // Keyboard-keycap chip — renders the PTT key (e.g. "Backspace") as a small
 // button-like cap so the binding reads as a command, not prose.
 const keycapStyle: CSSProperties = {
-  display: 'inline-block', padding: '0 4px', minWidth: 8, borderRadius: 3,
+  display: 'inline-block', padding: '0 4px', minWidth: 8, borderRadius: 2,
   border: '1px solid #4a4a4a', borderBottomWidth: 2, background: 'var(--border-default)',
   color: 'var(--text-secondary)', fontSize: 8.5, fontWeight: 700, lineHeight: '13px',
   fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'nowrap',

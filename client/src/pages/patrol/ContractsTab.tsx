@@ -49,7 +49,7 @@ export default function ContractsTab() {
         <ul className="mt-2 text-[11px]">
           {contracts.map((c) => (
             <li key={c.id}>
-              <button className={`w-full text-left px-2 py-[3px] border-b border-[#121212] ${selected?.id === c.id ? 'text-[#d4a017]' : 'text-rmpg-300'}`} onClick={() => openContract(c)}>
+              <button className={`w-full text-left px-2 py-[3px] border-b border-border-subtle ${selected?.id === c.id ? 'text-[#d4a017]' : 'text-rmpg-300'}`} onClick={() => openContract(c)}>
                 {c.contract_number ?? `#${c.id}`} — {c.client_name ?? c.client_id} <span className="text-rmpg-500">({c.status})</span>
               </button>
             </li>
@@ -73,7 +73,7 @@ export default function ContractsTab() {
                 <label className="block">Retainer <input type="number" step="0.01" className="ml-2 bg-surface-sunken border border-border-default px-1 w-24" value={terms.retainer_amount ?? ''} onChange={(e) => setTerms({ ...terms, retainer_amount: e.target.value === '' ? null : Number(e.target.value) })} /></label>
 
                 <div className="mt-2 font-semibold text-[#888]">Per-contract rate overrides (blank = use rate card)</div>
-                <table className="w-full">
+                <div className="overflow-x-auto"><table className="w-full">
                   <tbody>
                     {pricing.filter((p) => p.is_active).map((p) => (
                       <tr key={p.code}>
@@ -88,16 +88,16 @@ export default function ContractsTab() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
                 <button className="mt-2 px-3 py-1 bg-[#d4a017] text-black" onClick={saveTerms}>Save Terms</button>
               </div>
             )}
 
             <PanelTitleBar title="AUDIT HISTORY" icon={History} />
-            <table className="w-full text-[10px]">
+            <div className="overflow-x-auto"><table className="w-full text-[10px]">
               <tbody>
                 {audit.map((a) => (
-                  <tr key={a.id} className="border-b border-[#121212]">
+                  <tr key={a.id} className="border-b border-border-subtle">
                     <td className="text-rmpg-500 py-[2px]">{a.created_at}</td>
                     <td className="text-[#d4a017]">{a.action}</td>
                     <td className="text-[#888]">{a.user_name ?? '—'}</td>
@@ -105,7 +105,7 @@ export default function ContractsTab() {
                 ))}
                 {audit.length === 0 && <tr><td className="text-[#888] py-[2px]">No history yet.</td></tr>}
               </tbody>
-            </table>
+            </table></div>
           </div>
         )}
       </div>

@@ -120,7 +120,7 @@ export default function FlexCamPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="FLEXCAM — TRIP FOOTAGE" />
-      <table className="w-full text-[11px]">
+      <div className="overflow-x-auto"><table className="w-full text-[11px]">
         <thead>
           <tr className="text-[9px] font-semibold text-left text-[#888]">
             <th>Trip</th>
@@ -211,7 +211,7 @@ export default function FlexCamPage() {
             </tr>
           )}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

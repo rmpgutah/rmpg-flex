@@ -183,7 +183,7 @@ export default function AlertSystemPanel({
                           className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[8px] font-mono uppercase tracking-wider transition-all duration-150 active:scale-[0.97]"
                           style={{
                             backgroundColor: '#88888833',
-                            color: '#aaaaaa',
+                            color: 'var(--rmpg-400)',
                             border: '1px solid #88888855',
                           }}
                           title="Acknowledge"

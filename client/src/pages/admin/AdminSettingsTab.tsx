@@ -124,7 +124,7 @@ export default function AdminSettingsTab(_props: Props) {
               className={`w-full text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wider border-l-3 transition-all ${
                 activeCategory === cat
                   ? 'text-[#d4a017] border-l-[3px] border-l-[#d4a017] bg-[rgba(212,160,23,0.06)]'
-                  : 'text-rmpg-500 border-l-[3px] border-l-transparent hover:text-[#999] hover:bg-[rgba(255,255,255,0.02)]'
+                  : 'text-rmpg-500 border-l-[3px] border-l-transparent hover:text-rmpg-400 hover:bg-[rgba(255,255,255,0.02)]'
               }`}
             >
               {CATEGORY_LABELS[cat] || cat}

@@ -1104,7 +1104,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                           className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase border transition-colors"
                           style={ssnRevealed
                             ? { color: '#f87171', background: 'rgba(220,38,38,0.15)', borderColor: 'rgba(220,38,38,0.4)' }
-                            : { color: '#999999', background: 'rgba(107,114,128,0.15)', borderColor: 'rgba(107,114,128,0.3)' }
+                            : { color: 'var(--rmpg-400)', background: 'rgba(107,114,128,0.15)', borderColor: 'rgba(107,114,128,0.3)' }
                           }
                           title={ssnRevealed ? 'Hide SSN' : 'Reveal SSN'}
                         >

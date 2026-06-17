@@ -322,7 +322,7 @@ export default function DashcamAiPage(): React.ReactElement {
       <div className="flex flex-1 overflow-hidden">
         {/* Events table */}
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-[11px]">
+          <div className="overflow-x-auto"><table className="w-full text-[11px]">
             <thead className="sticky top-0 bg-surface-raised border-b border-border-default text-[10px] uppercase tracking-wider text-rmpg-400">
               <tr>
                 <th className="text-left py-1.5 px-2 font-semibold">Time</th>
@@ -382,7 +382,7 @@ export default function DashcamAiPage(): React.ReactElement {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
 
         {/* Detail pane (right) */}
@@ -413,7 +413,7 @@ export default function DashcamAiPage(): React.ReactElement {
                   {selected.still_image_url ? (
                     <img src={authedImageUrl(selected.still_image_url)} alt="Dashcam still" className="w-full aspect-[4/3] object-cover" />
                   ) : (
-                    <div className="w-full aspect-[4/3] bg-surface-overlay flex items-center justify-center"><Video className="w-8 h-8 text-[#333]" aria-hidden="true" /></div>
+                    <div className="w-full aspect-[4/3] bg-surface-overlay flex items-center justify-center"><Video className="w-8 h-8 text-rmpg-700" aria-hidden="true" /></div>
                   )}
                   <span className="absolute top-1 left-1 text-[8px] font-bold tracking-wider px-1 py-[1px] bg-black/75 text-rmpg-300 border border-border-subtle">
                     FORENSIC PLAYBACK

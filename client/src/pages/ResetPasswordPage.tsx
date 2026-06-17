@@ -99,11 +99,11 @@ export default function ResetPasswordPage() {
 
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
-            <ShieldCheck className="w-3 h-3" style={{ color: '#999999' }} />
+            <ShieldCheck className="w-3 h-3" style={{ color: 'var(--rmpg-400)' }} />
             <span>SET NEW PASSWORD</span>
             <div className="ml-auto flex items-center gap-1" aria-hidden="true">
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d' }}>_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d' }}>&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid var(--border-strong)' }}>_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid var(--border-strong)' }}>&#9633;</div>
             </div>
           </div>
 
@@ -111,7 +111,7 @@ export default function ResetPasswordPage() {
             {/* Loading state */}
             {validating && (
               <div className="text-center py-8" role="status" aria-live="polite">
-                <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin" style={{ color: '#999999' }} aria-hidden="true" />
+                <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin" style={{ color: 'var(--rmpg-400)' }} aria-hidden="true" />
                 <p className="text-[10px]" style={{ color: '#888888' }}>Validating reset link...</p>
               </div>
             )}
@@ -145,11 +145,11 @@ export default function ResetPasswordPage() {
               <>
                 <div className="text-center mb-5">
                   <div className="w-10 h-10 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: 'rgba(136, 136, 136, 0.15)', border: '1px solid rgba(136, 136, 136, 0.3)' }}>
-                    <Lock className="w-5 h-5" style={{ color: '#999999' }} />
+                    <Lock className="w-5 h-5" style={{ color: 'var(--rmpg-400)' }} />
                   </div>
                   <h2 className="text-sm font-bold text-rmpg-100 mb-1">Set New Password</h2>
                   {username && (
-                    <p className="text-[10px] font-mono" style={{ color: 'var(--rmpg-500)' }}>
+                    <p className="text-[10px] font-mono text-rmpg-500">
                       @{username}
                     </p>
                   )}
@@ -182,8 +182,7 @@ export default function ResetPasswordPage() {
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm"
-                        style={{ color: 'var(--rmpg-500)' }}
+                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm text-rmpg-500"
                         onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
@@ -220,7 +219,7 @@ export default function ResetPasswordPage() {
                           {check.met ? (
                             <CheckCircle className="w-3 h-3 text-green-400 flex-shrink-0" aria-hidden="true" />
                           ) : (
-                            <XCircle className="w-3 h-3 flex-shrink-0" style={{ color: '#555555' }} aria-hidden="true" />
+                            <XCircle className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--rmpg-500)' }} aria-hidden="true" />
                           )}
                           <span style={{ color: check.met ? '#4ade80' : 'var(--rmpg-500)' }}>{check.label}</span>
                           <span className="sr-only">{check.met ? '(met)' : '(not met)'}</span>
@@ -281,11 +280,10 @@ export default function ResetPasswordPage() {
               </div>
             )}
 
-            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #2b2b2b' }}>
+            <div className="mt-4 pt-3" style={{ borderTop: '1px solid var(--border-default)' }}>
               <a
                 href="/login"
-                className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm py-1"
-                style={{ color: 'var(--rmpg-500)' }}
+                                className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm py-1 text-rmpg-500"
                 onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
               >

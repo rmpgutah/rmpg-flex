@@ -197,7 +197,7 @@ export default function ShiftPlansPage() {
       {/* ── DATE SELECTOR BAR ─────────────────────────────── */}
       <div
         className={`${isMobile ? 'flex flex-col gap-2 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0`}
-        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid #2b2b2b' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-default)' }}
       >
         <div className="flex items-center gap-3">
           <Calendar style={{ width: 14, height: 14, color: '#888888' }} />
@@ -265,7 +265,7 @@ export default function ShiftPlansPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* ── LEFT: Plan List ── */}
         <div className={`${isMobile ? (sp.activePlanId ? 'hidden' : 'w-full') : 'w-1/3'} flex flex-col border-r border-rmpg-700/50 overflow-hidden`}>
-          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-3 py-2" style={{ background:"var(--surface-sunken)", borderBottom: '1px solid #2b2b2b' }}>
+          <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-3 py-2" style={{ background:"var(--surface-sunken)", borderBottom: '1px solid var(--border-default)' }}>
             Plans for {formatDate(selectedDate)} ({plansForDate.length})
           </div>
 
@@ -375,7 +375,7 @@ export default function ShiftPlansPage() {
               {/* Plan header with actions */}
               <div
                 className={`${isMobile ? 'flex flex-col gap-2 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0`}
-                style={{ background:"var(--surface-sunken)", borderBottom: '1px solid #2b2b2b' }}
+                style={{ background:"var(--surface-sunken)", borderBottom: '1px solid var(--border-default)' }}
               >
                 <div>
                   {isMobile && (
@@ -451,7 +451,7 @@ export default function ShiftPlansPage() {
               {/* Assignments table */}
               <div className="flex-1 overflow-auto">
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider px-4 py-2 flex items-center justify-between"
-                  style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid #2b2b2b' }}
+                  style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-default)' }}
                 >
                   <span>Area Assignments ({sp.activePlan.assignments.length})</span>
                   {sp.activePlan.assignments.length > 0 && (
@@ -550,22 +550,22 @@ export default function ShiftPlansPage() {
 
                 {/* Summary panel */}
                 {sp.activePlan.assignments.length > 0 && (
-                  <div className="px-4 py-3" style={{ background: 'var(--surface-overlay)', borderTop: '1px solid #2b2b2b' }}>
+                  <div className="px-4 py-3" style={{ background: 'var(--surface-overlay)', borderTop: '1px solid var(--border-default)' }}>
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Coverage Summary</div>
                     <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-4`}>
-                      <div className="p-2.5" style={{ background:"var(--surface-sunken)", border: '1px solid #2b2b2b', borderRadius: '2px' }}>
+                      <div className="p-2.5" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)', borderRadius: '2px' }}>
                         <div className="text-[18px] font-black text-rmpg-400 font-mono tabular-nums">{stats.assigned}</div>
                         <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Areas Covered</div>
                       </div>
-                      <div className="p-2.5" style={{ background:"var(--surface-sunken)", border: '1px solid #2b2b2b', borderRadius: '2px' }}>
+                      <div className="p-2.5" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)', borderRadius: '2px' }}>
                         <div className="text-[18px] font-black text-green-400 font-mono tabular-nums">{stats.officers}</div>
                         <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Officers Assigned</div>
                       </div>
-                      <div className="p-2.5" style={{ background:"var(--surface-sunken)", border: '1px solid #2b2b2b', borderRadius: '2px' }}>
+                      <div className="p-2.5" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)', borderRadius: '2px' }}>
                         <div className="text-[18px] font-black text-purple-400 font-mono tabular-nums">{stats.units}</div>
                         <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Units Deployed</div>
                       </div>
-                      <div className="p-2.5" style={{ background:"var(--surface-sunken)", border: '1px solid #2b2b2b', borderRadius: '2px' }}>
+                      <div className="p-2.5" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)', borderRadius: '2px' }}>
                         <div className="text-[18px] font-black text-amber-400 font-mono">
                           {SHIFT_TYPES[sp.activePlan.shiftType]?.defaultStart}
                         </div>
@@ -609,7 +609,7 @@ export default function ShiftPlansPage() {
               <div
                 key={i}
                 className="h-[52px] bg-surface-raised animate-pulse"
-                style={{ borderRadius: '2px', border: '1px solid #222222' }}
+                style={{ borderRadius: '2px', border: '1px solid var(--border-subtle)' }}
               />
             ))}
           </div>

@@ -120,13 +120,13 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Address or place..."
                 className="flex-1 px-2 py-1 text-[11px] border border-border-subtle outline-none"
-                style={{ background: '#050505', color: '#cccccc', borderRadius: 2 }}
+                style={{ background: 'var(--surface-overlay)', color: 'var(--rmpg-300)', borderRadius: 2 }}
               />
               <button
                 type="submit"
                 disabled={geocodeLoading || !query.trim()}
                 className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-[#d4a017] disabled:opacity-40 transition-colors"
-                style={{ background: '#141414', color: '#d4a017', borderRadius: 2 }}
+                style={{ background: 'var(--surface-base)', color: '#d4a017', borderRadius: 2 }}
               >
                 {geocodeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Go'}
               </button>
@@ -140,7 +140,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                     type="button"
                     onClick={() => handleGeocodeSelect(s)}
                     className="w-full text-left px-2 py-1.5 text-[10px] hover:bg-surface-raised border border-transparent hover:border-rmpg-700 transition-colors"
-                    style={{ borderRadius: 2, color: '#999999' }}
+                    style={{ borderRadius: 2, color: 'var(--rmpg-400)' }}
                   >
                     <div className="font-semibold text-rmpg-200 text-[11px]">{s.text}</div>
                     <div className="truncate">{s.place_name}</div>
@@ -238,7 +238,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                   onChange={(e) => setIsoLng(e.target.value)}
                   placeholder="Longitude"
                   className="flex-1 px-2 py-1 text-[10px] border border-border-subtle outline-none"
-                  style={{ background: '#050505', color: '#cccccc', borderRadius: 2 }}
+                  style={{ background: 'var(--surface-overlay)', color: 'var(--rmpg-300)', borderRadius: 2 }}
                 />
                 <input id="ff-dispatchtoolpanel-2"
                   type="text"
@@ -246,7 +246,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                   onChange={(e) => setIsoLat(e.target.value)}
                   placeholder="Latitude"
                   className="flex-1 px-2 py-1 text-[10px] border border-border-subtle outline-none"
-                  style={{ background: '#050505', color: '#cccccc', borderRadius: 2 }}
+                  style={{ background: 'var(--surface-overlay)', color: 'var(--rmpg-300)', borderRadius: 2 }}
                 />
               </div>
 
@@ -276,7 +276,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                   type="submit"
                   disabled={isochroneResult.loading}
                   className="flex-1 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-[#d4a017] disabled:opacity-40 transition-colors"
-                  style={{ background: '#141414', color: '#d4a017', borderRadius: 2 }}
+                  style={{ background: 'var(--surface-base)', color: '#d4a017', borderRadius: 2 }}
                 >
                   {isochroneResult.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin mx-auto" /> : 'Generate'}
                 </button>
@@ -285,7 +285,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                     type="button"
                     onClick={isochroneClear}
                     className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-[#f03c3c] transition-colors"
-                    style={{ background: '#141414', color: '#888888', borderRadius: 2 }}
+                    style={{ background: 'var(--surface-base)', color: '#888888', borderRadius: 2 }}
                   >
                     Clear
                   </button>
@@ -335,7 +335,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
 
                 {tilequeryResult.city && (
                   <div className="flex justify-between items-center px-2 py-1 text-[10px] border border-border-default"
-                    style={{ background: '#050505', borderRadius: 2 }}>
+                    style={{ background: 'var(--surface-overlay)', borderRadius: 2 }}>
                     <span className="text-rmpg-500">City</span>
                     <span className="font-semibold text-rmpg-200">{tilequeryResult.city}</span>
                   </div>
@@ -343,7 +343,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
 
                 {tilequeryResult.county && (
                   <div className="flex justify-between items-center px-2 py-1 text-[10px] border border-border-default"
-                    style={{ background: '#050505', borderRadius: 2 }}>
+                    style={{ background: 'var(--surface-overlay)', borderRadius: 2 }}>
                     <span className="text-rmpg-500">County</span>
                     <span className="font-semibold text-rmpg-200">{tilequeryResult.county}</span>
                   </div>
@@ -351,7 +351,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
 
                 {tilequeryResult.state && (
                   <div className="flex justify-between items-center px-2 py-1 text-[10px] border border-border-default"
-                    style={{ background: '#050505', borderRadius: 2 }}>
+                    style={{ background: 'var(--surface-overlay)', borderRadius: 2 }}>
                     <span className="text-rmpg-500">State</span>
                     <span className="font-semibold text-rmpg-200">{tilequeryResult.state}</span>
                   </div>
@@ -359,7 +359,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
 
                 {tilequeryResult.sectorName && (
                   <div className="flex justify-between items-center px-2 py-1 text-[10px] border border-border-default"
-                    style={{ background: '#050505', borderRadius: 2 }}>
+                    style={{ background: 'var(--surface-overlay)', borderRadius: 2 }}>
                     <span className="text-rmpg-500">Area</span>
                     <span className="font-semibold text-rmpg-200">{tilequeryResult.sectorName}</span>
                   </div>

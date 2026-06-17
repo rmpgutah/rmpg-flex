@@ -120,8 +120,8 @@ export default function SplitPanel({
           <div
             className="flex flex-shrink-0"
             style={{
-              background: 'linear-gradient(180deg, #2b2b2b 0%, #181818 100%)',
-              borderBottom: '1px solid #141414',
+              background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
+              borderBottom: '1px solid var(--border-subtle)',
             }}
           >
             <button type="button"
@@ -192,8 +192,8 @@ export default function SplitPanel({
             [isHorizontal ? 'width' : 'height']: '4px',
             cursor: isHorizontal ? 'col-resize' : 'row-resize',
             background: isDragging ? '#888888' : 'linear-gradient(90deg, #242424, #2a2a2a, #242424)',
-            borderTop: '1px solid #4d4d4d',
-            borderBottom: '1px solid #141414',
+            borderTop: '1px solid var(--border-strong)',
+            borderBottom: '1px solid var(--border-subtle)',
             transition: isDragging ? 'none' : 'background 0.15s ease',
           }}
           onMouseDown={handleMouseDown}

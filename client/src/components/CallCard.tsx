@@ -442,7 +442,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         if ((call as any).vehicle_pursuit || (call as any).foot_pursuit) flagBadges.push({ label: 'PURSUIT', color: '#f97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.35)' });
         if ((call as any).officer_safety_caution) flagBadges.push({ label: 'SAFETY', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.35)' });
         if ((call as any).felony_in_progress) flagBadges.push({ label: 'FELONY', color: '#ef4444', bg: 'rgba(239,68,68,0.2)', border: 'rgba(239,68,68,0.5)' });
-        if ((call as any).ems_requested) flagBadges.push({ label: 'EMS', color: '#aaaaaa', bg: 'rgba(136,136,136,0.15)', border: 'rgba(136,136,136,0.35)' });
+        if ((call as any).ems_requested) flagBadges.push({ label: 'EMS', color: 'var(--rmpg-400)', bg: 'rgba(136,136,136,0.15)', border: 'rgba(136,136,136,0.35)' });
         if ((call as any).injuries_reported) flagBadges.push({ label: 'INJ', color: '#fb923c', bg: 'rgba(251,146,60,0.15)', border: 'rgba(251,146,60,0.35)' });
         if (flagBadges.length === 0) return null;
         return (
@@ -481,7 +481,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       {/* 40: Location with improved pin icon color — coords hidden (redundant with address) */}
       <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-1">
         <MapPin className="w-3 h-3 flex-shrink-0 text-rmpg-500" aria-hidden="true" />
-        <div className="truncate">
+        <div className="min-w-0 truncate">
           <span className="truncate">{formatAddressDisplay(call.location)}</span>
           {/* Enhancement 28: Show property name below address */}
           {call.property_name && (
@@ -489,7 +489,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           )}
           {/* Client/requestor company name */}
           {(call.client_name || (call as any).pso_requestor_name) && (
-            <div className="text-[9px] text-brand-400 truncate flex items-center gap-0.5">
+            <div className="text-[9px] text-brand-400 min-w-0 truncate flex items-center gap-0.5">
               <Globe className="w-2.5 h-2.5 flex-shrink-0" />
               {call.client_name || (call as any).pso_requestor_name}
             </div>

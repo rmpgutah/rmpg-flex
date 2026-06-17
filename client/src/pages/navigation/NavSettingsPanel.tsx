@@ -84,7 +84,7 @@ function CloseButton({ onClick }: { onClick: () => void }) {
         height: 36,
         borderRadius: 2,
         background: 'var(--surface-base)',
-        border: '1px solid #2e2e2e',
+        border: '1px solid var(--border-default)',
         color: '#888',
       }}
     >
@@ -104,7 +104,7 @@ function Segmented<T extends string>({
   return (
     <div className="space-y-1">
       <div className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#888' }}>{label}</div>
-      <div className="flex" style={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #2e2e2e' }}>
+      <div className="flex" style={{ borderRadius: 2, overflow: 'hidden', border: '1px solid var(--border-default)' }}>
         {options.map((opt) => {
           const active = opt.value === value;
           return (
@@ -206,7 +206,7 @@ export default function NavSettingsPanel({
       aria-label="Navigation settings"
       style={{
         background: 'rgba(5,5,5,0.95)',
-        borderTop: '1px solid #2e2e2e',
+        borderTop: '1px solid var(--border-default)',
         borderTopLeftRadius: 2,
         borderTopRightRadius: 2,
         boxShadow: '0 -8px 24px rgba(0,0,0,0.6)',
@@ -254,7 +254,7 @@ export default function NavSettingsPanel({
               <span
                 style={{
                   width: 40, height: 28, borderRadius: 2,
-                  background: swatch.base, border: '1px solid #2e2e2e',
+                  background: swatch.base, border: '1px solid var(--border-default)',
                   display: 'block',
                 }}
               />

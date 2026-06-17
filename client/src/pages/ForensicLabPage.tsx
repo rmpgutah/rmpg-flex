@@ -49,9 +49,9 @@ const PRIORITIES = [
 ] as const;
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string; nextAction: string }> = {
-  submitted: { label: 'Submitted', color: '#aaaaaa', bgColor: 'bg-surface-sunken/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
+  submitted: { label: 'Submitted', color: 'var(--rmpg-400)', bgColor: 'bg-surface-sunken/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
   intake: { label: 'Intake', color: '#a78bfa', bgColor: 'bg-purple-900/20', nextAction: 'Evidence is being cataloged and checked in' },
-  assigned: { label: 'Assigned', color: '#aaaaaa', bgColor: 'bg-surface-sunken/20', nextAction: 'Examiner is preparing to begin analysis' },
+  assigned: { label: 'Assigned', color: 'var(--rmpg-400)', bgColor: 'bg-surface-sunken/20', nextAction: 'Examiner is preparing to begin analysis' },
   in_progress: { label: 'In Progress', color: '#fbbf24', bgColor: 'bg-amber-900/20', nextAction: 'Analysis is underway — check back for updates' },
   analysis_complete: { label: 'Analysis Complete', color: '#34d399', bgColor: 'bg-emerald-900/20', nextAction: 'Results are available — report being drafted' },
   report_draft: { label: 'Report Draft', color: '#a3e635', bgColor: 'bg-lime-900/20', nextAction: 'Report is being reviewed before finalization' },
@@ -1204,7 +1204,7 @@ export default function ForensicLabPage() {
                   {selectedCase.exhibits.map(ex => {
                     const exStatus = ex.status === 'complete' ? { color: '#22c55e', icon: CheckCircle } :
                       ex.status === 'examining' ? { color: '#f59e0b', icon: Activity } :
-                      { color: '#aaaaaa', icon: Package };
+                      { color: 'var(--rmpg-400)', icon: Package };
                     return (
                       <div key={ex.id} className="panel-beveled bg-surface-sunken p-3 border-l-[3px]" style={{ borderLeftColor: exStatus.color }}>
                         <div className="flex items-start gap-2">

@@ -67,7 +67,7 @@ function SourceBadge({ source }: { source: string }) {
     gps: { icon: Satellite, color: '#22c55e', label: 'GPS' },
     wifi: { icon: Wifi, color: '#d4a017', label: 'WiFi' },
     ip: { icon: Globe, color: '#ef4444', label: 'IP' },
-    unknown: { icon: Globe, color: '#666', label: '—' },
+    unknown: { icon: Globe, color: 'var(--rmpg-500)', label: '—' },
   };
   const s = map[source] || map.unknown;
   const Icon = s.icon;
@@ -83,7 +83,7 @@ const CONGESTION: Record<CongestionLevel, { color: string; label: string }> = {
   moderate: { color: '#d4a017', label: 'MODERATE' },
   heavy: { color: '#f97316', label: 'HEAVY' },
   severe: { color: '#ef4444', label: 'SEVERE' },
-  unknown: { color: '#666', label: '—' },
+  unknown: { color: 'var(--rmpg-500)', label: '—' },
 };
 
 /** Map a Mapbox maneuver to a directional arrow icon. */

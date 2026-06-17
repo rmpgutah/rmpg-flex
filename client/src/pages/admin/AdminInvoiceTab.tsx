@@ -337,7 +337,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
       {!loading && invoices.length > 0 && (
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-[10px]">
+          <div className="overflow-x-auto"><table className="w-full text-[10px]">
             <thead>
               <tr className="text-rmpg-400 uppercase tracking-wider border-b border-rmpg-700">
                 <th className="text-left p-1.5 font-bold">Invoice #</th>
@@ -373,7 +373,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
     </div>
@@ -572,7 +572,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             </div>
           )}
 
-          <table className="w-full text-[10px]">
+          <div className="overflow-x-auto"><table className="w-full text-[10px]">
             <thead>
               <tr className="text-rmpg-500 uppercase tracking-wider border-b border-rmpg-700">
                 <th className="text-left p-1 w-4"></th>
@@ -606,7 +606,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 <tr><td colSpan={inv.status === 'draft' ? 6 : 5} className="text-center p-3 text-rmpg-500">No line items</td></tr>
               )}
             </tbody>
-          </table>
+          </table></div>
         </div>
 
         {/* Totals */}
@@ -679,7 +679,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         {asArray<Payment>(inv.payments).length > 0 && (
           <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
             <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 block">Payments</span>
-            <table className="w-full text-[10px]">
+            <div className="overflow-x-auto"><table className="w-full text-[10px]">
               <thead>
                 <tr className="text-rmpg-500 uppercase tracking-wider border-b border-rmpg-700">
                   <th className="text-left p-1 font-bold">Date</th>
@@ -704,7 +704,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </div>
         )}
 

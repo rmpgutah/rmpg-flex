@@ -480,7 +480,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                 {h.md5 && (
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">MD5:</span>
-                    <span className="text-rmpg-300 font-mono truncate">{h.md5}</span>
+                    <span className="min-w-0 flex-1 text-rmpg-300 font-mono truncate">{h.md5}</span>
                     <button type="button" onClick={() => copyToClipboard(h.md5!, `md5-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
                       {copiedField === `md5-${h.id}` ? <CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> : <Copy className="w-2.5 h-2.5" />}
                     </button>
@@ -489,7 +489,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                 {h.sha256 && (
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">SHA-256:</span>
-                    <span className="text-rmpg-300 font-mono truncate">{h.sha256.slice(0, 24)}...</span>
+                    <span className="min-w-0 flex-1 text-rmpg-300 font-mono truncate">{h.sha256.slice(0, 24)}...</span>
                     <button type="button" onClick={() => copyToClipboard(h.sha256!, `sha256-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
                       {copiedField === `sha256-${h.id}` ? <CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> : <Copy className="w-2.5 h-2.5" />}
                     </button>
@@ -498,14 +498,14 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                 {h.photodna_hash && (
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">PhotoDNA:</span>
-                    <span className="text-purple-400 font-mono truncate">{h.photodna_hash.slice(0, 20)}...</span>
+                    <span className="min-w-0 flex-1 text-purple-400 font-mono truncate">{h.photodna_hash.slice(0, 20)}...</span>
                     <Shield className="w-2.5 h-2.5 text-purple-400 shrink-0" />
                   </div>
                 )}
                 {h.phash && (
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">pHash:</span>
-                    <span className="text-rmpg-300 font-mono truncate">{h.phash}</span>
+                    <span className="min-w-0 flex-1 text-rmpg-300 font-mono truncate">{h.phash}</span>
                   </div>
                 )}
               </div>
