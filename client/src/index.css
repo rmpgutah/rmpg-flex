@@ -1522,6 +1522,63 @@ body.fx-noise::after {
     background: var(--surface-raised);
   }
 
+  /* ── Dossier grid tiles (Windows-style desktop icon view) ── */
+  .dossier-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 88px;
+    padding: 6px 4px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    cursor: default;
+    transition: background 0.1s, border-color 0.1s;
+    text-align: center;
+    outline: none;
+  }
+  .dossier-tile:hover {
+    background: rgb(var(--rmpg-700-rgb) / 0.4);
+    border-color: rgb(var(--rmpg-600-rgb) / 0.5);
+  }
+  .dossier-tile:focus-visible {
+    border-color: rgb(var(--brand-400-rgb) / 0.8);
+  }
+  .dossier-tile-selected {
+    background: rgb(var(--brand-900-rgb) / 0.35);
+    border-color: rgb(var(--brand-500-rgb) / 0.6);
+  }
+  .dossier-tile-selected:hover {
+    background: rgb(var(--brand-900-rgb) / 0.5);
+    border-color: rgb(var(--brand-400-rgb) / 0.7);
+  }
+  .dossier-tile-icon {
+    position: relative;
+    width: 64px;
+    height: 60px;
+    border-radius: 2px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .dossier-tile-label {
+    font-size: 10px;
+    line-height: 1.3;
+    color: rgb(var(--rmpg-200-rgb));
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    width: 100%;
+  }
+  .dossier-tile-selected .dossier-tile-label {
+    color: rgb(var(--brand-200-rgb));
+  }
+
   /* Context menu items (right-click menus) */
   .context-menu-item {
     display: flex;

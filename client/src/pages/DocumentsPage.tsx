@@ -3,8 +3,9 @@ import {
   FolderOpen, ChevronRight, Trash2, Edit2, Download, ArrowLeft, Loader2, Upload,
   X, FolderPlus, Home, Search, Eye, Info, FileText, HardDrive, Clock, Hash, Shield,
   Film, Image, Music, Grid3X3, List, ArrowUpDown, CheckSquare, Square, Filter,
-  Pencil,
+  Pencil, LayoutGrid,
 } from 'lucide-react';
+import DossierGrid from './documents/DossierGrid';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import DocumentsAppsShelf from './documents/DocumentsAppsShelf';
@@ -52,7 +53,7 @@ export default function DocumentsPage() {
   const [renameValue, setRenameValue] = useState('');
   const [uploading, setUploading] = useState(false);
   const [infoFile, setInfoFile] = useState<FileItem | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'grid' | 'desktop'>('desktop');
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'date' | 'type'>('name');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [dragOver, setDragOver] = useState(false);
@@ -349,10 +350,13 @@ export default function DocumentsPage() {
       {/* Toolbar: view toggle + sort + filter + bulk actions + stats */}
       <div className="px-4 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-2 text-[9px] flex-wrap">
         {/* View toggle */}
-        <button type="button" onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
-          className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-rmpg-100 transition-colors" title={viewMode === 'list' ? 'Grid view' : 'List view'}>
-          {viewMode === 'list' ? <Grid3X3 className="w-3.5 h-3.5" /> : <List className="w-3.5 h-3.5" />}
-        </button>
+        {(['desktop', 'grid', 'list'] as const).map(mode => (
+          <button key={mode} type="button" onClick={() => setViewMode(mode)}
+            title={mode === 'desktop' ? 'Dossier (icon) view' : mode === 'grid' ? 'Grid view' : 'List view'}
+            className={`p-1 transition-colors ${viewMode === mode ? 'text-brand-400 bg-brand-900/30' : 'text-rmpg-400 hover:bg-rmpg-600 hover:text-rmpg-100'}`}>
+            {mode === 'desktop' ? <LayoutGrid className="w-3.5 h-3.5" /> : mode === 'grid' ? <Grid3X3 className="w-3.5 h-3.5" /> : <List className="w-3.5 h-3.5" />}
+          </button>
+        ))}
         <span className="w-px h-3 bg-rmpg-700" />
         {/* Sort */}
         <ArrowUpDown className="w-3 h-3 text-rmpg-500" />
@@ -396,17 +400,50 @@ export default function DocumentsPage() {
       </div>
 
       {/* Content */}
-      <div ref={dropZoneRef} className={`flex-1 overflow-auto p-4 transition-colors ${dragOver ? 'bg-brand-900/10 ring-2 ring-brand-500/50 ring-inset' : ''}`}
+      <div ref={dropZoneRef} className={`flex-1 overflow-auto transition-colors ${dragOver ? 'bg-brand-900/10 ring-2 ring-brand-500/50 ring-inset' : ''}`}
         onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
         {dragOver && (
-          <div className="flex items-center justify-center py-8 mb-4 border-2 border-dashed border-brand-500/50 bg-brand-900/5 text-brand-400 text-sm font-bold">
+          <div className="flex items-center justify-center py-8 m-4 border-2 border-dashed border-brand-500/50 bg-brand-900/5 text-brand-400 text-sm font-bold">
             <Upload className="w-5 h-5 mr-2" /> Drop files here to upload
           </div>
         )}
         {loading ? (
           <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-rmpg-400" /></div>
+        ) : viewMode === 'desktop' ? (
+          /* ── DOSSIER (desktop icon) VIEW ── */
+          <DossierGrid
+            folders={filteredFolders as import('./documents/DossierGrid').DossierFolder[]}
+            files={filteredFiles as import('./documents/DossierGrid').DossierFile[]}
+            selectedFiles={selectedFiles}
+            onFolderOpen={navigateTo}
+            onFileOpen={file => openFile(file as FileItem)}
+            onFileSelect={(fileId, multi) => {
+              if (multi) toggleSelect(fileId);
+              else setSelectedFiles(prev => prev.has(fileId) && prev.size === 1 ? new Set() : new Set([fileId]));
+            }}
+            onFolderContextMenu={(e, folder) => openMenu(e, buildFolderMenu(folder as Folder))}
+            onFileContextMenu={(e, file) => openMenu(e, buildFileMenu(file as FileItem))}
+            headerSlot={<>
+              {currentFolderId && (
+                <button type="button"
+                  onClick={() => navigateTo(breadcrumbs.length > 1 ? breadcrumbs[breadcrumbs.length - 2].id : null)}
+                  className="dossier-tile group"
+                  aria-label="Go up">
+                  <div className="dossier-tile-icon bg-rmpg-800 border border-rmpg-700 group-hover:bg-rmpg-700">
+                    <ArrowLeft size={26} className="text-rmpg-400" />
+                  </div>
+                  <span className="dossier-tile-label text-rmpg-500">Up</span>
+                </button>
+              )}
+              {!searchQuery && (
+                <div className="w-full">
+                  <DocumentsAppsShelf currentFolderId={currentFolderId} />
+                </div>
+              )}
+            </>}
+          />
         ) : (
-          <div className={viewMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2' : 'space-y-1'}>
+          <div className={`p-4 ${viewMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2' : 'space-y-1'}`}>
             {/* Back button */}
             {currentFolderId && (
               <button type="button"
@@ -417,9 +454,7 @@ export default function DocumentsPage() {
               </button>
             )}
 
-            {/* Apps shelf — integrated tools that operate on the documents
-                in this folder. The PDF Editor is the first integrated app;
-                future apps (image annotator, video reviewer) can drop in here. */}
+            {/* Apps shelf */}
             {!searchQuery && (
               <DocumentsAppsShelf currentFolderId={currentFolderId} />
             )}
@@ -582,6 +617,21 @@ export default function DocumentsPage() {
             )}
           </div>
         )}
+      </div>
+
+      {/* Status bar — shown in all view modes */}
+      <div className="flex items-center gap-3 px-4 py-1 border-t border-rmpg-800/50 bg-surface-sunken text-[9px] text-rmpg-500 flex-shrink-0">
+        <span>{filteredFolders.length > 0 ? `${filteredFolders.length} folder${filteredFolders.length !== 1 ? 's' : ''}` : ''}</span>
+        {filteredFolders.length > 0 && filteredFiles.length > 0 && <span className="text-rmpg-700">·</span>}
+        <span>{filteredFiles.length > 0 ? `${filteredFiles.length} file${filteredFiles.length !== 1 ? 's' : ''}` : ''}</span>
+        {selectedFiles.size > 0 && (
+          <>
+            <span className="text-rmpg-700">·</span>
+            <span className="text-brand-400">{selectedFiles.size} selected</span>
+            <button type="button" onClick={bulkDelete} className="text-red-400 hover:text-red-300 ml-1">Delete selected</button>
+          </>
+        )}
+        <span className="ml-auto">{storageStats.totalSize > 0 ? formatSize(storageStats.totalSize) : ''}</span>
       </div>
 
       {/* New Folder Modal */}
