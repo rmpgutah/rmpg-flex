@@ -1231,13 +1231,9 @@ export function addSignatureBlock(
       // code stretched it to fill the whole row — squashed/cropped look),
       // and rest it on a signature baseline like a real signed form.
       const sigLineY = row1Y + sigRowH - 2.5;
-      doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+      doc.setDrawColor(...COLOR.TEXT_TERTIARY);
       doc.setLineWidth(BORDER.SIGNATURE_LINE);
       doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_SIGNATURE_X);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text('X', x + SPACING.CONTENT_INSET, sigLineY - 1.5);
 
       const maxW = Math.min(width * 0.5, 70);
       const maxH = sigRowH - 3.5; // breathing room inside the row
@@ -1257,19 +1253,15 @@ export function addSignatureBlock(
       doc.addImage(sigData.signatureImage, 'PNG', imgX, imgY, imgW, imgH);
     } catch { /* skip */ }
   } else {
-    // Write-in line + X
+    // Clean signature line — no bureaucratic X marker
     const sigLineY = row1Y + sigRowH - 2.5;
-    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setDrawColor(...COLOR.TEXT_TERTIARY);
     doc.setLineWidth(BORDER.SIGNATURE_LINE);
     doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_SIGNATURE_X);
-    doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('X', x + SPACING.CONTENT_INSET, sigLineY - 1.5);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('SIGNATURE', x + width / 2, sigLineY + 2, { align: 'center' });
+    doc.text('SIGNATURE', x + width / 2, sigLineY + 2.5, { align: 'center' });
   }
 
   // ── Info row: PRINTED NAME | BADGE NUMBER | DATE ──
