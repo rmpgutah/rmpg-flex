@@ -118,6 +118,32 @@ interface DashcamEvent {
   officer_name: string | null;
 }
 
+// ── Retry button for trips where all chunks expired as missing ───────────────
+function RetryTripButton({ tripId }: { tripId: number }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const handleRetry = useCallback(async () => {
+    setBusy(true);
+    try {
+      await apiFetch(`/clearpathgps/full-drive/trips/${tripId}/retry`, { method: 'POST' });
+      setDone(true);
+    } catch {
+      // silently ignore — next job poll will show the updated state
+    } finally {
+      setBusy(false);
+    }
+  }, [tripId]);
+  if (done) return <span className="text-[9px] text-yellow-400">Retrying…</span>;
+  return (
+    <button type="button" onClick={handleRetry} disabled={busy}
+      className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase
+                 bg-red-900/60 hover:bg-red-800/60 border border-red-600/40 text-red-300
+                 transition-colors disabled:opacity-50">
+      {busy ? '…' : '↺'} Retry
+    </button>
+  );
+}
+
 // ── Isolated job-progress panel ─────────────────────────────────────────────
 // Owns the 1-second ETA tick so only this subtree re-renders each second,
 // not the entire AdminClearPathGpsTab.
@@ -206,16 +232,20 @@ const FullDriveJobPanel = memo(function FullDriveJobPanel({
       {jobStatus.trips.map((trip) => {
         const settled = trip.chunks_done + trip.chunks_missing;
         const pct = trip.chunk_count > 0 ? Math.round((settled / trip.chunk_count) * 100) : 0;
-        const ready = trip.status === 'done' || trip.status === 'partial';
+        const settled_ = trip.status === 'done' || trip.status === 'partial';
+        const hasClips = trip.chunks_done > 0;
+        const noFootage = settled_ && !hasClips; // all chunks expired with 0 downloads
         const durationMin = Math.round((trip.to_ts - trip.from_ts) / 60_000);
         const tripRemaining = trip.chunk_count - settled;
         const tripEta = (() => {
-          if (ready || !rate || tripRemaining <= 0) return null;
+          if (settled_ || !rate || tripRemaining <= 0) return null;
           const s = Math.round((tripRemaining / rate) / 1000);
           return s < 60 ? `~${s}s` : `~${Math.ceil(s / 60)}m`;
         })();
+        const barColor = noFootage ? 'bg-red-700/70' : settled_ ? 'bg-green-500' : 'bg-purple-500';
         return (
-          <div key={trip.id} className="border border-purple-700/20 bg-purple-950/30 p-2 space-y-1">
+          <div key={trip.id}
+            className={`border p-2 space-y-1 ${noFootage ? 'border-red-800/40 bg-red-950/20' : 'border-purple-700/20 bg-purple-950/30'}`}>
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-[10px] font-bold text-purple-200 truncate">{trip.label}</p>
@@ -224,12 +254,13 @@ const FullDriveJobPanel = memo(function FullDriveJobPanel({
                   {trip.chunks_done}/{trip.chunk_count} clips
                   {trip.chunks_missing > 0 ? ` · ${trip.chunks_missing} gaps` : ''}
                   {tripEta ? <span className="text-yellow-500 ml-1">· {tripEta}</span> : null}
-                  {ready ? <span className="text-green-400 ml-1">· Ready</span> : null}
+                  {settled_ && hasClips ? <span className="text-green-400 ml-1">· Ready</span> : null}
+                  {noFootage ? <span className="text-red-400 ml-1">· No footage</span> : null}
                 </p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-[9px] font-bold text-purple-400 w-7 text-right">{pct}%</span>
-                {ready && trip.footage_request_id && (
+                <span className={`text-[9px] font-bold w-7 text-right ${noFootage ? 'text-red-500' : 'text-purple-400'}`}>{pct}%</span>
+                {settled_ && hasClips && trip.footage_request_id && (
                   <button type="button"
                     onClick={() => handlePlayTrip(trip.footage_request_id!, trip.label)}
                     className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase
@@ -238,10 +269,13 @@ const FullDriveJobPanel = memo(function FullDriveJobPanel({
                     <Play className="w-2.5 h-2.5" /> Play
                   </button>
                 )}
+                {noFootage && (
+                  <RetryTripButton tripId={trip.id} />
+                )}
               </div>
             </div>
             <div className="h-1 bg-surface-sunken rounded-full overflow-hidden">
-              <div className={`h-full transition-all duration-1000 ${ready ? 'bg-green-500' : 'bg-purple-500'}`}
+              <div className={`h-full transition-all duration-1000 ${barColor}`}
                 style={{ width: `${pct}%` }} />
             </div>
           </div>
