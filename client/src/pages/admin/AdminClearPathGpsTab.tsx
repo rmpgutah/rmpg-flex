@@ -118,7 +118,7 @@ interface DashcamEvent {
   officer_name: string | null;
 }
 
-// ── Retry button for trips where all chunks expired as missing ───────────────
+// ── Retry buttons for trips/jobs where all chunks expired as missing ─────────
 function RetryTripButton({ tripId }: { tripId: number }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -128,7 +128,7 @@ function RetryTripButton({ tripId }: { tripId: number }) {
       await apiFetch(`/clearpathgps/full-drive/trips/${tripId}/retry`, { method: 'POST' });
       setDone(true);
     } catch {
-      // silently ignore — next job poll will show the updated state
+      // next job poll will reflect the updated state
     } finally {
       setBusy(false);
     }
@@ -140,6 +140,31 @@ function RetryTripButton({ tripId }: { tripId: number }) {
                  bg-red-900/60 hover:bg-red-800/60 border border-red-600/40 text-red-300
                  transition-colors disabled:opacity-50">
       {busy ? '…' : '↺'} Retry
+    </button>
+  );
+}
+
+function RetryAllButton({ jobId }: { jobId: number }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const handleRetryAll = useCallback(async () => {
+    setBusy(true);
+    try {
+      await apiFetch(`/clearpathgps/full-drive/jobs/${jobId}/retry-failed`, { method: 'POST' });
+      setDone(true);
+    } catch {
+      // next poll will reflect updated state
+    } finally {
+      setBusy(false);
+    }
+  }, [jobId]);
+  if (done) return <span className="text-[9px] text-yellow-400">Queued — clips will appear within 90 min</span>;
+  return (
+    <button type="button" onClick={handleRetryAll} disabled={busy}
+      className="inline-flex items-center gap-1 px-2.5 py-1 text-[9px] font-bold uppercase
+                 bg-red-900/70 hover:bg-red-800/70 border border-red-600/50 text-red-200
+                 transition-colors disabled:opacity-50">
+      {busy ? '…' : '↺'} Retry All Failed Trips
     </button>
   );
 }
@@ -228,6 +253,21 @@ const FullDriveJobPanel = memo(function FullDriveJobPanel({
           </p>
         )}
       </div>
+
+      {(() => {
+        const failedCount = jobStatus.trips.filter(
+          t => (t.status === 'done' || t.status === 'partial') && t.chunks_done === 0 && t.chunks_missing > 0,
+        ).length;
+        if (!failedCount) return null;
+        return (
+          <div className="flex items-center justify-between gap-2 px-0.5">
+            <p className="text-[9px] text-red-400">
+              {failedCount} trip{failedCount !== 1 ? 's' : ''} with no footage — ClearPath may still be uploading from the dashcam.
+            </p>
+            <RetryAllButton jobId={jobStatus.id} />
+          </div>
+        );
+      })()}
 
       {jobStatus.trips.map((trip) => {
         const settled = trip.chunks_done + trip.chunks_missing;
