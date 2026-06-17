@@ -27,6 +27,7 @@ import {
   Map,
   Radio,
   Cloud,
+  RefreshCw,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -66,6 +67,7 @@ import AdminAISettingsTab from './admin/AdminAISettingsTab';
 import AdminGodModeTab from './admin/AdminGodModeTab';
 import AdminMapSettingsTab from './admin/AdminMapSettingsTab';
 import AdminRadioTab from './admin/AdminRadioTab';
+import AdminReanalysisTab from './admin/AdminReanalysisTab';
 import LinkageOptionsEditor from '../components/LinkageOptionsEditor';
 
 // ============================================================
@@ -231,7 +233,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare' | 'reanalysis';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -245,7 +247,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio', 'cloudflare', 'linkage'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio', 'cloudflare', 'linkage', 'reanalysis'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -661,6 +663,7 @@ export default function AdminPage() {
         { id: 'map_settings', label: 'Map Settings', icon: Map },
         { id: 'linkage', label: 'Linkage Options', icon: Link2 },
         { id: 'health', label: 'System Health', icon: Activity },
+        { id: 'reanalysis', label: 'Reanalysis', icon: RefreshCw },
         // 'branding' (Branding & Reports) consolidated into System Config → Branding & Reports sub-tab (2026-06-02)
         // 'retention' (Data Retention) removed 2026-06-02 — destructive auto-purge was never built; backend stayed a stub.
       ],
@@ -900,6 +903,14 @@ export default function AdminPage() {
 
         {activeTab === 'health' && (
           <AdminHealthTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'reanalysis' && (
+          <AdminReanalysisTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
