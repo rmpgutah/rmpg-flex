@@ -46,7 +46,20 @@ interface PrintRecordButtonProps {
 /** Record-links vehicle labels read "Make Model (PLATE)". Split into the
  *  separate fields the PDF table expects — otherwise the whole label lands
  *  in the PLATE column and VEHICLE prints "N/A". */
-function splitVehicleLabel(l: any): { license_plate: string; model: string; relationship: string } {
+function splitVehicleLabel(l: any): { license_plate: string; year?: string; make?: string; model?: string; color?: string; relationship: string } {
+  // Prefer structured metadata returned by the API (year, color, make, model, plate)
+  const meta = l.linked_meta as { year?: number; color?: string; make?: string; model?: string; plate_number?: string } | undefined;
+  if (meta) {
+    return {
+      license_plate: meta.plate_number || '',
+      year: meta.year != null ? String(meta.year) : undefined,
+      make: meta.make || undefined,
+      model: meta.model || undefined,
+      color: meta.color || undefined,
+      relationship: l.relationship,
+    };
+  }
+  // Fallback: parse "Make Model (PLATE)" label format
   const raw = String(l.linked_label || '').trim();
   const m = raw.match(/^(.*?)\s*\(([^()]+)\)$/);
   return {

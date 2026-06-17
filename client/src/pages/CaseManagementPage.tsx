@@ -517,7 +517,7 @@ export default function CaseManagementPage() {
       const r = await apiFetch<{ data: any[] }>(`/cases/${selected.id}/tasks`);
       tasks = Array.isArray(r) ? r : (r?.data || []);
     } catch { /* tasks optional in the report */ }
-    downloadCaseReport({
+    await downloadCaseReport({
       caseRow: cf || selected,
       calls: cf?.calls, incidents: cf?.incidents, persons: cf?.persons,
       vehicles: cf?.vehicles, properties: cf?.properties, evidence: cf?.evidence,
