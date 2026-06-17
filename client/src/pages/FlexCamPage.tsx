@@ -221,10 +221,22 @@ export default function FlexCamPage() {
                     <FileText className="w-2.5 h-2.5" />
                     {pkgLoading[r.id] ? '…' : 'COURT PKG'}
                   </button>
-                  <a href={`/api/flexcam/footage/${r.id}`} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-1 text-[9px] text-rmpg-500 hover:text-brand-400 px-1.5 py-1 ml-auto transition-colors">
+                  <button
+                    onClick={() => {
+                      apiFetch<unknown>(`/flexcam/footage/${r.id}`)
+                        .then((json) => {
+                          const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url; a.download = `footage-manifest-${r.id}.json`; a.click();
+                          setTimeout(() => URL.revokeObjectURL(url), 3000);
+                        })
+                        .catch(console.error);
+                    }}
+                    className="flex items-center gap-1 text-[9px] text-rmpg-500 hover:text-brand-400 px-1.5 py-1 ml-auto transition-colors"
+                    title="Download manifest JSON">
                     <Download className="w-2.5 h-2.5" />
-                  </a>
+                  </button>
                 </div>
 
                 {/* Court pkg result */}
