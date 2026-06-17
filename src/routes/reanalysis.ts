@@ -97,7 +97,7 @@ reanalysis.post('/backfill-confidence', adminOnly, async (c): Promise<Response> 
   try {
     const rows = await query<{ id: number; plate: string; confidence: number }>(db,
       `SELECT id, plate, confidence FROM vehicle_sightings
-       WHERE source IN ('footage','edge') AND confidence > 0.84 AND id > ?
+       WHERE confidence > 0.84 AND id > ?
        ORDER BY id ASC LIMIT ?`,
       cursor, limit + 1,
     );
@@ -209,10 +209,10 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
     if (c.env.ANALYTICS) {
       const rows = await query<{
         id: number; plate: string | null; state: string | null;
-        confidence: number | null; source: string | null;
+        confidence: number | null;
         lat: number | null; lng: number | null; created_at: string; unit_id: number | null;
       }>(db,
-        `SELECT id, plate, state, confidence, source, lat, lng, created_at, unit_id
+        `SELECT id, plate, state, confidence, lat, lng, created_at, unit_id
          FROM vehicle_sightings
          WHERE id > ? AND analytics_replayed_at IS NULL
          ORDER BY id ASC LIMIT ?`,
@@ -226,7 +226,7 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
         const events: AnalyticsEvent[] = batch.map(r => ({
           event_type: 'alpr_read',
           occurred_at: r.created_at,
-          source: r.source ?? 'unknown',
+          source: 'replay',
           plate: r.plate,
           state: r.state,
           trust: r.confidence,
