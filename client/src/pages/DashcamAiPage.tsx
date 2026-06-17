@@ -473,6 +473,10 @@ export default function DashcamAiPage(): React.ReactElement {
                       File-system storage. Download via prosecutor-export tool (Phase 4).
                     </div>
                   )}
+                  <div className="mt-2 text-[10px] text-blue-400">
+                    Open forensic player → the <strong>▶ Full Trip</strong> badge appears when a
+                    full-drive continuous recording covers this event.
+                  </div>
                 </div>
               ) : null}
             </div>

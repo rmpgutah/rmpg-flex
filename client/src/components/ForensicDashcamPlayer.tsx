@@ -45,6 +45,7 @@ interface MediaResp {
   still_url: string | null; plate: string | null; plate_confidence: number | null;
   plate_accepted?: boolean | null; plate_review_status?: string | null;
   vehicle: VehicleAttrs | null; detections?: unknown[];
+  footage_request_id?: number | null;  // set when a full-drive trip covers this event
 }
 
 const GOLD = '#d4a017';
@@ -554,6 +555,12 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
           <Car className="w-4 h-4 text-[#d4a017] shrink-0" />
           <span className="text-[11px] font-semibold tracking-wider text-[#d4a017]">FORENSIC PLAYBACK</span>
           {evType && <span className="text-[10px] uppercase px-1.5 py-0.5 border border-amber-700/50 bg-amber-900/30 text-amber-300">{evType.replace(/_/g, ' ')}</span>}
+          {media?.footage_request_id && (
+            <a href={`/flexcam/${media.footage_request_id}`} target="_blank" rel="noreferrer"
+              className="text-[9px] font-bold uppercase px-1.5 py-0.5 border border-blue-700/50 bg-blue-900/30 text-blue-300 hover:border-blue-400 transition-colors whitespace-nowrap">
+              ▶ Full Trip
+            </a>
+          )}
           <span className="text-[11px] text-rmpg-400 truncate">{media?.address || address || ''}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
