@@ -666,6 +666,10 @@
 // v993: Full-drive clip playback — fix 401 on <video> src; auth middleware
 //       now accepts ?token=<jwt> on /full-drive/clip/* paths; client appends
 //       JWT from localStorage to all streamUrl values before passing to <video>.
+// v1000: FlexCam reconfigure button — stops playback, revokes all cached blob
+//        URLs, resets state, and re-fetches fresh request data so the officer
+//        can restart without leaving the page. Markers rebuild fixed to use
+//        apiFetch (JWT header) instead of a bare <a> link (auth 401).
 // v999: FlexCam clip-to-clip fix — generation counter prevents stale async
 //       playSegment() chains; drop video.load() (implicit load via src= is
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);

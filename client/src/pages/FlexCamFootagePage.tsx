@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   AlertTriangle, CheckCircle2, ChevronLeft, Clock, Download,
-  FileText, Lock, Maximize2, Pause, Play, Shield, Video,
+  FileText, Lock, Maximize2, Pause, Play, RotateCcw, Shield, Video,
 } from 'lucide-react';
 import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { buildTimeline, offsetToSeek, type PlayChunk } from '../utils/flexcamTimeline';
@@ -88,8 +88,9 @@ export default function FlexCamFootagePage() {
   const [posMs, setPosMs]       = useState(0);
   const [loading, setLoading]   = useState(false);
   const [lockBusy, setLockBusy] = useState(false);
-  const [pkgBusy, setPkgBusy]   = useState(false);
-  const [pkgMsg, setPkgMsg]     = useState<string | null>(null);
+  const [pkgBusy, setPkgBusy]       = useState(false);
+  const [pkgMsg, setPkgMsg]         = useState<string | null>(null);
+  const [markersLoading, setMarkersLoading] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const urlCache = useRef<Map<number, string>>(new Map());
   const fullRef  = useRef<HTMLDivElement | null>(null);
@@ -204,6 +205,28 @@ export default function FlexCamFootagePage() {
       reload();
     } catch (e) { setErr((e as Error).message); }
     finally { setLockBusy(false); }
+  }
+
+  // Hard-reset the player: cancel in-flight loads, revoke cached blobs,
+  // clear video element, reset all state, and re-fetch fresh request data.
+  function reconfigure() {
+    genRef.current++;
+    const video = videoRef.current;
+    if (video) { video.pause(); video.src = ''; }
+    for (const u of urlCache.current.values()) URL.revokeObjectURL(u);
+    urlCache.current.clear();
+    setIdx(0); setPosMs(0); setPlaying(false); setLoading(false); setPkgMsg(null);
+    reload();
+  }
+
+  async function rebuildMarkers() {
+    if (!data || markersLoading) return;
+    setMarkersLoading(true);
+    try {
+      await apiFetch(`/flexcam/footage/${data.request.id}/markers?rebuild=1`);
+      reload();
+    } catch (e) { setErr((e as Error).message); }
+    finally { setMarkersLoading(false); }
   }
 
   async function genCourtPkg() {
@@ -330,6 +353,12 @@ export default function FlexCamFootagePage() {
                        disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
             {playing ? <><Pause className="w-3.5 h-3.5" />PAUSE</> : <><Play className="w-3.5 h-3.5" />PLAY</>}
           </button>
+          <button onClick={reconfigure} title="Stop playback, clear cached clips, and reload fresh data"
+            className="flex items-center gap-1 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide
+                       border border-border-default text-rmpg-400 hover:text-brand-400 hover:border-brand-600
+                       transition-colors">
+            <RotateCcw className="w-3 h-3" />RECONFIGURE
+          </button>
           <div className="font-mono tabular-nums text-[12px]">
             <span className="text-brand-400">{fmt(posMs)}</span>
             <span className="text-rmpg-600 mx-0.5">/</span>
@@ -441,10 +470,10 @@ export default function FlexCamFootagePage() {
         {markers.length === 0 ? (
           <div className="px-3 py-6 text-center text-[10px] text-rmpg-600">
             No events detected.{' '}
-            <a href={`/api/flexcam/footage/${data.request.id}/markers?rebuild=1`}
-              target="_blank" rel="noreferrer" className="underline hover:text-brand-400">
-              Rebuild markers
-            </a>
+            <button onClick={rebuildMarkers} disabled={markersLoading}
+              className="underline hover:text-brand-400 disabled:opacity-40">
+              {markersLoading ? 'Rebuilding…' : 'Rebuild markers'}
+            </button>
           </div>
         ) : (
           <ul className="divide-y divide-border-default">
