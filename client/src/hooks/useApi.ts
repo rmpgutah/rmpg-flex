@@ -319,12 +319,23 @@ function maybeRedirectToCfWorker(url: string): string {
   return url;
 }
 
+// ─── TEMPORARY: direct-to-rewrite escape hatch ──────────────────────────
+// The rmpgutah.us strangler dispatcher (rmpg-api-proxy) currently mis-routes
+// some methods: POST /api/records/businesses 404s because the dispatcher sends
+// it to the legacy Worker (no handler) instead of the rewrite, while the
+// rewrite at api.rmpgutah.us serves it correctly (verified: proxy POST → 404,
+// direct POST → 400). `directWorker: true` bypasses the dispatcher for the
+// affected calls. Safe: the rewrite has permissive CORS for rmpgutah.us and
+// uses Bearer auth (no cookies), and a live probe confirmed connect-src allows
+// this origin. REMOVE these opt-ins once the dispatcher binding is fixed.
+const CF_WORKER_DIRECT_BASE = 'https://api.rmpgutah.us';
+
 export async function apiFetch<T>(
   endpoint: string,
-  options?: RequestInit & { timeoutMs?: number }
+  options?: RequestInit & { timeoutMs?: number; directWorker?: boolean }
 ): Promise<T> {
   const relativeUrl = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
-  const url = maybeRedirectToCfWorker(relativeUrl);
+  const url = options?.directWorker ? `${CF_WORKER_DIRECT_BASE}${relativeUrl}` : maybeRedirectToCfWorker(relativeUrl);
   const method = options?.method || 'GET';
 
   // Network = activity. Signal the idle backstop (Layout.tsx Feature 24) on

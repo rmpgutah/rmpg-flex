@@ -51,6 +51,11 @@ import {
 } from '../utils/serveIntakeExtract';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
 import { emitAlert } from '../utils/alertHub';
+import {
+  findLocationNote, listLocationNotes, createLocationNote,
+  updateLocationNote, deactivateLocationNote,
+  type CreateNoteInput,
+} from '../utils/serveLocationNotes';
 import { LIST_VIEW_COLUMNS } from './dispatch/calls';
 
 const si = new Hono<Env>();
@@ -491,6 +496,12 @@ si.post('/upload', async (c) => {
     } catch { /* ignore malformed overrides blob */ }
   }
 
+  // Operator-selected client_id (integer FK) sent as a separate FormData field
+  // so it doesn't get coerced through the string-only field_overrides path.
+  const clientIdRaw = form.get('client_id');
+  const clientId = typeof clientIdRaw === 'string' && /^\d+$/.test(clientIdRaw.trim())
+    ? Number(clientIdRaw.trim()) : null;
+
   // Expose under the same name the rest of the handler already reads.
   const combined = { error: combinedError } as { error: string | null };
 
@@ -560,6 +571,7 @@ si.post('/upload', async (c) => {
       userId: user.id,
       documentSummary: docSummary,
       docCount: documents.length,
+      clientId,
       // Per-document OCR provenance → "OCR & EXTRACTION CONTEXT" note on the
       // call + compact line on serve_queue.notes + parsed_data._intake audit.
       docs: documents.map((d) => ({
@@ -1048,6 +1060,11 @@ si.get('/', async (c) => {
 // for the next 14 days, grouped by date. Used by the dashboard calendar.
 si.get('/schedule', async (c) => {
   const db = getDb(c.env);
+  // Guard: table may not exist on live yet (migration pending).
+  const tableExists = await queryFirst<{ n: number }>(
+    db, `SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='serve_attempt_schedules'`,
+  );
+  if (!tableExists?.n) return c.json({ schedule: [], generated_at: '' });
   const { denverNow } = await import('../utils/serveAttemptScheduler');
   const now = denverNow();
   // "14 days out" in the same local-time string format
@@ -1109,6 +1126,58 @@ si.delete('/schedule/:slotId', async (c) => {
   const db = getDb(c.env);
   await execute(db, 'UPDATE serve_attempt_schedules SET dismissed = 1 WHERE id = ?', slotId);
   return c.json({ success: true });
+});
+
+// ── GET /record-lookup — property + business match for the review panel ──
+// Lightweight search used by ServeRecordMatchPanel to show gate codes,
+// alarm codes, and key-holder info from existing records while the
+// operator is still reviewing the extracted fields before submitting.
+si.get('/record-lookup', async (c) => {
+  const db = getDb(c.env);
+  const addressQ = (c.req.query('address') || '').trim();
+  const nameQ = (c.req.query('business_name') || '').trim();
+  const { normAddr } = await import('../utils/serveIntakeRecords');
+
+  let property: any = null;
+  if (addressQ) {
+    const norm = normAddr(addressQ);
+    const candidates = await query<any>(
+      db,
+      `SELECT id, name, address, gate_code, alarm_code, alarm_account,
+              alarm_company, key_holder_name, key_holder_phone,
+              post_orders, access_instructions, hazard_notes
+         FROM properties
+        WHERE LOWER(address) LIKE ? LIMIT 10`,
+      `%${norm.split(' ').slice(0, 4).join(' ')}%`,
+    );
+    for (const row of candidates) {
+      if (normAddr(row.address) === norm) { property = row; break; }
+    }
+  }
+
+  let business: any = null;
+  if (nameQ) {
+    business = await queryFirst<any>(
+      db,
+      `SELECT id, name, address, owner_name, owner_phone,
+              contact_name, contact_phone, phone, notes
+         FROM businesses WHERE LOWER(name) = LOWER(?) LIMIT 1`,
+      nameQ,
+    ) ?? null;
+  }
+
+  return c.json({ property, business });
+});
+
+// ── GET /clients — active clients for the intake client selector ──
+si.get('/clients', async (c) => {
+  const db = getDb(c.env);
+  const rows = await query<{ id: number; name: string; contact_name: string | null; contact_phone: string | null }>(
+    db,
+    `SELECT id, name, contact_name, contact_phone
+       FROM clients WHERE status = 'active' ORDER BY name ASC`,
+  );
+  return c.json(rows);
 });
 
 // ── GET /:id ────────────────────────────────────────────────
@@ -1379,6 +1448,109 @@ si.get('/export.csv', async (c) => {
       'Content-Disposition': 'attachment; filename="serve-queue.csv"',
     },
   });
+});
+
+// ── GET /map-items — geocoded queue items for the intake map ──
+si.get('/map-items', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  // Join next scheduled attempt window per queue item for popup display.
+  const rows = await query<{
+    id: number; status: string; priority: string;
+    recipient_name: string | null; recipient_address: string | null;
+    recipient_city: string | null; recipient_state: string | null;
+    document_type: string | null; case_number: string | null;
+    deadline: string | null; attempt_count: number; recipient_type: string | null;
+    recipient_lat: number | null; recipient_lng: number | null;
+    location_note_id: number | null; location_note_text: string | null;
+    next_attempt_date: string | null; next_attempt_window: string | null;
+  }>(
+    db,
+    `SELECT q.id, q.status, q.priority,
+            q.recipient_name, q.recipient_address, q.recipient_city, q.recipient_state,
+            q.document_type, q.case_number, q.deadline, q.attempt_count,
+            q.parsed_data->>'recipient_type' AS recipient_type,
+            q.parsed_data->>'recipient_lat'  AS recipient_lat,
+            q.parsed_data->>'recipient_lng'  AS recipient_lng,
+            sn.id   AS location_note_id,
+            sn.note_text AS location_note_text,
+            ns.scheduled_date AS next_attempt_date,
+            ns.window_start || '–' || ns.window_end AS next_attempt_window
+     FROM serve_queue q
+     LEFT JOIN serve_attempt_schedules ns ON ns.id = (
+       SELECT id FROM serve_attempt_schedules
+       WHERE queue_id = q.id AND dismissed = 0 AND notified = 0
+       ORDER BY scheduled_date ASC, window_start ASC LIMIT 1
+     )
+     LEFT JOIN serve_location_notes sn ON sn.id = ns.location_note_id AND sn.active = 1
+     WHERE q.status NOT IN ('served','cancelled','failed')
+     ORDER BY q.priority DESC, q.deadline ASC NULLS LAST
+     LIMIT 500`,
+  );
+  return c.json(rows);
+});
+
+// ── Location notes — CRUD + lookup ───────────────────────────
+
+si.get('/location-notes', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const { search, active_only } = c.req.query() as Record<string, string>;
+  const notes = await listLocationNotes(db, {
+    search: search || undefined,
+    active_only: active_only !== 'false',
+  });
+  return c.json(notes);
+});
+
+si.get('/location-notes/lookup', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const { businessName, personName, address } = c.req.query() as Record<string, string>;
+  const note = await findLocationNote(db, {
+    businessName: businessName || null,
+    personName: personName || null,
+    address: address || null,
+  });
+  return c.json(note ?? null);
+});
+
+si.post('/location-notes', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const body = await c.req.json<CreateNoteInput>();
+  if (!body.note_text?.trim()) return c.json({ error: 'note_text required' }, 400);
+  if (!body.entity_type) return c.json({ error: 'entity_type required' }, 400);
+  const id = await createLocationNote(db, {
+    ...body,
+    created_by: c.var.user?.id ?? null,
+  });
+  return c.json({ id }, 201);
+});
+
+si.put('/location-notes/:noteId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const id = Number(c.req.param('noteId'));
+  if (!id) return c.json({ error: 'invalid id' }, 400);
+  const body = await c.req.json<Partial<CreateNoteInput>>();
+  await updateLocationNote(db, id, body);
+  return c.json({ ok: true });
+});
+
+si.delete('/location-notes/:noteId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const id = Number(c.req.param('noteId'));
+  if (!id) return c.json({ error: 'invalid id' }, 400);
+  await deactivateLocationNote(db, id);
+  return c.json({ ok: true });
 });
 
 export default si;
