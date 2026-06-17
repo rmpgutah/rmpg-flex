@@ -133,10 +133,10 @@ describe('roboflowAlpr — smoke test (runs the function on one sample image)', 
     // Capture normalized from the real shapes.
     expect(result.capture.plate).toBe('8XYZ123');              // license_plate_text
     expect(result.capture.state).toBe('Utah');                 // vehicle_details.license_plate_state_or_region
-    expect(result.capture.make).toBe('Toyota');                // vehicle_details.make
-    expect(result.capture.model).toBe('Camry');
-    expect(result.capture.color).toBe('silver');               // color_primary
-    expect(result.capture.year).toBe(2018);                    // parsed from year_range "2018-2020"
+    expect(result.capture.make).toBe('TOYOTA');                // vehicle_details.make (normalized)
+    expect(result.capture.model).toBe('CAMRY');
+    expect(result.capture.color).toBe('SILVER');               // color_primary (normalized)
+    expect(result.capture.year).toBe(2019);                    // midpoint of year_range "2018-2020"
     expect(result.capture.vehicleType).toBe('sedan');
     expect(result.capture.confidence).toBeCloseTo(0.93);       // enhanced_alpr_record.vehicles[0].field_confidence.plate
     expect(result.capture.riskScore).toBe(12);
@@ -216,12 +216,12 @@ describe('roboflowAlpr — unfences markdown-wrapped LLM JSON (the 0-vehicles bu
     const vehicles = parseVehicles(entry);
     expect(vehicles).toHaveLength(1);
     expect(vehicles[0].plate).toBe('7ABC890');
-    expect(vehicles[0].make).toBe('Ford');
+    expect(vehicles[0].make).toBe('FORD');
     expect(vehicles[0].confidence).toBeCloseTo(0.88);
 
     const cap = normalizeCapture(entry);
     expect(cap.plate).toBe('7ABC890');
-    expect(cap.make).toBe('Ford');
+    expect(cap.make).toBe('FORD');
 
     // parseAlprResponse stores the PARSED object (not the raw fenced string) so
     // the route's raw_json persists real structured detail.
@@ -280,13 +280,13 @@ describe('roboflowAlpr — unfences markdown-wrapped LLM JSON (the 0-vehicles bu
     // Vehicle extracted (the whole point) — plate normalized, make/model read.
     expect(result.vehicles).toHaveLength(1);
     expect(result.vehicles[0].plate).toBe('34T6511');
-    expect(result.vehicles[0].make).toBe('Mercedes-Benz');
+    expect(result.vehicles[0].make).toBe('MERCEDES-BENZ');
     expect(result.vehicles[0].confidence).toBeCloseTo(0.9);
 
     // Capture summary populated from the record (no separate OCR/vehicle_details object).
     expect(result.capture.plate).toBe('34T6511');
-    expect(result.capture.make).toBe('Mercedes-Benz');
-    expect(result.capture.color).toBe('Green');
+    expect(result.capture.make).toBe('MERCEDES-BENZ');
+    expect(result.capture.color).toBe('GREEN');
 
     // Both detection outputs flattened (car + per-crop license plate box).
     expect(result.detections.map((d) => d.class).sort()).toEqual(['License_Plate', 'car']);
@@ -380,9 +380,9 @@ describe('normalizeCapture (grounded to real output shapes)', () => {
       misc_scalar: 'keep',
     });
     expect(cap.plate).toBe('7ABC123'); // uppercased, spaces stripped
-    expect(cap.make).toBe('Ford');
+    expect(cap.make).toBe('FORD');
     expect(cap.model).toBe('F-150');
-    expect(cap.color).toBe('white');
+    expect(cap.color).toBe('WHITE');
     expect(cap.year).toBe(2021);
     expect(cap.state).toBe('UT');
     expect(cap.vehicleType).toBe('pickup');
@@ -390,8 +390,8 @@ describe('normalizeCapture (grounded to real output shapes)', () => {
   });
   it('handles vehicle_details delivered as a JSON string', () => {
     const cap = normalizeCapture({ vehicle_details: JSON.stringify({ make: 'Honda', color_primary: 'blue' }) });
-    expect(cap.make).toBe('Honda');
-    expect(cap.color).toBe('blue');
+    expect(cap.make).toBe('HONDA');
+    expect(cap.color).toBe('BLUE');
   });
   it('flags alerts on watchlist_hit / alert_required', () => {
     expect(normalizeCapture({ watchlist_hit: true }).alerted).toBe(true);
@@ -431,13 +431,13 @@ describe('parseVehicles (every vehicle in the frame)', () => {
     expect(vehicles).toHaveLength(1);
     expect(vehicles[0].plate).toBe('DUP111');
     expect(vehicles[0].confidence).toBeCloseTo(0.95);
-    expect(vehicles[0].color).toBe('gray');
+    expect(vehicles[0].color).toBe('GRAY');
   });
   it('falls back to vehicle_details when there is no vehicles[] list', () => {
     const vehicles = parseVehicles({ vehicle_details: { license_plate_text: 'SOLO1', make: 'Tesla' } });
     expect(vehicles).toHaveLength(1);
     expect(vehicles[0].plate).toBe('SOLO1');
-    expect(vehicles[0].make).toBe('Tesla');
+    expect(vehicles[0].make).toBe('TESLA');
   });
   it('falls back to a bare license_plate_text', () => {
     expect(parseVehicles({ license_plate_text: 'BARE 9' })[0].plate).toBe('BARE9');
@@ -603,7 +603,7 @@ describe('roboflowAlpr — advanced scanner (damage + 85% acceptance gate)', () 
 
     // The gate: plate/make accepted (≥0.85); condition NOT (0.7) but still present
     // on the vehicle as an observation (route stores it labelled unverified).
-    expect(acceptByConfidence(v.make, v.confidences.make)).toBe('Ford');
+    expect(acceptByConfidence(v.make, v.confidences.make)).toBe('FORD');
     expect(acceptByConfidence(v.condition, v.confidences.condition)).toBeNull();
 
     const cap = normalizeCapture(entry);
