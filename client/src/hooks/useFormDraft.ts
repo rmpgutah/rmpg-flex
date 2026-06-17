@@ -31,8 +31,9 @@ interface UseFormDraftReturn<T> {
    * Clear the draft from storage. Pass `{ resetForm: false }` to suppress the
    * form-state reset (useful when calling just before delegating to onSubmit so
    * the form doesn't visually blank out before the parent closes the modal).
+   * Also safe to use directly as an onClick handler — MouseEvent is ignored.
    */
-  clearDraft: (opts?: { resetForm?: boolean }) => void;
+  clearDraft: (opts?: { resetForm?: boolean } | Event) => void;
   /** Manually save current form to storage */
   saveDraft: () => void;
   /** Take a snapshot of the current form as the "clean" baseline */
@@ -156,10 +157,12 @@ export function useFormDraft<T>({
     initialRef.current = JSON.stringify(formRef.current);
   }, []);
 
-  // Clear draft and reset
-  const clearDraft = useCallback((opts?: { resetForm?: boolean }) => {
+  // Clear draft and reset.
+  // Accepts an optional Event (when used directly as onClick) — ignored at runtime.
+  const clearDraft = useCallback((optsOrEvent?: { resetForm?: boolean } | Event) => {
     clearedRef.current = true; // prevent unmount from re-saving after a successful save
     localStorage.removeItem(storageKey);
+    const opts = (optsOrEvent == null || optsOrEvent instanceof Event) ? undefined : optsOrEvent;
     if (opts?.resetForm !== false) {
       setFormRaw(defaultValue);
       initialRef.current = '';
