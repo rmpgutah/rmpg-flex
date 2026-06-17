@@ -9,13 +9,14 @@
 
 import type { Bindings } from '../types';
 import { getDb, query, queryFirst, execute } from './db';
-import { enqueueFootage, ensureFootageSchema, runRequestPass } from './footage/captureOrchestrator';
+import { enqueueFootage, ensureFootageSchema, runRequestPass, pollAndDownload } from './footage/captureOrchestrator';
 import { getApiConfig, isEnabled } from './clearpathGps';
 
 // A gap of 15+ minutes between GPS pings means the vehicle was stopped / engine off.
 const TRIP_GAP_MS = 15 * 60 * 1000;
-// Minimum trip duration to be worth requesting footage for (5 min).
-const MIN_TRIP_MS = 5 * 60 * 1000;
+// Minimum trip duration to be worth requesting footage for (2 min — shorter catches
+// brief stops/turnarounds while still excluding single GPS pings).
+const MIN_TRIP_MS = 2 * 60 * 1000;
 // Maximum number of trips to enqueue per full-drive job.
 const MAX_TRIPS = 20;
 
@@ -83,18 +84,22 @@ async function detectTrips(
   const toIso = new Date(toMs).toISOString();
 
   // Option 1: Use already-detected unit_trips for this unit.
+  // Filter by real duration (≥ MIN_TRIP_SEC) so single-ping GPS records are excluded.
+  const MIN_TRIP_SEC = Math.ceil(MIN_TRIP_MS / 1000);
   if (unitId) {
     const rows = await query<{ start_time: string; end_time: string }>(db, `
       SELECT start_time, end_time FROM unit_trips
       WHERE unit_id = ? AND status = 'closed'
         AND start_time >= ? AND start_time <= ?
+        AND end_time IS NOT NULL
+        AND (strftime('%s', end_time) - strftime('%s', start_time)) >= ?
       ORDER BY start_time ASC LIMIT ?`,
-      unitId, fromIso, toIso, MAX_TRIPS,
+      unitId, fromIso, toIso, MIN_TRIP_SEC, MAX_TRIPS,
     ).catch(() => []);
     if (rows.length) {
       return rows.map((r, i) => {
         const f = Date.parse(r.start_time);
-        const t = Date.parse(r.end_time || toIso);
+        const t = Date.parse(r.end_time);
         return { fromMs: f, toMs: t, label: buildTripLabel(i + 1, f, t) };
       });
     }
@@ -271,4 +276,11 @@ export async function maybePollFullDriveChunks(env: Bindings): Promise<void> {
     return null;
   });
   if (r?.requested) console.log(`[full-drive] requested ${r.requested} chunks`);
+
+  // Also run the download pass so requested → downloaded without flexcam_enabled gate.
+  const d = await pollAndDownload(env).catch((err) => {
+    console.error('[full-drive] download pass failed:', (err as Error).message);
+    return null;
+  });
+  if (d?.downloaded) console.log(`[full-drive] downloaded ${d.downloaded} chunks`);
 }
