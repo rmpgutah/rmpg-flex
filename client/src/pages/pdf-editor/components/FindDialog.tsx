@@ -60,7 +60,7 @@ export default function FindDialog({ open, onClose, currentPage, onJumpTo }: Pro
 
   if (!open) return null;
   return (
-    <div className="fixed top-[120px] right-2 left-2 md:left-auto md:right-6 z-40 bg-[#141414] border border-[#222] rounded-[2px] p-2 shadow-lg w-auto md:w-[320px]">
+    <div className="fixed top-[120px] right-2 left-2 md:left-auto md:right-6 z-40 bg-surface-base border border-border-default rounded-[2px] p-2 shadow-lg w-auto md:w-[320px]">
       <div className="flex items-center gap-1.5">
         <Search className="w-3.5 h-3.5 text-rmpg-400" />
         <input id="ff-finddialog-0" ref={inputRef} type="text" value={query} onChange={e => setQuery(e.target.value)}
@@ -69,7 +69,7 @@ export default function FindDialog({ open, onClose, currentPage, onJumpTo }: Pro
             else if (e.key === 'Escape') onClose();
           }}
           placeholder="Find in document…"
-          className="flex-1 bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
+          className="flex-1 bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
         <span className="text-[10px] text-rmpg-500 min-w-[60px] text-right">
           {matchCount === 0 ? (query ? 'no match' : '') : `${active + 1} / ${matchCount}`}
         </span>

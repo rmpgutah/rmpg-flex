@@ -457,7 +457,7 @@ export default function DashCamerasPage() {
       <div className="flex items-center gap-2 px-2 py-1.5 flex-shrink-0"
         style={{ background: 'linear-gradient(180deg, var(--surface-overlay), var(--surface-raised))', borderBottom: '1px solid var(--surface-raised)' }}>
         <Video className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
-        <span className="text-[10px] font-semibold text-rmpg-200 truncate flex-1">{selectedVideo.title}</span>
+        <span className="text-[10px] font-semibold text-rmpg-200 min-w-0 truncate flex-1">{selectedVideo.title}</span>
         <button type="button" onClick={() => setPlayingVideo(selectedVideo)} className="toolbar-btn p-1" title="Full screen player with HUD">
           <Maximize2 className="w-3 h-3" />
         </button>

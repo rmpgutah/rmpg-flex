@@ -86,7 +86,7 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
   }, [pdfBytes, pageOrder, thumbScale]);
 
   return (
-    <div className={`bg-[#0d0d0d] border border-[#222222] rounded-[2px] ${large ? 'w-[210px]' : 'w-[140px]'} overflow-y-auto flex-shrink-0 p-1.5 space-y-2`}>
+    <div className={`bg-surface-base border border-border-default rounded-[2px] ${large ? 'w-[210px]' : 'w-[140px]'} overflow-y-auto flex-shrink-0 p-1.5 space-y-2`}>
       <div className="flex items-center justify-between px-1 pt-1">
         <div className="text-[9px] text-rmpg-500 uppercase tracking-wider">Pages</div>
         {onToggleSize && (
@@ -131,14 +131,14 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
             className={`group relative rounded-sm border ${
               isDropTarget ? 'border-[#d4a017] border-dashed bg-[#d4a017]/10' :
               batchSelected ? 'border-[#d4a017] ring-1 ring-[#d4a017]' :
-              active ? 'border-[#d4a017]' : 'border-[#222]'
+              active ? 'border-[#d4a017]' : 'border-border-default'
             } bg-black p-1 ${isDragSource ? 'opacity-40' : ''} ${onReorder ? 'cursor-grab active:cursor-grabbing' : ''}`}>
 
             {onTogglePageSelect && (
               <button type="button" onClick={(e) => { e.stopPropagation(); onTogglePageSelect(idx); }}
                 aria-label={batchSelected ? `Deselect page ${pageNumber}` : `Select page ${pageNumber} for batch ops`}
                 title="Select for batch rotate / crop-all"
-                className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded-sm border flex items-center justify-center text-[9px] ${batchSelected ? 'bg-[#d4a017] border-[#d4a017] text-black' : 'bg-black/70 border-[#444] text-transparent'}`}>
+                className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded-sm border flex items-center justify-center text-[9px] ${batchSelected ? 'bg-[#d4a017] border-[#d4a017] text-black' : 'bg-black/70 border-rmpg-600 text-transparent'}`}>
                 ✓
               </button>
             )}

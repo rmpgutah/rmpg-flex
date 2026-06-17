@@ -109,7 +109,7 @@ function TripRow({ trip, active, showUnit, onOpen }: { trip: Trip; active: boole
           </span>
         )}
         {isResponse && trip.call_type && (
-          <span className="text-[9px] text-rmpg-400 truncate flex-1" title={trip.call_type}>
+          <span className="text-[9px] text-rmpg-400 min-w-0 truncate flex-1" title={trip.call_type}>
             {trip.call_type.replace(/_/g, ' ')}
           </span>
         )}

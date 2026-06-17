@@ -45,7 +45,7 @@ export default function StatusBar({ editor }: { editor: Editor }) {
   );
 
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[10px] px-2 py-1 bg-[#0d0d0d] border border-[#222] rounded-[2px]">
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[10px] px-2 py-1 bg-surface-base border border-border-default rounded-[2px]">
       <Item label="words" value={stats.words} />
       <Item label="characters" value={stats.characters} />
       <Item label="sentences" value={stats.sentences} />
@@ -57,7 +57,7 @@ export default function StatusBar({ editor }: { editor: Editor }) {
         <Target className="w-3 h-3 text-rmpg-500 group-hover:text-[#d4a017]" />
         {goal > 0 ? (
           <>
-            <span className="w-16 h-1.5 bg-[#1a1a1a] rounded-full overflow-hidden inline-block">
+            <span className="w-16 h-1.5 bg-surface-raised rounded-full overflow-hidden inline-block">
               <span className="block h-full bg-[#d4a017]" style={{ width: `${pct}%` }} />
             </span>
             <span className="text-rmpg-300 tabular-nums">{pct}%</span>

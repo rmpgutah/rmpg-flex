@@ -57,7 +57,7 @@ export default function PredictionsPanel({
           )}
         </div>
         {onClose && (
-          <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#181818] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close predictions panel">
+          <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-surface-raised transition-colors duration-150 rounded-sm" title="Close" aria-label="Close predictions panel">
             <X size={12} className="text-rmpg-400" />
           </button>
         )}
@@ -105,7 +105,7 @@ export default function PredictionsPanel({
             </div>
 
             {/* ── Hotspot list ────────────────────────────── */}
-            <div className="max-h-[360px] space-y-1.5 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" style={{ scrollbarWidth: 'thin' }}>
+            <div className="max-h-[360px] space-y-1.5 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent" style={{ scrollbarWidth: 'thin' }}>
               {hotspots.map((hs, idx) => {
                 const color = confidenceColor(hs.score);
                 const label = confidenceLabel(hs.score);
@@ -116,7 +116,7 @@ export default function PredictionsPanel({
                 return (
                   <div
                     key={`${hs.latitude}-${hs.longitude}-${idx}`}
-                    className="rounded-sm overflow-hidden transition-all duration-150 hover:bg-[#171717]"
+                    className="rounded-sm overflow-hidden transition-all duration-150 hover:bg-surface-base"
                     style={{
                       background: '#050505',
                       border: '1px solid #282828',
@@ -168,7 +168,7 @@ export default function PredictionsPanel({
                           </div>
                         )}
                         {types.length > 0 && (
-                          <span className="text-[7px] font-mono text-rmpg-500 truncate flex-1" title={hs.top_types}>
+                          <span className="text-[7px] font-mono text-rmpg-500 min-w-0 truncate flex-1" title={hs.top_types}>
                             {types.slice(0, 2).join(' · ')}
                           </span>
                         )}

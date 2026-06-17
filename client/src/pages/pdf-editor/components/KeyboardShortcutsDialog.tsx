@@ -44,7 +44,7 @@ export default function KeyboardShortcutsDialog({ open, onClose }: Props) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#141414] border border-[#222] rounded-[2px] p-4 max-w-[600px] w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] p-4 max-w-[600px] w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
             <Keyboard className="w-4 h-4 text-[#d4a017]" /> Keyboard shortcuts
@@ -54,7 +54,7 @@ export default function KeyboardShortcutsDialog({ open, onClose }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-1 text-[11px]">
           {SHORTCUTS.map(([key, desc]) => (
             <div key={key} className="flex items-center justify-between gap-2 px-2 py-1 hover:bg-rmpg-700/30 rounded-sm">
-              <kbd className="bg-[#0a0a0a] border border-[#222] text-rmpg-200 px-1.5 py-0.5 rounded-sm font-mono text-[10px]">{key}</kbd>
+              <kbd className="bg-surface-sunken border border-border-default text-rmpg-200 px-1.5 py-0.5 rounded-sm font-mono text-[10px]">{key}</kbd>
               <span className="text-rmpg-400 text-right">{desc}</span>
             </div>
           ))}

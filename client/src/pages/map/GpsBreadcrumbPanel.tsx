@@ -313,7 +313,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
       )}
       {isOpen && (
         <div className="rounded-sm shadow-xl" style={{ width: 380, maxHeight: 'calc(100vh - 200px)', background: 'rgba(10, 10, 10, 0.95)', border: '1px solid #2b2b2b' }}>
-          <div className="flex items-center justify-between px-3 py-2 border-b border-[#2b2b2b]">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-rmpg-700">
             <div className="flex items-center gap-2">
               <History className="w-3.5 h-3.5 text-amber-400" />
               <span className="text-xs font-bold text-[#d4a017] uppercase tracking-widest">GPS History</span>
@@ -322,14 +322,14 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
           </div>
 
           {/* Unit selector + date range */}
-          <div className="p-3 space-y-2 border-b border-[#2b2b2b] bg-[rgba(0,0,0,0.2)]">
+          <div className="p-3 space-y-2 border-b border-rmpg-700 bg-[rgba(0,0,0,0.2)]">
             {unitsLoading ? (
               <div className="flex items-center gap-2 text-xs text-rmpg-400"><Loader2 className="w-3 h-3 animate-spin" /> Loading units...</div>
             ) : (
               <select id="ff-gpsbreadcrumbpanel-0"
                 value={selectedUnit || ''}
                 onChange={e => setSelectedUnit(Number(e.target.value) || null)}
-                className="w-full px-2 py-1.5 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-rmpg-100 focus:border-[#888888] focus:outline-none"
+                className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-[#888888] focus:outline-none"
               >
                 <option value="">Select a unit...</option>
                 {units.map(u => (
@@ -342,13 +342,13 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[9px] text-rmpg-400 block mb-0.5">From</label>
-                <input id="ff-gpsbreadcrumbpanel-1" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-rmpg-100" />
-                <input id="ff-gpsbreadcrumbpanel-2" type="time" value={timeFrom} onChange={e => setTimeFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-rmpg-100 mt-1" />
+                <input id="ff-gpsbreadcrumbpanel-1" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100" />
+                <input id="ff-gpsbreadcrumbpanel-2" type="time" value={timeFrom} onChange={e => setTimeFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 mt-1" />
               </div>
               <div>
                 <label className="text-[9px] text-rmpg-400 block mb-0.5">To</label>
-                <input id="ff-gpsbreadcrumbpanel-3" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-rmpg-100" />
-                <input id="ff-gpsbreadcrumbpanel-4" type="time" value={timeTo} onChange={e => setTimeTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-rmpg-100 mt-1" />
+                <input id="ff-gpsbreadcrumbpanel-3" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100" />
+                <input id="ff-gpsbreadcrumbpanel-4" type="time" value={timeTo} onChange={e => setTimeTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 mt-1" />
               </div>
             </div>
             <button type="button" onClick={loadTrail} disabled={!selectedUnit || loading}
@@ -365,7 +365,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
 
           {/* Playback controls */}
           {trail && (
-            <div className="px-3 py-2 border-b border-[#2b2b2b] bg-[rgba(0,0,0,0.15)]">
+            <div className="px-3 py-2 border-b border-rmpg-700 bg-[rgba(0,0,0,0.15)]">
               <div className="flex items-center gap-2">
                 <button type="button" onClick={() => stepPlayback(-1)} className="text-rmpg-400 hover:text-rmpg-100 p-1"><SkipBack className="w-3.5 h-3.5" /></button>
                 <button type="button" onClick={togglePlayback} className="text-rmpg-400 hover:text-rmpg-100 p-1">
@@ -374,7 +374,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                 <button type="button" onClick={() => stepPlayback(1)} className="text-rmpg-400 hover:text-rmpg-100 p-1"><SkipForward className="w-3.5 h-3.5" /></button>
                 <span className="text-[10px] text-rmpg-300 font-mono ml-1">{playbackIdx + 1}/{trail.points.length}</span>
                 <select id="ff-gpsbreadcrumbpanel-5" value={playbackSpeed} onChange={e => setPlaybackSpeed(Number(e.target.value))}
-                  className="ml-auto px-1.5 py-0.5 text-[10px] bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-rmpg-300">
+                  className="ml-auto px-1.5 py-0.5 text-[10px] bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-300">
                   <option value={1}>1x</option><option value={2}>2x</option><option value={5}>5x</option><option value={10}>10x</option>
                 </select>
               </div>
@@ -395,7 +395,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
 
           {/* Trail timeline scrubber */}
           {trail && trail.points.length > 0 && (
-            <div className="px-3 py-2 border-b border-[#2b2b2b]">
+            <div className="px-3 py-2 border-b border-rmpg-700">
               <div className="relative h-4 cursor-pointer" onClick={e => {
                 const rect = (e.target as HTMLElement).getBoundingClientRect?.() || e.currentTarget.getBoundingClientRect();
                 const pct = (e.clientX - (rect as DOMRect).left) / (rect as DOMRect).width;
@@ -403,7 +403,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                 setIsPlaying(false);
               }}>
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full h-1 bg-[#222222] rounded-full overflow-hidden">
+                  <div className="w-full h-1 bg-surface-raised rounded-full overflow-hidden">
                     <div style={{ width: `${(playbackIdx / Math.max(trail.points.length - 1, 1)) * 100}%`, height: '100%', background: '#f59e0b', borderRadius: 9999 }} />
                   </div>
                 </div>

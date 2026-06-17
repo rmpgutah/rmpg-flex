@@ -14,11 +14,11 @@ export default function ResultCard({ clustered, onSelect, onOpen, highlighted }:
 }) {
   const h = clustered.hit;
   return (
-    <div className={`bg-[#070707] rounded-[2px] p-2 flex items-center gap-3 border ${highlighted ? 'border-[#d4a017]' : 'border-[#1f1f1f] hover:border-[#3a3a3a]'}`}>
+    <div className={`bg-surface-overlay rounded-[2px] p-2 flex items-center gap-3 border ${highlighted ? 'border-[#d4a017]' : 'border-border-default hover:border-border-subtle'}`}>
       {h.type === 'person' && (
         h.photo_url
-          ? <img src={authedImageUrl(h.photo_url)} alt="" className="w-9 h-11 object-cover rounded-[2px] border border-[#2a2a2a] shrink-0" />
-          : <div className="w-9 h-11 bg-[#161616] border border-[#2a2a2a] rounded-[2px] shrink-0" />
+          ? <img src={authedImageUrl(h.photo_url)} alt="" className="w-9 h-11 object-cover rounded-[2px] border border-border-default shrink-0" />
+          : <div className="w-9 h-11 bg-[#161616] border border-border-default rounded-[2px] shrink-0" />
       )}
       <button className="flex-1 min-w-0 text-left" onClick={() => onSelect(h.type, h.id, h.label)}>
         <div className="flex items-center gap-2">
@@ -27,8 +27,8 @@ export default function ResultCard({ clustered, onSelect, onOpen, highlighted }:
             <span className="font-mono text-[8px] text-[#d4a017] border border-[#3a2a08] rounded-[2px] px-[4px]">{clustered.linkedCount} linked</span>
           )}
         </div>
-        <div className="text-[12px] text-[#e8e8e8] truncate">{h.label || `#${h.id}`}</div>
-        {h.snippet && <div className="text-[10px] text-[#666] truncate">{h.snippet}</div>}
+        <div className="text-[12px] text-rmpg-200 truncate">{h.label || `#${h.id}`}</div>
+        {h.snippet && <div className="text-[10px] text-rmpg-500 truncate">{h.snippet}</div>}
         <div className="flex gap-1 mt-[3px] flex-wrap">
           {h.flags.map((f) => (
             <span key={f} className="font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] bg-[#3a0d0a] text-[#ff6b5e]">{f}</span>
@@ -38,11 +38,11 @@ export default function ResultCard({ clustered, onSelect, onOpen, highlighted }:
           <div className="h-[3px] w-[60px] bg-[#161616] rounded-[2px] overflow-hidden" data-testid="relevance-bar">
             <div className="h-full bg-[#d4a017]" style={{ width: `${Math.max(8, Math.min(100, h.score))}%` }} />
           </div>
-          {h.date && <span className="font-mono text-[8px] text-[#555]">{h.date}</span>}
+          {h.date && <span className="font-mono text-[8px] text-rmpg-500">{h.date}</span>}
         </div>
       </button>
       <button onClick={() => onOpen(h.type, h.id)}
-        className="font-mono text-[8px] tracking-wide text-[#d4a017] border border-[#3a3a3a] rounded-[2px] px-2 py-[6px] uppercase shrink-0">Open</button>
+        className="font-mono text-[8px] tracking-wide text-[#d4a017] border border-border-subtle rounded-[2px] px-2 py-[6px] uppercase shrink-0">Open</button>
     </div>
   );
 }

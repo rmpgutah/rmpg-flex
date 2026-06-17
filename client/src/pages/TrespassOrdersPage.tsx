@@ -507,7 +507,7 @@ export default function TrespassOrdersPage() {
       {/* Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* List */}
-        <div className={`${selectedOrder && !isMobile ? 'w-[40%]' : 'w-full'} overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent border-r border-rmpg-700`}>
+        <div className={`${selectedOrder && !isMobile ? 'w-[40%]' : 'w-full'} overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent border-r border-rmpg-700`}>
           {loading && orders.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-rmpg-400"><Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading...</div>
           ) : orders.length === 0 ? (
@@ -566,7 +566,7 @@ export default function TrespassOrdersPage() {
 
         {/* Detail panel */}
         {selectedOrder && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h2 className="text-sm font-bold text-rmpg-100 font-mono">{selectedOrder.order_number}</h2>
@@ -693,7 +693,7 @@ export default function TrespassOrdersPage() {
                   <input id="ff-trespassorderspage-5" type="text" className="input-dark text-xs w-full min-h-[36px]" placeholder="Search person records..." aria-label="Search person records..."
                     value={personSearch} onChange={e => setPersonSearch(e.target.value)} />
                   {personResults.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-rmpg-600 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+                    <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-rmpg-600 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
                       {personResults.map((p: any) => (
                         <button key={p.id} type="button" onClick={() => selectPerson(p)}
                           className="w-full text-left px-3 py-1.5 text-xs text-rmpg-100 hover:bg-rmpg-700 flex items-center gap-2">
@@ -735,7 +735,7 @@ export default function TrespassOrdersPage() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                  <select id="ff-trespassorderspage-11" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
+                  <select id="ff-trespassorderspage-11" className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                     value={formData.sector_id || ''} onChange={e => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
@@ -743,7 +743,7 @@ export default function TrespassOrdersPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                  <select id="ff-trespassorderspage-12" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
+                  <select id="ff-trespassorderspage-12" className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                     value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {zonesForSection(formData.sector_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
@@ -751,7 +751,7 @@ export default function TrespassOrdersPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                  <select id="ff-trespassorderspage-13" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
+                  <select id="ff-trespassorderspage-13" className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                     value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
                     <option value="">—</option>
                     {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}

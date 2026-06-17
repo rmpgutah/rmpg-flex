@@ -132,7 +132,7 @@ export default function FlexCamPage() {
         <tbody>
           {reqs.map((r) => (
             <Fragment key={r.id}>
-              <tr className="border-b border-[#232323]">
+              <tr className="border-b border-border-default">
                 <td className="py-[2px]">{r.title || `Request ${r.id}`}</td>
                 <td>
                   <span>{r.status}</span>
@@ -170,7 +170,7 @@ export default function FlexCamPage() {
               </tr>
               {/* Court package result message */}
               {pkgResult[r.id] && (
-                <tr key={`pkg-${r.id}`} className="border-b border-[#232323]">
+                <tr key={`pkg-${r.id}`} className="border-b border-border-default">
                   <td colSpan={4} className="py-[2px] text-[#888] text-[10px]">
                     {pkgResult[r.id]}
                   </td>
@@ -178,9 +178,9 @@ export default function FlexCamPage() {
               )}
               {/* Custody chain */}
               {custodyOpen[r.id] !== undefined && custodyOpen[r.id] !== null && (
-                <tr key={`cust-${r.id}`} className="border-b border-[#232323]">
+                <tr key={`cust-${r.id}`} className="border-b border-border-default">
                   <td colSpan={4} className="py-1">
-                    <div className="rounded-[2px] border border-[#232323] bg-[#0b0b0b] p-2 text-[10px] text-[#888]">
+                    <div className="rounded-[2px] border border-border-default bg-surface-sunken p-2 text-[10px] text-[#888]">
                       <div className="mb-1 font-semibold text-[9px] text-[#d4a017] uppercase tracking-wide">
                         Chain of Custody
                       </div>
@@ -188,12 +188,12 @@ export default function FlexCamPage() {
                         <div>No custody entries.</div>
                       ) : (
                         custodyOpen[r.id]!.custody.map((entry, i) => (
-                          <div key={i} className="py-[1px] border-b border-[#232323] last:border-0">
+                          <div key={i} className="py-[1px] border-b border-border-default last:border-0">
                             <span className="text-[#d4a017]">{entry.action}</span>
                             {' — '}
                             <span>{entry.actor_name ?? (entry.actor_user_id != null ? `#${entry.actor_user_id}` : '')}</span>
-                            {entry.reason && <span className="ml-1 text-[#666]">({entry.reason})</span>}
-                            <span className="ml-2 text-[#555]">
+                            {entry.reason && <span className="ml-1 text-rmpg-500">({entry.reason})</span>}
+                            <span className="ml-2 text-rmpg-500">
                               {new Date(entry.created_at).toLocaleString()}
                             </span>
                           </div>

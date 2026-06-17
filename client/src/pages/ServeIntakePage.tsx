@@ -750,8 +750,8 @@ export default function ServeIntakePage() {
       {/* OCR Preview Modal */}
       {showOcrPreview && ocrPreview && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowOcrPreview(false)}>
-          <div className="bg-surface-base border border-[#222] rounded-sm max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#222]">
+          <div className="bg-surface-base border border-border-default rounded-sm max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
               <div className="flex items-center gap-2">
                 <Camera className="w-4 h-4 text-brand-400" />
                 <span className="text-xs font-bold text-rmpg-100 uppercase">OCR Extraction Review</span>
@@ -768,7 +768,7 @@ export default function ServeIntakePage() {
                 Document Type: <span className="text-rmpg-100 font-bold">{ocrPreview.documentType}</span>
                 {' | '} Extracted Fields: <span className="text-rmpg-100 font-bold">{previewFields.length}</span>
               </div>
-              <div className="w-full h-1.5 bg-[#222] rounded-sm overflow-hidden">
+              <div className="w-full h-1.5 bg-surface-raised rounded-sm overflow-hidden">
                 <div className={`h-full rounded-sm transition-all ${confidenceBar(ocrPreview.confidence)}`}
                   style={{ width: `${Math.min(100, ocrPreview.confidence * 100)}%` }} />
               </div>
@@ -787,7 +787,7 @@ export default function ServeIntakePage() {
                           type="text"
                           value={editingFields[key]}
                           onChange={e => setEditingFields(prev => ({ ...prev, [key]: e.target.value }))}
-                          className="w-full bg-[#111] border border-[#333] rounded-sm px-2 py-0.5 text-xs text-rmpg-100 mt-0.5"
+                          className="w-full bg-[#111] border border-border-subtle rounded-sm px-2 py-0.5 text-xs text-rmpg-100 mt-0.5"
                           autoFocus
                         />
                       ) : (
@@ -840,7 +840,7 @@ export default function ServeIntakePage() {
               )}
             </span>
           </div>
-          <div className="w-full h-1.5 bg-[#222] rounded-sm overflow-hidden">
+          <div className="w-full h-1.5 bg-surface-raised rounded-sm overflow-hidden">
             <div
               className={`h-full bg-[#d4a017] ${uploadPhase === 'analyzing' ? 'animate-pulse' : 'transition-all'}`}
               style={{ width: uploadPhase === 'analyzing' ? '100%' : `${uploadStat?.pct ?? 0}%` }}
@@ -1069,7 +1069,7 @@ function rawTextPreview(text: string): React.ReactNode {
       <summary className="text-[9px] text-rmpg-500 cursor-pointer hover:text-rmpg-300 uppercase tracking-wider">
         Raw OCR Text ({text.length} chars)
       </summary>
-      <pre className="mt-1 p-2 bg-[#050505] border border-[#1a1a1a] rounded-sm text-[9px] text-rmpg-400 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+      <pre className="mt-1 p-2 bg-surface-overlay border border-border-default rounded-sm text-[9px] text-rmpg-400 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
         {preview}
         {text.length > 1000 && <span className="text-red-400">\n...truncated ({text.length - 1000} more chars)</span>}
       </pre>

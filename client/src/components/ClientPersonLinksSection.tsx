@@ -40,12 +40,12 @@ interface ClientPersonLink {
 const RELATIONSHIP_OPTIONS = [
   { value: 'employee', label: 'Employee', color: 'bg-surface-sunken/40 text-rmpg-300 border-border-default/40' },
   { value: 'contact', label: 'Contact', color: 'bg-teal-900/40 text-teal-300 border-teal-700/40' },
-  { value: 'tenant', label: 'Tenant', color: 'bg-[#1f1f1f] text-rmpg-300 border-[#2e2e2e]' },
+  { value: 'tenant', label: 'Tenant', color: 'bg-surface-raised text-rmpg-300 border-rmpg-700' },
   { value: 'owner', label: 'Owner', color: 'bg-green-900/40 text-green-300 border-green-700/40' },
   { value: 'manager', label: 'Manager', color: 'bg-purple-900/40 text-purple-300 border-purple-700/40' },
   { value: 'subject', label: 'Subject', color: 'bg-amber-900/40 text-amber-300 border-amber-700/40' },
   { value: 'trespass_warning', label: 'Trespass Warning', color: 'bg-red-900/40 text-red-300 border-red-700/40' },
-  { value: 'frequent_visitor', label: 'Frequent Visitor', color: 'bg-[#141414] text-rmpg-300 border-[#2e2e2e]' },
+  { value: 'frequent_visitor', label: 'Frequent Visitor', color: 'bg-surface-base text-rmpg-300 border-rmpg-700' },
   { value: 'banned', label: 'Banned', color: 'bg-red-900/60 text-red-300 border-red-600/60' },
   { value: 'other', label: 'Other', color: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/40' },
 ];

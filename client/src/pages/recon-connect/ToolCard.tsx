@@ -322,10 +322,10 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
   const Icon = tool.icon;
   const diagnostic = !running && lastExit !== null && lastExit !== 0 ? diagnose(output, lastExit) : null;
   return (
-    <div className="bg-[#141414] border border-[#222] flex flex-col">
-      <div className="px-3 py-2 border-b border-[#222] flex items-center gap-2">
+    <div className="bg-surface-base border border-border-default flex flex-col">
+      <div className="px-3 py-2 border-b border-border-default flex items-center gap-2">
         <Icon className="w-4 h-4 text-[#d4a017]" />
-        <div className="text-[#d4d4d4] text-xs font-semibold flex-1">{tool.title}</div>
+        <div className="text-rmpg-200 text-xs font-semibold flex-1">{tool.title}</div>
         {binaryName && installed !== null && (
           <div className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 border flex items-center gap-1 ${
             installed ? 'text-[#7fd38a] border-[#2e7d32]' : 'text-[#d4a017] border-[#d4a017]/60'
@@ -335,7 +335,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           </div>
         )}
         <div className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 border ${
-          running ? 'text-[#7fd38a] border-[#2e7d32]' : 'text-[#888] border-[#2e2e2e]'
+          running ? 'text-[#7fd38a] border-[#2e7d32]' : 'text-[#888] border-rmpg-700'
         }`}>
           {running ? 'RUNNING' : 'IDLE'}
         </div>
@@ -351,12 +351,12 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           <div className="flex items-center gap-2 text-[10px]">
             <button
               onClick={() => setBulkMode(false)}
-              className={`px-2 py-0.5 border ${!bulkMode ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'border-[#2e2e2e] text-[#888] hover:text-[#d4a017]'}`}
+              className={`px-2 py-0.5 border ${!bulkMode ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'border-rmpg-700 text-[#888] hover:text-[#d4a017]'}`}
             >Single</button>
             {tool.args.length === 1 && (
               <button
                 onClick={() => setBulkMode(true)}
-                className={`px-2 py-0.5 border flex items-center gap-1 ${bulkMode ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'border-[#2e2e2e] text-[#888] hover:text-[#d4a017]'}`}
+                className={`px-2 py-0.5 border flex items-center gap-1 ${bulkMode ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'border-rmpg-700 text-[#888] hover:text-[#d4a017]'}`}
                 title="Run this tool against multiple targets sequentially"
               >
                 <Layers className="w-3 h-3" /> Bulk
@@ -377,7 +377,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
                 value={formValues[arg.name] || ''}
                 onChange={(e) => setFormValues((f) => ({ ...f, [arg.name]: e.target.value }))}
                 disabled={running}
-                className="bg-[#050505] border border-[#2e2e2e] text-[#d4d4d4] text-[11px] font-mono px-2 py-1 focus:border-[#d4a017] outline-none disabled:opacity-50"
+                className="bg-surface-overlay border border-rmpg-700 text-rmpg-200 text-[11px] font-mono px-2 py-1 focus:border-[#d4a017] outline-none disabled:opacity-50"
               />
               {suggestions.length > 0 && (
                 <datalist id={listId}>
@@ -398,7 +398,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
               onChange={(e) => setBulkTargets(e.target.value)}
               disabled={running}
               rows={4}
-              className="bg-[#050505] border border-[#2e2e2e] text-[#d4d4d4] text-[11px] font-mono px-2 py-1 focus:border-[#d4a017] outline-none disabled:opacity-50 resize-y"
+              className="bg-surface-overlay border border-rmpg-700 text-rmpg-200 text-[11px] font-mono px-2 py-1 focus:border-[#d4a017] outline-none disabled:opacity-50 resize-y"
             />
             {bulkProgress && (
               <div className="text-[10px] text-[#d4a017]">
@@ -418,7 +418,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           <button
             onClick={stop}
             disabled={!running}
-            className="px-3 py-1.5 bg-[#1a1a1a] border border-[#b33] text-[#ff8888] text-xs hover:bg-[#2a1414] disabled:opacity-40 flex items-center gap-1.5"
+            className="px-3 py-1.5 bg-surface-raised border border-[#b33] text-[#ff8888] text-xs hover:bg-[#2a1414] disabled:opacity-40 flex items-center gap-1.5"
           >
             <Square className="w-3.5 h-3.5" /> Stop
           </button>
@@ -426,7 +426,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
             <button
               onClick={installPkg}
               disabled={running}
-              className="px-3 py-1.5 bg-[#1a1a1a] border border-[#d4a017] text-[#d4a017] text-xs hover:bg-[#242424] disabled:opacity-40 flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-surface-raised border border-[#d4a017] text-[#d4a017] text-xs hover:bg-surface-raised disabled:opacity-40 flex items-center gap-1.5"
             >
               <Download className="w-3.5 h-3.5" /> Install {tool.installPkg}
             </button>
@@ -497,22 +497,22 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           </div>
         )}
         {scheduleOpen && (
-          <div className="border border-[#2e2e2e] bg-[#0a0a0a] p-2 text-[10px] space-y-1.5">
+          <div className="border border-rmpg-700 bg-surface-sunken p-2 text-[10px] space-y-1.5">
             <div className="text-[#888]">Copy this line into your crontab (<code className="text-[#d4a017]">crontab -e</code>) to run every 6 hours:</div>
             <div className="flex gap-2 items-start">
-              <code className="flex-1 bg-[#050505] border border-[#1a1a1a] px-2 py-1 text-[#d4d4d4] font-mono break-all">{cronCommand}</code>
+              <code className="flex-1 bg-surface-overlay border border-border-default px-2 py-1 text-rmpg-200 font-mono break-all">{cronCommand}</code>
               <button
                 onClick={() => navigator.clipboard?.writeText(cronCommand)}
-                className="px-2 py-1 bg-[#1a1a1a] border border-[#2e2e2e] text-[#d4a017] text-[10px] hover:bg-[#242424] flex items-center gap-1 shrink-0"
+                className="px-2 py-1 bg-surface-raised border border-rmpg-700 text-[#d4a017] text-[10px] hover:bg-surface-raised flex items-center gap-1 shrink-0"
               >
                 <Copy className="w-3 h-3" /> Copy
               </button>
             </div>
-            <div className="text-[#555]">Note: cron uses your shell PATH, not Flex's — ensure the tool's binary is reachable (e.g., add to ~/.zshrc or use full path).</div>
+            <div className="text-rmpg-500">Note: cron uses your shell PATH, not Flex's — ensure the tool's binary is reachable (e.g., add to ~/.zshrc or use full path).</div>
           </div>
         )}
         {caseModalOpen && (
-          <div className="border border-[#d4a017] bg-[#0a0a0a] p-2 space-y-1.5">
+          <div className="border border-[#d4a017] bg-surface-sunken p-2 space-y-1.5">
             <div className="flex items-center gap-2">
               <Link2 className="w-3.5 h-3.5 text-[#d4a017]" />
               <div className="text-[10px] text-[#d4a017] uppercase tracking-wider font-semibold flex-1">Attach this scan to a case</div>
@@ -526,10 +526,10 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
                   <button
                     key={c.id}
                     onClick={() => linkToCase(c.id, c.case_number)}
-                    className="w-full text-left px-2 py-1.5 hover:bg-[#1a1a1a] flex items-baseline gap-2"
+                    className="w-full text-left px-2 py-1.5 hover:bg-surface-raised flex items-baseline gap-2"
                   >
                     <span className="text-[#d4a017] text-[10px] font-mono">{c.case_number}</span>
-                    {c.title && <span className="text-[#d4d4d4] text-[11px] truncate flex-1">{c.title}</span>}
+                    {c.title && <span className="text-rmpg-200 text-[11px] min-w-0 truncate flex-1">{c.title}</span>}
                     {c.status && <span className="text-[#888] text-[9px] uppercase">{c.status}</span>}
                   </button>
                 ))}
@@ -538,7 +538,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           </div>
         )}
         {historyOpen && (
-          <div className="border border-[#2e2e2e] bg-[#0a0a0a] divide-y divide-[#1a1a1a] max-h-48 overflow-auto">
+          <div className="border border-rmpg-700 bg-surface-sunken divide-y divide-[#1a1a1a] max-h-48 overflow-auto">
             {history.map((h, i) => (
               <div key={i} className="px-2 py-1.5 flex items-start gap-2 text-[10px]">
                 <button
@@ -551,7 +551,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
                   {' '}
                   <span className="text-[#888]">{new Date(h.ts).toLocaleString()}</span>
                   {Object.entries(h.args).filter(([, v]) => v).map(([k, v]) => (
-                    <span key={k} className="text-[#d4d4d4] ml-2">{k}={v}</span>
+                    <span key={k} className="text-rmpg-200 ml-2">{k}={v}</span>
                   ))}
                 </button>
                 <button
@@ -560,7 +560,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
                     localStorage.setItem(`rmpg:recon:history:${tool.id}`, JSON.stringify(next));
                     setHistory(next);
                   }}
-                  className="text-[#555] hover:text-[#ff8888]"
+                  className="text-rmpg-500 hover:text-[#ff8888]"
                   title="Remove entry"
                 >
                   <X className="w-3 h-3" />
@@ -577,16 +577,16 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
         )}
         <div
           ref={outputRef}
-          className="bg-[#050505] border border-[#1a1a1a] h-56 overflow-auto p-2 font-mono text-[11px] text-[#d4d4d4] whitespace-pre-wrap"
+          className="bg-surface-overlay border border-border-default h-56 overflow-auto p-2 font-mono text-[11px] text-rmpg-200 whitespace-pre-wrap"
         >
           {output.length === 0 ? (
-            <span className="text-[#555]">(no output yet)</span>
+            <span className="text-rmpg-500">(no output yet)</span>
           ) : (
             output.map((line, i) => (
               <span key={i} className={
                 line.kind === 'stderr' ? 'text-[#ff8888]' :
                 line.kind === 'meta'   ? 'text-[#d4a017]' :
-                                         'text-[#d4d4d4]'
+                                         'text-rmpg-200'
               }>{line.text}</span>
             ))
           )}

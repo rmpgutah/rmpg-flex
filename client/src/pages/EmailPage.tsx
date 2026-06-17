@@ -227,7 +227,7 @@ function ContactAutocompleteInput({
         className="input-dark w-full text-xs min-h-[36px]"
       />
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-lg max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent py-1">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-lg max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent py-1">
           {suggestions.map((contact, idx) => (
             <button type="button"
               key={`${contact.email}-${idx}`}
@@ -304,7 +304,7 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
             className={`text-[9px] px-1.5 py-0.5 rounded-sm capitalize ${filter === cat ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-rmpg-100'}`}>{cat}</button>
         ))}
       </div>
-      <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent py-1">
+      <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent py-1">
         {loading ? (
           <div className="py-4 text-center"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div>
         ) : filtered.length === 0 ? (
@@ -630,7 +630,7 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
           <div key={email.id} className="px-3 py-1.5 border-b border-border-subtle/30 group">
             <div className="flex items-center gap-1.5">
               <CalendarClock className={`w-3 h-3 flex-shrink-0 ${email.status === 'sent' ? 'text-green-500' : email.status === 'failed' ? 'text-red-400' : isPast ? 'text-amber-400' : 'text-brand-400'}`} />
-              <span className="text-[10px] text-rmpg-300 truncate flex-1">{email.subject || '(No subject)'}</span>
+              <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{email.subject || '(No subject)'}</span>
               {email.status === 'pending' && (
                 <button type="button" onClick={() => handleCancel(email.id)}
                   className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity" title="Cancel">
@@ -1156,13 +1156,13 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   return (
     <div className="fixed inset-0 z-50 print:hidden flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onKeyDown={handleKeyDown}>
       <div
-        className={`bg-[#141414] border border-[#2b2b2b] rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141414]' : ''}`}
+        className={`bg-surface-base border border-rmpg-700 rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141414]' : ''}`}
         onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c] rounded-t-sm">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700 bg-surface-sunken rounded-t-sm">
           <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
             {mode === 'reply' ? <Reply className="w-4 h-4 text-brand-400" /> :
              mode === 'reply-all' ? <ReplyAll className="w-4 h-4 text-brand-400" /> :
@@ -1225,7 +1225,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           </div>
         </div>
 
-        <div className="border-t border-[#2b2b2b] mx-4 my-0" />
+        <div className="border-t border-rmpg-700 mx-4 my-0" />
 
         {/* Formatting toolbar */}
         <div className="flex items-center gap-0.5 px-4 py-1">
@@ -1268,7 +1268,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         </div>
 
         {/* Body */}
-        <div className="flex-1 px-4 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+        <div className="flex-1 px-4 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           <RichTextArea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={12}
             className="w-full bg-transparent text-xs text-rmpg-200 resize-none outline-none placeholder:text-rmpg-600 leading-relaxed"
             placeholder="Write your message here...
@@ -1281,7 +1281,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
 
         {/* Reply context */}
         {replyMessage && (mode === 'reply' || mode === 'reply-all') && (
-          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-[#0c0c0c] border-l-2 border-l-brand-500/30 rounded-sm p-2.5">
+          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-surface-sunken border-l-2 border-l-brand-500/30 rounded-sm p-2.5">
             <div className="flex items-center gap-1.5 mb-1">
               <Reply className="w-3 h-3 text-brand-400" />
               <span className="text-rmpg-400 font-medium">{replyMessage.fromName || replyMessage.fromAddress}</span>
@@ -1308,7 +1308,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                 const isPdf = ext === 'pdf';
                 const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : '#8b5cf6';
                 return (
-                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm text-[10px] text-rmpg-300 group">
+                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] text-rmpg-300 group">
                     <div className="w-5 h-5 rounded-sm flex items-center justify-center text-[7px] font-bold uppercase"
                       style={{ backgroundColor: fileColor + '15', color: fileColor }}>{ext.slice(0, 3)}</div>
                     <span className="truncate max-w-[100px]">{att.name}</span>
@@ -1322,7 +1322,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#2b2b2b] bg-[#0c0c0c] rounded-b-sm">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-rmpg-700 bg-surface-sunken rounded-b-sm">
           <div className="text-[9px] text-rmpg-600">
             <span className="hidden sm:inline">Signature auto-appended • Markdown formatting supported</span>
             <span className="sm:hidden">Ctrl+Enter to send</span>
@@ -1404,7 +1404,7 @@ function MoveToFolderDropdown({ folders, currentFolder, onMove }: { folders: Ema
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen(!open)} className="p-1 text-rmpg-500 hover:text-rmpg-100" title="Move to folder"><FolderInput className="w-3.5 h-3.5" /></button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-surface-base border border-border-strong rounded-sm shadow-lg py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+        <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-surface-base border border-border-strong rounded-sm shadow-lg py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {folders.filter(f => getFolderKey(f) !== currentFolder).map(f => {
             const Icon = FOLDER_ICONS[f.displayName] || Folder;
             return (
@@ -1488,7 +1488,7 @@ function ContextMenu({
           <FolderInput className="w-3 h-3" /> Move to <ChevronRightIcon className="w-3 h-3 ml-auto" />
         </div>
         {showMoveMenu && (
-          <div className="absolute left-full top-0 min-w-[150px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+          <div className="absolute left-full top-0 min-w-[150px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
             {folders.filter(f => getFolderKey(f) !== currentFolder).map(f => {
               const Icon = FOLDER_ICONS[f.displayName] || Folder;
               return (
@@ -1529,7 +1529,7 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
 
   if (!expanded) {
     return (
-      <div className="border-t border-[#2b2b2b] bg-[#0c0c0c]">
+      <div className="border-t border-rmpg-700 bg-surface-sunken">
         <div
           role="button"
           tabIndex={0}
@@ -1541,7 +1541,7 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
               setTimeout(() => inputRef.current?.focus(), 50);
             }
           }}
-          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#2b2b2b] rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
+          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-rmpg-700 rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
           <Reply className="w-3.5 h-3.5 text-rmpg-600 group-hover:text-brand-400 transition-colors" />
           <span>Click here to reply...</span>
         </div>
@@ -1550,13 +1550,13 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
   }
 
   return (
-    <div className="border-t border-[#2b2b2b] bg-[#0c0c0c]">
-      <div className="mx-4 my-3 border border-[#2b2b2b] rounded-sm bg-[#141414] overflow-hidden focus-within:border-brand-500/40 transition-colors">
+    <div className="border-t border-rmpg-700 bg-surface-sunken">
+      <div className="mx-4 my-3 border border-rmpg-700 rounded-sm bg-surface-base overflow-hidden focus-within:border-brand-500/40 transition-colors">
         <RichTextArea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
           onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleSend(); } if (e.key === 'Escape') { setExpanded(false); setBody(''); } }}
           rows={4} className="w-full bg-transparent text-xs text-rmpg-200 p-3 resize-none focus:outline-none placeholder:text-rmpg-600 leading-relaxed"
           placeholder="Type your reply..." autoFocus />
-        <div className="flex items-center justify-between px-3 py-2 bg-[#0c0c0c]/50">
+        <div className="flex items-center justify-between px-3 py-2 bg-surface-sunken/50">
           <span className="text-[9px] text-rmpg-600 font-mono">Ctrl+Enter to send &middot; Esc to cancel</span>
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors">Cancel</button>
@@ -1663,7 +1663,7 @@ function HeadersModal({ messageId, onClose }: { messageId: string; onClose: () =
           <input value={hFilter} onChange={e => setHFilter(e.target.value)} placeholder="Filter headers (e.g. spf, dkim, received)…"
             className="input-dark w-full text-[10px] px-2 py-1 min-h-[32px]" aria-label="Filter headers" />
         </div>
-        <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {loading ? <Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /> : (
             <div className="space-y-1 font-mono text-[10px]">
               {internetMessageId && <div className="text-rmpg-400 break-all"><span className="text-brand-400">Message-ID:</span> {internetMessageId}</div>}
@@ -1814,14 +1814,14 @@ function CategoryMenu({ messageId, onApplied, onClose, onSnackbar }: {
   return (
     <div ref={ref} className="absolute right-0 top-full mt-1 z-50 w-56 bg-surface-base border border-border-strong rounded-sm shadow-xl py-1">
       <div className="px-3 py-1.5 text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider border-b border-border-subtle">Categorize</div>
-      <div className="max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         {loading ? <div className="py-3 text-center"><Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div> :
           cats.length === 0 ? <div className="py-3 text-center text-[10px] text-rmpg-600">No categories yet</div> :
           cats.map(cat => (
             <button type="button" key={cat.id} onClick={() => toggle(cat.displayName)}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100 transition-colors">
               <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: CATEGORY_PRESET_COLORS[cat.color] || '#888888' }} />
-              <span className="flex-1 text-left truncate">{cat.displayName}</span>
+              <span className="min-w-0 flex-1 text-left truncate">{cat.displayName}</span>
               {selected.has(cat.displayName) && <CheckCircle className="w-3 h-3 text-brand-400" />}
             </button>
           ))}
@@ -2586,7 +2586,7 @@ export default function EmailPage() {
                 className="flex-1 bg-transparent text-xs text-rmpg-100 border-b border-brand-500 outline-none" autoFocus
                 onClick={e => e.stopPropagation()} />
             ) : (
-              <span className="flex-1 text-left truncate">{f.displayName}</span>
+              <span className="min-w-0 flex-1 text-left truncate">{f.displayName}</span>
             )
           )}
 
@@ -2636,7 +2636,7 @@ export default function EmailPage() {
         )}
 
         {/* Folder list */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent py-1">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent py-1">
           {topLevelFolders.map(f => renderFolderItem(f))}
         </div>
 
@@ -2732,7 +2732,7 @@ export default function EmailPage() {
           <select id="ff-emailpage-17"
             value={selectedFolder}
             onChange={e => handleSelectFolder(e.target.value)}
-            className="flex-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-rmpg-100 focus:border-brand-500 focus:outline-none"
+            className="flex-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-rmpg-100 focus:border-brand-500 focus:outline-none"
           >
             {sortedFolders.map(f => {
               const key = getFolderKey(f);
@@ -2849,7 +2849,7 @@ export default function EmailPage() {
         )}
 
         {/* Message List (threaded) */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {loading && displayedMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
           ) : displayedMessages.length === 0 ? (
@@ -2926,7 +2926,7 @@ export default function EmailPage() {
                             }}
                           >
                             <div className="flex items-center gap-1.5 mb-0.5">
-                              <span className={`text-[11px] truncate flex-1 ${msg.isRead ? 'text-rmpg-300' : 'text-rmpg-100 font-semibold'}`}>
+                              <span className={`text-[11px] min-w-0 truncate flex-1 ${msg.isRead ? 'text-rmpg-300' : 'text-rmpg-100 font-semibold'}`}>
                                 {msg.fromName || msg.fromAddress}
                               </span>
                               {isMulti && !isExpanded && (
@@ -2995,7 +2995,7 @@ export default function EmailPage() {
               {/* Subject + back button */}
               <div className="flex items-center gap-2 px-4 pt-3 pb-2">
                 <button type="button" onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-rmpg-100 flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
-                <h2 className="text-sm font-semibold text-rmpg-100 flex-1 truncate">{fullMessage.subject || '(no subject)'}</h2>
+                <h2 className="text-sm font-semibold text-rmpg-100 min-w-0 flex-1 truncate">{fullMessage.subject || '(no subject)'}</h2>
                 {fullMessage.importance === 'high' && (
                   <span className="text-[8px] px-1.5 py-0.5 bg-red-900/20 text-red-400 rounded-sm font-bold uppercase flex-shrink-0 border border-red-700/20 tracking-wider">Important</span>
                 )}
@@ -3138,7 +3138,7 @@ export default function EmailPage() {
             </div>
 
             {/* Message Body */}
-            <div className={`flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent ${readingTheme === 'light' ? 'bg-white' : ''}`}>
+            <div className={`flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent ${readingTheme === 'light' ? 'bg-white' : ''}`}>
               {loadingMessage ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
               ) : fullMessage.bodyHtml ? (

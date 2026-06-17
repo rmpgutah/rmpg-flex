@@ -140,7 +140,7 @@ export default function SecurityDashboardPage() {
               {loginHistory.slice(0, 10).map(l => (
                 <div key={l.id} className="flex items-center gap-2 text-[10px] py-1 border-b border-rmpg-800">
                   {l.success ? <CheckCircle className="w-3 h-3 text-green-400 flex-shrink-0" /> : <XCircle className="w-3 h-3 text-red-400 flex-shrink-0" />}
-                  <span className="text-rmpg-100 flex-1 truncate">{l.full_name || `User #${l.user_id}`}</span>
+                  <span className="text-rmpg-100 min-w-0 flex-1 truncate">{l.full_name || `User #${l.user_id}`}</span>
                   <span className="text-rmpg-500 font-mono">{l.ip_address}</span>
                   <span className="text-rmpg-500">{formatDateTime(l.created_at)}</span>
                 </div>

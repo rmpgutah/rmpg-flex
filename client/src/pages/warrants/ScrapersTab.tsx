@@ -270,7 +270,7 @@ function ScraperLiveFeed({ entries }: { entries: LiveFeedEntry[] }) {
                 <span className="text-rmpg-400 w-14 flex-shrink-0">
                   {display.label}
                 </span>
-                <span className="text-rmpg-100 truncate flex-1">{display.detail}</span>
+                <span className="text-rmpg-100 min-w-0 truncate flex-1">{display.detail}</span>
               </div>
             );
           })
@@ -337,7 +337,7 @@ function ScraperSourceCard({
         <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-rmpg-900 text-rmpg-400 border border-rmpg-700 w-12 text-center">
           {TIER_LABELS[source.priority] || 'NORM'}
         </span>
-        <span className="text-xs text-rmpg-100 flex-1 truncate">{source.display_name}</span>
+        <span className="text-xs text-rmpg-100 min-w-0 flex-1 truncate">{source.display_name}</span>
         <span className="text-[10px] text-rmpg-500 w-10 text-right">{source.state}</span>
         <span
           className={`text-[10px] font-mono font-bold px-1.5 py-0.5 border w-6 text-center ${GRADE_BADGE_CLASSES[grade]}`}

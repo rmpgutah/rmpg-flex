@@ -93,7 +93,7 @@ export default function AnnotationsPanel(p: Props) {
   const pages = [...byPage.keys()].sort((a, b) => a - b);
 
   return (
-    <div className="bg-[#0d0d0d] border border-[#222] rounded-[2px] w-[260px] flex-shrink-0 overflow-y-auto p-2 space-y-2">
+    <div className="bg-surface-base border border-border-default rounded-[2px] w-[260px] flex-shrink-0 overflow-y-auto p-2 space-y-2">
       <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-[#d4a017] font-semibold px-1">
         <Layers className="w-3 h-3" /> Annotations ({filtered.length}{filtered.length !== p.annotations.length ? `/${p.annotations.length}` : ''})
       </div>
@@ -104,21 +104,21 @@ export default function AnnotationsPanel(p: Props) {
           <Search className="w-3 h-3 absolute left-1.5 top-1/2 -translate-y-1/2 text-rmpg-500" aria-hidden="true" />
           <input id="ff-annotationspanel-search" value={query} onChange={e => setQuery(e.target.value)}
             placeholder="Search text / note / author…"
-            className="w-full bg-[#0a0a0a] border border-[#222] text-[10px] text-rmpg-100 pl-6 pr-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
+            className="w-full bg-surface-sunken border border-border-default text-[10px] text-rmpg-100 pl-6 pr-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
           {query && (
             <button type="button" onClick={() => setQuery('')} aria-label="Clear search"
               className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100 text-[10px]">×</button>
           )}
         </div>
         <select id="ff-annotationspanel-typefilter" value={typeFilter} onChange={e => setTypeFilter(e.target.value as typeof typeFilter)}
-          className="w-full bg-[#0a0a0a] border border-[#222] text-[10px] text-rmpg-200 px-1.5 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]">
+          className="w-full bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1.5 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]">
           <option value="all">All types ({p.annotations.length})</option>
           {presentTypes.map(t => <option key={t} value={t}>{TYPE_LABELS[t] ?? t}</option>)}
         </select>
       </div>
 
       {layers.length > 0 && (
-        <div className="border-b border-[#222] pb-2">
+        <div className="border-b border-border-default pb-2">
           <div className="text-[9px] uppercase tracking-wider text-rmpg-500 mb-1 px-1">Layer visibility</div>
           {layers.map(l => {
             const visible = p.layerVisibility[l] !== false;

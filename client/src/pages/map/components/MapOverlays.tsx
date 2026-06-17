@@ -170,7 +170,7 @@ export default function MapOverlays({
             </span>
             <button type="button"
               onClick={clearRoute}
-              className="hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] rounded-sm"
+              className="hover:bg-surface-raised transition-all duration-150 active:scale-[0.97] rounded-sm"
               style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '2px 4px 2px 8px' }}
               aria-label="Clear route"
               title="Clear route"
@@ -267,7 +267,7 @@ export default function MapOverlays({
           }}
           className={`backdrop-blur-md shadow-xl transition-colors ${
             isLightMapStyle(mapStyle)
-              ? 'bg-white/90 border border-gray-300 hover:bg-[#181818]'
+              ? 'bg-white/90 border border-gray-300 hover:bg-surface-raised'
               : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
           }`}
           style={isMobile

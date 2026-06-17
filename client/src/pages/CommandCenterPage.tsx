@@ -148,7 +148,7 @@ export default function CommandCenterPage() {
                   <div key={alert.id} className="flex items-center gap-2 px-2 py-1 text-[10px] font-mono bg-red-900/10 border border-red-900/30">
                     <AlertTriangle style={{ width: 10, height: 10, color: '#ef4444' }} />
                     <span className="text-red-400 font-bold">{alert.title}</span>
-                    <span className="text-rmpg-400 truncate flex-1">{alert.details}</span>
+                    <span className="text-rmpg-400 min-w-0 truncate flex-1">{alert.details}</span>
                   </div>
                 ))}
               </div>

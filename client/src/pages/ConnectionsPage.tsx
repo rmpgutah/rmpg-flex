@@ -461,7 +461,7 @@ export default function ConnectionsPage() {
           <input id="ff-connectionspage-0"
             type="text"
             placeholder="Search for a person, vehicle, case, incident..."
-            className="flex-1 bg-surface-raised border border-rmpg-700 px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:border-[#d4a017] focus:outline-none"
+            className="flex-1 bg-surface-raised border border-rmpg-700 px-3 py-2 text-sm text-rmpg-200 placeholder-gray-500 focus:border-[#d4a017] focus:outline-none"
             style={{ borderRadius: 2 }}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
@@ -522,7 +522,7 @@ export default function ConnectionsPage() {
                       <li
                         key={inv.id}
                         onClick={() => openInvestigation(inv.id)}
-                        className="px-3 py-2 text-sm text-gray-200 cursor-pointer hover:bg-surface-sunken border-b border-border-subtle"
+                        className="px-3 py-2 text-sm text-rmpg-200 cursor-pointer hover:bg-surface-sunken border-b border-border-subtle"
                       >
                         <div className="font-semibold">{inv.name}</div>
                         {inv.description && <div className="text-xs text-rmpg-500 mt-0.5">{inv.description}</div>}
@@ -553,7 +553,7 @@ export default function ConnectionsPage() {
                 role="option"
                 aria-selected={false}
                 onClick={() => pickSeed(r)}
-                className="px-3 py-2 text-sm text-gray-200 cursor-pointer hover:bg-surface-sunken border-b border-border-subtle last:border-b-0"
+                className="px-3 py-2 text-sm text-rmpg-200 cursor-pointer hover:bg-surface-sunken border-b border-border-subtle last:border-b-0"
               >
                 <span className="text-[#d4a017] text-xs uppercase mr-2">{r.type}</span>
                 {r.label}
@@ -566,7 +566,7 @@ export default function ConnectionsPage() {
       {seed && (
         <div
           data-testid="seed-display"
-          className="px-3 py-2 bg-surface-raised border border-[#d4a017] text-sm text-gray-200 flex items-center gap-3"
+          className="px-3 py-2 bg-surface-raised border border-[#d4a017] text-sm text-rmpg-200 flex items-center gap-3"
           style={{ borderRadius: 2 }}
         >
           <span className="text-[#d4a017] text-xs uppercase font-semibold">{seed.type}</span>
@@ -918,7 +918,7 @@ export default function ConnectionsPage() {
             </h2>
             <RichTextArea
               aria-label={`Note for ${nodes.find(n => n.id === editingAnnotationFor)?.label}`}
-              className="w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none h-28"
+              className="w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-[#d4a017] focus:outline-none h-28"
               style={{ borderRadius: 2 }}
               value={annotationDraft}
               onChange={e => setAnnotationDraft(e.target.value)}
@@ -981,7 +981,7 @@ export default function ConnectionsPage() {
               Name
               <input id="ff-connectionspage-2"
                 type="text"
-                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none"
+                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-[#d4a017] focus:outline-none"
                 style={{ borderRadius: 2 }}
                 value={saveName}
                 onChange={e => setSaveName(e.target.value)}
@@ -992,7 +992,7 @@ export default function ConnectionsPage() {
             <label className="block text-xs text-rmpg-300">
               Description
               <RichTextArea
-                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none h-20"
+                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-[#d4a017] focus:outline-none h-20"
                 style={{ borderRadius: 2 }}
                 value={saveDescription}
                 onChange={e => setSaveDescription(e.target.value)}

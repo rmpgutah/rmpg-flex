@@ -54,7 +54,7 @@ export default function DispatchRecordPanel({ record, onClose, floating = false 
         {record.kind === 'person'
           ? <User className="w-3.5 h-3.5" style={{ color: 'var(--rt-accent, #d4a017)' }} />
           : <Car className="w-3.5 h-3.5" style={{ color: 'var(--rt-accent, #d4a017)' }} />}
-        <span className="text-[10px] font-bold uppercase tracking-wider flex-1 truncate" style={{ color: 'var(--rt-text, #e8e8e8)' }}>
+        <span className="text-[10px] font-bold uppercase tracking-wider min-w-0 flex-1 truncate" style={{ color: 'var(--rt-text, #e8e8e8)' }}>
           {title}
         </span>
         <a

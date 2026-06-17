@@ -383,7 +383,7 @@ export default function FieldCameraPage() {
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
       {/* ── Top bar ── */}
-      <div className="flex items-center justify-between px-3 py-2 bg-[#080808] border-b border-[#1a1a1a]">
+      <div className="flex items-center justify-between px-3 py-2 bg-surface-sunken border-b border-border-default">
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -404,14 +404,14 @@ export default function FieldCameraPage() {
       </div>
 
       {/* ── Mode bar — ALPR toggle + Patrol Scan + call context ── */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#050505] border-b border-[#141414]">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-surface-overlay border-b border-[#141414]">
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setAlprMode((m) => !m)}
             disabled={patrolRunning}
             className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border disabled:opacity-40 ${
-              alprMode ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#333] text-[#888]'
+              alprMode ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-subtle text-[#888]'
             }`}
             aria-pressed={alprMode}
           >
@@ -421,7 +421,7 @@ export default function FieldCameraPage() {
             type="button"
             onClick={() => (patrolRunning ? patrol.stop() : patrol.start())}
             className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border ${
-              patrolRunning ? 'border-red-600 text-red-300 bg-red-950 animate-pulse' : 'border-[#333] text-[#888]'
+              patrolRunning ? 'border-red-600 text-red-300 bg-red-950 animate-pulse' : 'border-border-subtle text-[#888]'
             }`}
             aria-pressed={patrolRunning}
           >
@@ -457,7 +457,7 @@ export default function FieldCameraPage() {
         )}
         {/* Patrol Scan: live read log along the bottom */}
         {patrolRunning && patrol.log.length > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 z-10 max-h-[42%] overflow-y-auto bg-black/80 border-t border-[#222] divide-y divide-[#161616]">
+          <div className="absolute bottom-0 left-0 right-0 z-10 max-h-[42%] overflow-y-auto bg-black/80 border-t border-border-default divide-y divide-[#161616]">
             {patrol.log.map((e) => (
               <div
                 key={e.key}
@@ -466,7 +466,7 @@ export default function FieldCameraPage() {
                 <span className={`text-sm tracking-[0.12em] font-semibold ${e.critical ? 'text-red-300' : 'text-rmpg-100'}`}>
                   {e.plate}
                 </span>
-                <span className="text-[10px] text-[#888] truncate ml-2 flex-1 text-right">
+                <span className="text-[10px] text-[#888] min-w-0 truncate ml-2 flex-1 text-right">
                   {e.vehicle}{e.confidence != null ? ` · ${Math.round(e.confidence * 100)}%` : ''}
                   {e.critical ? ' · ⚠ HIT' : ''}
                 </span>
@@ -511,10 +511,10 @@ export default function FieldCameraPage() {
               </div>
             )}
             {(scan.vehicles ?? []).map((v, i) => (
-              <div key={v.vehicle_record_id ?? i} className="border border-[#222] bg-[#0b0b0b] p-2">
+              <div key={v.vehicle_record_id ?? i} className="border border-border-default bg-surface-sunken p-2">
                 <div className="flex items-center justify-between">
                   <span className="text-lg tracking-[0.15em] text-rmpg-100 font-semibold">{v.plate || '—'}</span>
-                  <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 border border-[#333] text-[#888]">
+                  <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 border border-border-subtle text-[#888]">
                     {v.vehicle_record_created ? 'NEW RECORD' : 'LINKED'}
                   </span>
                 </div>
@@ -574,7 +574,7 @@ export default function FieldCameraPage() {
             </div>
             {cameraError && (
               <div className="absolute inset-0 flex items-center justify-center p-6">
-                <div className="bg-[#141414] border border-[#222] p-4 text-center text-xs text-rmpg-300 max-w-xs">
+                <div className="bg-surface-base border border-border-default p-4 text-center text-xs text-rmpg-300 max-w-xs">
                   <Camera className="w-6 h-6 mx-auto mb-2 text-[#888]" />
                   {cameraError}
                 </div>
@@ -585,7 +585,7 @@ export default function FieldCameraPage() {
       </div>
 
       {/* ── Bottom controls ── */}
-      <div className="bg-[#080808] border-t border-[#1a1a1a] px-4 py-4">
+      <div className="bg-surface-sunken border-t border-border-default px-4 py-4">
         {preview ? (
           <div className="flex items-center justify-center gap-6">
             <button
@@ -595,7 +595,7 @@ export default function FieldCameraPage() {
               className="flex flex-col items-center gap-1 text-red-400 disabled:opacity-40"
               aria-label="Discard photo"
             >
-              <span className="w-14 h-14 border-2 border-red-700/60 bg-[#141414] flex items-center justify-center">
+              <span className="w-14 h-14 border-2 border-red-700/60 bg-surface-base flex items-center justify-center">
                 <X className="w-6 h-6" />
               </span>
               <span className="text-[10px] uppercase font-bold tracking-wider">Discard</span>
@@ -607,7 +607,7 @@ export default function FieldCameraPage() {
               className={`flex flex-col items-center gap-1 disabled:opacity-40 ${alprMode ? 'text-[#d4a017]' : 'text-green-400'}`}
               aria-label={alprMode ? 'Scan vehicles' : 'Save photo'}
             >
-              <span className={`w-16 h-16 border-2 bg-[#141414] flex items-center justify-center ${alprMode ? 'border-[#d4a017]/60' : 'border-green-700/60'}`}>
+              <span className={`w-16 h-16 border-2 bg-surface-base flex items-center justify-center ${alprMode ? 'border-[#d4a017]/60' : 'border-green-700/60'}`}>
                 {uploading ? <Loader2 className="w-7 h-7 animate-spin" />
                   : alprMode ? <ScanLine className="w-7 h-7" /> : <Check className="w-7 h-7" />}
               </span>
@@ -629,7 +629,7 @@ export default function FieldCameraPage() {
             >
               Stop Patrol
             </button>
-            <span className="text-[9px] text-[#666] uppercase tracking-wider">
+            <span className="text-[9px] text-rmpg-500 uppercase tracking-wider">
               Keep phone mounted &amp; screen on — web can’t scan in the background
             </span>
           </div>
@@ -641,7 +641,7 @@ export default function FieldCameraPage() {
               className="flex flex-col items-center gap-1 text-[#888]"
               aria-label="Use native camera app"
             >
-              <span className="w-12 h-12 border border-[#333] bg-[#141414] flex items-center justify-center">
+              <span className="w-12 h-12 border border-border-subtle bg-surface-base flex items-center justify-center">
                 <Camera className="w-5 h-5" />
               </span>
               <span className="text-[9px] uppercase font-bold tracking-wider">Native</span>
@@ -650,7 +650,7 @@ export default function FieldCameraPage() {
               type="button"
               onClick={capture}
               disabled={!cameraReady}
-              className="w-[72px] h-[72px] border-4 border-[#d4a017] bg-[#1a1a1a] flex items-center justify-center disabled:opacity-30"
+              className="w-[72px] h-[72px] border-4 border-[#d4a017] bg-surface-raised flex items-center justify-center disabled:opacity-30"
               aria-label="Take photo"
             >
               <span className="w-12 h-12 bg-[#d4a017]" />

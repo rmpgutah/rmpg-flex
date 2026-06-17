@@ -795,7 +795,7 @@ export default function MdtPage() {
                   <div
                     key={call.id}
                     onClick={() => setSelectedCall(call)}
-                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-[#181818]"
+                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-surface-raised"
                     style={{
                       background: selectedCall?.id === call.id ? 'rgba(34,197,94,0.08)' : 'transparent',
                       borderLeft: `3px solid ${prioColor(call.priority)}`,
@@ -832,7 +832,7 @@ export default function MdtPage() {
                   <div
                     key={call.id}
                     onClick={() => setSelectedCall(call)}
-                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-[#181818]"
+                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-surface-raised"
                     style={{
                       background: selectedCall?.id === call.id ? 'rgba(34,197,94,0.08)' : 'transparent',
                       borderLeft: `3px solid ${prioColor(call.priority)}`,
@@ -943,14 +943,14 @@ export default function MdtPage() {
                         addToast('Call sent to your phone', 'success');
                       } catch { addToast('Failed to send to phone', 'error'); }
                     }}
-                    className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-surface-sunken/50 text-[#d4a017] border border-[#d4a017]/40 hover:bg-gray-800/50 transition-colors"
+                    className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-surface-sunken/50 text-[#d4a017] border border-[#d4a017]/40 hover:bg-surface-raised/50 transition-colors"
                   >
                     <Send style={{ width: 10, height: 10 }} /> To phone
                   </button>
                   {selectedCall.status === 'dispatched' && (
                     <button type="button"
                       onClick={() => handleCallStatus(selectedCall.id, 'enroute')}
-                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 hover:bg-gray-800/50 transition-colors"
+                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 hover:bg-surface-raised/50 transition-colors"
                     >
                       <Navigation style={{ width: 10, height: 10 }} /> En Route
                     </button>
@@ -1036,7 +1036,7 @@ export default function MdtPage() {
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Subject Description</div>
                       <button type="button"
                         onClick={() => { setNcicQuery({ type: 'person', query: selectedCall.subject_description || '' }); setActiveTab('ncic'); }}
-                        className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-surface-sunken/40 text-rmpg-400 border border-border-default/50 hover:bg-gray-800/50 transition-colors"
+                        className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-surface-sunken/40 text-rmpg-400 border border-border-default/50 hover:bg-surface-raised/50 transition-colors"
                         title="Run NCIC person query"
                       >
                         NCIC QH
@@ -1051,7 +1051,7 @@ export default function MdtPage() {
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Vehicle Description</div>
                       <button type="button"
                         onClick={() => { setNcicQuery({ type: 'vehicle', query: selectedCall.vehicle_description || '' }); setActiveTab('ncic'); }}
-                        className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-surface-sunken/40 text-rmpg-400 border border-border-default/50 hover:bg-gray-800/50 transition-colors"
+                        className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-surface-sunken/40 text-rmpg-400 border border-border-default/50 hover:bg-surface-raised/50 transition-colors"
                         title="Run NCIC vehicle query"
                       >
                         NCIC QV

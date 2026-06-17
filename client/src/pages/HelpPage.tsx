@@ -378,7 +378,7 @@ export default function HelpPage() {
               key={item.id}
               type="button"
               onClick={() => setActiveSection(item.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${!active ? 'hover:bg-[#141414]' : ''}`}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${!active ? 'hover:bg-surface-base' : ''}`}
               style={{
                 background: active ? 'rgba(136,136,136,0.12)' : 'transparent',
                 color: active ? '#ffffff' : '#888888',
@@ -641,7 +641,7 @@ export default function HelpPage() {
                     <button
                       type="button"
                       onClick={() => setExpandedFaq(expandedFaq === idx ? null : idx)}
-                      className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-[#1a1a1a] transition-colors"
+                      className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-surface-raised transition-colors"
                     >
                       <span className="text-[11px] font-medium text-rmpg-200">{faq.question}</span>
                       <ChevronRight

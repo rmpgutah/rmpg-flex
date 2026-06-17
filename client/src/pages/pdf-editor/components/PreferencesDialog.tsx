@@ -9,13 +9,13 @@ interface Props {
 }
 
 const labelCls = 'text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1';
-const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+const inputCls = 'w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
 
 export default function PreferencesDialog({ open, prefs, onChange, onClose }: Props) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#141414] border border-[#222] rounded-[2px] p-4 max-w-[480px] w-full" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] p-4 max-w-[480px] w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
             <Settings className="w-4 h-4 text-[#d4a017]" /> Editor preferences

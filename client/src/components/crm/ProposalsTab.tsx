@@ -219,11 +219,11 @@ export default function ProposalsTab() {
   return (
     <div className="flex flex-col h-full">
       {/* ── Top bar ──────────────────────────────────── */}
-      <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-[#141414] border-b border-rmpg-700">
+      <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-surface-base border-b border-rmpg-700">
         <select id="ff-proposalstab-0"
           value={filterStage}
           onChange={e => setFilterStage(e.target.value)}
-          className="bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Stages</option>
           {PROPOSAL_STAGES.map(s => (
@@ -233,7 +233,7 @@ export default function ProposalsTab() {
         <select id="ff-proposalstab-1"
           value={filterTemplate}
           onChange={e => setFilterTemplate(e.target.value)}
-          className="bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Templates</option>
           {templates.map(t => (
@@ -265,7 +265,7 @@ export default function ProposalsTab() {
           ) : (
             <table className="w-full">
               <thead>
-                <tr className="bg-[#0c0c0c] border-b border-rmpg-700 sticky top-0 z-10">
+                <tr className="bg-surface-sunken border-b border-rmpg-700 sticky top-0 z-10">
                   <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left">Proposal #</th>
                   <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left">Title</th>
                   <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left">Lead/Client</th>
@@ -283,7 +283,7 @@ export default function ProposalsTab() {
                   <tr
                     key={prop.id}
                     onClick={() => { setSelectedProposal(prop); setEditMode(false); }}
-                    className={`border-b border-rmpg-700/50 cursor-pointer transition-colors ${selectedProposal?.id === prop.id ? 'bg-brand-600/10' : 'hover:bg-[#181818]'}`}
+                    className={`border-b border-rmpg-700/50 cursor-pointer transition-colors ${selectedProposal?.id === prop.id ? 'bg-brand-600/10' : 'hover:bg-surface-raised'}`}
                   >
                     <td className="px-2 py-1.5 text-xs text-brand-400 font-mono">{prop.proposal_number}</td>
                     <td className="px-2 py-1.5 text-xs text-rmpg-100 font-medium truncate max-w-[200px]">{prop.title}</td>
@@ -308,9 +308,9 @@ export default function ProposalsTab() {
 
         {/* ── Proposal detail side panel ────────────── */}
         {selectedProposal && (
-          <div className="w-[400px] min-w-[360px] overflow-y-auto bg-[#141414] flex flex-col">
+          <div className="w-[400px] min-w-[360px] overflow-y-auto bg-surface-base flex flex-col">
             {/* Header */}
-            <div className="px-3 py-2 bg-[#0c0c0c] border-b border-rmpg-700 flex items-center gap-2">
+            <div className="px-3 py-2 bg-surface-sunken border-b border-rmpg-700 flex items-center gap-2">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-brand-400 font-mono">{selectedProposal.proposal_number}</span>
@@ -386,7 +386,7 @@ export default function ProposalsTab() {
                           type="number"
                           value={editForm.monthly_value || ''}
                           onChange={e => setEditForm(f => ({ ...f, monthly_value: Number(e.target.value) }))}
-                          className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                          className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                       <div>
@@ -395,7 +395,7 @@ export default function ProposalsTab() {
                           type="number"
                           value={editForm.total_value || ''}
                           onChange={e => setEditForm(f => ({ ...f, total_value: Number(e.target.value) }))}
-                          className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                          className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                     </div>
@@ -404,7 +404,7 @@ export default function ProposalsTab() {
                       <select id="ff-proposalstab-4"
                         value={editForm.billing_frequency || 'monthly'}
                         onChange={e => setEditForm(f => ({ ...f, billing_frequency: e.target.value }))}
-                        className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                        className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                       >
                         <option value="monthly">Monthly</option>
                         <option value="quarterly">Quarterly</option>
@@ -438,7 +438,7 @@ export default function ProposalsTab() {
                           type="date"
                           value={editForm.proposed_start || ''}
                           onChange={e => setEditForm(f => ({ ...f, proposed_start: e.target.value }))}
-                          className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                          className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                       <div>
@@ -447,7 +447,7 @@ export default function ProposalsTab() {
                           type="date"
                           value={editForm.proposed_end || ''}
                           onChange={e => setEditForm(f => ({ ...f, proposed_end: e.target.value }))}
-                          className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                          className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                     </div>
@@ -458,7 +458,7 @@ export default function ProposalsTab() {
                           type="date"
                           value={editForm.valid_until || ''}
                           onChange={e => setEditForm(f => ({ ...f, valid_until: e.target.value }))}
-                          className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                          className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                       <div>
@@ -467,7 +467,7 @@ export default function ProposalsTab() {
                           type="number"
                           value={editForm.contract_length_months || ''}
                           onChange={e => setEditForm(f => ({ ...f, contract_length_months: Number(e.target.value) }))}
-                          className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                          className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                     </div>
@@ -508,7 +508,7 @@ export default function ProposalsTab() {
                     value={editForm.scope_of_work || ''}
                     onChange={e => setEditForm(f => ({ ...f, scope_of_work: e.target.value }))}
                     rows={5}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                   />
                 ) : (
                   <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selectedProposal.scope_of_work || 'No scope defined'}</div>
@@ -523,7 +523,7 @@ export default function ProposalsTab() {
                     value={editForm.terms || ''}
                     onChange={e => setEditForm(f => ({ ...f, terms: e.target.value }))}
                     rows={4}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                   />
                 ) : (
                   <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selectedProposal.terms || 'No terms defined'}</div>
@@ -538,7 +538,7 @@ export default function ProposalsTab() {
                     value={editForm.notes || ''}
                     onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
                     rows={3}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                   />
                 ) : (
                   <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selectedProposal.notes || '\u2014'}</div>
@@ -565,7 +565,7 @@ export default function ProposalsTab() {
       {/* ── Create Proposal Modal ────────────────────── */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowCreateModal(false)}>
-          <div className="bg-[#141414] border border-rmpg-700 rounded-sm w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="New Proposal" icon={FileText}>
               <button type="button" onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-rmpg-100">
                 <X className="w-4 h-4" />
@@ -579,7 +579,7 @@ export default function ProposalsTab() {
                   required
                   value={form.title}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -587,7 +587,7 @@ export default function ProposalsTab() {
                 <select id="ff-proposalstab-10"
                   value={form.template_type}
                   onChange={e => handleTemplateChange(e.target.value)}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 >
                   <option value="">Select template...</option>
                   {templates.filter(t => t.is_active).map(t => (
@@ -601,7 +601,7 @@ export default function ProposalsTab() {
                   <select id="ff-proposalstab-11"
                     value={form.lead_id}
                     onChange={e => setForm(f => ({ ...f, lead_id: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   >
                     <option value="">None</option>
                     {leads.map(l => (
@@ -614,7 +614,7 @@ export default function ProposalsTab() {
                   <select id="ff-proposalstab-12"
                     value={form.client_id}
                     onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   >
                     <option value="">None</option>
                     {clients.map(c => (
@@ -629,7 +629,7 @@ export default function ProposalsTab() {
                   value={form.scope_of_work}
                   onChange={e => setForm(f => ({ ...f, scope_of_work: e.target.value }))}
                   rows={4}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
               </div>
               <div>
@@ -638,7 +638,7 @@ export default function ProposalsTab() {
                   value={form.terms}
                   onChange={e => setForm(f => ({ ...f, terms: e.target.value }))}
                   rows={3}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -649,7 +649,7 @@ export default function ProposalsTab() {
                     step="0.01"
                     value={form.monthly_value}
                     onChange={e => setForm(f => ({ ...f, monthly_value: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -659,7 +659,7 @@ export default function ProposalsTab() {
                     step="0.01"
                     value={form.total_value}
                     onChange={e => setForm(f => ({ ...f, total_value: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -667,7 +667,7 @@ export default function ProposalsTab() {
                   <select id="ff-proposalstab-15"
                     value={form.billing_frequency}
                     onChange={e => setForm(f => ({ ...f, billing_frequency: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   >
                     <option value="monthly">Monthly</option>
                     <option value="quarterly">Quarterly</option>
@@ -683,7 +683,7 @@ export default function ProposalsTab() {
                     type="date"
                     value={form.proposed_start}
                     onChange={e => setForm(f => ({ ...f, proposed_start: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -692,7 +692,7 @@ export default function ProposalsTab() {
                     type="date"
                     value={form.proposed_end}
                     onChange={e => setForm(f => ({ ...f, proposed_end: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -701,7 +701,7 @@ export default function ProposalsTab() {
                     type="number"
                     value={form.contract_length_months}
                     onChange={e => setForm(f => ({ ...f, contract_length_months: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -711,7 +711,7 @@ export default function ProposalsTab() {
                   type="date"
                   value={form.valid_until}
                   onChange={e => setForm(f => ({ ...f, valid_until: e.target.value }))}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -720,7 +720,7 @@ export default function ProposalsTab() {
                   value={form.notes}
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                   rows={2}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">

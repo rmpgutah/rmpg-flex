@@ -87,7 +87,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
       <PanelTitleBar title="DISPATCH TOOLS" icon={Gauge} statusLed="green" ledPulse />
 
       {/* Tab bar */}
-      <div className="flex border-b border-[#222222]" role="tablist">
+      <div className="flex border-b border-border-default" role="tablist">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -119,13 +119,13 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Address or place..."
-                className="flex-1 px-2 py-1 text-[11px] border border-[#3a3a3a] outline-none"
+                className="flex-1 px-2 py-1 text-[11px] border border-border-subtle outline-none"
                 style={{ background: '#050505', color: '#cccccc', borderRadius: 2 }}
               />
               <button
                 type="submit"
                 disabled={geocodeLoading || !query.trim()}
-                className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider border border-[#3a3a3a] hover:border-[#d4a017] disabled:opacity-40 transition-colors"
+                className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-[#d4a017] disabled:opacity-40 transition-colors"
                 style={{ background: '#141414', color: '#d4a017', borderRadius: 2 }}
               >
                 {geocodeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Go'}
@@ -139,10 +139,10 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                     key={s.id}
                     type="button"
                     onClick={() => handleGeocodeSelect(s)}
-                    className="w-full text-left px-2 py-1.5 text-[10px] hover:bg-[#1a1a1a] border border-transparent hover:border-[#2e2e2e] transition-colors"
+                    className="w-full text-left px-2 py-1.5 text-[10px] hover:bg-surface-raised border border-transparent hover:border-rmpg-700 transition-colors"
                     style={{ borderRadius: 2, color: '#999999' }}
                   >
-                    <div className="font-semibold text-[#cccccc] text-[11px]">{s.text}</div>
+                    <div className="font-semibold text-rmpg-200 text-[11px]">{s.text}</div>
                     <div className="truncate">{s.place_name}</div>
                   </button>
                 ))}
@@ -150,7 +150,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
             )}
 
             {!geocodeLoading && !geocodeSuggestions.length && query.length > 1 && (
-              <p className="text-[10px] text-[#555555] italic px-1">No results found</p>
+              <p className="text-[10px] text-rmpg-500 italic px-1">No results found</p>
             )}
           </div>
         )}
@@ -201,10 +201,10 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                       #{i + 1}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[11px] font-semibold text-[#cccccc] truncate">
+                      <div className="text-[11px] font-semibold text-rmpg-200 truncate">
                         {eta.callSign}
                       </div>
-                      <div className="text-[9px] text-[#666666]">
+                      <div className="text-[9px] text-rmpg-500">
                         to {eta.callNumber}
                       </div>
                     </div>
@@ -212,7 +212,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                       <div className="text-[12px] font-bold" style={{ color: '#d4a017' }}>
                         {eta.etaText}
                       </div>
-                      <div className="text-[9px] text-[#666666]">{eta.distanceText}</div>
+                      <div className="text-[9px] text-rmpg-500">{eta.distanceText}</div>
                     </div>
                   </div>
                 ))}
@@ -220,7 +220,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
             )}
 
             {!matrixResults.loading && !matrixResults.etas.length && (
-              <p className="text-[10px] text-[#555555] italic text-center py-4">
+              <p className="text-[10px] text-rmpg-500 italic text-center py-4">
                 Select a call on the map to compute nearest unit ETAs
               </p>
             )}
@@ -237,7 +237,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                   value={isoLng}
                   onChange={(e) => setIsoLng(e.target.value)}
                   placeholder="Longitude"
-                  className="flex-1 px-2 py-1 text-[10px] border border-[#3a3a3a] outline-none"
+                  className="flex-1 px-2 py-1 text-[10px] border border-border-subtle outline-none"
                   style={{ background: '#050505', color: '#cccccc', borderRadius: 2 }}
                 />
                 <input id="ff-dispatchtoolpanel-2"
@@ -245,7 +245,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                   value={isoLat}
                   onChange={(e) => setIsoLat(e.target.value)}
                   placeholder="Latitude"
-                  className="flex-1 px-2 py-1 text-[10px] border border-[#3a3a3a] outline-none"
+                  className="flex-1 px-2 py-1 text-[10px] border border-border-subtle outline-none"
                   style={{ background: '#050505', color: '#cccccc', borderRadius: 2 }}
                 />
               </div>
@@ -275,7 +275,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                 <button
                   type="submit"
                   disabled={isochroneResult.loading}
-                  className="flex-1 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider border border-[#3a3a3a] hover:border-[#d4a017] disabled:opacity-40 transition-colors"
+                  className="flex-1 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-[#d4a017] disabled:opacity-40 transition-colors"
                   style={{ background: '#141414', color: '#d4a017', borderRadius: 2 }}
                 >
                   {isochroneResult.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin mx-auto" /> : 'Generate'}
@@ -284,7 +284,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                   <button
                     type="button"
                     onClick={isochroneClear}
-                    className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider border border-[#3a3a3a] hover:border-[#f03c3c] transition-colors"
+                    className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-[#f03c3c] transition-colors"
                     style={{ background: '#141414', color: '#888888', borderRadius: 2 }}
                   >
                     Clear
@@ -294,8 +294,8 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
             </form>
 
             {isochroneResult.contours.length > 0 && (
-              <div className="space-y-0.5 pt-1 border-t border-[#1a1a1a]">
-                <div className="text-[9px] font-semibold uppercase tracking-wider text-[#666666] mb-1">
+              <div className="space-y-0.5 pt-1 border-t border-border-default">
+                <div className="text-[9px] font-semibold uppercase tracking-wider text-rmpg-500 mb-1">
                   Coverage Rings
                 </div>
                 {isochroneResult.contours.map((c, i) => (
@@ -308,8 +308,8 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                         borderColor: c.minutes <= 5 ? '#64d264' : c.minutes <= 10 ? '#f0b428' : '#f03c3c',
                       }}
                     />
-                    <span className="font-semibold text-[#cccccc]">{c.minutes} min</span>
-                    <span className="text-[#555555]">drive time</span>
+                    <span className="font-semibold text-rmpg-200">{c.minutes} min</span>
+                    <span className="text-rmpg-500">drive time</span>
                   </div>
                 ))}
               </div>
@@ -329,39 +329,39 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
 
             {!tilequeryLoading && tilequeryResult && (
               <div className="space-y-2">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-[#666666]">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-rmpg-500">
                   Location Info
                 </div>
 
                 {tilequeryResult.city && (
-                  <div className="flex justify-between items-center px-2 py-1 text-[10px] border border-[#1a1a1a]"
+                  <div className="flex justify-between items-center px-2 py-1 text-[10px] border border-border-default"
                     style={{ background: '#050505', borderRadius: 2 }}>
-                    <span className="text-[#666666]">City</span>
-                    <span className="font-semibold text-[#cccccc]">{tilequeryResult.city}</span>
+                    <span className="text-rmpg-500">City</span>
+                    <span className="font-semibold text-rmpg-200">{tilequeryResult.city}</span>
                   </div>
                 )}
 
                 {tilequeryResult.county && (
-                  <div className="flex justify-between items-center px-2 py-1 text-[10px] border border-[#1a1a1a]"
+                  <div className="flex justify-between items-center px-2 py-1 text-[10px] border border-border-default"
                     style={{ background: '#050505', borderRadius: 2 }}>
-                    <span className="text-[#666666]">County</span>
-                    <span className="font-semibold text-[#cccccc]">{tilequeryResult.county}</span>
+                    <span className="text-rmpg-500">County</span>
+                    <span className="font-semibold text-rmpg-200">{tilequeryResult.county}</span>
                   </div>
                 )}
 
                 {tilequeryResult.state && (
-                  <div className="flex justify-between items-center px-2 py-1 text-[10px] border border-[#1a1a1a]"
+                  <div className="flex justify-between items-center px-2 py-1 text-[10px] border border-border-default"
                     style={{ background: '#050505', borderRadius: 2 }}>
-                    <span className="text-[#666666]">State</span>
-                    <span className="font-semibold text-[#cccccc]">{tilequeryResult.state}</span>
+                    <span className="text-rmpg-500">State</span>
+                    <span className="font-semibold text-rmpg-200">{tilequeryResult.state}</span>
                   </div>
                 )}
 
                 {tilequeryResult.sectorName && (
-                  <div className="flex justify-between items-center px-2 py-1 text-[10px] border border-[#1a1a1a]"
+                  <div className="flex justify-between items-center px-2 py-1 text-[10px] border border-border-default"
                     style={{ background: '#050505', borderRadius: 2 }}>
-                    <span className="text-[#666666]">Area</span>
-                    <span className="font-semibold text-[#cccccc]">{tilequeryResult.sectorName}</span>
+                    <span className="text-rmpg-500">Area</span>
+                    <span className="font-semibold text-rmpg-200">{tilequeryResult.sectorName}</span>
                   </div>
                 )}
 
@@ -374,7 +374,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
             )}
 
             {!tilequeryLoading && !tilequeryResult && (
-              <p className="text-[10px] text-[#555555] italic text-center py-4">
+              <p className="text-[10px] text-rmpg-500 italic text-center py-4">
                 Click a location on the map to identify features
               </p>
             )}

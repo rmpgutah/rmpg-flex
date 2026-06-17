@@ -240,11 +240,11 @@ export default function Dropdown({
       )}
       {open && (
         <div
-          className="absolute z-50 mt-1 w-full bg-surface-base border border-[#2a2a2a] shadow-xl animate-fade-in"
+          className="absolute z-50 mt-1 w-full bg-surface-base border border-border-default shadow-xl animate-fade-in"
           role="listbox"
         >
           {searchable && (
-            <div className="relative border-b border-[#2a2a2a]">
+            <div className="relative border-b border-border-default">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
               <input id="ff-dropdown-0"
                 ref={searchRef}

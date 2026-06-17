@@ -62,17 +62,17 @@ export default function NewIntelReportPage() {
 
       <label className="block text-[10px] text-[#888] uppercase tracking-wider">Title
         <input aria-label="title" value={title} onChange={(e) => setTitle(e.target.value)}
-          className="mt-1 w-full bg-[#070707] border border-[#232323] rounded-[2px] px-2 py-[6px] text-[12px] text-[#e8e8e8]" />
+          className="mt-1 w-full bg-surface-overlay border border-border-default rounded-[2px] px-2 py-[6px] text-[12px] text-rmpg-200" />
       </label>
 
       <label className="block text-[10px] text-[#888] uppercase tracking-wider">Raw narrative
         <textarea aria-label="narrative" value={narrative} onChange={(e) => setNarrative(e.target.value)} rows={8}
-          className="mt-1 w-full bg-[#070707] border border-[#232323] rounded-[2px] px-2 py-[6px] text-[12px] text-[#e8e8e8]" />
+          className="mt-1 w-full bg-surface-overlay border border-border-default rounded-[2px] px-2 py-[6px] text-[12px] text-rmpg-200" />
       </label>
 
       <label className="block text-[10px] text-[#888] uppercase tracking-wider">Source type
         <select aria-label="source type" value={sourceType} onChange={(e) => setSourceType(e.target.value)}
-          className="mt-1 w-full bg-[#070707] border border-[#232323] rounded-[2px] px-2 py-[6px] text-[12px] text-[#e8e8e8]">
+          className="mt-1 w-full bg-surface-overlay border border-border-default rounded-[2px] px-2 py-[6px] text-[12px] text-rmpg-200">
           {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
         </select>
       </label>

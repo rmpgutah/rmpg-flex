@@ -168,7 +168,7 @@ function SeedSelector({ onSelect, loading }: {
               >
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: NODE_COLORS[r.type] }} />
                 <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: NODE_COLORS[r.type] }} />
-                <span className="text-[10px] font-medium text-rmpg-300 truncate flex-1">{r.label}</span>
+                <span className="text-[10px] font-medium text-rmpg-300 min-w-0 truncate flex-1">{r.label}</span>
                 <span className="text-[9px] text-rmpg-500 uppercase shrink-0">{r.type}</span>
               </button>
             );
@@ -203,7 +203,7 @@ function parseNodeFlags(node: any): { hasWarrant: boolean; hasBolo: boolean; has
 function GraphLegend({ visible }: { visible: boolean }) {
   if (!visible) return null;
   return (
-    <div className="absolute bottom-2 left-2 z-10 bg-[#050505]/92 backdrop-blur-sm border border-rmpg-700 rounded-sm p-2.5 max-w-[210px] select-none">
+    <div className="absolute bottom-2 left-2 z-10 bg-surface-overlay/92 backdrop-blur-sm border border-rmpg-700 rounded-sm p-2.5 max-w-[210px] select-none">
       <div className="text-[8px] text-rmpg-400 uppercase tracking-wider mb-1.5 font-semibold">Entity Types</div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mb-2">
         {ALL_TYPES.map(t => (
@@ -770,7 +770,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
                       className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rmpg-800/30 text-left transition-colors"
                     >
                       <GroupIcon className="w-3 h-3 shrink-0" style={{ color: groupColor }} />
-                      <span className="text-[10px] text-rmpg-200 truncate flex-1">{otherNode.label}</span>
+                      <span className="text-[10px] text-rmpg-200 min-w-0 truncate flex-1">{otherNode.label}</span>
                       <span className="text-[8px] bg-rmpg-800 border border-rmpg-600 text-rmpg-400 px-1.5 py-0.5 rounded-sm uppercase shrink-0">
                         {edge.relationship}
                       </span>

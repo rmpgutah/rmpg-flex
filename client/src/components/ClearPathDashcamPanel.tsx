@@ -35,8 +35,8 @@ export default function ClearPathDashcamPanel({ dashcamCount }: { dashcamCount: 
   const label = !configured ? 'NOT CONFIGURED' : mediaOn ? 'DASHCAM ALPR ACTIVE' : active ? 'GPS ON · MEDIA OFF' : 'CONFIGURED · DISABLED';
 
   return (
-    <div className="border border-purple-900/60 bg-[#0b0b0b]">
-      <div className="px-2 py-[3px] border-b border-[#1a1a1a] flex items-center justify-between">
+    <div className="border border-purple-900/60 bg-surface-sunken">
+      <div className="px-2 py-[3px] border-b border-border-default flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-[9px] font-semibold text-purple-300">
           <Video className="w-3 h-3" /> CLEARPATH DASHCAM
           <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
@@ -54,9 +54,9 @@ export default function ClearPathDashcamPanel({ dashcamCount }: { dashcamCount: 
             of captures. Fall back to the prop if the server field is absent. */}
         <Stat value={media?.total_dashcam_reads ?? dashcamCount} label="reads" />
       </div>
-      {lastSync && <div className="px-2 py-1 text-[9px] text-[#666666] border-t border-[#1a1a1a]">Last sync: {String(lastSync).replace('T', ' ').slice(0, 16)}</div>}
+      {lastSync && <div className="px-2 py-1 text-[9px] text-rmpg-500 border-t border-border-default">Last sync: {String(lastSync).replace('T', ' ').slice(0, 16)}</div>}
       {!configured && (
-        <div className="px-2 py-1.5 text-[10px] text-[#888888] border-t border-[#1a1a1a]">
+        <div className="px-2 py-1.5 text-[10px] text-[#888888] border-t border-border-default">
           Connect your ClearPath cameras to read plates passively from dashcam footage. Tap <span className="text-purple-300">Configure</span>.
         </div>
       )}

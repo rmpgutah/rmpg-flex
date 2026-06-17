@@ -36,17 +36,17 @@ interface Props {
 export default function EditorToolbar(p: Props) {
   const btn = 'p-1.5 rounded-sm text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/60 transition-colors disabled:opacity-30 disabled:hover:bg-transparent';
   return (
-    <div className="flex items-center gap-1 bg-[#141414] border border-[#222222] rounded-[2px] px-2 py-1.5 flex-shrink-0 flex-wrap md:flex-nowrap">
+    <div className="flex items-center gap-1 bg-surface-base border border-border-default rounded-[2px] px-2 py-1.5 flex-shrink-0 flex-wrap md:flex-nowrap">
       <IconButton onClick={p.onOpen} aria-label="Open PDF" title="Open PDF" className={btn}><Upload className="w-4 h-4" /></IconButton>
       <IconButton onClick={p.onMerge} aria-label="Merge PDFs" title="Merge multiple PDFs into one" className={btn}><Combine className="w-4 h-4" /></IconButton>
       <span className="text-xs text-rmpg-400 truncate max-w-[260px] px-2" title={p.fileName}>{p.fileName || 'No document open'}</span>
 
-      <div className="w-px h-5 bg-[#222222] mx-1" />
+      <div className="w-px h-5 bg-surface-raised mx-1" />
 
       <IconButton onClick={p.onUndo} aria-label="Undo" title="Undo (Ctrl+Z)" className={btn} disabled={!p.canUndo}><Undo2 className="w-4 h-4" /></IconButton>
       <IconButton onClick={p.onRedo} aria-label="Redo" title="Redo (Ctrl+Y)" className={btn} disabled={!p.canRedo}><Redo2 className="w-4 h-4" /></IconButton>
 
-      <div className="w-px h-5 bg-[#222222] mx-1" />
+      <div className="w-px h-5 bg-surface-raised mx-1" />
 
       <IconButton onClick={p.onZoomOut} aria-label="Zoom out" title="Zoom out" className={btn} disabled={!p.hasDocument}><ZoomOut className="w-4 h-4" /></IconButton>
       <button type="button" onClick={p.onZoomReset} disabled={!p.hasDocument}
@@ -61,7 +61,7 @@ export default function EditorToolbar(p: Props) {
         <IconButton onClick={p.onFitPage} aria-label="Fit page" title="Fit whole page (1)" className={btn} disabled={!p.hasDocument}><Maximize2 className="w-4 h-4" /></IconButton>
       )}
 
-      <div className="w-px h-5 bg-[#222222] mx-1" />
+      <div className="w-px h-5 bg-surface-raised mx-1" />
 
       {p.onRotateAll && (
         <IconButton onClick={p.onRotateAll} aria-label="Rotate all pages 90°" title="Rotate ALL pages 90° clockwise" className={btn} disabled={!p.hasDocument}><RotateCw className="w-4 h-4" /></IconButton>
@@ -77,7 +77,7 @@ export default function EditorToolbar(p: Props) {
           disabled={!p.hasDocument}><Hash className="w-4 h-4" /></IconButton>
       )}
 
-      <div className="w-px h-5 bg-[#222222] mx-1" />
+      <div className="w-px h-5 bg-surface-raised mx-1" />
 
       {p.onStampStudio && (
         <IconButton onClick={p.onStampStudio} aria-label="Stamp Studio" title="Stamp Studio — create stamps & remove backgrounds" className={btn}><Sparkles className="w-4 h-4" /></IconButton>
