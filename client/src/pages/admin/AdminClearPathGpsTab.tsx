@@ -443,19 +443,28 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   };
 
   // ── Trigger immediate media sync ──
+  // The Worker fires the sync via waitUntil and returns { started: true }
+  // immediately — video downloads can take 90 s+, so we don't block on them.
+  // Refresh stats 5 s after the response to catch the first completed clips.
   const handleSyncNow = async () => {
     setSyncing(true);
+    setError(null);
     try {
-      const result = await apiFetch<{ synced: number; errors: number }>('/clearpathgps/media-sync-now', { method: 'POST' });
-      await fetchMediaStatus();
-      if (result.synced > 0) {
-        setError(null);
+      const result = await apiFetch<{ started: boolean; error?: string }>('/clearpathgps/media-sync-now', { method: 'POST' });
+      if (result.error) {
+        setError(result.error);
+      } else {
+        // Sync is running in the background; refresh stats after a short delay.
+        setTimeout(async () => {
+          await fetchMediaStatus();
+          setSyncing(false);
+        }, 5000);
+        return; // keep syncing=true while we wait for the status refresh
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Media sync failed');
-    } finally {
-      setSyncing(false);
     }
+    setSyncing(false);
   };
 
   // ── Auto-map dashcam devices ──

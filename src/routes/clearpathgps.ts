@@ -417,15 +417,22 @@ const setMediaSettings = async (c: Context<Env>) => {
 cpg.put('/media-settings', adminOnly, setMediaSettings);
 cpg.post('/media-settings', adminOnly, setMediaSettings);
 
+// Fire-and-forget: video downloads can take 90 s+ per clip, well over the
+// client's 60 s fetch timeout. Register the sync via waitUntil so the Worker
+// stays alive without blocking the HTTP response, then return immediately.
 cpg.post('/media-sync-now', adminOnly, async (c) => {
   try {
     const { syncClearpathMedia } = await import('../utils/clearpathSync');
-    const r = await syncClearpathMedia(c.env);
-    return c.json({ synced: r.synced, errors: r.errors,
-      ...(r.skipped ? { note: `Skipped: ${r.skipped}` } : {}),
-      ...(r.clip_errors ? { clip_errors: r.clip_errors } : {}) });
+    c.executionCtx.waitUntil(
+      syncClearpathMedia(c.env).then((r) => {
+        console.log(`[cpg-media] sync-now done: synced=${r.synced} errors=${r.errors}`);
+      }).catch((err) => {
+        console.error('[cpg-media] sync-now failed:', (err as Error)?.message);
+      }),
+    );
+    return c.json({ started: true });
   } catch (err) {
-    return c.json({ synced: 0, errors: 1, error: clientErrorMessage(err) });
+    return c.json({ started: false, error: clientErrorMessage(err) }, 500);
   }
 });
 
