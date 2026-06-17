@@ -240,6 +240,7 @@ export default function PersonFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<PersonFormData>({
     storageKey: 'rmpg_person_form',
@@ -427,7 +428,11 @@ export default function PersonFormModal({
   // still fails after retries we STOP and surface a recoverable choice — we
   // never silently save the record without the ID photo (the 2026-06-13 bug).
   const uploadThenSubmit = async (finalForm: PersonFormData) => {
-    if (!idImageFile) { onSubmit(finalForm); return; }
+    if (!idImageFile) {
+      signalSaved();
+      onSubmit(finalForm);
+      return;
+    }
     setUploadingImage(true);
     setUploadError(null);
     let uploaded = false;
@@ -449,7 +454,10 @@ export default function PersonFormModal({
     }
     // Only save once the photo is attached. On failure we hold here and let the
     // warn-and-choose panel drive the next step (retry / save-without / cancel).
-    if (uploaded) onSubmit(finalForm);
+    if (uploaded) {
+      signalSaved();
+      onSubmit(finalForm);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -466,6 +474,7 @@ export default function PersonFormModal({
     // editing, or empty for a new person) — just don't attach the file that
     // wouldn't upload. The officer can re-edit later to add it.
     setUploadError(null);
+    signalSaved();
     onSubmit(composeFinalForm());
   };
   const dismissUploadError = () => setUploadError(null);

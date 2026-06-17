@@ -38,7 +38,7 @@ const EMPTY_FORM: JailFormData = {
 type SectionId = 'identity' | 'physical' | 'housing' | 'notes';
 
 export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError }: JailFormModalProps) {
-  const { form, setForm, isDirty, wasRestored, clearDraft, snapshot } = useFormDraft<JailFormData>({
+  const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<JailFormData>({
     storageKey: 'rmpg_jail_form', defaultValue: EMPTY_FORM, isActive: isOpen,
   });
   const [activeSection, setActiveSection] = useState<SectionId>('identity');
@@ -71,7 +71,7 @@ export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting,
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSubmit(form); };
+  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); signalSaved(); onSubmit(form); };
 
   const sections: { id: SectionId; label: string }[] = [
     { id: 'identity', label: 'Identity' }, { id: 'physical', label: 'Physical' },

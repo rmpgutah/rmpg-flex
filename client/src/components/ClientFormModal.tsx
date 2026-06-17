@@ -141,6 +141,7 @@ export default function ClientFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<ClientFormData>({
     storageKey: 'rmpg_client_form',
@@ -203,6 +204,7 @@ export default function ClientFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    signalSaved();
     onSubmit({
       ...form,
       address: composeAddressUnit(form.address, addressUnit),

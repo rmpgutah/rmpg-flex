@@ -21,7 +21,7 @@ const EMPTY_FORM: TaskFormData = {
 };
 
 export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError }: TaskFormModalProps) {
-  const { form, setForm, isDirty, wasRestored, clearDraft, snapshot } = useFormDraft<TaskFormData>({
+  const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<TaskFormData>({
     storageKey: 'rmpg_task_form', defaultValue: EMPTY_FORM, isActive: isOpen,
   });
 
@@ -46,7 +46,7 @@ export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting,
   };
 
   return (
-    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); onSubmit(form); }}
+    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); signalSaved(); onSubmit(form); }}
       title={editingRecord ? 'Edit Task' : 'New Task'} icon={ClipboardList}
       submitLabel={editingRecord ? 'Update' : 'Create'} isSubmitting={isSubmitting}
       isDirty={isDirty} draftRestored={wasRestored} onDiscardDraft={clearDraft}

@@ -51,6 +51,7 @@ export default function ScheduleFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<ScheduleFormData>({
     storageKey: 'rmpg_schedule_form',
@@ -70,6 +71,7 @@ export default function ScheduleFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    signalSaved();
     onSubmit({
       officer_id: form.officer_id,
       property_id: form.property_id || undefined,

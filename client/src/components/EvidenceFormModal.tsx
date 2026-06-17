@@ -241,6 +241,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
           body: JSON.stringify(body),
         });
       }
+      clearDraft();
       onCreated();
       onClose();
     } catch (err: any) {

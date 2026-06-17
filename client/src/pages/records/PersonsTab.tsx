@@ -469,15 +469,17 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
 
   const openEditPerson = async (person: Person) => {
     setPersonSubmitError(null);
-    setEditingPerson(person); // Set immediately with list data so modal has context
-    setPersonModalOpen(true);
-    // Upgrade with full detail (list only returns limited columns)
+    // Fetch full detail before opening — prevents PersonFormModal's
+    // useEffect([isOpen, editingPerson]) from firing twice and wiping edits.
+    let fullPerson: Person = person;
     try {
       const full = await apiFetch<Record<string, unknown>>(`/records/persons/${person.id}`);
-      setEditingPerson(mapDbPerson(full as Record<string, unknown>));
+      fullPerson = mapDbPerson(full as Record<string, unknown>);
     } catch {
-      // Keep the list-level data already set
+      // Fall back to list-level data
     }
+    setEditingPerson(fullPerson);
+    setPersonModalOpen(true);
   };
   const openNewPerson = () => { setEditingPerson(undefined); setPersonSubmitError(null); setPersonModalOpen(true); };
   const closeModal = () => { setPersonModalOpen(false); setEditingPerson(undefined); setPersonSubmitError(null); };

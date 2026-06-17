@@ -173,6 +173,7 @@ export default function VehicleFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<VehicleFormData>({
     storageKey: 'rmpg_vehicle_form',
@@ -267,6 +268,7 @@ export default function VehicleFormModal({
     }
     // Validate VIN length if provided
     if (form.vin && form.vin.length !== 17) return;
+    signalSaved();
     onSubmit({ ...form, owner_address: composeAddressUnit(form.owner_address, ownerAddressUnit) });
   };
 

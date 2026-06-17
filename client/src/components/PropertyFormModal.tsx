@@ -154,6 +154,7 @@ export default function PropertyFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<PropertyFormData>({
     storageKey: 'rmpg_property_form',
@@ -232,6 +233,7 @@ export default function PropertyFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    signalSaved();
     onSubmit(form);
   };
 
