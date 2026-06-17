@@ -1039,8 +1039,8 @@ export default function SkipTracerV2Page() {
                 className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm border transition-colors"
                 style={{
                   backgroundColor: isActive ? color + '33' : 'transparent',
-                  color: isActive ? color : '#555555',
-                  borderColor: isActive ? color + '55' : '#1e1e1e',
+                  color: isActive ? color : 'var(--rmpg-600)',
+                  borderColor: isActive ? color + '55' : 'var(--border-subtle)',
                 }}
               >
                 {cat}
@@ -1074,7 +1074,7 @@ export default function SkipTracerV2Page() {
       </div>
 
       {/* Results list */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1.5">
         {loading && <><SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard /></>}
 
         {error && (
@@ -1185,7 +1185,7 @@ export default function SkipTracerV2Page() {
   // ─── Dossier Detail Panel ─────────────────────────────────
 
   const dossierDetail = (
-    <div className={`flex-1 flex flex-col bg-surface-raised overflow-y-auto ${isMobile ? 'w-full' : ''}`}>
+    <div className={`flex-1 min-h-0 flex flex-col bg-surface-raised overflow-y-auto ${isMobile ? 'w-full' : ''}`}>
       {!selected ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center space-y-3 p-8">
           <FileText size={40} className="text-rmpg-900" />
@@ -1727,7 +1727,7 @@ export default function SkipTracerV2Page() {
   // ─── Saved Dossiers Tab ───────────────────────────────────
 
   const dossiersTab = (
-    <div className="flex-1 overflow-y-auto p-4 bg-surface-raised">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-surface-raised">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
           <Bookmark size={16} className="text-[#888888]" /> Saved Dossiers
@@ -1781,7 +1781,7 @@ export default function SkipTracerV2Page() {
   // ─── History Tab ──────────────────────────────────────────
 
   const historyTab = (
-    <div className="flex-1 overflow-y-auto p-4 bg-surface-raised">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-surface-raised">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
           <History size={16} className="text-[#888888]" /> Search History
@@ -1840,7 +1840,7 @@ export default function SkipTracerV2Page() {
   // ─── Sources Tab ──────────────────────────────────────────
 
   const sourcesTab = (
-    <div className="flex-1 overflow-y-auto p-4 bg-surface-raised">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-surface-raised">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
           <Database size={16} className="text-[#888888]" /> Data Sources ({sources.length})
@@ -1899,7 +1899,7 @@ export default function SkipTracerV2Page() {
   // ─── Stats Tab ────────────────────────────────────────────
 
   const statsTab = (
-    <div className="flex-1 overflow-y-auto p-4 bg-surface-raised">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-surface-raised">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
           <BarChart3 size={16} className="text-[#888888]" /> Usage Statistics

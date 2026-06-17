@@ -161,7 +161,7 @@ export default function CommandCenterPage() {
           {/* Active Call Queue */}
           <div className="flex-1 panel-beveled bg-surface-base flex flex-col min-h-0">
             <PanelTitleBar title={`ACTIVE CALLS (${data.active_calls?.length ?? 0})`} icon={Radio} />
-            <div className="flex-1 overflow-y-auto p-1 space-y-1">
+            <div className="flex-1 min-h-0 overflow-y-auto p-1 space-y-1">
               {(data.active_calls ?? []).map((call: any) => (
                 <div
                   key={call.id}
@@ -208,7 +208,7 @@ export default function CommandCenterPage() {
           {/* Unit Status Board */}
           <div className="panel-beveled bg-surface-base flex flex-col flex-shrink-0" style={{ maxHeight: '35%' }}>
             <PanelTitleBar title={`UNIT STATUS (${data.units?.length ?? 0})`} icon={Users} />
-            <div className="flex-1 overflow-y-auto p-1">
+            <div className="flex-1 min-h-0 overflow-y-auto p-1">
               <div className="grid grid-cols-3 gap-1">
                 {(data.units ?? []).map((unit: any) => {
                   const color = UNIT_STATUS_COLORS[unit.status] || '#6b7280';

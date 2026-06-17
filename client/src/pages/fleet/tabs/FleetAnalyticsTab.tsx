@@ -490,7 +490,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           {maintenance_cost_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={maintenance_cost_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
                 <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => `$${v}`} />
@@ -511,7 +511,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           {fuel_economy_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={fuel_economy_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
                 <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => `${v} mpg`} />
@@ -609,7 +609,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           {dailyMileageRun.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={dailyMileageRun}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis
                   dataKey="date"
                   tick={{ fill: 'var(--rmpg-500)', fontSize: 8 }}
@@ -702,7 +702,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     <stop offset="95%" stopColor="#888888" stopOpacity={0.05} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis
                   dataKey="date"
                   tick={{ fill: 'var(--rmpg-500)', fontSize: 8 }}
@@ -872,7 +872,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   <stop offset="95%" stopColor="#22c55e" stopOpacity={0.05} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
               <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
               <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
@@ -910,7 +910,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           </h4>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={monthlySpend.map((m: any) => ({ ...m, month: m.month.substring(5) }))}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
               <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
               <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
@@ -1277,7 +1277,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     </div>
                     <div className="relative w-16 h-16 flex-shrink-0">
                       <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
-                        <circle cx="32" cy="32" r="28" fill="none" stroke="#222222" strokeWidth="4" />
+                        <circle cx="32" cy="32" r="28" fill="none" stroke="var(--border-subtle)" strokeWidth="4" />
                         <circle
                           cx="32" cy="32" r="28" fill="none"
                           stroke={scoreColor} strokeWidth="4" strokeLinecap="round"

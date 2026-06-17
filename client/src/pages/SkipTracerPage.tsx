@@ -419,7 +419,7 @@ export default function SkipTracerPage() {
                     onContextMenu={(e) => openMenu(e, buildResultMenu(person))}
                     className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-all ${
                       isActive
-                        ? 'bg-surface-sunken/20 border-l-2 border-l-gray-500'
+                        ? 'bg-surface-sunken/20 border-l-2 border-l-rmpg-500'
                         : 'hover:bg-surface-base border-l-2 border-l-transparent'
                     }`}
                   >
@@ -446,7 +446,7 @@ export default function SkipTracerPage() {
         </div>
 
         {/* ─── Right Panel: Detail View ─────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-4" style={{ background: 'var(--surface-deep)' }}>
+        <div className="flex-1 min-h-0 overflow-y-auto p-4" style={{ background: 'var(--surface-deep)' }}>
           {!selected && !personDetail && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <Search className="w-12 h-12 text-rmpg-700 mb-3" />

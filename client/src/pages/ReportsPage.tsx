@@ -1105,7 +1105,7 @@ export default function ReportsPage() {
           {/* Summary Stats */}
           <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-5 gap-3'}`}>
             {[
-              { label: 'Total Calls', value: stats.totalCalls, color: 'var(--text-muted)', border: 'border-l-gray-500' },
+              { label: 'Total Calls', value: stats.totalCalls, color: 'var(--text-muted)', border: 'border-l-rmpg-500' },
               { label: 'Incidents Filed', value: stats.incidentsFiled, color: '#22c55e', border: 'border-l-green-500' },
               { label: 'Avg Response', value: stats.avgResponse, color: '#f59e0b', border: 'border-l-amber-500' },
               { label: 'SLA Met', value: stats.slaMet, color: '#8b5cf6', border: 'border-l-purple-500' },

@@ -172,8 +172,8 @@ function LayerToggle({
       className="flex items-center justify-between px-2 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d4a017]"
       style={{
         borderRadius: 2,
-        border: `1px solid ${checked ? '#d4a017' : '#2e2e2e'}`,
-        background: checked ? 'rgba(212,160,23,0.10)' : '#0a0a0a',
+        border: `1px solid ${checked ? '#d4a017' : 'var(--border-default)'}`,
+        background: checked ? 'rgba(212,160,23,0.10)' : 'var(--surface-overlay)',
         color: checked ? '#d4a017' : '#888',
       }}
     >

@@ -82,7 +82,7 @@ export default function NewIntelReportPage() {
         {THREATS.map((t) => (
           <button key={t} onClick={() => setThreat(t)}
             className="px-2 py-1 text-[10px] uppercase rounded-[2px]"
-            style={{ background: threat === t ? '#d4a017' : '#0b0b0b', color: threat === t ? '#000' : '#888' }}>{t}</button>
+            style={{ background: threat === t ? '#d4a017' : 'var(--surface-overlay)', color: threat === t ? '#000' : '#888' }}>{t}</button>
         ))}
       </div>
 

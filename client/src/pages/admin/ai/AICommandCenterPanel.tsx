@@ -183,7 +183,7 @@ export default function AICommandCenterPanel({ providerStatus, activeProvider, s
             {activityLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
           </button>
         </h3>
-        <div className="bg-surface-base border border-border-default rounded divide-y divide-[#1c1c1c]">
+        <div className="bg-surface-base border border-border-default rounded divide-y divide-[var(--border-subtle)]">
           {activity.length > 0 ? activity.map((a, i) => (
             <div key={a.id || i} className="flex items-center gap-3 px-3 py-2">
               <div className={`w-1.5 h-1.5 rounded-full ${a.status === 'success' ? 'bg-green-500' : 'bg-red-500'}`} />

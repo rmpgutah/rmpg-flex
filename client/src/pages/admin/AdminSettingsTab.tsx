@@ -134,7 +134,7 @@ export default function AdminSettingsTab(_props: Props) {
         </div>
 
         {/* Settings Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
           {activeCategory && settings[activeCategory] && (
             <div className="space-y-4 max-w-2xl">
               <h2 className="text-[11px] font-bold uppercase text-[#d4a017] tracking-wider border-b border-border-subtle pb-2 mb-4">

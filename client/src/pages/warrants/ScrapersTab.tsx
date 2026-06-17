@@ -256,7 +256,7 @@ function ScraperLiveFeed({ entries }: { entries: LiveFeedEntry[] }) {
       <div className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">
         Live Feed
       </div>
-      <div className="flex-1 overflow-y-auto scrollbar-dark space-y-0.5 font-mono text-[10px]">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark space-y-0.5 font-mono text-[10px]">
         {entries.length === 0 ? (
           <div className="text-rmpg-600">Waiting for events...</div>
         ) : (

@@ -125,14 +125,14 @@ export default function DispatcherTranscript() {
                     display: 'flex',
                     gap: 6,
                     padding: '3px 8px',
-                    borderBottom: '1px solid #1a1a1a',
+                    borderBottom: '1px solid var(--border-subtle)',
                     fontSize: 11,
                     fontFamily: 'monospace',
                   }}
                 >
                   <span style={{ color: SEV_COLOR[e.severity], textShadow: `0 0 4px ${SEV_COLOR[e.severity]}` }}>●</span>
                   <span style={{ color: '#888888', minWidth: 56 }}>{fmtTime(e.ts)}</span>
-                  <span style={{ color: '#dddddd', flex: 1, wordBreak: 'break-word' }}>{e.text}</span>
+                  <span style={{ color: 'var(--rmpg-300)', flex: 1, wordBreak: 'break-word' }}>{e.text}</span>
                 </li>
               ))}
             </ul>

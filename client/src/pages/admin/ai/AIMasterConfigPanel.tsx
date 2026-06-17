@@ -140,7 +140,7 @@ export default function AIMasterConfigPanel({ setError }: Props) {
         <h3 className="text-xs font-semibold text-rmpg-100 uppercase tracking-wide mb-2">
           Task Routing Rules
         </h3>
-        <div className="bg-surface-base border border-border-default rounded divide-y divide-[#1c1c1c]">
+        <div className="bg-surface-base border border-border-default rounded divide-y divide-[var(--border-subtle)]">
           {TASK_TYPES.map(task => {
             const current = routingRules[task.key]?.provider || 'auto';
             return (

@@ -66,7 +66,7 @@ export default function GlobalCatalogSearch({ onNavigate }: { onNavigate: (path:
         />
       </div>
       {matches.length > 0 && (
-        <div className="max-h-64 overflow-y-auto divide-y divide-[#1a1a1a]">
+        <div className="max-h-64 overflow-y-auto divide-y divide-[var(--border-subtle)]">
           {matches.map(({ category, entry }) => {
             const route = CATEGORY_ROUTES[category];
             return (

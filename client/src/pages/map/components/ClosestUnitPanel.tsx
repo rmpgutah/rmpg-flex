@@ -123,7 +123,7 @@ export default function ClosestUnitPanel({
       </div>
 
       {/* Results List */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         {results.length === 0 ? (
           <div className="flex flex-col items-center text-center py-8 gap-2">
             <Navigation className="w-6 h-6" style={{ color: 'var(--rmpg-500)', opacity: 0.4 }} />

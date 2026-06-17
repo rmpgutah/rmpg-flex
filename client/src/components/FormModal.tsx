@@ -126,7 +126,7 @@ export default function FormModal({
               onClick={guardedClose}
               className="toolbar-btn flex items-center justify-center"
               style={{ minWidth: 44, minHeight: 44, padding: '4px 8px', touchAction: 'manipulation' }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#444444'; e.currentTarget.style.color = '#ffffff'; }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--border-default)'; e.currentTarget.style.color = '#ffffff'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = ''; }}
               aria-label="Close"
             >

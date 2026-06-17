@@ -428,7 +428,7 @@ export default function FleetDetailPanel({
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto min-h-0 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
+      <div className="flex-1 min-h-0 overflow-y-auto min-h-0 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
         {activeTab === 'overview' && (
           <>
             <FleetOverviewTab detail={detail} maintenance={maintenance} onEditMaintenance={onEditMaintenance} onDeleteMaintenance={onDeleteMaintenance} />

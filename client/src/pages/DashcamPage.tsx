@@ -388,7 +388,7 @@ export default function DashcamPage() {
                     Recent Events ({deviceDetail.recent_events?.length || 0})
                   </div>
                   {(deviceDetail.recent_events || []).slice(0, 5).map((ev: any) => (
-                    <div key={ev.id} className="flex items-center gap-2 py-0.5 border-b border-[#111] last:border-0">
+                    <div key={ev.id} className="flex items-center gap-2 py-0.5 border-b border-border-subtle last:border-0">
                       <span className={`w-1.5 h-1.5 rounded-full ${ev.severity === 'critical' ? 'bg-red-400' : ev.severity === 'warning' ? 'bg-amber-400' : 'bg-rmpg-400'}`} />
                       <span className="text-text-muted w-16">{formatEnumValue(ev.event_type)}</span>
                       <span className="text-text-muted text-[10px]">{ev.event_at}</span>

@@ -582,7 +582,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                 </div>
               )}
 
-              <div className="text-center text-[10px] font-mono" style={{ color: '#383838' }}>
+              <div className="text-center text-[10px] font-mono" style={{ color: 'var(--rmpg-500)' }}>
                 {safeTimeStr(incomingAlert.triggered_at)}
               </div>
 

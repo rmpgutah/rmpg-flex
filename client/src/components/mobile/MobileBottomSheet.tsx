@@ -152,7 +152,7 @@ export default function MobileBottomSheet({
           style={{
             width: 36,
             height: 4,
-            background: '#383838',
+            background: 'var(--border-default)',
             borderRadius: 2,
           }}
         />
@@ -173,7 +173,7 @@ export default function MobileBottomSheet({
 
       {/* ── Scrollable Content ────────────────────────────── */}
       <div
-        className="flex-1 overflow-y-auto overflow-x-hidden"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
         style={{
           WebkitOverflowScrolling: 'touch',
           // Only allow scroll when not at collapsed snap

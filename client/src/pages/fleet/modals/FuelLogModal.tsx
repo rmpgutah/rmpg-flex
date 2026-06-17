@@ -110,7 +110,7 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
           {isDirty && <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider mr-2">UNSAVED</span>}
           <button type="button" className="toolbar-btn text-[9px]" onClick={guardedClose}>X</button>
         </PanelTitleBar>
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
           {draftRestored && onDiscardDraft && (
             <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30 mb-3" style={{ background: '#1a1500' }}>
               <div className="flex items-center gap-2">

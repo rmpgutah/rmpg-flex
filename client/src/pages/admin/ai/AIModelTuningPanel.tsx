@@ -284,7 +284,7 @@ export default function AIModelTuningPanel() {
           <button
             onClick={handleSavePreset}
             disabled={!newPresetName.trim()}
-            className="px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-[#404040] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-border-default disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Save Current as Preset
           </button>
@@ -318,7 +318,7 @@ function Slider({ label, description, value, min, max, step, onChange }: {
       </div>
       <input id="ff-aimodeltuningpanel-2" type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(parseFloat(e.target.value))}
-        className="w-full h-1.5 bg-rmpg-700 rounded appearance-none cursor-pointer accent-gray-500" />
+        className="w-full h-1.5 bg-rmpg-700 rounded appearance-none cursor-pointer accent-rmpg-500" />
       <p className="text-[10px] text-rmpg-500">{description}</p>
     </div>
   );

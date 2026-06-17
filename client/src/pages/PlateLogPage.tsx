@@ -79,7 +79,7 @@ function conditionBadgeClass(condition?: string | null): string {
     case 'minor': return 'bg-yellow-900/30 text-yellow-300 border-yellow-700';
     case 'moderate': return 'bg-orange-900/30 text-orange-300 border-orange-700';
     case 'heavy': case 'salvage': return 'bg-red-900/40 text-red-300 border-red-700';
-    default: return 'bg-neutral-800 text-neutral-300 border-neutral-600';
+    default: return 'bg-surface-overlay text-rmpg-300 border-rmpg-600';
   }
 }
 interface Sighting {

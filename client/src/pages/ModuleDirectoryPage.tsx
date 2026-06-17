@@ -419,7 +419,7 @@ export default function ModuleDirectoryPage() {
           scrollbarWidth: 'none',
         }}
       >
-        <div className="px-3 pb-3 mb-2" style={{ borderBottom: '1px solid #1a1a1a' }}>
+        <div className="px-3 pb-3 mb-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
           <div className="flex items-center gap-2">
             <Grid3X3 className="w-4 h-4 text-brand-400" />
             <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Modules</span>
@@ -493,7 +493,7 @@ export default function ModuleDirectoryPage() {
       </nav>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto" style={{ background:"var(--surface-sunken)" }}>
+      <div className="flex-1 min-h-0 overflow-y-auto" style={{ background:"var(--surface-sunken)" }}>
         <div className="p-4 max-w-5xl mx-auto space-y-4">
           <div className="flex items-center gap-2">
             <div className="relative flex-1" style={{ maxWidth: 400 }}>
@@ -643,7 +643,7 @@ export default function ModuleDirectoryPage() {
                   minWidth: 14, height: 14, padding: '0 3px',
                   fontSize: 8, lineHeight: 1,
                   background: '#dc2626', color: '#fff',
-                  borderRadius: 7, border: '1px solid #141414',
+                  borderRadius: 7, border: '1px solid var(--surface-overlay)',
                   boxShadow: '0 0 6px rgba(220, 38, 38, 0.5)',
                 }}
               >

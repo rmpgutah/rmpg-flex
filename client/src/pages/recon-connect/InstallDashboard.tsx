@@ -90,7 +90,7 @@ export default function InstallDashboard() {
             Recent Runs
           </div>
         </div>
-        <div className="p-2 divide-y divide-[#1a1a1a]">
+        <div className="p-2 divide-y divide-[var(--border-subtle)]">
           {recent.length === 0 ? (
             <div className="text-rmpg-500 text-[11px] px-2 py-2">No runs yet — click a tool to get started.</div>
           ) : (

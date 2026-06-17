@@ -478,7 +478,7 @@ export default function DashCamerasPage() {
         {selectedVideo.cpg_channel && (
           <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/70 text-[9px] font-mono font-bold uppercase tracking-wider"
             style={{
-              color: selectedVideo.cpg_channel === 'outside' ? '#aaaaaa' : '#c084fc',
+              color: selectedVideo.cpg_channel === 'outside' ? 'var(--rmpg-400)' : '#c084fc',
               border: `1px solid ${selectedVideo.cpg_channel === 'outside' ? '#6a6a6a40' : '#7c3aed40'}`,
             }}>
             {selectedVideo.cpg_channel === 'outside' ? 'FRONT CAM' : 'REAR CAM'}
@@ -723,7 +723,7 @@ export default function DashCamerasPage() {
         <div className="w-px h-4 bg-rmpg-700 flex-shrink-0" />
 
         <div className="px-3 flex items-center gap-1.5 whitespace-nowrap">
-          <span className="led-dot" style={{ width: 5, height: 5, background: '#aaaaaa', boxShadow: '0 0 4px #a0a0a080' }} />
+          <span className="led-dot" style={{ width: 5, height: 5, background: 'var(--rmpg-400)', boxShadow: '0 0 4px #a0a0a080' }} />
           <span className="text-[10px] font-mono font-bold text-rmpg-400">{stats.frontCam}</span>
           <span className="text-[8px] text-rmpg-500 uppercase">Front</span>
         </div>

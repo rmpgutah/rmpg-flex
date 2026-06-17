@@ -101,7 +101,7 @@ export default function KnowledgeBasePage() {
           <button
             type="button" onClick={() => setTypeFilter(null)}
             className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide border"
-            style={{ borderRadius: 2, color: typeFilter === null ? '#0a0a0a' : 'var(--rmpg-400)', background: typeFilter === null ? '#d4a017' : 'transparent', borderColor: typeFilter === null ? '#d4a017' : '#2e2e2e' }}
+            style={{ borderRadius: 2, color: typeFilter === null ? '#0a0a0a' : 'var(--rmpg-400)', background: typeFilter === null ? '#d4a017' : 'transparent', borderColor: typeFilter === null ? '#d4a017' : 'var(--border-default)' }}
           >
             All {results.length}
           </button>
@@ -112,7 +112,7 @@ export default function KnowledgeBasePage() {
               <button
                 key={type} type="button" onClick={() => setTypeFilter(active ? null : type)}
                 className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide border flex items-center gap-1"
-                style={{ borderRadius: 2, color: active ? '#0a0a0a' : color, background: active ? color : 'transparent', borderColor: active ? color : '#2e2e2e' }}
+                style={{ borderRadius: 2, color: active ? '#0a0a0a' : color, background: active ? color : 'transparent', borderColor: active ? color : 'var(--border-default)' }}
               >
                 {kbTypeLabel(type)} {count}
               </button>

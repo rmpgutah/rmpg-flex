@@ -493,7 +493,7 @@ export default function AIDevChatPanel() {
             New Chat
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {sessions.map(s => (
             <div
               key={s.session_id}
@@ -522,7 +522,7 @@ export default function AIDevChatPanel() {
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col">
         {/* AI Status Bar */}
         <div className="flex items-center justify-between px-4 py-1.5 border-b border-rmpg-700 bg-surface-base">
           <div className="flex items-center gap-2">
@@ -546,7 +546,7 @@ export default function AIDevChatPanel() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && !streamingContent && (
             <div className="flex flex-col items-center justify-center h-full text-rmpg-500">
               <Bot className="w-12 h-12 mb-3 opacity-30" />
@@ -649,7 +649,7 @@ export default function AIDevChatPanel() {
                     </div>
                     {/* Thinking content with terminal-style display */}
                     <div className="p-2">
-                      <div className={`text-[11px] text-rmpg-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-surface-sunken rounded p-3 border border-[#272727] shadow-inner transition-all duration-300 ${
+                      <div className={`text-[11px] text-rmpg-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-surface-sunken rounded p-3 border border-border-subtle shadow-inner transition-all duration-300 ${
                         streamingContent ? 'max-h-16 opacity-70' : 'max-h-48'
                       }`}
                         style={{ scrollBehavior: 'smooth' }}

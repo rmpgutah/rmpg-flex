@@ -78,7 +78,7 @@ export default function AIActivityPanel() {
         ) : filtered.length === 0 ? (
           <div className="px-3 py-8 text-center text-xs text-rmpg-500">No activity records found</div>
         ) : (
-          <div className="divide-y divide-[#1c1c1c] max-h-[500px] overflow-y-auto">
+          <div className="divide-y divide-[var(--border-subtle)] max-h-[500px] overflow-y-auto">
             {filtered.map((a, i) => (
               <div key={a.id || i} className="grid grid-cols-[140px_1fr_80px_70px_60px_1fr] gap-2 px-3 py-2 text-xs hover:bg-surface-sunken/50">
                 <div className="text-rmpg-500 font-mono text-[10px] truncate">

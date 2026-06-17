@@ -513,7 +513,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'var(--surface-overlay)',
         }}>
-          <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
+          <RefreshCw style={{ width: 14, height: 14, color: 'var(--rmpg-500)' }} className="animate-spin" />
         </div>
       )}
 

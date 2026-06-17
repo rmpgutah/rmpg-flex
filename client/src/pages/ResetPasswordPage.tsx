@@ -102,8 +102,8 @@ export default function ResetPasswordPage() {
             <ShieldCheck className="w-3 h-3" style={{ color: 'var(--rmpg-400)' }} />
             <span>SET NEW PASSWORD</span>
             <div className="ml-auto flex items-center gap-1" aria-hidden="true">
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid var(--border-strong)' }}>_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid var(--border-strong)' }}>&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-strong)' }}>_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-strong)' }}>&#9633;</div>
             </div>
           </div>
 
@@ -167,7 +167,7 @@ export default function ResetPasswordPage() {
                       New Password
                     </label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#383838' }} />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: 'var(--rmpg-500)' }} />
                       <input
                         id="new-password"
                         type={showPassword ? 'text' : 'password'}
@@ -197,7 +197,7 @@ export default function ResetPasswordPage() {
                       Confirm Password
                     </label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#383838' }} />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: 'var(--rmpg-500)' }} />
                       <input
                         id="confirm-password"
                         type={showPassword ? 'text' : 'password'}
@@ -295,7 +295,7 @@ export default function ResetPasswordPage() {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-[8px] mt-4" style={{ color: '#2e2e2e' }}>
+        <p className="text-center text-[8px] mt-4" style={{ color: 'var(--rmpg-500)' }}>
           RMPG Flex &mdash; Rocky Mountain Protective Group
         </p>
       </div>

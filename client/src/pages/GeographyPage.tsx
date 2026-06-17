@@ -634,7 +634,7 @@ function TierColumn<T extends { id: number }>(props: TierColumnProps<T>) {
           <Plus size={12} className="text-[var(--text-muted)]" />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {props.disabled ? (
           <div className="p-3 text-[10px] text-[var(--text-muted)] italic text-center">
             Select parent first

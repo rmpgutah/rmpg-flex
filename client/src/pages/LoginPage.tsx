@@ -468,11 +468,11 @@ export default function LoginPage() {
             />
           </div>
           <div className="flex items-center justify-center gap-2 mt-0.5 sm:mt-1">
-            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, #333333)' }} />
+            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, var(--border-default))' }} />
             <p className="text-[7px] sm:text-[8px] tracking-[0.15em] uppercase font-bold" style={{ color: 'rgba(136, 136, 136, 0.65)' }}>
               Secure Authentication
             </p>
-            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, #333333, transparent)' }} />
+            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, var(--border-default), transparent)' }} />
           </div>
         </div>
 
@@ -499,8 +499,8 @@ export default function LoginPage() {
                   <span className="text-[8px] uppercase tracking-wide" style={{ color: '#4ade80' }}>Password OK</span>
                 </div>
               )}
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid var(--border-strong)', borderBottom: '1px solid var(--border-subtle)' }} aria-hidden="true">_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid var(--border-strong)', borderBottom: '1px solid var(--border-subtle)' }} aria-hidden="true">&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-strong)', borderBottom: '1px solid var(--border-subtle)' }} aria-hidden="true">_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-strong)', borderBottom: '1px solid var(--border-subtle)' }} aria-hidden="true">&#9633;</div>
             </div>
           </div>
 
@@ -1324,7 +1324,7 @@ export default function LoginPage() {
             style={{
               background: 'var(--surface-base)',
               border: '1px solid var(--border-default)',
-              borderTop: '2px solid #333333',
+              borderTop: '2px solid var(--border-default)',
             }}
           >
             <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: 'var(--text-muted)' }}>

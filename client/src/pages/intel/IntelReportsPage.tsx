@@ -30,7 +30,7 @@ export default function IntelReportsPage() {
   useEffect(load, [load]);
 
   return (
-    <div className="p-4 space-y-3" style={{ background: '#000000', minHeight: '100%', color: 'var(--rmpg-200)' }}>
+    <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', minHeight: '100%', color: 'var(--rmpg-200)' }}>
       <div className="flex items-center justify-between">
         <h1 className="text-sm font-semibold tracking-wide" style={{ color: '#d4a017' }}>
           INTELLIGENCE PRODUCTS
@@ -45,13 +45,13 @@ export default function IntelReportsPage() {
 
       <div className="flex gap-1 flex-wrap text-[10px]">
         <button onClick={() => setStatus('')}
-          className="px-2 py-1" style={{ background: status === '' ? '#d4a017' : '#0b0b0b', color: status === '' ? '#000' : '#888', borderRadius: 2 }}>
+          className="px-2 py-1" style={{ background: status === '' ? '#d4a017' : 'var(--surface-overlay)', color: status === '' ? '#000' : '#888', borderRadius: 2 }}>
           ALL
         </button>
         {STATUSES.map((s) => (
           <button key={s} onClick={() => setStatus(s)}
             className="px-2 py-1 uppercase"
-            style={{ background: status === s ? '#d4a017' : '#0b0b0b', color: status === s ? '#000' : '#888', borderRadius: 2 }}>
+            style={{ background: status === s ? '#d4a017' : 'var(--surface-overlay)', color: status === s ? '#000' : '#888', borderRadius: 2 }}>
             {s.replace('_', ' ')}
           </button>
         ))}

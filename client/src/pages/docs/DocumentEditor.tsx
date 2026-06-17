@@ -152,7 +152,7 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {preview ? (
           <div className="text-rmpg-200 text-sm leading-relaxed whitespace-pre-wrap max-w-[850px] mx-auto">
             {body ? renderFormattedText(body) : <span className="text-rmpg-500">(empty)</span>}

@@ -351,7 +351,7 @@ export default function DashcamAiPage(): React.ReactElement {
                 <tr
                   key={ev.id}
                   onClick={() => setSelected(ev)}
-                  className={`border-b border-border-default cursor-pointer hover:bg-surface-raised transition-colors ${selected?.id === ev.id ? 'bg-[#1a2030]' : ''}`}
+                  className={`border-b border-border-default cursor-pointer hover:bg-surface-raised transition-colors ${selected?.id === ev.id ? 'bg-surface-raised' : ''}`}
                 >
                   <td className="py-1 px-2 font-mono text-rmpg-300">{formatLocalDate(ev.event_timestamp)}</td>
                   <td className="py-1 px-2">

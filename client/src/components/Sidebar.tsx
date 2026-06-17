@@ -203,7 +203,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
       }}
     >
       {/* Scrollable nav sections */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden py-2" style={{ scrollbarWidth: 'none' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-2" style={{ scrollbarWidth: 'none' }}>
         {filteredSections.map((section) => (
           <div key={section.id} className="mb-1">
             {/* Section label — visible only when expanded */}

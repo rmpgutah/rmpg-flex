@@ -108,7 +108,7 @@ export default function PageOrganizer({ open, pdfBytes, pages, pageOrder, onClos
             className="inline-flex items-center gap-1 px-2 py-1 rounded-sm border border-red-900/40 text-red-300 hover:bg-red-900/20 disabled:opacity-30"><Trash2 className="w-3 h-3" /> Delete</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
           <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
             {pageOrder.map((original, idx) => {
               const meta = pages[idx];

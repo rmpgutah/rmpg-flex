@@ -106,7 +106,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
       {/* Header */}
       <div className="flex items-center gap-2">
         <GraduationCap className="w-4 h-4 text-brand-400" />
@@ -124,7 +124,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
           <p className="text-lg font-bold font-mono text-green-400">{completed}</p>
           <p className="text-[8px] uppercase text-green-400/70 font-bold tracking-wider">Completed</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-gray-500 transition-colors duration-200 hover:brightness-110">
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-rmpg-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-rmpg-400">{inProgress}</p>
           <p className="text-[8px] uppercase text-rmpg-400/70 font-bold tracking-wider">In Progress</p>
         </div>

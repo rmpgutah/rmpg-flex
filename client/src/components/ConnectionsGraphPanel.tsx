@@ -241,10 +241,10 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   />
                   <line
                     x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
-                    stroke="#333" strokeWidth={1.5} strokeDasharray="4,3"
+                    stroke="var(--border-default)" strokeWidth={1.5} strokeDasharray="4,3"
                   />
                   {e.label && (
-                    <text x={mx} y={my - 4} textAnchor="middle" fontSize={7} fill="#666" fontFamily="monospace">
+                    <text x={mx} y={my - 4} textAnchor="middle" fontSize={7} fill="var(--rmpg-500)" fontFamily="monospace">
                       <title>{sentence}</title>
                       {e.label}
                     </text>
@@ -275,7 +275,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   {/* Node circle */}
                   <circle
                     cx={n.x} cy={n.y} r={r}
-                    fill="#0a0a0a" stroke={color} strokeWidth={2}
+                    fill="var(--surface-base)" stroke={color} strokeWidth={2}
                   />
                   {/* Type icon letter */}
                   <text
@@ -287,7 +287,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   {/* Label below */}
                   <text
                     x={n.x} y={n.y + r + 10} textAnchor="middle"
-                    fontSize={8} fill="#ccc" fontFamily="monospace"
+                    fontSize={8} fill="var(--rmpg-300)" fontFamily="monospace"
                   >
                     {n.label.length > 18 ? n.label.slice(0, 16) + '…' : n.label}
                   </text>
@@ -295,7 +295,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   {n.subLabel && (
                     <text
                       x={n.x} y={n.y + r + 19} textAnchor="middle"
-                      fontSize={6} fill="#666" fontFamily="monospace"
+                      fontSize={6} fill="var(--rmpg-500)" fontFamily="monospace"
                     >
                       {n.subLabel}
                     </text>

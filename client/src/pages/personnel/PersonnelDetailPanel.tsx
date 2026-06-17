@@ -277,7 +277,7 @@ export default function PersonnelDetailPanel({
   const hasCredAlert = officerCreds.some(c => c.status === 'expired' || c.status === 'expiring_soon');
 
   return (
-    <div ref={personnelDetailRef} className="flex-1 flex flex-col overflow-hidden min-h-0 h-full" role="region" aria-label={`Details for ${officer.first_name} ${officer.last_name}`}>
+    <div ref={personnelDetailRef} className="flex-1 min-h-0 flex flex-col overflow-hidden min-h-0 h-full" role="region" aria-label={`Details for ${officer.first_name} ${officer.last_name}`}>
       {/* Consolidated Header — 2 bands: Identity+Status+Actions / Controls+Stats */}
       <div className="panel-beveled mx-2 mt-2 transition-all duration-200">
         {/* Band 1: Identity + status chips + actions */}
@@ -439,7 +439,7 @@ export default function PersonnelDetailPanel({
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto min-h-0 p-4 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
+      <div className="flex-1 min-h-0 overflow-y-auto min-h-0 p-4 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
         {activeTab === 'profile' && (
           <>
             <ProfileDetailTab officer={officer} credentials={officerCreds} />

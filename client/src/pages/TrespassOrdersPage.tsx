@@ -566,7 +566,7 @@ export default function TrespassOrdersPage() {
 
         {/* Detail panel */}
         {selectedOrder && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-4">
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h2 className="text-sm font-bold text-rmpg-100 font-mono">{selectedOrder.order_number}</h2>

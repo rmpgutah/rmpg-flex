@@ -45,7 +45,7 @@ function confidenceColor(c: number): { dot: string; bg: string; label: string } 
   if (c >= CONFIDENCE_THRESHOLDS.high) return { dot: '#10b981', bg: 'rgba(16,185,129,0.08)', label: 'high' };
   if (c >= CONFIDENCE_THRESHOLDS.mid) return { dot: '#eab308', bg: 'rgba(234,179,8,0.08)', label: 'medium' };
   if (c > 0) return { dot: '#ef4444', bg: 'rgba(239,68,68,0.08)', label: 'low' };
-  return { dot: '#555', bg: 'transparent', label: 'not found' };
+  return { dot: 'var(--rmpg-600)', bg: 'transparent', label: 'not found' };
 }
 
 export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
@@ -160,7 +160,7 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
           <span>Extracted Fields ({extraction.fields.length})</span>
           <span className="text-rmpg-500">edit anything before saving · click ↺ to reset to OCR value</span>
         </div>
-        <div className="divide-y divide-[#222]">
+        <div className="divide-y divide-[var(--border-subtle)]">
           {extraction.fields.map((f) => {
             const c = confidenceColor(f.confidence);
             const original = ocrByKey[f.key] ?? '';

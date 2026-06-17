@@ -165,7 +165,7 @@ export default function UseOfForcePage() {
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {loading && <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-400" /></div>}
         {!loading && reports.length === 0 && <EmptyState icon={Shield} title="No Reports" description="No use of force reports found" />}
         {reports.map(r => (

@@ -1218,7 +1218,7 @@ export default function Layout() {
                     src={authedImageUrl(user.profile_image)}
                     alt={user.first_name}
                     className="w-8 h-8 object-cover transition-shadow duration-150"
-                    style={{ border: '2px solid #4d4d4d', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none' }}
+                    style={{ border: '2px solid var(--border-strong)', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none' }}
                   />
                 ) : (
                   <div
@@ -1226,7 +1226,7 @@ export default function Layout() {
                     style={{
                       background: 'linear-gradient(135deg, #333333, #888888)',
                       color: '#fff',
-                      border: '2px solid #aaaaaa',
+                      border: '2px solid var(--rmpg-400)',
                       borderRadius: '50%',
                       boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none',
                     }}
@@ -1518,7 +1518,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
                         }}
                       >
                         {item.shortcut}
@@ -1532,7 +1532,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}
@@ -1587,7 +1587,7 @@ export default function Layout() {
                             }}
                           >
                             {/* 11: Slightly larger child icon + semibold label for active items */}
-                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#aaaaaa' : 'var(--rmpg-500)', flexShrink: 0 }} />
+                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? 'var(--rmpg-400)' : 'var(--rmpg-500)', flexShrink: 0 }} />
                             <span className={`text-[11px] ${childActive ? 'font-semibold' : 'font-medium'}`}>{child.label}</span>
                           </button>
                         );

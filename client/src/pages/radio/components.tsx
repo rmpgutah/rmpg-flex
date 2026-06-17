@@ -102,7 +102,7 @@ export function EmptyConsole({ isConnected, channels }: { isConnected: boolean; 
     <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 gap-4 text-center">
       <div className="w-24 h-24 flex items-center justify-center"
         style={{ background: 'radial-gradient(circle at 30% 30%, #1a1a1a 0%, #0a0a0a 70%)', border: '3px solid var(--rt-border)', boxShadow: 'inset 0 4px 12px rgba(0,0,0,0.6)', borderRadius: '50%' }}>
-        <Antenna style={{ width: 36, height: 36, color: '#333' }} />
+        <Antenna style={{ width: 36, height: 36, color: 'var(--rmpg-600)' }} />
       </div>
       <div>
         <div className="text-sm font-mono font-bold tracking-[0.3em]" style={{ color: 'var(--rt-text)' }}>NO CHANNEL JOINED</div>

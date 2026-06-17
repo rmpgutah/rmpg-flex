@@ -38,7 +38,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
         fontSize: 11,
       }}>
         <AlertTriangle size={14} color="#ef4444" style={{ flexShrink: 0 }} />
-        <span style={{ color: '#ccc', flex: 1 }}>
+        <span style={{ color: 'var(--rmpg-300)', flex: 1 }}>
           <strong style={{ color: '#ef4444' }}>Location disabled</strong>
           {' — '}GPS tracking is not active. Enable location access in your browser or device settings for full functionality.
         </span>

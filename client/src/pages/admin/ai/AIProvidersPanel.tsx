@@ -157,7 +157,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
           <Server className="w-3.5 h-3.5 text-brand-400" />
           Fallback Priority Order
         </h3>
-        <div className="bg-surface-base border border-border-default rounded divide-y divide-[#1c1c1c]">
+        <div className="bg-surface-base border border-border-default rounded divide-y divide-[var(--border-subtle)]">
           {priority.map((p, i) => {
             const info = providerStatus.find(s => s.name === p);
             return (

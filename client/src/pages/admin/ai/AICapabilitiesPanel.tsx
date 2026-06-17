@@ -76,7 +76,7 @@ export default function AICapabilitiesPanel({ config, setConfig, onSaved, setErr
         AI Capabilities
       </h3>
 
-      <div className="bg-surface-base border border-border-default rounded divide-y divide-[#1c1c1c]">
+      <div className="bg-surface-base border border-border-default rounded divide-y divide-[var(--border-subtle)]">
         {FEATURE_LIST.map(feat => {
           const enabled = (config.features as any)[feat.key] ?? false;
           const override = routingRules[feat.key]?.provider || 'auto';

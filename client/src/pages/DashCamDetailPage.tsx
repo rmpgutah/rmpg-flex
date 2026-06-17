@@ -907,7 +907,7 @@ export default function DashCamDetailPage() {
       <div className={`hud-panel ${panelOpen ? 'open' : ''}`}
         style={{ position: panelOpen ? 'relative' : 'absolute', transform: panelOpen ? 'none' : undefined }}>
         <div className="flex flex-col h-full">
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto">
 
             {/* 1. OFFICER & UNIT */}
             <HudSection title="Officer & Unit" icon={User}

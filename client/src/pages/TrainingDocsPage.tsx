@@ -255,7 +255,7 @@ export default function TrainingDocsPage() {
       )}
 
       {/* Document List */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-dark" role="tabpanel">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2 scrollbar-dark" role="tabpanel">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />

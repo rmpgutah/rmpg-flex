@@ -29,7 +29,7 @@ const SEVERITY_STYLES: Record<string, { bg: string; border: string; text: string
   medium: {
     bg: 'rgba(136, 136, 136, 0.15)',
     border: '#888888',
-    text: '#cccccc',
+    text: 'var(--rmpg-300)',
     glow: 'none',
   },
 };

@@ -67,7 +67,7 @@ export default function BodyCameraDetailTab({
 
   const topBorderColor = (status: string) => {
     switch (status) {
-      case 'assigned': return 'border-t-2 border-t-gray-500';
+      case 'assigned': return 'border-t-2 border-t-rmpg-500';
       case 'available': return 'border-t-2 border-t-green-500';
       case 'maintenance': return 'border-t-2 border-t-amber-500';
       case 'lost': return 'border-t-2 border-t-red-500';
@@ -104,7 +104,7 @@ export default function BodyCameraDetailTab({
 
       {/* Camera Status Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-gray-500">
+        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500">
           <p className="text-lg font-bold text-rmpg-400 font-mono">{cameras.filter(c => c.status === 'assigned').length}</p>
           <p className="field-label">Assigned</p>
         </div>

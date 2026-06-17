@@ -518,7 +518,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       {/* Pay Periods */}
       {/* ═══════════════════════════════════════════════════════ */}
       {subTab === 'periods' && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
           {/* Action bar */}
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
@@ -637,7 +637,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       {/* Pay Rates */}
       {/* ═══════════════════════════════════════════════════════ */}
       {subTab === 'rates' && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
               <TrendingUp size={15} className="text-brand-400" /> Active Pay Rates
@@ -746,7 +746,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       {/* Timesheet / Entries */}
       {/* ═══════════════════════════════════════════════════════ */}
       {subTab === 'entries' && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
           {/* Period selector */}
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
@@ -885,7 +885,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       {/* Overtime Requests */}
       {/* ═══════════════════════════════════════════════════════ */}
       {subTab === 'overtime' && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
               <AlertTriangle size={15} /> Overtime Requests
@@ -979,7 +979,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       {/* Leave Balances */}
       {/* ═══════════════════════════════════════════════════════ */}
       {subTab === 'leave' && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
               <Banknote size={15} className="text-brand-400" /> PTO / Leave Balances

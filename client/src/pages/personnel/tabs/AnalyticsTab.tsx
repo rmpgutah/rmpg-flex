@@ -41,9 +41,9 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
     { label: 'Total Personnel', value: hc.total_personnel, icon: Users, color: 'text-rmpg-100', topBorder: 'border-t-rmpg-500' },
     { label: 'Active', value: hc.active, icon: UserCheck, color: 'text-green-400', topBorder: 'border-t-green-500' },
     { label: 'On Duty', value: hc.on_duty, icon: Radio, color: 'text-green-400', topBorder: 'border-t-green-500' },
-    { label: 'Clocked In', value: hc.clocked_in, icon: Clock, color: 'text-rmpg-400', topBorder: 'border-t-gray-500' },
+    { label: 'Clocked In', value: hc.clocked_in, icon: Clock, color: 'text-rmpg-400', topBorder: 'border-t-rmpg-500' },
     { label: 'Avg Tenure', value: `${(Number.isFinite(Number(hc.avg_tenure_years)) ? Number(hc.avg_tenure_years) : 0).toFixed(1)}y`, icon: Calendar, color: 'text-rmpg-200', topBorder: 'border-t-rmpg-500' },
-    { label: 'New Hires (30d)', value: hc.new_hires_30d, icon: UserPlus, color: 'text-rmpg-400', topBorder: 'border-t-gray-500' },
+    { label: 'New Hires (30d)', value: hc.new_hires_30d, icon: UserPlus, color: 'text-rmpg-400', topBorder: 'border-t-rmpg-500' },
     { label: 'Terminations (30d)', value: hc.terminations_30d, icon: UserMinus, color: 'text-red-400', topBorder: 'border-t-red-500' },
   ];
 
@@ -54,7 +54,7 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
   const expiredPct = complianceTotal > 0 ? (cc.expired / complianceTotal) * 100 : 0;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
       {/* Headcount Summary Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
         {headcountCards.map((card) => {

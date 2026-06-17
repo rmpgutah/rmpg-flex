@@ -271,7 +271,7 @@ function RadioOption({ name, value, selected, label, description, onChange }: {
 }) {
   return (
     <label className={`flex items-start gap-3 p-3 rounded border cursor-pointer transition-colors ${
-      selected === value ? 'border-rmpg-500 bg-rmpg-500/10' : 'border-rmpg-700 hover:border-[#404040]'
+      selected === value ? 'border-rmpg-500 bg-rmpg-500/10' : 'border-rmpg-700 hover:border-border-default'
     }`}>
       <input
         type="radio"
@@ -279,7 +279,7 @@ function RadioOption({ name, value, selected, label, description, onChange }: {
         value={value}
         checked={selected === value}
         onChange={onChange}
-        className="mt-1 accent-gray-500"
+        className="mt-1 accent-rmpg-500"
       />
       <div>
         <p className="text-sm text-rmpg-100 font-medium">{label}</p>

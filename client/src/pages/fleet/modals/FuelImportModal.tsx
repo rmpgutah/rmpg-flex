@@ -179,7 +179,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
           <button type="button" className="toolbar-btn text-[9px]" onClick={handleClose}>X</button>
         </PanelTitleBar>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
           {error && (
             <div className="panel-beveled p-2 border border-red-700/40 bg-red-900/20 mb-3">
               <div className="flex items-center gap-1.5 text-[10px] text-red-400"><AlertCircle className="w-3 h-3" />{error}</div>

@@ -27,7 +27,7 @@ import { getPttPrefs, keyCodeLabel, PTT_PREFS_EVENT, type PttPreferences } from 
 // button-like cap so the binding reads as a command, not prose.
 const keycapStyle: CSSProperties = {
   display: 'inline-block', padding: '0 4px', minWidth: 8, borderRadius: 2,
-  border: '1px solid #4a4a4a', borderBottomWidth: 2, background: 'var(--border-default)',
+  border: '1px solid var(--border-default)', borderBottomWidth: 2, background: 'var(--border-default)',
   color: 'var(--text-secondary)', fontSize: 8.5, fontWeight: 700, lineHeight: '13px',
   fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'nowrap',
 };
@@ -184,8 +184,8 @@ export default function PttController() {
   if (!active || resolvedChannelId == null) return null;
 
   // ── HUD state → color + label ──
-  let bg = '#161616', border = '#2e2e2e', dot = '#555', label = 'STANDBY', Icon = Radio;
-  if (!voice.supported) { label = 'NO MIC'; dot = '#666'; Icon = MicOff; }
+  let bg = 'var(--surface-overlay)', border = 'var(--border-default)', dot = 'var(--rmpg-500)', label = 'STANDBY', Icon = Radio;
+  if (!voice.supported) { label = 'NO MIC'; dot = 'var(--rmpg-500)'; Icon = MicOff; }
   else if (voice.transmitting) { bg = '#3a0d0d'; border = '#ef4444'; dot = '#ef4444'; label = 'ON AIR'; Icon = Mic; }
   else if (voice.activeSpeaker) { bg = '#0d2a14'; border = '#22c55e'; dot = '#22c55e'; label = `RX · ${voice.activeSpeaker.label}`; Icon = RadioTower; }
   else if (voice.busy) { bg = '#2a220a'; border = '#d4a017'; dot = '#d4a017'; label = 'CHANNEL BUSY'; Icon = Radio; }

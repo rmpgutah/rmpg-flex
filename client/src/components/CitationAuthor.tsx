@@ -501,7 +501,7 @@ export default function CitationAuthor({
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-4 space-y-5">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-4 space-y-5">
         {saveError && (
           <div className="bg-red-900/40 border border-red-700/50 px-3 py-2 text-xs text-red-300 flex items-center gap-2">
             <AlertTriangle size={14} /> {saveError}

@@ -139,7 +139,7 @@ export default function MapSidebar({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
             {sidebarTab === 'units' && (
               <div className="divide-y divide-rmpg-700/50" role="tabpanel">
                 {/* Fix 98: units sorted by status (available first) */}

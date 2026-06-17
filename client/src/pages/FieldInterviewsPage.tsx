@@ -487,7 +487,7 @@ export default function FieldInterviewsPage() {
 
         {/* Detail panel */}
         {selectedFi && (
-          <div className="flex-1 overflow-y-auto scrollbar-dark p-4">
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h2 className="text-sm font-bold text-rmpg-100 font-mono">{selectedFi.fi_number}</h2>

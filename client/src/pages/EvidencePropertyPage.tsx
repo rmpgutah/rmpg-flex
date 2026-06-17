@@ -563,7 +563,7 @@ export default function EvidencePropertyPage() {
         </div>
 
         {/* Item List */}
-        <div className="flex-1 overflow-y-auto scrollbar-dark" role="list" aria-label="Evidence items">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark" role="list" aria-label="Evidence items">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-40 gap-3">
               <Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading evidence items" />
@@ -641,7 +641,7 @@ export default function EvidencePropertyPage() {
       </div>
 
       {/* ── Right Panel: Detail ── */}
-      <div className="flex-1 flex flex-col bg-surface-base">
+      <div className="flex-1 min-h-0 flex flex-col bg-surface-base">
         {selected ? (
           <>
             <PanelTitleBar title={selected.evidence_number || `Evidence #${selected.id}`} icon={Box}>
@@ -684,7 +684,7 @@ export default function EvidencePropertyPage() {
               })}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4">
               {/* ── Details Tab ── */}
               {detailTab === 'info' && (
                 <div className="space-y-4">

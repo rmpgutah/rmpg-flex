@@ -149,7 +149,7 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
             placeholder="Search codes or descriptions…"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] text-rmpg-100 pl-6 pr-2 py-1 placeholder-[#545454] focus:outline-none focus:border-brand-700/50"
+            className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] text-rmpg-100 pl-6 pr-2 py-1 placeholder-rmpg-600 focus:outline-none focus:border-brand-700/50"
           />
         </div>
         <div className="flex items-center gap-1 mt-1">
@@ -163,7 +163,7 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
       </div>
 
       {/* Code list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-8 text-[10px] text-rmpg-500">Loading codes…</div>
         ) : grouped.length === 0 ? (
