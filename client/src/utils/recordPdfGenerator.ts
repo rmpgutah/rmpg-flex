@@ -313,7 +313,7 @@ function personPdfPostureFlags(data: PersonPdfData): Array<string | null | undef
   if (data.bolo_active) flags.push('BOLO');
   if (data.is_sex_offender) flags.push('SEX OFFENDER');
   if (hasValue(data.gang_affiliation)) flags.push('GANG');
-  if (hasValue(data.probation_parole)) flags.push('PAROLE/PROBATION');
+  if (hasValue(data.probation_parole) && /parole|probation/i.test(String(data.probation_parole))) flags.push('PAROLE/PROBATION');
   if (hasValue(data.mental_health_flags)) flags.push('MENTAL HEALTH');
   if (hasValue(data.caution_flags)) flags.push(data.caution_flags!);
   return flags;
@@ -3783,10 +3783,13 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 10. Active Warrants ───────────────────────────────────
-  if (Array.isArray(data.warrants) && data.warrants.length > 0) {
+  const activeWarrantsOnly = Array.isArray(data.warrants)
+    ? data.warrants.filter(w => (w.status || '').toLowerCase() === 'active')
+    : [];
+  if (activeWarrantsOnly.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Active Warrants', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const warrantRows = data.warrants.map(w => [
+    const warrantRows = activeWarrantsOnly.map(w => [
       w.warrant_number || 'N/A',
       titleCase(w.type || ''),
       titleCase(w.status || ''),
@@ -4050,8 +4053,8 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   { const sec = openAutoSection(doc, 'Vehicle Identification', y); y = sec.contentY;
     const sixthW = ffw / 6;
     // Row 1: License Plate (2/6), State (1/6), Plate Type (1/6), VIN (2/6)
-    const r1a = addFieldPair(doc, 'License Plate', data.license_plate || '', lx, y, sixthW * 2);
-    const r1b = addFieldPair(doc, 'State', data.plate_state || '', lx + sixthW * 2, y, sixthW);
+    const r1a = addFieldPair(doc, 'License Plate', data.license_plate || data.plate_number || '', lx, y, sixthW * 2);
+    const r1b = addFieldPair(doc, 'State', data.plate_state || data.state || data.registration_state || '', lx + sixthW * 2, y, sixthW);
     const r1c = addFieldPair(doc, 'Plate Type', data.plate_type || '', lx + sixthW * 3, y, sixthW);
     const r1d = addFieldPair(doc, 'VIN', data.vin || '', lx + sixthW * 4, y, sixthW * 2);
     y = Math.max(r1a, r1b, r1c, r1d);

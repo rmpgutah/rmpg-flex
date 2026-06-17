@@ -108,9 +108,10 @@ export async function generateCaseReportPdf(data: CaseReportData): Promise<jsPDF
     doc.text(lines, M + 32, y);
     y += lines.length * 4.2 + 1.5;
   };
+  const pdfSafe = (s: string) => s.replace(/→/g, '->').replace(/←/g, '<-').replace(/[^\x00-\xFF]/g, '?');
   const bullet = (text: string) => {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(45);
-    const lines = doc.splitTextToSize(text, RIGHT - M - 4.2);
+    const lines = doc.splitTextToSize(pdfSafe(text), RIGHT - M - 4.2);
     ensure(lines.length * 3.9 + 0.7);
     doc.text('•', M, y);
     doc.text(lines, M + 4.2, y);
