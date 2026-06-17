@@ -126,7 +126,7 @@ export default function FleetCostsTab({
               {alerts.map((a, i) => (
                 <div key={i} className="flex items-center gap-2 text-[10px] text-amber-300 font-mono">
                   <span className="w-32 text-amber-400">{a.kind}</span>
-                  <span className="flex-1 truncate">{a.label}</span>
+                  <span className="min-w-0 flex-1 truncate">{a.label}</span>
                   <span className="text-rmpg-400">{a.date}</span>
                   <span className="text-amber-500 w-16 text-right">{a.days}d</span>
                 </div>

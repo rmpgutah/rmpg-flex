@@ -101,7 +101,7 @@ export function CaseRelatedSection({ caseId, related, onChanged }: {
                   {searching ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Searching" /> : <Search style={{ width: 11, height: 11 }} />}
                 </button>
               </div>
-              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-1">
+              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent space-y-1">
                 {results.map((r) => (
                   <button type="button" key={r.id} onClick={() => link(r.id)}
                     className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">

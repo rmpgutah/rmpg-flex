@@ -249,7 +249,7 @@ export default function MobilePsoCfsPage() {
               <div className="text-xs text-rmpg-400 mt-1 uppercase">{call.pso_service_type.replace(/_/g, ' ')}</div>
             )}
           </div>
-          <div className="bg-[#141414] border border-[#222] p-3 space-y-3">
+          <div className="bg-surface-base border border-border-default p-3 space-y-3">
             <label className="block text-[11px] font-bold text-rmpg-400 uppercase tracking-wider">Enter Your User ID</label>
             <input id="ff-mobilepsocfspage-0"
               type="number"
@@ -258,7 +258,7 @@ export default function MobilePsoCfsPage() {
               value={userIdInput}
               onChange={(e) => setUserIdInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') submitAuth(); }}
-              className="w-full bg-[#050505] border border-[#333] text-rmpg-100 font-mono text-lg px-3 py-2 focus:border-[#d4a017] outline-none"
+              className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 font-mono text-lg px-3 py-2 focus:border-[#d4a017] outline-none"
               placeholder="e.g. 1572"
             />
             {errorMsg && <div className="text-red-400 text-xs">{errorMsg}</div>}
@@ -284,12 +284,12 @@ export default function MobilePsoCfsPage() {
           <div>
             <div className="text-[#d4a017] text-xs font-bold tracking-[0.12em] uppercase">PSO Dispatch</div>
             <div className="text-rmpg-100 text-lg font-mono">{call?.call_number}</div>
-            <div className="text-xs text-rmpg-400 mt-0.5">Signed in as <span className="text-gray-200">{auth?.user.full_name} ({auth?.user.id})</span></div>
+            <div className="text-xs text-rmpg-400 mt-0.5">Signed in as <span className="text-rmpg-200">{auth?.user.full_name} ({auth?.user.id})</span></div>
           </div>
           <button onClick={signOut} className="text-[10px] text-rmpg-500 hover:text-red-400 uppercase">Sign Out</button>
         </div>
 
-        <div className="bg-[#141414] border border-[#222] p-3">
+        <div className="bg-surface-base border border-border-default p-3">
           <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Location</div>
           <div className="text-sm text-rmpg-100">{call?.location}</div>
           {call?.pso_service_type && <div className="text-xs text-rmpg-400 mt-1 uppercase">{call.pso_service_type.replace(/_/g, ' ')}</div>}
@@ -297,7 +297,7 @@ export default function MobilePsoCfsPage() {
           <div className="text-[10px] text-rmpg-500 mt-1 uppercase">Current status: <span className="text-[#d4a017]">{call?.status}</span></div>
         </div>
 
-        <div className="bg-[#141414] border border-[#222] p-3">
+        <div className="bg-surface-base border border-border-default p-3">
           <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">Status</div>
           <div className="grid grid-cols-2 gap-2">
             {(['enroute', 'onscene', 'cleared', 'closed'] as const).map((s) => (
@@ -305,19 +305,19 @@ export default function MobilePsoCfsPage() {
                 key={s}
                 disabled={statusBusy}
                 onClick={() => updateStatus(s)}
-                className="py-3 border border-[#333] text-rmpg-100 text-[11px] font-bold uppercase tracking-wider hover:border-[#d4a017] disabled:opacity-50"
+                className="py-3 border border-border-subtle text-rmpg-100 text-[11px] font-bold uppercase tracking-wider hover:border-[#d4a017] disabled:opacity-50"
               >{statusLabel(s)}</button>
             ))}
           </div>
         </div>
 
-        <div className="bg-[#141414] border border-[#222] p-3">
+        <div className="bg-surface-base border border-border-default p-3">
           <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">Add Narrative</div>
           <RichTextArea
             value={narrative}
             onChange={(e) => setNarrative(e.target.value)}
             rows={4}
-            className="w-full bg-[#050505] border border-[#333] text-rmpg-100 text-sm px-3 py-2 focus:border-[#d4a017] outline-none"
+            className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-3 py-2 focus:border-[#d4a017] outline-none"
             placeholder="Record an observation, attempt outcome, or note…"
           />
           <button
@@ -327,7 +327,7 @@ export default function MobilePsoCfsPage() {
           >{busy ? 'Saving…' : narrativeSaved ? 'Saved ✓' : 'Append Narrative'}</button>
         </div>
 
-        <div className="bg-[#141414] border border-[#222] p-3">
+        <div className="bg-surface-base border border-border-default p-3">
           <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">PSO Service</div>
           <div className="grid grid-cols-2 gap-2 mb-2">
             <LabeledInput label="Attempt #" type="number" value={psoAttempt} onChange={setPsoAttempt} />
@@ -347,7 +347,7 @@ export default function MobilePsoCfsPage() {
               value={psoNotes}
               onChange={(e) => setPsoNotes(e.target.value)}
               rows={3}
-              className="w-full bg-[#050505] border border-[#333] text-rmpg-100 text-sm px-3 py-2 focus:border-[#d4a017] outline-none mt-1"
+              className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-3 py-2 focus:border-[#d4a017] outline-none mt-1"
             />
           </div>
           <button
@@ -377,7 +377,7 @@ function LabeledInput({ label, value, onChange, type = 'text' }: { label: string
   return (
     <div>
       <label className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
-      <input id="ff-mobilepsocfspage-1" type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-[#050505] border border-[#333] text-rmpg-100 text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1" />
+      <input id="ff-mobilepsocfspage-1" type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1" />
     </div>
   );
 }
@@ -385,7 +385,7 @@ function LabeledSelect({ label, value, onChange, options }: { label: string; val
   return (
     <div>
       <label className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
-      <select id="ff-mobilepsocfspage-2" value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-[#050505] border border-[#333] text-rmpg-100 text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1">
+      <select id="ff-mobilepsocfspage-2" value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1">
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>
@@ -394,9 +394,9 @@ function LabeledSelect({ label, value, onChange, options }: { label: string; val
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-rmpg-100">
+    <div className="min-h-screen bg-surface-sunken text-rmpg-100">
       <div className="max-w-md mx-auto">
-        <div className="bg-[#050505] border-b border-[#222] px-4 py-3 flex items-center gap-3">
+        <div className="bg-surface-overlay border-b border-border-default px-4 py-3 flex items-center gap-3">
           <img src="/rmpg-logo.png" alt="RMPG" className="w-8 h-8" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           <div>
             <div className="text-[#d4a017] text-xs font-bold tracking-[0.12em] uppercase">RMPG Flex</div>

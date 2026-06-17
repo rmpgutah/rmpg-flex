@@ -253,7 +253,7 @@ export default function ShiftPlansPage() {
           <ExportButton exportUrl="/api/admin/shift-plans/export/csv" exportFilename="shift-plans.csv" />
           <button type="button"
             onClick={() => setShowCreateForm(true)}
-            className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 hover:bg-gray-800/50 transition-colors"
+            className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 hover:bg-surface-raised/50 transition-colors"
           >
             <Plus style={{ width: 10, height: 10 }} />
             New Plan
@@ -306,7 +306,7 @@ export default function ShiftPlansPage() {
               <button type="button"
                 onClick={handleCreate}
                 disabled={!newPlanName.trim()}
-                className="w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 hover:bg-gray-800/50 transition-colors disabled:opacity-40"
+                className="w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 hover:bg-surface-raised/50 transition-colors disabled:opacity-40"
               >
                 Create Plan
               </button>
@@ -410,7 +410,7 @@ export default function ShiftPlansPage() {
                   {sp.activePlan.status === 'active' && (
                     <button type="button"
                       onClick={() => sp.updatePlanStatus(sp.activePlan!.id, 'completed')}
-                      className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 hover:bg-gray-800/50"
+                      className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 hover:bg-surface-raised/50"
                     >
                       <CheckCircle style={{ width: 9, height: 9 }} /> Complete
                     </button>

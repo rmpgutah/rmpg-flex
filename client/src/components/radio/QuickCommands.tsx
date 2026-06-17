@@ -19,7 +19,7 @@ interface QuickCommandsProps {
 
 export default function QuickCommands({ onCommand }: QuickCommandsProps) {
   return (
-    <div className="border border-[#222222] rounded-[2px] p-2 bg-[#0d0d0d]">
+    <div className="border border-border-default rounded-[2px] p-2 bg-surface-base">
       <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">
         QUICK COMMANDS
       </div>

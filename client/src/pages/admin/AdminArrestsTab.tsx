@@ -888,7 +888,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                               {sync.records_found}F / {sync.records_new}N / {sync.records_updated}U / {sync.records_released}R
                             </span>
                           ) : (
-                            <span className="text-red-400 truncate flex-1">{sync.error_message}</span>
+                            <span className="text-red-400 min-w-0 truncate flex-1">{sync.error_message}</span>
                           )}
                           <span className="text-rmpg-600 ml-auto">{sync.duration_ms}ms</span>
                         </div>

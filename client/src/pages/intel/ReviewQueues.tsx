@@ -7,7 +7,7 @@ export default function ReviewQueues() {
       <div className="font-mono text-[10px] tracking-widest text-[#888] uppercase">Review Queues</div>
       <SuggestedLinksPanel />
       <ResolutionReviewPanel />
-      <div className="text-[10px] text-[#555]">Confirm or dismiss suggested links and possible duplicate persons above. Empty queues hide themselves.</div>
+      <div className="text-[10px] text-rmpg-500">Confirm or dismiss suggested links and possible duplicate persons above. Empty queues hide themselves.</div>
     </div>
   );
 }

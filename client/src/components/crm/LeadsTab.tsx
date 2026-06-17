@@ -339,7 +339,7 @@ export default function LeadsTab() {
   return (
     <div className="flex flex-col h-full">
       {/* ── Top bar ──────────────────────────────────── */}
-      <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-[#141414] border-b border-rmpg-700">
+      <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-surface-base border-b border-rmpg-700">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input id="ff-leadstab-0"
@@ -347,13 +347,13 @@ export default function LeadsTab() {
             placeholder="Search leads..."
             value={filterSearch}
             onChange={e => setFilterSearch(e.target.value)}
-            className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm pl-7 pr-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+            className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm pl-7 pr-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
           />
         </div>
         <select id="ff-leadstab-1"
           value={filterSource}
           onChange={e => setFilterSource(e.target.value)}
-          className="bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Sources</option>
           <option value="utah_biz">Utah Biz</option>
@@ -372,7 +372,7 @@ export default function LeadsTab() {
         <select id="ff-leadstab-2"
           value={filterService}
           onChange={e => setFilterService(e.target.value)}
-          className="bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Services</option>
           <option value="process_serving">Process Serving</option>
@@ -382,7 +382,7 @@ export default function LeadsTab() {
         <select id="ff-leadstab-3"
           value={filterStage}
           onChange={e => setFilterStage(e.target.value)}
-          className="bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Stages</option>
           {PIPELINE_STAGES.map(s => (
@@ -392,7 +392,7 @@ export default function LeadsTab() {
         <select id="ff-leadstab-4"
           value={filterScoreMin}
           onChange={e => setFilterScoreMin(e.target.value)}
-          className="bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
         >
           <option value="">Min Score</option>
           <option value="20">20+</option>
@@ -408,7 +408,7 @@ export default function LeadsTab() {
         </button>
         <button type="button"
           onClick={() => setShowScraperPanel(!showScraperPanel)}
-          className={`text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1 border ${showScraperPanel ? 'bg-brand-600/20 border-brand-500 text-brand-400' : 'bg-[#0c0c0c] border-rmpg-700 text-rmpg-300 hover:border-rmpg-600'}`}
+          className={`text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1 border ${showScraperPanel ? 'bg-brand-600/20 border-brand-500 text-brand-400' : 'bg-surface-sunken border-rmpg-700 text-rmpg-300 hover:border-rmpg-600'}`}
         >
           <RefreshCw className="w-3.5 h-3.5" /> Scrapers
         </button>
@@ -421,7 +421,7 @@ export default function LeadsTab() {
 
       {/* ── Pipeline summary bar ─────────────────────── */}
       {pipelineSummary.length > 0 && (
-        <div className="px-3 py-2 bg-[#0c0c0c] border-b border-rmpg-700">
+        <div className="px-3 py-2 bg-surface-sunken border-b border-rmpg-700">
           <div className="flex h-6 rounded-sm overflow-hidden border border-rmpg-700">
             {pipelineSummary.map(ps => {
               const pct = pipelineTotal > 0 ? (ps.count / pipelineTotal) * 100 : 0;
@@ -482,7 +482,7 @@ export default function LeadsTab() {
           ) : (
             <table className="w-full">
               <thead>
-                <tr className="bg-[#0c0c0c] border-b border-rmpg-700 sticky top-0 z-10">
+                <tr className="bg-surface-sunken border-b border-rmpg-700 sticky top-0 z-10">
                   <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left w-8">
                     <button type="button" onClick={toggleSelectAll} className="text-rmpg-400 hover:text-rmpg-100">
                       {selectedIds.size === leads.length && leads.length > 0 ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
@@ -503,7 +503,7 @@ export default function LeadsTab() {
                   <tr
                     key={lead.id}
                     onClick={() => setSelectedLead(lead)}
-                    className={`border-b border-rmpg-700/50 cursor-pointer transition-colors ${selectedLead?.id === lead.id ? 'bg-brand-600/10' : 'hover:bg-[#181818]'}`}
+                    className={`border-b border-rmpg-700/50 cursor-pointer transition-colors ${selectedLead?.id === lead.id ? 'bg-brand-600/10' : 'hover:bg-surface-raised'}`}
                   >
                     <td className="px-2 py-1.5" onClick={e => { e.stopPropagation(); toggleSelect(lead.id); }}>
                       {selectedIds.has(lead.id) ? <CheckSquare className="w-3.5 h-3.5 text-brand-400" /> : <Square className="w-3.5 h-3.5 text-rmpg-500" />}
@@ -540,9 +540,9 @@ export default function LeadsTab() {
 
         {/* ── Lead detail side panel ───────────────── */}
         {selectedLead && (
-          <div className="w-[380px] min-w-[340px] overflow-y-auto bg-[#141414] flex flex-col">
+          <div className="w-[380px] min-w-[340px] overflow-y-auto bg-surface-base flex flex-col">
             {/* Header */}
-            <div className="px-3 py-2 bg-[#0c0c0c] border-b border-rmpg-700 flex items-center gap-2">
+            <div className="px-3 py-2 bg-surface-sunken border-b border-rmpg-700 flex items-center gap-2">
               <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-bold text-rmpg-100 truncate">{selectedLead.business_name}</h3>
                 <div className="flex items-center gap-2 mt-0.5">
@@ -564,7 +564,7 @@ export default function LeadsTab() {
                 <select id="ff-leadstab-5"
                   value={selectedLead.pipeline_stage}
                   onChange={e => handleStageChange(selectedLead.id, e.target.value as PipelineStage)}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 >
                   {PIPELINE_STAGES.map(s => (
                     <option key={s} value={s}>{toDisplayLabel(s)}</option>
@@ -668,7 +668,7 @@ export default function LeadsTab() {
                   value={editNotes}
                   onChange={e => setEditNotes(e.target.value)}
                   rows={3}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
                 <div className="flex justify-end mt-1">
                   <button type="button"
@@ -689,14 +689,14 @@ export default function LeadsTab() {
                   placeholder="Subject"
                   value={newNoteSubject}
                   onChange={e => setNewNoteSubject(e.target.value)}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none mb-1"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none mb-1"
                 />
                 <RichTextArea
                   placeholder="Details (optional)"
                   value={newNoteDetails}
                   onChange={e => setNewNoteDetails(e.target.value)}
                   rows={2}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
                 <div className="flex justify-end mt-1">
                   <button type="button"
@@ -769,7 +769,7 @@ export default function LeadsTab() {
       {/* ── Create Lead Modal ────────────────────────── */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowCreateModal(false)}>
-          <div className="bg-[#141414] border border-rmpg-700 rounded-sm w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="Add Lead" icon={Plus}>
               <button type="button" onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-rmpg-100">
                 <X className="w-4 h-4" />
@@ -783,7 +783,7 @@ export default function LeadsTab() {
                   required
                   value={createForm.business_name}
                   onChange={e => setCreateForm(f => ({ ...f, business_name: e.target.value }))}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -793,7 +793,7 @@ export default function LeadsTab() {
                     type="text"
                     value={createForm.contact_name}
                     onChange={e => setCreateForm(f => ({ ...f, contact_name: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -801,7 +801,7 @@ export default function LeadsTab() {
                   <select id="ff-leadstab-9"
                     value={createForm.business_type}
                     onChange={e => setCreateForm(f => ({ ...f, business_type: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   >
                     <option value="">Select...</option>
                     <option value="retail">Retail</option>
@@ -824,7 +824,7 @@ export default function LeadsTab() {
                     type="email"
                     value={createForm.contact_email}
                     onChange={e => setCreateForm(f => ({ ...f, contact_email: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -833,7 +833,7 @@ export default function LeadsTab() {
                     type="tel"
                     value={createForm.contact_phone}
                     onChange={e => setCreateForm(f => ({ ...f, contact_phone: formatPhoneInput(e.target.value) }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -843,7 +843,7 @@ export default function LeadsTab() {
                   type="text"
                   value={createForm.address}
                   onChange={e => setCreateForm(f => ({ ...f, address: e.target.value }))}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 />
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -853,7 +853,7 @@ export default function LeadsTab() {
                     type="text"
                     value={createForm.city}
                     onChange={e => setCreateForm(f => ({ ...f, city: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -862,7 +862,7 @@ export default function LeadsTab() {
                     type="text"
                     value={createForm.state}
                     onChange={e => setCreateForm(f => ({ ...f, state: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -871,7 +871,7 @@ export default function LeadsTab() {
                     type="text"
                     value={createForm.zip}
                     onChange={e => setCreateForm(f => ({ ...f, zip: e.target.value }))}
-                    className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -882,7 +882,7 @@ export default function LeadsTab() {
                   step="0.01"
                   value={createForm.estimated_value}
                   onChange={e => setCreateForm(f => ({ ...f, estimated_value: e.target.value }))}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -891,7 +891,7 @@ export default function LeadsTab() {
                   value={createForm.notes}
                   onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
                   rows={3}
-                  className="w-full bg-[#0c0c0c] border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">

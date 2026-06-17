@@ -183,23 +183,23 @@ export default function ActiveCallsCard() {
   // ─── Render ───────────────────────────────────────────────
   if (loading) {
     return (
-      <section className="bg-[#141414] border border-[#222] p-3">
+      <section className="bg-surface-base border border-border-default p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">ACTIVE CALLS</h2>
-        <div className="h-[200px] animate-pulse bg-[#1a1a1a] border border-[#222]" />
+        <div className="h-[200px] animate-pulse bg-surface-raised border border-border-default" />
       </section>
     );
   }
 
   if (error) {
     return (
-      <section className="bg-[#141414] border border-[#222] p-3">
+      <section className="bg-surface-base border border-border-default p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">ACTIVE CALLS</h2>
         <div className="flex items-center justify-between gap-2">
           <span className="text-amber-400 text-xs">{error}</span>
           <button
             type="button"
             onClick={() => { setLoading(true); fetchCalls(); }}
-            className="min-h-[44px] h-11 px-3 bg-[#1a1a1a] border border-[#222] text-rmpg-300 text-xs uppercase tracking-widest"
+            className="min-h-[44px] h-11 px-3 bg-surface-raised border border-border-default text-rmpg-300 text-xs uppercase tracking-widest"
           >
             Retry
           </button>
@@ -209,7 +209,7 @@ export default function ActiveCallsCard() {
   }
 
   return (
-    <section className="bg-[#141414] border border-[#222] p-3">
+    <section className="bg-surface-base border border-border-default p-3">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest">ACTIVE CALLS</h2>
         {geoStatus === 'denied' ? (
@@ -221,7 +221,7 @@ export default function ActiveCallsCard() {
             aria-pressed={showDistance}
             className={[
               'h-8 px-2 text-[10px] uppercase tracking-widest border',
-              showDistance ? 'text-[#d4a017] border-[#d4a017]' : 'text-rmpg-400 border-[#222]',
+              showDistance ? 'text-[#d4a017] border-[#d4a017]' : 'text-rmpg-400 border-border-default',
             ].join(' ')}
           >
             {showDistance ? 'Distance ON' : 'Show Distance'}
@@ -245,7 +245,7 @@ export default function ActiveCallsCard() {
             return (
               <li
                 key={c.id}
-                className={['flex items-center', isLast ? '' : 'border-b border-[#1a1a1a]'].join(' ')}
+                className={['flex items-center', isLast ? '' : 'border-b border-border-default'].join(' ')}
               >
                 <button
                   type="button"

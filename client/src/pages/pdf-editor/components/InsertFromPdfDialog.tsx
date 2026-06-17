@@ -15,7 +15,7 @@ interface Props {
   onInsert: (file: File, position: number) => void;
 }
 
-const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+const inputCls = 'w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
 const labelCls = 'text-[9px] uppercase tracking-wider text-rmpg-500 block mb-0.5';
 
 export default function InsertFromPdfDialog({ open, pageCount, activePage, busy, onClose, onInsert }: Props) {
@@ -40,7 +40,7 @@ export default function InsertFromPdfDialog({ open, pageCount, activePage, busy,
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#141414] border border-[#222] rounded-[2px] p-4 max-w-[440px] w-full" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] p-4 max-w-[440px] w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
             <FilePlus2 className="w-4 h-4 text-[#d4a017]" /> Insert pages from another PDF
@@ -60,7 +60,7 @@ export default function InsertFromPdfDialog({ open, pageCount, activePage, busy,
             <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden"
               onChange={e => { const f = e.target.files?.[0] ?? null; setFile(f); e.target.value = ''; }} />
             <button type="button" onClick={() => fileRef.current?.click()}
-              className="w-full text-left px-2 py-1.5 border border-[#222] rounded-sm text-[11px] text-rmpg-300 hover:text-rmpg-100 inline-flex items-center gap-2">
+              className="w-full text-left px-2 py-1.5 border border-border-default rounded-sm text-[11px] text-rmpg-300 hover:text-rmpg-100 inline-flex items-center gap-2">
               <UploadIcon className="w-3.5 h-3.5" />
               {file ? file.name : 'Choose a PDF…'}
             </button>

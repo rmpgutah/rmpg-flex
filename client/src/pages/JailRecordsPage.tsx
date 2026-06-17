@@ -88,7 +88,7 @@ export default function JailRecordsPage() {
         {bookings.map((b) => (
           <div key={b.id} className="px-2 py-[2px] text-[11px] flex items-center gap-2 border-b border-border-subtle last:border-b-0">
             <span className="text-rmpg-200 w-44 shrink-0 truncate">{b.full_name}</span>
-            <span className="text-rmpg-500 flex-1 truncate">{b.charges || ''}</span>
+            <span className="text-rmpg-500 min-w-0 flex-1 truncate">{b.charges || ''}</span>
             <span className="text-rmpg-500">{b.county || ''}</span>
             <span className="text-rmpg-500">{b.booking_date ? String(b.booking_date).slice(0, 10) : ''}</span>
             {b.person_id
@@ -106,7 +106,7 @@ export default function JailRecordsPage() {
         {[...active, ...pending].map((s) => (
           <div key={s.source_key} className="px-2 py-[2px] text-[11px] flex items-center gap-2 border-b border-border-subtle last:border-b-0">
             <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[s.status] || 'bg-rmpg-500'}`} />
-            <span className="text-rmpg-200 flex-1 truncate">{s.display_name}</span>
+            <span className="text-rmpg-200 min-w-0 flex-1 truncate">{s.display_name}</span>
             <span className="text-rmpg-500 text-[9px]">{s.kind}</span>
             <span className="text-rmpg-500 text-[9px]">{s.row_count || 0} rec</span>
             <span className="text-rmpg-500 text-[9px] w-28 truncate text-right">{s.last_status || s.status}</span>

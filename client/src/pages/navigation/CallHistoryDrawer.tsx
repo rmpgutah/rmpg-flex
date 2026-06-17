@@ -277,7 +277,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
                     {c.unit_call_signs}
                   </span>
                 )}
-                <span className="text-[10px] text-rmpg-300 truncate flex-1" title={c.incident_type}>{c.incident_type?.replace(/_/g, ' ')}</span>
+                <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1" title={c.incident_type}>{c.incident_type?.replace(/_/g, ' ')}</span>
                 <span className="text-[8px] font-bold uppercase px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: STATUS_COLOR[c.status] || '#888', background: `${STATUS_COLOR[c.status] || '#888'}22` }}>{c.status}</span>
                 <span className="text-[8px] font-mono text-rmpg-600 shrink-0">{fmtDateShort(c.dispatched_at || c.created_at)}</span>
               </div>
@@ -309,7 +309,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
               {(meaningful(c.location_address) || (c.latitude != null && c.longitude != null)) && (
                 <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-rmpg-800/60">
                   <MapPin className="w-2.5 h-2.5 text-rmpg-600 shrink-0" />
-                  <span className="text-[9px] text-rmpg-400 truncate flex-1" title={c.location_address || ''}>{meaningful(c.location_address) ? c.location_address : 'Mapped location'}</span>
+                  <span className="text-[9px] text-rmpg-400 min-w-0 truncate flex-1" title={c.location_address || ''}>{meaningful(c.location_address) ? c.location_address : 'Mapped location'}</span>
                   {c.latitude != null && c.longitude != null && (
                     <button
                       onClick={() => onRouteToCall(c.latitude!, c.longitude!, `${c.call_number} · ${c.incident_type?.replace(/_/g, ' ')}`)}

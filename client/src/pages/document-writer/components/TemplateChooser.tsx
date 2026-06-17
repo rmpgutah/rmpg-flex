@@ -125,7 +125,7 @@ export default function TemplateChooser({ onSelect }: Props) {
                   value={values[f.key] || ''}
                   onChange={(e) => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
                   placeholder={f.source === 'cad' ? `Auto-fill from CAD (${f.cadPath})` : 'Enter value...'}
-                  className="w-full md:flex-1 bg-[#0a0a0a] border border-[#222] rounded-[2px] px-2.5 py-1.5 text-xs text-rmpg-200 placeholder-rmpg-600 focus:border-[#d4a017]/50 focus:outline-none min-h-[44px] md:min-h-0"
+                  className="w-full md:flex-1 bg-surface-sunken border border-border-default rounded-[2px] px-2.5 py-1.5 text-xs text-rmpg-200 placeholder-rmpg-600 focus:border-[#d4a017]/50 focus:outline-none min-h-[44px] md:min-h-0"
                 />
                 {f.source === 'cad' && (
                   <span className="text-[9px] text-[#d4a017]/60 font-mono">CAD</span>
@@ -160,7 +160,7 @@ export default function TemplateChooser({ onSelect }: Props) {
             key={t.id}
             type="button"
             onClick={() => setSelected(t)}
-            className="flex flex-col items-center gap-2 p-4 bg-[#0d0d0d] border border-[#222] rounded-[2px] hover:border-[#d4a017]/40 hover:bg-[#141414] transition-colors text-center group"
+            className="flex flex-col items-center gap-2 p-4 bg-surface-base border border-border-default rounded-[2px] hover:border-[#d4a017]/40 hover:bg-surface-base transition-colors text-center group"
           >
             <div className="text-rmpg-500 group-hover:text-[#d4a017] transition-colors">
               {CATEGORY_ICONS[t.category] || <File className="w-5 h-5" />}
@@ -178,7 +178,7 @@ export default function TemplateChooser({ onSelect }: Props) {
           </p>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {custom.map((t) => (
-              <div key={t.name} className="relative flex flex-col items-center gap-2 p-4 bg-[#0d0d0d] border border-[#222] rounded-[2px] hover:border-[#d4a017]/40 hover:bg-[#141414] transition-colors text-center group">
+              <div key={t.name} className="relative flex flex-col items-center gap-2 p-4 bg-surface-base border border-border-default rounded-[2px] hover:border-[#d4a017]/40 hover:bg-surface-base transition-colors text-center group">
                 <button type="button" onClick={() => setSelected(asTemplate(t))} className="flex flex-col items-center gap-2 w-full">
                   <Bookmark className="w-5 h-5 text-rmpg-500 group-hover:text-[#d4a017] transition-colors" />
                   <span className="text-[11px] font-medium text-rmpg-300 group-hover:text-rmpg-100 break-words">{t.name}</span>
@@ -200,7 +200,7 @@ export default function TemplateChooser({ onSelect }: Props) {
         Templates ({filtered.length})
       </p>
       {filtered.length === 0 ? (
-        <div className="p-6 text-center text-rmpg-600 text-xs border border-dashed border-[#222] rounded-[2px]">
+        <div className="p-6 text-center text-rmpg-600 text-xs border border-dashed border-border-default rounded-[2px]">
           No templates match this filter.
         </div>
       ) : (
@@ -210,7 +210,7 @@ export default function TemplateChooser({ onSelect }: Props) {
             return (
               <div
                 key={t.id}
-                className="relative flex flex-col items-center gap-2 p-4 bg-[#0d0d0d] border border-[#222] rounded-[2px] hover:border-[#d4a017]/40 hover:bg-[#141414] transition-colors text-center group"
+                className="relative flex flex-col items-center gap-2 p-4 bg-surface-base border border-border-default rounded-[2px] hover:border-[#d4a017]/40 hover:bg-surface-base transition-colors text-center group"
               >
                 <button
                   type="button"

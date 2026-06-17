@@ -58,7 +58,7 @@ export default function AdminEmailAuditTab() {
               className={`px-2 py-0.5 text-[10px] uppercase tracking-wide rounded-sm ${
                 filter === f
                   ? 'bg-[#d4a017] text-black font-semibold'
-                  : 'bg-[#141414] text-rmpg-400 hover:text-rmpg-100 border border-[#222]'
+                  : 'bg-surface-base text-rmpg-400 hover:text-rmpg-100 border border-border-default'
               }`}
             >
               {f}
@@ -67,7 +67,7 @@ export default function AdminEmailAuditTab() {
         </div>
         <button
           onClick={fetchAudit}
-          className="ml-auto flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#141414] text-rmpg-300 border border-[#222] hover:text-rmpg-100 rounded-sm"
+          className="ml-auto flex items-center gap-1 px-2 py-0.5 text-[10px] bg-surface-base text-rmpg-300 border border-border-default hover:text-rmpg-100 rounded-sm"
         >
           <RefreshCw className="w-3 h-3" /> Refresh
         </button>
@@ -78,14 +78,14 @@ export default function AdminEmailAuditTab() {
           <Loader2 className="w-3 h-3 animate-spin" /> Loading audit log…
         </div>
       ) : rows.length === 0 ? (
-        <div className="text-[10px] text-rmpg-500 p-4 text-center bg-[#050505] border border-[#1a1a1a]">
+        <div className="text-[10px] text-rmpg-500 p-4 text-center bg-surface-overlay border border-border-default">
           No audit rows yet. Send an email to see it logged here.
         </div>
       ) : (
-        <div className="border border-[#222] overflow-hidden">
+        <div className="border border-border-default overflow-hidden">
           <table className="w-full text-[10px]">
             <thead>
-              <tr className="bg-[#141414] text-rmpg-400 text-[9px] uppercase tracking-wide">
+              <tr className="bg-surface-base text-rmpg-400 text-[9px] uppercase tracking-wide">
                 <th className="text-left font-semibold py-[3px] px-2">When</th>
                 <th className="text-left font-semibold py-[3px] px-2">Sender</th>
                 <th className="text-left font-semibold py-[3px] px-2">To</th>
@@ -98,7 +98,7 @@ export default function AdminEmailAuditTab() {
               {rows.map((r) => {
                 const to = parseAddresses(r.to_addresses);
                 return (
-                  <tr key={r.id} className="border-t border-[#1a1a1a] hover:bg-[#0c0c0c]">
+                  <tr key={r.id} className="border-t border-border-default hover:bg-surface-sunken">
                     <td className="py-[2px] px-2 text-rmpg-300 font-mono whitespace-nowrap">
                       {r.sent_at.replace('T', ' ').slice(0, 19)}
                     </td>
@@ -106,7 +106,7 @@ export default function AdminEmailAuditTab() {
                     <td className="py-[2px] px-2 text-rmpg-300 truncate max-w-[200px]" title={to.join(', ')}>
                       {to.slice(0, 2).join(', ')}{to.length > 2 ? ` +${to.length - 2}` : ''}
                     </td>
-                    <td className="py-[2px] px-2 text-gray-200 truncate max-w-[260px]" title={r.subject}>
+                    <td className="py-[2px] px-2 text-rmpg-200 truncate max-w-[260px]" title={r.subject}>
                       {r.subject || '(no subject)'}
                     </td>
                     <td className="py-[2px] px-2">

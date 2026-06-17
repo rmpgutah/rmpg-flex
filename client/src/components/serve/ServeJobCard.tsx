@@ -125,7 +125,7 @@ export default React.memo(function ServeJobCard({
       aria-label={`Serve job: ${job.recipient_name}`}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleExpand?.(); } }}
       className={`
-        panel-beveled rounded-[2px] transition-all duration-150 hover:bg-[#1a1a1a] hover:shadow-md
+        panel-beveled rounded-[2px] transition-all duration-150 hover:bg-surface-raised hover:shadow-md
         ${isDueSoon ? 'ring-1 ring-red-500/60 animate-pulse' : ''}
         ${isOverdue ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]' : ''}
       `}

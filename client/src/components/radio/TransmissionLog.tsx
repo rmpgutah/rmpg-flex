@@ -131,7 +131,7 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
   }, [subscribe, addEntry]);
 
   return (
-    <div className="border border-[#222222] rounded-[2px] p-2 bg-[#0d0d0d]">
+    <div className="border border-border-default rounded-[2px] p-2 bg-surface-base">
       <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">
         TX LOG
       </div>
@@ -141,7 +141,7 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
         style={{ maxHeight: 140 }}
       >
         {entries.length === 0 ? (
-          <div className="text-[9px] text-[#555555] italic py-1">No transmissions</div>
+          <div className="text-[9px] text-rmpg-500 italic py-1">No transmissions</div>
         ) : (
           entries.map((entry) => (
             <div
@@ -150,7 +150,7 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
               style={{ fontFamily: 'monospace' }}
               onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}
             >
-              <span className="text-[10px] text-[#555555] tabular-nums shrink-0 whitespace-nowrap">
+              <span className="text-[10px] text-rmpg-500 tabular-nums shrink-0 whitespace-nowrap">
                 {entry.time}
               </span>
               <span

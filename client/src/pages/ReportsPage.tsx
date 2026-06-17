@@ -1220,7 +1220,7 @@ export default function ReportsPage() {
                     {incidentsChartData.map((entry: { name: string; value: number; fill: string }) => (
                       <div key={entry.name} className="flex items-center gap-2 py-0.5 hover:bg-surface-raised/30 px-1 -mx-1 transition-colors rounded-sm">
                         <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: entry.fill }} />
-                        <span className="text-[10px] text-rmpg-200 truncate flex-1">{entry.name}</span>
+                        <span className="text-[10px] text-rmpg-200 min-w-0 truncate flex-1">{entry.name}</span>
                         <span className="text-[10px] text-rmpg-400 font-mono font-bold tabular-nums">{entry.value}</span>
                       </div>
                     ))}

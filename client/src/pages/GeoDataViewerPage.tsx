@@ -155,7 +155,7 @@ function LayerCard({
     >
       <div className="flex items-center gap-2">
         <Icon style={{ width: 13, height: 13, color: layer.color, flexShrink: 0 }} />
-        <span className="text-[11px] font-medium text-rmpg-100 truncate flex-1">{layer.label}</span>
+        <span className="text-[11px] font-medium text-rmpg-100 min-w-0 truncate flex-1">{layer.label}</span>
         {loading ? (
           <RefreshCw style={{ width: 10, height: 10, color: '#666', animation: 'spin 1s linear infinite' }} />
         ) : count !== null ? (

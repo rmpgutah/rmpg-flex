@@ -148,12 +148,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2a2a;
+  background: var(--border-default);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3a;
+  background: var(--border-strong);
 }
 
 /* Firefox scrollbar */
@@ -285,20 +285,19 @@ body.fx-green {
 }
 
 /* --- Global Theme Neutralization ---------------------------------
-   Existing UI code still contains blue-oriented Tailwind utilities
-   and arbitrary dark-blue hex classes. Normalize them to black/gray
-   until each screen is fully cleaned up.
+   Neutralize any remaining legacy blue Tailwind utilities that haven't
+   been migrated to rmpg-* tokens yet. The rmpg-* token classes are
+   intentional design-system tokens and MUST NOT be included here —
+   they resolve via CSS variables and adapt to day/night automatically.
    --------------------------------------------------------------- */
 html.theme-dark [class*="text-blue-"],
 html.theme-dark [class*="text-cyan-"],
 html.theme-dark [class*="text-sky-"],
 html.theme-dark [class*="text-indigo-"],
-html.theme-dark [class*="text-rmpg-"],
 html:not(.theme-light) [class*="text-blue-"],
 html:not(.theme-light) [class*="text-cyan-"],
 html:not(.theme-light) [class*="text-sky-"],
-html:not(.theme-light) [class*="text-indigo-"],
-html:not(.theme-light) [class*="text-rmpg-"] {
+html:not(.theme-light) [class*="text-indigo-"] {
   color: #c8c8c8 !important;
 }
 
@@ -306,38 +305,32 @@ html.theme-dark [class*="bg-blue-"],
 html.theme-dark [class*="bg-cyan-"],
 html.theme-dark [class*="bg-sky-"],
 html.theme-dark [class*="bg-indigo-"],
-html.theme-dark [class*="bg-rmpg-"],
 html:not(.theme-light) [class*="bg-blue-"],
 html:not(.theme-light) [class*="bg-cyan-"],
 html:not(.theme-light) [class*="bg-sky-"],
-html:not(.theme-light) [class*="bg-indigo-"],
-html:not(.theme-light) [class*="bg-rmpg-"] {
-  background-color: #111111 !important;
+html:not(.theme-light) [class*="bg-indigo-"] {
+  background-color: var(--surface-raised) !important;
 }
 
 html.theme-dark [class*="border-blue-"],
 html.theme-dark [class*="border-cyan-"],
 html.theme-dark [class*="border-sky-"],
 html.theme-dark [class*="border-indigo-"],
-html.theme-dark [class*="border-rmpg-"],
 html:not(.theme-light) [class*="border-blue-"],
 html:not(.theme-light) [class*="border-cyan-"],
 html:not(.theme-light) [class*="border-sky-"],
-html:not(.theme-light) [class*="border-indigo-"],
-html:not(.theme-light) [class*="border-rmpg-"] {
-  border-color: #4a4a4a !important;
+html:not(.theme-light) [class*="border-indigo-"] {
+  border-color: var(--border-default) !important;
 }
 
 html.theme-dark [class*="ring-blue-"],
 html.theme-dark [class*="ring-cyan-"],
 html.theme-dark [class*="ring-sky-"],
 html.theme-dark [class*="ring-indigo-"],
-html.theme-dark [class*="ring-rmpg-"],
 html:not(.theme-light) [class*="ring-blue-"],
 html:not(.theme-light) [class*="ring-cyan-"],
 html:not(.theme-light) [class*="ring-sky-"],
-html:not(.theme-light) [class*="ring-indigo-"],
-html:not(.theme-light) [class*="ring-rmpg-"] {
+html:not(.theme-light) [class*="ring-indigo-"] {
   --tw-ring-color: rgba(160, 160, 160, 0.35) !important;
 }
 
@@ -345,14 +338,12 @@ html.theme-dark [class*="from-blue-"],
 html.theme-dark [class*="from-cyan-"],
 html.theme-dark [class*="from-sky-"],
 html.theme-dark [class*="from-indigo-"],
-html.theme-dark [class*="from-rmpg-"],
 html:not(.theme-light) [class*="from-blue-"],
 html:not(.theme-light) [class*="from-cyan-"],
 html:not(.theme-light) [class*="from-sky-"],
-html:not(.theme-light) [class*="from-indigo-"],
-html:not(.theme-light) [class*="from-rmpg-"] {
-  --tw-gradient-from: #2a2a2a var(--tw-gradient-from-position) !important;
-  --tw-gradient-to: rgb(42 42 42 / 0) var(--tw-gradient-to-position) !important;
+html:not(.theme-light) [class*="from-indigo-"] {
+  --tw-gradient-from: var(--surface-raised) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(var(--surface-raised-rgb) / 0) var(--tw-gradient-to-position) !important;
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
 }
 
@@ -360,26 +351,22 @@ html.theme-dark [class*="via-blue-"],
 html.theme-dark [class*="via-cyan-"],
 html.theme-dark [class*="via-sky-"],
 html.theme-dark [class*="via-indigo-"],
-html.theme-dark [class*="via-rmpg-"],
 html:not(.theme-light) [class*="via-blue-"],
 html:not(.theme-light) [class*="via-cyan-"],
 html:not(.theme-light) [class*="via-sky-"],
-html:not(.theme-light) [class*="via-indigo-"],
-html:not(.theme-light) [class*="via-rmpg-"] {
-  --tw-gradient-stops: var(--tw-gradient-from), #1f1f1f var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+html:not(.theme-light) [class*="via-indigo-"] {
+  --tw-gradient-stops: var(--tw-gradient-from), var(--surface-base) var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
 }
 
 html.theme-dark [class*="to-blue-"],
 html.theme-dark [class*="to-cyan-"],
 html.theme-dark [class*="to-sky-"],
 html.theme-dark [class*="to-indigo-"],
-html.theme-dark [class*="to-rmpg-"],
 html:not(.theme-light) [class*="to-blue-"],
 html:not(.theme-light) [class*="to-cyan-"],
 html:not(.theme-light) [class*="to-sky-"],
-html:not(.theme-light) [class*="to-indigo-"],
-html:not(.theme-light) [class*="to-rmpg-"] {
-  --tw-gradient-to: #111111 var(--tw-gradient-to-position) !important;
+html:not(.theme-light) [class*="to-indigo-"] {
+  --tw-gradient-to: var(--surface-base) var(--tw-gradient-to-position) !important;
 }
 
 [class*="#303030"],

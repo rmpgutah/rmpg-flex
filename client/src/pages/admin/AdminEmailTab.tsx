@@ -261,7 +261,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
   return (
     <div className="space-y-4">
       {/* ─── Sub-tab nav ─── */}
-      <div className="flex gap-2 border-b border-[#222]">
+      <div className="flex gap-2 border-b border-border-default">
         <button
           onClick={() => setSubTab('config')}
           className={`px-3 py-1 text-xs ${subTab === 'config' ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-rmpg-400'}`}

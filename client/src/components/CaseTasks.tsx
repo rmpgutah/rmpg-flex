@@ -255,7 +255,7 @@ export function CaseMyTasksView({ onOpenCase }: { onOpenCase: (caseId: number) =
           </button>
         ))}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-3 space-y-1.5">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-3 space-y-1.5">
         {loading ? (
           <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading tasks...</div>
         ) : tasks.length === 0 ? (

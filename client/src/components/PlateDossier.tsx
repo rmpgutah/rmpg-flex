@@ -62,9 +62,9 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
 
   return (
     <div className="fixed inset-0 z-[200] bg-black/80 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-[#0b0b0b] border border-[#2e2e2e] w-full sm:max-w-lg max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface-sunken border border-rmpg-700 w-full sm:max-w-lg max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="sticky top-0 bg-[#0b0b0b] border-b border-[#222222] px-3 py-2 flex items-center justify-between">
+        <div className="sticky top-0 bg-surface-sunken border-b border-border-default px-3 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Car className="w-4 h-4 text-[#d4a017]" />
             <span className="text-xl tracking-[0.2em] text-rmpg-100 font-semibold">{norm}</span>
@@ -94,22 +94,22 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
 
           {/* Vehicle record */}
           {vehicle ? (
-            <div className="border border-[#222222] bg-[#141414] p-2.5">
+            <div className="border border-border-default bg-surface-base p-2.5">
               <div className="text-[9px] uppercase tracking-wider text-[#888888] mb-1">On file</div>
               <div className="text-sm text-rmpg-100">{vehicleDesc || 'Vehicle record'}</div>
-              {ownerName && <div className="text-[11px] text-[#aaaaaa] mt-0.5">Owner: {ownerName}</div>}
+              {ownerName && <div className="text-[11px] text-rmpg-300 mt-0.5">Owner: {ownerName}</div>}
               {vehicle.is_stolen === 1 && <div className="text-[11px] text-red-400 font-semibold mt-0.5">⚠ FLAGGED STOLEN</div>}
             </div>
           ) : !loading && (
-            <div className="text-[11px] text-[#888888] border border-[#222222] px-3 py-1.5">Plate not on file — sightings only.</div>
+            <div className="text-[11px] text-[#888888] border border-border-default px-3 py-1.5">Plate not on file — sightings only.</div>
           )}
 
           {/* Map */}
           <SightingsMap sightings={mapSightings} height={200} />
 
           {/* History */}
-          <div className="border border-[#222222]">
-            <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-[#1a1a1a] flex items-center justify-between">
+          <div className="border border-border-default">
+            <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-border-default flex items-center justify-between">
               <span>SIGHTING HISTORY</span><span>{sightings.length}</span>
             </div>
             {loading && <div className="p-2 text-[11px] text-[#888888]">Loading…</div>}
@@ -117,13 +117,13 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
             {sightings.map((s) => {
               const src = sightingSource(s.notes);
               return (
-                <div key={s.id} className="px-2 py-1.5 border-b border-[#1a1a1a] last:border-b-0 flex items-center gap-2 text-[11px]">
+                <div key={s.id} className="px-2 py-1.5 border-b border-border-default last:border-b-0 flex items-center gap-2 text-[11px]">
                   <span className={`text-[8px] font-bold uppercase px-1 py-0.5 border shrink-0 ${src.badgeClass}`}>{src.label}</span>
-                  <span className="flex-1 min-w-0 truncate text-[#aaaaaa]">
+                  <span className="flex-1 min-w-0 truncate text-rmpg-300">
                     {s.location_text || (s.lat != null ? `${s.lat.toFixed(4)}, ${s.lng?.toFixed(4)}` : '—')}
                   </span>
                   {s.confidence != null && <span className="text-[#888888] shrink-0">{Math.round(s.confidence * 100)}%</span>}
-                  <span className="text-[#666666] shrink-0">{String(s.created_at).slice(5, 16)}</span>
+                  <span className="text-rmpg-500 shrink-0">{String(s.created_at).slice(5, 16)}</span>
                 </div>
               );
             })}

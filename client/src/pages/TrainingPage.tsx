@@ -584,7 +584,7 @@ function DashboardTab({ records, requirements, officers }: {
           <div className="space-y-1 max-h-[300px] overflow-y-auto">
             {stats.officerCompliance.map(o => (
               <div key={o.id} className="flex items-center gap-2 py-1 border-b border-rmpg-700/30">
-                <span className="text-[11px] text-rmpg-100 flex-1 truncate">{o.full_name}</span>
+                <span className="text-[11px] text-rmpg-100 min-w-0 flex-1 truncate">{o.full_name}</span>
                 {o.badge_number && (
                   <span className="text-[9px] font-mono text-rmpg-500">{o.badge_number}</span>
                 )}
@@ -786,7 +786,7 @@ function MandatoryTrainingAlerts() {
                       a.alert_type === 'expired' ? 'bg-red-500' : a.alert_type === 'expiring_soon' ? 'bg-amber-500' : 'bg-rmpg-500'
                     }`} />
                     <span className="text-rmpg-200 w-28 truncate">{a.officer_name}</span>
-                    <span className="text-rmpg-400 flex-1 truncate">{a.course_name}</span>
+                    <span className="text-rmpg-400 min-w-0 flex-1 truncate">{a.course_name}</span>
                     <span className={`text-[9px] font-bold ${
                       a.alert_type === 'expired' ? 'text-red-400' : a.alert_type === 'expiring_soon' ? 'text-amber-400' : 'text-rmpg-500'
                     }`}>

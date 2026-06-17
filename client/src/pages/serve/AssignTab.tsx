@@ -30,11 +30,11 @@ export default function AssignTab() {
     <div className="p-4 grid grid-cols-[200px_1fr] gap-4">
       <div>
         <div className="text-[9px] font-semibold text-[#888] uppercase mb-1">Officers</div>
-        <button className={`w-full flex justify-between px-2 py-[3px] border-b border-[#141414] ${sel === 'unassigned' ? 'text-[#d4a017]' : 'text-[#ccc]'}`} onClick={() => { setSel('unassigned'); setPicked([]); }}>
+        <button className={`w-full flex justify-between px-2 py-[3px] border-b border-[#141414] ${sel === 'unassigned' ? 'text-[#d4a017]' : 'text-rmpg-300'}`} onClick={() => { setSel('unassigned'); setPicked([]); }}>
           <span>Unassigned</span><span className="text-[#888]">{board.unassigned.length}</span>
         </button>
         {board.officers.map((o) => (
-          <button key={o.id} className={`w-full flex justify-between px-2 py-[3px] border-b border-[#141414] ${sel === o.id ? 'text-[#d4a017]' : 'text-[#ccc]'}`} onClick={() => { setSel(o.id); setPicked([]); }}>
+          <button key={o.id} className={`w-full flex justify-between px-2 py-[3px] border-b border-[#141414] ${sel === o.id ? 'text-[#d4a017]' : 'text-rmpg-300'}`} onClick={() => { setSel(o.id); setPicked([]); }}>
             <span>{o.name}</span>
             <span className="flex gap-1 items-center"><span className="text-[#888]">{o.count}</span>{attentionSummary(o.attention) && <span className="text-[#e0533d] text-[9px]">⚠</span>}</span>
           </button>
@@ -43,7 +43,7 @@ export default function AssignTab() {
 
       <div>
         {(overdue > 0 || (totals['unassigned_near_deadline'] ?? 0) > 0 || (totals['deadline_approaching'] ?? 0) > 0 || (totals['diligence_gap'] ?? 0) > 0) && (
-          <div className="mb-2 px-2 py-1 border border-[#3a3a3a] text-[10px] text-[#e0533d] bg-[#1a0f0d]">
+          <div className="mb-2 px-2 py-1 border border-border-subtle text-[10px] text-[#e0533d] bg-[#1a0f0d]">
             ⚠ {overdue} overdue · {(totals['unassigned_near_deadline'] ?? 0)} unassigned near deadline · {(totals['deadline_approaching'] ?? 0)} due soon · {(totals['diligence_gap'] ?? 0)} stalled
           </div>
         )}
@@ -52,7 +52,7 @@ export default function AssignTab() {
           {picked.length > 0 && (
             <div className="flex items-center gap-2 text-[11px]">
               <span className="text-[#888]">{picked.length} selected →</span>
-              <select className="bg-[#0b0b0b] border border-[#232323] px-1" value={target} onChange={(e) => setTarget(e.target.value === '' ? '' : Number(e.target.value))}>
+              <select className="bg-surface-sunken border border-border-default px-1" value={target} onChange={(e) => setTarget(e.target.value === '' ? '' : Number(e.target.value))}>
                 <option value="">officer…</option>
                 {board.officers.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
@@ -61,7 +61,7 @@ export default function AssignTab() {
           )}
         </div>
         <table className="w-full text-[11px]">
-          <thead><tr className="text-left text-[9px] text-[#888] border-b border-[#232323]"><th className="py-[3px]">☐</th><th>Defendant</th><th>Address</th><th>Deadline</th><th>Flags</th></tr></thead>
+          <thead><tr className="text-left text-[9px] text-[#888] border-b border-border-default"><th className="py-[3px]">☐</th><th>Defendant</th><th>Address</th><th>Deadline</th><th>Flags</th></tr></thead>
           <tbody>
             {jobs.map((j) => (
               <tr key={j.id} className="border-b border-[#121212]" style={{ color: color(j) }}>

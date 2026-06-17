@@ -253,7 +253,7 @@ export function DutyHoursPanel() {
       <div className="space-y-0.5 max-h-[140px] overflow-y-auto scrollbar-dark">
         {data.entries.slice(0, 10).map((o) => (
           <div key={o.officer_id} className="flex items-center justify-between px-2 py-0.5 bg-surface-sunken rounded text-[9px]">
-            <span className="text-rmpg-200 flex-1 truncate">{o.officer_name}</span>
+            <span className="text-rmpg-200 min-w-0 flex-1 truncate">{o.officer_name}</span>
             <span className="font-mono text-rmpg-400 w-12 text-right">{o.total_hours}h</span>
             <span className="font-mono text-amber-400 w-14 text-right">{o.total_overtime}h OT</span>
             <span className="text-rmpg-500 w-14 text-right">{o.shifts_completed} shifts</span>
@@ -292,8 +292,8 @@ export function CertWarningsPanel() {
       <div className="space-y-0.5 max-h-[120px] overflow-y-auto scrollbar-dark">
         {data.warnings.slice(0, 8).map((w) => (
           <div key={w.credential_id} className="flex items-center justify-between px-2 py-0.5 bg-surface-sunken rounded text-[9px]">
-            <span className="text-rmpg-200 flex-1 truncate">{w.officer_name}</span>
-            <span className="text-rmpg-400 flex-1 truncate">{w.credential_type}</span>
+            <span className="text-rmpg-200 min-w-0 flex-1 truncate">{w.officer_name}</span>
+            <span className="text-rmpg-400 min-w-0 flex-1 truncate">{w.credential_type}</span>
             <span className={`font-mono ${w.severity === 'expired' ? 'text-red-400' : w.severity === 'critical' ? 'text-red-300' : 'text-amber-400'}`}>
               {w.days_until < 0 ? `${Math.abs(w.days_until)}d overdue` : `${w.days_until}d`}
             </span>

@@ -18,8 +18,8 @@ export default function MobileHomePage() {
   const cards = useMobileLayout(user?.role);
 
   return (
-    <div className="min-h-[100dvh] bg-[#0a0a0a] text-rmpg-100 safe-px safe-pb no-overscroll">
-      <header className="safe-pt py-3 border-b border-[#222]">
+    <div className="min-h-[100dvh] bg-surface-sunken text-rmpg-100 safe-px safe-pb no-overscroll">
+      <header className="safe-pt py-3 border-b border-border-default">
         <h1 className="text-[#d4a017] text-xs font-bold tracking-widest text-center">
           RMPG FLEX · MOBILE
         </h1>
@@ -28,7 +28,7 @@ export default function MobileHomePage() {
         {cards.map((id) => {
           const Card = CARDS[id];
           return (
-            <Suspense key={id} fallback={<div className="h-32 bg-[#141414] border border-[#222] animate-pulse" />}>
+            <Suspense key={id} fallback={<div className="h-32 bg-surface-base border border-border-default animate-pulse" />}>
               <Card />
             </Suspense>
           );

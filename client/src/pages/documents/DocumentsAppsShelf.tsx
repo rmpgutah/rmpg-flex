@@ -98,7 +98,7 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
     }
   };
 
-  const cardCls = 'group bg-[#0d0d0d] hover:bg-[#141414] border border-[#222] hover:border-[#d4a017]/40 rounded-[2px] p-3 transition-colors text-left flex items-start gap-2 min-w-[200px]';
+  const cardCls = 'group bg-surface-base hover:bg-surface-base border border-border-default hover:border-[#d4a017]/40 rounded-[2px] p-3 transition-colors text-left flex items-start gap-2 min-w-[200px]';
 
   return (
     <div className="mb-3">
@@ -149,7 +149,7 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
             <button key={r.fileId} type="button"
               onClick={() => openRecent(r)}
               onContextMenu={(e) => openMenu(e, buildRecentMenu(r))}
-              className="px-2 py-0.5 bg-[#0d0d0d] border border-[#222] hover:border-[#d4a017]/50 rounded-sm text-rmpg-300 hover:text-rmpg-100 truncate max-w-[200px]"
+              className="px-2 py-0.5 bg-surface-base border border-border-default hover:border-[#d4a017]/50 rounded-sm text-rmpg-300 hover:text-rmpg-100 truncate max-w-[200px]"
               title={r.fileName}>
               {r.fileName}
             </button>

@@ -131,7 +131,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
   return (
     <div className="space-y-4">
       {/* Active provider + fallback */}
-      <div className="bg-[#121212] border border-[#1c1c1c] rounded p-4 space-y-3">
+      <div className="bg-surface-base border border-border-default rounded p-4 space-y-3">
         <div className="flex items-center gap-3">
           <label className="text-xs text-rmpg-400 w-32 shrink-0">Active Provider</label>
           <ProviderSelect
@@ -145,7 +145,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
             type="checkbox"
             checked={config.autoFallback}
             onChange={toggleFallback}
-            className="rounded border-[#1c1c1c] bg-[#0b0b0b] text-brand-500 focus:ring-brand-500 focus:ring-offset-0"
+            className="rounded border-border-default bg-surface-sunken text-brand-500 focus:ring-brand-500 focus:ring-offset-0"
           />
           <span className="text-xs text-rmpg-300">Enable auto-fallback to other providers if primary fails</span>
         </label>
@@ -157,13 +157,13 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
           <Server className="w-3.5 h-3.5 text-brand-400" />
           Fallback Priority Order
         </h3>
-        <div className="bg-[#121212] border border-[#1c1c1c] rounded divide-y divide-[#1c1c1c]">
+        <div className="bg-surface-base border border-border-default rounded divide-y divide-[#1c1c1c]">
           {priority.map((p, i) => {
             const info = providerStatus.find(s => s.name === p);
             return (
               <div key={p} className="flex items-center gap-3 px-3 py-2">
                 <span className="text-xs text-rmpg-500 font-mono w-5">{i + 1}.</span>
-                <div className={`w-2 h-2 rounded-full ${info?.available ? 'bg-green-500' : 'bg-[#2e2e2e]'}`} />
+                <div className={`w-2 h-2 rounded-full ${info?.available ? 'bg-green-500' : 'bg-rmpg-700'}`} />
                 <span className="text-xs text-rmpg-100 flex-1">{p.charAt(0).toUpperCase() + p.slice(1)}</span>
                 <div className="flex gap-0.5">
                   <button
@@ -225,7 +225,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
               type="text" value={openaiBaseUrl}
               onChange={e => { setOpenaiBaseUrl(e.target.value); setDirty(true); }}
               placeholder="https://api.openai.com/v1"
-              className="flex-1 bg-[#0b0b0b] border border-[#1c1c1c] text-rmpg-100 text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600"
+              className="flex-1 bg-surface-sunken border border-border-default text-rmpg-100 text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600"
             />
           </div>
           <ModelInput value={config.providers.openai.model || ''} onChange={v => updateModel('openai', v)} placeholder="gpt-4o-mini" />
@@ -242,7 +242,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
               type="text" value={ollamaUrl}
               onChange={e => { setOllamaUrl(e.target.value); setDirty(true); }}
               placeholder="http://localhost:11434"
-              className="flex-1 bg-[#0b0b0b] border border-[#1c1c1c] text-rmpg-100 text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600"
+              className="flex-1 bg-surface-sunken border border-border-default text-rmpg-100 text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600"
             />
           </div>
           <ModelInput value={config.providers.ollama.model || ''} onChange={v => updateModel('ollama', v)} placeholder="llama3.1" />

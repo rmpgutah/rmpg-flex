@@ -5959,7 +5959,7 @@ export default function DispatchPage() {
                           <div key={ev.id} className="flex items-start gap-2 text-[10px] font-mono py-1 border-b border-[var(--spm-border)]">
                             <span className="text-rmpg-500 tabular-nums whitespace-nowrap">{(ev.created_at || '').slice(5, 16).replace('T', ' ')}</span>
                             <span className="text-amber-300 font-bold uppercase whitespace-nowrap">{ev.action}</span>
-                            <span className="text-rmpg-300 truncate flex-1" title={ev.details || ''}>{ev.details || ''}</span>
+                            <span className="text-rmpg-300 min-w-0 truncate flex-1" title={ev.details || ''}>{ev.details || ''}</span>
                             <span className="text-rmpg-400 whitespace-nowrap">{ev.user_name || ev.username || `#${ev.user_id ?? '?'}`}</span>
                           </div>
                         ))}

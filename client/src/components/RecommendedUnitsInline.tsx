@@ -180,7 +180,7 @@ export default function RecommendedUnitsInline({
               key={u.callSign}
               type="button"
               onClick={() => onAssign?.(u.callSign)}
-              className="w-full text-left flex items-center gap-1.5 px-1.5 py-1 hover:bg-[#1a1a1a] transition-colors"
+              className="w-full text-left flex items-center gap-1.5 px-1.5 py-1 hover:bg-surface-raised transition-colors"
               style={{ borderLeft: `2px solid ${statusColor(u.status)}`, borderRadius: 2 }}
               disabled={!onAssign}
               title={onAssign ? `Attach ${u.callSign} to this call` : undefined}

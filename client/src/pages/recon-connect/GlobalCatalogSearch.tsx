@@ -51,8 +51,8 @@ export default function GlobalCatalogSearch({ onNavigate }: { onNavigate: (path:
   }, [q]);
 
   return (
-    <div className="bg-[#141414] border border-[#222]">
-      <div className="px-3 py-2 border-b border-[#222] flex items-center gap-2">
+    <div className="bg-surface-base border border-border-default">
+      <div className="px-3 py-2 border-b border-border-default flex items-center gap-2">
         <Search className="w-3.5 h-3.5 text-[#d4a017]" />
         <div className="text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold">
           Search all {ALL_TOOLS.length} tools
@@ -62,7 +62,7 @@ export default function GlobalCatalogSearch({ onNavigate }: { onNavigate: (path:
           placeholder="nmap, sqlmap, exif, wifi, hash…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          className="ml-auto bg-[#050505] border border-[#2e2e2e] text-[#d4d4d4] text-[11px] px-2 py-1 w-72 focus:border-[#d4a017] outline-none font-mono"
+          className="ml-auto bg-surface-overlay border border-rmpg-700 text-rmpg-200 text-[11px] px-2 py-1 w-72 focus:border-[#d4a017] outline-none font-mono"
         />
       </div>
       {matches.length > 0 && (
@@ -74,11 +74,11 @@ export default function GlobalCatalogSearch({ onNavigate }: { onNavigate: (path:
                 key={`${category}:${entry.className}`}
                 onClick={() => route && onNavigate(route)}
                 disabled={!route}
-                className="w-full text-left px-3 py-2 flex items-start gap-3 hover:bg-[#1a1a1a] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full text-left px-3 py-2 flex items-start gap-3 hover:bg-surface-raised disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2">
-                    <div className="text-[#d4d4d4] text-xs font-semibold">{entry.title}</div>
+                    <div className="text-rmpg-200 text-xs font-semibold">{entry.title}</div>
                     <div className="text-[#d4a017] text-[9px] font-mono uppercase tracking-wider">{category}</div>
                   </div>
                   <div className="text-[#888] text-[10px] leading-snug line-clamp-2 mt-0.5">{entry.description}</div>
@@ -100,7 +100,7 @@ export default function GlobalCatalogSearch({ onNavigate }: { onNavigate: (path:
         </div>
       )}
       {q.trim().length >= 2 && matches.length === 0 && (
-        <div className="px-3 py-4 text-[#555] text-[11px]">No tools match "{q}".</div>
+        <div className="px-3 py-4 text-rmpg-500 text-[11px]">No tools match "{q}".</div>
       )}
     </div>
   );

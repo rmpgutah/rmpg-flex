@@ -24,7 +24,7 @@ export default function SignalMeter({
   dbm,
 }: SignalMeterProps) {
   return (
-    <div className="border border-[#222222] rounded-[2px] p-2 bg-[#0d0d0d]">
+    <div className="border border-border-default rounded-[2px] p-2 bg-surface-base">
       <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">
         SIGNAL STRENGTH
       </div>
@@ -56,16 +56,16 @@ export default function SignalMeter({
 
       {/* Numeric stats */}
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-        <div className="font-mono text-[8px] text-[#666666]">
+        <div className="font-mono text-[8px] text-rmpg-500">
           Latency: <span className="text-[#888888]">{latencyMs}ms</span>
         </div>
-        <div className="font-mono text-[8px] text-[#666666]">
+        <div className="font-mono text-[8px] text-rmpg-500">
           Loss: <span className="text-[#888888]">{packetLoss}%</span>
         </div>
-        <div className="font-mono text-[8px] text-[#666666]">
+        <div className="font-mono text-[8px] text-rmpg-500">
           TX: <span className="text-[#888888]">{throughputUp} B/s</span>
         </div>
-        <div className="font-mono text-[8px] text-[#666666]">
+        <div className="font-mono text-[8px] text-rmpg-500">
           RX: <span className="text-[#888888]">{throughputDown} B/s</span>
         </div>
       </div>

@@ -76,7 +76,7 @@ export default function AICapabilitiesPanel({ config, setConfig, onSaved, setErr
         AI Capabilities
       </h3>
 
-      <div className="bg-[#121212] border border-[#1c1c1c] rounded divide-y divide-[#1c1c1c]">
+      <div className="bg-surface-base border border-border-default rounded divide-y divide-[#1c1c1c]">
         {FEATURE_LIST.map(feat => {
           const enabled = (config.features as any)[feat.key] ?? false;
           const override = routingRules[feat.key]?.provider || 'auto';
@@ -107,7 +107,7 @@ export default function AICapabilitiesPanel({ config, setConfig, onSaved, setErr
               <select id="ff-aicapabilitiespanel-0"
                 value={override}
                 onChange={e => updateRouting(feat.key, e.target.value)}
-                className="bg-[#0b0b0b] border border-[#1c1c1c] text-rmpg-100 text-[10px] rounded px-2 py-1 focus:border-brand-500 focus:outline-none shrink-0"
+                className="bg-surface-sunken border border-border-default text-rmpg-100 text-[10px] rounded px-2 py-1 focus:border-brand-500 focus:outline-none shrink-0"
               >
                 <option value="auto">Auto</option>
                 <option value="groq">Groq</option>

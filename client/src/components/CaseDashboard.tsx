@@ -60,7 +60,7 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-surface-base">
       <PanelTitleBar title="Case Dashboard" icon={Gauge} />
-      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-3 space-y-4">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-3 space-y-4">
         {/* Stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           <StatCard label="Total" value={s.total ?? 0} color="#e5e5e5" icon={Briefcase} />

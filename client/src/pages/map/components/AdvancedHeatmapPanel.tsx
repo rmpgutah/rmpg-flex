@@ -302,7 +302,7 @@ export default function AdvancedHeatmapPanel({
       </div>
 
       {/* ── Scrollable body ───────────────────────────── */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         {/* ── Section 1: Mode Selector ──────────────── */}
         <div className="px-4 pt-3 pb-2">
           <div className="grid grid-cols-4 gap-1.5">
@@ -653,7 +653,7 @@ export default function AdvancedHeatmapPanel({
                     {checked && <Check size={9} className="text-rmpg-100" strokeWidth={3} />}
                   </div>
                   <span
-                    className="text-[9px] flex-1 truncate"
+                    className="text-[9px] min-w-0 flex-1 truncate"
                     style={{ color: checked ? '#e0e0e0' : '#666666' }}
                   >
                     {(t.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}

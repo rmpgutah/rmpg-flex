@@ -97,16 +97,16 @@ const RichTextArea = forwardRef<HTMLTextAreaElement, RichTextAreaProps>(
       <div className="flex flex-col">
         {!hideToolbar && (
           <div
-            className="flex items-center gap-0.5 px-1 py-0.5 border border-b-0 border-[#222222] bg-[#0d0d0d] rounded-t-[2px]"
+            className="flex items-center gap-0.5 px-1 py-0.5 border border-b-0 border-border-default bg-surface-base rounded-t-[2px]"
             role="toolbar"
             aria-label="Text formatting"
           >
             <IconButton onClick={wrap('**', '**', 'bold text')} disabled={disabled} className={btnCls} aria-label="Bold (Ctrl+B)" title="Bold (Ctrl+B)"><Bold className="w-3.5 h-3.5" /></IconButton>
             <IconButton onClick={wrap('*', '*', 'italic text')} disabled={disabled} className={btnCls} aria-label="Italic (Ctrl+I)" title="Italic (Ctrl+I)"><Italic className="w-3.5 h-3.5" /></IconButton>
             <IconButton onClick={wrap('<ins>', '</ins>', 'underlined text')} disabled={disabled} className={btnCls} aria-label="Underline (Ctrl+U)" title="Underline (Ctrl+U)"><Underline className="w-3.5 h-3.5" /></IconButton>
-            <div className="w-px h-4 bg-[#222222] mx-1" aria-hidden="true" />
+            <div className="w-px h-4 bg-surface-raised mx-1" aria-hidden="true" />
             <IconButton onClick={wrap('[', '](https://)', 'link text')} disabled={disabled} className={btnCls} aria-label="Insert link" title="Insert link"><LinkIcon className="w-3.5 h-3.5" /></IconButton>
-            <div className="w-px h-4 bg-[#222222] mx-1" aria-hidden="true" />
+            <div className="w-px h-4 bg-surface-raised mx-1" aria-hidden="true" />
             <IconButton onClick={linePrefix('- ')} disabled={disabled} className={btnCls} aria-label="Bulleted list" title="Bulleted list"><List className="w-3.5 h-3.5" /></IconButton>
             <IconButton onClick={linePrefix('1. ')} disabled={disabled} className={btnCls} aria-label="Numbered list" title="Numbered list"><ListOrdered className="w-3.5 h-3.5" /></IconButton>
           </div>

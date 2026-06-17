@@ -112,7 +112,7 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
   return (
     <div className="flex flex-col h-full bg-[#000000] relative">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#232323] flex-shrink-0">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border-default flex-shrink-0">
         <input
           className="input-dark flex-1 text-sm font-semibold"
           value={title}
@@ -123,14 +123,14 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
         <span className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm font-bold ${doc.status === 'finalized' ? 'text-[#000] bg-[#d4a017]' : 'text-[#d4a017] border border-[#d4a017]/40'}`}>
           {doc.status}
         </span>
-        <span className="text-[9px] text-[#666] font-mono">r{doc.revision}</span>
+        <span className="text-[9px] text-rmpg-500 font-mono">r{doc.revision}</span>
         <button type="button" aria-label="Revisions" title="Revisions" className="toolbar-btn p-1" onClick={openRevisions}><History className="w-3.5 h-3.5" /></button>
         <button type="button" aria-label="Export PDF" title="Export PDF" className="toolbar-btn p-1" onClick={exportPdf}><Printer className="w-3.5 h-3.5" /></button>
         <button type="button" aria-label="Close" title="Close" className="toolbar-btn p-1" onClick={() => { if (dirty && !window.confirm('Discard unsaved changes?')) return; onClose(); }}><X className="w-3.5 h-3.5" /></button>
       </div>
 
       {/* Toolbar row */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#232323] flex-shrink-0">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border-default flex-shrink-0">
         <button type="button" aria-pressed={!preview} className={`text-[10px] px-2 py-0.5 rounded-sm ${!preview ? 'bg-[#88888830] text-rmpg-100' : 'text-[#888]'}`} onClick={() => setPreview(false)}>Edit</button>
         <button type="button" aria-pressed={preview} className={`text-[10px] px-2 py-0.5 rounded-sm ${preview ? 'bg-[#88888830] text-rmpg-100' : 'text-[#888]'}`} onClick={() => setPreview(true)}>Preview</button>
         <div className="flex-1" />
@@ -155,7 +155,7 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
       <div className="flex-1 overflow-y-auto p-4">
         {preview ? (
           <div className="text-[#e5e7eb] text-sm leading-relaxed whitespace-pre-wrap max-w-[850px] mx-auto">
-            {body ? renderFormattedText(body) : <span className="text-[#545454]">(empty)</span>}
+            {body ? renderFormattedText(body) : <span className="text-rmpg-500">(empty)</span>}
           </div>
         ) : editable ? (
           <div className="max-w-[850px] mx-auto">
@@ -163,8 +163,8 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
           </div>
         ) : (
           <div className="text-[#e5e7eb] text-sm leading-relaxed max-w-[850px] mx-auto">
-            {body ? renderFormattedText(body) : <span className="text-[#545454]">(empty)</span>}
-            <p className="text-[10px] text-[#666] mt-4">{doc.status === 'finalized' ? 'Finalized — reopen to edit.' : 'Read-only — you are not the owner.'}</p>
+            {body ? renderFormattedText(body) : <span className="text-rmpg-500">(empty)</span>}
+            <p className="text-[10px] text-rmpg-500 mt-4">{doc.status === 'finalized' ? 'Finalized — reopen to edit.' : 'Read-only — you are not the owner.'}</p>
           </div>
         )}
       </div>
@@ -172,21 +172,21 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
       {/* Revisions drawer */}
       {showRevisions && (
         <div className="absolute inset-0 bg-black/70 flex justify-end" onClick={() => setShowRevisions(false)}>
-          <div className="w-[340px] h-full bg-[#0b0b0b] border-l border-[#232323] p-3 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="w-[340px] h-full bg-surface-sunken border-l border-border-default p-3 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] uppercase tracking-wider text-[#d4a017] font-semibold">Revision history</span>
               <button type="button" aria-label="Close revisions" className="toolbar-btn p-1" onClick={() => setShowRevisions(false)}><X className="w-3 h-3" /></button>
             </div>
             {revisions.map((r) => (
-              <div key={r.id} className="flex items-center gap-2 py-1.5 border-b border-[#1a1a1a] text-[11px]">
+              <div key={r.id} className="flex items-center gap-2 py-1.5 border-b border-border-default text-[11px]">
                 <span className="font-mono text-[#888] w-8">r{r.revision_number}</span>
-                <span className="flex-1 min-w-0 truncate text-[#ccc]" title={r.change_note || ''}>{r.saved_by_username || 'system'} · {fmtWhen(r.saved_at)}</span>
+                <span className="flex-1 min-w-0 truncate text-rmpg-300" title={r.change_note || ''}>{r.saved_by_username || 'system'} · {fmtWhen(r.saved_at)}</span>
                 {editable && (
                   <button type="button" aria-label={`Restore r${r.revision_number}`} title="Restore this revision" className="toolbar-btn p-1" onClick={() => restore(r.revision_number)}><RotateCcw className="w-3 h-3" /></button>
                 )}
               </div>
             ))}
-            {revisions.length === 0 && <p className="text-[10px] text-[#666]">No revisions.</p>}
+            {revisions.length === 0 && <p className="text-[10px] text-rmpg-500">No revisions.</p>}
           </div>
         </div>
       )}

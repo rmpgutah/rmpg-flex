@@ -76,21 +76,21 @@ export default function AdminCloudflareTab({ setError }: Props) {
     finally { setPurging(false); }
   };
 
-  if (loading) return <div className="flex items-center gap-2 text-[11px] text-[#8899aa] p-4"><Loader2 size={14} className="animate-spin" /> Loading…</div>;
+  if (loading) return <div className="flex items-center gap-2 text-[11px] text-rmpg-400 p-4"><Loader2 size={14} className="animate-spin" /> Loading…</div>;
 
-  const card = 'border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]';
+  const card = 'border border-border-default rounded-sm bg-surface-sunken';
   const Stat = ({ icon: Icon, label, rows }: { icon: any; label: string; rows: any[] }) => (
     <div className={card}>
-      <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+      <div className="px-3 py-1.5 border-b border-border-default text-[9px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1.5">
         <Icon size={11} /> {label} <span className="text-[#d4a017]">{rows.length}</span>
       </div>
       <div className="max-h-40 overflow-y-auto">
         {rows.length === 0
-          ? <div className="px-3 py-2 text-[10px] text-[#556677]">none / no read scope</div>
+          ? <div className="px-3 py-2 text-[10px] text-rmpg-500">none / no read scope</div>
           : rows.map((r, i) => (
-            <div key={i} className="px-3 py-1 text-[10px] text-[#c0ccdd] border-t border-[#101010] flex justify-between gap-2">
+            <div key={i} className="px-3 py-1 text-[10px] text-rmpg-300 border-t border-[#101010] flex justify-between gap-2">
               <span className="truncate">{r.name || r.title || r.id}</span>
-              {r.size != null && <span className="text-[#556677] font-mono flex-shrink-0">{(r.size / 1e6).toFixed(1)} MB</span>}
+              {r.size != null && <span className="text-rmpg-500 font-mono flex-shrink-0">{(r.size / 1e6).toFixed(1)} MB</span>}
             </div>
           ))}
       </div>
@@ -108,24 +108,24 @@ export default function AdminCloudflareTab({ setError }: Props) {
 
       {/* Security notice */}
       <div className="px-3 py-2 bg-[#15120a] border border-[#2e2814] text-[9px] text-[#a89878] leading-relaxed rounded-sm">
-        Paste a <b className="text-[#c0ccdd]">least-privilege, read-only</b> Cloudflare API token (plus Cache Purge if you use it). Recommended scopes: Account Analytics&nbsp;Read, Workers Scripts&nbsp;Read, D1&nbsp;Read, R2&nbsp;Read, KV&nbsp;Read, Zone→Cache&nbsp;Purge. <b className="text-[#c0ccdd]">Do NOT</b> grant account/zone edit or token-management scopes. The token is stored server-side (masked) and never exposed to the browser.
+        Paste a <b className="text-rmpg-300">least-privilege, read-only</b> Cloudflare API token (plus Cache Purge if you use it). Recommended scopes: Account Analytics&nbsp;Read, Workers Scripts&nbsp;Read, D1&nbsp;Read, R2&nbsp;Read, KV&nbsp;Read, Zone→Cache&nbsp;Purge. <b className="text-rmpg-300">Do NOT</b> grant account/zone edit or token-management scopes. The token is stored server-side (masked) and never exposed to the browser.
       </div>
 
       {/* Credentials */}
       <div className={card}>
-        <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Credentials</div>
+        <div className="px-3 py-1.5 border-b border-border-default text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Credentials</div>
         <div className="p-3 space-y-2">
           <div>
-            <label className="text-[8px] text-[#556677] uppercase font-mono">API Token {config?.token_set && <span className="text-[#7fb069]">· set ({config.token_mask})</span>}</label>
+            <label className="text-[8px] text-rmpg-500 uppercase font-mono">API Token {config?.token_set && <span className="text-[#7fb069]">· set ({config.token_mask})</span>}</label>
             <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" type="password" placeholder={config?.token_set ? 'leave blank to keep current' : 'Cloudflare API token'} value={token} onChange={e => setToken(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[8px] text-[#556677] uppercase font-mono">Account ID</label>
+              <label className="text-[8px] text-rmpg-500 uppercase font-mono">Account ID</label>
               <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5 font-mono" placeholder="account id" value={accountId} onChange={e => setAccountId(e.target.value)} />
             </div>
             <div>
-              <label className="text-[8px] text-[#556677] uppercase font-mono">Zone ID (for cache purge)</label>
+              <label className="text-[8px] text-rmpg-500 uppercase font-mono">Zone ID (for cache purge)</label>
               <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5 font-mono" placeholder="zone id (optional)" value={zoneId} onChange={e => setZoneId(e.target.value)} />
             </div>
           </div>
@@ -133,7 +133,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
             <button type="button" onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-2 bg-[#d4a017] hover:bg-[#b88a12] disabled:opacity-40 rounded-sm text-[11px] font-bold text-black">
               {saving ? <Loader2 size={13} className="animate-spin" /> : null} Save
             </button>
-            <button type="button" onClick={load} className="flex items-center gap-1.5 px-3 py-2 bg-[#141414] border border-[#2e2e2e] rounded-sm text-[10px] font-bold text-[#c0ccdd] hover:text-rmpg-100">
+            <button type="button" onClick={load} className="flex items-center gap-1.5 px-3 py-2 bg-surface-base border border-rmpg-700 rounded-sm text-[10px] font-bold text-rmpg-300 hover:text-rmpg-100">
               <RefreshCw size={12} /> Refresh
             </button>
           </div>
@@ -143,10 +143,10 @@ export default function AdminCloudflareTab({ setError }: Props) {
       {/* Status */}
       {status?.configured && (
         <div className={card}>
-          <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Account</div>
-          <div className="p-3 text-[10px] text-[#c0ccdd] space-y-1">
-            <div><span className="text-[#556677] uppercase text-[8px]">Account</span> &nbsp;{status.account_name || '—'} <span className="text-[#556677] font-mono">{status.account_id}</span></div>
-            <div><span className="text-[#556677] uppercase text-[8px]">Token</span> &nbsp;{status.token_status}</div>
+          <div className="px-3 py-1.5 border-b border-border-default text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Account</div>
+          <div className="p-3 text-[10px] text-rmpg-300 space-y-1">
+            <div><span className="text-rmpg-500 uppercase text-[8px]">Account</span> &nbsp;{status.account_name || '—'} <span className="text-rmpg-500 font-mono">{status.account_id}</span></div>
+            <div><span className="text-rmpg-500 uppercase text-[8px]">Token</span> &nbsp;{status.token_status}</div>
           </div>
         </div>
       )}
@@ -164,10 +164,10 @@ export default function AdminCloudflareTab({ setError }: Props) {
       {/* Cache purge */}
       {config?.token_set && (
         <div className={card}>
-          <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Cache</div>
+          <div className="px-3 py-1.5 border-b border-border-default text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Cache</div>
           <div className="p-3 flex items-center justify-between gap-3">
-            <span className="text-[10px] text-[#8899aa]">Purge the entire zone cache (requires Zone ID + Cache Purge scope).</span>
-            <button type="button" onClick={purge} disabled={purging || !zoneId} className="flex items-center gap-1.5 px-3 py-2 bg-[#141414] border border-amber-700/50 rounded-sm text-[10px] font-bold text-amber-400 hover:text-amber-300 disabled:opacity-40">
+            <span className="text-[10px] text-rmpg-400">Purge the entire zone cache (requires Zone ID + Cache Purge scope).</span>
+            <button type="button" onClick={purge} disabled={purging || !zoneId} className="flex items-center gap-1.5 px-3 py-2 bg-surface-base border border-amber-700/50 rounded-sm text-[10px] font-bold text-amber-400 hover:text-amber-300 disabled:opacity-40">
               {purging ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Purge Everything
             </button>
           </div>

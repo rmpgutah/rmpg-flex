@@ -422,7 +422,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{call.pso_service_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
         )}
         {call.case_number && (
-          <span className="text-[9px] font-mono text-rmpg-300 bg-surface-raised border border-[#2e2e2e] px-1">
+          <span className="text-[9px] font-mono text-rmpg-300 bg-surface-raised border border-rmpg-700 px-1">
             {call.case_number}
           </span>
         )}
@@ -621,7 +621,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             <button type="button" onClick={() => onStatusChange(call.id, 'dispatched')} className="px-1.5 py-0.5 text-[8px] font-bold bg-amber-900/60 text-amber-300 border border-amber-700/50 hover:bg-amber-800/80 transition-colors" title="Dispatch" aria-label="Dispatch call">D</button>
           )}
           {call.status === 'dispatched' && (
-            <button type="button" onClick={() => onStatusChange(call.id, 'enroute')} className="px-1.5 py-0.5 text-[8px] font-bold bg-surface-sunken/60 text-rmpg-300 border border-border-default/50 hover:bg-gray-800/80 transition-colors" title="En Route" aria-label="Set en route">ER</button>
+            <button type="button" onClick={() => onStatusChange(call.id, 'enroute')} className="px-1.5 py-0.5 text-[8px] font-bold bg-surface-sunken/60 text-rmpg-300 border border-border-default/50 hover:bg-surface-raised/80 transition-colors" title="En Route" aria-label="Set en route">ER</button>
           )}
           {call.status === 'enroute' && (
             <button type="button" onClick={() => onStatusChange(call.id, 'onscene')} className="px-1.5 py-0.5 text-[8px] font-bold bg-purple-900/60 text-purple-300 border border-purple-700/50 hover:bg-purple-800/80 transition-colors" title="On Scene" aria-label="Set on scene">OS</button>

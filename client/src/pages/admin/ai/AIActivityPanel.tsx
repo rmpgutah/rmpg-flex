@@ -43,7 +43,7 @@ export default function AIActivityPanel() {
         <select id="ff-aiactivitypanel-0"
           value={filter}
           onChange={e => setFilter(e.target.value)}
-          className="ml-auto bg-[#0b0b0b] border border-[#1c1c1c] text-rmpg-100 text-xs rounded px-2 py-1 focus:border-brand-500 focus:outline-none"
+          className="ml-auto bg-surface-sunken border border-border-default text-rmpg-100 text-xs rounded px-2 py-1 focus:border-brand-500 focus:outline-none"
         >
           {taskTypes.map(t => (
             <option key={t} value={t}>{t === 'all' ? 'All Types' : t}</option>
@@ -60,9 +60,9 @@ export default function AIActivityPanel() {
         </button>
       </div>
 
-      <div className="bg-[#121212] border border-[#1c1c1c] rounded overflow-hidden">
+      <div className="bg-surface-base border border-border-default rounded overflow-hidden">
         {/* Header row */}
-        <div className="grid grid-cols-[140px_1fr_80px_70px_60px_1fr] gap-2 px-3 py-2 bg-[#0b0b0b] border-b border-[#1c1c1c] text-[10px] text-rmpg-500 uppercase font-medium">
+        <div className="grid grid-cols-[140px_1fr_80px_70px_60px_1fr] gap-2 px-3 py-2 bg-surface-sunken border-b border-border-default text-[10px] text-rmpg-500 uppercase font-medium">
           <div>Timestamp</div>
           <div>Task Type</div>
           <div>Provider</div>
@@ -80,7 +80,7 @@ export default function AIActivityPanel() {
         ) : (
           <div className="divide-y divide-[#1c1c1c] max-h-[500px] overflow-y-auto">
             {filtered.map((a, i) => (
-              <div key={a.id || i} className="grid grid-cols-[140px_1fr_80px_70px_60px_1fr] gap-2 px-3 py-2 text-xs hover:bg-[#0b0b0b]/50">
+              <div key={a.id || i} className="grid grid-cols-[140px_1fr_80px_70px_60px_1fr] gap-2 px-3 py-2 text-xs hover:bg-surface-sunken/50">
                 <div className="text-rmpg-500 font-mono text-[10px] truncate">
                   {a.created_at ? new Date(a.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
                 </div>

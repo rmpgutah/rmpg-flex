@@ -17,13 +17,13 @@ export function PdfEmailDialog({ onSend, onCancel, defaultSubject = '' }: Props)
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center">
-      <div className="bg-[#141414] border border-[#2e2e2e] w-[480px] p-4">
+      <div className="bg-surface-base border border-rmpg-700 w-[480px] p-4">
         <h3 className="text-[#d4a017] font-bold text-sm mb-3">Email PDF</h3>
         <label className="block mb-2 text-xs">
           <span className="block text-rmpg-400 uppercase mb-1">To (comma-separated)</span>
           <input id="ff-pdfemaildialog-0"
             aria-label="To"
-            className="w-full bg-[#050505] text-rmpg-100 border border-[#2e2e2e] p-1"
+            className="w-full bg-surface-overlay text-rmpg-100 border border-rmpg-700 p-1"
             value={to} onChange={(e) => setTo(e.target.value)}
           />
         </label>
@@ -31,7 +31,7 @@ export function PdfEmailDialog({ onSend, onCancel, defaultSubject = '' }: Props)
           <span className="block text-rmpg-400 uppercase mb-1">Cc (optional)</span>
           <input id="ff-pdfemaildialog-1"
             aria-label="Cc"
-            className="w-full bg-[#050505] text-rmpg-100 border border-[#2e2e2e] p-1"
+            className="w-full bg-surface-overlay text-rmpg-100 border border-rmpg-700 p-1"
             value={cc} onChange={(e) => setCc(e.target.value)}
           />
         </label>
@@ -39,7 +39,7 @@ export function PdfEmailDialog({ onSend, onCancel, defaultSubject = '' }: Props)
           <span className="block text-rmpg-400 uppercase mb-1">Subject</span>
           <input id="ff-pdfemaildialog-2"
             aria-label="Subject"
-            className="w-full bg-[#050505] text-rmpg-100 border border-[#2e2e2e] p-1"
+            className="w-full bg-surface-overlay text-rmpg-100 border border-rmpg-700 p-1"
             value={subject} onChange={(e) => setSubject(e.target.value)}
           />
         </label>
@@ -48,7 +48,7 @@ export function PdfEmailDialog({ onSend, onCancel, defaultSubject = '' }: Props)
           <RichTextArea
             aria-label="Body"
             rows={5}
-            className="w-full bg-[#050505] text-rmpg-100 border border-[#2e2e2e] p-1"
+            className="w-full bg-surface-overlay text-rmpg-100 border border-rmpg-700 p-1"
             value={body} onChange={(e) => setBody(e.target.value)}
           />
         </label>

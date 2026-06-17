@@ -114,7 +114,7 @@ export default function LinkedEmailsSection({ entityType, entityId, onOpenEmail,
                     </span>
                   )}
                   {l.link_type && l.source !== 'autolinker' && (
-                    <span className="text-[8px] uppercase font-bold px-1 py-0.5 bg-[#141414] text-rmpg-300 border border-rmpg-700 rounded-sm">
+                    <span className="text-[8px] uppercase font-bold px-1 py-0.5 bg-surface-base text-rmpg-300 border border-rmpg-700 rounded-sm">
                       {l.link_type}
                     </span>
                   )}

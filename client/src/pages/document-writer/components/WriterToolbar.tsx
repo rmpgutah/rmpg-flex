@@ -133,15 +133,15 @@ function ToolBtn({ active, disabled, onClick, children, title }: {
     <button
       type="button" title={title} disabled={disabled} onClick={onClick}
       className={`p-1.5 rounded-[2px] transition-colors ${
-        active ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-[#1a1a1a]'
+        active ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-surface-raised'
       } ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}
     >
       {children}
     </button>
   );
 }
-function Divider() { return <div className="w-px h-5 bg-[#222] mx-1" />; }
-const selCls = 'bg-[#141414] border border-[#222] text-rmpg-200 text-[10px] rounded-[2px] px-1 py-0.5 focus:outline-none focus:border-[#d4a017]/50';
+function Divider() { return <div className="w-px h-5 bg-surface-raised mx-1" />; }
+const selCls = 'bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] px-1 py-0.5 focus:outline-none focus:border-[#d4a017]/50';
 
 export default function WriterToolbar({
   editor, docSettings, setDocSettings, theme, onToggleTheme,
@@ -194,9 +194,9 @@ export default function WriterToolbar({
     setDocSettings((s) => ({ ...s, page: { ...s.page, margins: { ...s.page.margins, [side]: v } } }));
 
   return (
-    <div className="bg-[#0d0d0d] border border-[#222] rounded-[2px] p-1.5">
+    <div className="bg-surface-base border border-border-default rounded-[2px] p-1.5">
       {/* Title row */}
-      <div className="flex flex-wrap items-center gap-2 mb-1.5 pb-1.5 border-b border-[#1a1a1a]">
+      <div className="flex flex-wrap items-center gap-2 mb-1.5 pb-1.5 border-b border-border-default">
         <FileText className="w-4 h-4 text-[#d4a017] flex-shrink-0" />
         <input
           type="text" value={title} onChange={(e) => onTitleChange(e.target.value)}
@@ -206,37 +206,37 @@ export default function WriterToolbar({
         <button type="button" onClick={ext.onReadAloud}
           title={ext.readingAloud ? 'Stop reading aloud' : 'Read document (or selection) aloud'}
           className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-[2px] ${
-            ext.readingAloud ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'bg-[#141414] border-[#222] text-rmpg-300 hover:bg-[#1a1a1a]'
+            ext.readingAloud ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'bg-surface-base border-border-default text-rmpg-300 hover:bg-surface-raised'
           }`}>
           {ext.readingAloud ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
           {ext.readingAloud ? 'Stop' : 'Read'}
         </button>
         <button type="button" onClick={ext.onOpenProperties}
           title="Document properties (title, author, subject, keywords)"
-          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">
           <Info className="w-3 h-3" />Props
         </button>
         <button type="button" onClick={() => ext.setViewMode(ext.viewMode === 'focus' ? 'normal' : 'focus')}
           title="Focus / Zen mode — hide panels and chrome for distraction-free writing"
           className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-[2px] ${
-            ext.viewMode === 'focus' ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'bg-[#141414] border-[#222] text-rmpg-300 hover:bg-[#1a1a1a]'
+            ext.viewMode === 'focus' ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'bg-surface-base border-border-default text-rmpg-300 hover:bg-surface-raised'
           }`}>
           <Focus className="w-3 h-3" />Focus
         </button>
         <button type="button" onClick={onToggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">
           {theme === 'dark' ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
           {theme === 'dark' ? 'Light' : 'Dark'}
         </button>
         <button type="button" onClick={ext.onShortcuts} title="Keyboard shortcuts (press ?)" aria-label="Keyboard shortcuts"
-          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">
           <Keyboard className="w-3 h-3" />?
         </button>
         {/* Server-autosave indicator (appears once a server document id exists) */}
         {ext.serverSaveState !== 'idle' && (
           <span title="Autosave to Documents server"
             className={`text-[9px] px-1.5 py-1 rounded-[2px] border ${
-              ext.serverSaveState === 'saving' ? 'text-rmpg-400 border-[#222] bg-[#141414]'
+              ext.serverSaveState === 'saving' ? 'text-rmpg-400 border-border-default bg-surface-base'
               : ext.serverSaveState === 'saved' ? 'text-green-400/80 border-green-700/30 bg-green-900/10'
               : 'text-red-400/80 border-red-700/30 bg-red-900/10'
             }`}>
@@ -248,11 +248,11 @@ export default function WriterToolbar({
           <Save className="w-3 h-3" />{saving ? 'Saving...' : 'Save'}
         </button>
         <button type="button" onClick={onExportPdf}
-          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">
           <Download className="w-3 h-3" />PDF
         </button>
         <button type="button" onClick={onPrint}
-          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">
           <Printer className="w-3 h-3" />Print
         </button>
       </div>
@@ -523,7 +523,7 @@ export default function WriterToolbar({
                     {grp.chars.map((ch) => (
                       <button key={ch} type="button" title={ch}
                         onClick={() => { insertSpecialChar(editor, ch); }}
-                        className="w-7 h-7 flex items-center justify-center text-[14px] text-rmpg-100 bg-[#141414] border border-[#222] rounded-[2px] hover:bg-[#d4a017]/20 hover:text-[#d4a017]">
+                        className="w-7 h-7 flex items-center justify-center text-[14px] text-rmpg-100 bg-surface-base border border-border-default rounded-[2px] hover:bg-[#d4a017]/20 hover:text-[#d4a017]">
                         {ch}
                       </button>
                     ))}

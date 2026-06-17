@@ -185,15 +185,15 @@ export function PdfReviewModal<T extends Record<string, any>>({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-      <div className="bg-[#141414] border border-[#2e2e2e] w-[95vw] h-[90vh] flex flex-col">
-        <header className="flex justify-between items-center px-4 py-2 border-b border-[#222]">
+      <div className="bg-surface-base border border-rmpg-700 w-[95vw] h-[90vh] flex flex-col">
+        <header className="flex justify-between items-center px-4 py-2 border-b border-border-default">
           <h2 className="text-[#d4a017] font-bold">
             {schema.meta.title} — Form {schema.meta.formNumber}
           </h2>
           <button onClick={onClose} className="text-rmpg-400" aria-label="Close">✕</button>
         </header>
         <div className="flex-1 grid grid-cols-2 overflow-hidden">
-          <div className="overflow-y-auto p-4 border-r border-[#222]">
+          <div className="overflow-y-auto p-4 border-r border-border-default">
             {schema.sections.map((s, i) => {
               if (typeof s === 'function') return null;
               if (s.visibleIf && !s.visibleIf(data)) return null;
@@ -206,7 +206,7 @@ export function PdfReviewModal<T extends Record<string, any>>({
               : <div className="text-rmpg-400 italic">Rendering preview…</div>}
           </div>
         </div>
-        <footer className="flex justify-between items-center px-4 py-2 border-t border-[#222]">
+        <footer className="flex justify-between items-center px-4 py-2 border-t border-border-default">
           <div className="flex flex-col gap-1">
             <div className="text-xs text-amber-400">
               ⚠ Editing will update the source record. Use Cancel to discard.
@@ -278,7 +278,7 @@ function LabeledEditor<T extends Record<string, any>>({
       </span>
       <input id="ff-pdfreviewmodal-0"
         aria-label={field.label}
-        className="w-full bg-[#050505] text-rmpg-100 border border-[#2e2e2e] p-1 disabled:opacity-50"
+        className="w-full bg-surface-overlay text-rmpg-100 border border-rmpg-700 p-1 disabled:opacity-50"
         value={value}
         disabled={disabled}
         onChange={(e) => {
@@ -333,7 +333,7 @@ function NarrativeEditor<T extends Record<string, any>>({
       <textarea id="ff-pdfreviewmodal-2"
         aria-label={field.label}
         rows={4}
-        className="w-full bg-[#050505] text-rmpg-100 border border-[#2e2e2e] p-1 disabled:opacity-50"
+        className="w-full bg-surface-overlay text-rmpg-100 border border-rmpg-700 p-1 disabled:opacity-50"
         value={value}
         disabled={disabled}
         onChange={(e) => {
@@ -392,7 +392,7 @@ function TableEditor<T extends Record<string, any>>({
         <thead>
           <tr className="text-rmpg-500 uppercase text-[10px]">
             {field.columns.map((c) => (
-              <th key={c.key} className="text-left border-b border-[#222] py-1">{c.header}</th>
+              <th key={c.key} className="text-left border-b border-border-default py-1">{c.header}</th>
             ))}
             {!disabled && <th className="w-6"></th>}
           </tr>
@@ -414,7 +414,7 @@ function TableEditor<T extends Record<string, any>>({
                     value={String((row as Record<string, unknown>)[c.key] ?? '')}
                     disabled={disabled}
                     onChange={(e) => updateCell(i, c.key, e.target.value)}
-                    className="w-full bg-[#050505] text-rmpg-100 border border-[#2e2e2e] p-1 disabled:opacity-50"
+                    className="w-full bg-surface-overlay text-rmpg-100 border border-rmpg-700 p-1 disabled:opacity-50"
                   />
                 </td>
               ))}
@@ -442,7 +442,7 @@ function SignaturePlaceholder<T>({ field }: { field: SignatureField<T> }) {
   return (
     <div className="block mb-2 text-xs">
       <span className="block text-rmpg-400 uppercase mb-1">{field.label}</span>
-      <div className="w-full bg-[#050505] border border-dashed border-[#2e2e2e] p-2 text-rmpg-500 italic">
+      <div className="w-full bg-surface-overlay border border-dashed border-rmpg-700 p-2 text-rmpg-500 italic">
         Signature editor coming soon
       </div>
     </div>

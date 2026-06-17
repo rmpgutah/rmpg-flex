@@ -95,7 +95,7 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
   }, [tSec, predicted, gps]);
 
   return (
-    <div className="relative w-full border border-[#1a1a1a] bg-[#050505]" style={{ height }}>
+    <div className="relative w-full border border-border-default bg-surface-overlay" style={{ height }}>
       <div ref={containerRef} className="absolute inset-0" />
       {!loaded && !error && (
         <div className="absolute inset-0 flex items-center justify-center text-rmpg-500 text-[11px] gap-1"><Loader2 className="w-3 h-3 animate-spin" /> map…</div>
