@@ -309,4 +309,113 @@ flexcam.post('/diagnose', requireRole('admin'), async (c): Promise<Response> => 
   return c.json({ ok: true, report });
 });
 
+// ── POST /backfill ────────────────────────────────────────────
+// Admin-triggered footage backfill: enqueue footage_requests for every
+// closed unit_trip that has no existing request, within the 120-day
+// ClearPath retention window. Paginated; admin presses Continue until
+// has_more is false.
+//
+// Returns skipped_units so the UI can surface which units lack a camera
+// mapping rather than silently burying them in the skipped count.
+// Batch size configurable via system_config 'reanalysis_footage_batch' (default 500).
+
+flexcam.post('/backfill', requireRole('admin'), async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  await ensureFootageSchema(db);
+
+  const enabled = await queryFirst<{ config_value: string }>(db,
+    "SELECT config_value FROM system_config WHERE config_key='flexcam_enabled' AND category='integrations' AND is_active=1 LIMIT 1",
+  ).catch(() => null);
+  if (enabled?.config_value !== 'true') {
+    return c.json({ error: 'Footage backfill unavailable — set flexcam_enabled=true in system_config (integrations)' }, 503);
+  }
+
+  // Configurable batch size (default 500; spec conservative was 200)
+  const cfgRow = await queryFirst<{ config_value: string }>(db,
+    "SELECT config_value FROM system_config WHERE config_key='reanalysis_footage_batch' AND category='integrations' AND is_active=1 LIMIT 1",
+  ).catch(() => null);
+  const batchSize = (() => { const n = parseInt(cfgRow?.config_value ?? '', 10); return Number.isFinite(n) && n > 0 ? Math.min(n, 2000) : 500; })();
+
+  // Ensure job_runs table (same DDL as reanalysis route's schema guard)
+  await execute(db, `CREATE TABLE IF NOT EXISTS job_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, job_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running', total INTEGER DEFAULT 0,
+    processed INTEGER DEFAULT 0, skipped INTEGER DEFAULT 0, errors INTEGER DEFAULT 0,
+    error_detail TEXT, skipped_detail TEXT, started_by INTEGER,
+    started_at TEXT DEFAULT (datetime('now')), finished_at TEXT
+  )`).catch(() => {});
+  await execute(db, `CREATE INDEX IF NOT EXISTS idx_job_runs_type ON job_runs(job_type, id DESC)`).catch(() => {});
+
+  const jr = await execute(db,
+    `INSERT INTO job_runs (job_type, status, started_by) VALUES ('footage_backfill','running',?)`,
+    c.var.user.id,
+  );
+  const jobId = Number(jr.meta.last_row_id);
+
+  // Fetch one extra row to detect has_more without a separate COUNT query
+  const trips = await query<{ id: number; unit_id: number; start_time: string; end_time: string }>(db,
+    `SELECT ut.id, ut.unit_id, ut.start_time, ut.end_time
+     FROM unit_trips ut
+     LEFT JOIN footage_requests fr ON fr.trip_id = CAST(ut.id AS TEXT)
+     WHERE ut.status = 'closed'
+       AND fr.id IS NULL
+       AND ut.start_time IS NOT NULL
+       AND ut.end_time IS NOT NULL
+       AND ut.end_time > datetime('now', '-120 days')
+     ORDER BY ut.id DESC
+     LIMIT ?`,
+    batchSize + 1,
+  ).catch(() => []);
+
+  const hasMore = trips.length > batchSize;
+  const batch   = trips.slice(0, batchSize);
+
+  let queued = 0, skipped = 0, errors = 0;
+  const skippedUnits: Array<{ unit_id: number; trip_id: number }> = [];
+
+  for (const trip of batch) {
+    const mapping = await queryFirst<{ asset_id: number; cpg_device_id: string }>(db,
+      `SELECT asset_id, cpg_device_id FROM cpg_device_mappings WHERE unit_id=? AND is_active=1 LIMIT 1`,
+      trip.unit_id,
+    ).catch(() => null);
+
+    if (!mapping) {
+      skipped++;
+      skippedUnits.push({ unit_id: trip.unit_id, trip_id: trip.id });
+      continue;
+    }
+
+    const fromTs = new Date(trip.start_time).getTime();
+    const toTs   = new Date(trip.end_time).getTime();
+    if (!Number.isFinite(fromTs) || !Number.isFinite(toTs) || toTs - fromTs < 80_000) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      await enqueueFootage(c.env, {
+        assetId: mapping.asset_id,
+        unitId: trip.unit_id,
+        cpgDeviceId: mapping.cpg_device_id,
+        tripId: String(trip.id),
+        fromTs, toTs,
+        reason: 'trip_auto',
+        channels: ['outside'],
+      });
+      queued++;
+    } catch (e) {
+      errors++;
+      console.error('[flexcam-backfill] enqueue failed:', (e as Error).message);
+    }
+  }
+
+  const skippedDetail = skippedUnits.length ? JSON.stringify(skippedUnits) : null;
+  await execute(db,
+    `UPDATE job_runs SET status='complete', processed=?, skipped=?, errors=?, skipped_detail=?, finished_at=datetime('now') WHERE id=?`,
+    queued, skipped, errors, skippedDetail, jobId,
+  );
+
+  return c.json({ queued, skipped, errors, has_more: hasMore, skipped_units: skippedUnits, job_id: jobId });
+});
+
 export default flexcam;

@@ -93,26 +93,35 @@ export async function enqueueFootage(env: Bindings, args: EnqueueArgs): Promise<
 
 /** Cron pass 1: fire vendor requests for 'pending_request' chunks, bounded per run.
  *  Advances each to 'requested' with its vendor media id so the download pass picks
- *  it up. Best-effort per chunk — a vendor error leaves the chunk pending for retry. */
-export async function runRequestPass(env: Bindings): Promise<{ requested: number }> {
+ *  it up. Best-effort per chunk — a vendor error increments the attempt counter so
+ *  the chunk eventually expires rather than clogging the queue forever. */
+export async function runRequestPass(env: Bindings): Promise<{ requested: number; expired: number }> {
   const db = getDb(env);
   await ensureFootageSchema(db);
   const source = await getClearPathSource(db, env);
-  if (!source) return { requested: 0 };
+  if (!source) return { requested: 0, expired: 0 };
   const limit = batchLimit(await cfgInt(db, 'flexcam_requests_per_run', MAX_REQUESTS_PER_RUN), MAX_REQUESTS_PER_RUN);
-  const pend = await query<{ id: number; from_ts: number; to_ts: number; channel: string; asset_id: number }>(db,
-    `SELECT ch.id, ch.from_ts, ch.to_ts, ch.channel, rq.asset_id
+  const pend = await query<{ id: number; from_ts: number; to_ts: number; channel: string; asset_id: number; attempts: number }>(db,
+    `SELECT ch.id, ch.from_ts, ch.to_ts, ch.channel, rq.asset_id, ch.attempts
        FROM footage_chunks ch JOIN footage_requests rq ON rq.id = ch.request_id
       WHERE ch.status='pending_request' ORDER BY ch.request_id, ch.seq LIMIT ?`, limit).catch(() => []);
-  let requested = 0;
+  let requested = 0, expired = 0;
   for (const ch of pend) {
     try {
       const vendorId = await source.requestChunk(ch.asset_id, ch.from_ts, ch.to_ts, ch.channel);
-      await execute(db, `UPDATE footage_chunks SET status='requested', vendor_media_id=?, updated_at=datetime('now') WHERE id=?`, vendorId, ch.id);
+      await execute(db, `UPDATE footage_chunks SET status='requested', vendor_media_id=?, attempts=0, updated_at=datetime('now') WHERE id=?`, vendorId, ch.id);
       requested++;
-    } catch (e) { console.error('[flexcam] requestChunk failed:', (e as Error).message); }
+    } catch (e) {
+      console.error('[flexcam] requestChunk failed:', (e as Error).message);
+      if (ch.attempts + 1 >= MAX_POLL_ATTEMPTS) {
+        await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
+        expired++;
+      } else {
+        await execute(db, `UPDATE footage_chunks SET attempts = attempts + 1, updated_at=datetime('now') WHERE id=?`, ch.id);
+      }
+    }
   }
-  return { requested };
+  return { requested, expired };
 }
 
 /** Cron tick: poll 'requested' chunks; download 'available' ones into R2. */
@@ -181,9 +190,13 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
     }
   }
 
-  // Close any request whose chunks are all resolved (none still 'requested').
+  // Close any request whose chunks are all resolved (none still pending or requested).
   // 'partial' if any chunk is 'missing', else 'complete'. Idempotent; catches
   // requests whose last chunk resolved on an earlier tick (not just this batch).
+  // IMPORTANT: block on BOTH 'pending_request' AND 'requested' — if requestChunk
+  // failed for every chunk in a tick they stay 'pending_request', and without this
+  // guard the close query would fire immediately and mark the request 'complete'
+  // with zero clips downloaded.
   await execute(db, `
     UPDATE footage_requests
     SET status = CASE WHEN EXISTS (
@@ -191,7 +204,10 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
         ) THEN 'partial' ELSE 'complete' END,
         updated_at = datetime('now')
     WHERE status IN ('queued','fulfilling')
-      AND NOT EXISTS (SELECT 1 FROM footage_chunks WHERE request_id = footage_requests.id AND status = 'requested')`).catch(() => {});
+      AND NOT EXISTS (
+        SELECT 1 FROM footage_chunks
+        WHERE request_id = footage_requests.id AND status IN ('pending_request','requested')
+      )`).catch(() => {});
   return { downloaded, missing };
 }
 
@@ -203,7 +219,8 @@ export async function maybeRunFootagePoll(env: Bindings): Promise<void> {
   if (enabled?.config_value !== 'true') return;
   const req = await runRequestPass(env);
   const r = await pollAndDownload(env);
-  if (req.requested || r.downloaded || r.missing) console.log(`[flexcam] requested=${req.requested} downloaded=${r.downloaded} missing=${r.missing}`);
+  if (req.requested || req.expired || r.downloaded || r.missing)
+    console.log(`[flexcam] requested=${req.requested} expired_pending=${req.expired} downloaded=${r.downloaded} missing=${r.missing}`);
 }
 
 const DEFAULT_RETENTION_DAYS = 120; // 4 months
