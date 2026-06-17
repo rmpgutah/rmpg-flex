@@ -3,7 +3,7 @@ import {
   Navigation, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Trash2, Zap, AlertTriangle, ToggleLeft, ToggleRight, Link2, Unlink,
   Radio, Clock, Truck, Search, Camera, History, RefreshCw, Video,
-  HardDrive, Download,
+  HardDrive, Download, Play, X as XIcon, ChevronRight,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeTimeStr, safeDateTimeStr } from '../../utils/dateUtils';
@@ -26,6 +26,20 @@ interface CpgStatus {
   media_poll_interval_seconds?: number;
   last_media_sync?: string | null;
 }
+
+interface FullDriveTrip {
+  id: number; trip_number: number; label: string;
+  from_ts: number; to_ts: number; footage_request_id: number | null;
+  chunk_count: number; chunks_done: number; chunks_missing: number; status: string;
+}
+
+interface FullDriveJob {
+  id: number; device_id: string; from_ts: number; to_ts: number; status: string;
+  trip_count: number; clips_requested: number; clips_ready: number;
+  created_at: string; trips: FullDriveTrip[];
+}
+
+interface TripClip { seq: number; streamUrl: string; from_ts: number; to_ts: number; }
 
 interface MediaSyncStatus {
   media_sync_enabled: boolean;
@@ -154,7 +168,12 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const [fullDriveDeviceId, setFullDriveDeviceId] = useState('');
   const [fullDriveHours, setFullDriveHours] = useState(8);
   const [fullDriveRunning, setFullDriveRunning] = useState(false);
-  const [fullDriveResult, setFullDriveResult] = useState<string | null>(null);
+  const [fullDriveError, setFullDriveError] = useState<string | null>(null);
+  const [activeJobId, setActiveJobId] = useState<number | null>(null);
+  const [jobStatus, setJobStatus] = useState<FullDriveJob | null>(null);
+  const [playingTrip, setPlayingTrip] = useState<{ requestId: number; label: string } | null>(null);
+  const [tripClips, setTripClips] = useState<TripClip[]>([]);
+  const [currentClipIdx, setCurrentClipIdx] = useState(0);
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
@@ -526,25 +545,54 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     }
   };
 
-  // ── Trigger full-drive clip download ──
+  // ── Trigger full-drive trip job ──
   const handleFullDrive = async () => {
     setFullDriveRunning(true);
-    setFullDriveResult(null);
+    setFullDriveError(null);
+    setActiveJobId(null);
+    setJobStatus(null);
     try {
       const body: Record<string, unknown> = { hours_back: fullDriveHours };
       if (fullDriveDeviceId) body.device_id = fullDriveDeviceId;
-      const r = await apiFetch<{ started: boolean; hours?: number; error?: string }>(
+      const r = await apiFetch<{ started: boolean; job_id?: number; trip_count?: number; error?: string }>(
         '/clearpathgps/full-drive', { method: 'POST', body: JSON.stringify(body) });
-      if (r.error) {
-        setError(r.error);
-      } else {
-        setFullDriveResult(`Full-drive download started for last ${r.hours ?? fullDriveHours}h — clips arrive in the background. Refresh stats in ~1 min.`);
-        setTimeout(async () => { await fetchMediaStatus(); }, 30_000);
+      if (r.error || !r.started) {
+        setFullDriveError(r.error ?? 'Failed to start');
+      } else if (r.job_id) {
+        setActiveJobId(r.job_id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Full-drive request failed');
+      setFullDriveError(err instanceof Error ? err.message : 'Full-drive request failed');
     } finally {
       setFullDriveRunning(false);
+    }
+  };
+
+  // ── Poll active job status ──
+  const pollJobStatus = useCallback(async (jobId: number) => {
+    try {
+      const j = await apiFetch<FullDriveJob>(`/clearpathgps/full-drive/jobs/${jobId}`);
+      setJobStatus(j);
+    } catch { /* non-fatal */ }
+  }, []);
+
+  useEffect(() => {
+    if (!activeJobId) return;
+    pollJobStatus(activeJobId);
+    const t = setInterval(() => pollJobStatus(activeJobId), 30_000);
+    return () => clearInterval(t);
+  }, [activeJobId, pollJobStatus]);
+
+  // ── Load trip clips for playback ──
+  const handlePlayTrip = async (requestId: number, label: string) => {
+    setPlayingTrip({ requestId, label });
+    setCurrentClipIdx(0);
+    setTripClips([]);
+    try {
+      const r = await apiFetch<{ clips: TripClip[] }>(`/clearpathgps/full-drive/trips/${requestId}/clips`);
+      setTripClips(r.clips ?? []);
+    } catch (err) {
+      setFullDriveError(err instanceof Error ? err.message : 'Failed to load clips');
     }
   };
 
@@ -1194,7 +1242,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
             {/* Full-drive download toggle */}
             <button type="button"
-              onClick={() => { setShowFullDrive(!showFullDrive); setFullDriveResult(null); }}
+              onClick={() => { setShowFullDrive(!showFullDrive); setFullDriveError(null); }}
               disabled={!status?.enabled}
               className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wide
                          bg-purple-900/50 hover:bg-purple-800/60 border border-purple-700/50 text-purple-300
@@ -1207,56 +1255,169 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
           {/* Full-drive panel */}
           {showFullDrive && (
-            <div className="border border-purple-700/30 bg-purple-950/20 p-3 space-y-2">
+            <div className="border border-purple-700/30 bg-purple-950/20 p-3 space-y-3">
               <div className="text-[10px] text-purple-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <Video className="w-3 h-3" /> Full Drive Video Download
+                <Video className="w-3 h-3" /> Full Drive — Smart Trip Recorder
               </div>
               <p className="text-[10px] text-rmpg-500 leading-relaxed">
-                Downloads all dashcam event clips for a selected time window — clips run back-to-back,
-                ideal for incident review or court evidence. Runs in the background; check Clips Synced after ~1 min.
+                Requests continuous 40-second footage chunks for the selected window. GPS gaps
+                (engine off, stops &gt;15 min) are automatically excluded — each driving segment
+                becomes its own labeled trip video.
               </p>
-              <div className="flex items-center gap-2 flex-wrap">
-                {mappings.length > 1 && (
-                  <select
-                    value={fullDriveDeviceId}
-                    onChange={(e) => setFullDriveDeviceId(e.target.value)}
-                    className="select-dark text-[10px] py-0.5 px-1.5"
-                  >
-                    <option value="">All devices</option>
-                    {mappings.map((m) => (
-                      <option key={m.cpg_device_id} value={m.cpg_device_id}>
-                        {m.cpg_display_name || m.cpg_device_id}{m.call_sign ? ` (${m.call_sign})` : ''}
-                      </option>
-                    ))}
+
+              {/* Controls */}
+              {!activeJobId && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {mappings.length > 1 && (
+                    <select value={fullDriveDeviceId} onChange={(e) => setFullDriveDeviceId(e.target.value)}
+                      className="select-dark text-[10px] py-0.5 px-1.5">
+                      <option value="">First active device</option>
+                      {mappings.map((m) => (
+                        <option key={m.cpg_device_id} value={m.cpg_device_id}>
+                          {m.cpg_display_name || m.cpg_device_id}{m.call_sign ? ` (${m.call_sign})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <select value={fullDriveHours} onChange={(e) => setFullDriveHours(Number(e.target.value))}
+                    className="select-dark text-[10px] py-0.5 px-1.5">
+                    <option value={2}>Last 2 hours</option>
+                    <option value={4}>Last 4 hours</option>
+                    <option value={8}>Last 8 hours (shift)</option>
+                    <option value={12}>Last 12 hours</option>
+                    <option value={24}>Last 24 hours</option>
+                    <option value={72}>Last 3 days</option>
                   </select>
-                )}
-                <select
-                  value={fullDriveHours}
-                  onChange={(e) => setFullDriveHours(Number(e.target.value))}
-                  className="select-dark text-[10px] py-0.5 px-1.5"
-                >
-                  <option value={2}>Last 2 hours</option>
-                  <option value={4}>Last 4 hours</option>
-                  <option value={8}>Last 8 hours (shift)</option>
-                  <option value={12}>Last 12 hours</option>
-                  <option value={24}>Last 24 hours</option>
-                  <option value={72}>Last 3 days</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={handleFullDrive}
-                  disabled={fullDriveRunning || !status?.enabled}
-                  className="inline-flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wide
-                             bg-purple-700/60 hover:bg-purple-600/60 border border-purple-500/50 text-purple-200
-                             disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {fullDriveRunning
-                    ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
-                    : <Download className="w-3 h-3" />}
-                  {fullDriveRunning ? 'Starting...' : 'Start Download'}
-                </button>
-              </div>
-              {fullDriveResult && <p className="text-[10px] text-green-400">{fullDriveResult}</p>}
+                  <button type="button" onClick={handleFullDrive}
+                    disabled={fullDriveRunning || !status?.enabled}
+                    className="inline-flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wide
+                               bg-purple-700/60 hover:bg-purple-600/60 border border-purple-500/50 text-purple-200
+                               disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    {fullDriveRunning
+                      ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
+                      : <Download className="w-3 h-3" />}
+                    {fullDriveRunning ? 'Detecting trips...' : 'Start Full Drive'}
+                  </button>
+                </div>
+              )}
+              {fullDriveError && <p className="text-[10px] text-red-400">{fullDriveError}</p>}
+
+              {/* Job progress */}
+              {jobStatus && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-purple-300 font-bold uppercase tracking-wider">
+                      {jobStatus.trip_count} Trip{jobStatus.trip_count !== 1 ? 's' : ''} Detected
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-rmpg-400">
+                        {jobStatus.clips_ready}/{jobStatus.clips_requested} clips ready
+                      </span>
+                      {jobStatus.status !== 'done' && (
+                        <span className="text-[10px] text-yellow-400 animate-pulse">Processing…</span>
+                      )}
+                      <button type="button"
+                        onClick={() => { setActiveJobId(null); setJobStatus(null); }}
+                        className="text-rmpg-500 hover:text-rmpg-300 transition-colors">
+                        <XIcon className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Trip cards */}
+                  {jobStatus.trips.map((trip) => {
+                    const pct = trip.chunk_count > 0
+                      ? Math.round(((trip.chunks_done + trip.chunks_missing) / trip.chunk_count) * 100)
+                      : 0;
+                    const ready = trip.status === 'done' || trip.status === 'partial';
+                    const durationMin = Math.round((trip.to_ts - trip.from_ts) / 60_000);
+                    return (
+                      <div key={trip.id} className="border border-purple-700/20 bg-purple-950/30 p-2 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="text-[10px] font-bold text-purple-200">{trip.label}</p>
+                            <p className="text-[9px] text-rmpg-500">
+                              {durationMin} min · {trip.chunks_done} clips ready
+                              {trip.chunks_missing > 0 ? ` · ${trip.chunks_missing} gaps (engine off)` : ''}
+                            </p>
+                          </div>
+                          {ready && trip.footage_request_id && (
+                            <button type="button"
+                              onClick={() => handlePlayTrip(trip.footage_request_id!, trip.label)}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase
+                                         bg-green-800/60 hover:bg-green-700/60 border border-green-600/40 text-green-300
+                                         transition-colors">
+                              <Play className="w-2.5 h-2.5" /> Play Trip
+                            </button>
+                          )}
+                        </div>
+                        {/* Progress bar */}
+                        <div className="h-1 bg-surface-sunken rounded-full overflow-hidden">
+                          <div className="h-full bg-purple-500 transition-all duration-500"
+                            style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <button type="button" onClick={() => { setActiveJobId(null); setJobStatus(null); }}
+                    className="text-[10px] text-purple-400 hover:text-purple-300 underline transition-colors">
+                    Start another full drive
+                  </button>
+                </div>
+              )}
+
+              {/* Trip video player */}
+              {playingTrip && (
+                <div className="border border-green-700/30 bg-green-950/20 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold text-green-300 flex items-center gap-1.5">
+                      <Play className="w-3 h-3" /> {playingTrip.label}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-rmpg-500">
+                        Clip {currentClipIdx + 1} / {tripClips.length}
+                      </span>
+                      <button type="button" onClick={() => setPlayingTrip(null)}
+                        className="text-rmpg-500 hover:text-rmpg-300 transition-colors">
+                        <XIcon className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                  {tripClips.length > 0 ? (
+                    <>
+                      <video
+                        key={tripClips[currentClipIdx]?.streamUrl}
+                        src={tripClips[currentClipIdx]?.streamUrl}
+                        className="w-full max-h-48 bg-black"
+                        controls autoPlay
+                        onEnded={() => {
+                          if (currentClipIdx < tripClips.length - 1) setCurrentClipIdx((i) => i + 1);
+                        }}
+                      />
+                      <div className="flex items-center gap-2 justify-center">
+                        <button type="button" disabled={currentClipIdx === 0}
+                          onClick={() => setCurrentClipIdx((i) => Math.max(0, i - 1))}
+                          className="text-[9px] text-rmpg-400 hover:text-rmpg-200 disabled:opacity-40 transition-colors">
+                          ← Prev
+                        </button>
+                        <span className="text-[9px] text-rmpg-500">
+                          {new Date(tripClips[currentClipIdx]?.from_ts ?? 0).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}
+                        </span>
+                        <button type="button" disabled={currentClipIdx >= tripClips.length - 1}
+                          onClick={() => setCurrentClipIdx((i) => Math.min(tripClips.length - 1, i + 1))}
+                          className="text-[9px] text-rmpg-400 hover:text-rmpg-200 disabled:opacity-40 transition-colors">
+                          Next <ChevronRight className="inline w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center h-12">
+                      <Loader2 className="w-4 h-4 animate-spin text-green-500" />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
