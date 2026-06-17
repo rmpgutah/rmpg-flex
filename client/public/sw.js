@@ -666,6 +666,8 @@
 // v993: Full-drive clip playback — fix 401 on <video> src; auth middleware
 //       now accepts ?token=<jwt> on /full-drive/clip/* paths; client appends
 //       JWT from localStorage to all streamUrl values before passing to <video>.
+// v998: caseActivity — replace Unicode arrow with ASCII -> in status.changed
+//       label so it renders correctly in PDF (sanitizePdfText strips U+2192).
 // v997: FlexCam capture pipeline — batch chunk INSERTs (prevents 720-row
 //       Worker timeout on multi-hour drives); gap-fill cron for truncated
 //       requests; remove on_demand-only gate from full-drive cron pass.

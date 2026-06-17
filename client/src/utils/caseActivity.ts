@@ -59,7 +59,7 @@ export function formatActivity(action: string, detail?: CaseActivityRow['detail'
         color: GRAY,
       };
     case 'status.changed':
-      return { label: `Status → ${d.to ?? '?'}${d.disposition ? ` (${d.disposition})` : ''}`, color: AMBER };
+      return { label: `Status -> ${d.to ?? '?'}${d.disposition ? ` (${d.disposition})` : ''}`, color: AMBER };
     case 'review.submitted':
       return { label: 'Submitted for supervisor review', color: AMBER };
     case 'review.approved':
