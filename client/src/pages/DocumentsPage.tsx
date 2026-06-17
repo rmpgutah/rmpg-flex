@@ -447,9 +447,8 @@ export default function DocumentsPage() {
       </div>
 
       {/* Content */}
-      <div ref={dropZoneRef} className={`flex-1 overflow-auto transition-colors ${dragOver ? 'bg-brand-900/10 ring-2 ring-brand-500/50 ring-inset' : ''}`}
-        onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
-        {dragOver && (
+      <div className={`flex-1 overflow-auto transition-colors ${windowDragOver ? 'bg-brand-900/10 ring-2 ring-brand-500/50 ring-inset' : ''}`}>
+        {windowDragOver && (
           <div className="flex items-center justify-center py-8 m-4 border-2 border-dashed border-brand-500/50 bg-brand-900/5 text-brand-400 text-sm font-bold">
             <Upload className="w-5 h-5 mr-2" /> Drop files here to upload
           </div>

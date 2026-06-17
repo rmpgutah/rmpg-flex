@@ -263,4 +263,18 @@ stubs.get('/dashcam-events/recent', (c) => c.json([]));
 stubs.get('/dashcam-events/:id', (c) => c.json(null));
 stubs.get('/live-locations', (c) => c.json([]));
 
+// ── ServeManager stubs (mounted at /api/servemanager) ────────
+// The /status and /jobs routes above already handle their paths.
+// These cover the endpoints AdminServeManagerTab.tsx calls that were 404-ing.
+stubs.get('/sync/log', (c) => c.json({ data: [] }));
+stubs.get('/poller/status', (c) => c.json({
+  enabled: false, poll_interval: 300, target_client: '',
+  auto_create_calls: false, last_poll_at: null,
+}));
+stubs.get('/jobs/:jobId', (c) => c.json({ error: 'Not found' }, 404));
+stubs.put('/api-key', (c) => c.json({ success: true }));
+stubs.delete('/api-key', (c) => c.json({ success: true }));
+stubs.put('/poller/settings', (c) => c.json({ success: true }));
+stubs.post('/poller/poll-now', (c) => c.json({ synced: 0, callsCreated: 0 }));
+
 export default stubs;
