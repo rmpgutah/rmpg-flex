@@ -118,6 +118,32 @@ export function assessOfficerSafety(
 }
 
 // ── Briefing inputs ──────────────────────────────────────────
+
+// Existing property record fields relevant to service operations.
+// Only populated when findOrCreateProperty returned created=false (existing row).
+export interface PropertyRecord {
+  gate_code?: string | null;
+  alarm_code?: string | null;
+  alarm_account?: string | null;
+  alarm_company?: string | null;
+  key_holder_name?: string | null;
+  key_holder_phone?: string | null;
+  post_orders?: string | null;
+  access_instructions?: string | null;
+  hazard_notes?: string | null;
+}
+
+// Existing business record fields relevant to service operations.
+// Only populated when findOrCreateBusiness returned created=false (existing row).
+export interface BusinessRecord {
+  owner_name?: string | null;
+  owner_phone?: string | null;
+  contact_name?: string | null;
+  contact_phone?: string | null;
+  phone?: string | null;
+  notes?: string | null;
+}
+
 export interface BriefingInput {
   fields: Record<string, ExtractedField>;
   queueRow: QueueRow;
@@ -125,8 +151,10 @@ export interface BriefingInput {
   agentName: string;            // registered agent (corporate service)
   fullLocation: string;         // assembled address string
   docCount: number;
-  attemptPlan?: AttemptWindow[];       // diligence planner output (dated windows)
-  locationNote?: ServiceLocationNote | null; // system notation for this address/entity
+  attemptPlan?: AttemptWindow[];              // diligence planner output (dated windows)
+  locationNote?: ServiceLocationNote | null;  // system notation for this address/entity
+  propertyRecord?: PropertyRecord | null;
+  businessRecord?: BusinessRecord | null;
 }
 
 export interface BriefingNote {
@@ -323,6 +351,39 @@ function buildBriefingNoteText(input: BriefingInput, nowIso: string): string {
       lines.push(`• Structured constraint: **${summary}**`);
     }
     lines.push('• Attempt windows above have been adjusted to comply with these constraints. Any attempt outside the noted hours or days may be legally challenged — document attempts with timestamps.');
+  }
+
+  // ── Property / Business record enrichment ─────────────────
+  // When the intake address matched an EXISTING property row, surface its
+  // operator-authored security fields so the officer sees them before
+  // departure — no need to open a separate records tab.
+  if (input.propertyRecord) {
+    const p = input.propertyRecord;
+    const hasData = p.gate_code || p.alarm_code || p.alarm_company || p.key_holder_name
+      || p.access_instructions || p.hazard_notes || p.post_orders;
+    if (hasData) {
+      lines.push('**■ PROPERTY RECORD** _(on file — verify currency with records)_');
+      if (p.gate_code) lines.push(`• Gate code: \`${p.gate_code}\``);
+      if (p.alarm_code) lines.push(`• Alarm code: \`${p.alarm_code}\`${p.alarm_account ? `  (acct: ${p.alarm_account})` : ''}${p.alarm_company ? `  via ${p.alarm_company}` : ''}`);
+      if (p.key_holder_name) lines.push(`• Key holder: ${p.key_holder_name}${p.key_holder_phone ? `  ·  ${p.key_holder_phone}` : ''}`);
+      if (p.access_instructions) lines.push(`• Access: ${p.access_instructions}`);
+      if (p.hazard_notes) lines.push(`• ⚠ Hazard notes: ${p.hazard_notes}`);
+      if (p.post_orders && !p.post_orders.startsWith('Auto-created')) lines.push(`• Post orders: ${p.post_orders}`);
+    }
+  }
+
+  if (input.businessRecord) {
+    const b = input.businessRecord;
+    const hasData = b.owner_name || b.contact_name || b.contact_phone || b.phone || b.notes;
+    if (hasData) {
+      lines.push('**■ BUSINESS RECORD** _(on file — verify currency with records)_');
+      if (b.owner_name) lines.push(`• Owner: ${b.owner_name}${b.owner_phone ? `  ·  ${b.owner_phone}` : ''}`);
+      if (b.contact_name) lines.push(`• Contact: ${b.contact_name}${b.contact_phone ? `  ·  ${b.contact_phone}` : ''}`);
+      if (b.phone && b.phone !== b.owner_phone && b.phone !== b.contact_phone) {
+        lines.push(`• Main phone: ${b.phone}`);
+      }
+      if (b.notes && !b.notes.startsWith('Auto-created')) lines.push(`• Notes: ${b.notes}`);
+    }
   }
 
   lines.push('**■ TACTICAL APPROACH**');
