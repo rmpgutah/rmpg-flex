@@ -6,7 +6,7 @@ import { useParams } from 'react-router-dom';
 import {
   AlertTriangle, Camera, CheckCircle2, ChevronLeft, Clock, Download,
   FileText, Keyboard, Lock, Maximize2, Pause, Play, RotateCcw,
-  Shield, SkipBack, SkipForward, Video,
+  Shield, SkipBack, SkipForward, Video, Wrench,
 } from 'lucide-react';
 import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { buildTimeline, offsetToSeek, type PlayChunk } from '../utils/flexcamTimeline';
@@ -93,6 +93,13 @@ export default function FlexCamFootagePage() {
   const [pkgMsg, setPkgMsg]         = useState<string | null>(null);
   const [markersLoading, setMarkersLoading] = useState(false);
   const [manifestBusy, setManifestBusy] = useState(false);
+  const [rate, setRate]               = useState(1);
+  const [capturing, setCapturing]     = useState(false);
+  const [capMsg, setCapMsg]           = useState<string | null>(null);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [overlaysOn, setOverlaysOn]   = useState(true);
+  const [repairBusy, setRepairBusy]   = useState(false);
+  const [repairMsg, setRepairMsg]     = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const urlCache = useRef<Map<number, string>>(new Map());
   const fullRef  = useRef<HTMLDivElement | null>(null);
@@ -120,6 +127,34 @@ export default function FlexCamFootagePage() {
       .map<PlayChunk>((c) => ({ seq: c.seq, durationMs: c.to_ts - c.from_ts }));
     return buildTimeline(downloaded);
   }, [data]);
+
+  // total / pct must be declared before the early returns so they're always in scope
+  // for closures (captureFrame) and for the keyboard useEffect below.
+  const total = timeline.totalMs;
+  const pct   = total ? Math.min(100, (posMs / total) * 100) : 0;
+
+  // Keyboard shortcuts — must be declared before early returns (Rules of Hooks).
+  // Space/K=play, J/L=skip10s, Shift+skip=30s, ,/.=speed, ?=shortcuts.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      switch (e.key) {
+        case ' ': case 'k': e.preventDefault(); togglePlay(); break;
+        case 'ArrowLeft': case 'j':
+          seekToOffset(Math.max(0, posMs - (e.shiftKey ? 30_000 : 10_000)));
+          break;
+        case 'ArrowRight': case 'l':
+          seekToOffset(Math.min(total, posMs + (e.shiftKey ? 30_000 : 10_000)));
+          break;
+        case '>': case '.': setRate((r) => Math.min(2, +(r + 0.25).toFixed(2))); break;
+        case '<': case ',': setRate((r) => Math.max(0.25, +(r - 0.25).toFixed(2))); break;
+        case '?': setShortcutsOpen((v) => !v); break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posMs, total]);
 
   async function loadSeq(seq: number): Promise<string | null> {
     const cached = urlCache.current.get(seq);
@@ -250,6 +285,86 @@ export default function FlexCamFootagePage() {
     finally { setManifestBusy(false); }
   }
 
+  // Burn the current frame to canvas (evidence stamp + optional watermark) and download.
+  // Blob-URL src is always same-origin → ctx.drawImage never raises SecurityError.
+  async function captureFrame() {
+    const video = videoRef.current;
+    if (!video || !data || capturing) return;
+    setCapturing(true);
+    try {
+      const W = video.videoWidth || 1280;
+      const H = video.videoHeight || 720;
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      try { ctx.drawImage(video, 0, 0, W, H); } catch { setCapMsg('Frame capture failed (video not ready)'); return; }
+
+      // Evidence stamp strip at bottom.
+      const absTs = new Date(data.request.from_ts + posMs);
+      const tsLabel = absTs.toLocaleString('en-US', {
+        timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+      });
+      const lines = [
+        `RMPG FLEXCAM — ${data.request.title ?? `REQUEST ${data.request.id}`}`,
+        `${tsLabel} · ${fmt(posMs)} / ${fmt(total)}`,
+        data.request.evidence_locked
+          ? `EVIDENCE: ${data.request.evidence_number ?? 'LOCKED'}${data.request.classification ? ` · ${data.request.classification}` : ''}`
+          : 'UNCLASSIFIED — NOT EVIDENCE',
+      ];
+      const fs = Math.max(14, Math.round(H * 0.022));
+      const stripH = fs * (lines.length + 0.6) + 12;
+      ctx.fillStyle = 'rgba(0,0,0,0.76)';
+      ctx.fillRect(0, H - stripH, W, stripH);
+      ctx.textBaseline = 'top';
+      lines.forEach((line, i) => {
+        ctx.font = `${i === 0 ? 'bold ' : ''}${fs}px monospace`;
+        ctx.fillStyle = i === 0 ? '#d4a017' : i === 2 && !data.request.evidence_locked ? '#ef4444' : '#e5e5e5';
+        ctx.fillText(line, 12, H - stripH + 6 + i * fs * 1.18);
+      });
+
+      // Diagonal evidence watermark when locked.
+      if (data.request.evidence_locked) {
+        ctx.save();
+        ctx.translate(W / 2, H / 2);
+        ctx.rotate(-Math.PI / 7);
+        ctx.font = `bold ${Math.round(H * 0.09)}px sans-serif`;
+        ctx.fillStyle = 'rgba(212,160,23,0.11)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(data.request.evidence_number ?? 'EVIDENCE', 0, 0);
+        ctx.restore();
+      }
+
+      canvas.toBlob((b) => {
+        if (!b) return;
+        const url = URL.createObjectURL(b);
+        const a = document.createElement('a');
+        const fname = `flexcam-${data.request.id}-${fmt(posMs).replace(/:/g, '-')}.jpg`;
+        a.href = url; a.download = fname; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+        setCapMsg(`✓ ${fname}`);
+        setTimeout(() => setCapMsg(null), 4000);
+      }, 'image/jpeg', 0.95);
+    } finally { setCapturing(false); }
+  }
+
+  async function repairFootage() {
+    if (!data || repairBusy) return;
+    setRepairBusy(true); setRepairMsg(null);
+    try {
+      const res = await apiFetch<{ repaired: number; message: string }>(
+        `/flexcam/footage/${data.request.id}/repair`, { method: 'POST' }
+      );
+      setRepairMsg(`✓ ${res.message}`);
+      setTimeout(reload, 2000);
+    } catch (e: unknown) {
+      const err = e as Error & { status?: number };
+      setRepairMsg(err.status === 409 ? '⚠ Locked — unlock first.' : `Error: ${err.message}`);
+    } finally { setRepairBusy(false); }
+  }
+
   async function genCourtPkg() {
     if (!data || pkgBusy) return;
     setPkgBusy(true); setPkgMsg(null);
@@ -283,30 +398,6 @@ export default function FlexCamFootagePage() {
     </div>
   );
 
-  const total    = timeline.totalMs;
-  const pct      = total ? Math.min(100, (posMs / total) * 100) : 0;
-
-  // Keyboard shortcuts — Space/K=play, J/L=skip10s, Shift+skip=30s, ,/.=speed, ?=shortcuts.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
-      switch (e.key) {
-        case ' ': case 'k': e.preventDefault(); togglePlay(); break;
-        case 'ArrowLeft': case 'j':
-          seekToOffset(Math.max(0, posMs - (e.shiftKey ? 30_000 : 10_000)));
-          break;
-        case 'ArrowRight': case 'l':
-          seekToOffset(Math.min(total, posMs + (e.shiftKey ? 30_000 : 10_000)));
-          break;
-        case '>': case '.': setRate((r) => Math.min(2, +(r + 0.25).toFixed(2))); break;
-        case '<': case ',': setRate((r) => Math.max(0.25, +(r - 0.25).toFixed(2))); break;
-        case '?': setShortcutsOpen((v) => !v); break;
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posMs, total]);
   const markers  = data.markers.filter((m) => m.offset_ms != null);
   const sc       = statusBadge(data.request.status);
   const dlBytes  = data.chunks.filter((c) => c.status === 'downloaded').reduce((s, c) => s + c.bytes, 0);
@@ -601,16 +692,33 @@ export default function FlexCamFootagePage() {
           className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-brand-400 border border-border-default hover:border-brand-500 px-2.5 py-1 transition-colors disabled:opacity-30">
           <FileText className="w-3 h-3" />{pkgBusy ? 'GENERATING…' : 'COURT PACKAGE'}
         </button>
+        <button onClick={captureFrame} disabled={capturing}
+          title="Burn current frame to JPEG with evidence stamp (no playback needed)"
+          className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-emerald-400 border border-border-default hover:border-emerald-700/50 px-2.5 py-1 transition-colors disabled:opacity-40">
+          <Camera className="w-3 h-3" />{capturing ? 'CAPTURING…' : 'CAPTURE FRAME'}
+        </button>
+        {/* Repair — shown when trip is partial/stuck and not evidence-locked */}
+        {data.request.status === 'partial' && !data.request.evidence_locked && (
+          <button onClick={repairFootage} disabled={repairBusy}
+            title="Reset missing chunks so the cron retries them"
+            className="flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 border border-amber-700/60 hover:border-amber-600 px-2.5 py-1 transition-colors disabled:opacity-40">
+            <Wrench className="w-3 h-3" />{repairBusy ? 'REPAIRING…' : 'REPAIR'}
+          </button>
+        )}
         <button onClick={downloadManifest} disabled={manifestBusy}
           className="flex items-center gap-1 text-[10px] text-rmpg-400 hover:text-brand-400 px-1 transition-colors ml-auto disabled:opacity-40">
           <Download className="w-3 h-3" />{manifestBusy ? 'DOWNLOADING…' : 'MANIFEST'}
         </button>
       </div>
-      {(pkgMsg || capMsg) && (
-        <div className={`px-3 py-1.5 text-[10px] font-mono border-b border-border-default flex items-center gap-3 ${
-          (pkgMsg ?? capMsg ?? '').startsWith('✓') ? 'text-emerald-400 bg-emerald-900/10' : 'text-amber-400 bg-amber-900/10'}`}>
-          {pkgMsg && <span>{pkgMsg}</span>}
+      {(pkgMsg || capMsg || repairMsg) && (
+        <div className="px-3 py-1.5 text-[10px] font-mono border-b border-border-default flex items-center gap-3">
+          {pkgMsg && (
+            <span className={pkgMsg.startsWith('✓') ? 'text-emerald-400' : 'text-amber-400'}>{pkgMsg}</span>
+          )}
           {capMsg && <span className="text-emerald-400">{capMsg}</span>}
+          {repairMsg && (
+            <span className={repairMsg.startsWith('✓') ? 'text-emerald-400' : 'text-amber-400'}>{repairMsg}</span>
+          )}
         </div>
       )}
 
