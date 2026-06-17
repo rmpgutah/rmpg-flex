@@ -6,6 +6,7 @@ import {
   ArrowUpDown, Filter, Shield, FileText, Eye, Navigation,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { withOneRetry } from '../../utils/retryTransient';
 import { useAuth } from '../../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
@@ -120,6 +121,8 @@ export function useBusinessTab(props: {
   setSearchQuery: (q: string) => void;
   showArchived: boolean;
   setError: (e: string | null) => void;
+  /** Report a load failure with a retry fn → surfaces the banner's Retry button. */
+  reportError: (message: string, retry?: () => void) => void;
   setDeleteTarget: (t: any) => void;
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
@@ -127,7 +130,7 @@ export function useBusinessTab(props: {
   handleUnarchiveRecord: (type: string, id: string) => Promise<void>;
   fetchBusinesses?: () => void;
 }): BusinessTabState {
-  const { searchQuery, setSearchQuery, showArchived, setError, setDeleteTarget, linkRefreshKey, openLinkModal, handleArchiveRecord, handleUnarchiveRecord } = props;
+  const { searchQuery, setSearchQuery, showArchived, setError, reportError, setDeleteTarget, linkRefreshKey, openLinkModal, handleArchiveRecord, handleUnarchiveRecord } = props;
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
@@ -138,13 +141,13 @@ export function useBusinessTab(props: {
   const fetchBusinesses = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await apiFetch<any[]>(`/records/businesses?archived=${showArchived}`);
+      const data = await withOneRetry(() => apiFetch<any[]>(`/records/businesses?archived=${showArchived}`));
       setBusinesses((data || []).map(mapDbBusiness));
     } catch (err: any) {
-      setError(err.message || 'Failed to load businesses');
+      reportError(err.message || 'Failed to load businesses', () => { void fetchBusinesses(); });
     }
     setLoading(false);
-  }, [showArchived, setError]);
+  }, [showArchived, reportError]);
 
   useEffect(() => { fetchBusinesses(); }, [fetchBusinesses]);
 
