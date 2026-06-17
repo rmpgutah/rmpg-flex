@@ -51,6 +51,11 @@ import {
 } from '../utils/serveIntakeExtract';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
 import { emitAlert } from '../utils/alertHub';
+import {
+  findLocationNote, listLocationNotes, createLocationNote,
+  updateLocationNote, deactivateLocationNote,
+  type CreateNoteInput,
+} from '../utils/serveLocationNotes';
 import { LIST_VIEW_COLUMNS } from './dispatch/calls';
 
 const si = new Hono<Env>();
@@ -1077,12 +1082,12 @@ si.get('/schedule', async (c) => {
     recipient_name: string | null; recipient_address: string | null;
     recipient_city: string | null; recipient_state: string | null;
     case_number: string | null; priority: string; deadline: string | null;
-    status: string;
+    status: string; location_note_id: number | null;
   }>(
     db,
     `SELECT s.id, s.queue_id, s.attempt_number, s.scheduled_date,
             s.window_start, s.window_end, s.window_label, s.notify_at,
-            s.notify_before_secs, s.notified, s.dismissed,
+            s.notify_before_secs, s.notified, s.dismissed, s.location_note_id,
             q.recipient_name, q.recipient_address, q.recipient_city, q.recipient_state,
             q.case_number, q.priority, q.deadline, q.status
      FROM serve_attempt_schedules s
@@ -1387,6 +1392,109 @@ si.get('/export.csv', async (c) => {
       'Content-Disposition': 'attachment; filename="serve-queue.csv"',
     },
   });
+});
+
+// ── GET /map-items — geocoded queue items for the intake map ──
+si.get('/map-items', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  // Join next scheduled attempt window per queue item for popup display.
+  const rows = await query<{
+    id: number; status: string; priority: string;
+    recipient_name: string | null; recipient_address: string | null;
+    recipient_city: string | null; recipient_state: string | null;
+    document_type: string | null; case_number: string | null;
+    deadline: string | null; attempt_count: number; recipient_type: string | null;
+    recipient_lat: number | null; recipient_lng: number | null;
+    location_note_id: number | null; location_note_text: string | null;
+    next_attempt_date: string | null; next_attempt_window: string | null;
+  }>(
+    db,
+    `SELECT q.id, q.status, q.priority,
+            q.recipient_name, q.recipient_address, q.recipient_city, q.recipient_state,
+            q.document_type, q.case_number, q.deadline, q.attempt_count,
+            q.parsed_data->>'recipient_type' AS recipient_type,
+            q.parsed_data->>'recipient_lat'  AS recipient_lat,
+            q.parsed_data->>'recipient_lng'  AS recipient_lng,
+            sn.id   AS location_note_id,
+            sn.note_text AS location_note_text,
+            ns.scheduled_date AS next_attempt_date,
+            ns.window_start || '–' || ns.window_end AS next_attempt_window
+     FROM serve_queue q
+     LEFT JOIN serve_attempt_schedules ns ON ns.id = (
+       SELECT id FROM serve_attempt_schedules
+       WHERE queue_id = q.id AND dismissed = 0 AND notified = 0
+       ORDER BY scheduled_date ASC, window_start ASC LIMIT 1
+     )
+     LEFT JOIN serve_location_notes sn ON sn.id = ns.location_note_id AND sn.active = 1
+     WHERE q.status NOT IN ('served','cancelled','failed')
+     ORDER BY q.priority DESC, q.deadline ASC NULLS LAST
+     LIMIT 500`,
+  );
+  return c.json(rows);
+});
+
+// ── Location notes — CRUD + lookup ───────────────────────────
+
+si.get('/location-notes', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const { search, active_only } = c.req.query() as Record<string, string>;
+  const notes = await listLocationNotes(db, {
+    search: search || undefined,
+    active_only: active_only !== 'false',
+  });
+  return c.json(notes);
+});
+
+si.get('/location-notes/lookup', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const { businessName, personName, address } = c.req.query() as Record<string, string>;
+  const note = await findLocationNote(db, {
+    businessName: businessName || null,
+    personName: personName || null,
+    address: address || null,
+  });
+  return c.json(note ?? null);
+});
+
+si.post('/location-notes', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const body = await c.req.json<CreateNoteInput>();
+  if (!body.note_text?.trim()) return c.json({ error: 'note_text required' }, 400);
+  if (!body.entity_type) return c.json({ error: 'entity_type required' }, 400);
+  const id = await createLocationNote(db, {
+    ...body,
+    created_by: c.var.user?.id ?? null,
+  });
+  return c.json({ id }, 201);
+});
+
+si.put('/location-notes/:noteId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const id = Number(c.req.param('noteId'));
+  if (!id) return c.json({ error: 'invalid id' }, 400);
+  const body = await c.req.json<Partial<CreateNoteInput>>();
+  await updateLocationNote(db, id, body);
+  return c.json({ ok: true });
+});
+
+si.delete('/location-notes/:noteId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const id = Number(c.req.param('noteId'));
+  if (!id) return c.json({ error: 'invalid id' }, 400);
+  await deactivateLocationNote(db, id);
+  return c.json({ ok: true });
 });
 
 export default si;

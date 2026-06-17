@@ -22,6 +22,7 @@ interface ScheduleSlot {
   priority: string;
   deadline: string | null;
   status: string;
+  location_note_id?: number | null;
 }
 
 interface DayGroup {
@@ -205,11 +206,16 @@ export default function ServeAttemptCalendar({ onSelectQueue }: Props) {
                       {slot.case_number && (
                         <div className="text-rmpg-600 text-[10px] truncate">Case {slot.case_number}</div>
                       )}
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className={`flex items-center gap-0.5 text-[9px] ${slot.notified ? 'text-green-500' : 'text-rmpg-500'}`}>
                           {slot.notified ? <Bell size={9} /> : <Clock size={9} />}
                           {slot.notified ? 'Notified' : `Alert ${notifyLabel(slot.notify_before_secs)}`}
                         </span>
+                        {slot.location_note_id && (
+                          <span className="flex items-center gap-0.5 text-[9px] text-[#d4a017] bg-[#d4a017]/10 border border-[#d4a017]/30 px-1 rounded-sm">
+                            ⚠ Notation
+                          </span>
+                        )}
                         {slot.window_label && (
                           <span className="text-rmpg-600 text-[9px] truncate">{slot.window_label}</span>
                         )}

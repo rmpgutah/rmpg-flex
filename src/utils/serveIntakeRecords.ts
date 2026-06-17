@@ -38,6 +38,7 @@ import type { IntakeDocMeta, OcrContext } from './serveIntakeBriefing';
 import { planAttemptWindows, escalatePriorityForDeadline } from './serveDiligencePlanner';
 import type { AttemptWindow } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
+import { findLocationNote, noteConstraintSummary } from './serveLocationNotes';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 
 // ── Sentinel client for intake-generated properties ──────────
@@ -582,10 +583,21 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   // ≤3 days to deadline → urgent, ≤7 → rush (raise-only). Computed BEFORE
   // the briefing/call/queue writes so every consumer sees the same value.
   queueRow.priority = escalatePriorityForDeadline(queueRow.priority, nowIso, queueRow.deadline);
-  const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline);
 
   const isBusiness = get('recipient_type').toLowerCase() === 'business';
   const businessName = get('recipient_business_name') || (isBusiness ? get('recipient_last_name') : '');
+
+  // Look up service location notation — shapes the attempt schedule and briefing.
+  const locationNote = await findLocationNote(db, {
+    businessName: businessName || null,
+    personName: isBusiness ? null : (get('recipient_first_name') + ' ' + get('recipient_last_name')).trim() || null,
+    address: queueRow.recipient_address || null,
+  });
+
+  const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline, 'America/Denver', {
+    isBusiness,
+    locationNote,
+  });
   const recipientFirst = get('recipient_first_name');
   const recipientMiddle = get('recipient_middle_name');
   const recipientLast = get('recipient_last_name');
@@ -737,6 +749,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       fullLocation: fullLocation || addr,
       docCount: input.docCount,
       attemptPlan,
+      locationNote,
     }, nowIso);
     // File the OCR provenance note AFTER the intake briefing so the feed
     // reads: safety → briefing → extraction context.
@@ -883,7 +896,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   // ── 5b. Persist dated attempt schedule ───────────────────
   // Best-effort: a scheduling failure must never abort the intake commit.
   if (queueId && attemptPlan.length) {
-    persistAttemptSchedule(db, queueId, attemptPlan, nowIso).catch((err) =>
+    persistAttemptSchedule(db, queueId, attemptPlan, nowIso, locationNote?.id ?? null).catch((err) =>
       console.error('[serve-schedule] persist failed (non-fatal):', err),
     );
   }

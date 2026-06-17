@@ -59,6 +59,7 @@ export async function persistAttemptSchedule(
   queueId: number,
   plan: AttemptWindow[],
   nowIso: string,
+  locationNoteId: number | null = null,
 ): Promise<void> {
   const nowDenver = epochToLocalDenverStr(Date.parse(nowIso));
 
@@ -85,11 +86,12 @@ export async function persistAttemptSchedule(
       db,
       `INSERT INTO serve_attempt_schedules
          (queue_id, attempt_number, scheduled_date, window_start, window_end,
-          window_label, notify_at, notify_before_secs, notified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          window_label, notify_at, notify_before_secs, notified, location_note_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       queueId, w.attempt, w.date,
       windowStart, windowEnd,
       w.focus, notifyAt, notifyBeforeSecs, alreadyPast,
+      locationNoteId,
     );
   }
 }
