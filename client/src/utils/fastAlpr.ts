@@ -33,7 +33,10 @@ export function loadPlateDetector(): Promise<unknown | null> {
         const mod: any = await import(/* @vite-ignore */ TRANSFORMERS_URL);
         const { pipeline, env } = mod;
         env.allowLocalModels = false;
-        return await pipeline('object-detection', LP_MODEL_ID, { revision: 'main' });
+        // Force pure-WASM ONNX backend — avoids Node.js require('buffer'/'long') errors
+        // that onnxruntime-web emits when loaded in a browser via esm.sh.
+        if (env.backends?.onnx) env.backends.onnx.wasm.proxy = false;
+        return await pipeline('object-detection', LP_MODEL_ID, { revision: 'main', device: 'wasm' });
       } catch (e) {
         console.warn('[fast-alpr] plate detector unavailable — falling back to heuristic plateRegion', e);
         return null;

@@ -945,7 +945,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* ── Notes (conditional) ──────────────── */}
         {selectedVehicle.notes && (
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
-            <p className="text-xs text-rmpg-200 leading-relaxed">{selectedVehicle.notes}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed break-words">{selectedVehicle.notes}</p>
           </CollapsibleSection>
         )}
 

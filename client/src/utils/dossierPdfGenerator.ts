@@ -10,6 +10,7 @@
 
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { COLOR } from './pdfTokens';
 
 export interface DossierData {
   person: Record<string, any>;
@@ -56,8 +57,8 @@ export function generateDossierPdf(data: DossierData): void {
     y += lines.length * (size + 2.5);
   };
 
-  // Banner
-  doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 64, 'F');
+  // Banner — dark grey (matches the report-wide BG_SECTION_HDR header treatment)
+  doc.setFillColor(...COLOR.BG_SECTION_HDR); doc.rect(0, 0, W, 64, 'F');
   doc.setTextColor(GOLD); doc.setFontSize(15); doc.setFont('Arial', 'bold');
   doc.text('RMPG FLEX — PERSON DOSSIER', M, 27);
   doc.setFontSize(11); doc.setTextColor(255);

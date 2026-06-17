@@ -591,14 +591,14 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Post Orders (conditional) ────────── */}
         {selectedProperty.post_orders && (
           <CollapsibleSection title="Post Orders" icon={Shield} defaultOpen>
-            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{selectedProperty.post_orders}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap break-words">{selectedProperty.post_orders}</p>
           </CollapsibleSection>
         )}
 
         {/* ── Hazard Notes (conditional) ─────── */}
         {(selectedProperty.hazard_notes || selectedProperty.known_hazards) && (
           <CollapsibleSection title="Hazard Notes" icon={FileWarning} accent="red">
-            {selectedProperty.hazard_notes && <p className="text-xs text-red-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.hazard_notes}</p>}
+            {selectedProperty.hazard_notes && <p className="text-xs text-red-300/80 leading-relaxed whitespace-pre-wrap break-words">{selectedProperty.hazard_notes}</p>}
             {selectedProperty.known_hazards && (
               <div className="mt-1.5"><span className="text-[10px] text-red-400 uppercase font-semibold">Known Hazards:</span> <span className="text-xs text-red-300/80 ml-1">{selectedProperty.known_hazards}</span></div>
             )}
@@ -622,14 +622,14 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Access Instructions (conditional) ── */}
         {selectedProperty.access_instructions && (
           <CollapsibleSection title="Access Instructions" icon={MapPin}>
-            <p className="text-xs text-rmpg-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.access_instructions}</p>
+            <p className="text-xs text-rmpg-300/80 leading-relaxed whitespace-pre-wrap break-words">{selectedProperty.access_instructions}</p>
           </CollapsibleSection>
         )}
 
         {/* ── Notes (conditional) ──────────────── */}
         {selectedProperty.notes && (
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
-            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{selectedProperty.notes}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap break-words">{selectedProperty.notes}</p>
           </CollapsibleSection>
         )}
 

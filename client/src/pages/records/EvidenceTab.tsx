@@ -591,7 +591,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 
         {/* ── Description ─────────────────────── */}
         <CollapsibleSection title="Description" icon={FileText} defaultOpen>
-          <p className="text-sm text-rmpg-200 leading-relaxed">{selectedEvidence.description}</p>
+          <p className="text-sm text-rmpg-200 leading-relaxed break-words">{selectedEvidence.description}</p>
         </CollapsibleSection>
 
         {/* ── Collection & Storage ──────────── */}
@@ -686,7 +686,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         {/* ── Notes (conditional) ──────────────── */}
         {selectedEvidence.notes && (
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
-            <p className="text-xs text-rmpg-200 leading-relaxed">{selectedEvidence.notes}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed break-words">{selectedEvidence.notes}</p>
           </CollapsibleSection>
         )}
 
