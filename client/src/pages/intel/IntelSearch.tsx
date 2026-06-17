@@ -69,7 +69,7 @@ export default function IntelSearch() {
           ))}
           {recent.slice(0, 6).map((r, i) => (
             <button key={`r${i}`} onClick={() => setRaw(r.query_text)}
-              className="font-mono text-[9px] px-2 py-[3px] rounded-[2px] border border-border-default text-[#999]">{r.query_text}</button>
+              className="font-mono text-[9px] px-2 py-[3px] rounded-[2px] border border-border-default text-rmpg-400">{r.query_text}</button>
           ))}
         </div>
       )}

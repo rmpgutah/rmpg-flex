@@ -106,7 +106,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
                       loading="lazy"
                       className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[#444]">
+                    <div className="w-full h-full flex items-center justify-center text-rmpg-700">
                       <ScanSearch className="w-5 h-5" />
                     </div>
                   )}

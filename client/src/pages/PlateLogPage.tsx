@@ -488,12 +488,12 @@ export default function PlateLogPage() {
             {(['all', ...ALL_SOURCES.map((s) => s.key)] as const).map((k) => (
               <button key={k} type="button" onClick={() => setSourceFilter(k)}
                 className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border tracking-wide ${
-                  sourceFilter === k ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-default text-[#777777]'}`}>
+                  sourceFilter === k ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-default text-rmpg-500'}`}>
                 {k === 'all' ? 'ALL' : sightingSource(k === 'dashcam' ? 'ClearPath dashcam' : k === 'camera' ? 'ALPR' : '').label}
               </button>
             ))}
             <button type="button" onClick={() => setShowMap((v) => !v)} title="Toggle map"
-              className={`ml-1 p-0.5 border ${showMap ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-[#777777]'}`}>
+              className={`ml-1 p-0.5 border ${showMap ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-rmpg-500'}`}>
               <MapIcon className="w-3 h-3" />
             </button>
           </div>

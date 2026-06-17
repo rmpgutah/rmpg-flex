@@ -34,7 +34,7 @@ export default function IntelRail({ counts }: { counts: RailCounts }) {
     <nav className="w-[168px] bg-surface-overlay border-r border-border-default py-2 overflow-y-auto shrink-0">
       {groups.map((g) => (
         <div key={g.title}>
-          <div className="font-mono text-[8px] tracking-widest text-[#444] px-[14px] pt-[10px] pb-[5px] uppercase">{g.title}</div>
+          <div className="font-mono text-[8px] tracking-widest text-rmpg-700 px-[14px] pt-[10px] pb-[5px] uppercase">{g.title}</div>
           {g.items.map((it) => (
             <NavLink key={it.to} to={it.to} end={it.end}
               className={({ isActive }) =>

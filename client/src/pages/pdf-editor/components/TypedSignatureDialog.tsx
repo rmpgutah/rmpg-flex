@@ -143,7 +143,7 @@ export default function TypedSignatureDialog({ open, mode, defaultName, onClose,
         <div ref={previewRef} className="bg-white border border-border-subtle rounded-sm h-[120px] flex items-center justify-center overflow-hidden mb-3">
           {renderText
             ? <span style={{ fontFamily: font.stack, fontSize: 54, color, lineHeight: 1, whiteSpace: 'nowrap' }}>{renderText}</span>
-            : <span className="text-[11px] text-[#999]">Preview appears here</span>}
+            : <span className="text-[11px] text-rmpg-400">Preview appears here</span>}
         </div>
 
         {mode === 'quicksign' && renderText && (

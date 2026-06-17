@@ -56,14 +56,14 @@ export default function MeasurementOverlay({
 
         {/* Value display — dual units (imperial + metric) */}
         <div className="flex flex-col items-center min-w-[100px]">
-          <span className="text-[9px] text-[#5a6e80] uppercase tracking-widest font-bold leading-none">
+          <span className="text-[9px] text-rmpg-500 uppercase tracking-widest font-bold leading-none">
             {measureMode === 'distance' ? 'Distance' : 'Area'}
           </span>
           <span className="text-base font-mono font-bold text-rmpg-400 leading-tight tabular-nums">
             {measureDisplay}
           </span>
           {measureDisplayMetric && (
-            <span className="text-[9px] font-mono text-[#5a6e80] leading-tight tabular-nums">
+            <span className="text-[9px] font-mono text-rmpg-500 leading-tight tabular-nums">
               {measureDisplayMetric}
             </span>
           )}
@@ -117,7 +117,7 @@ export default function MeasurementOverlay({
 
       {/* Perimeter + Area info (shown when path has 3+ points in distance mode) */}
       {(perimeterDisplay || areaDisplay) && (
-        <div className="flex items-center gap-3 text-[8px] font-mono text-[#5a6e80]">
+        <div className="flex items-center gap-3 text-[8px] font-mono text-rmpg-500">
           {perimeterDisplay && <span>{perimeterDisplay}</span>}
           {areaDisplay && <span className="text-[#d4a017]">{areaDisplay}</span>}
         </div>

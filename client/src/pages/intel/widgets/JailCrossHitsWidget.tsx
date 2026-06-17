@@ -15,7 +15,7 @@ export default function JailCrossHitsWidget(
           className="w-full flex items-center gap-2 py-[5px] border-b border-border-subtle last:border-b-0 text-left disabled:cursor-default">
           {r.match === 'exact'
             ? <span className="font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] bg-[#3a0d0a] text-[#ff6b5e]">MATCH</span>
-            : <span className="font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] bg-surface-raised text-[#aaa]">NEW</span>}
+            : <span className="font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] bg-surface-raised text-rmpg-400">NEW</span>}
           <span className="text-[11px] text-rmpg-200 min-w-0 flex-1 truncate">{r.name}</span>
           <span className="text-[10px] text-rmpg-500">{r.booked_at?.slice(11, 16)}</span>
         </button>

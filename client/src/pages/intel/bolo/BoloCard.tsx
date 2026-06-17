@@ -4,7 +4,7 @@ import type { Bolo } from '../useBolos';
 const PRIORITY_TAG: Record<string, string> = {
   P1: 'bg-[#3a0d0a] text-[#ff6b5e] border-[#5a1410]',
   P2: 'bg-[#3a2a08] text-[#f0c050] border-[#5a3a10]',
-  P3: 'bg-surface-raised text-[#aaa] border-border-subtle',
+  P3: 'bg-surface-raised text-rmpg-400 border-border-subtle',
 };
 const TYPE_ICON: Record<string, string> = { person: '◉', vehicle: '🚗', other: '⚑' };
 
@@ -20,7 +20,7 @@ export default function BoloCard({ bolo, canDelete, onResolve, onDelete }: {
       <div className="flex items-start gap-3">
         {bolo.type === 'person' && bolo.photo_url
           ? <img src={authedImageUrl(bolo.photo_url)} alt="" className="w-10 h-12 object-cover rounded-[2px] border border-border-default shrink-0" />
-          : <div className="w-10 h-12 bg-[#161616] border border-border-default rounded-[2px] shrink-0 flex items-center justify-center text-rmpg-500">{TYPE_ICON[bolo.type] || '⚑'}</div>}
+          : <div className="w-10 h-12 bg-surface-sunken border border-border-default rounded-[2px] shrink-0 flex items-center justify-center text-rmpg-500">{TYPE_ICON[bolo.type] || '⚑'}</div>}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className={`font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] border ${PRIORITY_TAG[bolo.priority] || PRIORITY_TAG.P3}`}>{bolo.priority}</span>
