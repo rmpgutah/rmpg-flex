@@ -75,19 +75,36 @@ export class ClearPathSource implements FootageSource {
   }
 
   async pollChunk(assetId: number, handle: FootageRequestHandle): Promise<FootageChunkStatus> {
-    // Availability shows up in the existing media list for the window.
-    const page = await listMedia(this.env, this.client, assetId, handle.fromTs, handle.toTs, 0, 50);
+    // ClearPath indexes media by event-trigger time, not media-start time, so the
+    // timestamp returned by listMedia can differ from the window we requested by
+    // ±seconds (pre-event buffer, GPS clock drift). Search ±5 minutes around the
+    // chunk window to catch clips that are available but slightly time-shifted.
+    const SLOP_MS = 5 * 60_000;
+    const searchFrom = handle.fromTs - SLOP_MS;
+    const searchTo = handle.toTs + SLOP_MS;
+    const chunkMid = (handle.fromTs + handle.toTs) / 2;
+    const page = await listMedia(this.env, this.client, assetId, searchFrom, searchTo, 0, 50);
+
+    // Collect all available clips whose event timestamp is within ±5 min; pick the
+    // one whose event time is closest to the chunk's midpoint.
+    let best: FootageChunkStatus | null = null;
+    let bestDelta = Infinity;
+
     for (const ev of page.items) {
+      const delta = Math.abs(ev.eventTimestamp - chunkMid);
       for (const mo of ev.mediaObject) {
-        // 'inside' matches driver-facing; everything else is treated as road-facing.
-      const matchChannel = handle.channel === 'inside' ? mo.channel === 'inside' : mo.channel !== 'inside';
+        const matchChannel = handle.channel === 'inside' ? mo.channel === 'inside' : mo.channel !== 'inside';
         if (matchChannel && mo.type === 'VIDEO') {
           const st = classifyChunkStatus(mo as unknown as Record<string, unknown>);
-          if (st.state !== 'requested') return st;
+          if (st.state === 'missing' || st.state === 'error') return st;
+          if (st.state === 'available' && delta < bestDelta) {
+            best = st;
+            bestDelta = delta;
+          }
         }
       }
     }
-    return { state: 'requested' };
+    return best ?? { state: 'requested' };
   }
 }
 

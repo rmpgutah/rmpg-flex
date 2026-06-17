@@ -572,6 +572,68 @@ cpg.get('/full-drive/jobs/:id', adminOnly, async (c) => {
   }
 });
 
+// Retry all 'missing' chunks for a job trip — resets them to 'pending_request'
+// so the next cron cycle re-attempts the ClearPath vendor request.
+cpg.post('/full-drive/trips/:tripId/retry', adminOnly, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const tripId = parseInt(c.req.param('tripId') ?? '', 10);
+    if (!Number.isFinite(tripId)) return c.json({ error: 'invalid id' }, 400);
+    const trip = await queryFirst<{ id: number; job_id: number; footage_request_id: number | null }>(
+      db, 'SELECT id, job_id, footage_request_id FROM cpg_drive_job_trips WHERE id = ? LIMIT 1', tripId);
+    if (!trip) return c.json({ error: 'not found' }, 404);
+    let reset = 0;
+    if (trip.footage_request_id) {
+      // Reset missing chunks to pending_request so the cron re-requests them.
+      const r = await execute(db,
+        `UPDATE footage_chunks SET status='pending_request', vendor_media_id=NULL, attempts=0, updated_at=datetime('now')
+         WHERE request_id=? AND status='missing'`, trip.footage_request_id);
+      reset = r.meta.changes ?? 0;
+    }
+    // Reset trip status so getJobStatus tracks it as in-flight again.
+    // cpg_drive_job_trips has no updated_at column — omit it.
+    await execute(db,
+      `UPDATE cpg_drive_job_trips SET status='fulfilling', chunks_done=0, chunks_missing=0 WHERE id=?`,
+      tripId);
+    // Mark parent job as running so it doesn't appear done.
+    await execute(db,
+      `UPDATE cpg_drive_jobs SET status='running', updated_at=datetime('now') WHERE id=? AND status IN ('done','partial')`,
+      trip.job_id);
+    return c.json({ ok: true, reset });
+  } catch (err) {
+    return c.json({ error: clientErrorMessage(err) }, 500);
+  }
+});
+
+// Bulk-retry all trips in a job that have 0 clips downloaded (all chunks expired as missing).
+cpg.post('/full-drive/jobs/:jobId/retry-failed', adminOnly, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const jobId = parseInt(c.req.param('jobId') ?? '', 10);
+    if (!Number.isFinite(jobId)) return c.json({ error: 'invalid id' }, 400);
+    const job = await queryFirst<{ id: number }>(db, 'SELECT id FROM cpg_drive_jobs WHERE id=? LIMIT 1', jobId);
+    if (!job) return c.json({ error: 'not found' }, 404);
+    // Reset all missing chunks for every request belonging to this job.
+    const r = await execute(db,
+      `UPDATE footage_chunks SET status='pending_request', vendor_media_id=NULL, attempts=0, updated_at=datetime('now')
+       WHERE request_id IN (
+         SELECT footage_request_id FROM cpg_drive_job_trips
+         WHERE job_id=? AND footage_request_id IS NOT NULL
+       ) AND status='missing'`, jobId);
+    // Reset trips with 0 downloads back to 'fulfilling'.
+    await execute(db,
+      `UPDATE cpg_drive_job_trips SET status='fulfilling', chunks_missing=0
+       WHERE job_id=? AND chunks_done=0 AND status IN ('done','partial')`, jobId);
+    // Un-complete the parent job so it re-polls.
+    await execute(db,
+      `UPDATE cpg_drive_jobs SET status='running', updated_at=datetime('now')
+       WHERE id=? AND status IN ('done','partial')`, jobId);
+    return c.json({ ok: true, reset: r.meta.changes ?? 0 });
+  } catch (err) {
+    return c.json({ error: clientErrorMessage(err) }, 500);
+  }
+});
+
 // Get ordered clip metadata for a trip (streamed via /full-drive/clip/:r2Key).
 cpg.get('/full-drive/trips/:requestId/clips', adminOnly, async (c) => {
   try {
