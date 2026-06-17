@@ -198,7 +198,14 @@ const FullDriveJobPanel = memo(function FullDriveJobPanel({
     setClipError(null);
     try {
       const r = await apiFetch<{ clips: TripClip[] }>(`/clearpathgps/full-drive/trips/${requestId}/clips`);
-      setTripClips(r.clips ?? []);
+      // <video> tags can't send Authorization headers — append the JWT as ?token=
+      // The auth middleware accepts it for GET requests on media paths.
+      const jwt = localStorage.getItem('rmpg_token') ?? '';
+      const clips = (r.clips ?? []).map((cl) => ({
+        ...cl,
+        streamUrl: jwt ? `${cl.streamUrl}?token=${encodeURIComponent(jwt)}` : cl.streamUrl,
+      }));
+      setTripClips(clips);
     } catch (err) {
       setClipError(err instanceof Error ? err.message : 'Failed to load clips');
     }
