@@ -1905,14 +1905,16 @@ async function getRecordLabel(
           ? `${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.trim() || `Vehicle #${id}`
           : `Vehicle #${id}`;
       }
-      case 'property':
-      case 'business': {
-        // property + business share the `properties` table (business = a
-        // property row with business_type populated).
+      case 'property': {
         const pr = await queryFirst<{ name: string; address: string }>(
           db, 'SELECT name, address FROM properties WHERE id = ?', id);
-        const tLabel = type === 'business' ? 'Business' : 'Property';
-        return pr ? (pr.name || pr.address || `${tLabel} #${id}`) : `${tLabel} #${id}`;
+        return pr ? (pr.name || pr.address || `Property #${id}`) : `Property #${id}`;
+      }
+      case 'business': {
+        // businesses migrated to their own `businesses` table in migration 0125.
+        const biz = await queryFirst<{ name: string; address: string }>(
+          db, 'SELECT name, address FROM businesses WHERE id = ?', id);
+        return biz ? (biz.name || biz.address || `Business #${id}`) : `Business #${id}`;
       }
       case 'evidence': {
         const e = await queryFirst<{ evidence_number: string; description: string }>(
@@ -1945,14 +1947,14 @@ async function getRecordLabel(
 // Canonical map of linkable entity type → backing table. Single source of
 // truth for both existence validation and label resolution. Mirrors
 // LINKABLE_TYPES in client/src/utils/recordLinks.ts and RecordEntityType in
-// client/src/types/index.ts. `business` shares the `properties` table with
-// `property` (a business is a property row with business_type populated).
+// client/src/types/index.ts. `business` has its own `businesses` table
+// (migrated from `properties` in migration 0125).
 // Values are a fixed whitelist — never interpolate caller input into SQL.
 const LINK_ENTITY_TABLE: Record<string, string> = {
   person: 'persons',
   vehicle: 'vehicles_records',
   property: 'properties',
-  business: 'properties',
+  business: 'businesses',
   evidence: 'evidence',
   incident: 'incidents',
   case: 'cases',
