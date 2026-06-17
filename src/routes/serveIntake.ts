@@ -782,15 +782,7 @@ function buildCallDescription(
   const jobNum = f('job_number');
   if (jobNum) parts.push(`Job #${jobNum}`);
 
-  // ── 10. Service windows (short form) ─────────────────────────
-  const windows = (f('service_windows') || row.notes || '').split('\n')[0]?.trim();
-  if (windows && windows.length <= 60) parts.push(`Windows: ${windows}`);
-
-  // ── 11. Recipient phone ───────────────────────────────────────
-  const rcptPhone = f('recipient_phone');
-  if (rcptPhone) parts.push(`Rcpt: ${rcptPhone}`);
-
-  // ── 12. Document count ───────────────────────────────────────
+  // ── 10. Document count ───────────────────────────────────────
   if (docCount) parts.push(`${docCount} doc${docCount > 1 ? 's' : ''} on file`);
 
   return parts.join(' · ');
@@ -1082,12 +1074,12 @@ si.get('/schedule', async (c) => {
     recipient_name: string | null; recipient_address: string | null;
     recipient_city: string | null; recipient_state: string | null;
     case_number: string | null; priority: string; deadline: string | null;
-    status: string; location_note_id: number | null;
+    status: string;
   }>(
     db,
     `SELECT s.id, s.queue_id, s.attempt_number, s.scheduled_date,
             s.window_start, s.window_end, s.window_label, s.notify_at,
-            s.notify_before_secs, s.notified, s.dismissed, s.location_note_id,
+            s.notify_before_secs, s.notified, s.dismissed,
             q.recipient_name, q.recipient_address, q.recipient_city, q.recipient_state,
             q.case_number, q.priority, q.deadline, q.status
      FROM serve_attempt_schedules s

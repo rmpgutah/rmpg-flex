@@ -46,6 +46,7 @@ import { recordPosture } from '../components/records/recordVisuals';
 import { type Trip, tripMiles, tripDurationMin } from '../hooks/useTrips';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, resetActiveFieldCounter } from './pdfGenerator';
+import { cleanAddressText } from './addressClean';
 import { fetchLocationMapImage, fetchTacticalContext } from './pdfStaticMap';
 import { toMgrs } from './mgrs';
 import {
@@ -2626,8 +2627,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     title: 'Incident Location Map',
     lat: data.latitude,
     lng: data.longitude,
-    address: data.location || (data as any).location_address,
-    caption: data.location || (data as any).location_address,
+    address: cleanAddressText(data.location || (data as any).location_address),
+    caption: cleanAddressText(data.location || (data as any).location_address),
     style: 'mapbox/satellite-streets-v12',
     zoom: 17,
     priority: prio,

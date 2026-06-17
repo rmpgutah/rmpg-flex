@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye, Clock, CalendarDays } from 'lucide-react';
 import ServeAttemptCalendar from '../components/serve/ServeAttemptCalendar';
-import ServeIntakeMap from '../components/serve/ServeIntakeMap';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { apiFetch } from '../hooks/useApi';
@@ -270,8 +269,8 @@ export default function ServeIntakePage() {
   const [editingFields, setEditingFields] = useState<Record<string, string>>({});
   const [showOcrPreview, setShowOcrPreview] = useState(false);
   const [showAttemptModal, setShowAttemptModal] = useState(false);
-  // Tab: 'intake' = upload flow, 'schedule' = attempt calendar, 'map' = serve map
-  const [activeTab, setActiveTab] = useState<'intake' | 'schedule' | 'map'>('intake');
+  // Tab: 'intake' = upload flow, 'schedule' = attempt calendar
+  const [activeTab, setActiveTab] = useState<'intake' | 'schedule'>('intake');
   // Pre-submission field overrides: operator edits BEFORE clicking Create.
   // Keys match the server's field key names (e.g. `recipient_first_name`).
   const [editOverrides, setEditOverrides] = useState<Record<string, string>>({});
@@ -680,21 +679,18 @@ export default function ServeIntakePage() {
 
       {/* Tab strip */}
       <div className="flex gap-0 border-b border-surface-border">
-        {([
-          { id: 'intake',   icon: <Upload size={11} />,      label: 'Intake' },
-          { id: 'schedule', icon: <CalendarDays size={11} />, label: 'Attempt Schedule' },
-          { id: 'map',      icon: <MapPin size={11} />,       label: 'Serve Map' },
-        ] as const).map(({ id, icon, label }) => (
+        {(['intake', 'schedule'] as const).map((tab) => (
           <button
-            key={id}
-            onClick={() => setActiveTab(id)}
+            key={tab}
+            onClick={() => setActiveTab(tab)}
             className={`flex items-center gap-1.5 px-4 py-[6px] text-[11px] font-semibold uppercase tracking-wide border-b-2 transition-colors -mb-px ${
-              activeTab === id
+              activeTab === tab
                 ? 'border-brand-400 text-brand-300'
                 : 'border-transparent text-rmpg-500 hover:text-rmpg-300'
             }`}
           >
-            {icon}{label}
+            {tab === 'intake' ? <Upload size={11} /> : <CalendarDays size={11} />}
+            {tab === 'intake' ? 'Intake' : 'Attempt Schedule'}
           </button>
         ))}
       </div>
@@ -704,14 +700,7 @@ export default function ServeIntakePage() {
         <ServeAttemptCalendar />
       )}
 
-      {/* Serve map + notation management */}
-      {activeTab === 'map' && (
-        <div className="flex-1 min-h-0 p-2" style={{ height: '70vh' }}>
-          <ServeIntakeMap />
-        </div>
-      )}
-
-      {/* Intake upload flow — hidden when on other tabs */}
+      {/* Intake upload flow — hidden when on schedule tab */}
       {activeTab === 'intake' && <>
 
       <div
