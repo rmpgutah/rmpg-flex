@@ -112,6 +112,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
       </div>
 
       {/* Credentials */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className={card}>
         <div className="px-3 py-1.5 border-b border-border-default text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Credentials</div>
         <div className="p-3 space-y-2">
@@ -139,6 +140,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
           </div>
         </div>
       </div>
+      </form>
 
       {/* Status */}
       {status?.configured && (
