@@ -319,6 +319,9 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('report', r.id, r.report_type || 'supplemental', 'supplemental_reports');
         for (const r of await query<any>(db, 'SELECT id, status FROM citations WHERE incident_id = ?', id))
           add('citation', r.id, `citation_${(r.status || '').toLowerCase()}`, 'citations');
+        // incident_links: manual cross-references added via IncidentsPage "Link Record" form
+        for (const r of await query<any>(db, 'SELECT linked_type, linked_id FROM incident_links WHERE incident_id = ?', id))
+          if (r.linked_type && r.linked_id) add(r.linked_type, Number(r.linked_id), 'linked', 'incident_links');
         break;
       }
 
