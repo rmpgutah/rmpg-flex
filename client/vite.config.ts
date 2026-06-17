@@ -1,7 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath, URL } from 'url';
+import path from 'path';
+import { execFileSync } from 'child_process';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
@@ -10,7 +12,27 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Replaces 'rmpg-flex-BUILD' in dist/sw.js with 'rmpg-flex-<git-sha>' after
+    // every production build so the SW cache name is unique per commit without
+    // storing a version number in source (which caused merge conflicts on every
+    // branch that touched sw.js).
+    {
+      name: 'stamp-sw-version',
+      closeBundle() {
+        const distSw = path.join(fileURLToPath(new URL('.', import.meta.url)), 'dist', 'sw.js');
+        try {
+          const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD']).toString().trim();
+          let content = readFileSync(distSw, 'utf-8');
+          content = content.replace("'rmpg-flex-BUILD'", `'rmpg-flex-${sha}'`);
+          writeFileSync(distSw, content, 'utf-8');
+        } catch {
+          // dist/sw.js absent during watch mode or if build failed — no-op
+        }
+      },
+    },
+  ],
   resolve: {
     alias: {
       // Direct alias to the no-op dompurify stub — bypasses npm's inconsistent
