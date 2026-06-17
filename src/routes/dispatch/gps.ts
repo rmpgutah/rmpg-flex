@@ -749,6 +749,88 @@ gps.get('/speed-heatmap', async (c) => {
   } catch { return c.json([]); }
 });
 
+// GET /dispatch/gps/call-trail/:callId — GPS breadcrumb trail for all units
+// assigned to a specific call, used by PrintRecordButton to attach a route
+// map to printed call records.
+//
+// Response: { call_id, points: TrailPointRow[], stats: { total_points,
+//   total_distance_miles, duration_minutes, avg_speed_mph, max_speed_mph } }
+// An empty trail (no assigned units, no breadcrumbs) still returns 200 with
+// points: [] so the client can distinguish "no data" from a fetch error.
+gps.get('/call-trail/:callId', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const callId = Number(c.req.param('callId'));
+    if (!Number.isFinite(callId) || callId <= 0) return c.json({ error: 'Invalid call ID' }, 400);
+
+    const call = await queryFirst<{ received_at: string; closed_at: string | null; assigned_unit_ids: string | null }>(
+      db, 'SELECT received_at, closed_at, assigned_unit_ids FROM calls_for_service WHERE id = ?', callId);
+    if (!call) return c.json({ error: 'Call not found' }, 404);
+
+    let unitIds: number[] = [];
+    try {
+      const parsed = call.assigned_unit_ids ? JSON.parse(call.assigned_unit_ids) : [];
+      unitIds = Array.isArray(parsed)
+        ? (parsed as unknown[]).map(Number).filter((n) => Number.isFinite(n) && n > 0)
+        : [];
+    } catch { unitIds = []; }
+
+    const emptyStats = { total_points: 0, total_distance_miles: 0, duration_minutes: 0, avg_speed_mph: 0, max_speed_mph: 0 };
+    if (unitIds.length === 0) return c.json({ call_id: callId, points: [], stats: emptyStats });
+
+    const placeholders = unitIds.map(() => '?').join(',');
+    const rows = await query<TrailPointRow & { unit_id: number; call_sign: string | null }>(db,
+      `SELECT g.unit_id, g.call_sign, ${TRAIL_POINT_SELECT}
+         FROM gps_breadcrumbs g
+        WHERE g.unit_id IN (${placeholders})
+          AND g.recorded_at >= ?
+          AND (? IS NULL OR g.recorded_at <= ?)
+          AND g.latitude IS NOT NULL AND g.longitude IS NOT NULL
+        ORDER BY g.unit_id, g.recorded_at ASC
+        LIMIT 10000`,
+      ...unitIds, call.received_at, call.closed_at, call.closed_at);
+
+    // Compute haversine distance per unit track, then sum.
+    let totalDistM = 0;
+    const byUnit = new Map<number, TrailPointRow[]>();
+    for (const r of rows) {
+      let pts = byUnit.get(r.unit_id);
+      if (!pts) { pts = []; byUnit.set(r.unit_id, pts); }
+      pts.push(r);
+    }
+    for (const pts of byUnit.values()) {
+      for (let i = 1; i < pts.length; i++) {
+        totalDistM += haversineM(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng);
+      }
+    }
+
+    const speedsMs = rows.map((r) => r.speed).filter((s): s is number => s != null && s > 0);
+    const avgSpeedMph = speedsMs.length > 0
+      ? speedsMs.reduce((a, b) => a + b, 0) / speedsMs.length * 2.237
+      : 0;
+    const maxSpeedMph = speedsMs.length > 0 ? Math.max(...speedsMs) * 2.237 : 0;
+    const times = rows.map((r) => r.time).filter(Boolean);
+    const durationMin = times.length >= 2
+      ? (Date.parse(times[times.length - 1]) - Date.parse(times[0])) / 60000
+      : 0;
+
+    return c.json({
+      call_id: callId,
+      points: downsample(rows, 3000),
+      stats: {
+        total_points: rows.length,
+        total_distance_miles: Math.round(totalDistM / 1609.344 * 100) / 100,
+        duration_minutes: Math.round(durationMin * 10) / 10,
+        avg_speed_mph: Math.round(avgSpeedMph * 10) / 10,
+        max_speed_mph: Math.round(maxSpeedMph * 10) / 10,
+      },
+    });
+  } catch (err) {
+    console.error('[gps] GET /call-trail failed:', err);
+    return c.json({ error: 'Failed to fetch call trail' }, 500);
+  }
+});
+
 // ── GET /dispatch/gps/history-map — breadcrumb trail for a unit ─
 gps.get('/history-map', async (c) => {
   const unitId = c.req.query('unit_id');

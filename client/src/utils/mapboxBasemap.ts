@@ -65,13 +65,13 @@ function applyDark(map: mapboxgl.Map): void {
       } else if (/secondary|tertiary/i.test(id)) {
         setPaint(map, id, 'line-color', '#262626');
       } else {
-        setPaint(map, id, 'line-color', 'var(--surface-raised)');
+        setPaint(map, id, 'line-color', '#15212e');
       }
     });
 
   // Admin / boundaries
   forEachLayer(map, (id, type) => type === 'line' && /admin|boundary/i.test(id),
-    (id) => setPaint(map, id, 'line-color', 'var(--border-subtle)'));
+    (id) => setPaint(map, id, 'line-color', '#1e2b3a'));
 
   // Labels: gold major, neutral minor, black halo; hide POI noise
   forEachLayer(map, (id, type) => type === 'symbol',
