@@ -474,6 +474,23 @@ si.post('/upload', async (c) => {
   // success card) sees clean values.
   const normalizedFields = normalizeFields(mergedFields);
 
+  // ── Operator pre-submission overrides ──────────────────────────────
+  // Client sends `field_overrides` JSON (key → string) for values the
+  // operator edited in the review panel before clicking Create. Applied
+  // after normalizeFields so they bypass the formatter and commit as-is;
+  // confidence 1.0 ensures they beat any AI-extracted value downstream.
+  const overridesRaw = form.get('field_overrides');
+  if (typeof overridesRaw === 'string') {
+    try {
+      const overrides = JSON.parse(overridesRaw) as Record<string, string>;
+      for (const [k, v] of Object.entries(overrides)) {
+        if (typeof v === 'string' && v.trim()) {
+          normalizedFields[k] = { value: v.trim(), confidence: 1.0 };
+        }
+      }
+    } catch { /* ignore malformed overrides blob */ }
+  }
+
   // Expose under the same name the rest of the handler already reads.
   const combined = { error: combinedError } as { error: string | null };
 

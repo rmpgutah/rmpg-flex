@@ -268,6 +268,9 @@ export default function ServeIntakePage() {
   const [editingFields, setEditingFields] = useState<Record<string, string>>({});
   const [showOcrPreview, setShowOcrPreview] = useState(false);
   const [showAttemptModal, setShowAttemptModal] = useState(false);
+  // Pre-submission field overrides: operator edits BEFORE clicking Create.
+  // Keys match the server's field key names (e.g. `recipient_first_name`).
+  const [editOverrides, setEditOverrides] = useState<Record<string, string>>({});
   const [dragActive, setDragActive] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -289,6 +292,31 @@ export default function ServeIntakePage() {
       window.removeEventListener('drop', stop);
     };
   }, []);
+  // Merge OCR field values from newly-loaded images into editOverrides.
+  // "Fill empty slots" strategy: only writes keys not already set by the
+  // operator (or a prior file), so manual edits and earlier-file values
+  // are never overwritten when a second document is added to the batch.
+  // Takes the highest-confidence value per field across all image files.
+  useEffect(() => {
+    const best: Record<string, { value: string; conf: number }> = {};
+    for (const f of files) {
+      if (!f.ocrResult?.fields) continue;
+      for (const [k, v] of Object.entries(f.ocrResult.fields as Record<string, { value: string; confidence: number }>)) {
+        if (v.value && v.confidence > (best[k]?.conf ?? 0)) {
+          best[k] = { value: v.value, conf: v.confidence };
+        }
+      }
+    }
+    if (Object.keys(best).length === 0) return;
+    setEditOverrides(prev => {
+      const next = { ...prev };
+      for (const [k, { value }] of Object.entries(best)) {
+        if (!next[k]) next[k] = value;
+      }
+      return next;
+    });
+  }, [files]);
+
   const navigate = useNavigate();
 
   const extractPdfText = useCallback(async (file: File): Promise<{ text: string; pages: number }> => {
@@ -535,6 +563,15 @@ export default function ServeIntakePage() {
         formData.append('client_text', JSON.stringify(
           filesWithBlobs.map(f => ({ name: f.name, type: f.type, text: f.text || '' })),
         ));
+        // Send operator overrides from the pre-submission review panel.
+        // Server applies them at confidence 1.0 after its own extraction,
+        // so they win over any AI-extracted value.
+        const nonEmptyOverrides = Object.fromEntries(
+          Object.entries(editOverrides).filter(([, v]) => v.trim()),
+        );
+        if (Object.keys(nonEmptyOverrides).length > 0) {
+          formData.append('field_overrides', JSON.stringify(nonEmptyOverrides));
+        }
         // performance.now() (monotonic, immune to wall-clock jumps) anchors
         // the ETA. Speed is averaged over the whole transfer so far — see the
         // smoothing note where setUploadStat is called.
@@ -605,7 +642,7 @@ export default function ServeIntakePage() {
     setProcessing(false);
     setUploadPhase('idle');
     setUploadStat(null);
-  }, [files]);
+  }, [files, editOverrides]);
 
   // Abort an in-flight upload. Only offered during the byte-transfer phase —
   // once the server is analyzing it may already be committing records, so
@@ -744,6 +781,120 @@ export default function ServeIntakePage() {
               <IconButton onClick={() => removeFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></IconButton>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pre-submission review panel — editable fields populated from
+          client-side OCR (image files) so the operator can correct/
+          supplement extracted values before records are created. */}
+      {files.some(f => !f.derivedFrom) && !result && (
+        <div className="panel-beveled bg-surface-raised">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-border-default">
+            <Edit3 className="w-3.5 h-3.5 text-brand-400" />
+            <span className="text-[10px] uppercase font-bold tracking-wider text-rmpg-300">Review &amp; Edit Before Creating Records</span>
+            <span className="text-[9px] text-rmpg-500 ml-1">— Fields pre-filled from OCR. Edit any value before submitting.</span>
+          </div>
+          <div className="p-3">
+            {/* Recipient identity */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Recipient</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+              {[
+                { key: 'recipient_first_name', label: 'First Name' },
+                { key: 'recipient_last_name',  label: 'Last Name' },
+                { key: 'recipient_middle_name',label: 'Middle Name' },
+                { key: 'recipient_dob',         label: 'Date of Birth' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <input
+                    id={`ff-intake-override-${key}`}
+                    type="text"
+                    value={editOverrides[key] ?? ''}
+                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="—"
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+              ))}
+            </div>
+            {/* Address */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Address</p>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
+              <div className="md:col-span-2">
+                <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">Street</label>
+                <input
+                  id="ff-intake-override-recipient_address"
+                  type="text"
+                  value={editOverrides['recipient_address'] ?? ''}
+                  onChange={e => setEditOverrides(prev => ({ ...prev, recipient_address: e.target.value }))}
+                  placeholder="—"
+                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                />
+              </div>
+              {[
+                { key: 'recipient_city',  label: 'City' },
+                { key: 'recipient_state', label: 'State' },
+                { key: 'recipient_zip',   label: 'Zip' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <input
+                    id={`ff-intake-override-${key}`}
+                    type="text"
+                    value={editOverrides[key] ?? ''}
+                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="—"
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+              ))}
+            </div>
+            {/* Case details */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Case</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
+              {[
+                { key: 'plaintiff',         label: 'Plaintiff' },
+                { key: 'court_name',        label: 'Court' },
+                { key: 'case_number',       label: 'Case #' },
+                { key: 'job_number',        label: 'Job #' },
+                { key: 'service_deadline',  label: 'Due Date' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <input
+                    id={`ff-intake-override-${key}`}
+                    type="text"
+                    value={editOverrides[key] ?? ''}
+                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="—"
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+              ))}
+            </div>
+            {/* Service */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Service</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {[
+                { key: 'attorney_name',   label: 'Attorney' },
+                { key: 'attorney_phone',  label: 'Attorney Phone' },
+                { key: 'fee_amount',      label: 'Fee' },
+                { key: 'service_windows', label: 'Service Windows' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <input
+                    id={`ff-intake-override-${key}`}
+                    type="text"
+                    value={editOverrides[key] ?? ''}
+                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="—"
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -1032,7 +1183,7 @@ export default function ServeIntakePage() {
               </button>
             )}
             <button
-              onClick={() => { setFiles([]); setResult(null); }}
+              onClick={() => { setFiles([]); setResult(null); setEditOverrides({}); }}
               className={`toolbar-btn justify-center py-2 ${result.serve_queue_id == null ? 'col-span-2' : ''}`}
             >
               Process Another Set of Documents
