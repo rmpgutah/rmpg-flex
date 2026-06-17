@@ -26,6 +26,9 @@ import {
   ensureCpgConfig, backupConfig, clearConfigBackup, vehicleToCamera,
   CpgAuthError, CpgRateLimitError, CpgHttpError,
 } from '../utils/clearpathGps';
+import {
+  createFullDriveJob, getJobStatus, ensureFullDriveSchema,
+} from '../utils/fullDrivePipeline';
 
 const cpg = new Hono<Env>();
 
@@ -482,9 +485,11 @@ cpg.get('/media/:id/stream', async (c) => {
 });
 
 // ── Full-drive download (back-to-back clips for a time window) ───────────
-// Triggers a background clip-download for every event in [fromMs, toMs].
-// Returns immediately; the actual downloads run via waitUntil. The client can
-// poll /media-status afterwards to see the updated clip/storage counts.
+// ── Full-drive job system ────────────────────────────────────
+// Detects trip segments (GPS breadcrumb gap analysis), enqueues one on-demand
+// footage_request per trip, and returns a job_id for polling. Videos arrive via
+// the per-minute cron's request/download passes (no 60s timeout risk).
+
 cpg.post('/full-drive', adminOnly, async (c) => {
   try {
     let body: { device_id?: string; hours_back?: number; from_ts?: number; to_ts?: number } = {};
@@ -492,16 +497,137 @@ cpg.post('/full-drive', adminOnly, async (c) => {
     const toMs = Number.isFinite(Number(body.to_ts)) ? Number(body.to_ts) : Date.now();
     const hoursBack = Math.max(1, Math.min(168, Number(body.hours_back ?? 8)));
     const fromMs = Number.isFinite(Number(body.from_ts)) ? Number(body.from_ts) : (toMs - hoursBack * 3_600_000);
-    const { syncClearpathMediaRange } = await import('../utils/clearpathSync');
-    c.executionCtx.waitUntil(
-      syncClearpathMediaRange(c.env, { deviceId: body.device_id || undefined, fromMs, toMs, maxClips: 200 })
-        .then((r) => console.log(`[cpg-fulldrive] done: synced=${r.synced} errors=${r.errors}`))
-        .catch((err) => console.error('[cpg-fulldrive] failed:', (err as Error)?.message)),
+
+    const db = getDb(c.env);
+    // Resolve the device mapping to get the assetId + unitId.
+    const targetDeviceId = body.device_id || undefined;
+    const mapping = await queryFirst<{
+      cpg_device_id: string; cpg_camera_id: number | null; unit_id: number | null;
+    }>(db,
+      targetDeviceId
+        ? 'SELECT cpg_device_id, cpg_camera_id, unit_id FROM cpg_device_mappings WHERE is_active=1 AND cpg_device_id=? LIMIT 1'
+        : 'SELECT cpg_device_id, cpg_camera_id, unit_id FROM cpg_device_mappings WHERE is_active=1 LIMIT 1',
+      ...(targetDeviceId ? [targetDeviceId] : []),
     );
-    return c.json({ started: true, from_ts: fromMs, to_ts: toMs, hours: Math.round((toMs - fromMs) / 3_600_000) });
+    if (!mapping?.cpg_camera_id) {
+      return c.json({ started: false, error: 'No active device mapping with a camera ID. Run Auto-Map first.' }, 400);
+    }
+
+    const job = await createFullDriveJob(c.env, {
+      deviceId: mapping.cpg_device_id,
+      assetId: mapping.cpg_camera_id,
+      unitId: mapping.unit_id,
+      fromMs,
+      toMs,
+      createdBy: c.var.user?.id ?? null,
+    });
+
+    // Kick off the first request pass immediately so clips start arriving
+    // without waiting for the next cron tick.
+    c.executionCtx.waitUntil(
+      import('../utils/fullDrivePipeline')
+        .then(({ maybePollFullDriveChunks }) => maybePollFullDriveChunks(c.env))
+        .catch((err) => console.error('[full-drive] initial poll failed:', (err as Error).message)),
+    );
+
+    return c.json({
+      started: true, job_id: job.jobId,
+      trip_count: job.tripCount,
+      from_ts: fromMs, to_ts: toMs,
+      hours: Math.round((toMs - fromMs) / 3_600_000),
+    });
   } catch (err) {
     return c.json({ started: false, error: clientErrorMessage(err) }, 500);
   }
 });
+
+// List recent full-drive jobs (last 20).
+cpg.get('/full-drive/jobs', adminOnly, async (c) => {
+  try {
+    const db = getDb(c.env);
+    await ensureFullDriveSchema(db);
+    const jobs = await query<{
+      id: number; device_id: string; from_ts: number; to_ts: number;
+      status: string; trip_count: number; clips_requested: number; clips_ready: number;
+      created_at: string; updated_at: string;
+    }>(db, `SELECT id, device_id, from_ts, to_ts, status, trip_count, clips_requested, clips_ready,
+      created_at, updated_at FROM cpg_drive_jobs ORDER BY id DESC LIMIT 20`);
+    return c.json({ jobs });
+  } catch (err) {
+    return c.json({ jobs: [], error: clientErrorMessage(err) });
+  }
+});
+
+// Get status of a single full-drive job with live trip progress.
+cpg.get('/full-drive/jobs/:id', adminOnly, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const jobId = parseInt(c.req.param('id') ?? '', 10);
+    if (!Number.isFinite(jobId)) return c.json({ error: 'invalid id' }, 400);
+    const job = await getJobStatus(db, jobId);
+    if (!job) return c.json({ error: 'not found' }, 404);
+    return c.json(job);
+  } catch (err) {
+    return c.json({ error: clientErrorMessage(err) }, 500);
+  }
+});
+
+// Get ordered clip metadata for a trip (streamed via /full-drive/clip/:r2Key).
+cpg.get('/full-drive/trips/:requestId/clips', adminOnly, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const reqId = parseInt(c.req.param('requestId') ?? '', 10);
+    if (!Number.isFinite(reqId)) return c.json({ error: 'invalid id' }, 400);
+    const chunks = await query<{ seq: number; r2_key: string; from_ts: number; to_ts: number }>(
+      db,
+      `SELECT seq, r2_key, from_ts, to_ts FROM footage_chunks
+       WHERE request_id = ? AND status = 'downloaded' AND r2_key IS NOT NULL
+       ORDER BY seq ASC`, reqId,
+    );
+    // Return keys as API-relative stream URLs; the client appends the JWT and
+    // plays them sequentially — no Worker-signed-URL needed.
+    const clips = chunks.map((ch) => ({
+      seq: ch.seq,
+      streamUrl: `/api/clearpathgps/full-drive/clip/${encodeURIComponent(ch.r2_key)}`,
+      from_ts: ch.from_ts,
+      to_ts: ch.to_ts,
+    }));
+    return c.json({ clips, total: chunks.length });
+  } catch (err) {
+    return c.json({ error: clientErrorMessage(err) }, 500);
+  }
+});
+
+// Stream a single clip from R2 for sequential playback (supports Range requests).
+cpg.get('/full-drive/clip/*', adminOnly, async (c) => {
+  try {
+    const r2Key = decodeURIComponent(c.req.param('*') || '');
+    if (!r2Key.startsWith('flexcam/')) return c.notFound();
+    const range = c.req.header('range');
+    const parsed = range ? parseRange(range) : null;
+    const obj = parsed
+      ? await c.env.UPLOADS.get(r2Key, { range: parsed })
+      : await c.env.UPLOADS.get(r2Key);
+    if (!obj) return c.notFound();
+    const status = range ? 206 : 200;
+    const headers: Record<string, string> = {
+      'Content-Type': obj.httpMetadata?.contentType || 'video/mp4',
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'private, max-age=3600',
+    };
+    if (obj.size) headers['Content-Length'] = String(obj.size);
+    return new Response(obj.body, { status, headers });
+  } catch (err) {
+    return c.json({ error: clientErrorMessage(err) }, 500);
+  }
+});
+
+function parseRange(rangeHeader: string): { offset: number; length?: number } | null {
+  const m = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
+  if (!m) return null;
+  const offset = parseInt(m[1], 10);
+  const end = m[2] ? parseInt(m[2], 10) : undefined;
+  return end !== undefined ? { offset, length: end - offset + 1 } : { offset };
+}
 
 export default cpg;

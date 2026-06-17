@@ -398,6 +398,13 @@ export default {
           .then(({ maybeRunClearpathMediaSync }) => maybeRunClearpathMediaSync(env))
           .catch((err) => console.error('[cpg-media] cron failed:', err)),
       );
+      // Full-drive on-demand chunk processing — fires vendor requests for
+      // any queued full-drive trips (no flexcam_enabled gate).
+      ctx.waitUntil(
+        import('./utils/fullDrivePipeline')
+          .then(({ maybePollFullDriveChunks }) => maybePollFullDriveChunks(env))
+          .catch((err) => console.error('[full-drive] cron failed:', err)),
+      );
       // FlexCam footage poll — downloads ready R2 chunks; no-op when disabled.
       ctx.waitUntil(
         import('./utils/footage/captureOrchestrator')
