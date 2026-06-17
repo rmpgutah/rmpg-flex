@@ -141,7 +141,9 @@ export function useBusinessTab(props: {
   const fetchBusinesses = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await withOneRetry(() => apiFetch<any[]>(`/records/businesses?archived=${showArchived}`));
+      // directWorker: bypass the strangler dispatcher, which currently mis-routes
+      // businesses writes to the legacy Worker (404). See useApi.ts. TEMPORARY.
+      const data = await withOneRetry(() => apiFetch<any[]>(`/records/businesses?archived=${showArchived}`, { directWorker: true }));
       setBusinesses((data || []).map(mapDbBusiness));
     } catch (err: any) {
       reportError(err.message || 'Failed to load businesses', () => { void fetchBusinesses(); });
@@ -168,9 +170,9 @@ export function useBusinessTab(props: {
     setFormSubmitting(true);
     try {
       if (editingBusiness) {
-        await apiFetch(`/records/businesses/${editingBusiness.id}`, { method: 'PUT', body: JSON.stringify(data) });
+        await apiFetch(`/records/businesses/${editingBusiness.id}`, { method: 'PUT', body: JSON.stringify(data), directWorker: true });
       } else {
-        await apiFetch('/records/businesses', { method: 'POST', body: JSON.stringify(data) });
+        await apiFetch('/records/businesses', { method: 'POST', body: JSON.stringify(data), directWorker: true });
       }
       setShowFormModal(false);
       setEditingBusiness(null);
