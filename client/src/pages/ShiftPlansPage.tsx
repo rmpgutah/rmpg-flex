@@ -213,7 +213,7 @@ export default function ShiftPlansPage() {
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             aria-label="Select shift date"
-            className="bg-transparent text-rmpg-100 text-[11px] font-mono border border-rmpg-600 px-2 py-0.5 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500/30 transition-colors"
+            className="bg-transparent text-rmpg-100 text-[11px] font-mono border border-rmpg-600 px-2 py-0.5 focus:border-rmpg-500 focus:outline-none focus:ring-1 focus:ring-rmpg-500/30 transition-colors"
           />
           <button type="button"
             onClick={() => navigateDate(1)}
@@ -283,7 +283,7 @@ export default function ShiftPlansPage() {
                 value={newPlanName}
                 onChange={(e) => setNewPlanName(e.target.value)}
                 placeholder="Plan name..."
-                className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-[10px] px-2 py-1.5 mb-2 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500/30 transition-colors"
+                className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-[10px] px-2 py-1.5 mb-2 focus:border-rmpg-500 focus:outline-none focus:ring-1 focus:ring-rmpg-500/30 transition-colors"
                 autoFocus
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               />

@@ -269,7 +269,7 @@ export default function SkipTracerPage() {
                     value={nameQuery}
                     onChange={(e) => setNameQuery(e.target.value)}
                     placeholder="e.g. John Smith"
-                    className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-xs px-3 py-1.5 font-mono focus:border-rmpg-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus
                   />
@@ -286,7 +286,7 @@ export default function SkipTracerPage() {
                     value={addressQuery}
                     onChange={(e) => setAddressQuery(e.target.value)}
                     placeholder="e.g. 123 Main St, Anytown, UT"
-                    className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-xs px-3 py-1.5 font-mono focus:border-rmpg-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus={mode === 'address'}
                   />
@@ -303,7 +303,7 @@ export default function SkipTracerPage() {
                     value={phoneQuery}
                     onChange={(e) => setPhoneQuery(e.target.value)}
                     placeholder="e.g. 801-555-1234"
-                    className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-xs px-3 py-1.5 font-mono focus:border-rmpg-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus
                   />
@@ -320,7 +320,7 @@ export default function SkipTracerPage() {
                     value={emailQuery}
                     onChange={(e) => setEmailQuery(e.target.value)}
                     placeholder="e.g. john@example.com"
-                    className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-xs px-3 py-1.5 font-mono focus:border-rmpg-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus
                   />

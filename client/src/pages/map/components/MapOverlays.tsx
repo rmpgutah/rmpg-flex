@@ -243,7 +243,7 @@ export default function MapOverlays({
             className={`backdrop-blur-md shadow-xl transition-colors ${
               isLightMapStyle(mapStyle)
                 ? 'bg-white/90 border border-gray-300 hover:bg-gray-50'
-                : 'bg-surface-deep/95 border border-gray-500/50 hover:bg-surface-sunken/30'
+                : 'bg-surface-deep/95 border border-rmpg-500/50 hover:bg-surface-sunken/30'
             }`}
             style={isMobile
               ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }

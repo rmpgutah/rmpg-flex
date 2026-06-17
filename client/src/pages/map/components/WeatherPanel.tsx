@@ -218,7 +218,7 @@ export default function WeatherPanel({
             <div className="flex flex-wrap gap-1.5">
               {/* #44: Hazard badges with rounded-sm for consistency */}
               {weatherHazards.freezing && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-500/20 text-rmpg-300 border border-gray-500/30">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-500/20 text-rmpg-300 border border-rmpg-500/30">
                   <Snowflake size={10} className="animate-[spin_4s_linear_infinite]" />
                   FREEZING
                 </span>
@@ -230,13 +230,13 @@ export default function WeatherPanel({
                 </span>
               )}
               {weatherHazards.rain && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-500/20 text-rmpg-300 border border-gray-500/30">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-500/20 text-rmpg-300 border border-rmpg-500/30">
                   <CloudRain size={10} />
                   RAIN
                 </span>
               )}
               {weatherHazards.snow && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-400/20 text-rmpg-200 border border-gray-400/30">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-400/20 text-rmpg-200 border border-rmpg-400/30">
                   <CloudSnow size={10} />
                   SNOW
                 </span>
