@@ -64,7 +64,7 @@ interface Connection {
 const OPERATIONAL_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
 
 const VALID_TYPES = [
-  'person', 'vehicle', 'property', 'evidence', 'case', 'incident',
+  'person', 'vehicle', 'property', 'business', 'evidence', 'case', 'incident',
   'warrant', 'citation', 'arrest', 'field_interview', 'trespass_order',
   'serve_job', 'call', 'report', 'intel_report',
 ];
@@ -111,6 +111,12 @@ async function loadNode(
       case 'property': {
         const pr = await queryFirst<any>(db, 'SELECT name, address, property_type, client_id FROM properties WHERE id = ?', id);
         return { label: pr ? pr.name : `Property #${id}`, metadata: pr || {} };
+      }
+      case 'business': {
+        const b = await queryFirst<any>(db, 'SELECT name, dba_name, business_type, address, phone FROM businesses WHERE id = ?', id);
+        if (!b) return { label: `Business #${id}`, metadata: {} };
+        const label = b.dba_name ? `${b.name} (${b.dba_name})` : (b.name || b.address || `Business #${id}`);
+        return { label, metadata: b };
       }
       case 'evidence': {
         const e = await queryFirst<any>(db, 'SELECT evidence_number, description, evidence_type, status, incident_id FROM evidence WHERE id = ?', id);
@@ -292,6 +298,8 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('citation', r.id, `citation_${(r.status || '').toLowerCase()}`, 'citations');
         for (const r of await query<any>(db, 'SELECT id FROM field_interviews WHERE vehicle_id = ?', id))
           add('field_interview', r.id, 'fi_vehicle', 'field_interviews');
+        for (const r of await query<any>(db, 'SELECT business_id, relationship FROM business_vehicles WHERE vehicle_id = ?', id))
+          add('business', r.business_id, r.relationship || 'business_vehicle', 'business_vehicles');
         break;
       }
 
@@ -332,6 +340,8 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('trespass_order', r.id, 'order_from_call', 'trespass_orders');
         for (const r of await query<any>(db, 'SELECT id FROM serve_queue WHERE call_id = ?', id))
           add('serve_job', r.id, 'serve_from_call', 'serve_queue');
+        for (const r of await query<any>(db, 'SELECT business_id, role FROM call_businesses WHERE call_id = ?', id))
+          add('business', r.business_id, r.role || 'involved', 'call_businesses');
         break;
       }
 
@@ -367,6 +377,14 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('serve_job', r.id, 'serve_location', 'serve_queue');
         for (const r of await query<any>(db, 'SELECT id FROM calls_for_service WHERE property_id = ?', id))
           add('call', r.id, 'call_at_location', 'calls_for_service');
+        break;
+      }
+
+      case 'business': {
+        for (const r of await query<any>(db, 'SELECT vehicle_id, relationship FROM business_vehicles WHERE business_id = ?', id))
+          add('vehicle', r.vehicle_id, r.relationship || 'business_vehicle', 'business_vehicles');
+        for (const r of await query<any>(db, 'SELECT call_id, role FROM call_businesses WHERE business_id = ?', id))
+          add('call', r.call_id, r.role || 'involved', 'call_businesses');
         break;
       }
 
@@ -666,6 +684,11 @@ connections.get('/search', operational, async (c) => {
     for (const p of await query<any>(db, `SELECT id, name FROM properties WHERE name LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' LIMIT 8`, term, term))
       results.push({ id: p.id, type: 'property', label: p.name });
   } catch (err: any) { console.error('[Connections] properties search error:', err?.message); }
+
+  try {
+    for (const b of await query<any>(db, `SELECT id, name, dba_name, address FROM businesses WHERE name LIKE ? ESCAPE '\\' OR dba_name LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' OR owner_name LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term, term))
+      results.push({ id: b.id, type: 'business', label: b.dba_name ? `${b.name} (${b.dba_name})` : (b.name || b.address || `Business #${b.id}`) });
+  } catch (err: any) { console.error('[Connections] businesses search error:', err?.message); }
 
   try {
     for (const r of await query<any>(db, `SELECT id, case_number, title FROM cases WHERE case_number LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' LIMIT 8`, term, term))
