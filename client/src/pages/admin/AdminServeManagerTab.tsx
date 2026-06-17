@@ -256,6 +256,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       </div>
 
       {/* ═══ Section 1: API Key Management ═══ */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
         <div className="flex items-center gap-2 text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">
           <Key className="w-3.5 h-3.5" />
@@ -322,6 +323,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
           </div>
         )}
       </div>
+      </form>
 
       {/* ═══ Section 2: Sync Controls ═══ */}
       {status?.configured && (

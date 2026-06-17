@@ -353,6 +353,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       </div>
 
       {/* ─── Azure AD Credentials ─── */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled p-3 space-y-3">
         <h3 className="text-xs font-semibold text-rmpg-100 flex items-center gap-2">
           <Key className="w-3.5 h-3.5 text-brand-400" />
@@ -490,6 +491,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           </div>
         )}
       </div>
+      </form>
 
       {/* ─── OAuth Authorization ─── */}
       {status?.configured && !status?.authorized && (
@@ -550,6 +552,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       )}
 
       {/* ─── SMTP Fallback ─── */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled p-3 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold text-rmpg-100 flex items-center gap-2">
@@ -590,6 +593,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           </button>
         </div>
       </div>
+      </form>
       </>}
     </div>
   );
