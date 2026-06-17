@@ -93,6 +93,10 @@ export default function FlexCamFootagePage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const urlCache = useRef<Map<number, string>>(new Map());
   const fullRef  = useRef<HTMLDivElement | null>(null);
+  // Monotonically-increasing generation counter: every playSegment call grabs
+  // the next value. Any async continuation that sees a newer value is stale
+  // (another call won) and must bail out without touching the video element.
+  const genRef   = useRef(0);
 
   const reload = useCallback(() => {
     apiFetch<Detail>(`/flexcam/footage/${id}`).then(setData).catch((e: Error) => setErr(e.message));
@@ -125,20 +129,41 @@ export default function FlexCamFootagePage() {
   }
 
   async function playSegment(segIndex: number, withinMs = 0) {
+    const myGen = ++genRef.current;
     const seg   = timeline.segments[segIndex];
     const video = videoRef.current;
     if (!seg || !video) return;
     setIdx(segIndex);
+
+    // Fetch (or retrieve from cache) before touching the video element so we
+    // overlap network time with the tail of the previous clip playing.
     const url = await loadSeq(seg.seq);
-    if (!url) return;
+    if (!url || myGen !== genRef.current) return; // stale — newer call took over
+
+    // Pause the current clip before changing src so that in-flight play()
+    // promises resolve cleanly and the browser doesn't re-fire 'ended'.
+    video.pause();
     video.src = url;
-    const onReady = () => {
+    // Do NOT call video.load() — assigning to .src triggers an implicit load.
+    // Calling load() explicitly while the element is at end-of-clip causes the
+    // browser to re-fire 'ended', which re-enters onEnded and starts a second
+    // parallel playSegment chain (the repeat / bad-transition bugs).
+
+    await new Promise<void>((resolve) => {
+      // readyState >= 2 (HAVE_CURRENT_DATA) means data is already available
+      // — blob URLs backed by in-memory cache hit this path immediately.
+      if (video.readyState >= 2) { resolve(); return; }
+      const onCanPlay = () => { video.removeEventListener('canplay', onCanPlay); resolve(); };
+      video.addEventListener('canplay', onCanPlay);
+    });
+
+    if (myGen !== genRef.current) return; // stale during canplay wait
+    if (withinMs > 0) {
       try { video.currentTime = withinMs / 1000; } catch { /* */ }
-      video.play().catch(() => setPlaying(false));
-      video.removeEventListener('loadeddata', onReady);
-    };
-    video.addEventListener('loadeddata', onReady);
-    video.load();
+    }
+    video.play().catch(() => { if (myGen === genRef.current) setPlaying(false); });
+
+    // Warm the next segment while this one plays to eliminate fetch-gap on hand-off.
     if (timeline.segments[segIndex + 1]) void loadSeq(timeline.segments[segIndex + 1].seq);
   }
 
