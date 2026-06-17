@@ -47,6 +47,7 @@ const NODE_COLORS: Record<string, string> = {
   person: '#d4a017',
   vehicle: '#10b981',
   property: '#8b5cf6',
+  business: '#f59e0b',
   evidence: '#ef4444',
   case: '#d4a017',
   incident: '#f59e0b',
@@ -62,7 +63,7 @@ const NODE_COLORS: Record<string, string> = {
 };
 
 const NODE_RADIUS: Record<string, number> = {
-  person: 28, vehicle: 18, property: 18, evidence: 16,
+  person: 28, vehicle: 18, property: 18, business: 18, evidence: 16,
   case: 18, incident: 20, warrant: 18, citation: 16,
   arrest: 18, field_interview: 14, trespass_order: 16, serve_job: 16,
   call: 20, report: 14, intel_report: 20,
@@ -173,7 +174,7 @@ export default function ConnectionsPage() {
         );
         if (cancelled) return;
         const isSeedNode = (n: ServerNode) => n.type === seed.type && n.entityId === seed.id;
-        const hydrated: SimNode[] = data.nodes.map(n => {
+        const hydrated: SimNode[] = (data?.nodes || []).map(n => {
           const isSeed = isSeedNode(n);
           return {
             ...n,
@@ -183,7 +184,7 @@ export default function ConnectionsPage() {
             fy: isSeed ? VIEW_H / 2 : null,
           };
         });
-        const hydratedEdges: SimEdge[] = data.edges.map(e => ({ ...e }));
+        const hydratedEdges: SimEdge[] = (data?.edges || []).map(e => ({ ...e }));
         if (pendingLayoutRef.current) {
           const layout = pendingLayoutRef.current;
           pendingLayoutRef.current = null;
