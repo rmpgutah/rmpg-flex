@@ -64,7 +64,7 @@ export function generateDarPdf(r: DailyActivityReport): void {
   const ensure = (need: number) => {
     if (y + need > doc.internal.pageSize.getHeight() - 40) { doc.addPage(); y = 40; }
   };
-  const text = (str: string, x: number, size = 10, color = 'var(--border-subtle)', bold = false) => {
+  const text = (str: string, x: number, size = 10, color = '#222222', bold = false) => {
     doc.setFont('Arial', bold ? 'bold' : 'normal'); doc.setFontSize(size); doc.setTextColor(color);
     doc.text(str, x, y);
   };
@@ -91,7 +91,7 @@ export function generateDarPdf(r: DailyActivityReport): void {
     ['Post / property', r.property_name || r.post_assignment || '—'],
   ];
   for (const [k, v] of metaPairs) {
-    ensure(16); text(k.toUpperCase(), M, 8, GRAY, true); text(v, M + 110, 10, 'var(--border-subtle)'); y += 16;
+    ensure(16); text(k.toUpperCase(), M, 8, GRAY, true); text(v, M + 110, 10, '#222222'); y += 16;
   }
   y += 6;
 
@@ -120,9 +120,9 @@ export function generateDarPdf(r: DailyActivityReport): void {
     if (rows.length === 0) { text('None recorded.', M + 4, 9, GRAY); y += 14; }
     for (const row of rows) {
       ensure(14);
-      text(row[0], col[0] + 4, 9, 'var(--border-subtle)');
-      text(row[1].slice(0, 48), col[1], 9, 'var(--border-subtle)');
-      text(row[2].slice(0, 22), col[2], 9, 'var(--border-subtle)');
+      text(row[0], col[0] + 4, 9, '#222222');
+      text(row[1].slice(0, 48), col[1], 9, '#222222');
+      text(row[2].slice(0, 22), col[2], 9, '#222222');
       y += 13;
     }
     y += 8;
@@ -139,7 +139,7 @@ export function generateDarPdf(r: DailyActivityReport): void {
   for (const [title, body] of blocks) {
     if (!body || !body.trim()) continue;
     ensure(30); text(title, M, 9, '#000000', true); y += 14;
-    doc.setFont('Arial', 'normal'); doc.setFontSize(9); doc.setTextColor('var(--border-subtle)');
+    doc.setFont('Arial', 'normal'); doc.setFontSize(9); doc.setTextColor('#222222');
     for (const line of doc.splitTextToSize(body, W - M * 2) as string[]) {
       ensure(12); doc.text(line, M, y); y += 12;
     }

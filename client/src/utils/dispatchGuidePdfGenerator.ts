@@ -32,12 +32,12 @@ const SECTION_GAP = 18;
 
 const COLOR = {
   BLACK:    '#000000',
-  INK:      'var(--surface-raised)',
-  MUTED:    'var(--rmpg-500)',
+  INK:      '#1a1a1a',
+  MUTED:    '#666666',
   ACCENT:   '#555555',   // neutralized 2026-05-30 (was gold)
   SURFACE:  '#f4f4f4',
   RULE:     '#cccccc',
-  RED:      'var(--rmpg-500)',   // neutralized 2026-05-30 (was #666666 red)
+  RED:      '#666666',   // neutralized 2026-05-30 (was #666666 red)
   GREEN:    '#888888',   // neutralized 2026-05-30 (was #777777 green)
 };
 
@@ -290,7 +290,7 @@ function dBox(
   label: string,
   opts: { fill?: string; stroke?: string; textColor?: string; fontSize?: number; bold?: boolean } = {},
 ): { x: number; y: number; w: number; h: number } {
-  const fill = opts.fill ?? 'var(--surface-base)';
+  const fill = opts.fill ?? '#141414';
   const stroke = opts.stroke ?? '#2e2e2e';
   const textColor = opts.textColor ?? '#e5e5e5';
   const fontSize = opts.fontSize ?? 9;
@@ -437,8 +437,8 @@ function coverConsoleBadge(d: jsPDF, cx: number, topY: number): void {
   d.rect(x, y, bw, bh, 'FD');
 
   // Inner screen area
-  d.setFillColor('var(--surface-base)');
-  d.setDrawColor('var(--border-subtle)');
+  d.setFillColor('#141414');
+  d.setDrawColor('#222222');
   d.setLineWidth(0.75);
   d.rect(x + 8, y + 22, bw - 16, bh - 40, 'FD');
 
@@ -453,7 +453,7 @@ function coverConsoleBadge(d: jsPDF, cx: number, topY: number): void {
 
   // LED dots (red / amber / green)
   const ledY = y + 7;
-  [['var(--rmpg-500)', 6], ['#555555', 14], ['#777777', 22]].forEach(([color, dx]) => {
+  [['#666666', 6], ['#555555', 14], ['#777777', 22]].forEach(([color, dx]) => {
     d.setFillColor(color as string);
     d.circle(x + bw - 80 + (dx as number), ledY, 2, 'F');
   });
@@ -461,19 +461,19 @@ function coverConsoleBadge(d: jsPDF, cx: number, topY: number): void {
   // Fake call rows (thin bars)
   d.setFillColor('#555555');
   d.rect(x + 14, y + 32, 4, 10, 'F');
-  d.setFillColor('var(--rmpg-500)');
+  d.setFillColor('#666666');
   d.rect(x + 22, y + 34, 100, 2, 'F');
   d.rect(x + 22, y + 39, 70, 2, 'F');
 
-  d.setFillColor('var(--rmpg-500)');
+  d.setFillColor('#666666');
   d.rect(x + 14, y + 48, 4, 10, 'F');
-  d.setFillColor('var(--rmpg-500)');
+  d.setFillColor('#666666');
   d.rect(x + 22, y + 50, 120, 2, 'F');
   d.rect(x + 22, y + 55, 60, 2, 'F');
 
   d.setFillColor('#888888');
   d.rect(x + 14, y + 64, 4, 10, 'F');
-  d.setFillColor('var(--rmpg-500)');
+  d.setFillColor('#666666');
   d.rect(x + 22, y + 66, 90, 2, 'F');
   d.rect(x + 22, y + 71, 110, 2, 'F');
 
@@ -2144,7 +2144,7 @@ function drawCallLifecycleDiagram(ctx: GuideContext): void {
     const bx = x + 12 + i * (boxW + gap);
     const [title, sub] = states[i];
     const box = dBox(d, bx, cy, boxW, boxH, `${title}\n${sub}`, {
-      fill: i === 0 ? 'var(--surface-base)' : (i === states.length - 1 ? '#333333' : 'var(--surface-raised)'),
+      fill: i === 0 ? '#0d1722' : (i === states.length - 1 ? '#333333' : '#1a1a1a'),
       stroke: COLOR.ACCENT,
       textColor: '#e5e5e5',
       fontSize: 7,
@@ -2202,11 +2202,11 @@ function drawUnitStatusDiagram(ctx: GuideContext): void {
 
   // Satellite nodes: DISPATCHED, ENROUTE, ON SCENE, BUSY, OUT OF SERVICE, OFF DUTY
   const satellites: Array<{ label: string; dx: number; dy: number; color: string }> = [
-    { label: 'OFF DUTY',     dx:    0, dy: -100, color: 'var(--rmpg-500)' },
+    { label: 'OFF DUTY',     dx:    0, dy: -100, color: '#666666' },
     { label: 'DISPATCHED',   dx:  170, dy:  -70, color: '#555555' },
     { label: 'ENROUTE',      dx:  170, dy:    0, color: '#555555' },
-    { label: 'ON SCENE',     dx:  170, dy:   70, color: 'var(--rmpg-500)' },
-    { label: 'BUSY',         dx: -170, dy:  -70, color: 'var(--rmpg-500)' },
+    { label: 'ON SCENE',     dx:  170, dy:   70, color: '#666666' },
+    { label: 'BUSY',         dx: -170, dy:  -70, color: '#666666' },
     { label: 'OUT OF SVC',   dx: -170, dy:   70, color: '#888888' },
   ];
   const nodes: Record<string, ReturnType<typeof dBox>> = { AVAILABLE: hub };
@@ -2214,7 +2214,7 @@ function drawUnitStatusDiagram(ctx: GuideContext): void {
     const nx = cx + s.dx - 42;
     const ny = cy + s.dy - 14;
     nodes[s.label] = dBox(d, nx, ny, 84, 28, s.label, {
-      fill: 'var(--surface-base)', stroke: s.color, textColor: s.color, fontSize: 8, bold: true,
+      fill: '#0d1722', stroke: s.color, textColor: s.color, fontSize: 8, bold: true,
     });
   }
 
@@ -2278,8 +2278,8 @@ function drawPriorityPyramidDiagram(ctx: GuideContext): void {
   dFrame(d, x, y, w, h);
 
   const levels: Array<{ p: string; label: string; color: string; widthPct: number; freq: string; response: string }> = [
-    { p: 'P1', label: 'Life / safety emergency',    color: 'var(--rmpg-500)', widthPct: 0.20, freq: '~2% of calls',  response: 'lights + siren'   },
-    { p: 'P2', label: 'Crime in progress / urgent', color: 'var(--rmpg-500)', widthPct: 0.40, freq: '~15% of calls', response: 'prompt, no L&S'   },
+    { p: 'P1', label: 'Life / safety emergency',    color: '#666666', widthPct: 0.20, freq: '~2% of calls',  response: 'lights + siren'   },
+    { p: 'P2', label: 'Crime in progress / urgent', color: '#666666', widthPct: 0.40, freq: '~15% of calls', response: 'prompt, no L&S'   },
     { p: 'P3', label: 'Routine',                    color: '#777777', widthPct: 0.65, freq: '~55% of calls', response: 'closest unit'     },
     { p: 'P4', label: 'Cold / report only',         color: '#777777', widthPct: 0.85, freq: '~28% of calls', response: 'phone / deferred' },
   ];
@@ -2386,12 +2386,12 @@ function drawFKeyboardDiagram(ctx: GuideContext): void {
     const [label, action] = keys[i];
     const kx = x + 12 + i * keyW;
     // Key cap
-    d.setFillColor('var(--surface-raised)');
+    d.setFillColor('#1a1a1a');
     d.setDrawColor('#444444');
     d.setLineWidth(0.75);
     d.roundedRect(kx, keyY, keyW - 4, keyH, 3, 3, 'FD');
     // Inner highlight
-    d.setDrawColor('var(--border-default)');
+    d.setDrawColor('#2a2a2a');
     d.setLineWidth(0.3);
     d.roundedRect(kx + 2, keyY + 2, keyW - 8, keyH - 4, 2, 2, 'S');
     // Key label
@@ -2446,7 +2446,7 @@ function drawBrainPipelineDiagram(ctx: GuideContext): void {
     const bx = x + 12 + i * (boxW + gap);
     const isRule = stages[i] === 'Rule Engine';
     boxes.push(dBox(d, bx, cy, boxW, boxH, stages[i], {
-      fill: isRule ? 'var(--border-default)' : 'var(--surface-base)',
+      fill: isRule ? '#2a2a2a' : '#0d1722',
       stroke: isRule ? COLOR.ACCENT : '#2e2e2e',
       textColor: '#e5e5e5',
       fontSize: 7,
@@ -2460,7 +2460,7 @@ function drawBrainPipelineDiagram(ctx: GuideContext): void {
   // Sideband: WebSocket event stream feeding Rule Engine
   const sideY = cy + 80;
   const sideBox = dBox(d, x + w / 2 - 90, sideY, 180, 28, 'WebSocket: call/unit/premise events', {
-    fill: 'var(--border-default)', stroke: '#555555', textColor: '#888888', fontSize: 8, bold: true,
+    fill: '#2a2a2a', stroke: '#555555', textColor: '#888888', fontSize: 8, bold: true,
   });
   // Arrow from sideband up to Rule Engine
   const ruleBox = boxes[3];
@@ -2501,7 +2501,7 @@ function drawWebSocketArchDiagram(ctx: GuideContext): void {
   const cx = x + w / 2;
   const cy = y + h / 2 - 10;
   const server = dBox(d, cx - 70, cy - 22, 140, 44, 'RMPG FLEX SERVER\nws://rmpgutah.us', {
-    fill: 'var(--border-default)', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
+    fill: '#2a2a2a', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
   });
 
   // Database below server
@@ -2522,7 +2522,7 @@ function drawWebSocketArchDiagram(ctx: GuideContext): void {
     const ncx = cx + Math.cos(c.angle) * radius;
     const ncy = cy + Math.sin(c.angle) * radius * 0.8;
     const nb = dBox(d, ncx - 48, ncy - 16, 96, 32, c.label, {
-      fill: 'var(--surface-base)', stroke: '#777777', textColor: '#888888', fontSize: 7, bold: true,
+      fill: '#0d1722', stroke: '#777777', textColor: '#888888', fontSize: 7, bold: true,
     });
     // Bidirectional arrow indicator (two lines)
     const fx = nb.x + nb.w / 2;
@@ -2567,7 +2567,7 @@ function drawSkipTracerFanoutDiagram(ctx: GuideContext): void {
   const cx = x + w / 2;
   const cy = y + h / 2 - 4;
   dBox(d, cx - 50, cy - 16, 100, 32, 'SKIP TRACER', {
-    fill: 'var(--border-default)', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 10, bold: true,
+    fill: '#2a2a2a', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 10, bold: true,
   });
 
   type Src = { label: string; cat: 'fed' | 'state' | 'local' | 'oss' };
@@ -2602,10 +2602,10 @@ function drawSkipTracerFanoutDiagram(ctx: GuideContext): void {
   ];
 
   const catColors: Record<string, { fill: string; stroke: string; text: string }> = {
-    fed:   { fill: '#333333', stroke: 'var(--rmpg-500)', text: '#aaaaaa' },
-    state: { fill: 'var(--border-default)', stroke: '#555555', text: '#888888' },
+    fed:   { fill: '#333333', stroke: '#666666', text: '#aaaaaa' },
+    state: { fill: '#2a2a2a', stroke: '#555555', text: '#888888' },
     local: { fill: '#333333', stroke: '#777777', text: '#999999' },
-    oss:   { fill: 'var(--surface-base)', stroke: 'var(--rmpg-500)', text: '#cccccc' },
+    oss:   { fill: '#0d1722', stroke: '#666666', text: '#cccccc' },
   };
 
   const drawRing = (sources: Src[], radius: number, startAngle: number): void => {
@@ -2686,7 +2686,7 @@ function drawCallTimelineDiagram(ctx: GuideContext): void {
   d.setTextColor('#888888');
   for (let m = 0; m <= durationMin; m += 3) {
     const tx = axisX0 + (m / durationMin) * axisW;
-    d.setDrawColor('var(--rmpg-500)');
+    d.setDrawColor('#666666');
     d.setLineWidth(0.5);
     d.line(tx, axisY - 2, tx, axisY + 2);
     d.text(`T+${String(m).padStart(2, '0')}:00`, tx, axisY + 12, { align: 'center' });
@@ -2704,14 +2704,14 @@ function drawCallTimelineDiagram(ctx: GuideContext): void {
     { min: 0.42,  label: 'Incident type\nclassified',    color: '#888888' },
     { min: 0.48,  label: 'Voice-channel\nalert',          color: '#555555' },
     { min: 0.9,   label: 'U07 enroute\n(F5)',            color: '#888888' },
-    { min: 1.5,   label: 'Caller update:\nveh flees NB',  color: 'var(--rmpg-500)' },
+    { min: 1.5,   label: 'Caller update:\nveh flees NB',  color: '#666666' },
     { min: 2.0,   label: 'U07 diverts\nto intercept',     color: '#888888' },
-    { min: 2.8,   label: 'U12 on scene\n(F6)',            color: 'var(--rmpg-500)' },
+    { min: 2.8,   label: 'U12 on scene\n(F6)',            color: '#666666' },
     { min: 3.5,   label: 'BOLO broadcast\n(F8 + bolo)',   color: '#555555' },
-    { min: 5.7,   label: 'U07 posted\n(F6)',              color: 'var(--rmpg-500)' },
+    { min: 5.7,   label: 'U07 posted\n(F6)',              color: '#666666' },
     { min: 12.5,  label: 'U12 clears\n(F7)',              color: '#888888' },
     { min: 19.25, label: 'U07 clears\n(F7)',              color: '#888888' },
-    { min: 20.5,  label: 'Close call\ndisp: GOA',         color: 'var(--rmpg-500)' },
+    { min: 20.5,  label: 'Close call\ndisp: GOA',         color: '#666666' },
   ];
 
   // Each event gets a side (top/bot) and a tier (0,1,2). We walk through
@@ -2877,7 +2877,7 @@ function drawPursuitSwimlaneDiagram(ctx: GuideContext): void {
   const lanes: Array<{ label: string; color: string }> = [
     { label: 'PRIMARY OFFICER', color: '#888888' },
     { label: 'DISPATCHER',      color: '#555555' },
-    { label: 'SUPERVISOR',      color: 'var(--rmpg-500)' },
+    { label: 'SUPERVISOR',      color: '#666666' },
   ];
   const laneH = (h - 30) / lanes.length;
   const topY = y + 20;
@@ -2885,7 +2885,7 @@ function drawPursuitSwimlaneDiagram(ctx: GuideContext): void {
   // Lane backgrounds + labels
   for (let i = 0; i < lanes.length; i++) {
     const ly = topY + i * laneH;
-    d.setFillColor(i % 2 === 0 ? '#0d0d0d' : 'var(--surface-base)');
+    d.setFillColor(i % 2 === 0 ? '#0d0d0d' : '#0d1722');
     d.rect(x, ly, w, laneH, 'F');
     d.setFont('helvetica', 'bold');
     d.setFontSize(7);
@@ -2914,7 +2914,7 @@ function drawPursuitSwimlaneDiagram(ctx: GuideContext): void {
     const ex = x + 70 + ev.slot * slotW + slotW / 2 - 30;
     const ey = topY + ev.lane * laneH + 18;
     dBox(d, ex, ey, 60, 28, ev.label, {
-      fill: 'var(--surface-base)', stroke: lanes[ev.lane].color, textColor: lanes[ev.lane].color, fontSize: 6, bold: true,
+      fill: '#0d1722', stroke: lanes[ev.lane].color, textColor: lanes[ev.lane].color, fontSize: 6, bold: true,
     });
   }
   // Time-slot labels across the top
@@ -2946,7 +2946,7 @@ function drawMapLayerStackDiagram(ctx: GuideContext): void {
   dFrame(d, x, y, w, h);
 
   const layers: Array<{ label: string; detail: string; color: string }> = [
-    { label: 'Base tiles',         detail: 'Google Maps dark / CartoDB fallback', color: 'var(--rmpg-500)' },
+    { label: 'Base tiles',         detail: 'Google Maps dark / CartoDB fallback', color: '#666666' },
     { label: 'Beat polygons',      detail: '719 features colored by sector',      color: '#888888' },
     { label: 'Geofences',          detail: 'Active perimeters + evidence zones', color: '#888888' },
     { label: 'Premise alerts',     detail: 'Persistent address warnings',         color: '#777777' },
@@ -2977,7 +2977,7 @@ function drawMapLayerStackDiagram(ctx: GuideContext): void {
     d.text(lyr.label, x + xIndent + 28, by + 11);
     d.setFont('helvetica', 'normal');
     d.setFontSize(7);
-    d.setTextColor('var(--surface-base)');
+    d.setTextColor('#0d1722');
     d.text(lyr.detail, x + xIndent + 110, by + 11);
   }
 
@@ -3029,7 +3029,7 @@ function drawServeLifecycleDiagram(ctx: GuideContext): void {
     const s = stages[i];
     const isOutcome = s.label === 'OUTCOME';
     boxes.push(dBox(d, bx, cy, boxW, boxH, `${s.label}\n${s.detail}`, {
-      fill: isOutcome ? 'var(--border-default)' : 'var(--surface-base)',
+      fill: isOutcome ? '#2a2a2a' : '#0d1722',
       stroke: isOutcome ? COLOR.ACCENT : '#2e2e2e',
       textColor: '#e5e5e5',
       fontSize: 7,
@@ -3064,7 +3064,7 @@ function drawServeLifecycleDiagram(ctx: GuideContext): void {
     fill: '#333333', stroke: '#777777', textColor: '#999999', fontSize: 7, bold: true,
   });
   const retry = dBox(d, retryX, branchY, childW, 32, 'RE-ATTEMPT\nup to contract limit', {
-    fill: '#333333', stroke: 'var(--rmpg-500)', textColor: '#aaaaaa', fontSize: 7, bold: true,
+    fill: '#333333', stroke: '#666666', textColor: '#aaaaaa', fontSize: 7, bold: true,
   });
   dArrow(d, outcomeBox.x + boxW / 2, outcomeBox.y + boxH, served.x + served.w / 2, served.y, 'served');
   dArrow(d, outcomeBox.x + boxW / 2, outcomeBox.y + boxH, retry.x + retry.w / 2, retry.y, 'no contact');
@@ -3073,12 +3073,12 @@ function drawServeLifecycleDiagram(ctx: GuideContext): void {
   // clamped the retry box position above.
   const attemptBox = boxes[2];
   const loopX = Math.min(retry.x + retry.w + loopExtension, frameRightEdge - 4);
-  d.setDrawColor('var(--rmpg-500)');
+  d.setDrawColor('#666666');
   d.setLineWidth(0.5);
   d.line(retry.x + retry.w, retry.y + retry.h / 2, loopX, retry.y + retry.h / 2);
   d.line(loopX, retry.y + retry.h / 2, loopX, attemptBox.y + boxH + 6);
   d.line(loopX, attemptBox.y + boxH + 6, attemptBox.x + boxW / 2, attemptBox.y + boxH + 6);
-  dArrow(d, attemptBox.x + boxW / 2, attemptBox.y + boxH + 6, attemptBox.x + boxW / 2, attemptBox.y + boxH, undefined, 'var(--rmpg-500)');
+  dArrow(d, attemptBox.x + boxW / 2, attemptBox.y + boxH + 6, attemptBox.x + boxW / 2, attemptBox.y + boxH, undefined, '#666666');
 
   ctx.y = y + h + 8;
   dCaption(ctx, 'Fig. 17-1 — Serve-queue lifecycle. Re-attempts loop until served or the contract attempt limit.');
@@ -3106,7 +3106,7 @@ function drawCompoundSearchMatrixDiagram(ctx: GuideContext): void {
     { label: 'ADDRESS',    example: '500m radius\nof lat/lng',      color: '#888888' },
     { label: 'PLATE',      example: 'AB*\nUT 2018+',                color: '#888888' },
     { label: 'VEHICLE',    example: 'Black pickup\nChevy, older',   color: '#888888' },
-    { label: 'FLAGS',      example: 'WEAPON or\nOFC_SAFETY',        color: 'var(--rmpg-500)' },
+    { label: 'FLAGS',      example: 'WEAPON or\nOFC_SAFETY',        color: '#666666' },
     { label: 'DATE RANGE', example: 'last 60d\nlast shift',          color: '#888888' },
     { label: 'RECORD TYPE',example: 'Calls | Inc\nFI | Citations',  color: '#888888' },
   ];
@@ -3128,7 +3128,7 @@ function drawCompoundSearchMatrixDiagram(ctx: GuideContext): void {
     const cy = gridY + row * cellH;
     const f = fields[i];
     dBox(d, cx, cy, cellW - 8, cellH - 6, `${f.label}\n\n${f.example}`, {
-      fill: 'var(--surface-base)', stroke: f.color, textColor: f.color, fontSize: 7, bold: true,
+      fill: '#0d1722', stroke: f.color, textColor: f.color, fontSize: 7, bold: true,
     });
   }
 
@@ -3160,13 +3160,13 @@ function drawArchDataFlowDiagram(ctx: GuideContext): void {
   const tierY = y + 40;
   const tierH = 60;
   const browser = dBox(d, x + 12, tierY, 96, tierH, 'BROWSER\nReact SPA\nVite bundle', {
-    fill: 'var(--border-default)', stroke: '#555555', textColor: '#888888', fontSize: 8, bold: true,
+    fill: '#2a2a2a', stroke: '#555555', textColor: '#888888', fontSize: 8, bold: true,
   });
   const nginx = dBox(d, x + 130, tierY, 90, tierH, 'NGINX\nSSL terminator\nStatic + proxy', {
-    fill: 'var(--surface-raised)', stroke: 'var(--rmpg-500)', textColor: '#cccccc', fontSize: 8, bold: true,
+    fill: '#1a1a1a', stroke: '#666666', textColor: '#cccccc', fontSize: 8, bold: true,
   });
   const express = dBox(d, x + 240, tierY, 100, tierH, 'EXPRESS 5\ntsx runtime\nREST + WS', {
-    fill: 'var(--border-default)', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
+    fill: '#2a2a2a', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
   });
   const sqlite = dBox(d, x + 360, tierY, 90, tierH, 'SQLITE\nbetter-sqlite3\naudit log', {
     fill: '#333333', stroke: '#777777', textColor: '#999999', fontSize: 8, bold: true,
@@ -3223,25 +3223,25 @@ function drawOfficerDownFlowchart(ctx: GuideContext): void {
 
   // Step 1 — Trigger
   const trigger = dBox(d, centerX - 90, y + 16, 180, 28, '"10-99" heard on channel', {
-    fill: '#333333', stroke: 'var(--rmpg-500)', textColor: '#aaaaaa', fontSize: 9, bold: true,
+    fill: '#333333', stroke: '#666666', textColor: '#aaaaaa', fontSize: 9, bold: true,
   });
 
   // Step 2 — Broadcast
   const broadcast = dBox(d, centerX - 100, y + 60, 200, 28, 'STEP 1 — Press F12 (panic)', {
-    fill: 'var(--surface-base)', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
+    fill: '#0d1722', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
   });
   dArrow(d, centerX, trigger.y + trigger.h, centerX, broadcast.y);
 
   // Step 3 — Hold traffic
   const holdTraffic = dBox(d, centerX - 100, y + 104, 200, 28, 'STEP 2 — Hold all traffic', {
-    fill: 'var(--surface-base)', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
+    fill: '#0d1722', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
   });
   dArrow(d, centerX, broadcast.y + broadcast.h, centerX, holdTraffic.y);
 
   // Decision diamond — is GPS current?
   const decisionY = y + 150;
   const diamond = (cx: number, cy: number, label: string) => {
-    d.setFillColor('var(--border-default)');
+    d.setFillColor('#2a2a2a');
     d.setDrawColor(COLOR.ACCENT);
     d.setLineWidth(1);
     const size = 40;
@@ -3266,20 +3266,20 @@ function drawOfficerDownFlowchart(ctx: GuideContext): void {
 
   // No branch (right)
   const noBox = dBox(d, x + w - 190, decisionY + 80, 150, 30, 'Ask for 20\nEscalate if no response', {
-    fill: '#333333', stroke: 'var(--rmpg-500)', textColor: '#aaaaaa', fontSize: 8, bold: true,
+    fill: '#333333', stroke: '#666666', textColor: '#aaaaaa', fontSize: 8, bold: true,
   });
   dArrow(d, centerX + 50, decisionY + 40, noBox.x, noBox.y + 10, 'NO');
 
   // Final steps (merge)
   const supY = decisionY + 140;
   const supervisor = dBox(d, centerX - 100, supY, 200, 26, 'STEP 5 — Page supervisor', {
-    fill: 'var(--surface-base)', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
+    fill: '#0d1722', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
   });
   dArrow(d, yesBox.x + yesBox.w / 2, yesBox.y + yesBox.h, supervisor.x + supervisor.w / 2 - 30, supervisor.y);
   dArrow(d, noBox.x + noBox.w / 2, noBox.y + noBox.h, supervisor.x + supervisor.w / 2 + 30, supervisor.y);
 
   const clear = dBox(d, centerX - 120, supY + 38, 240, 26, 'STEP 7 — Do NOT clear until 10-4 from officer', {
-    fill: '#333333', stroke: 'var(--rmpg-500)', textColor: '#aaaaaa', fontSize: 8, bold: true,
+    fill: '#333333', stroke: '#666666', textColor: '#aaaaaa', fontSize: 8, bold: true,
   });
   dArrow(d, centerX, supervisor.y + supervisor.h, centerX, clear.y);
 
@@ -3327,7 +3327,7 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
   d.text('1', x + w + 12, y + 11, { align: 'center' });
 
   // --- 2. Menu bar ---
-  d.setFillColor('var(--surface-base)');
+  d.setFillColor('#0d1722');
   d.rect(x, y + 18, w, 14, 'F');
   d.setFont('helvetica', 'normal');
   d.setFontSize(6);
@@ -3340,7 +3340,7 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
   d.text('2', x + w + 12, y + 27, { align: 'center' });
 
   // --- 3. Icon toolbar ---
-  d.setFillColor('var(--surface-raised)');
+  d.setFillColor('#1a1a1a');
   d.rect(x, y + 32, w, 22, 'F');
   // Draw fake icons as small squares
   for (let i = 0; i < 10; i++) {
@@ -3357,22 +3357,22 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
   const cpY = y + 58;
   const cpH = h - 58 - 28;
   const leftW = w * 0.38;
-  d.setFillColor('var(--surface-overlay)');
+  d.setFillColor('#050505');
   d.setDrawColor('#2e2e2e');
   d.rect(x, cpY, leftW, cpH, 'FD');
   // Stack header
-  d.setFillColor('var(--surface-base)');
+  d.setFillColor('#0d1722');
   d.rect(x, cpY, leftW, 14, 'F');
   d.setFont('helvetica', 'bold');
   d.setFontSize(6);
   d.setTextColor(COLOR.ACCENT);
   d.text('ACTIVE CALLS (7)', x + 6, cpY + 10);
   // Fake call rows
-  const colors = ['var(--rmpg-500)', '#555555', 'var(--rmpg-500)', '#777777', 'var(--rmpg-500)'];
+  const colors = ['#666666', '#555555', '#666666', '#777777', '#666666'];
   for (let i = 0; i < 5; i++) {
     d.setFillColor(colors[i]);
     d.rect(x + 4, cpY + 18 + i * 24, 3, 18, 'F');
-    d.setFillColor('var(--rmpg-500)');
+    d.setFillColor('#666666');
     d.rect(x + 12, cpY + 22 + i * 24, leftW * 0.6, 2, 'F');
     d.rect(x + 12, cpY + 28 + i * 24, leftW * 0.4, 2, 'F');
   }
@@ -3390,14 +3390,14 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
   d.setDrawColor('#2e2e2e');
   d.rect(mapX, cpY, mapW, mapH, 'FD');
   // Fake beat lines
-  d.setDrawColor('var(--rmpg-500)');
+  d.setDrawColor('#666666');
   d.setLineWidth(0.4);
   for (let i = 1; i < 6; i++) d.line(mapX + (mapW / 6) * i, cpY, mapX + (mapW / 6) * i, cpY + mapH);
   for (let j = 1; j < 4; j++) d.line(mapX, cpY + (mapH / 4) * j, mapX + mapW, cpY + (mapH / 4) * j);
   // Unit dots
   d.setFillColor('#777777'); d.circle(mapX + 30, cpY + 40, 3, 'F');
   d.setFillColor('#555555'); d.circle(mapX + 80, cpY + 60, 3, 'F');
-  d.setFillColor('var(--rmpg-500)'); d.circle(mapX + 140, cpY + 30, 3, 'F');
+  d.setFillColor('#666666'); d.circle(mapX + 140, cpY + 30, 3, 'F');
   d.setFillColor('#777777'); d.circle(mapX + 50, cpY + 80, 3, 'F');
   d.setFillColor(COLOR.ACCENT);
   d.circle(mapX + mapW + 12, cpY + mapH / 2, 6, 'F');
@@ -3408,10 +3408,10 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
   // --- 6. Unit roster (right, below map) ---
   const rosterY = cpY + mapH + 2;
   const rosterH = cpH - mapH - 2;
-  d.setFillColor('var(--surface-overlay)');
+  d.setFillColor('#050505');
   d.setDrawColor('#2e2e2e');
   d.rect(mapX, rosterY, mapW, rosterH, 'FD');
-  d.setFillColor('var(--surface-base)');
+  d.setFillColor('#0d1722');
   d.rect(mapX, rosterY, mapW, 12, 'F');
   d.setFont('helvetica', 'bold');
   d.setFontSize(6);
@@ -3446,7 +3446,7 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
 
   // --- 8. Status bar (very bottom) ---
   const sbY = y + h - 14;
-  d.setFillColor('var(--surface-base)');
+  d.setFillColor('#0d1722');
   d.rect(x, sbY, w, 14, 'F');
   d.setFont('helvetica', 'normal');
   d.setFontSize(6);

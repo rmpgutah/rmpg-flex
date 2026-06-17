@@ -860,7 +860,7 @@ export function generateInspectionAnalysisReport(data: {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
     doc.text('MOST COMMON FAILURE ITEMS', 40, y);
     y += 4;
-    doc.setDrawColor('var(--surface-raised)'); doc.setLineWidth(0.5);
+    doc.setDrawColor('#1a1a1a'); doc.setLineWidth(0.5);
     doc.line(40, y, pageW - 40, y);
     y += 14;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
@@ -1147,7 +1147,7 @@ export function generateComplianceAuditReport(data: {
   // Sign-off block
   if (y > pageH - 80) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'COMPLIANCE AUDIT (cont.)'); }
   y += 20;
-  doc.setDrawColor('var(--surface-raised)'); doc.setLineWidth(0.5);
+  doc.setDrawColor('#1a1a1a'); doc.setLineWidth(0.5);
   doc.line(40, y, pageW - 40, y);
   y += 16;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10);

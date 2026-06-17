@@ -212,7 +212,7 @@ export function generateNavTripReport({ trips, officerName, vehicleLabel, period
     doc.setFontSize(11);
     doc.text(title, marginX, y);
     y += 4;
-    doc.setDrawColor('var(--surface-raised)');
+    doc.setDrawColor('#1a1a1a');
     doc.setLineWidth(0.5);
     doc.line(marginX, y, pageW - marginX, y);
     y += 14;
@@ -281,7 +281,7 @@ export function generateNavTripReport({ trips, officerName, vehicleLabel, period
     doc.setFontSize(11);
     doc.text('DAILY ACTIVITY', marginX, y);
     y += 4;
-    doc.setDrawColor('var(--surface-raised)');
+    doc.setDrawColor('#1a1a1a');
     doc.setLineWidth(0.5);
     doc.line(marginX, y, pageW - marginX, y);
     y += 14;
@@ -376,7 +376,7 @@ export function generateNavTripReport({ trips, officerName, vehicleLabel, period
   // ── Footer / signatures (landscape) ───────────────────────
   if (y > pageH - 80) { doc.addPage(); y = 40; }
   y += 20;
-  doc.setDrawColor('var(--surface-raised)');
+  doc.setDrawColor('#1a1a1a');
   doc.setLineWidth(0.5);
   doc.line(marginX, y, pageW - marginX, y);
   y += 20;
@@ -534,7 +534,7 @@ export function generateNavSingleTripReport({
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
     doc.text(`BREADCRUMB PATH (${points.length} points)`, marginX, y);
     y += 4;
-    doc.setDrawColor('var(--surface-raised)'); doc.setLineWidth(0.5);
+    doc.setDrawColor('#1a1a1a'); doc.setLineWidth(0.5);
     doc.line(marginX, y, pageW - marginX, y);
     y += 14;
 
@@ -617,7 +617,7 @@ export function generateNavSingleTripReport({
   // Signature footer
   if (y > pageH - 80) { doc.addPage(); y = 40; }
   y += 16;
-  doc.setDrawColor('var(--surface-raised)');
+  doc.setDrawColor('#1a1a1a');
   doc.setLineWidth(0.5);
   doc.line(marginX, y, pageW - marginX, y);
   y += 16;
