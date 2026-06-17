@@ -1148,14 +1148,14 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         {/* ── Officer Safety / Caution (conditional)  */}
         {selectedPerson.caution_flags && (
           <CollapsibleSection title="Officer Safety / Caution" icon={AlertTriangle} accent="red">
-            <p className="text-xs text-red-200/90 leading-relaxed">{selectedPerson.caution_flags}</p>
+            <p className="text-xs text-red-200/90 leading-relaxed break-words">{selectedPerson.caution_flags}</p>
           </CollapsibleSection>
         )}
 
         {/* ── Notes (conditional) ──────────────────── */}
         {selectedPerson.notes && (
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
-            <p className="text-xs text-rmpg-200 leading-relaxed">{selectedPerson.notes}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed break-words">{selectedPerson.notes}</p>
           </CollapsibleSection>
         )}
 

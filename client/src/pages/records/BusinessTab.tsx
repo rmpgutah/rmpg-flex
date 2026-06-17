@@ -447,7 +447,7 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
 
       {b.notes && (
         <CollapsibleSection title="Notes" icon={Shield} defaultOpen={false}>
-          <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{b.notes}</p>
+          <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap break-words">{b.notes}</p>
         </CollapsibleSection>
       )}
 
