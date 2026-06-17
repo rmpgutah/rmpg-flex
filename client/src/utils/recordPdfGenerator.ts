@@ -321,10 +321,16 @@ function personPdfPostureFlags(data: PersonPdfData): Array<string | null | undef
 
 function vehiclePdfPostureFlags(data: VehiclePdfData): Array<string | null | undefined> {
   const flags: Array<string | null | undefined> = [];
-  for (const f of normalizeRecordFlags(data.flags)) flags.push(typeof f === 'object' && f !== null ? (f as any).type : f);
-  if (data.hazmat) flags.push('HAZMAT');
   const ss = (data.stolen_status || '').toLowerCase();
-  if (ss && !['none', 'not_stolen', 'recovered', ''].includes(ss)) flags.push('STOLEN');
+  const notStolen = ['none', 'not_stolen', 'not stolen', 'recovered', ''].includes(ss);
+  for (const f of normalizeRecordFlags(data.flags)) {
+    const flag = typeof f === 'object' && f !== null ? (f as any).type : f;
+    // Filter stale STOLEN flags when stolen_status explicitly says not stolen
+    if (notStolen && typeof flag === 'string' && flag.toUpperCase() === 'STOLEN') continue;
+    flags.push(flag);
+  }
+  if (data.hazmat) flags.push('HAZMAT');
+  if (ss && !notStolen) flags.push('STOLEN');
   const ts = (data.tow_status || '').toLowerCase();
   if (ts && ['impound', 'hold', 'evidence'].some(t => ts.includes(t))) flags.push('IMPOUND');
   return flags;
@@ -3413,8 +3419,10 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const fy4b = addFieldPair(doc, 'Other Aliases (AKAs)', data.aliases || '', rx, y, hfw);
     y = Math.max(fy4, fy4b);
     // Row 3: DOB, Sex, Gender, Race, Nationality
-    const fy5 = addFieldPair(doc, 'Date of Birth', fmtDate(data.date_of_birth), lx, y, fifthW);
-    const fy5b = addFieldPair(doc, 'Sex (Legal)', data.sex || '', lx + fifthW, y, fifthW);
+    // Fall back to alias_dob when date_of_birth is null (e.g. record created from DL scan where dob landed in alias_dob)
+    const fy5 = addFieldPair(doc, 'Date of Birth', fmtDate(data.date_of_birth || data.alias_dob), lx, y, fifthW);
+    // Fall back to gender when sex (legal) field is not populated
+    const fy5b = addFieldPair(doc, 'Sex (Legal)', data.sex || data.gender || '', lx + fifthW, y, fifthW);
     const fy6 = addFieldPair(doc, 'Gender', data.gender || '', lx + 2 * fifthW, y, fifthW);
     const fy7 = addFieldPair(doc, 'Race', data.race || '', lx + 3 * fifthW, y, fifthW);
     const fy7b = addFieldPair(doc, 'Nationality', data.nationality || '', lx + 4 * fifthW, y, fifthW);

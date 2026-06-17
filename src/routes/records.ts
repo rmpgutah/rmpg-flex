@@ -2022,11 +2022,21 @@ records.get('/links', async (c) => {
       const isSource = link.source_type === type && String(link.source_id) === String(id);
       const linkedType = isSource ? link.target_type : link.source_type;
       const linkedId = isSource ? link.target_id : link.source_id;
+      // For vehicle links, include structured metadata so the PDF's VEHICLE /
+      // COLOR / YEAR columns populate instead of parsing a label string.
+      let linked_meta: Record<string, unknown> | undefined;
+      if (linkedType === 'vehicle') {
+        const veh = await queryFirst<{ year?: number; color?: string; make?: string; model?: string; plate_number?: string }>(
+          db, 'SELECT year, color, make, model, plate_number FROM vehicles_records WHERE id = ?', linkedId,
+        );
+        if (veh) linked_meta = veh as Record<string, unknown>;
+      }
       return {
         ...link,
         linked_type: linkedType,
         linked_id: linkedId,
         linked_label: await getRecordLabel(db, linkedType, linkedId),
+        ...(linked_meta ? { linked_meta } : {}),
       };
     }));
     return c.json(enriched);
