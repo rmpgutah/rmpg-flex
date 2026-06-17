@@ -6,7 +6,7 @@ interface Source {
   reliability_grade: string; status: string; restricted: number; _restricted?: boolean;
 }
 const TYPES = ['officer_observation', 'confidential_informant', 'anonymous_tip', 'public', 'other_agency', 'osint', 'technical', 'victim', 'witness', 'suspect'];
-const field: React.CSSProperties = { background: '#0b0b0b', color: '#ddd', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '4px 6px', fontSize: 11 };
+const field: React.CSSProperties = { background: 'var(--surface-overlay)', color: 'var(--rmpg-200)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '4px 6px', fontSize: 11 };
 
 export default function IntelSourcesPage() {
   const [rows, setRows] = useState<Source[]>([]);
@@ -27,7 +27,7 @@ export default function IntelSourcesPage() {
   };
 
   return (
-    <div className="p-4 space-y-3" style={{ background: '#000', minHeight: '100%', color: '#ddd' }}>
+    <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', minHeight: '100%', color: 'var(--rmpg-200)' }}>
       <h1 className="text-sm font-semibold" style={{ color: '#d4a017' }}>SOURCE / CI REGISTRY</h1>
       {msg && <div style={{ color: '#ef4444', fontSize: 11 }}>{msg}</div>}
 
@@ -61,7 +61,7 @@ export default function IntelSourcesPage() {
               <td className="py-[2px] uppercase">{s.status}</td>
             </tr>
           ))}
-          {!rows.length && <tr><td colSpan={5} className="py-3 text-center" style={{ color: '#555' }}>No sources.</td></tr>}
+          {!rows.length && <tr><td colSpan={5} className="py-3 text-center" style={{ color: 'var(--rmpg-500)' }}>No sources.</td></tr>}
         </tbody>
       </table></div>
     </div>

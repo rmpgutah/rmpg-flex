@@ -30,7 +30,7 @@ export default function IntelReportsPage() {
   useEffect(load, [load]);
 
   return (
-    <div className="p-4 space-y-3" style={{ background: '#000000', minHeight: '100%', color: '#ddd' }}>
+    <div className="p-4 space-y-3" style={{ background: '#000000', minHeight: '100%', color: 'var(--rmpg-200)' }}>
       <div className="flex items-center justify-between">
         <h1 className="text-sm font-semibold tracking-wide" style={{ color: '#d4a017' }}>
           INTELLIGENCE PRODUCTS
@@ -82,7 +82,7 @@ export default function IntelReportsPage() {
             </tr>
           ))}
           {!rows.length && !loading && (
-            <tr><td colSpan={6} className="py-3 text-center" style={{ color: '#555' }}>No reports.</td></tr>
+            <tr><td colSpan={6} className="py-3 text-center" style={{ color: 'var(--rmpg-500)' }}>No reports.</td></tr>
           )}
         </tbody>
       </table></div>

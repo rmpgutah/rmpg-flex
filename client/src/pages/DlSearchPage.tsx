@@ -1825,7 +1825,7 @@ export default function DlSearchPage() {
                     value={linkPlate}
                     onChange={(e) => setLinkPlate(e.target.value)}
                     placeholder="Plate (optional)"
-                    className="w-28 px-2 py-2 bg-surface-raised border border-rmpg-700 text-[11px] text-rmpg-100 font-mono uppercase placeholder-gray-600"
+                    className="w-28 px-2 py-2 bg-surface-raised border border-rmpg-700 text-[11px] text-rmpg-100 font-mono uppercase placeholder-rmpg-500"
                   />
                   <button
                     type="button"

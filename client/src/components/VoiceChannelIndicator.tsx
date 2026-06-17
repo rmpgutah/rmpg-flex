@@ -464,7 +464,7 @@ export default function VoiceChannelIndicator() {
                     'Type or hold V…'
                   }
                   disabled={state === 'alerting' || state === 'processing' || state === 'responding'}
-                  className="flex-1 min-w-0 bg-transparent border-0 outline-none px-2.5 py-2 text-xs font-mono text-rmpg-200 placeholder-gray-600"
+                  className="flex-1 min-w-0 bg-transparent border-0 outline-none px-2.5 py-2 text-xs font-mono text-rmpg-200 placeholder-rmpg-500"
                   autoComplete="off"
                   spellCheck={false}
                 />

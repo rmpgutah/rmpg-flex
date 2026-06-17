@@ -125,7 +125,7 @@ export default function SpeedGraphOverlay({
         borderRadius: 2,
         padding: 0,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-        color: '#cccccc',
+        color: 'var(--rmpg-300)',
         fontSize: 11,
         userSelect: 'none',
       }}

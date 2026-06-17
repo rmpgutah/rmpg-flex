@@ -167,7 +167,7 @@ export function Heatmap({ rows }: { rows: number[][] }) {
 
 export function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="inline-block px-1.5 py-0.5 mx-0.5 text-[9px] font-mono font-bold" style={{ background: 'var(--surface-raised)', border: '1px solid #333', color: 'var(--rt-text)' }}>
+    <kbd className="inline-block px-1.5 py-0.5 mx-0.5 text-[9px] font-mono font-bold" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-default)', color: 'var(--rt-text)' }}>
       {children}
     </kbd>
   );

@@ -99,7 +99,7 @@ export default function ResetPasswordPage() {
 
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
-            <ShieldCheck className="w-3 h-3" style={{ color: '#999999' }} />
+            <ShieldCheck className="w-3 h-3" style={{ color: 'var(--rmpg-400)' }} />
             <span>SET NEW PASSWORD</span>
             <div className="ml-auto flex items-center gap-1" aria-hidden="true">
               <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid var(--border-strong)' }}>_</div>
@@ -111,7 +111,7 @@ export default function ResetPasswordPage() {
             {/* Loading state */}
             {validating && (
               <div className="text-center py-8" role="status" aria-live="polite">
-                <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin" style={{ color: '#999999' }} aria-hidden="true" />
+                <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin" style={{ color: 'var(--rmpg-400)' }} aria-hidden="true" />
                 <p className="text-[10px]" style={{ color: '#888888' }}>Validating reset link...</p>
               </div>
             )}
@@ -145,7 +145,7 @@ export default function ResetPasswordPage() {
               <>
                 <div className="text-center mb-5">
                   <div className="w-10 h-10 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: 'rgba(136, 136, 136, 0.15)', border: '1px solid rgba(136, 136, 136, 0.3)' }}>
-                    <Lock className="w-5 h-5" style={{ color: '#999999' }} />
+                    <Lock className="w-5 h-5" style={{ color: 'var(--rmpg-400)' }} />
                   </div>
                   <h2 className="text-sm font-bold text-rmpg-100 mb-1">Set New Password</h2>
                   {username && (
@@ -219,7 +219,7 @@ export default function ResetPasswordPage() {
                           {check.met ? (
                             <CheckCircle className="w-3 h-3 text-green-400 flex-shrink-0" aria-hidden="true" />
                           ) : (
-                            <XCircle className="w-3 h-3 flex-shrink-0" style={{ color: '#555555' }} aria-hidden="true" />
+                            <XCircle className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--rmpg-500)' }} aria-hidden="true" />
                           )}
                           <span style={{ color: check.met ? '#4ade80' : 'var(--rmpg-500)' }}>{check.label}</span>
                           <span className="sr-only">{check.met ? '(met)' : '(not met)'}</span>

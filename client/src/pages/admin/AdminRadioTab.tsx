@@ -279,7 +279,7 @@ export default function AdminRadioTab() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter by name, description, frequency, talkgroup…"
-          className="flex-1 bg-transparent text-xs text-rmpg-200 placeholder-gray-600 outline-none"
+          className="flex-1 bg-transparent text-xs text-rmpg-200 placeholder-rmpg-500 outline-none"
         />
       </div>
 

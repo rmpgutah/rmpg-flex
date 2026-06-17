@@ -65,7 +65,7 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
         disabled={isLoading || aiUnavailable || !notes?.trim()}
         className="flex items-center gap-1 px-2 py-1 text-[9px] font-semibold rounded-sm border transition-colors"
         style={aiUnavailable
-          ? { background: 'var(--surface-raised)', borderColor: 'var(--border-default)', color: '#555', cursor: 'not-allowed' }
+          ? { background: 'var(--surface-raised)', borderColor: 'var(--border-default)', color: 'var(--rmpg-500)', cursor: 'not-allowed' }
           : { background: '#7c3aed15', borderColor: '#7c3aed40', color: '#a78bfa', cursor: isLoading ? 'wait' : 'pointer' }
         }
         title={aiUnavailable ? 'AI service is unavailable' : !notes?.trim() ? 'Enter notes first' : 'Generate narrative from notes using AI'}

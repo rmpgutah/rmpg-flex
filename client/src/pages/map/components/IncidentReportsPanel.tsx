@@ -32,15 +32,15 @@ interface IncidentReportsPanelProps {
 // ─── Status colors ──────────────────────────────────────────
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  draft:        { label: 'Draft',        color: '#999999', bg: '#999999' },
-  submitted:    { label: 'Submitted',    color: '#aaaaaa', bg: '#888888' },
+  draft:        { label: 'Draft',        color: 'var(--rmpg-400)', bg: '#999999' },
+  submitted:    { label: 'Submitted',    color: 'var(--rmpg-400)', bg: '#888888' },
   under_review: { label: 'Under Review', color: '#fbbf24', bg: '#f59e0b' },
   approved:     { label: 'Approved',     color: '#4ade80', bg: '#22c55e' },
   returned:     { label: 'Returned',     color: '#f87171', bg: '#ef4444' },
 };
 
 function getStatusStyle(status: string) {
-  return STATUS_CONFIG[status] || { label: status, color: '#999999', bg: 'var(--rmpg-500)' };
+  return STATUS_CONFIG[status] || { label: status, color: 'var(--rmpg-400)', bg: 'var(--rmpg-500)' };
 }
 
 // ─── Time-ago helper ────────────────────────────────────────

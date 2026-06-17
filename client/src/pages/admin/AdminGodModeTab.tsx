@@ -471,14 +471,14 @@ export default function AdminGodModeTab() {
             value={broadcastTitle}
             onChange={e => setBroadcastTitle(e.target.value)}
             placeholder="Notification title..."
-            className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600"
+            className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500"
           />
           <RichTextArea
             value={broadcastMessage}
             onChange={e => setBroadcastMessage(e.target.value)}
             placeholder="Message body..."
             rows={3}
-            className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600 resize-none"
+            className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500 resize-none"
           />
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-rmpg-500">Target:</span>
@@ -611,7 +611,7 @@ export default function AdminGodModeTab() {
               onChange={e => setReassignCallIds(e.target.value)}
               placeholder="Call IDs (comma-separated): 101, 102, 103"
               rows={2}
-              className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1 text-[11px] text-rmpg-100 placeholder-gray-600 resize-none font-mono"
+              className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1 text-[11px] text-rmpg-100 placeholder-rmpg-500 resize-none font-mono"
             />
             <select id="ff-admingodmodetab-5"
               value={reassignTargetId}
@@ -637,7 +637,7 @@ export default function AdminGodModeTab() {
               value={closeDisposition}
               onChange={e => setCloseDisposition(e.target.value)}
               placeholder="Disposition..."
-              className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600"
+              className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500"
             />
             <button onClick={handleForceCloseAll} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded-sm text-[11px] font-bold text-rmpg-100">
               Force Close ALL Open Calls
@@ -655,7 +655,7 @@ export default function AdminGodModeTab() {
           onChange={e => setSqlQuery(e.target.value)}
           placeholder="SELECT * FROM users LIMIT 10;"
           rows={4}
-          className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600 resize-y font-mono"
+          className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500 resize-y font-mono"
         />
         <div className="flex items-center gap-2 mt-2">
           <button onClick={handleSqlQuery} disabled={sqlRunning || !sqlQuery.trim()} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
@@ -718,7 +718,7 @@ export default function AdminGodModeTab() {
               value={lockdownMessage}
               onChange={e => setLockdownMessage(e.target.value)}
               placeholder="Lockdown message..."
-              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600"
+              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500"
             />
             <label className="flex items-center gap-2 text-[10px] text-rmpg-400">
               <input id="ff-admingodmodetab-8"
@@ -748,7 +748,7 @@ export default function AdminGodModeTab() {
               value={mergeKeepId}
               onChange={e => setMergeKeepId(e.target.value)}
               placeholder="ID to keep"
-              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600 font-mono"
+              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500 font-mono"
             />
           </div>
           <div className="flex-1">
@@ -758,7 +758,7 @@ export default function AdminGodModeTab() {
               value={mergeMergeId}
               onChange={e => setMergeMergeId(e.target.value)}
               placeholder="ID to merge"
-              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600 font-mono"
+              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500 font-mono"
             />
           </div>
           <button onClick={handleMergePersons} disabled={!mergeKeepId || !mergeMergeId} className="mt-3 px-3 py-1.5 bg-rmpg-600 hover:bg-rmpg-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">

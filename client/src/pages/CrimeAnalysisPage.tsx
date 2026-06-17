@@ -29,7 +29,7 @@ const ChartTooltip = ({ active, payload, label, formatter }: any) => {
   const display = formatter ? formatter(label, payload[0].value) : `${payload[0].value}`;
   return (
     <div style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '6px 10px', borderRadius: 2 }}>
-      <div style={{ color: '#aaaaaa', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
+      <div style={{ color: 'var(--rmpg-400)', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
       <div style={{ color: 'var(--text-secondary)', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
     </div>
   );

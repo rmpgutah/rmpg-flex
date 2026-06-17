@@ -111,7 +111,7 @@ export default function DownloadsPage() {
   return (
     <div className="min-h-screen" style={{ background:"var(--surface-sunken)" }}>
       {/* Header */}
-      <div className="border-b" style={{ borderColor: '#222', background: '#0d0d0d' }}>
+      <div className="border-b" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-overlay)' }}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
           <img
             src="/rmpg flex.png"
@@ -121,7 +121,7 @@ export default function DownloadsPage() {
           />
           <div>
             <h1 className="text-sm font-bold uppercase tracking-wider text-rmpg-100">RMPG Flex</h1>
-            <span className="text-[10px] uppercase tracking-wider" style={{ color: '#666' }}>
+            <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--rmpg-500)' }}>
               CAD / RMS Dispatch System
             </span>
           </div>
@@ -135,7 +135,7 @@ export default function DownloadsPage() {
             className="inline-block text-[11px] font-bold uppercase tracking-wider px-3 py-1 mb-4"
             style={{
               background: 'var(--surface-raised)',
-              border: '1px solid #333',
+              border: '1px solid var(--border-default)',
               color: '#d4a017',
               borderRadius: 2,
             }}
@@ -182,13 +182,13 @@ export default function DownloadsPage() {
 
                 <Icon className="w-10 h-10 mb-3" style={{ color: '#d4a017' }} />
                 <h3 className="text-base font-bold text-rmpg-100 mb-1">{config.label}</h3>
-                <span className="text-[11px] mb-3" style={{ color: '#666' }}>{config.arch}</span>
+                <span className="text-[11px] mb-3" style={{ color: 'var(--rmpg-500)' }}>{config.arch}</span>
 
                 {loading ? (
-                  <span className="text-xs" style={{ color: '#555' }}>Loading...</span>
+                  <span className="text-xs" style={{ color: 'var(--rmpg-500)' }}>Loading...</span>
                 ) : installer ? (
                   <>
-                    <span className="text-[11px] mb-4" style={{ color: '#555' }}>
+                    <span className="text-[11px] mb-4" style={{ color: 'var(--rmpg-500)' }}>
                       v{installer.version} — {installer.size}
                     </span>
                     <a
@@ -215,7 +215,7 @@ export default function DownloadsPage() {
                     </a>
                   </>
                 ) : (
-                  <span className="text-xs mt-4" style={{ color: '#555' }}>Not available</span>
+                  <span className="text-xs mt-4" style={{ color: 'var(--rmpg-500)' }}>Not available</span>
                 )}
               </div>
             );
@@ -225,11 +225,11 @@ export default function DownloadsPage() {
         {/* Web App Banner */}
         <div
           className="flex items-center justify-between gap-4 p-4 mb-8"
-          style={{ background: '#111', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
+          style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
         >
           <div>
             <h4 className="text-sm font-bold text-rmpg-100 mb-1">Use in Browser</h4>
-            <p className="text-xs" style={{ color: '#666' }}>
+            <p className="text-xs" style={{ color: 'var(--rmpg-500)' }}>
               No download needed. Open the full RMPG Flex web app in any browser on any device.
             </p>
           </div>
@@ -238,7 +238,7 @@ export default function DownloadsPage() {
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
             style={{
               background: 'var(--surface-raised)',
-              border: '1px solid #333',
+              border: '1px solid var(--border-default)',
               color: '#ccc',
               borderRadius: 2,
             }}
@@ -253,7 +253,7 @@ export default function DownloadsPage() {
         {/* Features */}
         <div
           className="p-5 mb-8"
-          style={{ background: '#111', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
+          style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
         >
           <h4 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#d4a017' }}>
             What's Included
@@ -280,14 +280,14 @@ export default function DownloadsPage() {
         {/* Installation Guide */}
         <div
           className="p-5 mb-8"
-          style={{ background: '#111', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
+          style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
         >
           <h4 className="text-[11px] font-bold uppercase tracking-wider mb-4" style={{ color: '#d4a017' }}>
             Installation Guide
           </h4>
 
           {/* Platform tabs */}
-          <div className="flex border-b mb-4" style={{ borderColor: '#222' }}>
+          <div className="flex border-b mb-4" style={{ borderColor: 'var(--border-subtle)' }}>
             {platforms.map((p) => (
               <button
                 key={p}
@@ -342,21 +342,21 @@ export default function DownloadsPage() {
         {/* System Requirements */}
         <div
           className="p-5"
-          style={{ background: '#111', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
+          style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
         >
-          <h4 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: '#666' }}>
+          <h4 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--rmpg-500)' }}>
             System Requirements
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="text-xs leading-relaxed" style={{ color: '#777' }}>
+            <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
               <strong style={{ color: '#aaa' }}>Windows:</strong> Windows 10 or later<br />
               64-bit (x64) processor
             </div>
-            <div className="text-xs leading-relaxed" style={{ color: '#777' }}>
+            <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
               <strong style={{ color: '#aaa' }}>macOS:</strong> macOS 10.15 (Catalina) or later<br />
               Apple Silicon (M1/M2/M3/M4) or Intel
             </div>
-            <div className="text-xs leading-relaxed" style={{ color: '#777' }}>
+            <div className="text-xs leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
               <strong style={{ color: '#aaa' }}>Android:</strong> Android 8.0 (Oreo) or later<br />
               Any modern smartphone or tablet
             </div>
@@ -371,7 +371,7 @@ export default function DownloadsPage() {
           {loading ? '...' : info.win ? info.win.version : info.mac ? info.mac.version : '5.8.0'}
         </span>
         {' — '}Rocky Mountain Protective Group, LLC<br />
-        <a href="/" className="no-underline" style={{ color: '#666' }}>Open Flex Web App</a>
+        <a href="/" className="no-underline" style={{ color: 'var(--rmpg-500)' }}>Open Flex Web App</a>
       </div>
     </div>
   );

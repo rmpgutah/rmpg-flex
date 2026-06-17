@@ -148,7 +148,7 @@ export default function MobileCardList<T>({
         <div
           className="flex-shrink-0 px-3 py-2"
           style={{
-            background: '#0a0a0a',
+            background: 'var(--surface-overlay)',
             borderBottom: '1px solid var(--border-default)',
           }}
         >

@@ -115,7 +115,7 @@ export default function DispatcherTranscript() {
             </div>
           </div>
           {entries.length === 0 ? (
-            <div style={{ padding: 12, color: '#666', fontSize: 11 }}>No announcements yet.</div>
+            <div style={{ padding: 12, color: 'var(--rmpg-500)', fontSize: 11 }}>No announcements yet.</div>
           ) : (
             <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
               {entries.map((e) => (

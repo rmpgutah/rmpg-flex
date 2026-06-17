@@ -76,10 +76,10 @@ export default function ClosestUnitPanel({
         className="flex items-center gap-2 px-3 py-2 shrink-0"
         style={{ borderBottom: '1px solid #2b2b2b60' }}
       >
-        <Navigation className="w-3.5 h-3.5 shrink-0" style={{ color: '#aaaaaa' }} />
+        <Navigation className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--rmpg-400)' }} />
         <span
           className="text-[10px] font-black uppercase tracking-wider flex-1"
-          style={{ color: '#aaaaaa', letterSpacing: '0.8px' }}
+          style={{ color: 'var(--rmpg-400)', letterSpacing: '0.8px' }}
         >
           Closest Units
         </span>
@@ -117,7 +117,7 @@ export default function ClosestUnitPanel({
         <div className="text-[9px] font-semibold text-rmpg-300">
           {formatIncidentType(call.incident_type)}
         </div>
-        <div className="text-[8px] mt-0.5" style={{ color: '#999999' }}>
+        <div className="text-[8px] mt-0.5" style={{ color: 'var(--rmpg-400)' }}>
           {call.location_address}
         </div>
       </div>
@@ -194,7 +194,7 @@ export default function ClosestUnitPanel({
                     </div>
                     <div
                       className="text-[9px] truncate"
-                      style={{ color: '#999999' }}
+                      style={{ color: 'var(--rmpg-400)' }}
                     >
                       {unit.officer_name}
                     </div>
@@ -202,7 +202,7 @@ export default function ClosestUnitPanel({
 
                   {/* #42: Distance + ETA with tabular-nums for alignment */}
                   <div className="text-right shrink-0">
-                    <div className="text-[10px] font-bold font-mono tabular-nums" style={{ color: '#aaaaaa' }}>
+                    <div className="text-[10px] font-bold font-mono tabular-nums" style={{ color: 'var(--rmpg-400)' }}>
                       {distanceMiles < 0.1
                         ? '<0.1 mi'
                         : `${distanceMiles.toFixed(1)} mi`}
@@ -238,7 +238,7 @@ export default function ClosestUnitPanel({
                       style={{
                         background: isDispatching ? '#88888820' : '#88888830',
                         border: '1px solid #88888880',
-                        color: '#aaaaaa',
+                        color: 'var(--rmpg-400)',
                         fontSize: 8,
                         fontWeight: 900,
                         fontFamily: "'Courier New','JetBrains Mono',monospace",

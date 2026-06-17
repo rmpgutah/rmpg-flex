@@ -180,12 +180,12 @@ export default function ButtonHealthOverlay() {
                     <strong>{e.label}</strong>
                   </div>
                   <div className="text-rmpg-400">covered by: {e.interceptor}</div>
-                  <div style={{ color: '#6b7280', fontSize: 11 }}>{e.interceptorStyle}</div>
+                  <div style={{ color: 'var(--rmpg-500)', fontSize: 11 }}>{e.interceptorStyle}</div>
                 </div>
               ))}
             </>
           )}
-          <div style={{ marginTop: 8, color: '#6b7280', fontSize: 11 }}>
+          <div style={{ marginTop: 8, color: 'var(--rmpg-500)', fontSize: 11 }}>
             Red = fully dead · Amber = only part clickable. Re-scan after any action.
           </div>
         </div>
@@ -208,7 +208,7 @@ const btnStyle: React.CSSProperties = {
 function Stat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <span style={{ marginRight: 4 }}>
-      <span style={{ color: '#6b7280' }}>{label}:</span>{' '}
+      <span style={{ color: 'var(--rmpg-500)' }}>{label}:</span>{' '}
       <span style={{ color, fontWeight: 700 }}>{value}</span>
     </span>
   );

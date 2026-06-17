@@ -179,7 +179,7 @@ export default function AIPromptWorkshopPanel() {
               value={systemPrompt}
               onChange={e => setSystemPrompt(e.target.value)}
               placeholder="You are a law enforcement AI assistant..."
-              className="w-full px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-rmpg-500 resize-none"
+              className="w-full px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500 resize-none"
             />
           </div>
 
@@ -190,7 +190,7 @@ export default function AIPromptWorkshopPanel() {
               value={userMessage}
               onChange={e => setUserMessage(e.target.value)}
               placeholder="Summarize this incident report..."
-              className="w-full px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-rmpg-500 resize-none"
+              className="w-full px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500 resize-none"
             />
           </div>
 
@@ -335,7 +335,7 @@ export default function AIPromptWorkshopPanel() {
             <input id="ff-aipromptworkshoppanel-4"
               type="text" value={saveName} onChange={e => setSaveName(e.target.value)}
               placeholder="Template name..."
-              className="flex-1 px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-rmpg-500"
+              className="flex-1 px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500"
             />
             <select id="ff-aipromptworkshoppanel-5"
               value={saveCategory} onChange={e => setSaveCategory(e.target.value)}

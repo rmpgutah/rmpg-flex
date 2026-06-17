@@ -357,7 +357,7 @@ export default function HelpPage() {
         className="flex-shrink-0 overflow-y-auto py-3"
         style={{
           width: 200,
-          background: '#080808',
+          background: 'var(--surface-overlay)',
           borderRight: '1px solid var(--border-subtle)',
           scrollbarWidth: 'none',
         }}
@@ -418,7 +418,7 @@ export default function HelpPage() {
                     <div
                       key={card.label}
                       className="p-3 space-y-1"
-                      style={{ background:"var(--surface-sunken)", border: '1px solid #1a1a1a' }}
+                      style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-subtle)' }}
                     >
                       <div className="flex items-center gap-2">
                         <card.icon className="w-3.5 h-3.5 text-[#d4a017]" />
@@ -523,7 +523,7 @@ export default function HelpPage() {
                             width: 28,
                             height: 28,
                             background: 'rgba(136,136,136,0.1)',
-                            border: '1px solid #1a1a1a',
+                            border: '1px solid var(--border-subtle)',
                           }}
                         >
                           <Icon className="w-3.5 h-3.5 text-rmpg-300" />
@@ -539,7 +539,7 @@ export default function HelpPage() {
                               <span
                                 key={f}
                                 className="text-[9px] px-1.5 py-0.5 text-rmpg-300"
-                                style={{ background:"var(--surface-sunken)", border: '1px solid #1a1a1a' }}
+                                style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-subtle)' }}
                               >
                                 {f}
                               </span>
