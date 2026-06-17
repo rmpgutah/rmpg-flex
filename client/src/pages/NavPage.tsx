@@ -611,7 +611,7 @@ function CurrentTripPanel({
           {etaView && (
             <div
               className="flex items-center justify-between mb-3 px-2 py-1.5 rounded-sm border"
-              style={{ borderColor: '#222', background: '#050505' }}
+              style={{ borderColor: '#222', background: 'var(--surface-overlay)' }}
             >
               <div className="flex items-center gap-1.5">
                 <Clock size={11} style={{ color: etaView.color }} />
@@ -620,7 +620,7 @@ function CurrentTripPanel({
                 </span>
                 <span className="text-[9px] uppercase" style={{ color: '#888' }}>to arrival</span>
               </div>
-              <span className="text-[11px] font-mono tabular-nums" style={{ color: '#e0e0e0' }}>
+              <span className="text-[11px] font-mono tabular-nums" style={{ color: 'var(--text-secondary)' }}>
                 ETA {etaView.clock}
               </span>
             </div>
@@ -630,13 +630,13 @@ function CurrentTripPanel({
           <div className="space-y-1 text-[10px] font-mono">
             <div className="flex justify-between">
               <span className="text-rmpg-500">Start</span>
-              <span style={{ color: '#e0e0e0' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>
                 {trip.start_location || (trip.start_lat != null ? `${trip.start_lat.toFixed(4)}, ${trip.start_lng?.toFixed(4) ?? ''}` : '—')}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-rmpg-500">Time</span>
-              <span style={{ color: '#e0e0e0' }}>{trip.start_time}</span>
+              <span style={{ color: 'var(--text-secondary)' }}>{trip.start_time}</span>
             </div>
             {trip.vehicle_number && (
               <div className="flex justify-between">
@@ -655,7 +655,7 @@ function CurrentTripPanel({
             {trip.route_points && Array.isArray(trip.route_points) && (
               <div className="flex justify-between">
                 <span className="text-rmpg-500">Breadcrumbs</span>
-                <span style={{ color: '#e0e0e0' }}>{trip.route_points.length} points</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{trip.route_points.length} points</span>
               </div>
             )}
           </div>
@@ -675,14 +675,14 @@ function CurrentTripPanel({
           <Link
             to="/navigation"
             className="py-2 max-md:min-h-[44px] rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-            style={{ background: '#141414', color: '#d4a017', border: '1px solid #222' }}
+            style={{ background: 'var(--surface-base)', color: '#d4a017', border: '1px solid #222' }}
           >
             <Compass size={11} /> Drive Mode
           </Link>
           <button
             onClick={onRefresh}
             className="py-2 max-md:min-h-[44px] rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-            style={{ background: '#141414', color: '#888', border: '1px solid #222' }}
+            style={{ background: 'var(--surface-base)', color: '#888', border: '1px solid #222' }}
           >
             <RefreshCw size={11} /> Refresh
           </button>
@@ -713,20 +713,20 @@ function CurrentTripPanel({
           </div>
           <div className="flex justify-between">
             <span className="text-rmpg-500">Position</span>
-            <span style={{ color: '#e0e0e0' }}>
+            <span style={{ color: 'var(--text-secondary)' }}>
               {gps.latitude ? `${gps.latitude.toFixed(5)}, ${gps.longitude?.toFixed(5)}` : 'No fix'}
             </span>
           </div>
           {gps.speed != null && (
             <div className="flex justify-between">
               <span className="text-rmpg-500">Speed</span>
-              <span style={{ color: '#e0e0e0' }}>{Math.round(gps.speed * 2.237)} mph</span>
+              <span style={{ color: 'var(--text-secondary)' }}>{Math.round(gps.speed * 2.237)} mph</span>
             </div>
           )}
           {detection.loginPosition && (
             <div className="flex justify-between">
               <span className="text-rmpg-500">Login</span>
-              <span style={{ color: '#e0e0e0' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>
                 {detection.loginPosition.lat.toFixed(4)}, {detection.loginPosition.lng.toFixed(4)}
               </span>
             </div>
@@ -770,7 +770,7 @@ function CurrentTripPanel({
       )}
 
       {!gps.unitCallSign && !hasTakeHome && (
-        <div className="rounded-sm border border-subtle p-2 text-center" style={{ background: '#141414' }}>
+        <div className="rounded-sm border border-subtle p-2 text-center" style={{ background: 'var(--surface-base)' }}>
           <p className="text-[10px]" style={{ color: '#888' }}>
             Set a take-home vehicle on the Shift card to log trips without going on-duty.
           </p>
@@ -782,14 +782,14 @@ function CurrentTripPanel({
         <Link
           to="/navigation"
           className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-          style={{ background: '#141414', color: '#d4a017', border: '1px solid #222' }}
+          style={{ background: 'var(--surface-base)', color: '#d4a017', border: '1px solid #222' }}
         >
           <Compass size={11} /> Drive Mode
         </Link>
         <button
           onClick={onRefresh}
           className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-          style={{ background: '#141414', color: '#888', border: '1px solid #222' }}
+          style={{ background: 'var(--surface-base)', color: '#888', border: '1px solid #222' }}
         >
           <RefreshCw size={11} /> Refresh
         </button>
@@ -876,7 +876,7 @@ function HistoryPanel({
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_COLOR[trip.status] || '#6b7280' }} />
-                <span className="text-[11px] font-semibold" style={{ color: '#e0e0e0' }}>
+                <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
                   {formatDistance(trip.distance_miles)}
                 </span>
                 <span className="text-[9px] font-mono" style={{ color: STATUS_COLOR[trip.status] || '#6b7280' }}>
@@ -889,17 +889,17 @@ function HistoryPanel({
             <div className="grid grid-cols-3 gap-2 text-[9px] font-mono">
               <div>
                 <span className="text-rmpg-500">Duration</span>
-                <div style={{ color: '#e0e0e0' }}>{formatDuration(trip.duration_seconds)}</div>
+                <div style={{ color: 'var(--text-secondary)' }}>{formatDuration(trip.duration_seconds)}</div>
               </div>
               <div>
                 <span className="text-rmpg-500">Max Speed</span>
-                <div style={{ color: '#e0e0e0' }}>
+                <div style={{ color: 'var(--text-secondary)' }}>
                   {trip.max_speed_mph ? `${Math.round(trip.max_speed_mph)} mph` : '--'}
                 </div>
               </div>
               <div>
                 <span className="text-rmpg-500">Type</span>
-                <div style={{ color: '#e0e0e0' }}>{trip.detected_by === 'auto' ? 'Auto' : 'Manual'}</div>
+                <div style={{ color: 'var(--text-secondary)' }}>{trip.detected_by === 'auto' ? 'Auto' : 'Manual'}</div>
               </div>
             </div>
 

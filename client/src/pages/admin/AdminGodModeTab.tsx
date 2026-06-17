@@ -493,9 +493,9 @@ export default function AdminGodModeTab() {
                 {role}
               </label>
             ))}
-            <span className="text-[9px] text-gray-600">(none = all users)</span>
+            <span className="text-[9px] text-rmpg-500">(none = all users)</span>
           </div>
-          <button onClick={handleBroadcast} disabled={!broadcastTitle.trim() || !broadcastMessage.trim()} className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
+          <button onClick={handleBroadcast} disabled={!broadcastTitle.trim() || !broadcastMessage.trim()} className="px-3 py-1.5 bg-rmpg-600 hover:bg-rmpg-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
             <Bell size={12} /> Send Broadcast
           </button>
         </div>
@@ -557,8 +557,8 @@ export default function AdminGodModeTab() {
                 <div key={i} className="flex items-center gap-2 py-0.5 border-b border-border-subtle/50 text-[11px]" onContextMenu={(e) => openMenu(e, buildPresenceMenu(u))}>
                   <span className={`w-2 h-2 rounded-full ${u.status === 'online' ? 'bg-green-400' : u.status === 'idle' ? 'bg-yellow-400' : 'bg-rmpg-700'}`} />
                   <span className="text-rmpg-300 font-mono">{u.username || u.full_name}</span>
-                  <span className="text-gray-600 text-[9px]">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
-                  {u.last_seen && <span className="text-gray-600 text-[9px] ml-auto">{new Date(u.last_seen).toLocaleTimeString()}</span>}
+                  <span className="text-rmpg-500 text-[9px]">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                  {u.last_seen && <span className="text-rmpg-500 text-[9px] ml-auto">{new Date(u.last_seen).toLocaleTimeString()}</span>}
                 </div>
               ))}
             </div>
@@ -761,7 +761,7 @@ export default function AdminGodModeTab() {
               className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600 font-mono"
             />
           </div>
-          <button onClick={handleMergePersons} disabled={!mergeKeepId || !mergeMergeId} className="mt-3 px-3 py-1.5 bg-gray-600 hover:bg-gray-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
+          <button onClick={handleMergePersons} disabled={!mergeKeepId || !mergeMergeId} className="mt-3 px-3 py-1.5 bg-rmpg-600 hover:bg-rmpg-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
             <Merge size={12} /> Merge
           </button>
         </div>
@@ -771,7 +771,7 @@ export default function AdminGodModeTab() {
       <div className="bg-surface-raised border border-border-subtle rounded-sm p-3">
         <h3 className="text-xs font-bold text-rmpg-400 uppercase mb-2 flex items-center gap-1.5"><Download size={14} /> Full System Export</h3>
         <p className="text-[9px] text-rmpg-500 mb-2">Download a complete JSON export of all system data (users, calls, reports, persons, vehicles, etc.).</p>
-        <button onClick={handleFullExport} className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
+        <button onClick={handleFullExport} className="px-3 py-1.5 bg-rmpg-600 hover:bg-rmpg-500 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
           <Download size={12} /> Download Full Export
         </button>
       </div>
@@ -785,13 +785,13 @@ export default function AdminGodModeTab() {
           <div className="bg-surface-sunken rounded-sm p-2 max-h-60 overflow-y-auto space-y-0.5">
             {activityFeed.map((a: any, i: number) => (
               <div key={i} className="flex items-start gap-2 py-1 border-b border-border-subtle/50 text-[10px]" onContextMenu={(e) => openMenu(e, buildActivityMenu(a))}>
-                <span className="text-gray-600 font-mono whitespace-nowrap min-w-[60px]">
+                <span className="text-rmpg-500 font-mono whitespace-nowrap min-w-[60px]">
                   {a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : '—'}
                 </span>
                 <span className="text-rmpg-400 font-bold min-w-[80px] truncate">{a.username || a.user || '—'}</span>
                 <span className="text-yellow-400 min-w-[60px]">{a.action || '—'}</span>
                 <span className="text-rmpg-500">{a.entity_type || ''}</span>
-                <span className="text-gray-600 truncate max-w-[300px]">{a.details ? (typeof a.details === 'string' ? a.details.slice(0, 80) : safeStr(a.details)) : ''}</span>
+                <span className="text-rmpg-500 truncate max-w-[300px]">{a.details ? (typeof a.details === 'string' ? a.details.slice(0, 80) : safeStr(a.details)) : ''}</span>
               </div>
             ))}
           </div>

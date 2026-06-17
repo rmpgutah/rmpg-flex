@@ -36,9 +36,9 @@ function StarRating({ rating, max = 5, size = 14 }: { rating: number; max?: numb
 
 // ── Badge helpers ──────────────────────────────────────────
 const TYPE_COLORS: Record<ReviewType, string> = {
-  annual: 'bg-gray-500/20 text-rmpg-400 border-gray-500/30',
+  annual: 'bg-rmpg-500/20 text-rmpg-400 border-rmpg-500/30',
   probationary: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  quarterly: 'bg-gray-500/20 text-rmpg-400 border-gray-500/30',
+  quarterly: 'bg-rmpg-500/20 text-rmpg-400 border-rmpg-500/30',
   improvement_plan: 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
@@ -51,7 +51,7 @@ const TYPE_LABELS: Record<ReviewType, string> = {
 
 const STATUS_COLORS: Record<ReviewStatus, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-700/30',
-  submitted: 'bg-gray-500/20 text-rmpg-400 border-gray-500/30',
+  submitted: 'bg-rmpg-500/20 text-rmpg-400 border-rmpg-500/30',
   acknowledged: 'bg-green-500/20 text-green-400 border-green-500/30',
   completed: 'bg-green-500/20 text-green-400 border-green-500/30',
 };

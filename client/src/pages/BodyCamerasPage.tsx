@@ -240,7 +240,7 @@ export default function BodyCamerasPage() {
     <div className="flex flex-col h-full animate-fade-in">
 
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-rmpg-700" style={{ background: '#050505' }}>
+      <div className="flex-shrink-0 border-b border-rmpg-700" style={{ background: 'var(--surface-overlay)' }}>
         <PanelTitleBar title="BODY CAMERAS" icon={Video}>
           <RmpgLogo height={16} iconOnly />
           <span className="toolbar-separator" />

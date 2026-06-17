@@ -717,7 +717,7 @@ export default function CrmPage() {
                 </div>
                 <div className="flex gap-1">
                   {(pipelineSummary.stages || []).map((s: any) => {
-                    const stageColors: Record<string, string> = { new: 'bg-rmpg-600', contacted: 'bg-gray-700', qualified: 'bg-gray-700', proposal: 'bg-amber-700', negotiation: 'bg-orange-700', won: 'bg-green-700', lost: 'bg-red-700' };
+                    const stageColors: Record<string, string> = { new: 'bg-rmpg-600', contacted: 'bg-rmpg-700', qualified: 'bg-rmpg-700', proposal: 'bg-amber-700', negotiation: 'bg-orange-700', won: 'bg-green-700', lost: 'bg-red-700' };
                     return (
                       <div key={s.pipeline_stage} className={`flex-1 ${stageColors[s.pipeline_stage] || 'bg-rmpg-700'} px-2 py-2 text-center hover:brightness-110 transition-all cursor-default`} style={{ borderRadius: '2px' }}>
                         <div className="text-sm font-bold text-rmpg-100 font-mono tabular-nums">{s.count}</div>
@@ -989,10 +989,10 @@ export default function CrmPage() {
                       <div className="absolute left-1.5 top-0 bottom-0 w-px bg-rmpg-700" />
                       {clientActivity.map((a: any) => {
                         const dotColor = a.activity_type === 'call' ? 'bg-green-500' :
-                          a.activity_type === 'email' ? 'bg-gray-500' :
+                          a.activity_type === 'email' ? 'bg-rmpg-500' :
                           a.activity_type === 'meeting' ? 'bg-purple-500' :
                           a.activity_type === 'invoice' ? 'bg-amber-500' :
-                          a.activity_type === 'contract_change' ? 'bg-gray-500' : 'bg-rmpg-500';
+                          a.activity_type === 'contract_change' ? 'bg-rmpg-500' : 'bg-rmpg-500';
                         return (
                           <div key={a.id} className="relative mb-2">
                             <div className={`absolute -left-[14px] top-1.5 w-2 h-2 rounded-full ${dotColor}`} />

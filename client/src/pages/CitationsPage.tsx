@@ -1204,7 +1204,7 @@ export default function CitationsPage() {
                 <div className="flex items-center gap-2">
                   <div className={`text-sm font-bold px-2 py-0.5 rounded ${completeness.grade === 'A' ? 'bg-green-900/50 text-green-400' : completeness.grade === 'B' ? 'bg-surface-sunken text-rmpg-400' : completeness.grade === 'C' ? 'bg-amber-900/50 text-amber-400' : 'bg-red-900/50 text-red-400'}`}>{completeness.grade}</div>
                   <div className="flex-1 h-1.5 bg-rmpg-700 rounded-sm overflow-hidden">
-                    <div className={`h-full transition-all ${completeness.score >= 80 ? 'bg-green-500' : completeness.score >= 60 ? 'bg-gray-500' : completeness.score >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${completeness.score}%` }} />
+                    <div className={`h-full transition-all ${completeness.score >= 80 ? 'bg-green-500' : completeness.score >= 60 ? 'bg-rmpg-500' : completeness.score >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${completeness.score}%` }} />
                   </div>
                   <span className="text-[10px] text-rmpg-400">{completeness.score}%</span>
                 </div>

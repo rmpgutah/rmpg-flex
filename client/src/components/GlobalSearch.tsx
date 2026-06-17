@@ -166,7 +166,7 @@ export const GlobalSearch: React.FC = () => {
                 const Icon = iconFor(type);
                 return (
                   <div key={type} className="mb-4 last:mb-0">
-                    <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium" style={{ color: KB_TYPE_META[type]?.color || '#9ca3af' }}>
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium" style={{ color: KB_TYPE_META[type]?.color || 'var(--rmpg-400)' }}>
                       <Icon className="w-3 h-3" /> {kbTypeLabel(type).toUpperCase()}
                     </div>
                     {list.map((r) => { flatIdx += 1; const idx = flatIdx; return (
@@ -202,7 +202,7 @@ export const GlobalSearch: React.FC = () => {
 
 const ResultItem: React.FC<{ result: KbResult; isSelected: boolean; onClick: () => void }> = ({ result, isSelected, onClick }) => {
   const Icon = iconFor(result.type);
-  const color = KB_TYPE_META[result.type]?.color || '#9ca3af';
+  const color = KB_TYPE_META[result.type]?.color || 'var(--rmpg-400)';
   const sub = [result.title, result.subtitle].filter(Boolean).join(' · ');
   return (
     <button type="button"

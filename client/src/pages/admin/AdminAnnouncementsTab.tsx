@@ -46,7 +46,7 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  info: 'text-rmpg-400 bg-gray-950/30 border-gray-800/40',
+  info: 'text-rmpg-400 bg-surface-overlay/30 border-border-subtle/40',
   warning: 'text-amber-400 bg-amber-950/30 border-amber-800/40',
   maintenance: 'text-orange-400 bg-orange-950/30 border-orange-800/40',
   update: 'text-green-400 bg-green-950/30 border-green-800/40',

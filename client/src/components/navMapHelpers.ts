@@ -110,8 +110,8 @@ export const navThemePresets = {
     // Layer-type → paint props to push toward black.
     background: '#0a0a0a',
     fill: '#101010',
-    water: '#050505',
-    road: '#1a1a1a',
+    water: 'var(--surface-overlay)',
+    road: 'var(--surface-raised)',
     text: '#888888',
     textHalo: '#000000',
   },

@@ -38,7 +38,7 @@ const UNIT_STATUSES = [
   { label: 'ENROUTE', status: 'enroute', color: '#888888' },
   { label: 'ON SCENE', status: 'onscene', color: '#a855f7' },
   { label: 'BUSY', status: 'busy', color: '#ef4444' },
-  { label: 'OFF', status: 'off_duty', color: '#666666' },
+  { label: 'OFF', status: 'off_duty', color: 'var(--rmpg-500)' },
 ] as const;
 
 // ── MDT Messages Panel ────────────────────────────────────
@@ -117,7 +117,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
     return (
       <span
         className="text-[7px] font-black uppercase px-1 py-px rounded-sm"
-        style={{ background: colors[ch] || '#666666', color: '#000', letterSpacing: '0.05em' }}
+        style={{ background: colors[ch] || 'var(--rmpg-500)', color: '#000', letterSpacing: '0.05em' }}
       >
         {ch}
       </span>
@@ -188,8 +188,8 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
               className="text-[8px] font-bold uppercase px-1.5 py-0.5 transition-colors"
               style={{
                 background: composeChannel === ch ? '#888888' : 'transparent',
-                color: composeChannel === ch ? '#000' : '#666666',
-                border: `1px solid ${composeChannel === ch ? '#888888' : '#222222'}`,
+                color: composeChannel === ch ? '#000' : 'var(--rmpg-500)',
+                border: `1px solid ${composeChannel === ch ? '#888888' : 'var(--border-subtle)'}`,
               }}
             >
               {ch}
@@ -550,7 +550,7 @@ export default function MdtPage() {
       case 'P1': return '#ef4444';
       case 'P2': return '#f97316';
       case 'P3': return '#eab308';
-      default: return '#666666';
+      default: return 'var(--rmpg-500)';
     }
   };
 
@@ -751,7 +751,7 @@ export default function MdtPage() {
           <div className="text-[9px] text-green-500 font-mono font-bold">
             {getStatusElapsed(myCalls[0]) ? formatTimer(getStatusElapsed(myCalls[0])!) : ''}
           </div>
-          <ChevronRight style={{ width: 12, height: 12, color: '#666666' }} />
+          <ChevronRight style={{ width: 12, height: 12, color: 'var(--rmpg-500)' }} />
         </div>
       )}
 
@@ -768,7 +768,7 @@ export default function MdtPage() {
                 className="flex-1 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
                 style={{
                   background: activeTab === tab ? '#0a0a0a' : 'transparent',
-                  color: activeTab === tab ? (tab === 'ncic' ? '#22c55e' : '#fff') : '#666666',
+                  color: activeTab === tab ? (tab === 'ncic' ? '#22c55e' : '#fff') : 'var(--rmpg-500)',
                   borderBottom: activeTab === tab ? `2px solid ${tab === 'ncic' ? '#22c55e' : '#22c55e'}` : '2px solid transparent',
                 }}
               >
@@ -1082,9 +1082,9 @@ export default function MdtPage() {
                           key={u}
                           className="text-[9px] font-mono font-bold px-1.5 py-0.5"
                           style={{
-                            background: u === myUnit?.call_sign ? 'rgba(34,197,94,0.2)' : '#141414',
+                            background: u === myUnit?.call_sign ? 'rgba(34,197,94,0.2)' : 'var(--surface-base)',
                             color: u === myUnit?.call_sign ? '#22c55e' : '#888888',
-                            border: `1px solid ${u === myUnit?.call_sign ? '#16a34a' : '#222222'}`,
+                            border: `1px solid ${u === myUnit?.call_sign ? '#16a34a' : 'var(--border-subtle)'}`,
                           }}
                         >
                           {u}

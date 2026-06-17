@@ -20,7 +20,7 @@ export interface SightingSource {
 const SOURCES: Record<SightingSourceKey, SightingSource> = {
   dashcam: { key: 'dashcam', label: 'DASHCAM', badgeClass: 'bg-purple-950/50 text-purple-300 border-purple-700', color: '#a855f7' },
   camera:  { key: 'camera',  label: 'CAMERA',  badgeClass: 'bg-blue-950/40 text-blue-300 border-blue-700',     color: '#3b82f6' },
-  manual:  { key: 'manual',  label: 'MANUAL',  badgeClass: 'bg-neutral-800 text-neutral-300 border-neutral-600', color: '#9ca3af' },
+  manual:  { key: 'manual',  label: 'MANUAL',  badgeClass: 'bg-neutral-800 text-neutral-300 border-neutral-600', color: 'var(--rmpg-400)' },
 };
 
 /** Classify a sighting's source from its notes (case-insensitive). */

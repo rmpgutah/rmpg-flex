@@ -199,7 +199,7 @@ export default function DeepResearchTab() {
               <div className="flex items-center justify-between mt-1">
                 <span className="text-[9px] text-rmpg-400">{ACTIVE.has(j.status) ? `${j.stage_detail || j.status} (${j.progress}%)` : j.status}</span>
                 <div className="flex items-center gap-1">
-                  {j.monitor_interval_days ? <span className="text-[8px] text-blue-400 flex items-center gap-0.5"><Eye className="w-3 h-3" />{j.monitor_interval_days}d</span> : null}
+                  {j.monitor_interval_days ? <span className="text-[8px] text-rmpg-400 flex items-center gap-0.5"><Eye className="w-3 h-3" />{j.monitor_interval_days}d</span> : null}
                   <button type="button" aria-label="Re-run" onClick={(e) => { e.stopPropagation(); rerun(j.id); }} className="text-rmpg-400 hover:text-rmpg-100"><RefreshCw className="w-3 h-3" /></button>
                   <button type="button" aria-label="Delete" onClick={(e) => { e.stopPropagation(); del(j.id); }} className="text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
                 </div>
@@ -231,7 +231,7 @@ export default function DeepResearchTab() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[8px] uppercase text-rmpg-500">{f.finding_type}</span>
                         <TrustBadge trust={f.trust} verdict={f.verdict} />
-                        {f.is_delta ? <span className="text-[8px] text-blue-400">NEW</span> : null}
+                        {f.is_delta ? <span className="text-[8px] text-rmpg-400">NEW</span> : null}
                         <span className="text-xs text-rmpg-100 font-semibold">{f.title}</span>
                         {f.status !== 'dismissed' && (
                           <span className="ml-auto flex items-center gap-1">
@@ -261,7 +261,7 @@ export default function DeepResearchTab() {
                   <div className="text-[10px] font-semibold text-rmpg-400 uppercase">Sources ({detail.sources.length})</div>
                   {detail.sources.map((s, i) => (
                     <a key={s.id} href={s.url} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-[10px] text-blue-400 hover:text-blue-300 truncate">
+                      className="flex items-center gap-1.5 text-[10px] text-rmpg-400 hover:text-rmpg-300 truncate">
                       <span className="text-rmpg-500">[{i + 1}]</span><ExternalLink className="w-3 h-3 shrink-0" />
                       <span className="truncate">{s.title || s.url}</span>
                     </a>

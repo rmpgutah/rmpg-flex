@@ -505,18 +505,18 @@ export default function AIDevChatPanel() {
               <MessageSquare className="w-3.5 h-3.5 text-rmpg-500 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-rmpg-300 truncate">{s.first_message || 'New conversation'}</p>
-                <p className="text-[10px] text-gray-600">{s.message_count} messages</p>
+                <p className="text-[10px] text-rmpg-500">{s.message_count} messages</p>
               </div>
               <button
                 onClick={(e) => deleteSession(s.session_id, e)}
-                className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all"
+                className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-all"
               >
                 <Trash2 className="w-3 h-3" />
               </button>
             </div>
           ))}
           {sessions.length === 0 && (
-            <p className="text-center text-gray-600 text-xs py-8">No conversations yet</p>
+            <p className="text-center text-rmpg-500 text-xs py-8">No conversations yet</p>
           )}
         </div>
       </div>
@@ -536,9 +536,9 @@ export default function AIDevChatPanel() {
           {isStreaming && (
             <div className="flex items-center gap-2">
               <div className="flex gap-0.5">
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="w-1.5 h-1.5 bg-rmpg-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-rmpg-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-rmpg-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
               <span className="text-[10px] text-rmpg-400 font-mono">{elapsedSec}s</span>
             </div>
@@ -548,7 +548,7 @@ export default function AIDevChatPanel() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && !streamingContent && (
-            <div className="flex flex-col items-center justify-center h-full text-gray-600">
+            <div className="flex flex-col items-center justify-center h-full text-rmpg-500">
               <Bot className="w-12 h-12 mb-3 opacity-30" />
               <p className="text-sm font-medium">RMPG Flex Dev Assistant</p>
               <p className="text-xs mt-1">Ask about the codebase, request features, debug issues</p>
@@ -643,7 +643,7 @@ export default function AIDevChatPanel() {
                               ))}
                             </div>
                           )}
-                          <span className="text-[10px] text-gray-600 font-mono tabular-nums">{elapsedSec}s</span>
+                          <span className="text-[10px] text-rmpg-500 font-mono tabular-nums">{elapsedSec}s</span>
                         </div>
                       </div>
                     </div>
@@ -670,7 +670,7 @@ export default function AIDevChatPanel() {
                           }
                           return <div key={i} className="text-rmpg-400">{line}</div>;
                         }) : (
-                          <span className="text-gray-600">Initializing analysis...</span>
+                          <span className="text-rmpg-500">Initializing analysis...</span>
                         )}
                         {isThinking && <span className="inline-block w-1.5 h-3.5 bg-amber-400 animate-pulse ml-0.5 align-text-bottom" />}
                       </div>
@@ -684,11 +684,11 @@ export default function AIDevChatPanel() {
                     <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-rmpg-700">
                       <div className="w-2 h-2 bg-gray-500 rounded-full animate-pulse" />
                       <span className="text-[10px] text-rmpg-400 font-bold tracking-[0.1em] uppercase">RESPONSE</span>
-                      <span className="text-[10px] text-gray-600 font-mono ml-auto">{elapsedSec}s</span>
+                      <span className="text-[10px] text-rmpg-500 font-mono ml-auto">{elapsedSec}s</span>
                     </div>
                     <div className="text-sm whitespace-pre-wrap leading-relaxed">
                       {renderContent(streamingContent)}
-                      <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse ml-0.5" />
+                      <span className="inline-block w-2 h-4 bg-rmpg-400 animate-pulse ml-0.5" />
                     </div>
                   </div>
                 ) : !thinkingText && (
@@ -705,7 +705,7 @@ export default function AIDevChatPanel() {
                            elapsedSec < 10 ? 'Waiting for response...' :
                            'Processing — this may take a moment...'}
                         </span>
-                        <span className="text-[10px] text-gray-600 font-mono ml-auto">{elapsedSec}s</span>
+                        <span className="text-[10px] text-rmpg-500 font-mono ml-auto">{elapsedSec}s</span>
                       </div>
                     </div>
                   </div>
@@ -746,7 +746,7 @@ export default function AIDevChatPanel() {
             <button
               onClick={() => setShowFileInput(!showFileInput)}
               className={`p-2 rounded transition-colors ${
-                showFileInput || fileContext ? 'text-rmpg-400 bg-gray-500/10' : 'text-rmpg-500 hover:text-rmpg-300'
+                showFileInput || fileContext ? 'text-rmpg-400 bg-rmpg-500/10' : 'text-rmpg-500 hover:text-rmpg-300'
               }`}
               title="Attach file context"
             >

@@ -87,7 +87,7 @@ export default function MapMobileSheet({
                 className="flex flex-1 items-center justify-center gap-1.5 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all duration-150 active:scale-[0.97]"
                 style={{
                   minHeight: 44,
-                  color: mobileSheetTab === id ? color : '#666666',
+                  color: mobileSheetTab === id ? color : 'var(--rmpg-500)',
                   background: mobileSheetTab === id ? `${color}10` : 'transparent',
                   borderBottom: mobileSheetTab === id ? `2px solid ${color}` : '2px solid transparent',
                 }}
@@ -122,7 +122,7 @@ export default function MapMobileSheet({
                 }}
               >
                 {layers[key] ? <Eye className="w-4 h-4 text-green-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
-                <Icon style={{ width: 16, height: 16, color: layers[key] ? color : '#666666' }} />
+                <Icon style={{ width: 16, height: 16, color: layers[key] ? color : 'var(--rmpg-500)' }} />
                 <span className="text-sm text-rmpg-200 flex-1">{label}</span>
                 {/* #50: Layer active indicator with LED glow */}
                 {layers[key] && <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}80` }} />}
@@ -164,11 +164,11 @@ export default function MapMobileSheet({
               {showBreadcrumbs ? <Eye className="w-4 h-4 text-rmpg-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
               <Route style={{ width: 16, height: 16 }} className="text-rmpg-400" />
               <span className="text-sm text-rmpg-200 flex-1">Breadcrumbs</span>
-              {showBreadcrumbs && <div className="w-2 h-2 rounded-full bg-gray-400" style={{ boxShadow: '0 0 6px rgba(34,211,238,0.8)' }} />}
+              {showBreadcrumbs && <div className="w-2 h-2 rounded-full bg-rmpg-400" style={{ boxShadow: '0 0 6px rgba(34,211,238,0.8)' }} />}
             </button>
 
             {showBreadcrumbs && (
-              <div className="px-4 py-3 space-y-2" style={{ background: '#050505', border: '1px solid #2b2b2b', borderRadius: 2 }}>
+              <div className="px-4 py-3 space-y-2" style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b', borderRadius: 2 }}>
                 <div className="flex gap-1">
                   {[2, 4, 8, 12, 24].map((h) => (
                     <button type="button"
@@ -176,7 +176,7 @@ export default function MapMobileSheet({
                       onClick={() => setBreadcrumbHours(h)}
                       className={`flex-1 py-2 text-xs font-bold rounded-sm ${
                         breadcrumbHours === h
-                          ? 'bg-gray-600 text-rmpg-100'
+                          ? 'bg-rmpg-600 text-rmpg-100'
                           : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                       }`}
                       style={{ minHeight: 44 }}
@@ -192,7 +192,7 @@ export default function MapMobileSheet({
                       onClick={() => setBreadcrumbColorMode(mode)}
                       className={`flex-1 py-1.5 text-[10px] font-bold rounded-sm ${
                         breadcrumbColorMode === mode
-                          ? 'bg-gray-600 text-rmpg-100'
+                          ? 'bg-rmpg-600 text-rmpg-100'
                           : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                       }`}
                       style={{ minHeight: 44 }}
@@ -205,7 +205,7 @@ export default function MapMobileSheet({
             )}
 
             {/* Map Style Selector (mobile) */}
-            <div className="px-4 py-3 space-y-1.5" style={{ background: '#050505', border: '1px solid #2b2b2b', borderRadius: 2 }}>
+            <div className="px-4 py-3 space-y-1.5" style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b', borderRadius: 2 }}>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-widest mb-1">Map Style</div>
               <div className="grid grid-cols-3 grid-keep gap-1.5">
                 {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {
@@ -292,7 +292,7 @@ export default function MapMobileSheet({
           <div className="divide-y divide-rmpg-700/50">
             {filteredCalls.map((call) => {
               const hasCoords = call.latitude != null && call.longitude != null;
-              const pColor = PRIORITY_COLORS[call.priority] || '#666666';
+              const pColor = PRIORITY_COLORS[call.priority] || 'var(--rmpg-500)';
               const { category } = getIncidentCategory(call.incident_type);
               return (
                 <button type="button"

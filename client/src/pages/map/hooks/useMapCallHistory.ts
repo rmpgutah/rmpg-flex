@@ -66,9 +66,9 @@ function formatTimestamp(iso: string | null): string {
 function getStatusColor(status: string): string {
   switch (status) {
     case 'cleared': return '#22c55e';
-    case 'closed': return '#666666';
+    case 'closed': return 'var(--rmpg-500)';
     case 'archived': return '#555555';
-    default: return '#666666';
+    default: return 'var(--rmpg-500)';
   }
 }
 
@@ -142,7 +142,7 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
             ['==', ['get', 'priority'], 'P1'], '#dc2626',
             ['==', ['get', 'priority'], 'P2'], '#f59e0b',
             ['==', ['get', 'priority'], 'P3'], '#888888',
-            '#666666',
+            'var(--rmpg-500)',
           ],
           'circle-radius': 8,
           'circle-stroke-color': '#fff',
@@ -154,7 +154,7 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
       const feature = e.features?.[0];
       if (!feature || !feature.properties) return;
       const p = feature.properties;
-      const pColor = PRIORITY_COLORS[p.priority as string] || '#666666';
+      const pColor = PRIORITY_COLORS[p.priority as string] || 'var(--rmpg-500)';
       const sColor = getStatusColor(p.status as string);
 
       const html = `

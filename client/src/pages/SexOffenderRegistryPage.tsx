@@ -54,7 +54,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; ledClass: st
   non_compliant:  { label: 'Non-Compliant',  color: '#fbbf24', ledClass: 'led-amber' },
   absconded:      { label: 'Absconded',      color: '#f87171', ledClass: 'led-red'   },
   incarcerated:   { label: 'Incarcerated',   color: '#888888', ledClass: ''          },
-  removed:        { label: 'Removed',        color: '#666666', ledClass: ''          },
+  removed:        { label: 'Removed',        color: 'var(--rmpg-500)', ledClass: ''          },
 };
 
 const RISK_COLORS: Record<string, string> = {
@@ -316,7 +316,7 @@ export default function SexOffenderRegistryPage() {
   // LEFT PANEL — Registry List
   // ============================================================
   const leftPanel = (
-    <div className="flex flex-col h-full" style={{ background: '#050505' }}>
+    <div className="flex flex-col h-full" style={{ background: 'var(--surface-overlay)' }}>
       {/* Stats Strip */}
       <div
         className="flex items-center gap-4 px-3 py-1.5 text-[11px] font-mono flex-shrink-0 overflow-x-auto"
@@ -425,7 +425,7 @@ export default function SexOffenderRegistryPage() {
                   {/* Mugshot Thumbnail */}
                   <div
                     className="w-12 h-14 rounded-sm flex-shrink-0 flex items-center justify-center overflow-hidden"
-                    style={{ background: '#141414', border: '1px solid #2a2a2a' }}
+                    style={{ background: 'var(--surface-base)', border: '1px solid #2a2a2a' }}
                   >
                     {r.photo_url ? (
                       <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
@@ -507,7 +507,7 @@ export default function SexOffenderRegistryPage() {
   // RIGHT PANEL — Detail Profile
   // ============================================================
   const rightPanel = selected ? (
-    <div className="h-full overflow-y-auto" style={{ background: '#050505' }}>
+    <div className="h-full overflow-y-auto" style={{ background: 'var(--surface-overlay)' }}>
       {/* Close button */}
       <IconButton
         onClick={() => setSelected(null)}
@@ -524,7 +524,7 @@ export default function SexOffenderRegistryPage() {
           {/* Large Mugshot */}
           <div
             className="w-[100px] h-[130px] rounded-sm flex-shrink-0 flex items-center justify-center overflow-hidden"
-            style={{ background: '#050505', border: '2px solid #2a2a2a' }}
+            style={{ background: 'var(--surface-overlay)', border: '2px solid #2a2a2a' }}
           >
             {selected.photo_url ? (
               <img src={selected.photo_url} alt="" className="w-full h-full object-cover" />
@@ -644,7 +644,7 @@ export default function SexOffenderRegistryPage() {
           <DetailSection title="Offenses" icon={<FileText size={12} />}>
             <div className="space-y-2">
               {offs.map((o, i) => (
-                <div key={i} className="p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
+                <div key={i} className="p-2 rounded-sm" style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b' }}>
                   <div className="flex items-center gap-2">
                     <span className="text-red-400 text-[11px] font-mono font-bold">{o.statute}</span>
                     {o.date && <span className="text-[10px] text-rmpg-500">{formatDate(o.date)}</span>}
@@ -799,7 +799,7 @@ export default function SexOffenderRegistryPage() {
       </div>
     </div>
   ) : (
-    <div className="flex flex-col items-center justify-center h-full text-rmpg-500" style={{ background: '#050505' }}>
+    <div className="flex flex-col items-center justify-center h-full text-rmpg-500" style={{ background: 'var(--surface-overlay)' }}>
       <ShieldAlert size={48} className="mb-3 opacity-20" />
       <span className="text-sm">Select a record to view details</span>
     </div>
@@ -821,7 +821,7 @@ export default function SexOffenderRegistryPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full" style={{ background: '#050505' }}>
+    <div className="flex flex-col h-full" style={{ background: 'var(--surface-overlay)' }}>
       {/* Title Bar */}
       <PanelTitleBar
         title="Sex Offender Registry"
@@ -1039,7 +1039,7 @@ function RecordFormModal({
         style={{ background:"var(--surface-sunken)", border: '1px solid #2a2a2a' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-3" style={{ background: '#141414', borderBottom: '1px solid #2a2a2a' }}>
+        <div className="flex items-center justify-between p-3" style={{ background: 'var(--surface-base)', borderBottom: '1px solid #2a2a2a' }}>
           <h2 className="text-sm font-bold text-[#d4a017] flex items-center gap-2 uppercase tracking-wider">
             <ShieldAlert size={14} className="text-[#d4a017]" />
             {record ? 'Edit Registry Entry' : 'New Registry Entry'}
@@ -1203,7 +1203,7 @@ function ImportModal({
         style={{ background:"var(--surface-sunken)", border: '1px solid #2a2a2a' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-3" style={{ background: '#141414', borderBottom: '1px solid #2a2a2a' }}>
+        <div className="flex items-center justify-between p-3" style={{ background: 'var(--surface-base)', borderBottom: '1px solid #2a2a2a' }}>
           <h2 className="text-sm font-bold text-[#d4a017] flex items-center gap-2 uppercase tracking-wider">
             <Upload size={14} className="text-[#d4a017]" /> Import Records
           </h2>

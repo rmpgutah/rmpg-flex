@@ -122,7 +122,7 @@ const DEFAULT_PRIORITIES: PriorityConfig[] = [
   { level: 'P1', label: 'Emergency', color: '#dc2626', target: '< 3 min' },
   { level: 'P2', label: 'Urgent', color: '#f59e0b', target: '< 5 min' },
   { level: 'P3', label: 'Routine', color: '#888888', target: '< 10 min' },
-  { level: 'P4', label: 'Scheduled', color: '#666666', target: 'Scheduled' },
+  { level: 'P4', label: 'Scheduled', color: 'var(--rmpg-500)', target: 'Scheduled' },
 ];
 
 const DEFAULT_CALL_SOURCES = ['phone', 'radio', 'walk_in', 'alarm', 'patrol', 'online', 'dispatch', 'email', 'servemanager', 'other'];
@@ -134,7 +134,7 @@ const DEFAULT_UNIT_TYPES: UnitTypeConfig[] = [
   { type: 'medical', label: 'Medical', color: '#ef4444' },
   { type: 'bike', label: 'Bike Patrol', color: '#10b981' },
   { type: 'foot', label: 'Foot Patrol', color: '#888888' },
-  { type: 'vehicle', label: 'Vehicle', color: '#666666' },
+  { type: 'vehicle', label: 'Vehicle', color: 'var(--rmpg-500)' },
 ];
 
 const DEFAULT_EVIDENCE_TYPES = [
@@ -158,7 +158,7 @@ const DEFAULT_BRANDING: BrandingConfig = {
   report_subheader_text: 'PRIVATE SECURITY',
   primary_color: '#dc2626',
   accent_color: '#d4a017',
-  header_bg_color: '#1c1c1c',
+  header_bg_color: 'var(--surface-raised)',
 };
 
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {

@@ -830,7 +830,7 @@ export default function DocumentWriterPage() {
   const pageW = landscape ? dim.height : dim.width;
   const pageH = landscape ? dim.width : dim.height;
   const pageBg = theme === 'dark' ? '#1e1e1e' : docSettings.background;
-  const textColor = theme === 'dark' ? '#e8e8e8' : '#111111';
+  const textColor = theme === 'dark' ? '#e8e8e8' : 'var(--surface-base)';
   const m = docSettings.page.margins;
   const reading = viewMode === 'reading';
   const fullscreen = viewMode === 'fullscreen';

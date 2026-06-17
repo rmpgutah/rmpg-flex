@@ -168,7 +168,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       case 'P1': return '#ef4444';
       case 'P2': return '#f97316';
       case 'P3': return '#eab308';
-      default: return '#666666';
+      default: return 'var(--rmpg-500)';
     }
   };
 

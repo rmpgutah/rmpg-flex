@@ -186,7 +186,7 @@ export default function HeatmapPresets({ current, onApply }: Props) {
               placeholder="preset name"
               autoFocus
               style={{
-                background: '#141414',
+                background: 'var(--surface-base)',
                 border: '1px solid #d4a01760',
                 color: '#e5e7eb',
                 borderRadius: 2,

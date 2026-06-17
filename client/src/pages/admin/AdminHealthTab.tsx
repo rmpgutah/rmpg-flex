@@ -207,7 +207,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
   const changeTypeBadge = (type: string) => {
     const styles: Record<string, string> = {
       feature: 'bg-green-900/40 text-green-400 border-green-800/50',
-      enhancement: 'bg-surface-sunken/40 text-rmpg-400 border-gray-800/50',
+      enhancement: 'bg-surface-sunken/40 text-rmpg-400 border-border-subtle/50',
       fix: 'bg-amber-900/40 text-amber-400 border-amber-800/50',
       security: 'bg-red-900/40 text-red-400 border-red-800/50',
     };
@@ -216,7 +216,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
 
   const versionTypeBadge = (type: string) => {
     if (type === 'major') return 'bg-red-900/30 text-red-400 border-red-800/40';
-    if (type === 'minor') return 'bg-surface-sunken/30 text-rmpg-400 border-gray-800/40';
+    if (type === 'minor') return 'bg-surface-sunken/30 text-rmpg-400 border-border-subtle/40';
     return 'bg-green-900/30 text-green-400 border-green-800/40';
   };
 
@@ -476,7 +476,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
               </div>
               <div className="h-2.5 bg-rmpg-700 rounded-full overflow-hidden">
                 <div
-                  className={`h-full transition-all duration-500 rounded-full ${ramPercent > 85 ? 'bg-red-500' : ramPercent > 65 ? 'bg-amber-500' : 'bg-gray-500'}`}
+                  className={`h-full transition-all duration-500 rounded-full ${ramPercent > 85 ? 'bg-red-500' : ramPercent > 65 ? 'bg-amber-500' : 'bg-rmpg-500'}`}
                   style={{ width: `${ramPercent}%` }}
                 />
               </div>

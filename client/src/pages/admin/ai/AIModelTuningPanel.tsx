@@ -183,7 +183,7 @@ export default function AIModelTuningPanel() {
 
         {overridesOpen && (
           <div className="px-4 pb-4 space-y-2">
-            <p className="text-[10px] text-gray-600 mb-3">Feature-specific overrides (empty = use defaults)</p>
+            <p className="text-[10px] text-rmpg-500 mb-3">Feature-specific overrides (empty = use defaults)</p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -238,7 +238,7 @@ export default function AIModelTuningPanel() {
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={() => handleApplyPreset(preset)}
-                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-gray-600/20 text-rmpg-400 rounded hover:bg-gray-600/30 transition-colors"
+                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-rmpg-600/20 text-rmpg-400 rounded hover:bg-rmpg-600/30 transition-colors"
                   >
                     <Check className="w-3 h-3" /> Apply
                   </button>
@@ -270,7 +270,7 @@ export default function AIModelTuningPanel() {
             ))}
           </div>
         ) : (
-          <p className="text-xs text-gray-600">No presets saved yet.</p>
+          <p className="text-xs text-rmpg-500">No presets saved yet.</p>
         )}
 
         <div className="flex items-center gap-2 pt-2 border-t border-rmpg-700">
@@ -296,7 +296,7 @@ export default function AIModelTuningPanel() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-rmpg-100 text-sm rounded hover:bg-gray-700 disabled:opacity-50 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-rmpg-600 text-rmpg-100 text-sm rounded hover:bg-rmpg-700 disabled:opacity-50 transition-colors"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           Save Parameters

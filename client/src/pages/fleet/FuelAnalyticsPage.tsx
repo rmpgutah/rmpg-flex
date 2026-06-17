@@ -408,7 +408,7 @@ function MonthlyTrendChart({ data }: { data: Array<{ month: string; cost: number
           <div key={d.month} className="flex-1 flex flex-col items-center justify-end h-full gap-px"
             title={`${d.month}: ${d.gallons.toFixed(1)} gal, $${d.cost.toFixed(2)}, ${d.fills} fills`}>
             <div className="w-full flex items-end justify-center gap-0.5 h-full">
-              <div className="bg-gray-600/60 w-1/2 border-t border-gray-400" style={{ height: `${(d.gallons / maxGal) * 100}%`, minHeight: '1px' }} />
+              <div className="bg-rmpg-600/60 w-1/2 border-t border-rmpg-400" style={{ height: `${(d.gallons / maxGal) * 100}%`, minHeight: '1px' }} />
               <div className="bg-amber-600/60 w-1/2 border-t border-amber-400" style={{ height: `${(d.cost / maxCost) * 100}%`, minHeight: '1px' }} />
             </div>
           </div>
@@ -422,7 +422,7 @@ function MonthlyTrendChart({ data }: { data: Array<{ month: string; cost: number
         ))}
       </div>
       <div className="flex justify-center gap-3 mt-2 text-[8px] text-rmpg-500">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-gray-400"></span>Gallons</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-rmpg-400"></span>Gallons</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 bg-amber-400"></span>Cost</span>
       </div>
     </div>

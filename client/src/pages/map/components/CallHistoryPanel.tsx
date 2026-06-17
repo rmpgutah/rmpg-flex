@@ -30,7 +30,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   P1: '#ef4444',
   P2: '#f59e0b',
   P3: '#888888',
-  P4: '#666666',
+  P4: 'var(--rmpg-500)',
 };
 
 function timeAgo(dateStr: string): string {
@@ -105,7 +105,7 @@ export default function CallHistoryPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid #282828' }}
       >
         <div className="flex items-center gap-2">
           <Clock size={13} className="text-rmpg-400" />
@@ -133,11 +133,11 @@ export default function CallHistoryPanel({
       {/* Loading state */}
       {loading && (
         <div className="flex flex-col items-center justify-center py-8 text-rmpg-500 gap-2">
-          <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-4 h-4 border-2 border-rmpg-500 border-t-transparent rounded-full animate-spin" />
           <span className="text-[9px] font-mono animate-pulse">Loading {days}d history...</span>
           <div className="space-y-1.5 w-full px-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="animate-pulse rounded-sm h-10" style={{ background: '#050505', opacity: 1 - i * 0.2 }} />
+              <div key={i} className="animate-pulse rounded-sm h-10" style={{ background: 'var(--surface-overlay)', opacity: 1 - i * 0.2 }} />
             ))}
           </div>
         </div>
@@ -148,7 +148,7 @@ export default function CallHistoryPanel({
           {/* Summary stats row */}
           <div
             className="rounded-sm p-2 flex items-center gap-3"
-            style={{ background: '#050505', border: '1px solid #282828' }}
+            style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
           >
             <div className="flex items-center gap-1">
               <Phone size={10} className="text-rmpg-400" />
@@ -169,7 +169,7 @@ export default function CallHistoryPanel({
           {/* Priority breakdown */}
           <div
             className="rounded-sm p-2"
-            style={{ background: '#050505', border: '1px solid #282828' }}
+            style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
           >
             <div className="text-[10px] uppercase tracking-wider text-rmpg-500 mb-1.5">
               Priority
@@ -195,7 +195,7 @@ export default function CallHistoryPanel({
           {stats.topTypes.length > 0 && (
             <div
               className="rounded-sm p-2"
-              style={{ background: '#050505', border: '1px solid #282828' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
             >
               <div className="text-[10px] uppercase tracking-wider text-rmpg-500 mb-1.5">
                 Top Types
@@ -227,7 +227,7 @@ export default function CallHistoryPanel({
           {stats.recent.length > 0 && (
             <div
               className="rounded-sm"
-              style={{ background: '#050505', border: '1px solid #282828' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
             >
               <div className="text-[10px] uppercase tracking-wider text-rmpg-500 px-2 pt-2 pb-1">
                 Recent Calls
@@ -237,7 +237,7 @@ export default function CallHistoryPanel({
               >
                 {stats.recent.map((call) => {
                   const pColor =
-                    PRIORITY_COLORS[call.priority?.toUpperCase()] || '#666666';
+                    PRIORITY_COLORS[call.priority?.toUpperCase()] || 'var(--rmpg-500)';
 
                   return (
                     <div

@@ -212,7 +212,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
               className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide border"
               style={{
                 borderRadius: 2,
-                color: winKey === w.key ? '#0a0a0a' : '#a0a0a0',
+                color: winKey === w.key ? '#0a0a0a' : 'var(--rmpg-400)',
                 background: winKey === w.key ? '#d4a017' : 'transparent',
                 borderColor: winKey === w.key ? '#d4a017' : '#2e2e2e',
               }}

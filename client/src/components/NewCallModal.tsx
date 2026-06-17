@@ -505,7 +505,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
           {/* PSO Client Request fields — visible in both modes when PSO type is selected */}
           {formData.incident_type === 'pso_client_request' && (
-            <div className="border border-purple-700/40 p-3 space-y-3" style={{ background: '#181818' }}>
+            <div className="border border-purple-700/40 p-3 space-y-3" style={{ background: 'var(--surface-raised)' }}>
               <div className="text-[9px] font-bold text-purple-400 uppercase tracking-wider mb-1">PSO Client Request Details</div>
 
               {/* Client / Requestor dropdown — auto-fills name, phone, address */}
@@ -1201,7 +1201,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           </div>
 
           {/* Historical Entry Toggle */}
-          <div className="border border-rmpg-600 p-3" style={{ background: formData.is_historical ? '#181818' : 'transparent' }}>
+          <div className="border border-rmpg-600 p-3" style={{ background: formData.is_historical ? 'var(--surface-raised)' : 'transparent' }}>
             <label className="flex items-center gap-2 cursor-pointer">
               <input id="ff-newcallmodal-60"
                 type="checkbox"

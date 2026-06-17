@@ -366,7 +366,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             const priColors: Record<string, { text: string; bg: string; border: string }> = {
               P1: { text: '#fca5a5', bg: 'rgba(220,38,38,0.3)', border: 'rgba(220,38,38,0.5)' },
               P2: { text: '#fde68a', bg: 'rgba(245,158,11,0.25)', border: 'rgba(245,158,11,0.4)' },
-              P3: { text: '#9ca3af', bg: 'rgba(107,114,128,0.2)', border: 'rgba(107,114,128,0.35)' },
+              P3: { text: 'var(--rmpg-400)', bg: 'rgba(107,114,128,0.2)', border: 'rgba(107,114,128,0.35)' },
               P4: { text: '#888888', bg: 'rgba(100,100,100,0.2)', border: 'rgba(100,100,100,0.35)' },
             };
             const c = priColors[pri] || priColors.P3;

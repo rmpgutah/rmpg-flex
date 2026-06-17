@@ -35,7 +35,7 @@ interface ServeJobCardProps {
 }
 
 const STATUS_COLORS: Record<string, { bg: string; glow: string }> = {
-  pending: { bg: 'bg-gray-500', glow: 'shadow-[0_0_6px_rgba(136, 136, 136,0.5)]' },
+  pending: { bg: 'bg-rmpg-500', glow: 'shadow-[0_0_6px_rgba(136, 136, 136,0.5)]' },
   in_progress: { bg: 'bg-amber-500 animate-pulse', glow: 'shadow-[0_0_6px_rgba(245,158,11,0.5)]' },
   served: { bg: 'bg-green-500', glow: 'shadow-[0_0_6px_rgba(34,197,94,0.5)]' },
   failed: { bg: 'bg-red-500', glow: 'shadow-[0_0_6px_rgba(239,68,68,0.5)]' },
@@ -129,7 +129,7 @@ export default React.memo(function ServeJobCard({
         ${isDueSoon ? 'ring-1 ring-red-500/60 animate-pulse' : ''}
         ${isOverdue ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]' : ''}
       `}
-      style={{ background: '#141414', borderColor: '#222222' }}
+      style={{ background: 'var(--surface-base)', borderColor: 'var(--border-subtle)' }}
     >
       {/* Clickable header area */}
       <div

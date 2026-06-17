@@ -149,7 +149,7 @@ export default function ResetPasswordPage() {
                   </div>
                   <h2 className="text-sm font-bold text-rmpg-100 mb-1">Set New Password</h2>
                   {username && (
-                    <p className="text-[10px] font-mono" style={{ color: '#666666' }}>
+                    <p className="text-[10px] font-mono" style={{ color: 'var(--rmpg-500)' }}>
                       @{username}
                     </p>
                   )}
@@ -183,9 +183,9 @@ export default function ResetPasswordPage() {
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm"
-                        style={{ color: '#666666' }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                        style={{ color: 'var(--rmpg-500)' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                       >
                         {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -222,7 +222,7 @@ export default function ResetPasswordPage() {
                           ) : (
                             <XCircle className="w-3 h-3 flex-shrink-0" style={{ color: '#555555' }} aria-hidden="true" />
                           )}
-                          <span style={{ color: check.met ? '#4ade80' : '#666666' }}>{check.label}</span>
+                          <span style={{ color: check.met ? '#4ade80' : 'var(--rmpg-500)' }}>{check.label}</span>
                           <span className="sr-only">{check.met ? '(met)' : '(not met)'}</span>
                         </div>
                       ))}
@@ -285,9 +285,9 @@ export default function ResetPasswordPage() {
               <a
                 href="/login"
                 className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm py-1"
-                style={{ color: '#666666' }}
+                style={{ color: 'var(--rmpg-500)' }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
               >
                 <ArrowLeft className="w-3 h-3" aria-hidden="true" />
                 Back to Login

@@ -302,7 +302,7 @@ function NotFoundPage() {
         <div className="mb-4">
           <span
             className="text-6xl font-black tracking-tight"
-            style={{ color: '#1a1a1a', textShadow: '0 0 40px rgba(212,160,23,0.15)' }}
+            style={{ color: 'var(--surface-raised)', textShadow: '0 0 40px rgba(212,160,23,0.15)' }}
           >
             404
           </span>
@@ -313,7 +313,7 @@ function NotFoundPage() {
           className="inline-flex items-center gap-2 px-4 py-2 mb-6 border"
           style={{
             background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
-            borderColor: '#222222',
+            borderColor: 'var(--border-subtle)',
             borderRadius: 2,
           }}
         >

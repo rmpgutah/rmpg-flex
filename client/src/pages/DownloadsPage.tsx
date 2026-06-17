@@ -134,7 +134,7 @@ export default function DownloadsPage() {
           <div
             className="inline-block text-[11px] font-bold uppercase tracking-wider px-3 py-1 mb-4"
             style={{
-              background: '#1a1a1a',
+              background: 'var(--surface-raised)',
               border: '1px solid #333',
               color: '#d4a017',
               borderRadius: 2,
@@ -162,7 +162,7 @@ export default function DownloadsPage() {
                 key={p}
                 className="relative flex flex-col items-center p-6 text-center transition-colors"
                 style={{
-                  background: '#141414',
+                  background: 'var(--surface-base)',
                   border: isRecommended ? '1px solid #d4a017' : '1px solid #222',
                   borderRadius: 2,
                 }}
@@ -237,13 +237,13 @@ export default function DownloadsPage() {
             href="/"
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
             style={{
-              background: '#1a1a1a',
+              background: 'var(--surface-raised)',
               border: '1px solid #333',
               color: '#ccc',
               borderRadius: 2,
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = '#242424'; e.currentTarget.style.borderColor = '#555'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = '#1a1a1a'; e.currentTarget.style.borderColor = '#333'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--border-default)'; e.currentTarget.style.borderColor = '#555'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-raised)'; e.currentTarget.style.borderColor = '#333'; }}
           >
             Open Web App
             <ChevronRight className="w-3.5 h-3.5" />
@@ -307,7 +307,7 @@ export default function DownloadsPage() {
           {/* Steps */}
           <div className="space-y-0">
             {STEPS[activeTab].steps.map((step, i) => (
-              <div key={i} className="flex gap-3 py-2.5 border-b last:border-b-0" style={{ borderColor: '#1a1a1a' }}>
+              <div key={i} className="flex gap-3 py-2.5 border-b last:border-b-0" style={{ borderColor: 'var(--surface-raised)' }}>
                 <span
                   className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-[11px] font-bold"
                   style={{

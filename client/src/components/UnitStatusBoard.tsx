@@ -318,7 +318,7 @@ export default React.memo(function UnitStatusBoard({
                         </span>
                         {unit.gps_updated_at && unit.status !== 'off_duty' && (() => {
                           const mins = Math.floor((Date.now() - parseTimestamp(unit.gps_updated_at).getTime()) / 60000);
-                          const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : '#666666';
+                          const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : 'var(--rmpg-500)';
                           return <span className="text-[8px] font-mono ml-1 flex-shrink-0" style={{ color }} title="GPS age">{mins}m</span>;
                         })()}
                       </div>

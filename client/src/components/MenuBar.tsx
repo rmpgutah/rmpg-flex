@@ -1066,7 +1066,7 @@ export default function MenuBar({
             onClick={(e) => e.stopPropagation()}
           >
             {/* 23: 10-codes header with top accent and version tag */}
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#050505', borderTop: '2px solid #888888' }}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: 'var(--surface-overlay)', borderTop: '2px solid #888888' }}>
               <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
                 10-Codes Quick Reference
@@ -1210,7 +1210,7 @@ export default function MenuBar({
                 </div>
               </div>
             </div>
-            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#050505' }}>
+            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: 'var(--surface-overlay)' }}>
               <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded-sm text-[8px]">ESC</kbd> to close</span>
             </div>
           </div>
@@ -1221,7 +1221,7 @@ export default function MenuBar({
       {timerPromptOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onClick={() => setTimerPromptOpen(false)}>
           <div className="panel-beveled w-[280px] animate-dropdown-appear" style={{ background:"var(--surface-sunken)" }} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#050505', borderTop: '2px solid #888888' }}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: 'var(--surface-overlay)', borderTop: '2px solid #888888' }}>
               <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-brand-400" />Quick Timer
               </h2>

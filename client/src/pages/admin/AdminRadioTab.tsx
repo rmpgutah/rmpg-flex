@@ -335,7 +335,7 @@ export default function AdminRadioTab() {
                     <td className="px-2 py-[2px] text-[11px]">
                       <div className="text-rmpg-200 font-medium">
                         {ch.name}
-                        {isArchived && <span className="ml-1.5 text-[9px] uppercase text-gray-600">[archived]</span>}
+                        {isArchived && <span className="ml-1.5 text-[9px] uppercase text-rmpg-500">[archived]</span>}
                         {ch.is_default === 1 && <span className="ml-1.5 text-[9px] uppercase text-[#d4a017]">[default]</span>}
                       </div>
                       {ch.description && <div className="text-[10px] text-rmpg-500 truncate max-w-[24rem]">{ch.description}</div>}
@@ -345,7 +345,7 @@ export default function AdminRadioTab() {
                     <td className="px-2 py-[2px] text-[11px] text-rmpg-400 text-right font-mono">{ch.sort_order}</td>
                     <td className="px-2 py-[2px] text-[11px] text-rmpg-300 text-right font-mono">
                       <span className="inline-flex items-center gap-1">
-                        <MessageSquare size={9} className="text-gray-600" />
+                        <MessageSquare size={9} className="text-rmpg-500" />
                         {(Number(ch.tx_count) || 0).toLocaleString()}
                       </span>
                     </td>
@@ -375,7 +375,7 @@ export default function AdminRadioTab() {
         )}
       </div>
 
-      <p className="text-[10px] text-gray-600 italic">
+      <p className="text-[10px] text-rmpg-500 italic">
         Archive is a soft-delete — transmission history stays intact. Channel restore isn't supported yet (would need a backend addition to the PATCH whitelist).
       </p>
 
@@ -476,7 +476,7 @@ export default function AdminRadioTab() {
                     onChange={(e) => setForm({ ...form, sort_order: parseInt(e.target.value, 10) || 0 })}
                     className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1 text-xs text-rmpg-200 font-mono focus:border-[#d4a017] outline-none"
                   />
-                  <p className="text-[9px] text-gray-600 mt-0.5">Lower = higher in operator picker.</p>
+                  <p className="text-[9px] text-rmpg-500 mt-0.5">Lower = higher in operator picker.</p>
                 </div>
               </div>
             </div>

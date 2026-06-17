@@ -98,8 +98,8 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
             className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
             style={{
               borderBottom: activeTab === tab.id ? '2px solid #d4a017' : '2px solid transparent',
-              color: activeTab === tab.id ? '#d4a017' : '#666666',
-              background: activeTab === tab.id ? '#141414' : 'transparent',
+              color: activeTab === tab.id ? '#d4a017' : 'var(--rmpg-500)',
+              background: activeTab === tab.id ? 'var(--surface-base)' : 'transparent',
             }}
           >
             <tab.icon className="w-3 h-3" aria-hidden="true" />
@@ -262,7 +262,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                     style={{
                       borderRadius: 2,
                       borderColor: isoMinutes.includes(min) ? '#d4a017' : '#3a3a3a',
-                      color: isoMinutes.includes(min) ? '#d4a017' : '#666666',
+                      color: isoMinutes.includes(min) ? '#d4a017' : 'var(--rmpg-500)',
                       background: isoMinutes.includes(min) ? '#1a1a0d' : '#0a0a0a',
                     }}
                   >
@@ -366,7 +366,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                 )}
 
                 <div className="flex justify-between items-center px-2 py-1 text-[9px]"
-                  style={{ background: '#050505', borderRadius: 2, color: '#444444' }}>
+                  style={{ background: 'var(--surface-overlay)', borderRadius: 2, color: '#444444' }}>
                   <span>{String(tilequeryResult.location[0]).substring(0, 8)}</span>
                   <span>{String(tilequeryResult.location[1]).substring(0, 8)}</span>
                 </div>

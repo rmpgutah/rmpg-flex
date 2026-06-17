@@ -221,7 +221,7 @@ export function PdfReviewModal<T extends Record<string, any>>({
             )}
           </div>
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-3 py-1 bg-gray-700 text-rmpg-100">Cancel</button>
+            <button onClick={onClose} className="px-3 py-1 bg-rmpg-700 text-rmpg-100">Cancel</button>
             <CommitDropdown allowedActions={allowedActions} onSelect={handleCommit} />
           </div>
         </footer>

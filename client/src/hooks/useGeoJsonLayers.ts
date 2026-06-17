@@ -51,7 +51,7 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     file: 'county.geojson',
     visible: true,
     selectable: true,
-    style: { fillColor: '#141414', fillOpacity: 0.15, strokeColor: '#444444', strokeOpacity: 0.5, strokeWeight: 1.5 },
+    style: { fillColor: 'var(--surface-base)', fillOpacity: 0.15, strokeColor: '#444444', strokeOpacity: 0.5, strokeWeight: 1.5 },
     labelProp: 'NAME',
     featureKeyProp: 'NAME',
     detailProps: ['POP_CURRESTIMATE', 'STATEPLANE'],

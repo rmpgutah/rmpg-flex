@@ -385,7 +385,7 @@ export default function HelpPage() {
                 borderLeft: active ? '3px solid #888888' : '3px solid transparent',
               }}
             >
-              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? '#aaaaaa' : '#666666' }} />
+              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? '#aaaaaa' : 'var(--rmpg-500)' }} />
               <span className="text-[11px] font-medium">{item.label}</span>
             </button>
           );
@@ -400,7 +400,7 @@ export default function HelpPage() {
           {activeSection === 'overview' && (
             <>
               <PanelTitleBar title="RMPG FLEX — SYSTEM OVERVIEW" icon={BookOpen} />
-              <div className="p-4 space-y-4" style={{ background: '#141414', border: '1px solid #222222' }}>
+              <div className="p-4 space-y-4" style={{ background: 'var(--surface-base)', border: '1px solid #222222' }}>
                 <p className="text-sm text-rmpg-200 leading-relaxed">
                   RMPG Flex is a full-featured Computer-Aided Dispatch (CAD) and Records Management System (RMS) 
                   built for Rocky Mountain Protective Group. It provides real-time dispatch, incident management, 
@@ -431,7 +431,7 @@ export default function HelpPage() {
               </div>
 
               <PanelTitleBar title="GETTING STARTED" icon={Zap} />
-              <div className="p-4 space-y-3" style={{ background: '#141414', border: '1px solid #222222' }}>
+              <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', border: '1px solid #222222' }}>
                 {[
                   { step: '1', title: 'Navigate with F-Keys', desc: 'Use F1–F12 to quickly jump between modules. F2 opens Dispatch, F3 opens the Map, etc.' },
                   { step: '2', title: 'Global Search', desc: 'Press Ctrl+K to search across all records — persons, vehicles, incidents, and more.' },
@@ -474,7 +474,7 @@ export default function HelpPage() {
                   <div
                     key={group.title}
                     className="p-3"
-                    style={{ background: '#141414', border: '1px solid #222222' }}
+                    style={{ background: 'var(--surface-base)', border: '1px solid #222222' }}
                   >
                     <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2 pb-1" style={{ borderBottom: '1px solid #1a1a1a' }}>
                       {group.title}
@@ -514,7 +514,7 @@ export default function HelpPage() {
                     <div
                       key={mod.path}
                       className="p-3"
-                      style={{ background: '#141414', border: '1px solid #222222' }}
+                      style={{ background: 'var(--surface-base)', border: '1px solid #222222' }}
                     >
                       <div className="flex items-start gap-3">
                         <div
@@ -560,7 +560,7 @@ export default function HelpPage() {
               <PanelTitleBar title="DISPATCH QUICK REFERENCE" icon={Radio} />
 
               {/* Priority Levels */}
-              <div className="p-4" style={{ background: '#141414', border: '1px solid #222222' }}>
+              <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid #222222' }}>
                 <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2">Priority Levels</h3>
                 <div className="space-y-1.5">
                   {[
@@ -568,7 +568,7 @@ export default function HelpPage() {
                     { level: 'P2', label: 'URGENT', color: '#f97316', desc: 'In-progress crime, injury, or time-sensitive' },
                     { level: 'P3', label: 'ROUTINE', color: '#d4a017', desc: 'Standard response — no immediate danger' },
                     { level: 'P4', label: 'LOW', color: '#888888', desc: 'Report only, information, or follow-up' },
-                    { level: 'P5', label: 'SCHEDULED', color: '#666666', desc: 'Pre-planned activity or appointment' },
+                    { level: 'P5', label: 'SCHEDULED', color: 'var(--rmpg-500)', desc: 'Pre-planned activity or appointment' },
                   ].map((p) => (
                     <div key={p.level} className="flex items-center gap-3">
                       <span className="text-[10px] font-mono font-bold w-6" style={{ color: p.color }}>{p.level}</span>
@@ -580,7 +580,7 @@ export default function HelpPage() {
               </div>
 
               {/* Unit Status Codes */}
-              <div className="p-4" style={{ background: '#141414', border: '1px solid #222222' }}>
+              <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid #222222' }}>
                 <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2">Unit Status Codes</h3>
                 <div className="space-y-1.5">
                   {[
@@ -590,7 +590,7 @@ export default function HelpPage() {
                     { code: 'ONS', label: 'On Scene', color: '#ef4444', desc: 'Arrived at call location' },
                     { code: 'BSY', label: 'Busy', color: '#eab308', desc: 'Occupied, not available for calls' },
                     { code: 'OOD', label: 'Out of District', color: '#888888', desc: 'Operating outside assigned area' },
-                    { code: 'OOS', label: 'Out of Service', color: '#666666', desc: 'Not available (break, end of shift)' },
+                    { code: 'OOS', label: 'Out of Service', color: 'var(--rmpg-500)', desc: 'Not available (break, end of shift)' },
                   ].map((s) => (
                     <div key={s.code} className="flex items-center gap-3">
                       <span className="text-[10px] font-mono font-bold w-8" style={{ color: s.color }}>{s.code}</span>
@@ -602,7 +602,7 @@ export default function HelpPage() {
               </div>
 
               {/* CAD Command Line */}
-              <div className="p-4" style={{ background: '#141414', border: '1px solid #222222' }}>
+              <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid #222222' }}>
                 <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2">CAD Command Line</h3>
                 <p className="text-[10px] text-rmpg-400 mb-2">
                   Press <Kbd>/</Kbd> or <Kbd>F8</Kbd> to focus the command line. Type <strong className="text-rmpg-200">HELP</strong> for a full list of commands.
@@ -636,7 +636,7 @@ export default function HelpPage() {
                 {FAQ_ITEMS.map((faq, idx) => (
                   <div
                     key={idx}
-                    style={{ background: '#141414', border: '1px solid #222222' }}
+                    style={{ background: 'var(--surface-base)', border: '1px solid #222222' }}
                   >
                     <button
                       type="button"
@@ -664,7 +664,7 @@ export default function HelpPage() {
           {activeSection === 'system' && (
             <>
               <PanelTitleBar title="SYSTEM INFORMATION" icon={Settings} />
-              <div className="p-4 space-y-3" style={{ background: '#141414', border: '1px solid #222222' }}>
+              <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', border: '1px solid #222222' }}>
                 <div className="grid grid-cols-2 gap-x-8 gap-y-2">
                   {[
                     { label: 'Application', value: 'RMPG Flex' },
@@ -689,7 +689,7 @@ export default function HelpPage() {
               </div>
 
               <PanelTitleBar title="BROWSER COMPATIBILITY" icon={Monitor} />
-              <div className="p-4" style={{ background: '#141414', border: '1px solid #222222' }}>
+              <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid #222222' }}>
                 <div className="space-y-1.5">
                   {[
                     { browser: 'Chrome / Edge', version: '90+', status: 'Full support' },
@@ -708,7 +708,7 @@ export default function HelpPage() {
               </div>
 
               <PanelTitleBar title="CONTACT & SUPPORT" icon={Shield} />
-              <div className="p-4" style={{ background: '#141414', border: '1px solid #222222' }}>
+              <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid #222222' }}>
                 <p className="text-[10px] text-rmpg-400 leading-relaxed">
                   For technical issues, contact your system administrator. For application bugs, use the{' '}
                   <strong className="text-rmpg-200">Help → Report a Problem</strong> menu item.

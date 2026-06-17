@@ -357,7 +357,7 @@ export default function MobilePsoCfsPage() {
           >{busy ? 'Saving…' : psoSaved ? 'Saved ✓' : 'Update PSO Fields'}</button>
         </div>
 
-        <div className="text-[10px] text-gray-600 text-center pt-2 pb-6">RMPG Flex · PSO Mobile · QR session valid 30 days</div>
+        <div className="text-[10px] text-rmpg-500 text-center pt-2 pb-6">RMPG Flex · PSO Mobile · QR session valid 30 days</div>
       </div>
     </Wrapper>
   );

@@ -21,7 +21,7 @@ const SRC = 'choro-beats';
 const FILL = 'choro-fill';
 
 // Gold → red ramp (zero-blue theme). Index 0 is the near-zero bucket.
-const RAMP = ['#2a2a2a', '#d4a017', '#f59e0b', '#fb923c', '#ef4444'];
+const RAMP = ['var(--border-default)', '#d4a017', '#f59e0b', '#fb923c', '#ef4444'];
 
 export interface ChoroLegend { level: ChoroLevel; max: number; thresholds: number[]; colors: string[]; }
 

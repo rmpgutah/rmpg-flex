@@ -64,7 +64,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
           style={{
             background: 'none',
             border: 'none',
-            color: '#666666',
+            color: 'var(--rmpg-500)',
             cursor: 'pointer',
             padding: 2,
             display: 'flex',
@@ -100,7 +100,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
           style={{
             background: 'none',
             border: 'none',
-            color: '#666666',
+            color: 'var(--rmpg-500)',
             cursor: 'pointer',
             padding: 2,
             display: 'flex',

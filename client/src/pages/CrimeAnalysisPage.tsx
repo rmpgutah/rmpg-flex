@@ -28,9 +28,9 @@ const ChartTooltip = ({ active, payload, label, formatter }: any) => {
   if (!active || !payload?.length) return null;
   const display = formatter ? formatter(label, payload[0].value) : `${payload[0].value}`;
   return (
-    <div style={{ background: '#050505', border: '1px solid #222222', padding: '6px 10px', borderRadius: 2 }}>
+    <div style={{ background: 'var(--surface-overlay)', border: '1px solid #222222', padding: '6px 10px', borderRadius: 2 }}>
       <div style={{ color: '#aaaaaa', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
-      <div style={{ color: '#e0e0e0', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
     </div>
   );
 };
