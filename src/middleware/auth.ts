@@ -38,7 +38,8 @@ function isPublicAuthBypass(pathname: string): boolean {
 function isMediaPath(pathname: string): boolean {
   return pathname.includes('/uploads/')
     || pathname.includes('/field-photos/file/')
-    || pathname.includes('/alpr/image/')      // ALPR capture thumbnails (<img> can't send a header)
+    || pathname.includes('/alpr/image/')
+    || pathname.includes('/full-drive/clip/')  // dashcam clip streaming (<video> can't send header)
     || pathname.endsWith('/stream')
     || pathname.endsWith('/audio');
 }

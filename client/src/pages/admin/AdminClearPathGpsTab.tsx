@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Navigation, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Trash2, Zap, AlertTriangle, ToggleLeft, ToggleRight, Link2, Unlink,
   Radio, Clock, Truck, Search, Camera, History, RefreshCw, Video,
-  HardDrive, Download, Play, X as XIcon, ChevronRight,
+  HardDrive, Download, Play, X as XIcon,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeTimeStr, safeDateTimeStr } from '../../utils/dateUtils';
@@ -39,7 +39,6 @@ interface FullDriveJob {
   created_at: string; trips: FullDriveTrip[];
 }
 
-interface TripClip { seq: number; streamUrl: string; from_ts: number; to_ts: number; }
 
 interface MediaSyncStatus {
   media_sync_enabled: boolean;
@@ -118,182 +117,6 @@ interface DashcamEvent {
   officer_name: string | null;
 }
 
-// ── Isolated job-progress panel ─────────────────────────────────────────────
-// Owns the 1-second ETA tick so only this subtree re-renders each second,
-// not the entire AdminClearPathGpsTab.
-const FullDriveJobPanel = memo(function FullDriveJobPanel({
-  jobStatus,
-  onClose,
-}: {
-  jobStatus: FullDriveJob;
-  onClose: () => void;
-}) {
-  const [tickNow, setTickNow] = useState(Date.now());
-  const [playingTrip, setPlayingTrip] = useState<{ requestId: number; label: string } | null>(null);
-  const [tripClips, setTripClips] = useState<TripClip[]>([]);
-  const [currentClipIdx, setCurrentClipIdx] = useState(0);
-  const [clipError, setClipError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (jobStatus.status === 'done') return;
-    const t = setInterval(() => setTickNow(Date.now()), 1_000);
-    return () => clearInterval(t);
-  }, [jobStatus.status]);
-
-  const handlePlayTrip = async (requestId: number, label: string) => {
-    setPlayingTrip({ requestId, label });
-    setCurrentClipIdx(0);
-    setTripClips([]);
-    setClipError(null);
-    try {
-      const r = await apiFetch<{ clips: TripClip[] }>(`/clearpathgps/full-drive/trips/${requestId}/clips`);
-      setTripClips(r.clips ?? []);
-    } catch (err) {
-      setClipError(err instanceof Error ? err.message : 'Failed to load clips');
-    }
-  };
-
-  const totalPct = jobStatus.clips_requested > 0
-    ? Math.round((jobStatus.clips_ready / jobStatus.clips_requested) * 100)
-    : 0;
-  const elapsed = tickNow - Date.parse(jobStatus.created_at);
-  const rate = elapsed > 0 && jobStatus.clips_ready > 0 ? jobStatus.clips_ready / elapsed : 0;
-  const remaining = jobStatus.clips_requested - jobStatus.clips_ready;
-  const etaStr = (() => {
-    if (jobStatus.status === 'done') return 'Complete';
-    if (!rate || remaining <= 0) return 'Calculating…';
-    const s = Math.round((remaining / rate) / 1000);
-    if (s < 60) return `~${s}s remaining`;
-    const m = Math.floor(s / 60);
-    const rs = s % 60;
-    return rs > 0 ? `~${m}m ${rs}s remaining` : `~${m}m remaining`;
-  })();
-
-  return (
-    <div className="space-y-2">
-      <div className="border border-purple-600/30 bg-purple-900/20 p-2 space-y-1.5">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] text-purple-200 font-bold uppercase tracking-wider">
-            {jobStatus.trip_count} Trip{jobStatus.trip_count !== 1 ? 's' : ''} · Total Download
-          </span>
-          <button type="button" onClick={onClose}
-            className="text-rmpg-500 hover:text-rmpg-300 transition-colors">
-            <XIcon className="w-3 h-3" />
-          </button>
-        </div>
-        <div className="h-2.5 bg-surface-sunken rounded-full overflow-hidden">
-          <div className="h-full bg-purple-500 transition-all duration-1000" style={{ width: `${totalPct}%` }} />
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold text-purple-300">{totalPct}%</span>
-          <span className="text-[10px] text-rmpg-400">{jobStatus.clips_ready} / {jobStatus.clips_requested} clips</span>
-          <span className={`text-[10px] font-bold ${jobStatus.status === 'done' ? 'text-green-400' : 'text-yellow-400'}`}>
-            {etaStr}
-          </span>
-        </div>
-      </div>
-
-      {jobStatus.trips.map((trip) => {
-        const settled = trip.chunks_done + trip.chunks_missing;
-        const pct = trip.chunk_count > 0 ? Math.round((settled / trip.chunk_count) * 100) : 0;
-        const ready = trip.status === 'done' || trip.status === 'partial';
-        const durationMin = Math.round((trip.to_ts - trip.from_ts) / 60_000);
-        const tripRemaining = trip.chunk_count - settled;
-        const tripEta = (() => {
-          if (ready || !rate || tripRemaining <= 0) return null;
-          const s = Math.round((tripRemaining / rate) / 1000);
-          return s < 60 ? `~${s}s` : `~${Math.ceil(s / 60)}m`;
-        })();
-        return (
-          <div key={trip.id} className="border border-purple-700/20 bg-purple-950/30 p-2 space-y-1">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold text-purple-200 truncate">{trip.label}</p>
-                <p className="text-[9px] text-rmpg-500">
-                  {durationMin > 0 ? `${durationMin} min · ` : ''}
-                  {trip.chunks_done}/{trip.chunk_count} clips
-                  {trip.chunks_missing > 0 ? ` · ${trip.chunks_missing} gaps` : ''}
-                  {tripEta ? <span className="text-yellow-500 ml-1">· {tripEta}</span> : null}
-                  {ready ? <span className="text-green-400 ml-1">· Ready</span> : null}
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-[9px] font-bold text-purple-400 w-7 text-right">{pct}%</span>
-                {ready && trip.footage_request_id && (
-                  <button type="button"
-                    onClick={() => handlePlayTrip(trip.footage_request_id!, trip.label)}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase
-                               bg-green-800/60 hover:bg-green-700/60 border border-green-600/40 text-green-300
-                               transition-colors">
-                    <Play className="w-2.5 h-2.5" /> Play
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="h-1 bg-surface-sunken rounded-full overflow-hidden">
-              <div className={`h-full transition-all duration-1000 ${ready ? 'bg-green-500' : 'bg-purple-500'}`}
-                style={{ width: `${pct}%` }} />
-            </div>
-          </div>
-        );
-      })}
-
-      <button type="button" onClick={onClose}
-        className="text-[10px] text-purple-400 hover:text-purple-300 underline transition-colors">
-        Start another full drive
-      </button>
-
-      {playingTrip && (
-        <div className="border border-green-700/30 bg-green-950/20 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] font-bold text-green-300 flex items-center gap-1.5">
-              <Play className="w-3 h-3" /> {playingTrip.label}
-            </p>
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] text-rmpg-500">Clip {currentClipIdx + 1} / {tripClips.length}</span>
-              <button type="button" onClick={() => setPlayingTrip(null)}
-                className="text-rmpg-500 hover:text-rmpg-300 transition-colors">
-                <XIcon className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-          {clipError && <p className="text-[10px] text-red-400">{clipError}</p>}
-          {tripClips.length > 0 ? (
-            <>
-              <video key={tripClips[currentClipIdx]?.streamUrl}
-                src={tripClips[currentClipIdx]?.streamUrl}
-                className="w-full max-h-48 bg-black"
-                controls autoPlay
-                onEnded={() => {
-                  if (currentClipIdx < tripClips.length - 1) setCurrentClipIdx((i) => i + 1);
-                }}
-              />
-              <div className="flex items-center gap-2 justify-center">
-                <button type="button" disabled={currentClipIdx === 0}
-                  onClick={() => setCurrentClipIdx((i) => Math.max(0, i - 1))}
-                  className="text-[9px] text-rmpg-400 hover:text-rmpg-200 disabled:opacity-40 transition-colors">
-                  ← Prev
-                </button>
-                <span className="text-[9px] text-rmpg-500">
-                  {new Date(tripClips[currentClipIdx]?.from_ts ?? 0).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}
-                </span>
-                <button type="button" disabled={currentClipIdx >= tripClips.length - 1}
-                  onClick={() => setCurrentClipIdx((i) => Math.min(tripClips.length - 1, i + 1))}
-                  className="text-[9px] text-rmpg-400 hover:text-rmpg-200 disabled:opacity-40 transition-colors">
-                  Next <ChevronRight className="inline w-2.5 h-2.5" />
-                </button>
-              </div>
-            </>
-          ) : !clipError ? (
-            <div className="flex items-center justify-center h-12">
-              <Loader2 className="w-4 h-4 animate-spin text-green-500" />
-            </div>
-          ) : null}
-        </div>
-      )}
-    </div>
-  );
-});
 
 export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }: Props) {
   // Status
@@ -348,9 +171,6 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const [fullDriveError, setFullDriveError] = useState<string | null>(null);
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
   const [jobStatus, setJobStatus] = useState<FullDriveJob | null>(null);
-  const [playingTrip, setPlayingTrip] = useState<{ requestId: number; label: string } | null>(null);
-  const [tripClips, setTripClips] = useState<TripClip[]>([]);
-  const [currentClipIdx, setCurrentClipIdx] = useState(0);
   const [tickNow, setTickNow] = useState(Date.now());
 
   // ── Right-click context menu ──
@@ -767,19 +587,6 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     const t = setInterval(() => setTickNow(Date.now()), 1_000);
     return () => clearInterval(t);
   }, [activeJobId, jobStatus?.status]);
-
-  // ── Load trip clips for playback ──
-  const handlePlayTrip = async (requestId: number, label: string) => {
-    setPlayingTrip({ requestId, label });
-    setCurrentClipIdx(0);
-    setTripClips([]);
-    try {
-      const r = await apiFetch<{ clips: TripClip[] }>(`/clearpathgps/full-drive/trips/${requestId}/clips`);
-      setTripClips(r.clips ?? []);
-    } catch (err) {
-      setFullDriveError(err instanceof Error ? err.message : 'Failed to load clips');
-    }
-  };
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -1563,13 +1370,12 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                           <div className="flex items-center gap-1.5 shrink-0">
                             <span className="text-[9px] font-bold text-purple-400 w-7 text-right">{pct}%</span>
                             {ready && trip.footage_request_id && (
-                              <button type="button"
-                                onClick={() => handlePlayTrip(trip.footage_request_id!, trip.label)}
+                              <a href={`/flexcam/${trip.footage_request_id}`} target="_blank" rel="noreferrer"
                                 className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase
                                            bg-green-800/60 hover:bg-green-700/60 border border-green-600/40 text-green-300
                                            transition-colors">
                                 <Play className="w-2.5 h-2.5" /> Play
-                              </button>
+                              </a>
                             )}
                           </div>
                         </div>

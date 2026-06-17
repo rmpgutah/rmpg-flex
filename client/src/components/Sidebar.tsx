@@ -8,7 +8,7 @@ import {
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
   Upload, Building2, ShieldAlert, Megaphone, GraduationCap, CheckCircle,
   DollarSign, Shield, Share2, Swords, Brain, Heart, Bell, Pill, Award, UserPlus,
-  Globe, ScanSearch,
+  Globe, ScanSearch, Film,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -81,6 +81,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/fleet', icon: Car, label: 'Fleet' },
       { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
       { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
+      { path: '/flexcam', icon: Film, label: 'Trip Footage' },
     ],
   },
   {

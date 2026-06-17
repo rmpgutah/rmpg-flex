@@ -227,12 +227,71 @@ drivingEvents.get('/:id', async (c: Context<Env>): Promise<Response> => {
   return c.json(shapeEvent(row));
 });
 
-// ── On-demand video + telemetry ──────────────────────────────
-// Dashcam clips are NEVER bulk-downloaded. We resolve a fresh pre-signed S3 url
-// (and the 1Hz GPS+speed track) from ClearPath only when a clip is requested,
-// cache it in KV for < its expiry, and stream it through the Worker (the S3 url
-// is CORS-blocked in-browser, fine server-side). `/:id/stream` then proxies the
-// bytes with Range passthrough so the player can seek without buffering it all.
+// ── R2 clip storage ───────────────────────────────────────────
+// Videos are always persisted to R2 on first play so they remain available
+// after ClearPath's pre-signed URLs expire. Full-drive chunks (continuous
+// dashcam footage already in R2) are preferred over the short AI-event clip.
+
+let dashcamSchemaReady = false;
+async function ensureDashcamClipColumn(db: D1Database): Promise<void> {
+  if (dashcamSchemaReady) return;
+  await execute(db, 'ALTER TABLE dashcam_events ADD COLUMN clip_r2_key TEXT').catch(() => {});
+  dashcamSchemaReady = true;
+}
+
+/** Find a downloaded full-drive footage chunk whose window covers the event timestamp. */
+async function findFullDriveChunk(
+  db: D1Database, deviceId: string | null, eventTsMs: number,
+): Promise<{ r2_key: string; request_id: number } | null> {
+  if (!deviceId) return null;
+  return queryFirst<{ r2_key: string; request_id: number }>(db, `
+    SELECT fc.r2_key, fc.request_id
+    FROM footage_chunks fc
+    JOIN footage_requests fr ON fr.id = fc.request_id
+    WHERE fr.cpg_device_id = ?
+      AND fc.channel = 'outside'
+      AND fc.from_ts <= ? AND fc.to_ts >= ?
+      AND fc.status = 'downloaded'
+      AND fc.r2_key IS NOT NULL
+    ORDER BY ABS(? - (fc.from_ts + fc.to_ts) / 2) ASC
+    LIMIT 1`,
+    deviceId, eventTsMs, eventTsMs, eventTsMs,
+  ).catch(() => null);
+}
+
+/** Download a ClearPath clip URL to R2 and persist the key on the event row. */
+async function downloadClipToR2(
+  env: Env['Bindings'], accessUrl: string, r2Key: string, eventId: number,
+): Promise<void> {
+  const resp = await fetch(accessUrl, { signal: AbortSignal.timeout(300_000) });
+  if (!resp.ok || !resp.body) return;
+  await env.UPLOADS.put(r2Key, resp.body, { httpMetadata: { contentType: 'video/mp4' } });
+  await execute(getDb(env), 'UPDATE dashcam_events SET clip_r2_key=? WHERE id=?', r2Key, eventId);
+  await env.KV.delete(`cpg:video:${eventId}`).catch(() => {});
+}
+
+function parseEventRange(header: string): { offset: number; length?: number } | null {
+  const m = /bytes=(\d+)-(\d*)/.exec(header);
+  if (!m) return null;
+  const offset = parseInt(m[1], 10);
+  const end = m[2] ? parseInt(m[2], 10) : undefined;
+  return end !== undefined ? { offset, length: end - offset + 1 } : { offset };
+}
+
+/** Serve a clip from R2 with Range-request support. */
+async function serveR2Clip(env: Env['Bindings'], r2Key: string, rangeHeader: string | undefined): Promise<Response> {
+  const parsed = rangeHeader ? parseEventRange(rangeHeader) : null;
+  const obj = parsed ? await env.UPLOADS.get(r2Key, { range: parsed }) : await env.UPLOADS.get(r2Key);
+  if (!obj) return new Response('Not found', { status: 404 });
+  const status = rangeHeader ? 206 : 200;
+  const headers = new Headers({
+    'Content-Type': obj.httpMetadata?.contentType || 'video/mp4',
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'private, max-age=3600',
+  });
+  if (obj.size) headers.set('Content-Length', String(obj.size));
+  return new Response(obj.body, { status, headers });
+}
 
 const isOutsideObj = (m: CpgMediaObject) => {
   const ch = (m.channel || 'outside').toLowerCase();
@@ -240,20 +299,39 @@ const isOutsideObj = (m: CpgMediaObject) => {
 };
 
 interface ResolvedMedia {
-  accessUrl: string | null;            // fresh pre-signed mp4 url (server-side only)
+  accessUrl: string | null;
+  r2Key: string | null;             // R2 key if clip is stored locally
+  footageRequestId: number | null;  // full-drive footage_request_id when a chunk covers this event
   gps: Array<{ latitude: number; longitude: number; speed: number; altitude: number; timestamp: number }>;
   durationSec: number | null;
   address: string | null;
 }
 
-/** Resolve (and KV-cache for 30 min) the fresh video url + GPS track for an
- *  event. The pre-signed url lives ~1h; we cache under it so a video's many
- *  Range requests don't each hit the ClearPath API. */
+/** Resolve video + GPS track for an event. Priority:
+ *  1. Already saved to R2 (clip_r2_key on dashcam_events)
+ *  2. Full-drive chunk covering this timestamp (preferred — full 40s continuous frame)
+ *  3. ClearPath live pre-signed URL (fetched on demand, cached 30 min in KV) */
 async function resolveEventMedia(env: Env['Bindings'], db: D1Database, eventId: number): Promise<{ media: ResolvedMedia; event: any } | null> {
   const ev = await queryFirst<any>(db,
-    'SELECT id, cpg_device_id, cpg_media_timestamp, event_type, event_timestamp, address, latitude, longitude FROM dashcam_events WHERE id = ?', eventId);
+    'SELECT id, cpg_device_id, cpg_media_timestamp, event_type, event_timestamp, address, latitude, longitude, clip_r2_key FROM dashcam_events WHERE id = ?',
+    eventId);
   if (!ev || ev.cpg_media_timestamp == null) return null;
 
+  const eventTsMs = Number(ev.cpg_media_timestamp);
+
+  // 1. Already downloaded to R2.
+  if (ev.clip_r2_key) {
+    const chunk = await findFullDriveChunk(db, ev.cpg_device_id, eventTsMs);
+    return { media: { accessUrl: null, r2Key: ev.clip_r2_key, footageRequestId: chunk?.request_id ?? null, gps: [], durationSec: null, address: ev.address }, event: ev };
+  }
+
+  // 2. Full-drive chunk in R2 covering this timestamp (full continuous frame, no expiry).
+  const chunk = await findFullDriveChunk(db, ev.cpg_device_id, eventTsMs);
+  if (chunk) {
+    return { media: { accessUrl: null, r2Key: chunk.r2_key, footageRequestId: chunk.request_id, gps: [], durationSec: null, address: ev.address }, event: ev };
+  }
+
+  // 3. ClearPath live URL — resolve and KV-cache.
   const cacheKey = `cpg:video:${eventId}`;
   try {
     const cached = await env.KV.get(cacheKey, 'json') as ResolvedMedia | null;
@@ -267,14 +345,15 @@ async function resolveEventMedia(env: Env['Bindings'], db: D1Database, eventId: 
   const client = await getApiConfig(db, env).catch(() => null);
   if (!client) return null;
 
-  const ts = Number(ev.cpg_media_timestamp);
-  const resp = await listMedia(env, client, assetId, ts - 120_000, ts + 120_000, 0, 50);
-  const item = resp.items.find((i) => i.eventTimestamp === ts) || resp.items[0];
+  const resp = await listMedia(env, client, assetId, eventTsMs - 120_000, eventTsMs + 120_000, 0, 50);
+  const item = resp.items.find((i) => i.eventTimestamp === eventTsMs) || resp.items[0];
   if (!item) return null;
   const vid = (item.mediaObject || []).find((m) => m.type === 'VIDEO' && isOutsideObj(m) && !!m.accessUrl);
   const anyGps = vid || (item.mediaObject || []).find((m) => isOutsideObj(m) && (m.gps?.length));
   const media: ResolvedMedia = {
     accessUrl: vid?.accessUrl || null,
+    r2Key: null,
+    footageRequestId: null,
     gps: (anyGps?.gps as ResolvedMedia['gps']) || [],
     durationSec: (vid?.durationSec as number | null) ?? null,
     address: item.address || ev.address || null,
@@ -286,6 +365,7 @@ async function resolveEventMedia(env: Env['Bindings'], db: D1Database, eventId: 
 // Telemetry JSON for the forensic overlay (GPS track + plate + metadata).
 drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
   const db = getDb(c.env);
+  await ensureDashcamClipColumn(db);
   const id = Number(c.req.param('id'));
   let resolved: Awaited<ReturnType<typeof resolveEventMedia>> = null;
   try { resolved = await resolveEventMedia(c.env, db, id); }
@@ -311,9 +391,11 @@ drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
   let detections: unknown[] = [];
   try { const raw = cap?.raw_json ? JSON.parse(cap.raw_json) : null;
     detections = Array.isArray(raw?.detections) ? raw.detections : Array.isArray(raw?.predictions) ? raw.predictions : []; } catch { /* */ }
+  const hasVideo = !!(media.r2Key || media.accessUrl);
   return c.json({
-    id, has_video: !!media.accessUrl,
-    stream_url: media.accessUrl ? `/api/driving-events/${id}/stream` : null,
+    id, has_video: hasVideo,
+    stream_url: hasVideo ? `/api/driving-events/${id}/stream` : null,
+    footage_request_id: media.footageRequestId,   // non-null = full-drive trip in FlexCam
     duration_sec: media.durationSec,
     gps: media.gps,
     address: media.address,
@@ -330,14 +412,31 @@ drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
   });
 });
 
-// Stream the mp4 on-demand (Range passthrough; nothing is stored).
+// Stream the mp4. Serves from R2 when available; proxies ClearPath on first
+// access and downloads to R2 in the background so subsequent plays are instant.
 drivingEvents.get('/:id/stream', async (c: Context<Env>): Promise<Response> => {
   const db = getDb(c.env);
+  await ensureDashcamClipColumn(db);
   const id = Number(c.req.param('id'));
   let resolved: Awaited<ReturnType<typeof resolveEventMedia>> = null;
   try { resolved = await resolveEventMedia(c.env, db, id); } catch { resolved = null; }
+
+  // R2-stored clip (full-drive chunk or previously downloaded event clip) — serve directly.
+  if (resolved?.media.r2Key) {
+    return serveR2Clip(c.env, resolved.media.r2Key, c.req.header('Range'));
+  }
+
   const accessUrl = resolved?.media.accessUrl;
   if (!accessUrl) return c.json({ error: 'Clip not available' }, 404);
+
+  // First play: proxy from ClearPath and save to R2 in background.
+  const ev = resolved?.event;
+  if (ev?.cpg_device_id && ev?.cpg_media_timestamp) {
+    const r2Key = `flexcam/events/${ev.cpg_device_id}/${ev.cpg_media_timestamp}.mp4`;
+    try {
+      c.executionCtx.waitUntil(downloadClipToR2(c.env, accessUrl, r2Key, id));
+    } catch { /* executionCtx unavailable in tests */ }
+  }
 
   const range = c.req.header('Range');
   const upstream = await fetch(accessUrl, {
@@ -345,12 +444,9 @@ drivingEvents.get('/:id/stream', async (c: Context<Env>): Promise<Response> => {
     signal: AbortSignal.timeout(120_000),
   });
   if (!upstream.ok && upstream.status !== 206) {
-    // Stale pre-signed url? drop the cache so the next play re-resolves.
     try { await c.env.KV.delete(`cpg:video:${id}`); } catch { /* */ }
     return c.json({ error: `Upstream ${upstream.status}` }, 502);
   }
-  // ClearPath stores the clip as application/octet-stream; <video> needs a real
-  // video type to play it. These are always mp4 dashcam clips.
   const upType = upstream.headers.get('content-type') || '';
   const headers = new Headers({
     'Content-Type': /video\//i.test(upType) ? upType : 'video/mp4',
