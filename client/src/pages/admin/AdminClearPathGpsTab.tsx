@@ -3,7 +3,7 @@ import {
   Navigation, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Trash2, Zap, AlertTriangle, ToggleLeft, ToggleRight, Link2, Unlink,
   Radio, Clock, Truck, Search, Camera, History, RefreshCw, Video,
-  HardDrive, Download, Play, X as XIcon,
+  HardDrive, Download, Play, X as XIcon, ChevronRight,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeTimeStr, safeDateTimeStr } from '../../utils/dateUtils';
@@ -25,6 +25,12 @@ interface CpgStatus {
   media_sync_enabled?: boolean;
   media_poll_interval_seconds?: number;
   last_media_sync?: string | null;
+}
+
+interface TripClip {
+  streamUrl: string;
+  from_ts: number;
+  to_ts: number;
 }
 
 interface FullDriveTrip {
