@@ -583,7 +583,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     className={`flex items-center justify-between px-2 py-1.5 ${sev.bg} border ${sev.border} rounded-[2px] text-[10px]`}
                   >
                     <span className="font-mono font-bold text-rmpg-100">{alert.vehicle_number}</span>
-                    <span className={`${sev.text} truncate mx-2`}>{alert.issue}</span>
+                    <span className={`min-w-0 ${sev.text} truncate mx-2`}>{alert.issue}</span>
                     <span className="font-mono tabular-nums text-rmpg-400 shrink-0">
                       {alert.due_date ? parseTimestamp(alert.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--'}
                     </span>
@@ -1449,7 +1449,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             {notifications.slice(0, 10).map((n: any, i: number) => (
               <div key={i} className={`flex items-center gap-2 px-2 py-1 rounded text-[10px] ${n.severity === 'critical' ? 'bg-red-900/30 text-red-400' : 'bg-amber-900/30 text-amber-400'}`}>
                 <AlertTriangle className="w-3 h-3 shrink-0" />
-                <span className="truncate">{n.message}</span>
+                <span className="min-w-0 truncate">{n.message}</span>
               </div>
             ))}
           </div>
