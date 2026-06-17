@@ -17,7 +17,7 @@ import type { Bindings } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from './db';
 import {
   getApiConfig, isEnabled, getConfigValue, setConfigValue, CPG_KEYS,
-  listCameras, listAllMedia,
+  listCameras, listAllMedia, listDevices, vehicleToCamera,
   CpgRateLimitError,
   type CpgClient, type CpgCamera, type CpgMediaEvent, type CpgMediaObject,
 } from './clearpathGps';
@@ -111,16 +111,39 @@ interface MappingRow {
   unit_id: number | null; cpg_camera_id: number | null; last_media_synced_at: string | null;
 }
 
-async function resolveCameraId(db: DB, m: MappingRow, cameras: CpgCamera[] | null): Promise<number | null> {
+async function resolveCameraId(
+  db: DB, m: MappingRow, cameras: CpgCamera[] | null,
+  env?: Bindings, client?: CpgClient,
+): Promise<number | null> {
   if (m.cpg_camera_id) return m.cpg_camera_id;
-  if (!cameras?.length) return null;
-  const name = (m.cpg_display_name || '').toLowerCase();
-  const byName = name ? cameras.find((c) => c.name.toLowerCase() === name) : undefined;
-  const byProvider = cameras.find((c) => c.providerId === m.cpg_device_id);
-  const cam = byName || byProvider;
-  if (!cam) return null;
-  try { await execute(db, 'UPDATE cpg_device_mappings SET cpg_camera_id = ? WHERE id = ?', cam.id, m.id); } catch { /* non-fatal */ }
-  return cam.id;
+  // Try the mediaEnabled-filtered cameras list first.
+  if (cameras?.length) {
+    const name = (m.cpg_display_name || '').toLowerCase();
+    const byName = name ? cameras.find((c) => c.name.toLowerCase() === name) : undefined;
+    const byProvider = cameras.find((c) => c.providerId === m.cpg_device_id);
+    const cam = byName || byProvider;
+    if (cam) {
+      try { await execute(db, 'UPDATE cpg_device_mappings SET cpg_camera_id = ? WHERE id = ?', cam.id, m.id); } catch { /* non-fatal */ }
+      return cam.id;
+    }
+  }
+  // Fallback: list ALL devices — some accounts don't report mediaEnabled:true but do
+  // have an assetId. If the device is in the fleet list and has an assetId, use that.
+  if (env && client) {
+    try {
+      const allDevices = await listDevices(env, client);
+      const device = allDevices.find((d) =>
+        d.deviceId === m.cpg_device_id ||
+        (m.cpg_display_name && d.displayName?.toLowerCase() === m.cpg_display_name.toLowerCase()),
+      );
+      const cam = device ? vehicleToCamera(device) : null;
+      if (cam) {
+        try { await execute(db, 'UPDATE cpg_device_mappings SET cpg_camera_id = ? WHERE id = ?', cam.id, m.id); } catch { /* non-fatal */ }
+        return cam.id;
+      }
+    } catch { /* non-fatal */ }
+  }
+  return null;
 }
 
 // ── Download one clip → R2 → dashcam_videos ──────────────────
@@ -198,15 +221,29 @@ async function upsertEvent(db: DB, m: MappingRow, event: CpgMediaEvent): Promise
 async function syncDevice(
   env: Bindings, db: DB, client: CpgClient, m: MappingRow, cameraId: number,
   budget: { left: number; errors: string[] },
+  range?: { fromMs: number; toMs: number },
 ): Promise<number> {
   const now = Date.now();
-  let fromMs = m.last_media_synced_at ? Date.parse(m.last_media_synced_at) : now - LOOKBACK_FIRST_SYNC_MS;
-  const cap = now - 30 * 24 * 60 * 60 * 1000; // ClearPath retains ~30 days
-  if (!Number.isFinite(fromMs) || fromMs < cap) fromMs = cap;
+  let fromMs: number;
+  let toMs: number;
+  let maxPages: number;
 
-  // `cameraId` here is the GPS-Insight assetId (the media API key). Only pull a
-  // couple of pages — enough to fill the per-run clip budget.
-  const events = await listAllMedia(env, client, cameraId, fromMs, now, MEDIA_PAGES_PER_RUN);
+  if (range) {
+    // Explicit time window — full paging, don't update last_media_synced_at.
+    fromMs = range.fromMs;
+    toMs = range.toMs;
+    maxPages = 20;
+  } else {
+    // Incremental sync: pick up from the last successful sync.
+    fromMs = m.last_media_synced_at ? Date.parse(m.last_media_synced_at) : now - LOOKBACK_FIRST_SYNC_MS;
+    const cap = now - 30 * 24 * 60 * 60 * 1000; // ClearPath retains ~30 days
+    if (!Number.isFinite(fromMs) || fromMs < cap) fromMs = cap;
+    toMs = now;
+    // Only pull a couple of pages — enough to fill the per-run clip budget.
+    maxPages = MEDIA_PAGES_PER_RUN;
+  }
+
+  const events = await listAllMedia(env, client, cameraId, fromMs, toMs, maxPages);
   let synced = 0;
   for (const event of events) {
     const eventRowId = await upsertEvent(db, m, event);
@@ -242,7 +279,11 @@ async function syncDevice(
     }
     if (budget.left <= 0) break;
   }
-  try { await execute(db, 'UPDATE cpg_device_mappings SET last_media_synced_at = ? WHERE id = ?', formatTs(now), m.id); } catch { /* non-fatal */ }
+  // Only advance the watermark for incremental syncs — range requests shouldn't
+  // move the pointer and cause the next incremental sync to skip old events.
+  if (!range) {
+    try { await execute(db, 'UPDATE cpg_device_mappings SET last_media_synced_at = ? WHERE id = ?', formatTs(now), m.id); } catch { /* non-fatal */ }
+  }
   return synced;
 }
 
@@ -278,7 +319,7 @@ export async function syncClearpathMedia(env: Bindings): Promise<{ synced: numbe
   for (const m of mappings) {
     if (budget.left <= 0) break;
     try {
-      const cameraId = await resolveCameraId(db, m, cameras);
+      const cameraId = await resolveCameraId(db, m, cameras, env, client);
       if (!cameraId) continue;
       synced += await syncDevice(env, db, client, m, cameraId, budget);
     } catch (err) {
@@ -292,6 +333,55 @@ export async function syncClearpathMedia(env: Bindings): Promise<{ synced: numbe
   }
   try { await setConfigValue(db, 'clearpathgps_last_media_sync', new Date().toISOString()); } catch { /* */ }
   return { synced, errors, ...(budget.errors.length ? { clip_errors: budget.errors } : {}) };
+}
+
+// ── Full-drive range sync ─────────────────────────────────────
+// Downloads ALL event clips for a specific time window (no per-run budget cap).
+// Used by POST /clearpathgps/full-drive — fires via waitUntil so it doesn't
+// block the HTTP response. Clips are deduplicated by device/timestamp/channel.
+
+export async function syncClearpathMediaRange(
+  env: Bindings,
+  opts: { deviceId?: string; fromMs: number; toMs: number; maxClips?: number },
+): Promise<{ synced: number; errors: number; skipped?: string }> {
+  const db = getDb(env);
+  const client = await getApiConfig(db, env).catch(() => null);
+  if (!client) return { synced: 0, errors: 0, skipped: 'not_configured' };
+  if (!(await isEnabled(db))) return { synced: 0, errors: 0, skipped: 'disabled' };
+  await ensureMediaSchema(db);
+
+  const mappings = await (opts.deviceId
+    ? query<MappingRow>(db,
+        'SELECT id, cpg_device_id, cpg_display_name, unit_id, cpg_camera_id, last_media_synced_at FROM cpg_device_mappings WHERE is_active = 1 AND cpg_device_id = ?',
+        opts.deviceId)
+    : query<MappingRow>(db,
+        'SELECT id, cpg_device_id, cpg_display_name, unit_id, cpg_camera_id, last_media_synced_at FROM cpg_device_mappings WHERE is_active = 1')
+  ).catch(() => [] as MappingRow[]);
+  if (!mappings.length) return { synced: 0, errors: 0, skipped: 'no_mappings' };
+
+  let cameras: CpgCamera[] | null = null;
+  if (mappings.some((m) => !m.cpg_camera_id)) {
+    try { cameras = await listCameras(env, client); } catch { /* non-fatal */ }
+  }
+
+  const budget = { left: opts.maxClips ?? 200, errors: [] as string[] };
+  let synced = 0, errors = 0;
+  for (const m of mappings) {
+    if (budget.left <= 0) break;
+    try {
+      const cameraId = await resolveCameraId(db, m, cameras, env, client);
+      if (!cameraId) { console.warn(`[cpg-drive] no camera ID for ${m.cpg_device_id}`); continue; }
+      synced += await syncDevice(env, db, client, m, cameraId, budget, { fromMs: opts.fromMs, toMs: opts.toMs });
+    } catch (err) {
+      if (err instanceof CpgRateLimitError) {
+        try { await env.KV.put(COOLDOWN_KV_KEY, String(Date.now() + err.retryAfterSeconds * 1000), { expirationTtl: Math.max(60, err.retryAfterSeconds) }); } catch { /* */ }
+        break;
+      }
+      errors++;
+      console.error(`[cpg-drive] device ${m.cpg_device_id} error:`, (err as Error)?.message);
+    }
+  }
+  return { synced, errors };
 }
 
 // ── Lightweight still-only ALPR scan (powers the capture gallery) ─────
@@ -362,15 +452,11 @@ export async function maybeRunClearpathMediaSync(env: Bindings): Promise<void> {
     catch (err) { console.error('[cpg-alpr] scan failed:', (err as Error)?.message); }
   }
 
-  // 2) Heavy clip sync (full mp4 → R2) is OFF by default — clips are streamed
-  //    on demand (/api/driving-events/:id/stream), never bulk-downloaded. Only a
-  //    deliberate `clearpathgps_clip_archive` opt-in turns on local archival.
-  if ((await getConfigValue(db, 'clearpathgps_clip_archive')) !== 'true') return;
-  const last = await getConfigValue(db, 'clearpathgps_last_media_sync');
-  if (last) {
-    const t = Date.parse(last);
-    if (Number.isFinite(t) && Date.now() - t < interval * 1000) return;
-  }
+  // 2) Full clip sync — runs on the same cadence as the ALPR scan.
+  //    Enabling media sync (the toggle) is the opt-in; no extra config key needed.
+  const lastClip = await getConfigValue(db, 'clearpathgps_last_media_sync');
+  const clipDue = !lastClip || !Number.isFinite(Date.parse(lastClip)) || (Date.now() - Date.parse(lastClip) >= interval * 1000);
+  if (!clipDue) return;
   try { const r = await syncClearpathMedia(env); if (r.synced || r.errors) console.log(`[cpg-media] synced=${r.synced} errors=${r.errors}`); }
   catch (err) { console.error('[cpg-media] clip sync failed:', (err as Error)?.message); }
 }
