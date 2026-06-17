@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { withOneRetry } from '../utils/retryTransient';
 import { useSearchParams } from 'react-router-dom';
 import {
   Database,
@@ -92,6 +93,15 @@ export default function RecordsPage() {
   const [loadingVehicles, setLoadingVehicles] = useState(false);
   const [loadingProperties, setLoadingProperties] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Retry fn for the current error — held in a ref so the banner can re-run the
+  // exact list fetch that failed without threading a callback through state.
+  // reportError(msg, retry) registers both; clearError wipes both.
+  const errorRetryRef = useRef<(() => void) | null>(null);
+  const clearError = useCallback(() => { errorRetryRef.current = null; setError(null); }, []);
+  const reportError = useCallback((message: string, retry?: () => void) => {
+    errorRetryRef.current = retry ?? null;
+    setError(message);
+  }, []);
 
   // Evidence data
   const [evidence, setEvidence] = useState<any[]>([]);
@@ -118,40 +128,40 @@ export default function RecordsPage() {
   // ── Fetchers ─────────────────────────────────────────
 
   const fetchPersons = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) { setLoadingPersons(true); setError(null); }
+    if (!options?.silent) { setLoadingPersons(true); clearError(); }
     try {
-      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/persons?limit=100000&archived=${showArchived}`);
+      const res = await withOneRetry(() => apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/persons?limit=100000&archived=${showArchived}`));
       setPersons((Array.isArray(res?.data) ? res.data : []).map(mapDbPerson));
     } catch (err) {
-      if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load persons');
+      if (!options?.silent) reportError(err instanceof Error ? err.message : 'Failed to load persons', () => { void fetchPersons(); });
     } finally {
       if (!options?.silent) setLoadingPersons(false);
     }
-  }, [showArchived]);
+  }, [showArchived, clearError, reportError]);
 
   const fetchVehicles = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) { setLoadingVehicles(true); setError(null); }
+    if (!options?.silent) { setLoadingVehicles(true); clearError(); }
     try {
-      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/vehicles?limit=100000&archived=${showArchived}`);
+      const res = await withOneRetry(() => apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/vehicles?limit=100000&archived=${showArchived}`));
       setVehicles((Array.isArray(res?.data) ? res.data : []).map(mapDbVehicle));
     } catch (err) {
-      if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load vehicles');
+      if (!options?.silent) reportError(err instanceof Error ? err.message : 'Failed to load vehicles', () => { void fetchVehicles(); });
     } finally {
       if (!options?.silent) setLoadingVehicles(false);
     }
-  }, [showArchived]);
+  }, [showArchived, clearError, reportError]);
 
   const fetchProperties = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) { setLoadingProperties(true); setError(null); }
+    if (!options?.silent) { setLoadingProperties(true); clearError(); }
     try {
-      const res = await apiFetch<Record<string, unknown>[]>(`/records/properties?archived=${showArchived}`);
+      const res = await withOneRetry(() => apiFetch<Record<string, unknown>[]>(`/records/properties?archived=${showArchived}`));
       setProperties((Array.isArray(res) ? res : []).map(mapDbProperty));
     } catch (err) {
-      if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load properties');
+      if (!options?.silent) reportError(err instanceof Error ? err.message : 'Failed to load properties', () => { void fetchProperties(); });
     } finally {
       if (!options?.silent) setLoadingProperties(false);
     }
-  }, [showArchived]);
+  }, [showArchived, clearError, reportError]);
 
   const fetchEvidence = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoadingEvidence(true);
@@ -301,7 +311,7 @@ export default function RecordsPage() {
   });
 
   const businessState = useBusinessTab({
-    searchQuery, setSearchQuery, showArchived, setError,
+    searchQuery, setSearchQuery, showArchived, setError, reportError,
     setDeleteTarget, linkRefreshKey,
     openLinkModal, handleArchiveRecord, handleUnarchiveRecord,
   });
@@ -568,7 +578,16 @@ export default function RecordsPage() {
         <div className="px-3 py-2 bg-red-900/40 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2" role="alert">
           <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
           <span className="flex-1">{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300 transition-colors underline" aria-label="Dismiss error">dismiss</button>
+          {errorRetryRef.current && (
+            <button
+              type="button"
+              onClick={() => { const r = errorRetryRef.current; clearError(); r?.(); }}
+              className="px-2 py-0.5 bg-red-700/60 hover:bg-red-600 border border-red-500/60 text-red-100 font-semibold uppercase tracking-wide rounded-[2px] transition-colors"
+            >
+              Retry
+            </button>
+          )}
+          <button type="button" onClick={clearError} className="text-red-400 hover:text-red-300 transition-colors underline" aria-label="Dismiss error">dismiss</button>
         </div>
       )}
 
