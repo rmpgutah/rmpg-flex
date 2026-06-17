@@ -654,7 +654,7 @@ export default function AdvancedHeatmapPanel({
                   </div>
                   <span
                     className="text-[9px] min-w-0 flex-1 truncate"
-                    style={{ color: checked ? 'var(--text-secondary)' : 'var(--rmpg-500)' }}
+                    style={{ color: checked ? '#e0e0e0' : '#666666' }}
                   >
                     {(t.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                   </span>

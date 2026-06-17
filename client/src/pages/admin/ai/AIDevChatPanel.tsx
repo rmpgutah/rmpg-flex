@@ -680,9 +680,9 @@ export default function AIDevChatPanel() {
 
                 {/* Response content — streams alongside reasoning */}
                 {streamingContent ? (
-                  <div className="bg-surface-raised text-rmpg-200 rounded-sm px-3 py-2 border border-rmpg-500/30">
+                  <div className="bg-surface-raised text-rmpg-200 rounded-sm px-3 py-2 border border-gray-500/30">
                     <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-rmpg-700">
-                      <div className="w-2 h-2 bg-rmpg-500 rounded-full animate-pulse" />
+                      <div className="w-2 h-2 bg-gray-500 rounded-full animate-pulse" />
                       <span className="text-[10px] text-rmpg-400 font-bold tracking-[0.1em] uppercase">RESPONSE</span>
                       <span className="text-[10px] text-rmpg-500 font-mono ml-auto">{elapsedSec}s</span>
                     </div>
@@ -692,7 +692,7 @@ export default function AIDevChatPanel() {
                     </div>
                   </div>
                 ) : !thinkingText && (
-                  <div className="bg-surface-raised rounded-sm border border-rmpg-500/30 overflow-hidden">
+                  <div className="bg-surface-raised rounded-sm border border-gray-500/30 overflow-hidden">
                     <div className="h-0.5 bg-surface-sunken overflow-hidden">
                       <div className="h-full bg-gradient-to-r from-transparent via-gray-500 to-transparent"
                         style={{ width: '40%', animation: 'shimmer 1.5s infinite linear' }} />
@@ -726,7 +726,7 @@ export default function AIDevChatPanel() {
               value={fileContext}
               onChange={e => setFileContext(e.target.value)}
               placeholder="Enter file path for context (e.g., client/src/pages/AdminPage.tsx)"
-              className="flex-1 bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded focus:outline-none focus:border-rmpg-500"
+              className="flex-1 bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded focus:outline-none focus:border-gray-500"
             />
             <button
               onClick={() => {
@@ -759,7 +759,7 @@ export default function AIDevChatPanel() {
               onKeyDown={handleKeyDown}
               placeholder="Ask about the codebase, request changes, debug issues..."
               rows={1}
-              className="flex-1 bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-3 py-2 rounded resize-none focus:outline-none focus:border-rmpg-500 max-h-32"
+              className="flex-1 bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-3 py-2 rounded resize-none focus:outline-none focus:border-gray-500 max-h-32"
               style={{ minHeight: '36px' }}
               onInput={(e) => {
                 const el = e.currentTarget;
@@ -770,7 +770,7 @@ export default function AIDevChatPanel() {
             <button
               onClick={sendMessage}
               disabled={!input.trim() || isStreaming}
-              className="p-2 bg-rmpg-600 hover:bg-rmpg-700 disabled:bg-surface-raised disabled:text-rmpg-500 text-rmpg-100 rounded transition-colors"
+              className="p-2 bg-gray-600 hover:bg-gray-700 disabled:bg-surface-raised disabled:text-rmpg-500 text-rmpg-100 rounded transition-colors"
             >
               {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>

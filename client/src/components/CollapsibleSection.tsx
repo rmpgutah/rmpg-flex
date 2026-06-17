@@ -50,7 +50,7 @@ function CollapsibleSection({
     <div
       data-section-anchor={sectionAnchorId(title)}
       className={`collapsible-section relative border border-rmpg-700 overflow-hidden ${className}`}
-      style={{ background: 'var(--surface-overlay)' }}
+      style={{ background: '#050505' }}
     >
       {/* Left severity rail — subtle gold by default, hot color when accented. */}
       <div

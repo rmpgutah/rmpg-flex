@@ -44,7 +44,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
 
   const bgBase = light ? 'rgba(255,255,255,0.92)' : sat ? 'rgba(10,10,10,0.92)' : 'rgba(10,10,10,0.95)';
   const borderBase = light ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(43,43,43,0.6)';
-  const textColor = light ? 'text-rmpg-500' : 'text-rmpg-200';
+  const textColor = light ? 'text-gray-700' : 'text-rmpg-200';
   const hoverBg = light ? 'hover:bg-surface-raised' : 'hover:bg-surface-raised';
 
   const handleScreenshot = async () => {

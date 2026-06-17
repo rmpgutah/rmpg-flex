@@ -185,7 +185,7 @@ export default function AIBehaviorPanel() {
                 type="number" min={1} max={100}
                 value={config.rateLimit}
                 onChange={e => update('rateLimit', Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
-                className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-rmpg-500"
+                className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
               />
               <p className="text-[10px] text-rmpg-500">Maximum requests per minute (1-100)</p>
             </div>
@@ -197,7 +197,7 @@ export default function AIBehaviorPanel() {
                 type="number" min={1} max={10}
                 value={config.maxConcurrent}
                 onChange={e => update('maxConcurrent', Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
-                className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-rmpg-500"
+                className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
               />
               <p className="text-[10px] text-rmpg-500">Maximum simultaneous AI requests (1-10)</p>
             </div>
@@ -209,7 +209,7 @@ export default function AIBehaviorPanel() {
                 type="number" min={10} max={300}
                 value={config.requestTimeout}
                 onChange={e => update('requestTimeout', Math.min(300, Math.max(10, parseInt(e.target.value) || 10)))}
-                className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-rmpg-500"
+                className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
               />
               <p className="text-[10px] text-rmpg-500">Time before request is aborted (10-300s)</p>
             </div>
@@ -224,7 +224,7 @@ export default function AIBehaviorPanel() {
                 <button
                   onClick={() => update('autoRetry', !config.autoRetry)}
                   className={`relative w-10 h-5 rounded-full transition-colors ${
-                    config.autoRetry ? 'bg-rmpg-600' : 'bg-rmpg-700'
+                    config.autoRetry ? 'bg-gray-600' : 'bg-rmpg-700'
                   }`}
                 >
                   <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
@@ -240,7 +240,7 @@ export default function AIBehaviorPanel() {
                     type="number" min={1} max={5}
                     value={config.retryCount}
                     onChange={e => update('retryCount', Math.min(5, Math.max(1, parseInt(e.target.value) || 1)))}
-                    className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-rmpg-500"
+                    className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
                   />
                   <p className="text-[10px] text-rmpg-500">Number of retry attempts (1-5)</p>
                 </div>
@@ -271,7 +271,7 @@ function RadioOption({ name, value, selected, label, description, onChange }: {
 }) {
   return (
     <label className={`flex items-start gap-3 p-3 rounded border cursor-pointer transition-colors ${
-      selected === value ? 'border-rmpg-500 bg-rmpg-500/10' : 'border-rmpg-700 hover:border-[#404040]'
+      selected === value ? 'border-gray-500 bg-gray-500/10' : 'border-rmpg-700 hover:border-[#404040]'
     }`}>
       <input
         type="radio"

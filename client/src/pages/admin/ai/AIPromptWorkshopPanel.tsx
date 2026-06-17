@@ -179,7 +179,7 @@ export default function AIPromptWorkshopPanel() {
               value={systemPrompt}
               onChange={e => setSystemPrompt(e.target.value)}
               placeholder="You are a law enforcement AI assistant..."
-              className="w-full px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-rmpg-500 resize-none"
+              className="w-full px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-gray-500 resize-none"
             />
           </div>
 
@@ -190,7 +190,7 @@ export default function AIPromptWorkshopPanel() {
               value={userMessage}
               onChange={e => setUserMessage(e.target.value)}
               placeholder="Summarize this incident report..."
-              className="w-full px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-rmpg-500 resize-none"
+              className="w-full px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-gray-500 resize-none"
             />
           </div>
 
@@ -269,7 +269,7 @@ export default function AIPromptWorkshopPanel() {
           <select id="ff-aipromptworkshoppanel-1"
             value={categoryFilter}
             onChange={e => setCategoryFilter(e.target.value)}
-            className="px-2 py-1 bg-surface-sunken border border-rmpg-700 rounded text-xs text-rmpg-300 focus:outline-none focus:border-rmpg-500"
+            className="px-2 py-1 bg-surface-sunken border border-rmpg-700 rounded text-xs text-rmpg-300 focus:outline-none focus:border-gray-500"
           >
             {CATEGORIES.map(c => (
               <option key={c} value={c}>{c === 'all' ? 'All Categories' : c.charAt(0).toUpperCase() + c.slice(1)}</option>
@@ -285,7 +285,7 @@ export default function AIPromptWorkshopPanel() {
                   <div className="space-y-2">
                     <input id="ff-aipromptworkshoppanel-2"
                       type="text" value={editName} onChange={e => setEditName(e.target.value)}
-                      className="w-full px-2 py-1 bg-surface-base border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-rmpg-500"
+                      className="w-full px-2 py-1 bg-surface-base border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
                     />
                     <select id="ff-aipromptworkshoppanel-3"
                       value={editCategory} onChange={e => setEditCategory(e.target.value)}
@@ -335,7 +335,7 @@ export default function AIPromptWorkshopPanel() {
             <input id="ff-aipromptworkshoppanel-4"
               type="text" value={saveName} onChange={e => setSaveName(e.target.value)}
               placeholder="Template name..."
-              className="flex-1 px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-rmpg-500"
+              className="flex-1 px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-gray-500"
             />
             <select id="ff-aipromptworkshoppanel-5"
               value={saveCategory} onChange={e => setSaveCategory(e.target.value)}

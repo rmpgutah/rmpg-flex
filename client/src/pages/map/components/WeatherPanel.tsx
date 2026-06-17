@@ -236,7 +236,7 @@ export default function WeatherPanel({
                 </span>
               )}
               {weatherHazards.snow && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-400/20 text-rmpg-200 border border-rmpg-400/30">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-400/20 text-rmpg-200 border border-gray-400/30">
                   <CloudSnow size={10} />
                   SNOW
                 </span>

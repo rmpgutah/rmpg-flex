@@ -249,7 +249,7 @@ export default function IncidentReportsPanel({
                       <div
                         key={r.id}
                         className="rounded-sm px-1.5 py-1 space-y-0.5 hover:bg-surface-raised/50 transition-colors duration-100"
-                        style={{ background: 'var(--surface-overlay)', border: '1px solid #282828', borderLeft: `2px solid ${ss.bg}` }}
+                        style={{ background: '#050505', border: '1px solid #282828', borderLeft: `2px solid ${ss.bg}` }}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] font-mono text-rmpg-200 truncate flex items-center gap-1">

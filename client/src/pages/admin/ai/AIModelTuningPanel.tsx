@@ -207,7 +207,7 @@ export default function AIModelTuningPanel() {
                             value={(featureParams[feature] || {})[key] ?? ''}
                             onChange={e => updateFeatureOverride(feature, key, e.target.value)}
                             placeholder="—"
-                            className="w-20 px-2 py-1 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-700 focus:outline-none focus:border-rmpg-500"
+                            className="w-20 px-2 py-1 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-700 focus:outline-none focus:border-gray-500"
                           />
                         </td>
                       ))}
@@ -279,7 +279,7 @@ export default function AIModelTuningPanel() {
             value={newPresetName}
             onChange={e => setNewPresetName(e.target.value)}
             placeholder="Preset name..."
-            className="flex-1 px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-rmpg-500"
+            className="flex-1 px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-gray-500"
           />
           <button
             onClick={handleSavePreset}
@@ -319,7 +319,7 @@ function Slider({ label, description, value, min, max, step, onChange }: {
       <input id="ff-aimodeltuningpanel-2" type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(parseFloat(e.target.value))}
         className="w-full h-1.5 bg-rmpg-700 rounded appearance-none cursor-pointer accent-gray-500" />
-      <p className="text-[10px] text-rmpg-500">{description}</p>
+      <p className="text-[10px] text-gray-600">{description}</p>
     </div>
   );
 }

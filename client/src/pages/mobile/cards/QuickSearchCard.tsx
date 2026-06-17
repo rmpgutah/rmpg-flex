@@ -145,7 +145,7 @@ export default function QuickSearchCard() {
             value={query}
             onChange={(e) => handleChange(e.target.value)}
             placeholder="Person, plate, address…"
-            className="w-full h-11 bg-surface-overlay border border-border-default text-rmpg-100 text-base px-3 placeholder:text-rmpg-500"
+            className="w-full h-11 bg-surface-overlay border border-border-default text-rmpg-100 text-base px-3 placeholder:text-gray-600"
           />
           {loading && (
             <span

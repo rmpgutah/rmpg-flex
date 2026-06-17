@@ -151,7 +151,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       )}
 
       {/* ── Report Header ── */}
-      <div className="panel-beveled bg-surface-base p-3 print:border print:border-rmpg-400">
+      <div className="panel-beveled bg-surface-base p-3 print:border print:border-gray-400">
         <h1 className="text-brand-400 text-sm font-bold tracking-wider uppercase flex items-center gap-2 mb-2">
           <FileText size={16} /> Shift Handoff Report
         </h1>
@@ -174,7 +174,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       </div>
 
       {/* ── Open Calls ── */}
-      <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
+      <div className="panel-beveled bg-surface-base print:border print:border-gray-400">
         <PanelTitleBar title="Open Calls" icon={Radio} />
         <div className="p-2">
           {!data?.open_calls.length ? (
@@ -207,7 +207,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       </div>
 
       {/* ── Active BOLOs ── */}
-      <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
+      <div className="panel-beveled bg-surface-base print:border print:border-gray-400">
         <PanelTitleBar title="Active BOLOs" icon={AlertTriangle} />
         <div className="p-2">
           {!data?.active_bolos.length ? (
@@ -230,7 +230,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       </div>
 
       {/* ── Shift Notes ── */}
-      <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
+      <div className="panel-beveled bg-surface-base print:border print:border-gray-400">
         <PanelTitleBar title="Shift Notes" icon={StickyNote} />
         <div className="p-2 space-y-2">
           {data?.shift_notes.map(n => (
@@ -273,7 +273,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
 
       {/* ── GPS Summary & Shift Stats ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
+        <div className="panel-beveled bg-surface-base print:border print:border-gray-400">
           <PanelTitleBar title="GPS Summary" icon={MapPin} />
           <div className="p-3 text-center">
             <Car size={28} className="mx-auto text-brand-400 mb-2" />
@@ -284,7 +284,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
           </div>
         </div>
 
-        <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
+        <div className="panel-beveled bg-surface-base print:border print:border-gray-400">
           <PanelTitleBar title="Shift Stats" icon={BarChart3} />
           <div className="p-3 space-y-2">
             <div className="flex items-center justify-between text-xs font-mono">
