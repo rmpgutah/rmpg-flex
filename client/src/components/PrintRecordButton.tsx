@@ -254,6 +254,8 @@ export default function PrintRecordButton({
           enriched.linked_persons = links.filter((l: any) => l.linked_type === 'person').map((l: any) => ({
             name: l.linked_label || '',
             relationship: l.relationship,
+            dob: l.linked_meta?.date_of_birth || '',
+            flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
           }));
           enriched.linked_properties = links
             .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
@@ -294,6 +296,8 @@ export default function PrintRecordButton({
           enriched.linked_persons = links.filter((l: any) => l.linked_type === 'person').map((l: any) => ({
             name: l.linked_label || '',
             relationship: l.relationship,
+            dob: l.linked_meta?.date_of_birth || '',
+            flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
           }));
           enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => splitVehicleLabel(l));
         }

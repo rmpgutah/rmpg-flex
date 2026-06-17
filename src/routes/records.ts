@@ -2024,12 +2024,26 @@ records.get('/links', async (c) => {
       const linkedId = isSource ? link.target_id : link.source_id;
       // For vehicle links, include structured metadata so the PDF's VEHICLE /
       // COLOR / YEAR columns populate instead of parsing a label string.
+      // For person links, include DOB + active-warrant flag for PS-203 table.
       let linked_meta: Record<string, unknown> | undefined;
       if (linkedType === 'vehicle') {
         const veh = await queryFirst<{ year?: number; color?: string; make?: string; model?: string; plate_number?: string }>(
           db, 'SELECT year, color, make, model, plate_number FROM vehicles_records WHERE id = ?', linkedId,
         );
         if (veh) linked_meta = veh as Record<string, unknown>;
+      } else if (linkedType === 'person') {
+        const per = await queryFirst<{ date_of_birth?: string }>(
+          db, 'SELECT date_of_birth FROM persons WHERE id = ?', linkedId,
+        );
+        const wRow = await queryFirst<{ cnt: number }>(
+          db, "SELECT COUNT(*) AS cnt FROM warrants WHERE person_id = ? AND LOWER(status) = 'active'", linkedId,
+        );
+        if (per || (wRow && wRow.cnt > 0)) {
+          linked_meta = {
+            ...(per || {}),
+            active_warrants: (wRow?.cnt ?? 0) > 0 ? 1 : 0,
+          };
+        }
       }
       return {
         ...link,
