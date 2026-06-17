@@ -27,13 +27,15 @@ interface UseFormDraftReturn<T> {
   isDirty: boolean;
   /** Whether a draft was restored from storage on mount */
   wasRestored: boolean;
+  /** Clear the draft from storage and reset form to default */
+  clearDraft: () => void;
   /**
-   * Clear the draft from storage. Pass `{ resetForm: false }` to suppress the
-   * form-state reset (useful when calling just before delegating to onSubmit so
-   * the form doesn't visually blank out before the parent closes the modal).
-   * Also safe to use directly as an onClick handler — MouseEvent is ignored.
+   * Signal that the form was successfully saved. Removes the draft from
+   * storage and blocks the unmount auto-save WITHOUT resetting form state —
+   * safe to call just before delegating to onSubmit so the form doesn't
+   * visually blank out before the parent closes the modal.
    */
-  clearDraft: (opts?: { resetForm?: boolean } | Event) => void;
+  signalSaved: () => void;
   /** Manually save current form to storage */
   saveDraft: () => void;
   /** Take a snapshot of the current form as the "clean" baseline */
@@ -157,18 +159,22 @@ export function useFormDraft<T>({
     initialRef.current = JSON.stringify(formRef.current);
   }, []);
 
-  // Clear draft and reset.
-  // Accepts an optional Event (when used directly as onClick) — ignored at runtime.
-  const clearDraft = useCallback((optsOrEvent?: { resetForm?: boolean } | Event) => {
+  // Clear draft and reset
+  const clearDraft = useCallback(() => {
     clearedRef.current = true; // prevent unmount from re-saving after a successful save
     localStorage.removeItem(storageKey);
-    const opts = (optsOrEvent == null || optsOrEvent instanceof Event) ? undefined : optsOrEvent;
-    if (opts?.resetForm !== false) {
-      setFormRaw(defaultValue);
-      initialRef.current = '';
-    }
+    setFormRaw(defaultValue);
+    initialRef.current = '';
     if (onClear) onClear();
   }, [storageKey, defaultValue, onClear]);
+
+  // Signal a successful save: remove from localStorage and block the unmount
+  // auto-save without resetting form state (so the form doesn't flash blank
+  // before the parent closes the modal on success).
+  const signalSaved = useCallback(() => {
+    clearedRef.current = true;
+    localStorage.removeItem(storageKey);
+  }, [storageKey]);
 
   // Dirty calculation
   const isDirty = isActive && initialRef.current !== '' && JSON.stringify(form) !== initialRef.current;
@@ -201,7 +207,7 @@ export function useFormDraft<T>({
     };
   }, []);
 
-  return { form, setForm, isDirty, wasRestored, clearDraft, saveDraft, snapshot };
+  return { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, saveDraft, snapshot };
 }
 
 export default useFormDraft;

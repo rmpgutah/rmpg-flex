@@ -153,6 +153,7 @@ export default function UserFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<UserFormData>({
     storageKey: 'rmpg_user_form',
@@ -218,7 +219,7 @@ export default function UserFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    clearDraft({ resetForm: false });
+    signalSaved();
     onSubmit(form);
   };
 

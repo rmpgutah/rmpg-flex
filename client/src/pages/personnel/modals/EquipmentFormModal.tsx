@@ -88,6 +88,7 @@ export default function EquipmentFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<EquipmentFormData>({
     storageKey: 'rmpg_personnel_equipment_form',
@@ -108,7 +109,7 @@ export default function EquipmentFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    clearDraft({ resetForm: false });
+    signalSaved();
     onSubmit(form);
   };
 

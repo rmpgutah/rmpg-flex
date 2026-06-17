@@ -84,6 +84,7 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<ManualDlFormData>({
     storageKey: 'rmpg_manual_dl_entry_form',
@@ -105,9 +106,9 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    clearDraft({ resetForm: false });
+    signalSaved();
     onSubmit(form);
-  }, [form, onSubmit, clearDraft]);
+  }, [form, onSubmit, clearDraft, signalSaved]);
 
   return (
     <FormModal

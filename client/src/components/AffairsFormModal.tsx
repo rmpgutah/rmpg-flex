@@ -25,7 +25,7 @@ const EMPTY_FORM: AffairsFormData = {
 };
 
 export default function AffairsFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError }: AffairsFormModalProps) {
-  const { form, setForm, isDirty, wasRestored, clearDraft, snapshot } = useFormDraft<AffairsFormData>({
+  const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<AffairsFormData>({
     storageKey: 'rmpg_affairs_form', defaultValue: EMPTY_FORM, isActive: isOpen,
   });
 
@@ -51,7 +51,7 @@ export default function AffairsFormModal({ isOpen, onClose, onSubmit, isSubmitti
   };
 
   return (
-    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); clearDraft({ resetForm: false }); onSubmit(form); }}
+    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); signalSaved(); onSubmit(form); }}
       title={editingRecord ? 'Edit Complaint' : 'New Complaint'} icon={ShieldAlert}
       submitLabel={editingRecord ? 'Update' : 'Create'} isSubmitting={isSubmitting}
       isDirty={isDirty} draftRestored={wasRestored} onDiscardDraft={clearDraft}
