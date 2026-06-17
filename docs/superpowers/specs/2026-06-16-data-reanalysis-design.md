@@ -291,10 +291,14 @@ Apply to live D1 (`785de7ae`) directly after merge — deploy pipeline is `conti
 
 ---
 
-## 9. Known Limitations
+## 9. Resolved (originally "Known Limitations")
 
-- Analytics replay may produce duplicate rows in Iceberg if events were partially emitted before. Acceptable for trend/volume queries.
-- Footage backfill only enqueues trips with an active `cpg_device_mappings` row — units without camera mappings are silently skipped (logged as `skipped` in job_runs).
-- ALPR confidence correction cannot reconstruct original raw model confidence — applies `MIN(·, 0.84)` as the safe conservative bound.
-- GPS, CFS, citations, incidents are not replayed in this phase.
-- Worker CPU budget caps footage backfill at 200 trips per invocation and confidence/replay at 500 rows per invocation.
+All five original limitations were resolved in the implementation:
+
+| Original limitation | Resolution |
+|---------------------|------------|
+| Duplicate Iceberg rows on re-run | `analytics_replayed_at` column on every source table; replay skips rows already marked — safe to run multiple times (mig 0128) |
+| Silent skips for units without camera mapping | Footage backfill returns `skipped_units: [{unit_id, trip_id}]`; UI shows expandable list; stored in `job_runs.skipped_detail` |
+| Raw confidence unrecoverable | `original_confidence` on `vehicle_sightings` + `original_plate_confidence` on `alpr_captures`; stored before the `MIN(·,0.84)` correction (mig 0128) |
+| GPS / CFS / citations / incidents not replayed | All four added to the replay pipeline (6 datasets total: sightings, audit_log, gps_breadcrumbs, calls_for_service, citations, incidents) |
+| Fixed batch size caps | Configurable via `system_config` keys `reanalysis_footage_batch` / `reanalysis_confidence_batch` / `reanalysis_replay_batch`; defaults raised to 500 / 1000 / 1000 |
