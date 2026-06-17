@@ -33,6 +33,7 @@ function parseDetail(detail: CaseActivityRow['detail']): Record<string, any> {
 
 const ENTITY_SINGULAR: Record<string, string> = {
   properties: 'property',
+  propertie: 'property',   // typo stored in older activity rows (was replace(/s$/, ''))
   vehicles: 'vehicle',
   persons: 'person',
   incidents: 'incident',
@@ -40,6 +41,7 @@ const ENTITY_SINGULAR: Record<string, string> = {
   citations: 'citation',
   cases: 'case',
   businesses: 'business',
+  business: 'business',
   evidence: 'evidence',
 };
 

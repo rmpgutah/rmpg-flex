@@ -4005,7 +4005,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
 
-  setActiveCaseNumber(data.license_plate || 'N/A');
+  setActiveCaseNumber(data.license_plate || data.plate_number || 'N/A');
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
