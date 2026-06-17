@@ -666,6 +666,10 @@
 // v993: Full-drive clip playback — fix 401 on <video> src; auth middleware
 //       now accepts ?token=<jwt> on /full-drive/clip/* paths; client appends
 //       JWT from localStorage to all streamUrl values before passing to <video>.
+// v998: FlexCam MDT UI — police car MDT redesign of footage player and list;
+//       32px scrubber with segment bands + gold playhead glow + wide marker
+//       pins; chunk download strip; evidence action bar (lock + court pkg)
+//       inline on player; card-style list with progress bars + auto-refresh.
 // v997: FlexCam capture pipeline — batch chunk INSERTs (prevents 720-row
 //       Worker timeout on multi-hour drives); gap-fill cron for truncated
 //       requests; remove on_demand-only gate from full-drive cron pass.
