@@ -414,8 +414,37 @@ export default function ServeIntakePage() {
     return null;
   }, []);
 
+  // Server-side field extraction for born-digital PDFs. The client already
+  // extracted the text via pdfjs; we send that text alongside the file so the
+  // Worker skips the OCR container (not rolled out in prod) and runs the LLM
+  // extraction directly. When the scan resolves, the file entry is updated with
+  // the ocrResult so the useEffect below can merge fields into editOverrides.
+  // Fire-and-forget — errors are silent so they don't block the UI.
+  const scanPdfOcr = useCallback(async (file: File, text: string) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('client_text', text);
+      const token = localStorage.getItem('rmpg_token');
+      const resp = await fetch('/api/serve-intake/scan-document', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      if (!resp.ok) return;
+      const scanResult: OcrScanResult = await resp.json();
+      if (scanResult?.fields) {
+        setFiles(prev => prev.map(f =>
+          f.file === file ? { ...f, ocrResult: scanResult } : f,
+        ));
+      }
+    } catch { /* best-effort pre-fill — silent on error */ }
+  }, []);
+
   const handleFiles = useCallback(async (fileList: FileList | File[]) => {
     const newFiles: UploadedFile[] = [];
+    // Born-digital PDFs queued for server-side LLM field extraction after setFiles.
+    const pdfScans: Array<{ file: File; text: string }> = [];
     for (const file of Array.from(fileList)) {
       const isImage = file.type.startsWith('image/');
       const isPdf = file.type === 'application/pdf';
@@ -467,6 +496,12 @@ export default function ServeIntakePage() {
           // the derived images. Mark it so the row shows "Scan OCR" + a green
           // check instead of a misleading ⚠️ "no text" warning.
           scanned = pages.length > 0;
+        } else {
+          // Born-digital PDF with a text layer: queue for server-side LLM
+          // field extraction so the review panel pre-fills with extracted values.
+          // Fired after setFiles so the file is already in state when the result
+          // arrives and updates it. Same flow as ocrScanImage for image files.
+          pdfScans.push({ file, text });
         }
       } else if (isImage) {
         const scan = await ocrScanImage(file);
@@ -494,7 +529,11 @@ export default function ServeIntakePage() {
     setError(null);
     setResult(null);
     setOcrPreview(null);
-  }, [extractPdfText, ocrScanImage]);
+    // Fire server-side extraction for born-digital PDFs in parallel (best-effort).
+    // Results trickle back and update the file entries, which triggers the
+    // useEffect below to merge fields into editOverrides.
+    pdfScans.forEach(({ file, text }) => scanPdfOcr(file, text));
+  }, [extractPdfText, ocrScanImage, scanPdfOcr]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
