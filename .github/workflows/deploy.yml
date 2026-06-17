@@ -34,25 +34,22 @@ jobs:
 
       # Apply D1 migrations to live (`rmpg-flex` DB, 785de7ae-…).
       #
-      # `continue-on-error: true` (restored 2026-05-31). A non-blocking
-      # apply was the long-standing posture; it was tightened to blocking
-      # on 2026-05-27 on the assumption that only clean new migrations
-      # remained. That assumption was wrong: two pre-existing seed
-      # migrations (0049_admin_settings.sql / 0050_advanced_settings.sql)
-      # contain a malformed multi-row INSERT ("all VALUES must have the
-      # same number of terms") that has NEVER applied. Because wrangler
-      # applies migrations in order and aborts on the first failure, that
-      # one broken seed blocked the ENTIRE pipeline — including the Worker
-      # deploy and the `client` Pages build — for every push since. The
-      # net effect: shipped commits (e.g. the fleet toFixed crash fix)
-      # never reached prod; the live bundle silently lagged main for days.
+      # `continue-on-error: true` — kept because some migrations contain bare
+      # `ALTER TABLE ADD COLUMN` (D1 has no IF NOT EXISTS for ADD COLUMN), so
+      # they fail harmlessly on re-apply if the column already exists.
       #
-      # A broken *seed* migration must not be able to gate code deploys.
-      # The Worker reconciles required columns at boot, and genuinely new
-      # schema is applied directly to live D1 + checked into migrations/
-      # (see 0057_fleet_schema_alignment.sql). After deploy, verify any
-      # new table/column landed by querying sqlite_master directly rather
-      # than trusting the migration log (see CLAUDE.md gotcha #4).
+      # History: through 2026-06-17, `d1_migrations` only tracked up to
+      # 0078_company_documents.sql. Wrangler aborted at 0079_missing_tables.sql
+      # (bare ALTER TABLE persons ADD COLUMN fi_count that was already present)
+      # on every deploy, so migrations 0079-0126 were silently never recorded —
+      # even though their DDL had been applied directly to live D1. Fixed
+      # 2026-06-17: all 0079-0127 bulk-inserted into d1_migrations via the D1
+      # API; 0127 DDL also applied directly. Future deploys start from 0128.
+      #
+      # Rule going forward: always verify a new migration landed by querying
+      #   pragma_table_info('<table>')
+      # on live D1 after deploy — don't trust the migration log alone
+      # (continue-on-error means a failure here never fails the build).
       - name: Apply D1 migrations (remote)
         continue-on-error: true
         uses: cloudflare/wrangler-action@v4

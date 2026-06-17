@@ -2618,7 +2618,7 @@ export interface CaseFull {
   counts: {
     calls: number; incidents: number; persons: number;
     vehicles: number; properties: number; evidence: number;
-    warrants: number; citations: number; notes: number;
+    warrants: number; citations: number; notes: number; attachments?: number;
   };
 }
 
