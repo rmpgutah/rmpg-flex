@@ -666,6 +666,8 @@
 // v993: Full-drive clip playback — fix 401 on <video> src; auth middleware
 //       now accepts ?token=<jwt> on /full-drive/clip/* paths; client appends
 //       JWT from localStorage to all streamUrl values before passing to <video>.
+// v995: FlexCam chunk stream — force Content-Type video/mp4 (was
+//       application/octet-stream from ClearPath, breaking video playback).
 // v994: Dashcam AI full-footage upgrade — event clips always download to R2
 //       on first play (fire-and-forget waitUntil) so they survive pre-signed
 //       URL expiry; GET /driving-events/:id/media now prefers the full-drive

@@ -111,7 +111,7 @@ flexcam.get('/footage/:id/chunk/:seq/stream', async (c): Promise<Response> => {
   const obj = await c.env.UPLOADS.get(row.r2_key);
   if (!obj) return c.json({ error: 'Object missing' }, 404);
   await logCustody(db, { requestId: Number(c.req.param('id')), action: 'viewed', actorUserId: c.var.user?.id ?? null, actorName: actorName(c), sessionKey: viewSessionKey(c.var.user?.id ?? null, new Date().toISOString()) }); // new-date-ok
-  return new Response(obj.body, { headers: { 'Content-Type': row.content_type || 'video/mp4', 'Cache-Control': 'private, max-age=3600' } });
+  return new Response(obj.body, { headers: { 'Content-Type': 'video/mp4', 'Cache-Control': 'private, max-age=3600' } });
 });
 
 flexcam.get('/footage/:id/continuous', async (c): Promise<Response> => {
