@@ -267,6 +267,7 @@ export default function VehicleFormModal({
     }
     // Validate VIN length if provided
     if (form.vin && form.vin.length !== 17) return;
+    clearDraft({ resetForm: false });
     onSubmit({ ...form, owner_address: composeAddressUnit(form.owner_address, ownerAddressUnit) });
   };
 

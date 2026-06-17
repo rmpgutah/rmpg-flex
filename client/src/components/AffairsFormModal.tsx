@@ -51,7 +51,7 @@ export default function AffairsFormModal({ isOpen, onClose, onSubmit, isSubmitti
   };
 
   return (
-    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); onSubmit(form); }}
+    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); clearDraft({ resetForm: false }); onSubmit(form); }}
       title={editingRecord ? 'Edit Complaint' : 'New Complaint'} icon={ShieldAlert}
       submitLabel={editingRecord ? 'Update' : 'Create'} isSubmitting={isSubmitting}
       isDirty={isDirty} draftRestored={wasRestored} onDiscardDraft={clearDraft}

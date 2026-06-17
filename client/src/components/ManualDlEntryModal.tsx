@@ -105,8 +105,9 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
+    clearDraft({ resetForm: false });
     onSubmit(form);
-  }, [form, onSubmit]);
+  }, [form, onSubmit, clearDraft]);
 
   return (
     <FormModal

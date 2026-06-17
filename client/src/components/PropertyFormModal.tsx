@@ -232,6 +232,7 @@ export default function PropertyFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    clearDraft({ resetForm: false });
     onSubmit(form);
   };
 

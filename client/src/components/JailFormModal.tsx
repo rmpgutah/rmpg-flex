@@ -71,7 +71,7 @@ export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting,
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSubmit(form); };
+  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); clearDraft({ resetForm: false }); onSubmit(form); };
 
   const sections: { id: SectionId; label: string }[] = [
     { id: 'identity', label: 'Identity' }, { id: 'physical', label: 'Physical' },

@@ -503,6 +503,7 @@ export default function IncidentFormModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.incident_type) return;
+    clearDraft({ resetForm: false });
     onSubmit({
       ...formData,
       location_address: composeAddressUnit(formData.location_address, locationUnit),

@@ -46,7 +46,7 @@ export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting,
   };
 
   return (
-    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); onSubmit(form); }}
+    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); clearDraft({ resetForm: false }); onSubmit(form); }}
       title={editingRecord ? 'Edit Task' : 'New Task'} icon={ClipboardList}
       submitLabel={editingRecord ? 'Update' : 'Create'} isSubmitting={isSubmitting}
       isDirty={isDirty} draftRestored={wasRestored} onDiscardDraft={clearDraft}

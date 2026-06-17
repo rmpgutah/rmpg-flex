@@ -102,6 +102,7 @@ export default function CredentialFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    clearDraft({ resetForm: false });
     onSubmit(form);
   };
 

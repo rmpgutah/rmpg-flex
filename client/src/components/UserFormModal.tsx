@@ -218,6 +218,7 @@ export default function UserFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    clearDraft({ resetForm: false });
     onSubmit(form);
   };
 

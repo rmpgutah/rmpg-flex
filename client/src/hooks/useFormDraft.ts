@@ -27,8 +27,12 @@ interface UseFormDraftReturn<T> {
   isDirty: boolean;
   /** Whether a draft was restored from storage on mount */
   wasRestored: boolean;
-  /** Clear the draft from storage and reset form to default */
-  clearDraft: () => void;
+  /**
+   * Clear the draft from storage. Pass `{ resetForm: false }` to suppress the
+   * form-state reset (useful when calling just before delegating to onSubmit so
+   * the form doesn't visually blank out before the parent closes the modal).
+   */
+  clearDraft: (opts?: { resetForm?: boolean }) => void;
   /** Manually save current form to storage */
   saveDraft: () => void;
   /** Take a snapshot of the current form as the "clean" baseline */
@@ -100,6 +104,10 @@ export function useFormDraft<T>({
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formRef = useRef(form);
   formRef.current = form;
+  // Set to true by clearDraft() so the unmount cleanup skips the auto-save.
+  // Reset to false by snapshot() and setForm() so re-opening the same modal
+  // instance (without unmounting) gets a fresh save-on-unmount cycle.
+  const clearedRef = useRef(false);
 
   // Notify parent when draft is restored
   useEffect(() => {
@@ -125,6 +133,7 @@ export function useFormDraft<T>({
 
   const setForm = useCallback(
     (val: T | ((prev: T) => T)) => {
+      clearedRef.current = false; // user is editing again — re-enable unmount-save
       setFormRaw((prev) => {
         const next = typeof val === 'function' ? (val as (prev: T) => T)(prev) : val;
         // Debounced save
@@ -143,14 +152,18 @@ export function useFormDraft<T>({
 
   // Snapshot: capture current form as the "clean" baseline
   const snapshot = useCallback(() => {
+    clearedRef.current = false; // fresh open cycle — re-enable unmount-save
     initialRef.current = JSON.stringify(formRef.current);
   }, []);
 
   // Clear draft and reset
-  const clearDraft = useCallback(() => {
+  const clearDraft = useCallback((opts?: { resetForm?: boolean }) => {
+    clearedRef.current = true; // prevent unmount from re-saving after a successful save
     localStorage.removeItem(storageKey);
-    setFormRaw(defaultValue);
-    initialRef.current = '';
+    if (opts?.resetForm !== false) {
+      setFormRaw(defaultValue);
+      initialRef.current = '';
+    }
     if (onClear) onClear();
   }, [storageKey, defaultValue, onClear]);
 
@@ -160,13 +173,15 @@ export function useFormDraft<T>({
   // Browser-level unsaved changes warning
   useUnsavedChanges(isDirty);
 
-  // Auto-save on unmount (best-effort via synchronous localStorage write)
+  // Auto-save on unmount (best-effort via synchronous localStorage write).
+  // Skip when clearDraft() was called — the save already succeeded and we must
+  // not resurrect stale data for the next open.
   useEffect(() => {
     return () => {
       if (debounceTimer.current != null) {
         clearTimeout(debounceTimer.current);
       }
-      // Synchronous save on unmount to ensure data is not lost
+      if (clearedRef.current) return;
       try {
         const payload = { ...formRef.current, _savedAt: Date.now() };
         localStorage.setItem(storageKey, JSON.stringify(payload));

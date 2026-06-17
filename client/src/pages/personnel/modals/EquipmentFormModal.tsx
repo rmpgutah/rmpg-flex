@@ -108,6 +108,7 @@ export default function EquipmentFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    clearDraft({ resetForm: false });
     onSubmit(form);
   };
 

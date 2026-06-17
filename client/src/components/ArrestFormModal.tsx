@@ -177,6 +177,7 @@ export default function ArrestFormModal({
       .split('\n')
       .map(l => l.trim())
       .filter(l => l.length > 0);
+    clearDraft({ resetForm: false });
     onSubmit({
       ...form,
       address: composeAddressUnit(form.address, addressUnit),
