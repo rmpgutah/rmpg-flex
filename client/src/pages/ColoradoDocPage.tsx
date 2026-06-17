@@ -299,7 +299,7 @@ export default function ColoradoDocPage() {
           {/* Results Table */}
           <div className="flex-1 overflow-auto mx-2 mb-2">
             {results.length > 0 ? (
-              <table className="w-full text-xs">
+              <div className="overflow-x-auto"><table className="w-full text-xs">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-surface-base border-b border-rmpg-700">
                     <th className="text-left px-2.5 py-1.5 text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">DOC #</th>
@@ -341,7 +341,7 @@ export default function ColoradoDocPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             ) : searched && !loading && !error ? (
               <div className="flex flex-col items-center justify-center h-full text-rmpg-600">
                 <Search size={32} className="mb-2 opacity-30" />

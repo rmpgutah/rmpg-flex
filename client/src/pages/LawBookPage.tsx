@@ -399,7 +399,7 @@ export default function LawBookPage() {
               {visibleSections.map((s) => {
                 const open = openSection === s.citation;
                 return (
-                  <div key={s.id ?? s.citation} style={open ? { background: '#0d0d0d' } : undefined}>
+                  <div key={s.id ?? s.citation} style={open ? { background: 'var(--surface-overlay)' } : undefined}>
                     <button type="button" onClick={() => setOpenSection(open ? null : s.citation)}
                       className="w-full text-left px-3 py-2 hover:bg-surface-base flex items-start gap-2">
                       {open ? <ChevronDown className="w-3.5 h-3.5 text-rmpg-500 mt-0.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-rmpg-500 mt-0.5 shrink-0" />}

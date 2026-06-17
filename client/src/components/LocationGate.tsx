@@ -84,7 +84,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
     return (
       <div style={{
         background: 'rgba(136, 136, 136, 0.08)',
-        borderBottom: '1px solid #222222',
+        borderBottom: '1px solid var(--border-subtle)',
         padding: '4px 16px',
         display: 'flex',
         alignItems: 'center',

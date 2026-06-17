@@ -1003,7 +1003,7 @@ export default function IncidentsPage() {
       {/* Table / Loading / Error */}
       <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
         {loading ? (
-          <table className="table-dark">
+          <div className="overflow-x-auto"><table className="table-dark">
             <thead className="sticky top-0 z-10">
               <tr>
                 <th>IR #</th><th>Type</th><th>Priority</th><th>Status</th>{!isMobile && <th>Location</th>}{!isMobile && <th>Officer</th>}<th>Date</th>
@@ -1012,7 +1012,7 @@ export default function IncidentsPage() {
             <tbody>
               {Array.from({ length: 8 }).map((_, i) => <TableRowSkeleton key={i} cols={isMobile ? 5 : 7} />)}
             </tbody>
-          </table>
+          </table></div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <AlertTriangle className="w-6 h-6 text-red-500/60" />
@@ -1022,7 +1022,7 @@ export default function IncidentsPage() {
             </button>
           </div>
         ) : (
-          <table className="table-dark">
+          <div className="overflow-x-auto"><table className="table-dark">
             <thead className="sticky top-0 z-10">
               <tr>
                 <th className="cursor-pointer select-none" onClick={() => handleSort('incident_number')}>
@@ -1114,7 +1114,7 @@ export default function IncidentsPage() {
                 </tr>
               )}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
     </div>
@@ -1827,7 +1827,7 @@ export default function IncidentsPage() {
           {detailOffenses.length > 0 ? (
             <div className="space-y-1.5">
               {detailOffenses.map((offense: any) => (
-                <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid #2b2b2b' }}>
+                <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)' }}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? '#ef4444' : offense.offense_level === 'misdemeanor' ? '#f59e0b' : 'var(--rmpg-500)' }}>
@@ -1929,7 +1929,7 @@ export default function IncidentsPage() {
                 const typeColors: Record<string, string> = { incident: '#888888', call: '#22c55e', case: '#a855f7', warrant: '#ef4444', citation: '#f59e0b', arrest: '#ec4899' };
                 const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
                 return (
-                  <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid #2b2b2b' }}>
+                  <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)' }}>
                     <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: typeColors[link.linked_type] || 'var(--rmpg-500)', background: (typeColors[link.linked_type] || 'var(--rmpg-500)') + '20', border: `1px solid ${typeColors[link.linked_type] || 'var(--rmpg-500)'}40` }}>
                       {typeLabels[link.linked_type] || link.linked_type}
                     </span>

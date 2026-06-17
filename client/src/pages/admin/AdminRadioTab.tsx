@@ -279,7 +279,7 @@ export default function AdminRadioTab() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter by name, description, frequency, talkgroup…"
-          className="flex-1 bg-transparent text-xs text-rmpg-200 placeholder-gray-600 outline-none"
+          className="flex-1 bg-transparent text-xs text-rmpg-200 placeholder-rmpg-500 outline-none"
         />
       </div>
 
@@ -303,7 +303,7 @@ export default function AdminRadioTab() {
             {search ? 'No channels match the filter.' : 'No channels yet — create one to get started.'}
           </div>
         ) : (
-          <table className="w-full text-left">
+          <div className="overflow-x-auto"><table className="w-full text-left">
             <thead className="bg-surface-sunken border-b border-border-default">
               <tr className="text-[9px] uppercase text-rmpg-500 font-semibold">
                 <th className="px-2 py-[3px] w-8"></th>
@@ -371,7 +371,7 @@ export default function AdminRadioTab() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
 

@@ -274,7 +274,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
 
       {/* Sources table */}
       <div className="px-3 py-2">
-        <table className="w-full">
+        <div className="overflow-x-auto"><table className="w-full">
           <thead>
             <tr className="border-b border-rmpg-700/50">
               <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1 text-left">Source</th>
@@ -341,14 +341,14 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
               </React.Fragment>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       {/* Recent logs */}
       {logs.length > 0 && (
         <div className="px-3 py-2 border-t border-rmpg-700/50">
           <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-1">Recent Scrape Runs</div>
-          <table className="w-full">
+          <div className="overflow-x-auto"><table className="w-full">
             <thead>
               <tr className="border-b border-rmpg-700/30">
                 <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1 text-left">Source</th>
@@ -381,7 +381,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
     </div>

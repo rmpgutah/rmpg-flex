@@ -884,7 +884,7 @@ export default function DlSearchPage() {
                 </div>
                 <div className="p-3 space-y-3">
                   <div className="border border-dashed border-rmpg-700 rounded-sm py-5 flex flex-col items-center gap-2 bg-surface-deep">
-                    <CreditCard size={28} className="text-[#333333]" />
+                    <CreditCard size={28} className="text-rmpg-700" />
                     <button
                       type="button"
                       onClick={() => setShowLiveScanner(true)}
@@ -1257,11 +1257,11 @@ export default function DlSearchPage() {
                 <div className="flex items-center justify-center py-10 text-[11px] text-rmpg-400 gap-2"><Loader2 size={14} className="animate-spin" /> Loading...</div>
               ) : !scanHistory || scanHistory.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-[11px] text-rmpg-500 gap-2">
-                  <History size={22} className="text-[#333333]" />
+                  <History size={22} className="text-rmpg-700" />
                   No scans logged yet — every ID scan will appear here.
                 </div>
               ) : (
-                <table className="w-full text-left">
+                <div className="overflow-x-auto"><table className="w-full text-left">
                   <thead className="sticky top-0 bg-surface-sunken">
                     <tr className="text-[8px] text-rmpg-500 uppercase font-semibold">
                       <th className="px-3 py-[3px]">When</th>
@@ -1278,7 +1278,7 @@ export default function DlSearchPage() {
                       const pf = f.profile_flags || {};
                       const flagged = !!(pf.sex_offender || pf.watchlist || pf.supervision) || dangerSrcs.length > 0;
                       return (
-                        <tr key={s.id} className={`border-t border-[#141414] text-[10px] ${flagged ? 'bg-red-900/10' : ''}`}>
+                        <tr key={s.id} className={`border-t border-border-subtle text-[10px] ${flagged ? 'bg-red-900/10' : ''}`}>
                           <td className="px-3 py-[3px] text-rmpg-400 whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                           <td className="px-3 py-[3px] text-rmpg-100">
                             {s.person_id
@@ -1300,7 +1300,7 @@ export default function DlSearchPage() {
                       );
                     })}
                   </tbody>
-                </table>
+                </table></div>
               )}
             </div>
           </div>
@@ -1779,7 +1779,7 @@ export default function DlSearchPage() {
                   </button>
                   {showFullReadout && (
                     <div className="border-t border-border-subtle max-h-72 overflow-y-auto">
-                      <table className="w-full text-left">
+                      <div className="overflow-x-auto"><table className="w-full text-left">
                         <thead>
                           <tr className="text-[8px] text-rmpg-500 uppercase font-semibold">
                             <th className="px-2 py-[3px] w-10">Code</th>
@@ -1801,7 +1801,7 @@ export default function DlSearchPage() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                      </table></div>
                     </div>
                   )}
                 </div>
@@ -1825,7 +1825,7 @@ export default function DlSearchPage() {
                     value={linkPlate}
                     onChange={(e) => setLinkPlate(e.target.value)}
                     placeholder="Plate (optional)"
-                    className="w-28 px-2 py-2 bg-surface-raised border border-rmpg-700 text-[11px] text-rmpg-100 font-mono uppercase placeholder-gray-600"
+                    className="w-28 px-2 py-2 bg-surface-raised border border-rmpg-700 text-[11px] text-rmpg-100 font-mono uppercase placeholder-rmpg-500"
                   />
                   <button
                     type="button"

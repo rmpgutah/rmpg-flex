@@ -222,14 +222,14 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
 
         {/* Subtle system label */}
         <div className="flex items-center gap-2 mt-3">
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, #2b2b2b)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, var(--border-default))' }} />
           <span
             className="text-[7px] tracking-[0.15em] uppercase font-bold"
             style={{ color: 'rgba(167, 177, 188, 0.42)' }}
           >
             CAD / RMS
           </span>
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, #2b2b2b, transparent)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, var(--border-default), transparent)' }} />
         </div>
       </div>
 
@@ -312,7 +312,7 @@ function NotFoundPage() {
         <div
           className="inline-flex items-center gap-2 px-4 py-2 mb-6 border"
           style={{
-            background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
+            background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
             borderColor: 'var(--border-subtle)',
             borderRadius: 2,
           }}
@@ -330,7 +330,7 @@ function NotFoundPage() {
         <p className="text-sm text-[#888888] mb-2 leading-relaxed">
           The requested page does not exist or has been moved.
         </p>
-        <p className="text-[11px] text-[#555555] mb-6">
+        <p className="text-[11px] text-rmpg-500 mb-6">
           If you believe this is an error, contact your system administrator.
         </p>
 
@@ -339,7 +339,7 @@ function NotFoundPage() {
           href="/"
           className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors"
           style={{
-            background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
+            background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
             border: '1px solid #d4a017',
             color: '#d4a017',
             borderRadius: 2,
@@ -349,7 +349,7 @@ function NotFoundPage() {
             e.currentTarget.style.borderColor = '#e8b52a';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)';
+            e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)';
             e.currentTarget.style.borderColor = '#d4a017';
           }}
         >

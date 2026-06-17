@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#0d0d0d' }}>
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'var(--surface-overlay)' }}>
       <div className="w-full max-w-sm">
         <div
           className="panel-beveled bg-surface-base relative overflow-hidden"
@@ -47,11 +47,11 @@ export default function ForgotPasswordPage() {
 
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
-            <ShieldCheck className="w-3 h-3" style={{ color: '#999999' }} />
+            <ShieldCheck className="w-3 h-3" style={{ color: 'var(--rmpg-400)' }} />
             <span>PASSWORD RESET</span>
             <div className="ml-auto flex items-center gap-1">
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d' }}>_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d' }}>&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid var(--border-strong)' }}>_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid var(--border-strong)' }}>&#9633;</div>
             </div>
           </div>
 
@@ -60,10 +60,10 @@ export default function ForgotPasswordPage() {
               <>
                 <div className="text-center mb-5">
                   <div className="w-10 h-10 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: 'rgba(136, 136, 136, 0.15)', border: '1px solid rgba(136, 136, 136, 0.3)' }}>
-                    <Mail className="w-5 h-5" style={{ color: '#999999' }} />
+                    <Mail className="w-5 h-5" style={{ color: 'var(--rmpg-400)' }} />
                   </div>
                   <h2 className="text-sm font-bold text-rmpg-100 mb-1">Forgot Your Password?</h2>
-                  <p className="text-[10px] leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
+                  <p className="text-[10px] leading-relaxed text-rmpg-500">
                     Enter the email address associated with your account and we'll send you a link to reset your password.
                   </p>
                 </div>
@@ -127,17 +127,16 @@ export default function ForgotPasswordPage() {
                 <p className="text-[10px] leading-relaxed mb-1" style={{ color: '#888888' }}>
                   If an account with that email exists, we've sent a password reset link.
                 </p>
-                <p className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
+                <p className="text-[9px] text-rmpg-500">
                   The link expires in 1 hour. Check your spam folder if you don't see it.
                 </p>
               </div>
             )}
 
-            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #2b2b2b' }}>
+            <div className="mt-4 pt-3" style={{ borderTop: '1px solid var(--border-default)' }}>
               <a
                 href="/login"
-                className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors"
-                style={{ color: 'var(--rmpg-500)' }}
+                                className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors text-rmpg-500"
                 onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
               >

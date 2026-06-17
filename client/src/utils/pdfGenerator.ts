@@ -130,7 +130,7 @@ export const DEFAULT_PDF_BRANDING: PdfBranding = {
   report_header_text: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
   report_subheader_text: 'PRIVATE SECURITY & LAW ENFORCEMENT',
   primary_color: '#888888',
-  accent_color: '#555555', // neutralized 2026-05-30 (was gold #d4a017)
+  accent_color: 'var(--rmpg-500)', // neutralized 2026-05-30 (was gold #d4a017)
   header_bg_color: '#333333', // neutralized 2026-05-30 (was dark blue #232832)
   // section_accent_color is intentionally LEFT UNSET so the
   // thematic per-section palette in resolveSectionAccentColor

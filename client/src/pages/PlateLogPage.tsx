@@ -18,6 +18,7 @@ import PlateDossier from '../components/PlateDossier';
 import ClearPathDashcamPanel from '../components/ClearPathDashcamPanel';
 import AlprCaptureGallery from '../components/AlprCaptureGallery';
 import CaptureReviewEditor, { type EditableCapture } from '../components/CaptureReviewEditor';
+import TrustBadge from '../components/TrustBadge';
 
 interface ScreenHit { kind: string; severity: 'critical' | 'warning'; detail: string }
 interface Vehicle { id: number; plate_number: string; make: string; model: string; color: string; year: number }
@@ -319,8 +320,11 @@ export default function PlateLogPage() {
 
       {scan && (
         <div className="border border-border-default bg-surface-sunken">
-          <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-border-default">
-            ALPR CAPTURE{scan.capture.confidence != null ? ` — ${Math.round(scan.capture.confidence * 100)}% confidence` : ''}
+          <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-border-default flex items-center gap-2">
+            ALPR CAPTURE
+            {scan.capture.confidence != null && (
+              <TrustBadge trust={{ trustScore: scan.capture.confidence, readCount: 1, basis: 'single read' }} />
+            )}
           </div>
           <div className="p-3 space-y-2">
             <HitBanners hits={scan.hits} />
@@ -357,7 +361,7 @@ export default function PlateLogPage() {
                 )}
                 {scan.accepted === false && scan.enrich_status !== 'pending' && (
                   <div className="text-[10px] text-yellow-400 mt-1 border border-yellow-800 bg-yellow-950/40 px-1.5 py-1">
-                    Low-confidence read{scan.plate_confidence != null ? ` (${Math.round(scan.plate_confidence * 100)}%)` : ''} — held for review, not recorded as confirmed.
+                    Low-confidence read — held for review, not recorded as confirmed.
                   </div>
                 )}
                 {scan.capture.reviewStatus && scan.accepted !== false && (
@@ -454,10 +458,19 @@ export default function PlateLogPage() {
               <div className="min-w-0 flex-1">
                 <div className="text-sm tracking-[0.15em] text-rmpg-100 font-semibold">
                   {q.plate || '—'}
-                  {q.plate_confidence != null && <span className="text-[10px] text-yellow-500 ml-2 tracking-normal">{Math.round(q.plate_confidence * 100)}%</span>}
+                  {q.plate_confidence != null && (
+                    <span className="ml-2 tracking-normal">
+                      <TrustBadge trust={{ trustScore: q.plate_confidence, readCount: 1, basis: 'single read' }} />
+                    </span>
+                  )}
                 </div>
-                <div className="text-[10px] text-[#888888] truncate">
-                  {[q.state, q.condition, q.damage_summary].filter(Boolean).join(' · ') || 'no attributes'}
+                <div className="text-[10px] text-[#888888] flex items-center gap-1.5 flex-wrap">
+                  {q.state && <span>{q.state}</span>}
+                  {q.condition && (
+                    <span className={`text-[9px] uppercase font-bold px-1 border ${conditionBadgeClass(q.condition)}`}>{q.condition}</span>
+                  )}
+                  {q.damage_summary && <span className="truncate">{q.damage_summary}</span>}
+                  {!q.state && !q.condition && !q.damage_summary && <span>no attributes</span>}
                 </div>
               </div>
               <button type="button" disabled={reviewBusy === q.id} onClick={() => setEditing(q as EditableCapture)}
@@ -488,12 +501,12 @@ export default function PlateLogPage() {
             {(['all', ...ALL_SOURCES.map((s) => s.key)] as const).map((k) => (
               <button key={k} type="button" onClick={() => setSourceFilter(k)}
                 className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border tracking-wide ${
-                  sourceFilter === k ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-default text-[#777777]'}`}>
+                  sourceFilter === k ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-default text-rmpg-500'}`}>
                 {k === 'all' ? 'ALL' : sightingSource(k === 'dashcam' ? 'ClearPath dashcam' : k === 'camera' ? 'ALPR' : '').label}
               </button>
             ))}
             <button type="button" onClick={() => setShowMap((v) => !v)} title="Toggle map"
-              className={`ml-1 p-0.5 border ${showMap ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-[#777777]'}`}>
+              className={`ml-1 p-0.5 border ${showMap ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-rmpg-500'}`}>
               <MapIcon className="w-3 h-3" />
             </button>
           </div>

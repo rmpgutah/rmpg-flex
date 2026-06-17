@@ -135,7 +135,7 @@ const SOURCE_META: Record<string, { icon: LucideIcon; color: string; label: stri
   gps: { icon: Satellite, color: '#22c55e', label: 'GPS' },
   wifi: { icon: Wifi, color: '#d4a017', label: 'WiFi' },
   ip: { icon: Globe, color: '#ef4444', label: 'IP' },
-  unknown: { icon: Globe, color: '#666', label: '—' },
+  unknown: { icon: Globe, color: 'var(--rmpg-500)', label: '—' },
 };
 
 const PRIO_COLOR: Record<string, string> = { P1: '#ef4444', P2: '#f59e0b', P3: '#d4a017', P4: '#888888' };

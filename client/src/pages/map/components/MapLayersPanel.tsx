@@ -724,7 +724,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   <div className={`text-[10px] font-bold ${isActive ? 'text-brand-400' : 'text-rmpg-200'}`}>
                     {label}
                   </div>
-                  <div className="text-[7px] text-[#5a6e80] leading-tight mt-0.5">{desc}</div>
+                  <div className="text-[7px] text-rmpg-500 leading-tight mt-0.5">{desc}</div>
                 </button>
               );
             })}

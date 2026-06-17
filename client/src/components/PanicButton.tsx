@@ -454,7 +454,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
             <button type="button"
               onClick={handleCancel}
               className="px-2 py-1 text-[9px] font-bold uppercase"
-              style={{ background: 'var(--border-subtle)', border: '1px solid #2a2a2a', color: '#888888' }}
+              style={{ background: 'var(--border-subtle)', border: '1px solid var(--border-default)', color: '#888888' }}
             >
               Cancel
             </button>
@@ -561,14 +561,14 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               )}
 
               {incomingAlert.message && (
-                <div className="text-xs text-center text-rmpg-100 p-2" style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b' }}>
+                <div className="text-xs text-center text-rmpg-100 p-2" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-default)' }}>
                   {incomingAlert.message}
                 </div>
               )}
 
               {/* Reverse-geocoded address */}
               {incomingAlert.location_address && (
-                <div className="text-center text-[10px] font-mono text-rmpg-100 p-1.5" style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b' }}>
+                <div className="text-center text-[10px] font-mono text-rmpg-100 p-1.5" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-default)' }}>
                   <MapPin style={{ width: 9, height: 9, display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
                   {incomingAlert.location_address}
                 </div>
@@ -576,7 +576,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
 
               {/* Raw GPS coordinates */}
               {(incomingAlert.latitude != null && incomingAlert.longitude != null) && (
-                <div className="flex items-center justify-center gap-1 text-[10px] font-mono" style={{ color: 'var(--rmpg-500)' }}>
+                <div className="flex items-center justify-center gap-1 text-[10px] font-mono text-rmpg-500">
                   <MapPin style={{ width: 10, height: 10 }} />
                   {incomingAlert.latitude.toFixed(5)}, {incomingAlert.longitude.toFixed(5)}
                 </div>

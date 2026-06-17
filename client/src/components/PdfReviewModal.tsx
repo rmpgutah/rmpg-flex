@@ -388,7 +388,7 @@ function TableEditor<T extends Record<string, any>>({
           </button>
         )}
       </div>
-      <table className="w-full border-collapse">
+      <div className="overflow-x-auto"><table className="w-full border-collapse">
         <thead>
           <tr className="text-rmpg-500 uppercase text-[10px]">
             {field.columns.map((c) => (
@@ -433,7 +433,7 @@ function TableEditor<T extends Record<string, any>>({
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

@@ -307,12 +307,12 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
       {!isOpen && (
         <button type="button" onClick={onToggle}
           className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-rmpg-300 rounded-sm"
-          style={{ background: 'rgba(10, 10, 10, 0.9)', border: '1px solid #2b2b2b' }}>
+          style={{ background: 'rgba(10, 10, 10, 0.9)', border: '1px solid var(--border-default)' }}>
           <History className="w-3.5 h-3.5 text-amber-400" /> GPS History
         </button>
       )}
       {isOpen && (
-        <div className="rounded-sm shadow-xl" style={{ width: 380, maxHeight: 'calc(100vh - 200px)', background: 'rgba(10, 10, 10, 0.95)', border: '1px solid #2b2b2b' }}>
+        <div className="rounded-sm shadow-xl" style={{ width: 380, maxHeight: 'calc(100vh - 200px)', background: 'rgba(10, 10, 10, 0.95)', border: '1px solid var(--border-default)' }}>
           <div className="flex items-center justify-between px-3 py-2 border-b border-rmpg-700">
             <div className="flex items-center gap-2">
               <History className="w-3.5 h-3.5 text-amber-400" />

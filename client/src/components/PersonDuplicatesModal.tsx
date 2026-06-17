@@ -140,7 +140,7 @@ export default function PersonDuplicatesModal({ isOpen, onClose, onMergeComplete
           <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={() => setConfirmMerge(null)}>
             <div className="absolute inset-0 bg-black/50" />
             <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-md" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%)' }}>
+              <div className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-sunken) 100%)' }}>
                 <Merge className="w-4 h-4 text-amber-400" />
                 <h2 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Confirm Merge</h2>
               </div>

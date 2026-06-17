@@ -31,7 +31,7 @@ export default function QuickCommands({ onCommand }: QuickCommandsProps) {
             onClick={() => onCommand?.(cmd.code)}
             className="py-1 px-1.5 rounded-[2px] text-[9px] font-bold uppercase tracking-wide transition-colors border"
             style={{
-              background: '#0a0a0a',
+              background: 'var(--surface-overlay)',
               color: '#888888',
               borderColor: 'var(--border-subtle)',
             }}

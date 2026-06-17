@@ -84,7 +84,7 @@ const EMPTY_FORM = {
   summary: '', lead_investigator_id: '',
 };
 
-type DetailTab = 'overview' | 'calls' | 'incidents' | 'persons' | 'vehicles' | 'properties' | 'evidence' | 'warrants' | 'citations' | 'tasks' | 'timeline' | 'notes' | 'solvability';
+type DetailTab = 'overview' | 'calls' | 'incidents' | 'persons' | 'vehicles' | 'properties' | 'evidence' | 'warrants' | 'citations' | 'tasks' | 'timeline' | 'notes' | 'solvability' | 'files';
 
 const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -100,6 +100,7 @@ const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'timeline', label: 'Timeline' },
   { id: 'notes', label: 'Notes', countKey: 'notes' },
   { id: 'solvability', label: 'Solvability' },
+  { id: 'files', label: 'Files', countKey: 'attachments' },
 ];
 
 // ── Reusable LinkedEntityPanel for each entity tab ──
@@ -294,25 +295,39 @@ function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
 }
 
 // ── Feature 40: Linked Incidents Relationship Graph ──
-function LinkedIncidentsGraph({ caseId }: { caseId: string | number }) {
+// Accepts pre-fetched caseFull data to avoid double-fetching /full.
+function LinkedIncidentsGraph({ caseId, caseFull }: { caseId: string | number; caseFull?: any }) {
   const [links, setLinks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Use pre-fetched /full data when available (avoids a double-fetch and
+    // uses hydrated objects instead of the raw JSON-string legacy columns).
+    if (caseFull) {
+      const related = [
+        ...(caseFull.incidents || []).map((i: any) => ({ ...i, rel_type: 'incident' })),
+        ...(caseFull.related || []).map((c: any) => ({ ...c, rel_type: 'case' })),
+        ...(caseFull.warrants || []).map((w: any) => ({ ...w, rel_type: 'warrant' })),
+        ...(caseFull.persons || []).map((p: any) => ({ ...p, rel_type: 'person' })),
+      ];
+      setLinks(related);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    apiFetch<any>(`/cases/${caseId}`)
-      .then(data => {
+    apiFetch<any>(`/cases/${caseId}/full`)
+      .then((data: any) => {
         const related = [
-          ...(data?.linked_incidents || []).map((i: any) => ({ ...i, rel_type: 'incident' })),
-          ...(data?.linked_cases || []).map((c: any) => ({ ...c, rel_type: 'case' })),
-          ...(data?.linked_warrants || []).map((w: any) => ({ ...w, rel_type: 'warrant' })),
-          ...(data?.linked_persons || []).map((p: any) => ({ ...p, rel_type: 'person' })),
+          ...(data?.incidents || []).map((i: any) => ({ ...i, rel_type: 'incident' })),
+          ...(data?.related || []).map((c: any) => ({ ...c, rel_type: 'case' })),
+          ...(data?.warrants || []).map((w: any) => ({ ...w, rel_type: 'warrant' })),
+          ...(data?.persons || []).map((p: any) => ({ ...p, rel_type: 'person' })),
         ];
         setLinks(related);
       })
       .catch(() => setLinks([]))
       .finally(() => setLoading(false));
-  }, [caseId]);
+  }, [caseId, caseFull]);
 
   if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading relationships...</div>;
   if (links.length === 0) return null;
@@ -423,6 +438,10 @@ export default function CaseManagementPage() {
   // Solvability
   const [solvFactors, setSolvFactors] = useState<Record<string, boolean>>({});
   const [solvSubmitting, setSolvSubmitting] = useState(false);
+
+  // Note operations
+  const [noteDeleting, setNoteDeleting] = useState<number | null>(null);
+  const [noteTogglingPin, setNoteTogglingPin] = useState<number | null>(null);
 
   // Status change
   const [statusChanging, setStatusChanging] = useState(false);
@@ -616,6 +635,33 @@ export default function CaseManagementPage() {
     finally { setNoteSubmitting(false); }
   };
 
+  const handleDeleteNote = async (noteId: number) => {
+    if (!selected || !confirm('Delete this note?')) return;
+    setNoteDeleting(noteId);
+    try {
+      await apiFetch(`/cases/${selected.id}/notes/${noteId}`, { method: 'DELETE' });
+      addToast('Note deleted', 'success');
+      fetchNotes(selected.id);
+      fetchFullCase(selected.id);
+    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+    finally { setNoteDeleting(null); }
+  };
+
+  const handleTogglePin = async (note: CaseNote) => {
+    if (!selected) return;
+    setNoteTogglingPin(note.id);
+    try {
+      await apiFetch(`/cases/${selected.id}/notes/${note.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ is_pinned: !note.is_pinned }),
+      });
+      addToast(note.is_pinned ? 'Note unpinned' : 'Note pinned', 'success');
+      fetchNotes(selected.id);
+      fetchFullCase(selected.id);
+    } catch (err: any) { addToast(err.message || 'Toggle failed', 'error'); }
+    finally { setNoteTogglingPin(null); }
+  };
+
   const handleStatusChange = async (newStatus: string) => {
     if (!selected || statusChanging) return;
     // Set the in-flight flag BEFORE the async readiness gate so the buttons
@@ -727,18 +773,15 @@ export default function CaseManagementPage() {
   const handleLinkPerson = async (person: any) => {
     if (!selected) return;
     try {
-      let existing: any[] = [];
-      try { existing = selected.linked_persons ? (typeof selected.linked_persons === 'string' ? JSON.parse(selected.linked_persons) : selected.linked_persons) : []; } catch { existing = []; }
-      const already = existing.some((p: any) => p.id === person.id);
-      if (already) { addToast('Person already linked', 'error'); return; }
-      const updated = [...existing, { id: person.id, first_name: person.first_name, last_name: person.last_name, role: 'involved' }];
-      await apiFetch(`/cases/${selected.id}`, { method: 'PUT', body: JSON.stringify({ linked_persons: updated }) });
+      await apiFetch(`/cases/${selected.id}/persons`, {
+        method: 'POST',
+        body: JSON.stringify({ person_id: person.id, relationship: 'involved' }),
+      });
       addToast(`${person.first_name} ${person.last_name} linked to case`, 'success');
-      const refreshed = await apiFetch<{ data: Case }>(`/cases/${selected.id}`);
-      setSelected(refreshed.data);
       setLinkPersonOpen(false);
       setPersonSearchQuery('');
       setPersonResults([]);
+      fetchFullCase(selected.id);
     } catch (err: any) { addToast(err.message, 'error'); }
   };
 
@@ -1355,12 +1398,36 @@ export default function CaseManagementPage() {
                   </div>
 
                   {notes.map(note => (
-                    <div key={note.id} className="panel-beveled p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-bold text-rmpg-100">{note.author_name || 'Unknown'}</span>
-                        <span className="text-[9px] font-mono text-rmpg-500">
-                          {safeDateTimeStr(note.created_at, '')}
-                        </span>
+                    <div key={note.id} className={`panel-beveled p-3 ${note.is_pinned ? 'border-brand-700/50 bg-brand-900/10' : ''}`}>
+                      <div className="flex items-center justify-between mb-1 gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {note.is_pinned && <span className="text-[8px] font-mono text-brand-400 uppercase">PINNED</span>}
+                          <span className="text-[10px] font-bold text-rmpg-100 truncate">{(note as any).author_full_name || note.author_name || 'Unknown'}</span>
+                          {note.note_type && note.note_type !== 'general' && (
+                            <span className="text-[8px] px-1 border border-rmpg-700 text-rmpg-500 uppercase">{note.note_type}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className="text-[9px] font-mono text-rmpg-500">{safeDateTimeStr(note.created_at, '')}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePin(note)}
+                            disabled={noteTogglingPin === note.id}
+                            title={note.is_pinned ? 'Unpin note' : 'Pin note'}
+                            className={`text-[9px] px-1.5 py-0.5 border transition-colors ${note.is_pinned ? 'border-brand-700/50 text-brand-400 hover:bg-brand-900/30' : 'border-rmpg-700 text-rmpg-500 hover:text-brand-400'}`}
+                          >
+                            {noteTogglingPin === note.id ? <Loader2 className="w-2.5 h-2.5 animate-spin inline" role="status" aria-label="Loading" /> : '📌'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteNote(note.id)}
+                            disabled={noteDeleting === note.id}
+                            title="Delete note"
+                            className="text-[9px] px-1.5 py-0.5 border border-rmpg-700 text-rmpg-500 hover:text-red-400 hover:border-red-700/50 transition-colors"
+                          >
+                            {noteDeleting === note.id ? <Loader2 className="w-2.5 h-2.5 animate-spin inline" role="status" aria-label="Loading" /> : <Trash2 style={{ width: 10, height: 10, display: 'inline' }} />}
+                          </button>
+                        </div>
                       </div>
                       <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{note.content}</div>
                     </div>
@@ -1376,7 +1443,7 @@ export default function CaseManagementPage() {
                   <SolvabilityScoreCard caseId={selected.id} />
 
                   {/* Feature 40: Linked Incidents Relationship Graph */}
-                  <LinkedIncidentsGraph caseId={selected.id} />
+                  <LinkedIncidentsGraph caseId={selected.id} caseFull={caseFull} />
 
                   <div className="panel-beveled p-4">
                     <div className="text-[10px] font-mono text-rmpg-500 uppercase mb-3">Solvability Factors</div>
@@ -1409,10 +1476,25 @@ export default function CaseManagementPage() {
                 </div>
               )}
 
-              {/* File Attachments */}
-              <div className="panel-beveled p-3 bg-surface-base">
-                <FileAttachments entityType="case" entityId={String(selected.id)} />
-              </div>
+              {/* ── Files Tab — dedicated file management ── */}
+              {detailTab === 'files' && (
+                <div className="space-y-3">
+                  <div className="text-[10px] font-mono text-rmpg-500 uppercase">
+                    Case Files &amp; Documents
+                    {caseFull?.counts?.attachments != null && caseFull.counts.attachments > 0 && (
+                      <span className="ml-2 text-brand-400">({caseFull.counts.attachments})</span>
+                    )}
+                  </div>
+                  <FileAttachments entityType="case" entityId={String(selected.id)} />
+                </div>
+              )}
+
+              {/* File Attachments (always visible outside tabs for quick access) */}
+              {detailTab !== 'files' && (
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <FileAttachments entityType="case" entityId={String(selected.id)} />
+                </div>
+              )}
             </div>
           </>
         ) : (

@@ -1190,13 +1190,13 @@ export default function Layout() {
             </div>
 
             {/* Separator */}
-            <div className="hidden lg:block w-px h-7" style={{ background: '#2e2e2e' }} />
+            <div className="hidden lg:block w-px h-7" style={{ background: 'var(--border-default)' }} />
 
             {/* PANIC Button */}
             <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
 
             {/* Vertical separator */}
-            <div className="w-px h-7" style={{ background: '#2e2e2e' }} />
+            <div className="w-px h-7" style={{ background: 'var(--border-default)' }} />
 
             {/* Profile Menu */}
             <div className="relative" ref={profileDropdownRef}>
@@ -1498,7 +1498,7 @@ export default function Layout() {
                           minWidth: 14, height: 14, padding: '0 3px',
                           fontSize: 8, lineHeight: 1,
                           background: '#dc2626', color: '#fff',
-                          borderRadius: 7, border: '1px solid #141414',
+                          borderRadius: 2, border: '1px solid var(--border-subtle)',
                           boxShadow: '0 0 6px rgba(220, 38, 38, 0.5)',
                         }}
                       >

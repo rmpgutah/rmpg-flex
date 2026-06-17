@@ -358,7 +358,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
             left: dropdownPos.left,
             width: '360px',
             maxHeight: '420px',
-            background: '#0a0a0a',
+            background: 'var(--surface-overlay)',
             display: 'flex',
             flexDirection: 'column',
             boxShadow: '0 12px 40px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.3)',

@@ -97,8 +97,8 @@ export default function Force2FASetupModal() {
       <div
         className="w-full max-w-md mx-4 p-6 space-y-5"
         style={{
-          background: '#0a0a0a',
-          border: '1px solid #2b2b2b',
+          background: 'var(--surface-overlay)',
+          border: '1px solid var(--border-default)',
           borderTop: '3px solid #888888',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
@@ -128,9 +128,9 @@ export default function Force2FASetupModal() {
           <div className="space-y-4">
             <div
               className="p-3 text-[10px] space-y-2"
-              style={{ background: 'var(--surface-overlay)', border: '1px solid #242424', color: '#888888' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', color: '#888888' }}
             >
-              <div className="font-bold text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>
+              <div className="font-bold text-[9px] uppercase tracking-wider mb-2 text-rmpg-300">
                 What You'll Need
               </div>
               <div>1. Install <strong className="text-rmpg-100">Google Authenticator</strong> on your phone (iOS or Android)</div>
@@ -167,7 +167,7 @@ export default function Force2FASetupModal() {
             <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
               Step 1: Scan QR Code
             </div>
-            <p className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>
+            <p className="text-[10px] text-rmpg-500">
               Open Google Authenticator and scan this QR code to add your account.
             </p>
 
@@ -185,7 +185,7 @@ export default function Force2FASetupModal() {
             <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#888888' }}>
               Step 2: Enter Verification Code
             </div>
-            <p className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>
+            <p className="text-[10px] text-rmpg-500">
               Enter the 6-digit code shown in Google Authenticator.
             </p>
 
@@ -229,7 +229,7 @@ export default function Force2FASetupModal() {
                   <div
                     key={i}
                     className="text-center font-mono text-xs py-1"
-                    style={{ background: 'var(--surface-overlay)', border: '1px solid #242424', color: 'var(--text-secondary)' }}
+                    style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
                   >
                     {code}
                   </div>
@@ -237,7 +237,7 @@ export default function Force2FASetupModal() {
               </div>
             </div>
 
-            <p className="text-[9px] text-center" style={{ color: 'var(--rmpg-500)' }}>
+            <p className="text-[9px] text-center text-rmpg-500">
               If you lose your phone, use one of these one-time codes to log in.
               Each code can only be used once.
             </p>

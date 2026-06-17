@@ -461,7 +461,7 @@ export default function ConnectionsPage() {
           <input id="ff-connectionspage-0"
             type="text"
             placeholder="Search for a person, vehicle, case, incident..."
-            className="flex-1 bg-surface-raised border border-rmpg-700 px-3 py-2 text-sm text-rmpg-200 placeholder-gray-500 focus:border-[#d4a017] focus:outline-none"
+            className="flex-1 bg-surface-raised border border-rmpg-700 px-3 py-2 text-sm text-rmpg-200 placeholder-rmpg-500 focus:border-[#d4a017] focus:outline-none"
             style={{ borderRadius: 2 }}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
@@ -892,17 +892,17 @@ export default function ConnectionsPage() {
         <div style={{ width: 320, background: 'var(--surface-overlay)', borderLeft: '1px solid var(--border-subtle)', overflowY: 'auto', padding: 8, flexShrink: 0, maxHeight: '100%' }}>
           <div className="text-[9px] font-semibold mb-2" style={{ color: '#e879f9' }}>TIMELINE — {nodes.length} NODES</div>
           {timelineError && <div style={{ color: '#ef4444', fontSize: 11 }}>{timelineError}</div>}
-          {timelineLoading && <div style={{ color: '#555', fontSize: 11 }}>Loading…</div>}
-          {!timelineLoading && timeline.length === 0 && <div style={{ color: '#555', fontSize: 11 }}>No dated events.</div>}
+          {timelineLoading && <div style={{ color: 'var(--rmpg-500)', fontSize: 11 }}>Loading…</div>}
+          {!timelineLoading && timeline.length === 0 && <div style={{ color: 'var(--rmpg-500)', fontSize: 11 }}>No dated events.</div>}
           {timeline.map((ev, i) => {
             return (
               <div key={`${ev.kind}-${ev.id}-${i}`} className="py-[3px]" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <div className="flex items-center gap-2 text-[10px]">
                   <span style={{ color: TIMELINE_KIND_COLOR[ev.kind] || '#888', fontWeight: 700 }}>{ev.kind.toUpperCase()}</span>
-                  <span style={{ color: '#666' }}>{ev.date ? ev.date.slice(0, 10) : '—'}</span>
+                  <span style={{ color: 'var(--rmpg-500)' }}>{ev.date ? ev.date.slice(0, 10) : '—'}</span>
                 </div>
-                <div className="text-[11px]" style={{ color: '#ddd' }}>{ev.title}</div>
-                {ev.subtitle && <div className="text-[10px]" style={{ color: '#777' }}>{ev.subtitle}</div>}
+                <div className="text-[11px]" style={{ color: 'var(--rmpg-200)' }}>{ev.title}</div>
+                {ev.subtitle && <div className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>{ev.subtitle}</div>}
               </div>
             );
           })}

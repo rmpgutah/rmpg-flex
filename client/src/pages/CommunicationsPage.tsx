@@ -732,7 +732,7 @@ export default function CommunicationsPage() {
           <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--surface-raised), #9ca4ad 30%, #9ca4ad 70%, var(--surface-raised))' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
-            <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: 'var(--text-secondary)' }}>Communications Center</h1>
+            <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-300">Communications Center</h1>
             <p className="text-[9px] tracking-wide" style={{ color: 'var(--text-muted)' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>

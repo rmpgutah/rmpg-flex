@@ -26,14 +26,14 @@ function FormSection({ title, icon: Icon, accent, children, className = '' }: Fo
   const railColor = accent ? BADGE_TONES[accent].border : 'rgba(212,160,23,0.45)';
 
   return (
-    <div className={`relative border border-rmpg-700 overflow-hidden ${className}`} style={{ background: '#050505' }}>
+    <div className={`relative border border-rmpg-700 overflow-hidden ${className}`} style={{ background: 'var(--surface-overlay)' }}>
       <div
         className="absolute left-0 top-0 bottom-0 w-[2px] pointer-events-none"
         style={{ background: railColor, boxShadow: accent ? `0 0 6px ${accentGlow}` : undefined }}
       />
       <div
         className="flex items-center gap-2 px-2.5 py-1.5"
-        style={{ background: 'linear-gradient(180deg, #2b2b2b 0%, #1f1f1f 100%)', borderBottom: '1px solid #0c0c0c' }}
+        style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-panel-alt) 100%)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         {Icon && (
           <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: accentColor, filter: `drop-shadow(0 0 3px ${accentGlow})` }} aria-hidden="true" />

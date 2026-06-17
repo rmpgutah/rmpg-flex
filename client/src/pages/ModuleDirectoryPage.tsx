@@ -414,8 +414,8 @@ export default function ModuleDirectoryPage() {
         className="flex-shrink-0 overflow-y-auto py-3"
         style={{
           width: 200,
-          background: '#080808',
-          borderRight: '1px solid #222222',
+          background: 'var(--surface-overlay)',
+          borderRight: '1px solid var(--border-subtle)',
           scrollbarWidth: 'none',
         }}
       >
@@ -594,8 +594,8 @@ export default function ModuleDirectoryPage() {
       <div
         className="flex items-center gap-2 px-3 py-1.5 mb-2 select-none"
         style={{
-          background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
-          borderBottom: '1px solid #222222',
+          background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
+          borderBottom: '1px solid var(--border-subtle)',
         }}
       >
         {Icon && <Icon className="w-3.5 h-3.5 text-rmpg-400" aria-hidden="true" />}
@@ -631,7 +631,7 @@ export default function ModuleDirectoryPage() {
               width: 32,
               height: 32,
               background: 'rgba(136,136,136,0.08)',
-              border: '1px solid #1a1a1a',
+              border: '1px solid var(--border-subtle)',
               position: 'relative',
             }}
           >
@@ -660,7 +660,7 @@ export default function ModuleDirectoryPage() {
               {fn.shortcut && (
                 <span
                   className="text-[8px] font-mono px-1 py-0.5 flex-shrink-0"
-                  style={{ background:"var(--surface-sunken)", border: '1px solid #1a1a1a', color: '#666' }}
+                  style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-subtle)', color: 'var(--rmpg-500)' }}
                 >
                   {fn.shortcut}
                 </span>

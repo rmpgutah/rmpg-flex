@@ -131,7 +131,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
                 <Building2 className="w-3.5 h-3.5 text-rmpg-400 flex-shrink-0" />
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-rmpg-100 font-medium truncate">{link.client_name}</span>
+                    <span className="min-w-0 text-xs text-rmpg-100 font-medium truncate">{link.client_name}</span>
                     {link.is_primary === 1 && (
                       <Star className="w-3 h-3 text-amber-400 flex-shrink-0" />
                     )}
@@ -238,7 +238,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
                 <User className="w-3.5 h-3.5 text-rmpg-400 flex-shrink-0" />
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-rmpg-100 font-medium truncate">
+                    <span className="min-w-0 text-xs text-rmpg-100 font-medium truncate">
                       {link.last_name}, {link.first_name}
                     </span>
                     {link.is_primary === 1 && (

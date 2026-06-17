@@ -32,7 +32,7 @@ export default function OnFootActivityModal({ unit, onClose }: { unit: Unit; onC
         {loading ? <div className="text-[10px] text-rmpg-500">Loading…</div> : rows.length === 0 ? (
           <div className="text-[10px] text-rmpg-500">No on-foot segments recorded.</div>
         ) : (
-          <table className="table-dark w-full">
+          <div className="overflow-x-auto"><table className="table-dark w-full">
             <thead><tr><th>Started</th><th>Duration</th><th>Distance</th><th>Peak</th></tr></thead>
             <tbody>
               {rows.map((s) => (
@@ -44,7 +44,7 @@ export default function OnFootActivityModal({ unit, onClose }: { unit: Unit; onC
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
     </div>

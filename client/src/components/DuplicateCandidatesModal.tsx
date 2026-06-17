@@ -69,7 +69,7 @@ export default function DuplicateCandidatesModal({
       >
         <div
           className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
-          style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}
+          style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}
         >
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-400" />

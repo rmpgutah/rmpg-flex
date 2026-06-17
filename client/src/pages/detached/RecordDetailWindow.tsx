@@ -158,7 +158,7 @@ export default function RecordDetailWindow() {
             Incident History ({incidents.length})
           </h3>
           {incidents.length > 0 ? (
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto"><table className="w-full text-sm">
               <thead>
                 <tr className="text-[10px] text-rmpg-400 uppercase">
                   <th className="text-left pb-2">Case #</th>
@@ -181,7 +181,7 @@ export default function RecordDetailWindow() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           ) : (
             <p className="text-xs text-rmpg-500">No incidents on record</p>
           )}
@@ -274,7 +274,7 @@ export default function RecordDetailWindow() {
           Incident History ({incidents.length})
         </h3>
         {incidents.length > 0 ? (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="text-[10px] text-rmpg-400 uppercase">
                 <th className="text-left pb-2">Case #</th>
@@ -297,7 +297,7 @@ export default function RecordDetailWindow() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         ) : (
           <p className="text-xs text-rmpg-500">No incidents on record</p>
         )}
