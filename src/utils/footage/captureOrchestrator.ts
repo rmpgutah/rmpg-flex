@@ -151,7 +151,7 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
       const key = `${R2_PREFIX}${ch.asset_id}/${ch.request_id}/${ch.seq}_${ch.channel}.mp4`;
       const resp = await fetch(st.accessUrl, { signal: AbortSignal.timeout(5 * 60_000) });
       if (resp.ok && resp.body) {
-        const ct = st.contentType || resp.headers.get('content-type') || 'video/mp4';
+        const ct = 'video/mp4';
         const put = await env.UPLOADS.put(key, resp.body, { httpMetadata: { contentType: ct } });
         const bytes = put?.size ?? parseInt(resp.headers.get('content-length') || '0', 10);
         const alpr = ch.channel === 'inside' ? 'skipped' : 'pending';
