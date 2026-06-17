@@ -5,6 +5,7 @@
 
 import React, { Component, type ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { CHUNK_RELOAD_KEY, CHUNK_RELOAD_WINDOW_MS, isChunkLoadError } from '../utils/chunkRetry';
 
 interface Props {
   children: ReactNode;
@@ -32,26 +33,14 @@ export default class ErrorBoundary extends Component<Props, State> {
     console.error('[ErrorBoundary] Uncaught error:', error, info.componentStack);
 
     // Auto-reload on stale chunk errors (happens after deploys when cached JS
-    // references old chunks). Match the full vocabulary of dynamic-import
-    // failures across engines: Chrome's "Failed to fetch dynamically imported
-    // module", webpack's "ChunkLoadError"/"Loading chunk", the MIME rejection
-    // ("expected a JavaScript-or-Wasm module script" / "Failed to load module
-    // script"), and our own lazyRetry sentinel ("Chunk load failed"). This is
-    // a safety net — lazyRetry normally reloads before the boundary is hit.
-    const msg = (error.message || '').toLowerCase();
-    if (
-      msg.includes('failed to fetch dynamically imported module') ||
-      msg.includes('chunkloaderror') ||
-      msg.includes('loading chunk') ||
-      msg.includes('failed to load module script') ||
-      msg.includes('expected a javascript-or-wasm module') ||
-      msg.includes('chunk load failed')
-    ) {
-      const reloadKey = 'rmpg_chunk_reload';
-      const lastReload = sessionStorage.getItem(reloadKey);
-      // Only auto-reload once per session to prevent infinite loops
-      if (!lastReload || Date.now() - parseInt(lastReload) > 30000) {
-        sessionStorage.setItem(reloadKey, String(Date.now()));
+    // references old chunks). This is a safety net — lazyRetry normally reloads
+    // before the boundary is hit. Uses the same key/window as chunkRetry.ts so
+    // the two guards are always in sync (avoids duplicate hardcoded strings).
+    if (isChunkLoadError(error)) {
+      const lastReload = sessionStorage.getItem(CHUNK_RELOAD_KEY);
+      const lastAt = lastReload ? parseInt(lastReload, 10) : null;
+      if (lastAt === null || Number.isNaN(lastAt) || Date.now() - lastAt > CHUNK_RELOAD_WINDOW_MS) {
+        sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
         window.location.reload();
         return;
       }
@@ -79,6 +68,9 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   handleReload = () => {
+    // Clear the chunk-reload guard so the fresh load can auto-retry if chunks
+    // still fail (e.g. during a multi-minute CF Pages propagation window).
+    try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* private mode */ }
     window.location.reload();
   };
 

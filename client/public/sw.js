@@ -666,6 +666,11 @@
 // v993: Full-drive clip playback — fix 401 on <video> src; auth middleware
 //       now accepts ?token=<jwt> on /full-drive/clip/* paths; client appends
 //       JWT from localStorage to all streamUrl values before passing to <video>.
+// v996: ErrorBoundary chunk-reload guard — import shared CHUNK_RELOAD_KEY/
+//       CHUNK_RELOAD_WINDOW_MS/isChunkLoadError from chunkRetry.ts (was
+//       duplicated hardcoded strings); handleReload clears the guard key so
+//       a manual "Reload Page" click resets the anti-loop timer, allowing
+//       auto-retry on the fresh load during CF Pages propagation windows.
 // v995: FlexCam chunk stream — force Content-Type video/mp4 (was
 //       application/octet-stream from ClearPath, breaking video playback).
 // v994: Dashcam AI full-footage upgrade — event clips always download to R2
