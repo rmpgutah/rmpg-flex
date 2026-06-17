@@ -174,7 +174,7 @@ function DataTable<T>({
       aria-label={ariaLabel ? `${ariaLabel} region` : undefined}
       style={{ borderRadius: '2px' }}
     >
-      <table className={tableClass} aria-label={ariaLabel}>
+      <div className="overflow-x-auto"><table className={tableClass} aria-label={ariaLabel}>
         <thead className={spillman ? '' : 'sticky top-0 z-10'}>
           <tr
             className={spillman ? '' : 'border-b border-rmpg-600'}
@@ -263,7 +263,7 @@ function DataTable<T>({
             })
           )}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

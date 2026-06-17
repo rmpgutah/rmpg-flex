@@ -216,7 +216,7 @@ export default React.memo(function UnitStatusBoard({
 
   return (
     <div className="overflow-auto scrollbar-dark">
-      <table className="table-dark" aria-label="Unit status board">
+      <div className="overflow-x-auto"><table className="table-dark" aria-label="Unit status board">
         <thead>
           <tr>
             <th>Unit</th>
@@ -401,7 +401,7 @@ export default React.memo(function UnitStatusBoard({
             </tr>
           )}
         </tbody>
-      </table>
+      </table></div>
       {footUnit && <OnFootActivityModal unit={footUnit} onClose={() => setFootUnit(null)} />}
     </div>
   );

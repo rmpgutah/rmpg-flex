@@ -57,7 +57,7 @@ export default function IntelReportsPage() {
         ))}
       </div>
 
-      <table className="w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
+      <div className="overflow-x-auto"><table className="w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ color: '#888', textAlign: 'left' }}>
             <th className="py-[3px] font-semibold text-[9px]">NUMBER</th>
@@ -85,7 +85,7 @@ export default function IntelReportsPage() {
             <tr><td colSpan={6} className="py-3 text-center" style={{ color: '#555' }}>No reports.</td></tr>
           )}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

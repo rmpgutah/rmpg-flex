@@ -97,7 +97,7 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
           {investigators.length === 0 ? (
             <div className="text-[10px] text-rmpg-500 py-2">No open cases</div>
           ) : (
-            <table className="w-full text-[10px]">
+            <div className="overflow-x-auto"><table className="w-full text-[10px]">
               <thead>
                 <tr className="border-b border-rmpg-700">
                   <th className="text-left text-[8px] font-mono text-rmpg-500 uppercase py-[3px]">Investigator</th>
@@ -114,7 +114,7 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       </div>

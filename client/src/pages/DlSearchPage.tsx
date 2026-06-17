@@ -1261,7 +1261,7 @@ export default function DlSearchPage() {
                   No scans logged yet — every ID scan will appear here.
                 </div>
               ) : (
-                <table className="w-full text-left">
+                <div className="overflow-x-auto"><table className="w-full text-left">
                   <thead className="sticky top-0 bg-surface-sunken">
                     <tr className="text-[8px] text-rmpg-500 uppercase font-semibold">
                       <th className="px-3 py-[3px]">When</th>
@@ -1300,7 +1300,7 @@ export default function DlSearchPage() {
                       );
                     })}
                   </tbody>
-                </table>
+                </table></div>
               )}
             </div>
           </div>
@@ -1779,7 +1779,7 @@ export default function DlSearchPage() {
                   </button>
                   {showFullReadout && (
                     <div className="border-t border-border-subtle max-h-72 overflow-y-auto">
-                      <table className="w-full text-left">
+                      <div className="overflow-x-auto"><table className="w-full text-left">
                         <thead>
                           <tr className="text-[8px] text-rmpg-500 uppercase font-semibold">
                             <th className="px-2 py-[3px] w-10">Code</th>
@@ -1801,7 +1801,7 @@ export default function DlSearchPage() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                      </table></div>
                     </div>
                   )}
                 </div>

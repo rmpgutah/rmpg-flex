@@ -243,7 +243,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
               </div>
 
               <div className="panel-beveled bg-surface-sunken overflow-auto max-h-[40vh]">
-                <table className="w-full text-[10px] font-mono">
+                <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
                   <thead className="bg-surface-raised sticky top-0">
                     <tr className="text-left text-[9px] uppercase text-rmpg-500">
                       <th className="px-2 py-1">Row</th>
@@ -299,7 +299,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
                       );
                     })}
                   </tbody>
-                </table>
+                </table></div>
               </div>
             </div>
           )}

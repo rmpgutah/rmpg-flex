@@ -107,7 +107,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
           {/* Confidence Meter */}
           {analysis.confidence != null && (
             <div>
-              <label className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--rmpg-500)' }}>
+              <label className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-1 text-rmpg-500">
                 <span>Confidence</span>
                 <span className="font-mono tabular-nums">{Math.round(analysis.confidence)}%</span>
               </label>

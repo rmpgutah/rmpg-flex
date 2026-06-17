@@ -620,7 +620,7 @@ function CurrentTripPanel({
                 </span>
                 <span className="text-[9px] uppercase" style={{ color: '#888' }}>to arrival</span>
               </div>
-              <span className="text-[11px] font-mono tabular-nums" style={{ color: 'var(--text-secondary)' }}>
+              <span className="text-[11px] font-mono tabular-nums text-rmpg-300">
                 ETA {etaView.clock}
               </span>
             </div>
@@ -630,13 +630,13 @@ function CurrentTripPanel({
           <div className="space-y-1 text-[10px] font-mono">
             <div className="flex justify-between">
               <span className="text-rmpg-500">Start</span>
-              <span style={{ color: 'var(--text-secondary)' }}>
+              <span className="text-rmpg-300">
                 {trip.start_location || (trip.start_lat != null ? `${trip.start_lat.toFixed(4)}, ${trip.start_lng?.toFixed(4) ?? ''}` : '—')}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-rmpg-500">Time</span>
-              <span style={{ color: 'var(--text-secondary)' }}>{trip.start_time}</span>
+              <span className="text-rmpg-300">{trip.start_time}</span>
             </div>
             {trip.vehicle_number && (
               <div className="flex justify-between">
@@ -655,7 +655,7 @@ function CurrentTripPanel({
             {trip.route_points && Array.isArray(trip.route_points) && (
               <div className="flex justify-between">
                 <span className="text-rmpg-500">Breadcrumbs</span>
-                <span style={{ color: 'var(--text-secondary)' }}>{trip.route_points.length} points</span>
+                <span className="text-rmpg-300">{trip.route_points.length} points</span>
               </div>
             )}
           </div>
@@ -713,20 +713,20 @@ function CurrentTripPanel({
           </div>
           <div className="flex justify-between">
             <span className="text-rmpg-500">Position</span>
-            <span style={{ color: 'var(--text-secondary)' }}>
+            <span className="text-rmpg-300">
               {gps.latitude ? `${gps.latitude.toFixed(5)}, ${gps.longitude?.toFixed(5)}` : 'No fix'}
             </span>
           </div>
           {gps.speed != null && (
             <div className="flex justify-between">
               <span className="text-rmpg-500">Speed</span>
-              <span style={{ color: 'var(--text-secondary)' }}>{Math.round(gps.speed * 2.237)} mph</span>
+              <span className="text-rmpg-300">{Math.round(gps.speed * 2.237)} mph</span>
             </div>
           )}
           {detection.loginPosition && (
             <div className="flex justify-between">
               <span className="text-rmpg-500">Login</span>
-              <span style={{ color: 'var(--text-secondary)' }}>
+              <span className="text-rmpg-300">
                 {detection.loginPosition.lat.toFixed(4)}, {detection.loginPosition.lng.toFixed(4)}
               </span>
             </div>
@@ -876,7 +876,7 @@ function HistoryPanel({
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_COLOR[trip.status] || '#6b7280' }} />
-                <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                <span className="text-[11px] font-semibold text-rmpg-300">
                   {formatDistance(trip.distance_miles)}
                 </span>
                 <span className="text-[9px] font-mono" style={{ color: STATUS_COLOR[trip.status] || '#6b7280' }}>
@@ -889,17 +889,17 @@ function HistoryPanel({
             <div className="grid grid-cols-3 gap-2 text-[9px] font-mono">
               <div>
                 <span className="text-rmpg-500">Duration</span>
-                <div style={{ color: 'var(--text-secondary)' }}>{formatDuration(trip.duration_seconds)}</div>
+                <div className="text-rmpg-300">{formatDuration(trip.duration_seconds)}</div>
               </div>
               <div>
                 <span className="text-rmpg-500">Max Speed</span>
-                <div style={{ color: 'var(--text-secondary)' }}>
+                <div className="text-rmpg-300">
                   {trip.max_speed_mph ? `${Math.round(trip.max_speed_mph)} mph` : '--'}
                 </div>
               </div>
               <div>
                 <span className="text-rmpg-500">Type</span>
-                <div style={{ color: 'var(--text-secondary)' }}>{trip.detected_by === 'auto' ? 'Auto' : 'Manual'}</div>
+                <div className="text-rmpg-300">{trip.detected_by === 'auto' ? 'Auto' : 'Manual'}</div>
               </div>
             </div>
 

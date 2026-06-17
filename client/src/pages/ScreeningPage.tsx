@@ -112,7 +112,7 @@ export function ScreeningWorkspace() {
             </div>
           ))}
           {loading ? <div className="text-[#888] text-[11px]">Searching…</div> : (
-            <table className="w-full text-[11px]">
+            <div className="overflow-x-auto"><table className="w-full text-[11px]">
               <thead><tr className="text-[9px] text-[#888]"><th className="text-left py-[3px]">NAME</th><th className="text-left">SOURCE</th><th className="text-left">SUMMARY</th><th className="text-left">COUNTRY</th><th className="text-left">DOB</th></tr></thead>
               <tbody>
                 {results.map((r) => (
@@ -130,13 +130,13 @@ export function ScreeningWorkspace() {
                   </td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       )}
 
       {tab === 'review' && (
-        <table className="w-full text-[11px]">
+        <div className="overflow-x-auto"><table className="w-full text-[11px]">
           <thead><tr className="text-[9px] text-[#888]"><th className="text-left py-[3px]">PERSON</th><th className="text-left">SOURCE</th><th className="text-left">MATCH</th><th className="text-left">FIELDS</th><th /></tr></thead>
           <tbody>
             {hits.map((h) => (
@@ -155,7 +155,7 @@ export function ScreeningWorkspace() {
             ))}
             {!hits.length && <tr><td colSpan={5} className="text-[#888] py-2">No pending hits.</td></tr>}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {tab === 'watchlist' && <WatchlistTab />}
@@ -169,7 +169,7 @@ function WatchlistTab() {
   const load = useCallback(() => { apiFetch<{ data: Record<string, unknown>[] }>('/screening/watchlist').then((r) => setRows(r.data ?? [])).catch(() => setRows([])); }, []);
   useEffect(load, [load]);
   return (
-    <table className="w-full text-[11px]">
+    <div className="overflow-x-auto"><table className="w-full text-[11px]">
       <thead><tr className="text-[9px] text-[#888]"><th className="text-left py-[3px]">PERSON</th><th className="text-left">SCOPE</th><th className="text-left">REASON</th></tr></thead>
       <tbody>
         {rows.map((r) => (
@@ -180,7 +180,7 @@ function WatchlistTab() {
         ))}
         {!rows.length && <tr><td colSpan={3} className="text-[#888] py-2">No dedicated watch entries (intel-watchlist persons are also screened).</td></tr>}
       </tbody>
-    </table>
+    </table></div>
   );
 }
 
@@ -239,7 +239,7 @@ function SourcesTab({ sources }: { sources: SourceInfo[] }) {
           <div className="text-[#888] text-[9px]">New sources scrape immediately, then re-scrape on their interval (default 180d ≈ 6 months).</div>
         </div>
       </div>
-      <table className="w-full">
+      <div className="overflow-x-auto"><table className="w-full">
         <thead><tr className="text-[9px] text-[#888]">
           <th className="text-left py-[3px]">SOURCE</th><th className="text-left">ENABLED</th>
           <th className="text-left">INTERVAL</th><th className="text-left">LAST RUN</th>
@@ -273,7 +273,7 @@ function SourcesTab({ sources }: { sources: SourceInfo[] }) {
             );
           })}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

@@ -36,7 +36,7 @@ export default function SecurityStatusCard() {
   if (loading) {
     return (
       <div className="panel-beveled p-4 flex items-center justify-center" style={{ background:"var(--surface-sunken)" }}>
-        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: 'var(--rmpg-500)' }} />
+        <RefreshCw className="w-4 h-4 animate-spin text-rmpg-500" />
       </div>
     );
   }
@@ -131,7 +131,7 @@ export default function SecurityStatusCard() {
         {items.map(item => (
           <div key={item.label} className="flex items-center gap-3 px-3 py-2">
             <span className={ledClass(item.led)} />
-            <div className="flex-shrink-0" style={{ color: 'var(--rmpg-500)' }}>
+            <div className="flex-shrink-0 text-rmpg-500">
               {item.icon}
             </div>
             <div className="flex-1 min-w-0">
@@ -140,7 +140,7 @@ export default function SecurityStatusCard() {
               </span>
             </div>
             <div className="text-right flex-shrink-0">
-              <span className="text-[11px] font-mono" style={{ color: 'var(--text-secondary)' }}>
+              <span className="text-[11px] font-mono text-rmpg-300">
                 {item.value}
               </span>
               {item.detail && (

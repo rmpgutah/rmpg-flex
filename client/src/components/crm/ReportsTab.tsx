@@ -266,7 +266,7 @@ export default function ReportsTab() {
           <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-3 flex items-center gap-1">
             <Target className="w-3.5 h-3.5" /> Lead Source ROI
           </div>
-          <table className="w-full">
+          <div className="overflow-x-auto"><table className="w-full">
             <thead>
               <tr className="border-b border-rmpg-700">
                 <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left">Source</th>
@@ -296,7 +296,7 @@ export default function ReportsTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 

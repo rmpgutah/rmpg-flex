@@ -134,7 +134,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
           <RefreshCw style={{ width: 11, height: 11 }} />
         </button>
       </div>
-      <table className="w-full text-[10px] mb-6" aria-label="Active sessions">
+      <div className="overflow-x-auto"><table className="w-full text-[10px] mb-6" aria-label="Active sessions">
         <thead>
           <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider sticky top-0 z-10 border-b border-border-default" style={{ background: 'var(--surface-overlay)' }}>
             <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">User</th>
@@ -192,7 +192,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
             </td></tr>
           )}
         </tbody>
-      </table>
+      </table></div>
 
       {/* Login History */}
       <div className="flex items-center gap-2 mb-2 border-b border-border-default pb-1.5">

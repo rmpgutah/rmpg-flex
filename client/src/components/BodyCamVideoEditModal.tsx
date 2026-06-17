@@ -109,7 +109,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={onClose}>
       <div
-        className="bg-surface-base border border-rmpg-700 rounded-lg shadow-2xl w-[520px] max-h-[90vh] overflow-y-auto"
+        className="bg-surface-base border border-rmpg-700 rounded-sm shadow-2xl w-[520px] max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

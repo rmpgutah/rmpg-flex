@@ -41,7 +41,7 @@ export default function BillingReviewTab() {
       </div>
       {msg && <div className="text-[11px] text-[#d4a017]">{msg}</div>}
       {loading ? <div className="text-[11px] text-[#888]">Loading…</div> : (
-        <table className="w-full text-[11px]">
+        <div className="overflow-x-auto"><table className="w-full text-[11px]">
           <thead>
             <tr className="text-left text-[9px] font-semibold text-[#888] border-b border-border-default">
               <th className="py-[3px]">JOB</th><th>CLIENT/CONTRACT</th><th>LINES</th><th>SUBTOTAL</th><th></th>
@@ -68,7 +68,7 @@ export default function BillingReviewTab() {
             ))}
             {charges.length === 0 && <tr><td colSpan={5} className="text-[#888] py-2">Nothing awaiting review.</td></tr>}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   );

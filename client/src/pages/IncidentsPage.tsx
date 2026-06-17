@@ -1003,7 +1003,7 @@ export default function IncidentsPage() {
       {/* Table / Loading / Error */}
       <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
         {loading ? (
-          <table className="table-dark">
+          <div className="overflow-x-auto"><table className="table-dark">
             <thead className="sticky top-0 z-10">
               <tr>
                 <th>IR #</th><th>Type</th><th>Priority</th><th>Status</th>{!isMobile && <th>Location</th>}{!isMobile && <th>Officer</th>}<th>Date</th>
@@ -1012,7 +1012,7 @@ export default function IncidentsPage() {
             <tbody>
               {Array.from({ length: 8 }).map((_, i) => <TableRowSkeleton key={i} cols={isMobile ? 5 : 7} />)}
             </tbody>
-          </table>
+          </table></div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <AlertTriangle className="w-6 h-6 text-red-500/60" />
@@ -1022,7 +1022,7 @@ export default function IncidentsPage() {
             </button>
           </div>
         ) : (
-          <table className="table-dark">
+          <div className="overflow-x-auto"><table className="table-dark">
             <thead className="sticky top-0 z-10">
               <tr>
                 <th className="cursor-pointer select-none" onClick={() => handleSort('incident_number')}>
@@ -1114,7 +1114,7 @@ export default function IncidentsPage() {
                 </tr>
               )}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
     </div>

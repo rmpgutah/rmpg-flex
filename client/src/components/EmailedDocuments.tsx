@@ -50,7 +50,7 @@ export default function EmailedDocuments({ recordType, recordId, title = 'Emaile
       ) : items.length === 0 ? (
         <div className="px-3 py-2 text-rmpg-500 text-[11px] italic">No documents emailed from this record yet.</div>
       ) : (
-        <table className="w-full text-[11px]">
+        <div className="overflow-x-auto"><table className="w-full text-[11px]">
           <thead>
             <tr className="text-rmpg-400 text-[9px] uppercase border-b border-border-default">
               <th className="text-left px-3 py-[3px] font-semibold">When</th>
@@ -76,7 +76,7 @@ export default function EmailedDocuments({ recordType, recordId, title = 'Emaile
               );
             })}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   );

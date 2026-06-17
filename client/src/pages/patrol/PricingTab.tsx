@@ -25,7 +25,7 @@ export default function PricingTab() {
       <PanelTitleBar title="PROCESS SERVICE PRICING" icon={DollarSign} />
       <p className="text-[10px] text-[#888]">Dynamic rate card. Edits apply to NEW charges only — existing charges keep their snapshotted amounts.</p>
       {loading ? <div className="text-[11px] text-[#888]">Loading…</div> : (
-        <table className="w-full text-[11px]">
+        <div className="overflow-x-auto"><table className="w-full text-[11px]">
           <thead>
             <tr className="text-left text-[9px] font-semibold text-[#888] border-b border-border-default">
               <th className="py-[3px]">CODE</th><th>LABEL</th><th>UNIT</th><th>AMOUNT</th>
@@ -54,7 +54,7 @@ export default function PricingTab() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   );

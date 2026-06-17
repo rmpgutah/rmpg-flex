@@ -149,7 +149,7 @@ export default function ResetPasswordPage() {
                   </div>
                   <h2 className="text-sm font-bold text-rmpg-100 mb-1">Set New Password</h2>
                   {username && (
-                    <p className="text-[10px] font-mono" style={{ color: 'var(--rmpg-500)' }}>
+                    <p className="text-[10px] font-mono text-rmpg-500">
                       @{username}
                     </p>
                   )}
@@ -182,8 +182,7 @@ export default function ResetPasswordPage() {
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm"
-                        style={{ color: 'var(--rmpg-500)' }}
+                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm text-rmpg-500"
                         onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
@@ -284,8 +283,7 @@ export default function ResetPasswordPage() {
             <div className="mt-4 pt-3" style={{ borderTop: '1px solid #2b2b2b' }}>
               <a
                 href="/login"
-                className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm py-1"
-                style={{ color: 'var(--rmpg-500)' }}
+                                className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm py-1 text-rmpg-500"
                 onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
               >

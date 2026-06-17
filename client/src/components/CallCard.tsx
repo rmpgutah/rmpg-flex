@@ -481,7 +481,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       {/* 40: Location with improved pin icon color — coords hidden (redundant with address) */}
       <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-1">
         <MapPin className="w-3 h-3 flex-shrink-0 text-rmpg-500" aria-hidden="true" />
-        <div className="truncate">
+        <div className="min-w-0 truncate">
           <span className="truncate">{formatAddressDisplay(call.location)}</span>
           {/* Enhancement 28: Show property name below address */}
           {call.property_name && (
@@ -489,7 +489,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           )}
           {/* Client/requestor company name */}
           {(call.client_name || (call as any).pso_requestor_name) && (
-            <div className="text-[9px] text-brand-400 truncate flex items-center gap-0.5">
+            <div className="text-[9px] text-brand-400 min-w-0 truncate flex items-center gap-0.5">
               <Globe className="w-2.5 h-2.5 flex-shrink-0" />
               {call.client_name || (call as any).pso_requestor_name}
             </div>

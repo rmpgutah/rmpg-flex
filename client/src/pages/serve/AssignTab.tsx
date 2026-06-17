@@ -60,7 +60,7 @@ export default function AssignTab() {
             </div>
           )}
         </div>
-        <table className="w-full text-[11px]">
+        <div className="overflow-x-auto"><table className="w-full text-[11px]">
           <thead><tr className="text-left text-[9px] text-[#888] border-b border-border-default"><th className="py-[3px]">☐</th><th>Defendant</th><th>Address</th><th>Deadline</th><th>Flags</th></tr></thead>
           <tbody>
             {jobs.map((j) => (
@@ -74,7 +74,7 @@ export default function AssignTab() {
             ))}
             {jobs.length === 0 && <tr><td colSpan={5} className="text-[#888] py-2">No jobs.</td></tr>}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   );

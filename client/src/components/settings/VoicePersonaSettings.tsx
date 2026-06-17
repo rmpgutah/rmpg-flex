@@ -172,7 +172,7 @@ export default function VoicePersonaSettings() {
             {persona.brainEnabled ? 'Enabled' : 'Disabled'}
           </button>
         </div>
-        <p className="text-[10px] mt-1" style={{ color: 'var(--rmpg-500)' }}>
+        <p className="text-[10px] mt-1 text-rmpg-500">
           When off, no coaching or event-driven speech. New calls & alerts still announce as usual.
         </p>
       </div>

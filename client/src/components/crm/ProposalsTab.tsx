@@ -263,7 +263,7 @@ export default function ProposalsTab() {
               No proposals found
             </div>
           ) : (
-            <table className="w-full">
+            <div className="overflow-x-auto"><table className="w-full">
               <thead>
                 <tr className="bg-surface-sunken border-b border-rmpg-700 sticky top-0 z-10">
                   <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left">Proposal #</th>
@@ -302,7 +302,7 @@ export default function ProposalsTab() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
 

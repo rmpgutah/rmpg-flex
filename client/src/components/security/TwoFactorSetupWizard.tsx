@@ -120,10 +120,10 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
               <Shield className="w-5 h-5" style={{ color: '#d4a017' }} />
             </div>
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
                 Enable Two-Factor Authentication
               </h3>
-              <p className="text-[10px] mt-0.5" style={{ color: 'var(--rmpg-500)' }}>
+              <p className="text-[10px] mt-0.5 text-rmpg-500">
                 Add an extra layer of security to your account
               </p>
             </div>
@@ -194,7 +194,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
               className="flex items-center gap-2 p-2 font-mono text-xs"
               style={{ background: 'var(--surface-overlay)', border: '1px solid #2b2b2b' }}
             >
-              <span className="flex-1 tracking-widest text-center" style={{ color: 'var(--text-secondary)' }}>
+              <span className="flex-1 tracking-widest text-center text-rmpg-300">
                 {manualKey}
               </span>
               <button type="button" onClick={copyManualKey} className="toolbar-btn p-1">
@@ -286,10 +286,10 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
               <Shield className="w-8 h-8" style={{ color: '#22c55e' }} />
             </div>
           </div>
-          <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
             Setup Complete
           </h3>
-          <p className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>
+          <p className="text-[10px] text-rmpg-500">
             Your account is now protected with two-factor authentication.
           </p>
         </div>

@@ -222,7 +222,7 @@ function FeatureDetailPanel({
 
       {/* Properties */}
       <div className="overflow-y-auto flex-1 px-3 py-2">
-        <table className="w-full" style={{ borderCollapse: 'collapse' }}>
+        <div className="overflow-x-auto"><table className="w-full" style={{ borderCollapse: 'collapse' }}>
           <tbody>
             {entries.map(([key, val]) => (
               <tr key={key} style={{ borderBottom: '1px solid #111' }}>
@@ -241,7 +241,7 @@ function FeatureDetailPanel({
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   );
@@ -565,7 +565,7 @@ export default function GeoDataViewerPage() {
                   <span className="text-[11px]" style={{ color: '#555' }}>No features loaded</span>
                 </div>
               ) : (
-                <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'auto' }}>
+                <div className="overflow-x-auto"><table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'auto' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid #1a1a1a', background:"var(--surface-sunken)", position: 'sticky', top: 0, zIndex: 1 }}>
                       <th
@@ -645,7 +645,7 @@ export default function GeoDataViewerPage() {
                       );
                     })}
                   </tbody>
-                </table>
+                </table></div>
               )}
             </div>
           </div>

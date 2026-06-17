@@ -180,7 +180,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
           {!data?.open_calls.length ? (
             <p className="text-rmpg-400 text-xs font-mono py-2 text-center">No open calls</p>
           ) : (
-            <table className="w-full text-xs font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-xs font-mono">
               <thead>
                 <tr className="text-rmpg-400 text-left border-b border-rmpg-600/40">
                   <th className="pb-1 pr-2">Call #</th>
@@ -201,7 +201,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       </div>

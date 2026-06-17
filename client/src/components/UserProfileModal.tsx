@@ -598,7 +598,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               {user.badge_number && <span className="mr-2">{user.badge_number}</span>}
               <span className="uppercase">{toDisplayLabel(user.role)}</span>
             </div>
-            <div className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>
+            <div className="text-[10px] text-rmpg-500">
               {user.email}
             </div>
           </div>
@@ -759,7 +759,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       }}
                     >
                       <Upload style={{ width: 16, height: 16, margin: '0 auto 4px', color: 'var(--rmpg-500)' }} />
-                      <div className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>
+                      <div className="text-[10px] text-rmpg-500">
                         {imageUploading ? 'Uploading...' : 'Drop image here or click to browse'}
                       </div>
                       <div className="text-[9px] mt-0.5" style={{ color: '#3a3a3a' }}>
@@ -770,8 +770,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <button type="button"
                         onClick={handleRemoveProfileImage}
                         disabled={imageUploading}
-                        className="flex items-center gap-1 text-[10px] px-2 py-1 hover:text-red-400 transition-colors"
-                        style={{ color: 'var(--rmpg-500)' }}
+                                                className="flex items-center gap-1 text-[10px] px-2 py-1 hover:text-red-400 transition-colors text-rmpg-500"
                       >
                         <Trash2 style={{ width: 10, height: 10 }} />
                         Remove photo
@@ -825,8 +824,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <button
                     type="button"
                     onClick={() => setShowCurrentPw(!showCurrentPw)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2"
-                    style={{ color: 'var(--rmpg-500)' }}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500"
                   >
                     {showCurrentPw ? <EyeOff style={{ width: 13, height: 13 }} /> : <Eye style={{ width: 13, height: 13 }} />}
                   </button>
@@ -844,8 +842,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <button
                     type="button"
                     onClick={() => setShowNewPw(!showNewPw)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2"
-                    style={{ color: 'var(--rmpg-500)' }}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500"
                   >
                     {showNewPw ? <EyeOff style={{ width: 13, height: 13 }} /> : <Eye style={{ width: 13, height: 13 }} />}
                   </button>
@@ -895,7 +892,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
           {activeTab === 'preferences' && (
             <>
               {!prefsLoaded ? (
-                <div className="text-xs text-center py-4" style={{ color: 'var(--rmpg-500)' }}>Loading preferences...</div>
+                <div className="text-xs text-center py-4 text-rmpg-500">Loading preferences...</div>
               ) : prefs ? (
                 <>
                   {/* Notification Preferences */}
@@ -925,7 +922,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                                 onChange={e => setPrefs({ ...prefs, [`notify_${key}_inapp`]: e.target.checked ? 1 : 0 })}
                                 className="w-3 h-3"
                               />
-                              <span className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>In-App</span>
+                              <span className="text-[9px] text-rmpg-500">In-App</span>
                             </label>
                             <label className="flex items-center gap-1 cursor-pointer">
                               <input id="ff-userprofilemodal-9"
@@ -934,7 +931,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                                 onChange={e => setPrefs({ ...prefs, [`notify_${key}_email`]: e.target.checked ? 1 : 0 })}
                                 className="w-3 h-3"
                               />
-                              <span className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>Email</span>
+                              <span className="text-[9px] text-rmpg-500">Email</span>
                             </label>
                           </div>
                         </div>
@@ -1054,7 +1051,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                             onChange={e => setPrefs({ ...prefs, font_scale: parseFloat(e.target.value) })}
                             className="w-24 h-1"
                           />
-                          <span className="text-[10px] font-mono w-8 text-right" style={{ color: 'var(--rmpg-500)' }}>
+                          <span className="text-[10px] font-mono w-8 text-right text-rmpg-500">
                             {(prefs.font_scale * 100).toFixed(0)}%
                           </span>
                         </div>
@@ -1141,8 +1138,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                           setPrefsMsg({ type: 'error', text: 'Failed to reset preferences.' });
                         }
                       }}
-                      className="flex items-center gap-1 text-[10px] px-2 py-1 transition-colors"
-                      style={{ color: 'var(--rmpg-500)' }}
+                                            className="flex items-center gap-1 text-[10px] px-2 py-1 transition-colors text-rmpg-500"
                     >
                       <RotateCcw style={{ width: 10, height: 10 }} />
                       Reset to Defaults
@@ -1174,7 +1170,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   </div>
                 </>
               ) : (
-                <div className="text-xs text-center py-4" style={{ color: 'var(--rmpg-500)' }}>Failed to load preferences</div>
+                <div className="text-xs text-center py-4 text-rmpg-500">Failed to load preferences</div>
               )}
             </>
           )}
@@ -1220,7 +1216,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <div className="text-xs font-bold" style={{ color: totpStatus?.enabled ? '#4ade80' : '#ef7a7a' }}>
                     {totpStatus?.enabled ? 'Two-Factor Authentication Enabled' : 'Two-Factor Authentication Disabled'}
                   </div>
-                  <div className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
+                  <div className="text-[9px] text-rmpg-500">
                     {totpStatus?.enabled
                       ? 'Your account is protected with authenticator app verification.'
                       : totpStatus?.required
@@ -1265,7 +1261,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
                     Step 1: Scan QR Code
                   </div>
-                  <p className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>
+                  <p className="text-[10px] text-rmpg-500">
                     Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
                   </p>
                   <div className="flex justify-center py-2">
@@ -1281,7 +1277,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#888888' }}>
                     Step 2: Enter Verification Code
                   </div>
-                  <p className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>
+                  <p className="text-[10px] text-rmpg-500">
                     Enter the 6-digit code from your authenticator app to verify setup.
                   </p>
                   <TotpCodeInput
@@ -1300,8 +1296,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <button
                     type="button"
                     onClick={() => { setSetupStep('idle'); setSecurityMsg(null); }}
-                    className="text-[10px] uppercase tracking-wide font-bold transition-colors"
-                    style={{ color: 'var(--rmpg-500)' }}
+                                        className="text-[10px] uppercase tracking-wide font-bold transition-colors text-rmpg-500"
                     onMouseEnter={e => { e.currentTarget.style.color = '#aaaaaa'; }}
                     onMouseLeave={e => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                   >
@@ -1329,7 +1324,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
                     Confirm Disable
                   </div>
-                  <p className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>
+                  <p className="text-[10px] text-rmpg-500">
                     Enter your password to confirm disabling two-factor authentication.
                   </p>
                   <input id="ff-userprofilemodal-21"
@@ -1392,7 +1387,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 Active Sessions
               </div>
               {sessions.length === 0 ? (
-                <div className="text-xs text-center py-4" style={{ color: 'var(--rmpg-500)' }}>No active sessions</div>
+                <div className="text-xs text-center py-4 text-rmpg-500">No active sessions</div>
               ) : (
                 <div className="space-y-2">
                   {sessions.map((session: any) => (
@@ -1405,10 +1400,10 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         <div className="text-[11px] text-rmpg-100 font-mono">
                           {session.ip_address}
                         </div>
-                        <div className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
+                        <div className="text-[9px] text-rmpg-500">
                           {session.user_agent?.substring(0, 60)}...
                         </div>
-                        <div className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
+                        <div className="text-[9px] text-rmpg-500">
                           Last used: {(session.last_used_at || session.created_at) ? parseTimestamp(session.last_used_at || session.created_at).toLocaleString() : 'N/A'}
                         </div>
                       </div>
@@ -1442,7 +1437,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         <div className="flex items-center gap-2 text-[11px]">
                           <span className="led-dot led-green" />
                           <span style={{ color: '#22c55e' }}>2FA is enabled</span>
-                          <span className="text-[9px] ml-auto font-mono" style={{ color: 'var(--rmpg-500)' }}>
+                          <span className="text-[9px] ml-auto font-mono text-rmpg-500">
                             {tfaStatus.backupCodesRemaining} backup codes left
                           </span>
                         </div>

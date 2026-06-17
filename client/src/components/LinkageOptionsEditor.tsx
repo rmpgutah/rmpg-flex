@@ -70,7 +70,7 @@ export default function LinkageOptionsEditor() {
         ))}
       </div>
       {error && <p className="text-[10px] text-red-400">{error}</p>}
-      <table className="w-full text-xs">
+      <div className="overflow-x-auto"><table className="w-full text-xs">
         <thead><tr className="text-brand-gold-500 text-[9px] uppercase"><th className="text-left py-[3px]">Label</th><th className="text-left">Value</th><th>Sort</th><th>Active</th><th></th></tr></thead>
         <tbody>
           {catRows.map((r) => (
@@ -83,7 +83,7 @@ export default function LinkageOptionsEditor() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       <div className="flex items-end gap-2 pt-2 border-t border-rmpg-700">
         <div><label className="text-[9px] text-brand-gold-500">New label</label><input className="input-dark text-xs" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="Co-Signer" /></div>
         <div><label className="text-[9px] text-brand-gold-500">Value (slug)</label><input className="input-dark text-xs" value={newValue} onChange={(e) => setNewValue(e.target.value)} placeholder="co_signer" /></div>

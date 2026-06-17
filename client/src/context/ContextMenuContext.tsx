@@ -238,7 +238,7 @@ function MenuLevel({ items, onCloseAll, onCloseLevel, autoFocus }: MenuLevelProp
               {item.icon !== undefined && (
                 <span className="w-3.5 h-3.5 flex items-center justify-center shrink-0">{item.icon}</span>
               )}
-              <span className="flex-1 truncate">{item.label}</span>
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
               {item.hint && <span className="text-[9px] text-rmpg-500 ml-2 shrink-0">{item.hint}</span>}
               {hasSub && <ChevronRight size={12} className="ml-1 shrink-0 text-rmpg-500" />}
             </button>

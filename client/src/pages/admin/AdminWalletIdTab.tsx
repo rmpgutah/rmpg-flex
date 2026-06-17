@@ -94,7 +94,7 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
       ) : visible.length === 0 ? (
         <div className="text-[11px] text-rmpg-500">No officer IDs match.</div>
       ) : (
-        <table className="w-full text-left">
+        <div className="overflow-x-auto"><table className="w-full text-left">
           <thead>
             <tr className="text-[9px] font-semibold text-[#888] uppercase border-b border-border-default">
               <th className="py-[3px] pr-2">Officer</th>
@@ -142,7 +142,7 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
               );
             })}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       <ConfirmDialog

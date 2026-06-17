@@ -203,7 +203,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Vehicles by Cost" icon={Gauge} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Vehicle</th>
@@ -229,7 +229,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={6} className="text-center text-[10px] text-rmpg-500 py-4">No fills in this window</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -237,7 +237,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Top Stations" icon={MapPin} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Station</th>
@@ -259,7 +259,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={4} className="text-center text-[10px] text-rmpg-500 py-4">No stations recorded</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -267,7 +267,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Drivers" icon={Users} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Driver</th>
@@ -296,7 +296,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={6} className="text-center text-[10px] text-rmpg-500 py-4">No driver attribution recorded yet</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -304,7 +304,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Fuel Cards — Monthly Spend" icon={CreditCard} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Card</th>
@@ -341,7 +341,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={5} className="text-center text-[10px] text-rmpg-500 py-4">No fuel cards configured</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 

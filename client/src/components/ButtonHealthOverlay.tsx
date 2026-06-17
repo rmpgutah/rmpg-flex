@@ -179,7 +179,7 @@ export default function ButtonHealthOverlay() {
                     </span>{' '}
                     <strong>{e.label}</strong>
                   </div>
-                  <div style={{ color: 'var(--rmpg-400)' }}>covered by: {e.interceptor}</div>
+                  <div className="text-rmpg-400">covered by: {e.interceptor}</div>
                   <div style={{ color: '#6b7280', fontSize: 11 }}>{e.interceptorStyle}</div>
                 </div>
               ))}

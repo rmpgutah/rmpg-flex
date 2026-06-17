@@ -606,7 +606,7 @@ export default function AIDevChatPanel() {
           {/* Streaming message */}
           {isStreaming && (
             <div className="flex gap-3 justify-start">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center flex-shrink-0 shadow-lg shadow-gray-500/20">
+              <div className="w-8 h-8 rounded-sm bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center flex-shrink-0 shadow-lg shadow-gray-500/20">
                 <Bot className={`w-4.5 h-4.5 text-rmpg-100 ${!streamingContent ? 'animate-pulse' : ''}`} />
               </div>
               <div className="max-w-[80%]">

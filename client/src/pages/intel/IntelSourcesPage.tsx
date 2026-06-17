@@ -43,7 +43,7 @@ export default function IntelSourcesPage() {
         <button onClick={create} style={{ background: '#d4a017', color: '#000', borderRadius: 2, padding: '4px 10px', fontSize: 11, fontWeight: 600 }}>+ ADD SOURCE</button>
       </div>
 
-      <table className="w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
+      <div className="overflow-x-auto"><table className="w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
         <thead><tr style={{ color: '#888', textAlign: 'left' }}>
           <th className="py-[3px] text-[9px] font-semibold">CODE</th>
           <th className="py-[3px] text-[9px] font-semibold">TYPE</th>
@@ -63,7 +63,7 @@ export default function IntelSourcesPage() {
           ))}
           {!rows.length && <tr><td colSpan={5} className="py-3 text-center" style={{ color: '#555' }}>No sources.</td></tr>}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

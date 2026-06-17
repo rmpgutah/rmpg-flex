@@ -87,7 +87,7 @@ export default function AICommandCenterPanel({ providerStatus, activeProvider, s
             return (
               <div
                 key={name}
-                className={`px-3 py-2.5 border rounded-lg ${
+                className={`px-3 py-2.5 border rounded-sm ${
                   isActive && activeProvider === name
                     ? 'border-brand-500/50 bg-brand-900/10'
                     : 'border-border-default bg-surface-sunken'

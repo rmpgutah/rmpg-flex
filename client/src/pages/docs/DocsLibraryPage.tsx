@@ -61,7 +61,7 @@ export default function DocsLibraryPage() {
       ) : items.length === 0 ? (
         <div className="text-rmpg-500 text-xs py-8 text-center">No documents. Create one to get started.</div>
       ) : (
-        <table className="w-full text-left">
+        <div className="overflow-x-auto"><table className="w-full text-left">
           <thead>
             <tr className="text-[9px] uppercase tracking-wider text-[#888] border-b border-border-default">
               <th className="py-[3px] font-semibold">Title</th>
@@ -80,7 +80,7 @@ export default function DocsLibraryPage() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {openId != null && (
