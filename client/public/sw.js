@@ -656,6 +656,22 @@
 //       (descriptor/address/labels) set to light-medium grey (#b8b8b8) via new
 //       TEXT_SUBHEAD_INVERTED token; primary titles stay white. Section headers
 //       keep their text+underline style (unchanged).
+// v991: Full-drive footage — extend on-demand chunk TTL from 30 min → 12 h;
+//       widen poll window to catch chunks that land outside the initial window.
+// v992: Full-drive UI — detect trips with 0 clips downloaded (was wrongly
+//       showing green "Ready"); add per-trip Retry button and job-level
+//       "Retry All Failed Trips" button; fix updated_at column bug in retry
+//       endpoint (cpg_drive_job_trips has no updated_at); bulk-reset missing
+//       chunks back to pending_request so cron re-downloads them.
+// v993: Full-drive clip playback — fix 401 on <video> src; auth middleware
+//       now accepts ?token=<jwt> on /full-drive/clip/* paths; client appends
+//       JWT from localStorage to all streamUrl values before passing to <video>.
+// v994: Dashcam AI full-footage upgrade — event clips always download to R2
+//       on first play (fire-and-forget waitUntil) so they survive pre-signed
+//       URL expiry; GET /driving-events/:id/media now prefers the full-drive
+//       chunk covering the event timestamp over the short AI clip; response
+//       includes footage_request_id so ForensicDashcamPlayer can show a
+//       "▶ Full Trip" link into the FlexCam trip viewer.
 // Stamped at build time by the stamp-sw-version Vite plugin (vite.config.ts)
 // with the git short SHA → 'rmpg-flex-<sha>'. Dev server serves 'rmpg-flex-BUILD'.
 const CACHE_NAME = 'rmpg-flex-BUILD';
