@@ -666,6 +666,12 @@
 // v993: Full-drive clip playback — fix 401 on <video> src; auth middleware
 //       now accepts ?token=<jwt> on /full-drive/clip/* paths; client appends
 //       JWT from localStorage to all streamUrl values before passing to <video>.
+// v1003: FlexCam repair — POST /flexcam/footage/:id/repair resets missing chunks
+//        back to pending_request and reopens request to fulfilling so the cron can
+//        retry. REPAIR button surfaces on partial trips in FlexCamPage (list) and
+//        FlexCamFootagePage (player evidence bar). Fixes Rules-of-Hooks violation:
+//        keyboard-shortcut useEffect was declared after early returns (triggered
+//        "rendered more hooks" crash when error/loading state changed).
 // v1002: FlexCam enhanced player — skip ±10s buttons, speed toggle (0.25–2×),
 //        keyboard shortcuts panel (?), CAPTURE FRAME button (canvas burn + evidence
 //        stamp JPEG download), video HUD overlays (live timestamp / REC / rate /

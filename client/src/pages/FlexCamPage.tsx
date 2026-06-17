@@ -3,7 +3,7 @@
 // auto-refresh while any request is still downloading.
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
-  CheckCircle2, Clock, Download, FileText, Lock, Play, RefreshCw, Shield, Video,
+  AlertTriangle, CheckCircle2, Clock, Download, FileText, Lock, Play, RefreshCw, Shield, Video, Wrench,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -63,6 +63,8 @@ export default function FlexCamPage() {
   const [custodyLoading, setCustodyLoading] = useState<Record<number, boolean>>({});
   const [pkgResult, setPkgResult] = useState<Record<number, string>>({});
   const [pkgLoading, setPkgLoading] = useState<Record<number, boolean>>({});
+  const [repairResult, setRepairResult] = useState<Record<number, string>>({});
+  const [repairLoading, setRepairLoading] = useState<Record<number, boolean>>({});
   const refsReqs = useRef(reqs);
   refsReqs.current = reqs;
 
@@ -119,6 +121,24 @@ export default function FlexCamPage() {
         }));
       })
       .finally(() => setPkgLoading((p) => ({ ...p, [req.id]: false })));
+  }
+
+  function repairRequest(req: Req) {
+    if (repairLoading[req.id]) return;
+    setRepairLoading((p) => ({ ...p, [req.id]: true }));
+    setRepairResult((p) => ({ ...p, [req.id]: '' }));
+    apiFetch<{ repaired: number; message: string }>(`/flexcam/footage/${req.id}/repair`, { method: 'POST' })
+      .then((res) => {
+        setRepairResult((p) => ({ ...p, [req.id]: `✓ ${res.message}` }));
+        setTimeout(() => fetchReqs(true), 2000);
+      })
+      .catch((e: Error & { status?: number }) => {
+        setRepairResult((p) => ({
+          ...p,
+          [req.id]: e.status === 409 ? 'Locked — unlock first.' : `Error: ${e.message}`,
+        }));
+      })
+      .finally(() => setRepairLoading((p) => ({ ...p, [req.id]: false })));
   }
 
   // ── Summary counts ───────────────────────────────────────
@@ -206,6 +226,17 @@ export default function FlexCamPage() {
                     className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2.5 py-1.5 bg-blue-900/40 border border-blue-700/60 text-blue-300 hover:bg-blue-800/50 transition-colors">
                     <Play className="w-2.5 h-2.5" />PLAY
                   </a>
+                  {/* REPAIR — visible on partial trips or stuck fulfilling */}
+                  {(r.status === 'partial' || (r.status === 'fulfilling' && r.chunks_done < r.chunk_count)) && !r.evidence_locked && (
+                    <button
+                      onClick={() => repairRequest(r)}
+                      disabled={repairLoading[r.id]}
+                      title="Reset missing chunks and retry download"
+                      className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2.5 py-1.5 border border-amber-700/60 text-amber-400 hover:bg-amber-900/20 transition-colors disabled:opacity-40">
+                      <Wrench className="w-2.5 h-2.5" />
+                      {repairLoading[r.id] ? '…' : 'REPAIR'}
+                    </button>
+                  )}
                   <button
                     onClick={() => toggleCustody(r.id)}
                     disabled={custodyLoading[r.id]}
@@ -239,7 +270,14 @@ export default function FlexCamPage() {
                   </button>
                 </div>
 
-                {/* Court pkg result */}
+                {/* Repair / court pkg results */}
+                {repairResult[r.id] && (
+                  <div className={`text-[9px] font-mono px-2 py-1 border flex items-start gap-1.5 ${
+                    repairResult[r.id].startsWith('✓') ? 'text-emerald-400 border-emerald-900 bg-emerald-900/10' : 'text-amber-400 border-amber-900 bg-amber-900/10'}`}>
+                    {!repairResult[r.id].startsWith('✓') && <AlertTriangle className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />}
+                    {repairResult[r.id]}
+                  </div>
+                )}
                 {pkgResult[r.id] && (
                   <div className={`text-[9px] font-mono px-2 py-1 border ${
                     pkgResult[r.id].startsWith('✓') ? 'text-emerald-400 border-emerald-900 bg-emerald-900/10' : 'text-amber-400 border-amber-900 bg-amber-900/10'}`}>

@@ -242,6 +242,41 @@ flexcam.delete('/footage/:id', async (c): Promise<Response> => {
   return c.json({ success: true });
 });
 
+// Repair a stuck/partial request: reset missing chunks → pending_request and
+// reopen the request → fulfilling so the next cron tick can retry them.
+// Evidence-locked requests are not affected.
+flexcam.post('/footage/:id/repair', async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  const row = await queryFirst<{ status: string; evidence_locked: number }>(db,
+    'SELECT status, COALESCE(evidence_locked,0) AS evidence_locked FROM footage_requests WHERE id=?', id).catch(() => null);
+  if (!row) return c.json({ error: 'Not found' }, 404);
+  if (row.evidence_locked) return c.json({ error: 'Locked as evidence — cannot repair' }, 409);
+
+  // Count how many chunks are stuck in a non-retryable state.
+  const counts = await queryFirst<{ missing: number; pending: number }>(db,
+    `SELECT SUM(CASE WHEN status='missing' THEN 1 ELSE 0 END) AS missing,
+            SUM(CASE WHEN status IN ('pending_request','requested') THEN 1 ELSE 0 END) AS pending
+     FROM footage_chunks WHERE request_id=?`, id).catch(() => null);
+
+  const missing = counts?.missing ?? 0;
+  if (!missing && row.status !== 'partial' && row.status !== 'fulfilling') {
+    return c.json({ repaired: 0, message: 'Nothing to repair' });
+  }
+
+  // Reset missing chunks back to the request queue.
+  const r = await execute(db,
+    `UPDATE footage_chunks SET status='pending_request', attempts=0, updated_at=datetime('now')
+     WHERE request_id=? AND status='missing'`, id).catch(() => null);
+  const repaired = r?.meta.changes ?? 0;
+
+  // Reopen the request so the cron's close-query doesn't immediately re-close it.
+  await execute(db,
+    `UPDATE footage_requests SET status='fulfilling', updated_at=datetime('now') WHERE id=?`, id).catch(() => {});
+
+  return c.json({ repaired, message: `Reset ${repaired} chunk(s) to pending — cron will retry shortly` });
+});
+
 // Timeline markers for a request (event tags + turn pins). ?rebuild=1 re-derives
 // from the live ClearPath events + GPS track for the window.
 flexcam.get('/footage/:id/markers', async (c): Promise<Response> => {
