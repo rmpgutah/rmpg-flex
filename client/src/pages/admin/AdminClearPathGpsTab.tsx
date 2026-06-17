@@ -174,6 +174,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const [playingTrip, setPlayingTrip] = useState<{ requestId: number; label: string } | null>(null);
   const [tripClips, setTripClips] = useState<TripClip[]>([]);
   const [currentClipIdx, setCurrentClipIdx] = useState(0);
+  const [tickNow, setTickNow] = useState(Date.now());
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
@@ -579,9 +580,16 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   useEffect(() => {
     if (!activeJobId) return;
     pollJobStatus(activeJobId);
-    const t = setInterval(() => pollJobStatus(activeJobId), 30_000);
+    const t = setInterval(() => pollJobStatus(activeJobId), 10_000);
     return () => clearInterval(t);
   }, [activeJobId, pollJobStatus]);
+
+  // 1-second tick so ETA countdown animates without re-polling the API.
+  useEffect(() => {
+    if (!activeJobId || jobStatus?.status === 'done') return;
+    const t = setInterval(() => setTickNow(Date.now()), 1_000);
+    return () => clearInterval(t);
+  }, [activeJobId, jobStatus?.status]);
 
   // ── Load trip clips for playback ──
   const handlePlayTrip = async (requestId: number, label: string) => {
@@ -1303,57 +1311,98 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               {fullDriveError && <p className="text-[10px] text-red-400">{fullDriveError}</p>}
 
               {/* Job progress */}
-              {jobStatus && (
+              {jobStatus && (() => {
+                const totalPct = jobStatus.clips_requested > 0
+                  ? Math.round((jobStatus.clips_ready / jobStatus.clips_requested) * 100)
+                  : 0;
+                const elapsed = tickNow - Date.parse(jobStatus.created_at);
+                const rate = elapsed > 0 && jobStatus.clips_ready > 0
+                  ? jobStatus.clips_ready / elapsed  // clips per ms
+                  : 0;
+                const remaining = jobStatus.clips_requested - jobStatus.clips_ready;
+                const etaMs = rate > 0 ? remaining / rate : 0;
+                const etaStr = (() => {
+                  if (jobStatus.status === 'done') return 'Complete';
+                  if (!rate || remaining <= 0) return 'Calculating…';
+                  const s = Math.round(etaMs / 1000);
+                  if (s < 60) return `~${s}s remaining`;
+                  const m = Math.floor(s / 60);
+                  const rs = s % 60;
+                  return rs > 0 ? `~${m}m ${rs}s remaining` : `~${m}m remaining`;
+                })();
+                return (
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-purple-300 font-bold uppercase tracking-wider">
-                      {jobStatus.trip_count} Trip{jobStatus.trip_count !== 1 ? 's' : ''} Detected
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-rmpg-400">
-                        {jobStatus.clips_ready}/{jobStatus.clips_requested} clips ready
+                  {/* Total progress header */}
+                  <div className="border border-purple-600/30 bg-purple-900/20 p-2 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-purple-200 font-bold uppercase tracking-wider">
+                        {jobStatus.trip_count} Trip{jobStatus.trip_count !== 1 ? 's' : ''} · Total Download
                       </span>
-                      {jobStatus.status !== 'done' && (
-                        <span className="text-[10px] text-yellow-400 animate-pulse">Processing…</span>
-                      )}
                       <button type="button"
                         onClick={() => { setActiveJobId(null); setJobStatus(null); }}
                         className="text-rmpg-500 hover:text-rmpg-300 transition-colors">
                         <XIcon className="w-3 h-3" />
                       </button>
                     </div>
+                    {/* Big total progress bar */}
+                    <div className="h-2.5 bg-surface-sunken rounded-full overflow-hidden">
+                      <div className="h-full bg-purple-500 transition-all duration-1000"
+                        style={{ width: `${totalPct}%` }} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-purple-300">{totalPct}%</span>
+                      <span className="text-[10px] text-rmpg-400">
+                        {jobStatus.clips_ready} / {jobStatus.clips_requested} clips
+                      </span>
+                      <span className={`text-[10px] font-bold ${jobStatus.status === 'done' ? 'text-green-400' : 'text-yellow-400'}`}>
+                        {etaStr}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Trip cards */}
                   {jobStatus.trips.map((trip) => {
-                    const pct = trip.chunk_count > 0
-                      ? Math.round(((trip.chunks_done + trip.chunks_missing) / trip.chunk_count) * 100)
-                      : 0;
+                    const settled = trip.chunks_done + trip.chunks_missing;
+                    const pct = trip.chunk_count > 0 ? Math.round((settled / trip.chunk_count) * 100) : 0;
                     const ready = trip.status === 'done' || trip.status === 'partial';
                     const durationMin = Math.round((trip.to_ts - trip.from_ts) / 60_000);
+                    const tripRemaining = trip.chunk_count - settled;
+                    const tripEta = (() => {
+                      if (ready) return null;
+                      if (!rate || tripRemaining <= 0) return null;
+                      const s = Math.round((tripRemaining / rate) / 1000);
+                      if (s < 60) return `~${s}s`;
+                      return `~${Math.ceil(s / 60)}m`;
+                    })();
                     return (
-                      <div key={trip.id} className="border border-purple-700/20 bg-purple-950/30 p-2 space-y-1.5">
+                      <div key={trip.id} className="border border-purple-700/20 bg-purple-950/30 p-2 space-y-1">
                         <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <p className="text-[10px] font-bold text-purple-200">{trip.label}</p>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-bold text-purple-200 truncate">{trip.label}</p>
                             <p className="text-[9px] text-rmpg-500">
-                              {durationMin} min · {trip.chunks_done} clips ready
-                              {trip.chunks_missing > 0 ? ` · ${trip.chunks_missing} gaps (engine off)` : ''}
+                              {durationMin > 0 ? `${durationMin} min · ` : ''}
+                              {trip.chunks_done}/{trip.chunk_count} clips
+                              {trip.chunks_missing > 0 ? ` · ${trip.chunks_missing} gaps` : ''}
+                              {tripEta ? <span className="text-yellow-500 ml-1">· {tripEta}</span> : null}
+                              {ready ? <span className="text-green-400 ml-1">· Ready</span> : null}
                             </p>
                           </div>
-                          {ready && trip.footage_request_id && (
-                            <button type="button"
-                              onClick={() => handlePlayTrip(trip.footage_request_id!, trip.label)}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase
-                                         bg-green-800/60 hover:bg-green-700/60 border border-green-600/40 text-green-300
-                                         transition-colors">
-                              <Play className="w-2.5 h-2.5" /> Play Trip
-                            </button>
-                          )}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[9px] font-bold text-purple-400 w-7 text-right">{pct}%</span>
+                            {ready && trip.footage_request_id && (
+                              <button type="button"
+                                onClick={() => handlePlayTrip(trip.footage_request_id!, trip.label)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase
+                                           bg-green-800/60 hover:bg-green-700/60 border border-green-600/40 text-green-300
+                                           transition-colors">
+                                <Play className="w-2.5 h-2.5" /> Play
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        {/* Progress bar */}
                         <div className="h-1 bg-surface-sunken rounded-full overflow-hidden">
-                          <div className="h-full bg-purple-500 transition-all duration-500"
+                          <div
+                            className={`h-full transition-all duration-1000 ${ready ? 'bg-green-500' : 'bg-purple-500'}`}
                             style={{ width: `${pct}%` }} />
                         </div>
                       </div>
@@ -1365,7 +1414,8 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                     Start another full drive
                   </button>
                 </div>
-              )}
+                );
+              })()}
 
               {/* Trip video player */}
               {playingTrip && (
