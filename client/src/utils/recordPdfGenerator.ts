@@ -686,10 +686,10 @@ export interface CallPdfData {
   // Linked vehicles (from call_vehicles join)
   linked_vehicles?: { role: string; plate_number?: string; plate_state?: string; year?: number; color?: string; make?: string; model?: string; vin?: string; owner_first_name?: string; owner_last_name?: string; stolen_status?: string }[];
   attachment_images?: PdfImage[];
-  // GPS breadcrumb trail
+  // GPS breadcrumb trail — field names match gps.ts TrailPointRow / TRAIL_POINT_SELECT
   breadcrumb_trail?: {
-    points: { lat: number; lng: number; timestamp: string; speed_mph?: number; source?: string }[];
-    stats: {
+    points: { lat: number; lng: number; time: string; speed: number | null; status: string | null; call_type: string | null; road_name: string | null; intersection: string | null; call_sign?: string | null }[];
+    stats?: {
       total_distance_miles: number;
       duration_minutes: number;
       avg_speed_mph: number;
@@ -3048,21 +3048,23 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = checkPageBreak(doc, y, 30, prio);
     const sec = openAutoSection(doc, 'GPS Activity Log', y); y = sec.contentY;
     const stats = trail.stats;
-    y = addThreeColumnFields(doc, [
-      { label: 'Total Distance', value: `${stats.total_distance_miles} mi` },
-      { label: 'Duration', value: `${stats.duration_minutes} min` },
-      { label: 'Avg Speed', value: `${stats.avg_speed_mph} mph` },
-      { label: 'Max Speed', value: `${stats.max_speed_mph} mph` },
-      { label: 'Breadcrumb Points', value: String(stats.total_points) },
-      { label: 'Sources', value: stats.source_breakdown
-        ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
-        : '' },
-    ], y);
-    y += SPACING.SM;
+    if (stats) {
+      y = addThreeColumnFields(doc, [
+        { label: 'Total Distance', value: `${stats.total_distance_miles} mi` },
+        { label: 'Duration', value: `${stats.duration_minutes} min` },
+        { label: 'Avg Speed', value: `${stats.avg_speed_mph} mph` },
+        { label: 'Max Speed', value: `${stats.max_speed_mph} mph` },
+        { label: 'Breadcrumb Points', value: String(stats.total_points) },
+        { label: 'Sources', value: stats.source_breakdown
+          ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
+          : '' },
+      ], y);
+      y += SPACING.SM;
+    }
 
     const maxRows = 50;
     const step = trail.points.length > maxRows ? Math.ceil(trail.points.length / maxRows) : 1;
-    const sampled = trail.points.filter((_: any, i: number) => i % step === 0 || i === trail.points.length - 1);
+    const sampled = trail.points.filter((_, i) => i % step === 0 || i === trail.points.length - 1);
 
     const colPositions = [lx, LAYOUT.PAGE_MARGIN + 38, LAYOUT.PAGE_MARGIN + 100, LAYOUT.PAGE_MARGIN + 130, LAYOUT.PAGE_MARGIN + 155];
     const tableHeaders = [
@@ -3072,7 +3074,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'SOURCE', x: colPositions[3] },
       { label: 'UNIT', x: colPositions[4] },
     ];
-    const tableRows = sampled.map((p: any) => {
+    const tableRows = sampled.map((p) => {
       let timeStr = '';
       try {
         timeStr = parseTimestamp(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
@@ -3083,13 +3085,14 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       let locationStr = (latN != null && lngN != null) ? `${latN.toFixed(5)}, ${lngN.toFixed(5)}` : '—';
       if (p.road_name) {
         locationStr = p.road_name;
-        if (p.nearest_intersection) locationStr += ` / ${p.nearest_intersection}`;
+        if (p.intersection) locationStr += ` / ${p.intersection}`;
       }
+      const speedMph = p.speed != null ? Math.round(p.speed * 2.237) : null;
       return [
         timeStr,
         locationStr,
-        p.speed_mph != null ? `${p.speed_mph} mph` : '-',
-        (p.source || 'unknown').toUpperCase(),
+        speedMph != null ? `${speedMph} mph` : '-',
+        (p.status || p.call_type || 'unknown').toUpperCase(),
         p.call_sign || '',
       ];
     });
