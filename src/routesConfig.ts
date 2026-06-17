@@ -152,6 +152,7 @@ import firecrawlTools from './routes/firecrawlTools';
 import webResearch from './routes/webResearch';
 import pdfEngine from './routes/pdfEngine';
 import dar from './routes/dar';
+import reanalysis from './routes/reanalysis';
 import evidence from './routes/evidence';
 import codeEnforcement from './routes/codeEnforcement';
 import weather from './routes/weather';
@@ -293,6 +294,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/welfare', router: welfare, auth: 'required' },
 
   // ── Admin / personnel / presence ───────────────────────────
+  { prefix: '/api/admin/reanalysis', router: reanalysis, auth: 'required',
+    note: 'Footage backfill, ALPR confidence correction, analytics replay. All endpoints require admin role (enforced per-route).' },
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
   { prefix: '/api/admin/link-options', router: linkOptionsAdmin, auth: 'required' },
