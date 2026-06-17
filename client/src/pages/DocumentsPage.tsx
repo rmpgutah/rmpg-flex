@@ -55,10 +55,11 @@ export default function DocumentsPage() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'date' | 'type'>('name');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [dragOver, setDragOver] = useState(false);
+  const [windowDragOver, setWindowDragOver] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<Array<{ name: string; done: boolean; error: boolean }>>([]);
   const [filterType, setFilterType] = useState<string | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
-  const dropZoneRef = React.useRef<HTMLDivElement>(null);
+  const dragCounterRef = React.useRef(0);
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
 
   // ── Right-click context menu ──
@@ -67,44 +68,6 @@ export default function DocumentsPage() {
 
   // Clear selection when navigating
   useEffect(() => { setSelectedFiles(new Set()); }, [currentFolderId]);
-
-  const handleFileUpload = async (fileList: FileList) => {
-    if (!fileList.length) return;
-    setUploading(true);
-    const token = localStorage.getItem('rmpg_token');
-    let successCount = 0;
-    for (const file of Array.from(fileList)) {
-      const formData = new FormData();
-      formData.append('files', file);
-      if (currentFolderId) {
-        formData.append('entity_type', 'document_folder');
-        formData.append('entity_id', String(currentFolderId));
-      }
-      try {
-        const resp = await fetch('/api/uploads', {
-          method: 'POST',
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-          body: formData,
-        });
-        if (resp.ok) {
-          const results = await resp.json();
-          // Link the uploaded file to the current folder
-          if (currentFolderId && results?.[0]?.file_id) {
-            await apiFetch(`/documents/folders/${currentFolderId}/move-file`, {
-              method: 'POST',
-              body: JSON.stringify({ file_id: results[0].file_id }),
-            }).catch(() => {});
-          }
-          successCount++;
-        }
-      } catch { /* continue with next file */ }
-    }
-    setUploading(false);
-    if (successCount > 0) {
-      addToast(`${successCount} file${successCount > 1 ? 's' : ''} uploaded`, 'success');
-      fetchContents(currentFolderId);
-    }
-  };
 
   const fetchContents = useCallback(async (folderId: number | null) => {
     setLoading(true);
@@ -121,6 +84,52 @@ export default function DocumentsPage() {
   }, [addToast]);
 
   useEffect(() => { fetchContents(currentFolderId); }, [currentFolderId, fetchContents]);
+
+  const handleFileUpload = useCallback(async (fileList: FileList) => {
+    if (!fileList.length) return;
+    setUploading(true);
+    const items = Array.from(fileList);
+    setUploadProgress(items.map(f => ({ name: f.name, done: false, error: false })));
+    const token = localStorage.getItem('rmpg_token');
+    let successCount = 0;
+    for (let i = 0; i < items.length; i++) {
+      const file = items[i];
+      const formData = new FormData();
+      formData.append('files', file);
+      if (currentFolderId) {
+        formData.append('entity_type', 'document_folder');
+        formData.append('entity_id', String(currentFolderId));
+      }
+      try {
+        const resp = await fetch('/api/uploads', {
+          method: 'POST',
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+          body: formData,
+        });
+        if (resp.ok) {
+          const results = await resp.json();
+          if (currentFolderId && results?.[0]?.file_id) {
+            await apiFetch(`/documents/folders/${currentFolderId}/move-file`, {
+              method: 'POST',
+              body: JSON.stringify({ file_id: results[0].file_id }),
+            }).catch(() => {});
+          }
+          successCount++;
+          setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true } : p));
+        } else {
+          setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true, error: true } : p));
+        }
+      } catch {
+        setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true, error: true } : p));
+      }
+    }
+    setUploading(false);
+    if (successCount > 0) {
+      addToast(`${successCount} file${successCount > 1 ? 's' : ''} uploaded`, 'success');
+      fetchContents(currentFolderId);
+    }
+    setTimeout(() => setUploadProgress([]), 3000);
+  }, [currentFolderId, addToast, fetchContents]);
 
   const navigateTo = (folderId: number | null) => {
     setCurrentFolderId(folderId);
@@ -200,13 +209,36 @@ export default function DocumentsPage() {
     else setSelectedFiles(new Set(filteredFiles.map(f => f.file_id)));
   };
 
-  // Drag and drop onto file area
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); };
-  const handleDragLeave = () => setDragOver(false);
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault(); e.stopPropagation(); setDragOver(false);
-    if (e.dataTransfer.files.length > 0) handleFileUpload(e.dataTransfer.files);
-  };
+  // Window-level drag-and-drop: counter ref prevents child-element flicker
+  useEffect(() => {
+    const onEnter = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes('Files')) return;
+      e.preventDefault();
+      dragCounterRef.current++;
+      setWindowDragOver(true);
+    };
+    const onLeave = () => {
+      dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+      if (dragCounterRef.current === 0) setWindowDragOver(false);
+    };
+    const onOver = (e: DragEvent) => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault(); };
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setWindowDragOver(false);
+      if (e.dataTransfer?.files.length) handleFileUpload(e.dataTransfer.files);
+    };
+    window.addEventListener('dragenter', onEnter);
+    window.addEventListener('dragleave', onLeave);
+    window.addEventListener('dragover', onOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragenter', onEnter);
+      window.removeEventListener('dragleave', onLeave);
+      window.removeEventListener('dragover', onOver);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, [handleFileUpload]);
 
   // Storage stats
   const storageStats = React.useMemo(() => {
@@ -396,13 +428,7 @@ export default function DocumentsPage() {
       </div>
 
       {/* Content */}
-      <div ref={dropZoneRef} className={`flex-1 overflow-auto p-4 transition-colors ${dragOver ? 'bg-brand-900/10 ring-2 ring-brand-500/50 ring-inset' : ''}`}
-        onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
-        {dragOver && (
-          <div className="flex items-center justify-center py-8 mb-4 border-2 border-dashed border-brand-500/50 bg-brand-900/5 text-brand-400 text-sm font-bold">
-            <Upload className="w-5 h-5 mr-2" /> Drop files here to upload
-          </div>
-        )}
+      <div className="flex-1 overflow-auto p-4">
         {loading ? (
           <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-rmpg-400" /></div>
         ) : (
@@ -570,19 +596,71 @@ export default function DocumentsPage() {
 
             {/* Empty state */}
             {filteredFolders.length === 0 && filteredFiles.length === 0 && !loading && (
-              <div className="text-center py-16">
+              <div className="text-center py-12">
                 <FolderOpen className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
                 <p className="text-sm text-rmpg-400 font-medium">
                   {searchQuery ? 'No results match your search' : currentFolderId ? 'This folder is empty' : 'No document folders yet'}
                 </p>
-                <p className="text-[10px] text-rmpg-600 mt-1">
-                  {!currentFolderId && !searchQuery && 'Folders are auto-created when process service documents are uploaded via Serve Intake'}
-                </p>
+                {!currentFolderId && !searchQuery && (
+                  <p className="text-[10px] text-rmpg-600 mt-1">Folders are auto-created when process service documents are uploaded via Serve Intake</p>
+                )}
+                {/* Clickable drop zone for empty folders */}
+                {!searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => uploadInputRef.current?.click()}
+                    className="mt-6 mx-auto flex flex-col items-center gap-3 px-12 py-10 border-2 border-dashed border-rmpg-700 hover:border-brand-500/60 hover:bg-brand-900/10 transition-colors group max-w-xs w-full"
+                  >
+                    <Upload className="w-8 h-8 text-rmpg-600 group-hover:text-brand-400 transition-colors" />
+                    <span className="text-xs text-rmpg-500 group-hover:text-rmpg-300 transition-colors">Drop files here or click to browse</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* Full-page drag overlay */}
+      {windowDragOver && (
+        <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center bg-surface-base/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4 border-2 border-dashed border-brand-500 bg-surface-raised/90 px-16 py-12 shadow-2xl">
+            <Upload className="w-12 h-12 text-brand-400" />
+            <p className="text-base font-bold text-brand-300 uppercase tracking-wide">Drop to upload</p>
+            {currentFolderId ? (
+              <p className="text-xs text-rmpg-400">Files will be added to the current folder</p>
+            ) : (
+              <p className="text-xs text-rmpg-400">Files will be uploaded to the root</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Per-file upload progress panel */}
+      {uploadProgress.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50 w-72 panel-surface shadow-2xl overflow-hidden">
+          <div className="px-3 py-2 border-b border-rmpg-700 flex items-center gap-2">
+            {uploading
+              ? <Loader2 className="w-3 h-3 animate-spin text-brand-400" />
+              : <Upload className="w-3 h-3 text-green-400" />}
+            <span className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wide">
+              {uploading ? 'Uploading…' : 'Upload complete'}
+            </span>
+          </div>
+          <div className="max-h-48 overflow-y-auto divide-y divide-rmpg-800/50">
+            {uploadProgress.map((p, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-1.5">
+                <span className="text-sm flex-shrink-0">
+                  {p.done ? (p.error ? '✗' : '✓') : '…'}
+                </span>
+                <span className={`text-[10px] truncate flex-1 ${p.error ? 'text-red-400' : p.done ? 'text-green-400' : 'text-rmpg-300'}`}>
+                  {p.name}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* New Folder Modal */}
       {showNewFolder && (
