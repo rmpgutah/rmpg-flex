@@ -420,6 +420,15 @@ export default {
           .then((r) => { if (r && r.enriched) console.log(`[jail-roster] enriched ${r.enriched}/${r.attempted} (remaining ${r.remaining})`); })
           .catch((err) => console.error('[jail-roster] enrich failed:', (err as Error)?.message)),
       );
+      // Serve attempt pre-event notifications — fires dispatch alerts for
+      // upcoming attempt windows whose random pre-event time (30 min–6 h
+      // before the window opens) has arrived. No-ops when table is missing.
+      ctx.waitUntil(
+        import('./utils/serveAttemptScheduler')
+          .then(({ sweepAttemptNotifications }) => sweepAttemptNotifications(env.DB, env))
+          .then((n) => { if (n) console.log(`[serve-schedule] ${n} reminder(s) dispatched`); })
+          .catch((err) => console.error('[serve-schedule] sweep failed:', err)),
+      );
       return;
     }
     ctx.waitUntil(
