@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import ServeIntakeAttemptModal from '../components/serve-intake/ServeIntakeAttemptModal';
+import ServeRecordMatchPanel from '../components/serve/ServeRecordMatchPanel';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -439,16 +440,20 @@ export default function ServeIntakePage() {
         // so the server's Vision OCR can read them. The original PDF is still
         // uploaded too (audit trail + server fallback), but these images are
         // what actually carry the recipient/service data through extraction.
+        // We also run ocrScanImage on each page immediately so editOverrides
+        // gets pre-filled from the scanned content — same path as dropped images.
         if (text.trim().length < SCANNED_PDF_TEXT_THRESHOLD) {
           const pages = await rasterizePdf(file);
           for (let p = 0; p < pages.length; p++) {
+            const pageOcr = await ocrScanImage(pages[p], type);
             newFiles.push({
               name: pages[p].name,
               type,
-              text: '',
-              status: 'extracted',     // server Vision will do the real extraction
+              text: pageOcr?.rawText || '',
+              status: 'extracted',
               file: pages[p],
               derivedFrom: file.name,
+              ocrResult: pageOcr ?? undefined,
             });
           }
           // A scanned PDF that rasterized OK isn't an error — its OCR rides on
@@ -923,6 +928,10 @@ export default function ServeIntakePage() {
                 </div>
               ))}
             </div>
+            <ServeRecordMatchPanel
+              address={editOverrides['recipient_address'] || ''}
+              businessName={editOverrides['recipient_last_name'] || ''}
+            />
           </div>
         </div>
       )}

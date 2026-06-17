@@ -1053,6 +1053,11 @@ si.get('/', async (c) => {
 // for the next 14 days, grouped by date. Used by the dashboard calendar.
 si.get('/schedule', async (c) => {
   const db = getDb(c.env);
+  // Guard: table may not exist on live yet (migration pending).
+  const tableExists = await queryFirst<{ n: number }>(
+    db, `SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='serve_attempt_schedules'`,
+  );
+  if (!tableExists?.n) return c.json({ schedule: [], generated_at: '' });
   const { denverNow } = await import('../utils/serveAttemptScheduler');
   const now = denverNow();
   // "14 days out" in the same local-time string format
@@ -1114,6 +1119,47 @@ si.delete('/schedule/:slotId', async (c) => {
   const db = getDb(c.env);
   await execute(db, 'UPDATE serve_attempt_schedules SET dismissed = 1 WHERE id = ?', slotId);
   return c.json({ success: true });
+});
+
+// ── GET /record-lookup — property + business match for the review panel ──
+// Lightweight search used by ServeRecordMatchPanel to show gate codes,
+// alarm codes, and key-holder info from existing records while the
+// operator is still reviewing the extracted fields before submitting.
+si.get('/record-lookup', async (c) => {
+  const db = getDb(c.env);
+  const addressQ = (c.req.query('address') || '').trim();
+  const nameQ = (c.req.query('business_name') || '').trim();
+  const { normAddr } = await import('../utils/serveIntakeRecords');
+
+  let property: any = null;
+  if (addressQ) {
+    const norm = normAddr(addressQ);
+    const candidates = await query<any>(
+      db,
+      `SELECT id, name, address, gate_code, alarm_code, alarm_account,
+              alarm_company, key_holder_name, key_holder_phone,
+              post_orders, access_instructions, hazard_notes
+         FROM properties
+        WHERE LOWER(address) LIKE ? LIMIT 10`,
+      `%${norm.split(' ').slice(0, 4).join(' ')}%`,
+    );
+    for (const row of candidates) {
+      if (normAddr(row.address) === norm) { property = row; break; }
+    }
+  }
+
+  let business: any = null;
+  if (nameQ) {
+    business = await queryFirst<any>(
+      db,
+      `SELECT id, name, address, owner_name, owner_phone,
+              contact_name, contact_phone, phone, notes
+         FROM businesses WHERE LOWER(name) = LOWER(?) LIMIT 1`,
+      nameQ,
+    ) ?? null;
+  }
+
+  return c.json({ property, business });
 });
 
 // ── GET /:id ────────────────────────────────────────────────

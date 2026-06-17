@@ -34,10 +34,11 @@ import { resolveDistrict } from './districtResolver';
 import { deriveCrossStreetFromCoords } from './crossStreet';
 import { parseLocationParts } from './parseLocationParts';
 import { buildPsoBriefing, buildOcrContext } from './serveIntakeBriefing';
-import type { IntakeDocMeta, OcrContext } from './serveIntakeBriefing';
+import type { IntakeDocMeta, OcrContext, PropertyRecord, BusinessRecord } from './serveIntakeBriefing';
 import { planAttemptWindows, escalatePriorityForDeadline } from './serveDiligencePlanner';
 import type { AttemptWindow } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
+import { findLocationNote } from './serveLocationNotes';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 
 // ── Sentinel client for intake-generated properties ──────────
@@ -660,6 +661,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
 
   // ── 1. Business row (corporate recipients only) ────────────
   let business: RecordRef = { id: 0, created: false };
+  let businessRecord: BusinessRecord | null = null;
   if (isBusiness && businessName) {
     business = await findOrCreateBusiness(db, {
       name: businessName,
@@ -670,6 +672,14 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       phone: recipientPhone || null,
       contact_name: agentFullName || null,
     });
+    // When the business already existed, fetch contact details for briefing enrichment.
+    if (!business.created && business.id) {
+      businessRecord = await queryFirst<BusinessRecord>(
+        db,
+        'SELECT owner_name, owner_phone, contact_name, contact_phone, phone, notes FROM businesses WHERE id = ?',
+        business.id,
+      ) ?? null;
+    }
   }
 
   // ── 2. Person row(s) ──────────────────────────────────────
@@ -711,6 +721,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
 
   // ── 3. Property row ──────────────────────────────────────
   let property: RecordRef = { id: 0, created: false };
+  let propertyRecord: PropertyRecord | null = null;
   if (addr) {
     property = await findOrCreateProperty(db, {
       name: businessName || queueRow.recipient_name || addr,
@@ -720,6 +731,17 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       longitude: coords?.lng ?? null,
       property_type: isBusiness ? 'business_service' : 'residential_service',
     });
+    // When the property already existed, fetch security fields for briefing enrichment.
+    if (!property.created && property.id) {
+      propertyRecord = await queryFirst<PropertyRecord>(
+        db,
+        `SELECT gate_code, alarm_code, alarm_account, alarm_company,
+                key_holder_name, key_holder_phone, post_orders,
+                access_instructions, hazard_notes
+           FROM properties WHERE id = ?`,
+        property.id,
+      ) ?? null;
+    }
   }
 
   // ── OCR provenance context (filed on call notes + queue row) ──
@@ -749,6 +771,8 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       docCount: input.docCount,
       attemptPlan,
       locationNote,
+      propertyRecord,
+      businessRecord,
     }, nowIso);
     // File the OCR provenance note AFTER the intake briefing so the feed
     // reads: safety → briefing → extraction context.
@@ -852,18 +876,18 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
         call_id, officer_id, recipient_name, recipient_person_id,
         recipient_address, recipient_city, recipient_state, recipient_zip,
         recipient_lat, recipient_lng,
-        property_id,
+        property_id, business_id,
         document_type, case_number, court_name, jurisdiction,
         client_name, attorney_name, priority, deadline,
         service_instructions, notes,
         plaintiff_name, defendant_name, court_date, parsed_data, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
       callId, userId,
       queueRow.recipient_name, person.id || null,
       queueRow.recipient_address, queueRow.recipient_city,
       queueRow.recipient_state, queueRow.recipient_zip,
       coords?.lat ?? null, coords?.lng ?? null,
-      property.id || null,
+      property.id || null, business.id || null,
       queueRow.document_type, queueRow.case_number,
       queueRow.court_name, queueRow.jurisdiction,
       queueRow.client_name, queueRow.attorney_name,
