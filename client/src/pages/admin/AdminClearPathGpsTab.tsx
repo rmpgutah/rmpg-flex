@@ -3,7 +3,7 @@ import {
   Navigation, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Trash2, Zap, AlertTriangle, ToggleLeft, ToggleRight, Link2, Unlink,
   Radio, Clock, Truck, Search, Camera, History, RefreshCw, Video,
-  HardDrive, Download, Play, X as XIcon, ChevronRight,
+  HardDrive, Download, Play, X as XIcon,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeTimeStr, safeDateTimeStr } from '../../utils/dateUtils';
@@ -39,7 +39,6 @@ interface FullDriveJob {
   created_at: string; trips: FullDriveTrip[];
 }
 
-interface TripClip { seq: number; streamUrl: string; from_ts: number; to_ts: number; }
 
 interface MediaSyncStatus {
   media_sync_enabled: boolean;
