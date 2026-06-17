@@ -39,7 +39,7 @@ export default function IntelRail({ counts }: { counts: RailCounts }) {
             <NavLink key={it.to} to={it.to} end={it.end}
               className={({ isActive }) =>
                 `flex items-center gap-[9px] px-[14px] py-[7px] text-[12px] border-l-2 ${
-                  isActive ? 'bg-surface-sunken text-rmpg-100 border-[#d4a017]' : 'text-[#bdbdbd] border-transparent'}`}>
+                  isActive ? 'bg-surface-sunken text-rmpg-100 border-[#d4a017]' : 'text-rmpg-300 border-transparent'}`}>
               <span className="w-[14px] text-center text-rmpg-400">{it.icon}</span>
               <span>{it.label}</span>
               {typeof it.badge === 'number' && it.badge > 0 && (

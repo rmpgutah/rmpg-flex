@@ -94,7 +94,7 @@ function CollapsibleSection({
               style={
                 count > 0
                   ? { color: '#0a0a0a', background: accentColor }
-                  : { color: '#666', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-subtle)' }
+                  : { color: 'var(--rmpg-500)', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-subtle)' }
               }
             >
               {count}

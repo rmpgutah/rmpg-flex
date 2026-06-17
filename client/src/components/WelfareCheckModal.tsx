@@ -146,7 +146,7 @@ export default function WelfareCheckModal() {
             onClick={() => handle('snooze')}
             disabled={submitting !== null}
             className="py-4 text-base font-black uppercase tracking-wider disabled:opacity-50"
-            style={{ background: 'var(--surface-raised)', color: '#fff', borderRadius: 2 }}
+            style={{ background: 'var(--surface-raised)', color: 'var(--text-primary)', borderRadius: 2 }}
           >
             {submitting === 'snooze' ? '…' : 'SNOOZE 5'}
           </button>

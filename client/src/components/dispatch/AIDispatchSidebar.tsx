@@ -35,7 +35,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
           <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300">AI Analysis</span>
         </div>
         <button onClick={onDismiss} className="p-0.5 rounded hover:bg-[#ffffff10] transition-colors" title="Close AI panel">
-          <X className="w-3.5 h-3.5 text-[#6b7280]" />
+          <X className="w-3.5 h-3.5 text-rmpg-500" />
         </button>
       </div>
 
@@ -44,7 +44,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="text-center">
             <Brain className="w-8 h-8 mx-auto mb-2" style={{ opacity: 0.2, color: 'var(--rmpg-500)' }} />
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#6b7280] mb-1">AI Unavailable</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-rmpg-500 mb-1">AI Unavailable</p>
             <p className="text-[9px] text-rmpg-500 leading-relaxed max-w-[180px] mx-auto">
               No AI analysis available for this call. Analysis runs automatically when calls are created or updated.
             </p>

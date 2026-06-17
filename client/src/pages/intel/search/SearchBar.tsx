@@ -44,7 +44,7 @@ export default function SearchBar({ value, onChange, onSave }: {
           {recent.length > 0 && <div className="font-mono text-[8px] tracking-widest text-rmpg-500 uppercase px-3 pt-2">Recent</div>}
           {recent.map((r, i) => (
             <button key={i} onMouseDown={() => onChange(r.query_text)}
-              className="w-full text-left px-3 py-[5px] text-[11px] text-[#bdbdbd] hover:bg-surface-sunken truncate">{r.query_text}</button>
+              className="w-full text-left px-3 py-[5px] text-[11px] text-rmpg-300 hover:bg-surface-sunken truncate">{r.query_text}</button>
           ))}
         </div>
       )}

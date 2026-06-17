@@ -120,7 +120,7 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Document title"
         />
-        <span className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm font-bold ${doc.status === 'finalized' ? 'text-[#000] bg-[#d4a017]' : 'text-[#d4a017] border border-[#d4a017]/40'}`}>
+        <span className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm font-bold ${doc.status === 'finalized' ? 'text-rmpg-950 bg-[#d4a017]' : 'text-[#d4a017] border border-[#d4a017]/40'}`}>
           {doc.status}
         </span>
         <span className="text-[9px] text-rmpg-500 font-mono">r{doc.revision}</span>
@@ -154,7 +154,7 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-4">
         {preview ? (
-          <div className="text-[#e5e7eb] text-sm leading-relaxed whitespace-pre-wrap max-w-[850px] mx-auto">
+          <div className="text-rmpg-200 text-sm leading-relaxed whitespace-pre-wrap max-w-[850px] mx-auto">
             {body ? renderFormattedText(body) : <span className="text-rmpg-500">(empty)</span>}
           </div>
         ) : editable ? (
@@ -162,7 +162,7 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
             <NoteComposer value={body} onChange={setBody} rows={24} maxLength={100000} placeholder="Write the document…" />
           </div>
         ) : (
-          <div className="text-[#e5e7eb] text-sm leading-relaxed max-w-[850px] mx-auto">
+          <div className="text-rmpg-200 text-sm leading-relaxed max-w-[850px] mx-auto">
             {body ? renderFormattedText(body) : <span className="text-rmpg-500">(empty)</span>}
             <p className="text-[10px] text-rmpg-500 mt-4">{doc.status === 'finalized' ? 'Finalized — reopen to edit.' : 'Read-only — you are not the owner.'}</p>
           </div>

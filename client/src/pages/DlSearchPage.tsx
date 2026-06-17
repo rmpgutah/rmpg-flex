@@ -884,7 +884,7 @@ export default function DlSearchPage() {
                 </div>
                 <div className="p-3 space-y-3">
                   <div className="border border-dashed border-rmpg-700 rounded-sm py-5 flex flex-col items-center gap-2 bg-surface-deep">
-                    <CreditCard size={28} className="text-[#333333]" />
+                    <CreditCard size={28} className="text-rmpg-700" />
                     <button
                       type="button"
                       onClick={() => setShowLiveScanner(true)}
@@ -1257,7 +1257,7 @@ export default function DlSearchPage() {
                 <div className="flex items-center justify-center py-10 text-[11px] text-rmpg-400 gap-2"><Loader2 size={14} className="animate-spin" /> Loading...</div>
               ) : !scanHistory || scanHistory.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-[11px] text-rmpg-500 gap-2">
-                  <History size={22} className="text-[#333333]" />
+                  <History size={22} className="text-rmpg-700" />
                   No scans logged yet — every ID scan will appear here.
                 </div>
               ) : (

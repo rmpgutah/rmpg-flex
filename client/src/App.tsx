@@ -330,7 +330,7 @@ function NotFoundPage() {
         <p className="text-sm text-[#888888] mb-2 leading-relaxed">
           The requested page does not exist or has been moved.
         </p>
-        <p className="text-[11px] text-[#555555] mb-6">
+        <p className="text-[11px] text-rmpg-500 mb-6">
           If you believe this is an error, contact your system administrator.
         </p>
 

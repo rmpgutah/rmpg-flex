@@ -11,7 +11,7 @@ export default function FacetSidebar({ facets, activeType, activeFlags, onToggle
   const flags = Object.entries(facets.byFlag).sort((a, b) => b[1] - a[1]);
   const Row = ({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) => (
     <button onClick={onClick}
-      className={`w-full flex items-center justify-between px-2 py-[4px] rounded-[2px] text-[11px] ${active ? 'bg-surface-sunken text-[#d4a017]' : 'text-[#bdbdbd] hover:bg-surface-sunken'}`}>
+      className={`w-full flex items-center justify-between px-2 py-[4px] rounded-[2px] text-[11px] ${active ? 'bg-surface-sunken text-[#d4a017]' : 'text-rmpg-300 hover:bg-surface-sunken'}`}>
       <span className="capitalize truncate">{label.replace('_', ' ')}</span>
       <span className="font-mono text-[9px] text-[#888]">{count}</span>
     </button>

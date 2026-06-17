@@ -136,7 +136,7 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
           <span className="text-[10px] font-bold uppercase tracking-wider text-brand-300">Dispatch Codes</span>
         </div>
         <button onClick={onDismiss} className="p-0.5 rounded hover:bg-[#ffffff10] transition-colors" title="Close codes panel">
-          <X className="w-3.5 h-3.5 text-[#6b7280]" />
+          <X className="w-3.5 h-3.5 text-rmpg-500" />
         </button>
       </div>
 

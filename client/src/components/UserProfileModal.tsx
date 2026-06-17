@@ -762,7 +762,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <div className="text-[10px] text-rmpg-500">
                         {imageUploading ? 'Uploading...' : 'Drop image here or click to browse'}
                       </div>
-                      <div className="text-[9px] mt-0.5" style={{ color: '#3a3a3a' }}>
+                      <div className="text-[9px] mt-0.5" style={{ color: 'var(--rmpg-500)' }}>
                         JPG, PNG, WebP — max 2MB
                       </div>
                     </div>

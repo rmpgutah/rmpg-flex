@@ -1028,7 +1028,7 @@ export default function SkipTracerV2Page() {
 
         {/* Source category filters */}
         <div className="flex items-center gap-1.5 px-0.5 flex-wrap">
-          <span className="text-[8px] text-[#525252] uppercase tracking-wider mr-0.5">Filter:</span>
+          <span className="text-[8px] text-rmpg-500 uppercase tracking-wider mr-0.5">Filter:</span>
           {ALL_CATEGORIES.map(cat => {
             const isActive = selectedCategories.has(cat);
             const color = categoryColor(cat);
@@ -1060,7 +1060,7 @@ export default function SkipTracerV2Page() {
         {/* Source status row */}
         {sources.length > 0 && (
           <div className="flex items-center gap-1.5 px-0.5 flex-wrap">
-            <span className="text-[8px] text-[#525252] uppercase tracking-wider">Sources:</span>
+            <span className="text-[8px] text-rmpg-500 uppercase tracking-wider">Sources:</span>
             {sources.map(s => (
               <span
                 key={s.name}
@@ -1087,7 +1087,7 @@ export default function SkipTracerV2Page() {
 
         {!loading && !error && !result && (
           <div className="flex flex-col items-center justify-center h-48 text-center space-y-3">
-            <Shield size={32} className="text-[#1a1a1a]" />
+            <Shield size={32} className="text-rmpg-900" />
             <div className="text-[11px] text-rmpg-500 max-w-[220px]">
               Enter a name, phone, email, or address. Use Advanced Search for precise field-level queries.
             </div>
@@ -1107,9 +1107,9 @@ export default function SkipTracerV2Page() {
 
         {!loading && result && result.profiles.length === 0 && (
           <div className="flex flex-col items-center justify-center h-48 text-center space-y-2">
-            <Search size={24} className="text-[#1a1a1a]" />
+            <Search size={24} className="text-rmpg-900" />
             <div className="text-[11px] text-rmpg-500">No results found</div>
-            <div className="text-[9px] text-[#525252]">
+            <div className="text-[9px] text-rmpg-500">
               {result.sourcesFailed && result.sourcesFailed.length > 0
                 ? `${result.sourcesFailed.length} source(s) failed — try again or check source config`
                 : 'Try a different query or use Advanced Search'}
@@ -1166,7 +1166,7 @@ export default function SkipTracerV2Page() {
         })}
 
         {!loading && result && result.profiles.length > 0 && (
-          <div className="text-[9px] text-[#525252] text-center pt-2 font-mono space-y-0.5">
+          <div className="text-[9px] text-rmpg-500 text-center pt-2 font-mono space-y-0.5">
             <div>
               {result.sourcesResponded.length}/{result.sourcesQueried.length} sources responded
               {result.totalCost > 0 && <> &middot; ${result.totalCost.toFixed(4)}</>}
@@ -1188,9 +1188,9 @@ export default function SkipTracerV2Page() {
     <div className={`flex-1 flex flex-col bg-surface-raised overflow-y-auto ${isMobile ? 'w-full' : ''}`}>
       {!selected ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center space-y-3 p-8">
-          <FileText size={40} className="text-[#1a1a1a]" />
+          <FileText size={40} className="text-rmpg-900" />
           <div className="text-[13px] text-rmpg-500">Select a person from search results</div>
-          <div className="text-[10px] text-[#525252] max-w-[280px]">
+          <div className="text-[10px] text-rmpg-500 max-w-[280px]">
             Search for a subject and click a result to build their dossier with data from {sources.filter(s => s.healthy).length} active sources
           </div>
         </div>
@@ -1298,7 +1298,7 @@ export default function SkipTracerV2Page() {
               <div className="mt-3 pt-3 border-t border-border-subtle">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">Notes</span>
-                  <span className="text-[9px] font-mono text-[#525252]">
+                  <span className="text-[9px] font-mono text-rmpg-500">
                     {notesSaveStatus === 'saving' && <span className="text-amber-500 flex items-center gap-1"><Loader2 size={9} className="animate-spin" /> Saving...</span>}
                     {notesSaveStatus === 'saved' && <span className="text-green-500 flex items-center gap-1"><CheckCircle2 size={9} /> Saved</span>}
                   </span>
@@ -1462,7 +1462,7 @@ export default function SkipTracerV2Page() {
                       <a href={sp.url} target="_blank" rel="noopener noreferrer" className="text-rmpg-400 hover:underline font-mono truncate">
                         {sp.username}
                       </a>
-                      <ExternalLink size={10} className="text-[#525252]" />
+                      <ExternalLink size={10} className="text-rmpg-500" />
                     </div>
                   ))}
                 </div>
@@ -1478,7 +1478,7 @@ export default function SkipTracerV2Page() {
                   <tr key={`assoc-${a.name}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5">
                       <button type="button" onClick={() => searchAssociate(a.name)} className="text-rmpg-400 hover:underline font-mono flex items-center gap-1">
-                        {a.name} <Search size={9} className="text-[#525252]" />
+                        {a.name} <Search size={9} className="text-rmpg-500" />
                       </button>
                     </td>
                     <td className="px-2 py-1.5 text-rmpg-300">{a.relationship || '—'}</td>

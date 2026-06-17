@@ -107,7 +107,7 @@ export default function VerifyIdPage() {
                 {officer.photo ? <img src={officer.photo} alt={officer.full_name} className="w-full h-full object-cover" />
                   : <span className="text-[#444] text-[9px]">NO PHOTO</span>}
               </div>
-              <div className="text-[11px] text-[#ddd] space-y-[2px]">
+              <div className="text-[11px] text-rmpg-200 space-y-[2px]">
                 <div className="text-rmpg-100 font-semibold">{officer.full_name}</div>
                 <div>Badge {officer.badge_number || '—'} · {officer.rank || '—'}</div>
                 <div className="text-[#999]">{officer.department || '—'}</div>

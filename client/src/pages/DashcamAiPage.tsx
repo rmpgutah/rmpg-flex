@@ -413,7 +413,7 @@ export default function DashcamAiPage(): React.ReactElement {
                   {selected.still_image_url ? (
                     <img src={authedImageUrl(selected.still_image_url)} alt="Dashcam still" className="w-full aspect-[4/3] object-cover" />
                   ) : (
-                    <div className="w-full aspect-[4/3] bg-surface-overlay flex items-center justify-center"><Video className="w-8 h-8 text-[#333]" aria-hidden="true" /></div>
+                    <div className="w-full aspect-[4/3] bg-surface-overlay flex items-center justify-center"><Video className="w-8 h-8 text-rmpg-700" aria-hidden="true" /></div>
                   )}
                   <span className="absolute top-1 left-1 text-[8px] font-bold tracking-wider px-1 py-[1px] bg-black/75 text-rmpg-300 border border-border-subtle">
                     FORENSIC PLAYBACK

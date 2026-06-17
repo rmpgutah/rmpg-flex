@@ -248,7 +248,7 @@ export default function ModuleTileBar({
                     fontWeight: 700,
                     lineHeight: '14px',
                     textAlign: 'center',
-                    borderRadius: 7,
+                    borderRadius: 2,
                     background: '#dc2626',
                     color: '#fff',
                     padding: '0 3px',
