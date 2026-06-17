@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from '../hooks/useApi';
 import { formatEnumValue } from '../utils/formatters';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -30,6 +30,11 @@ export default function DashcamPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [tab, setTab] = useState<'devices' | 'events'>('devices');
+
+  const pageRef = useRef(page);
+  const searchRef = useRef(search);
+  useEffect(() => { pageRef.current = page; }, [page]);
+  useEffect(() => { searchRef.current = search; }, [search]);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -68,7 +73,7 @@ export default function DashcamPage() {
 
     const iv = setInterval(() => {
       fetchStatus();
-      fetchDevices(page, search);
+      fetchDevices(pageRef.current, searchRef.current);
       fetchEvents();
     }, 15000);
     return () => clearInterval(iv);
