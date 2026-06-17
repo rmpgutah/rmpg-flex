@@ -666,6 +666,11 @@
 // v993: Full-drive clip playback — fix 401 on <video> src; auth middleware
 //       now accepts ?token=<jwt> on /full-drive/clip/* paths; client appends
 //       JWT from localStorage to all streamUrl values before passing to <video>.
+// v999: FlexCam clip-to-clip fix — generation counter prevents stale async
+//       playSegment() chains; drop video.load() (implicit load via src= is
+//       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
+//       use canplay + readyState guard; pause() before src swap for clean
+//       play-promise teardown; MDT player + list pages (SW v998 squashed).
 // v998: caseActivity — replace Unicode arrow with ASCII -> in status.changed
 //       label so it renders correctly in PDF (sanitizePdfText strips U+2192).
 // v997: FlexCam capture pipeline — batch chunk INSERTs (prevents 720-row
