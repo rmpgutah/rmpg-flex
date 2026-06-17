@@ -32,7 +32,7 @@ import {
   type SortMode, type SectionBlock,
 } from '../docTools';
 import { FONT_FAMILIES, FONT_SIZES, type DocSettings, type WriterTheme } from '../types';
-import { PAGE_PRESETS, isActivePreset, MARGIN_PRESETS, applyMarginPreset, activeMarginPresetId } from '../docFeatures';
+import { PAGE_PRESETS, isActivePreset, MARGIN_PRESETS, applyMarginPreset, activeMarginPresetId, DOCUMENT_FORMAT_PRESETS, applyDocumentFormatPreset } from '../docFeatures';
 
 /** Page-level actions/state the toolbar drives (find/replace, comments, view,
  *  export, clipboard, media) — bundled to keep the prop list manageable. */
@@ -106,6 +106,8 @@ export interface WriterExtActions {
   wordLimitOn: boolean;
   onToggleReorder: () => void;
   onToggleMacro: () => void;
+  onToggleRefiners: () => void;
+  refinersOpen: boolean;
 }
 
 interface Props {
@@ -748,7 +750,17 @@ export default function WriterToolbar({
               <MenuButton onClick={() => { ext.onInsertCaption('Exhibit'); close(); }}><span className="flex items-center gap-1"><Captions className="w-3 h-3" /> Lettered exhibit caption</span></MenuButton>
               <MenuButton onClick={() => { ext.onInsertSpacer(); close(); }}><span className="flex items-center gap-1"><StretchVertical className="w-3 h-3" /> Vertical spacer…</span></MenuButton>
 
-              <div className="text-[10px] text-rmpg-500 pt-1 pb-0.5">Page setup presets</div>
+              <div className="text-[10px] text-rmpg-500 pt-1 pb-0.5">Document format presets</div>
+              {DOCUMENT_FORMAT_PRESETS.map((p) => (
+                <MenuButton key={p.id} onClick={() => { setDocSettings((s) => applyDocumentFormatPreset(s, p)); close(); }}>
+                  <span className="flex flex-col items-start gap-0.5">
+                    <span>{p.label}</span>
+                    <span className="text-[9px] text-rmpg-600 font-normal">{p.description}</span>
+                  </span>
+                </MenuButton>
+              ))}
+
+              <div className="text-[10px] text-rmpg-500 pt-1 pb-0.5">Page setup (size only)</div>
               {PAGE_PRESETS.map((p) => (
                 <MenuButton key={p.id} active={isActivePreset(docSettings, p)} onClick={() => ext.onApplyPagePreset(p.id)}>{p.label}</MenuButton>
               ))}
@@ -768,6 +780,11 @@ export default function WriterToolbar({
             </>
           )}
         </ToolbarMenu>
+
+        <ToolBtn active={ext.refinersOpen} onClick={ext.onToggleRefiners} title="AI Refiners — rewrite, tone, probable cause, Miranda check">
+          <Sparkles className="w-3.5 h-3.5" />
+        </ToolBtn>
+        <Divider />
 
         {/* View menu — zoom + reading/fullscreen (features 178–185, 50) */}
         <ToolbarMenu label="View" icon={Eye} width={200}>

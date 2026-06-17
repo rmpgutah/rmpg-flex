@@ -216,4 +216,59 @@ ai.post('/smart-search', requireRole(...READ_ROLES), async (c) => {
   }
 });
 
+// ─── POST /ai/refine ─────────────────────────────────────────
+// Body: { text: string, action: string }
+// AI-powered document text refinement for law enforcement writing.
+// Actions map to domain-specific system prompts.
+ai.post('/refine', requireRole(...READ_ROLES), async (c) => {
+  const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+  const text = typeof body.text === 'string' ? body.text.trim() : '';
+  const action = typeof body.action === 'string' ? body.action.trim() : '';
+  if (!text || text.length < 5) {
+    return c.json({ error: 'Text is required (min 5 chars)', code: 'REFINE_NO_TEXT' }, 400);
+  }
+  if (text.length > 8000) {
+    return c.json({ error: 'Text too long (max 8000 chars)', code: 'REFINE_TOO_LONG' }, 400);
+  }
+
+  const SYSTEM_PROMPTS: Record<string, string> = {
+    'improve-clarity':
+      'You are a law enforcement writing editor. Rewrite the provided text to be clearer, more direct, and easier to understand while preserving all factual content and legal significance. Use plain, precise language. Return only the rewritten text with no commentary.',
+    'formal-legal-tone':
+      'You are a legal writing specialist. Rewrite the provided text in a formal legal tone appropriate for court filings, sworn affidavits, and official law enforcement records. Use precise legal terminology. Return only the rewritten text with no commentary.',
+    'probable-cause':
+      'You are a law enforcement legal writing specialist. Rewrite the provided text to strengthen the articulation of probable cause. Emphasize specific articulable facts, the officer\'s training and experience, and how observed facts connect to criminal activity. Use language that meets the Fourth Amendment probable cause standard. Return only the rewritten text with no commentary.',
+    'first-person':
+      'You are a law enforcement report editor. Rewrite the provided text in first-person active voice (I observed, I contacted, I placed), past tense, as if written by the responding officer. Maintain all factual accuracy. Return only the rewritten text with no commentary.',
+    'summarize':
+      'You are a law enforcement records specialist. Write a concise summary (2-4 sentences) of the key facts and outcome described in the provided text, suitable for a case synopsis or brief. Return only the summary with no commentary.',
+    'expand':
+      'You are a law enforcement report writing assistant. Expand the provided text with additional detail, context, and professional narrative language typical of thorough police reports. Add relevant detail without inventing facts — use placeholder brackets like [detail] for specifics the officer should fill in. Return only the expanded text with no commentary.',
+    'brevity':
+      'You are a law enforcement writing editor. Rewrite the provided text to be more concise while preserving all legally significant facts and details. Remove redundancy, passive voice, and filler phrases. Return only the concise rewrite with no commentary.',
+    'miranda-check':
+      'You are a law enforcement legal compliance specialist. Review the provided Miranda rights advisement text and rewrite it to ensure it meets the standard Miranda warning requirements (right to remain silent, statements may be used against them, right to an attorney, right to appointed counsel). Make it clear, complete, and legally sufficient. Return only the corrected advisement text with no commentary.',
+  };
+
+  const systemPrompt = SYSTEM_PROMPTS[action];
+  if (!systemPrompt) {
+    return c.json({ error: `Unknown action: ${action}`, code: 'REFINE_BAD_ACTION' }, 400);
+  }
+
+  try {
+    const response = await (c.env.AI as Ai).run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: text },
+      ],
+    }) as { response?: string };
+    const result = response?.response?.trim() ?? '';
+    if (!result) return c.json({ error: 'AI returned empty response', code: 'REFINE_EMPTY' }, 500);
+    return c.json({ result, action });
+  } catch (err) {
+    console.error('[ai] refine error', err);
+    return c.json({ error: 'Failed to refine text', code: 'REFINE_ERR' }, 500);
+  }
+});
+
 export default ai;
