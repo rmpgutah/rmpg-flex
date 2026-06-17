@@ -73,7 +73,7 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
           <div
             key={i}
             className="flex items-center gap-2 px-2 py-1"
-            style={{ background: '#0a0a0a' }}
+            style={{ background:"var(--surface-sunken)" }}
           >
             <span className="text-[9px] w-4 text-right" style={{ color: '#666666' }}>
               {i + 1}.
@@ -120,7 +120,7 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
         <button type="button"
           onClick={onAcknowledge}
           disabled={!acknowledged}
-          className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+          className="toolbar-btn toolbar-btn-primary w-full h-9 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Continue
         </button>

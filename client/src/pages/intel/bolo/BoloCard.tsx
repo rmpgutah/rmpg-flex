@@ -27,7 +27,7 @@ export default function BoloCard({ bolo, canDelete, onResolve, onDelete }: {
             <span className="font-mono text-[9px] text-[#888]">{bolo.bolo_number}</span>
             {expired && <span className="font-mono text-[8px] text-[#666] uppercase">{bolo.status}</span>}
           </div>
-          <div className="text-[13px] text-white font-semibold mt-1 truncate">{bolo.title}</div>
+          <div className="text-[13px] text-rmpg-100 font-semibold mt-1 truncate">{bolo.title}</div>
           {bolo.subject_description && <div className="text-[11px] text-[#bbb] truncate">{bolo.subject_description}</div>}
           {bolo.vehicle_description && <div className="text-[11px] text-[#bbb] truncate">{bolo.vehicle_description}</div>}
           {bolo.description && <div className="text-[10px] text-[#777] mt-1 line-clamp-2">{bolo.description}</div>}

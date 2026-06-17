@@ -182,9 +182,9 @@ function severityBadge(level: string) {
     case 'misdemeanor':
       return 'bg-amber-900/50 text-amber-400 border border-amber-700/50';
     case 'infraction':
-      return 'bg-gray-900/50 text-gray-400 border border-gray-700/50';
+      return 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50';
     default:
-      return 'bg-gray-900/50 text-gray-400 border border-gray-700/50';
+      return 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50';
   }
 }
 
@@ -202,7 +202,7 @@ function typeBadge(type: string) {
     case 'extradition':
       return 'bg-purple-900/50 text-purple-400 border border-purple-700/50';
     default:
-      return 'bg-gray-900/50 text-gray-400 border border-gray-700/50';
+      return 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50';
   }
 }
 
@@ -380,7 +380,7 @@ export default function NationalWarrantSearchPage() {
                 <button
                   type="button"
                   onClick={clearSearch}
-                  className="toolbar-btn text-rmpg-400 hover:text-white px-2 py-1.5 text-xs"
+                  className="toolbar-btn text-rmpg-400 hover:text-rmpg-100 px-2 py-1.5 text-xs"
                   title="Clear search"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -519,14 +519,14 @@ export default function NationalWarrantSearchPage() {
                     transform: 'translate(-50%, -100%)',
                   }}
                 >
-                  <div className="text-[10px] font-bold text-white">
+                  <div className="text-[10px] font-bold text-rmpg-100">
                     {US_STATES.find(s => s.code === hoveredState)?.label ?? hoveredState}
                   </div>
                   <div className="text-[10px] text-rmpg-400">
                     Status: <span className={
                       stateCoverage[hoveredState] === 'active' ? 'text-green-400' :
                       stateCoverage[hoveredState] === 'pending' ? 'text-amber-400' :
-                      'text-gray-500'
+                      'text-rmpg-500'
                     }>
                       {stateCoverage[hoveredState] ?? 'No source'}
                     </span>
@@ -564,12 +564,12 @@ export default function NationalWarrantSearchPage() {
             <div className="panel-raised p-2 flex items-center gap-3">
               <Shield className="w-3.5 h-3.5 text-brand-400" />
               <span className="text-xs text-rmpg-200">
-                <span className="font-bold text-white">{totalResults}</span> results
-                across <span className="font-bold text-white">{Object.keys(stateGroups).length + (localResults.length ? 1 : 0)}</span> sources
+                <span className="font-bold text-rmpg-100">{totalResults}</span> results
+                across <span className="font-bold text-rmpg-100">{Object.keys(stateGroups).length + (localResults.length ? 1 : 0)}</span> sources
                 in <span className="text-brand-400">{searchTime}ms</span>
               </span>
               {stateFilter && (
-                <span className="ml-auto text-[10px] bg-gray-900/50 text-gray-400 border border-gray-700/50 px-1.5 py-0.5 rounded">
+                <span className="ml-auto text-[10px] bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 px-1.5 py-0.5 rounded">
                   Filtered: {US_STATES.find(s => s.code === stateFilter)?.label}
                 </span>
               )}
@@ -618,7 +618,7 @@ export default function NationalWarrantSearchPage() {
                     <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">
                       {stateName}
                     </span>
-                    <span className="ml-1 text-[10px] bg-gray-900/50 text-rmpg-400 border border-gray-700/50 px-1.5 py-0.5 rounded font-mono">
+                    <span className="ml-1 text-[10px] bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 px-1.5 py-0.5 rounded font-mono">
                       {warrants.length}
                     </span>
                   </button>
@@ -703,7 +703,7 @@ function WarrantRow({ warrant }: { warrant: any }) {
       {/* Details */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold text-white">
+          <span className="text-xs font-bold text-rmpg-100">
             {warrantName(warrant)}
           </span>
           {warrant.dob && (

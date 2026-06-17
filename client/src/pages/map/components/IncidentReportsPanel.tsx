@@ -206,7 +206,7 @@ export default function IncidentReportsPanel({
                         <span className="text-[9px] font-mono w-[60px] text-right" style={{ color: style.color }}>
                           {style.label}
                         </span>
-                        <div className="flex-1 h-1.5 rounded-sm overflow-hidden" style={{ background: '#0a0a0a' }}>
+                        <div className="flex-1 h-1.5 rounded-sm overflow-hidden" style={{ background:"var(--surface-sunken)" }}>
                           <div
                             className="h-full rounded-sm"
                             style={{ width: `${pct}%`, background: style.bg, opacity: 0.7 }}
@@ -228,7 +228,7 @@ export default function IncidentReportsPanel({
                   <div
                     key={type}
                     className="flex items-center justify-between text-[9px] font-mono px-1.5 py-0.5 rounded-sm hover:bg-[#181818]/50 transition-colors duration-100"
-                    style={{ background: '#0a0a0a' }}
+                    style={{ background:"var(--surface-sunken)" }}
                   >
                     <span className="text-rmpg-300 truncate">{type}</span>
                     <span className="text-emerald-400 font-bold ml-2 flex-shrink-0">{cnt}</span>

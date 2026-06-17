@@ -27,10 +27,10 @@ export default function OnFootActivityModal({ unit, onClose }: { unit: Unit; onC
           <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#d4a017' }}>
             ON-FOOT ACTIVITY — {unit.call_sign}
           </span>
-          <button aria-label="Close" onClick={onClose}><X className="w-3.5 h-3.5 text-gray-400" /></button>
+          <button aria-label="Close" onClick={onClose}><X className="w-3.5 h-3.5 text-rmpg-400" /></button>
         </div>
-        {loading ? <div className="text-[10px] text-gray-500">Loading…</div> : rows.length === 0 ? (
-          <div className="text-[10px] text-gray-500">No on-foot segments recorded.</div>
+        {loading ? <div className="text-[10px] text-rmpg-500">Loading…</div> : rows.length === 0 ? (
+          <div className="text-[10px] text-rmpg-500">No on-foot segments recorded.</div>
         ) : (
           <table className="table-dark w-full">
             <thead><tr><th>Started</th><th>Duration</th><th>Distance</th><th>Peak</th></tr></thead>

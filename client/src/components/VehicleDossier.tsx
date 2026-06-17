@@ -60,13 +60,13 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
         <div className="flex items-center justify-between px-3 py-2 border-b border-[#232323]">
           <span className="text-[11px] font-semibold tracking-wider text-[#d4a017]">
             VEHICLE FILE —{' '}
-            <span className="font-mono text-white">{plate}</span>
+            <span className="font-mono text-rmpg-100">{plate}</span>
           </span>
           <button
             type="button"
             aria-label="Close dossier"
             onClick={onClose}
-            className="text-[#888] hover:text-white">
+            className="text-[#888] hover:text-rmpg-100">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -115,7 +115,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
                 {/* Meta */}
                 <div className="flex-1 min-w-0 space-y-0.5">
                   <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-[11px] font-semibold text-white tracking-wider">
+                    <span className="font-mono text-[11px] font-semibold text-rmpg-100 tracking-wider">
                       {pkg.canonical_plate}
                     </span>
                     <TrustBadge trust={trust} />

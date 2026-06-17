@@ -71,7 +71,7 @@ function BalanceCard({
         <Icon size={14} style={{ color }} aria-hidden="true" />
         <span className="text-xs text-rmpg-400 uppercase tracking-wide font-medium">{label}</span>
       </div>
-      <div className="text-xl font-bold text-white mb-0.5 font-mono">
+      <div className="text-xl font-bold text-rmpg-100 mb-0.5 font-mono">
         {remaining} <span className="text-sm font-normal text-rmpg-400 font-sans">of {total} hrs remaining</span>
       </div>
       <div className="h-2 bg-[#0c0c0c] rounded-full overflow-hidden mt-2" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% used, ${remaining} hours remaining`}>
@@ -334,7 +334,7 @@ export default function LeaveTab() {
 
         {/* Request Time Off Button */}
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white">My Requests</h3>
+          <h3 className="text-sm font-medium text-rmpg-100">My Requests</h3>
           <button type="button"
             onClick={() => { setEditRequest(null); setModalOpen(true); }}
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5"
@@ -371,11 +371,11 @@ export default function LeaveTab() {
                     onContextMenu={(e) => openMenu(e, buildLeaveMenu(req))}
                     className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#171717]'}`}
                   >
-                    <td className="px-3 py-2 text-white"><TypePill type={req.type} /></td>
+                    <td className="px-3 py-2 text-rmpg-100"><TypePill type={req.type} /></td>
                     <td className="px-3 py-2 text-rmpg-200">
                       {formatDate(req.start_date)} &ndash; {formatDate(req.end_date)}
                     </td>
-                    <td className="px-3 py-2 text-white">{req.hours_requested}</td>
+                    <td className="px-3 py-2 text-rmpg-100">{req.hours_requested}</td>
                     <td className="px-3 py-2"><StatusBadge status={req.status} /></td>
                     <td className="px-3 py-2 text-rmpg-400">{formatDateTime(req.created_at)}</td>
                     <td className="px-3 py-2 text-right">
@@ -422,7 +422,7 @@ export default function LeaveTab() {
       {/* ── Pending Approvals ─────────────────────────────── */}
       {pendingRequests.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+          <h3 className="text-sm font-medium text-rmpg-100 flex items-center gap-2">
             <Clock size={14} className="text-amber-400" />
             Pending Approvals
             <span
@@ -441,7 +441,7 @@ export default function LeaveTab() {
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="text-sm font-medium text-white">{req.officer_name}</div>
+                    <div className="text-sm font-medium text-rmpg-100">{req.officer_name}</div>
                     <div className="flex items-center gap-3 mt-1">
                       <TypePill type={req.type} />
                       <span className="text-xs text-rmpg-400">
@@ -463,7 +463,7 @@ export default function LeaveTab() {
                     placeholder="Notes (optional)"
                     value={reviewNotes[req.id] || ''}
                     onChange={e => setReviewNotes(prev => ({ ...prev, [req.id]: e.target.value }))}
-                    className="flex-1 bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
+                    className="flex-1 bg-[#0c0c0c] border border-[#2b2b2b] text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
                   />
                   <button type="button"
                     onClick={() => handleApprove(req.id)}
@@ -491,7 +491,7 @@ export default function LeaveTab() {
       {/* ── Team Balances ─────────────────────────────────── */}
       {balances.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+          <h3 className="text-sm font-medium text-rmpg-100 flex items-center gap-2">
             <CalendarDays size={14} className="text-rmpg-300" />
             Team Balances ({new Date().getFullYear()})
           </h3>
@@ -511,7 +511,7 @@ export default function LeaveTab() {
                     key={bal.id}
                     className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#171717]'}`}
                   >
-                    <td className="px-3 py-2 text-white font-medium">{bal.officer_name || `Officer #${bal.officer_id}`}</td>
+                    <td className="px-3 py-2 text-rmpg-100 font-medium">{bal.officer_name || `Officer #${bal.officer_id}`}</td>
                     <td className="px-3 py-2">
                       <BalanceCell used={bal.vacation_used} total={bal.vacation_total} color={LEAVE_TYPE_COLORS.vacation} />
                     </td>
@@ -532,7 +532,7 @@ export default function LeaveTab() {
       {/* ── All Requests with Filters ─────────────────────── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+          <h3 className="text-sm font-medium text-rmpg-100 flex items-center gap-2">
             <Filter size={14} className="text-rmpg-400" />
             All Leave Requests
           </h3>
@@ -551,7 +551,7 @@ export default function LeaveTab() {
           <select id="ff-leavetab-1"
             value={filterOfficer}
             onChange={e => setFilterOfficer(e.target.value)}
-            className="bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
+            className="bg-[#0c0c0c] border border-[#2b2b2b] text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
           >
             <option value="">All Officers</option>
             {officerOptions.map(o => (
@@ -561,7 +561,7 @@ export default function LeaveTab() {
           <select id="ff-leavetab-2"
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
-            className="bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
+            className="bg-[#0c0c0c] border border-[#2b2b2b] text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
           >
             <option value="">All Statuses</option>
             <option value="pending">Pending</option>
@@ -572,7 +572,7 @@ export default function LeaveTab() {
           <select id="ff-leavetab-3"
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
-            className="bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
+            className="bg-[#0c0c0c] border border-[#2b2b2b] text-rmpg-100 text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
           >
             <option value="">All Types</option>
             {Object.entries(LEAVE_TYPE_LABELS).map(([val, label]) => (
@@ -582,7 +582,7 @@ export default function LeaveTab() {
           {(filterOfficer || filterStatus || filterType) && (
             <button type="button"
               onClick={() => { setFilterOfficer(''); setFilterStatus(''); setFilterType(''); }}
-              className="toolbar-btn text-xs text-rmpg-400 hover:text-white flex items-center gap-1"
+              className="toolbar-btn text-xs text-rmpg-400 hover:text-rmpg-100 flex items-center gap-1"
             >
               <X size={10} />
               Clear
@@ -618,12 +618,12 @@ export default function LeaveTab() {
                     onContextMenu={(e) => openMenu(e, buildLeaveMenu(req))}
                     className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#171717]'}`}
                   >
-                    <td className="px-3 py-2 text-white">{req.officer_name || `#${req.officer_id}`}</td>
+                    <td className="px-3 py-2 text-rmpg-100">{req.officer_name || `#${req.officer_id}`}</td>
                     <td className="px-3 py-2"><TypePill type={req.type} /></td>
                     <td className="px-3 py-2 text-rmpg-200">
                       {formatDate(req.start_date)} &ndash; {formatDate(req.end_date)}
                     </td>
-                    <td className="px-3 py-2 text-white">{req.hours_requested}</td>
+                    <td className="px-3 py-2 text-rmpg-100">{req.hours_requested}</td>
                     <td className="px-3 py-2"><StatusBadge status={req.status} /></td>
                     <td className="px-3 py-2 text-rmpg-400">{formatDateTime(req.created_at)}</td>
                     <td className="px-3 py-2 text-right">

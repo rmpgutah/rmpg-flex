@@ -380,7 +380,7 @@ export function HudCollapseToggle({ collapsed, onToggle }: { collapsed: boolean;
       onClick={onToggle}
       aria-label={collapsed ? 'Expand instrument dashboard' : 'Collapse instrument dashboard'}
       title={collapsed ? 'Expand dashboard' : 'Collapse dashboard'}
-      className="flex items-center justify-center px-1.5 py-1 border border-rmpg-700 text-rmpg-300 hover:text-white"
+      className="flex items-center justify-center px-1.5 py-1 border border-rmpg-700 text-rmpg-300 hover:text-rmpg-100"
       style={{ borderRadius: 2, background: 'rgba(20,20,20,0.7)' }}
     >
       {collapsed ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -474,7 +474,7 @@ export function HudArrivedBanner({ label, onDismiss }: { label: string; onDismis
     <div className="flex items-center gap-2 px-3 py-2 shadow-2xl" style={{ background: 'rgba(8,8,8,0.96)', border: '1px solid #22c55e', borderRadius: 2, boxShadow: '0 0 16px rgba(34,197,94,0.4)' }}>
       <Flag className="w-4 h-4 shrink-0" style={{ color: '#22c55e' }} />
       <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: '#22c55e' }}>Arrived — {label}</span>
-      <button type="button" onClick={onDismiss} aria-label="Dismiss arrival" title="Dismiss" className="ml-2 text-rmpg-400 hover:text-white text-[11px] font-bold">✕</button>
+      <button type="button" onClick={onDismiss} aria-label="Dismiss arrival" title="Dismiss" className="ml-2 text-rmpg-400 hover:text-rmpg-100 text-[11px] font-bold">✕</button>
     </div>
   );
 }

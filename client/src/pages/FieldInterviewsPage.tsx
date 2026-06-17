@@ -60,7 +60,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const REASON_COLORS: Record<string, string> = {
   suspicious_activity: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
-  traffic_stop: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
+  traffic_stop: 'bg-surface-sunken/50 text-rmpg-400 border-border-default/50',
   trespass: 'bg-red-900/50 text-red-400 border-red-700/50',
   welfare_check: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
   investigation: 'bg-brand-900/50 text-brand-400 border-brand-700/50',
@@ -386,7 +386,7 @@ export default function FieldInterviewsPage() {
             style={isMobile ? { minHeight: 44 } : undefined}
           />
           {searchQuery && (
-            <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
+            <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100 transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
             </IconButton>
           )}
@@ -408,7 +408,7 @@ export default function FieldInterviewsPage() {
         <div className="px-3 py-2 bg-red-900/40 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2" role="alert">
           <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
           <span className="flex-1">{error}</span>
-          <button type="button" onClick={() => fetchFis()} className="text-red-200 hover:text-white underline text-[10px]">Retry</button>
+          <button type="button" onClick={() => fetchFis()} className="text-red-200 hover:text-rmpg-100 underline text-[10px]">Retry</button>
         </div>
       )}
 
@@ -452,7 +452,7 @@ export default function FieldInterviewsPage() {
                     </span>
                   </div>
                 </div>
-                <div className="text-xs text-white font-medium flex items-center gap-1.5">
+                <div className="text-xs text-rmpg-100 font-medium flex items-center gap-1.5">
                   {fi.subject_last_name ? `${fi.subject_last_name}, ${fi.subject_first_name || ''}` : 'Unknown Subject'}
                   {fi.person_flags && <WarrantBadge flags={fi.person_flags} size="sm" />}
                   {(() => {
@@ -490,7 +490,7 @@ export default function FieldInterviewsPage() {
           <div className="flex-1 overflow-y-auto scrollbar-dark p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h2 className="text-sm font-bold text-white font-mono">{selectedFi.fi_number}</h2>
+                <h2 className="text-sm font-bold text-rmpg-100 font-mono">{selectedFi.fi_number}</h2>
                 <span className="text-[10px] text-rmpg-400">Created {formatDateTime(selectedFi.created_at)}</span>
               </div>
               <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-1'}`}>
@@ -533,21 +533,21 @@ export default function FieldInterviewsPage() {
 
             {/* Detail grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 text-xs">
-              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Subject</span><div className="text-white font-medium flex items-center gap-1.5 mt-0.5">{selectedFi.subject_last_name}, {selectedFi.subject_first_name}{selectedFi.person_flags && <WarrantBadge flags={selectedFi.person_flags} size="sm" />}</div></div>
-              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">DOB</span><div className="text-white mt-0.5">{selectedFi.subject_dob ? formatDate(selectedFi.subject_dob) : '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Gender / Race</span><div className="text-white mt-0.5">{[selectedFi.subject_gender, selectedFi.subject_race].filter(Boolean).join(' / ') || '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Build</span><div className="text-white mt-0.5">{[selectedFi.subject_height, selectedFi.subject_weight ? `${selectedFi.subject_weight} lbs` : ''].filter(Boolean).join(', ') || '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Hair / Eyes</span><div className="text-white mt-0.5">{[selectedFi.subject_hair, selectedFi.subject_eye].filter(Boolean).join(' / ') || '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Clothing</span><div className="text-white mt-0.5">{selectedFi.subject_clothing || '—'}</div></div>
-              <div className="col-span-2"><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Location</span><div className="text-white mt-0.5">{formatAddressDisplay(selectedFi.location)}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Subject</span><div className="text-rmpg-100 font-medium flex items-center gap-1.5 mt-0.5">{selectedFi.subject_last_name}, {selectedFi.subject_first_name}{selectedFi.person_flags && <WarrantBadge flags={selectedFi.person_flags} size="sm" />}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">DOB</span><div className="text-rmpg-100 mt-0.5">{selectedFi.subject_dob ? formatDate(selectedFi.subject_dob) : '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Gender / Race</span><div className="text-rmpg-100 mt-0.5">{[selectedFi.subject_gender, selectedFi.subject_race].filter(Boolean).join(' / ') || '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Build</span><div className="text-rmpg-100 mt-0.5">{[selectedFi.subject_height, selectedFi.subject_weight ? `${selectedFi.subject_weight} lbs` : ''].filter(Boolean).join(', ') || '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Hair / Eyes</span><div className="text-rmpg-100 mt-0.5">{[selectedFi.subject_hair, selectedFi.subject_eye].filter(Boolean).join(' / ') || '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Clothing</span><div className="text-rmpg-100 mt-0.5">{selectedFi.subject_clothing || '—'}</div></div>
+              <div className="col-span-2"><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Location</span><div className="text-rmpg-100 mt-0.5">{formatAddressDisplay(selectedFi.location)}</div></div>
               {((selectedFi as any).section_id || (selectedFi as any).zone_id || (selectedFi as any).beat_id) && (
-                <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Section / Zone / Beat</span><div className="text-white">{[(selectedFi as any).section_id, (selectedFi as any).zone_id, (selectedFi as any).beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
+                <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Section / Zone / Beat</span><div className="text-rmpg-100">{[(selectedFi as any).section_id, (selectedFi as any).zone_id, (selectedFi as any).beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
               )}
-              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Reason</span><div className="text-white mt-0.5 capitalize">{selectedFi.contact_reason.replace(/_/g, ' ')}</div></div>
-              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Type</span><div className="text-white mt-0.5">{formatLabel(selectedFi.contact_type)}</div></div>
-              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Action Taken</span><div className="text-white mt-0.5 capitalize">{selectedFi.action_taken}</div></div>
-              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Officer</span><div className="text-white mt-0.5">{selectedFi.officer_name || selectedFi.officer_display_name || '—'}</div></div>
-              {selectedFi.vehicle_plate && <div><span className="text-rmpg-500 text-[10px] uppercase">Vehicle</span><div className="text-white">{selectedFi.vehicle_plate} {selectedFi.vehicle_description}</div></div>}
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Reason</span><div className="text-rmpg-100 mt-0.5 capitalize">{selectedFi.contact_reason.replace(/_/g, ' ')}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Type</span><div className="text-rmpg-100 mt-0.5">{formatLabel(selectedFi.contact_type)}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Action Taken</span><div className="text-rmpg-100 mt-0.5 capitalize">{selectedFi.action_taken}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Officer</span><div className="text-rmpg-100 mt-0.5">{selectedFi.officer_name || selectedFi.officer_display_name || '—'}</div></div>
+              {selectedFi.vehicle_plate && <div><span className="text-rmpg-500 text-[10px] uppercase">Vehicle</span><div className="text-rmpg-100">{selectedFi.vehicle_plate} {selectedFi.vehicle_description}</div></div>}
             </div>
 
             {/* Narrative */}
@@ -565,14 +565,14 @@ export default function FieldInterviewsPage() {
       {formOpen && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true" aria-label={`${editingFi ? 'Edit' : 'New'} Field Interview`} onClick={() => { clearFormDraft(); setFormOpen(false); }}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-dark shadow-md" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#0a0a0a' }}>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background:"var(--surface-sunken)" }}>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-white uppercase">{editingFi ? 'Edit' : 'New'} Field Interview</span>
+                <span className="text-xs font-bold text-rmpg-100 uppercase">{editingFi ? 'Edit' : 'New'} Field Interview</span>
                 {formIsDirty && (
                   <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
                 )}
               </div>
-              <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X style={{ width: 14, height: 14 }} /></IconButton>
+              <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close form"><X style={{ width: 14, height: 14 }} /></IconButton>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               {formWasRestored && (
@@ -601,7 +601,7 @@ export default function FieldInterviewsPage() {
                     <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-rmpg-700 max-h-40 overflow-y-auto">
                       {personResults.map((p: any) => (
                         <button key={p.id} type="button" onClick={() => selectPerson(p)}
-                          className="w-full text-left px-3 py-1.5 text-xs text-white hover:bg-rmpg-700 flex items-center gap-2">
+                          className="w-full text-left px-3 py-1.5 text-xs text-rmpg-100 hover:bg-rmpg-700 flex items-center gap-2">
                           <User className="w-3 h-3 text-rmpg-400" />
                           {p.last_name}, {p.first_name} {p.date_of_birth ? `— DOB: ${formatDate(p.date_of_birth)}` : ''}
                         </button>

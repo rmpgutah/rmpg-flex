@@ -111,7 +111,7 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
               return (
                 <tr key={r.wallet_id} className="text-[11px] border-b border-[#141414]">
                   <td className="py-[3px] pr-2">
-                    <span className="text-white">{r.full_name}</span>
+                    <span className="text-rmpg-100">{r.full_name}</span>
                     <span className="text-[#666]"> · {r.badge_number || '—'}</span>
                   </td>
                   <td className="py-[3px] pr-2 text-[#999]">{[r.rank, r.department].filter(Boolean).join(' / ') || '—'}</td>

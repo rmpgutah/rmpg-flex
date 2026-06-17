@@ -192,7 +192,7 @@ export default function SecurityKeyManager() {
             <div
               key={cred.id}
               className="flex items-center gap-3 px-3 py-2 panel-beveled"
-              style={{ background: '#0a0a0a' }}
+              style={{ background:"var(--surface-sunken)" }}
             >
               <div className="p-1.5 panel-inset" style={{ color: '#d97706', background: 'rgba(217,119,6,0.1)' }}>
                 {cred.deviceType === 'multiDevice' ? (

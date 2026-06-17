@@ -85,9 +85,9 @@ export default function MiniMap({ pdfBytes, pages, pageOrder, activePage, onJump
         <span className="text-[10px] uppercase tracking-wider text-rmpg-300 font-semibold">Page navigator</span>
         <span className="text-[10px] text-rmpg-500">{activePage} / {pageOrder.length}</span>
         <button type="button" onClick={() => setCollapsed(c => !c)}
-          className="ml-auto text-[10px] text-rmpg-400 hover:text-white px-1"
+          className="ml-auto text-[10px] text-rmpg-400 hover:text-rmpg-100 px-1"
           title={collapsed ? 'Expand' : 'Collapse'}>{collapsed ? '▴' : '▾'}</button>
-        <button type="button" onClick={onClose} className="text-rmpg-400 hover:text-white p-0.5"
+        <button type="button" onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100 p-0.5"
           aria-label="Close mini-map"><X className="w-3 h-3" /></button>
       </div>
       {!collapsed && (
@@ -108,7 +108,7 @@ export default function MiniMap({ pdfBytes, pages, pageOrder, activePage, onJump
               >
                 <div className="bg-white aspect-[3/4] flex items-center justify-center overflow-hidden">
                   {original === 0 ? (
-                    <span className="text-[8px] text-gray-400">Blank</span>
+                    <span className="text-[8px] text-rmpg-400">Blank</span>
                   ) : (
                     <canvas
                       ref={(el) => { if (el) refs.current.set(idx, el); else refs.current.delete(idx); }}

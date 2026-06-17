@@ -285,7 +285,7 @@ export default function AdminClientsTab({
                 <div className="flex items-center gap-3">
                   <Building2 className="w-5 h-5 text-brand-400 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-white truncate">{client.name}</div>
+                    <div className="text-sm font-semibold text-rmpg-100 truncate">{client.name}</div>
                     <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
                       <span>{client.contact_name}</span>
                       {client.property_count != null && <span>{client.property_count} properties</span>}
@@ -355,7 +355,7 @@ export default function AdminClientsTab({
           <div className="p-4 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <h2 className="text-lg font-bold text-rmpg-100 flex items-center gap-2">
                   <Building2 className="w-5 h-5 text-brand-400" />
                   {selectedClient.name}
                 </h2>
@@ -370,7 +370,7 @@ export default function AdminClientsTab({
                 <button type="button" onClick={() => openEditClient(selectedClient)} className="toolbar-btn">
                   <Edit className="w-3.5 h-3.5" /> Edit
                 </button>
-                <button type="button" onClick={() => setSelectedClient(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors rounded-sm" aria-label="Close client details">
+                <button type="button" onClick={() => setSelectedClient(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors rounded-sm" aria-label="Close client details">
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
@@ -395,8 +395,8 @@ export default function AdminClientsTab({
                 onClick={() => setClientDetailTab(tab.id)}
                 className={`px-3 py-1.5 text-[10px] font-medium transition-all duration-150 whitespace-nowrap relative ${
                   clientDetailTab === tab.id
-                    ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
-                    : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                    ? 'bg-rmpg-700 text-rmpg-100 border border-rmpg-600 border-b-rmpg-700'
+                    : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50'
                 }`}
               >
                 {tab.label}
@@ -499,7 +499,7 @@ export default function AdminClientsTab({
                     <div className="text-[10px] text-rmpg-400 uppercase mt-1">Incidents</div>
                   </div>
                   <div className="panel-beveled p-3 text-center bg-surface-base">
-                    <div className="text-2xl font-bold text-gray-400">{clientCalls.length}</div>
+                    <div className="text-2xl font-bold text-rmpg-400">{clientCalls.length}</div>
                     <div className="text-[10px] text-rmpg-400 uppercase mt-1">CFS Calls</div>
                   </div>
                 </div>
@@ -591,7 +591,7 @@ export default function AdminClientsTab({
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Invoice Summary</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mb-3">
-                    <div><span className="text-rmpg-400">Total Invoiced:</span> <span className="text-white font-bold ml-1">${(clientBilling?.total_invoiced || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
+                    <div><span className="text-rmpg-400">Total Invoiced:</span> <span className="text-rmpg-100 font-bold ml-1">${(clientBilling?.total_invoiced || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
                     <div><span className="text-rmpg-400">Total Paid:</span> <span className="text-green-400 font-bold ml-1">${(clientBilling?.total_paid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
                     <div><span className="text-rmpg-400">Outstanding:</span> <span className="text-amber-400 font-bold ml-1">${(clientBilling?.outstanding_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
                   </div>
@@ -612,7 +612,7 @@ export default function AdminClientsTab({
                       <div key={prop.id} className="flex items-center gap-3 px-3 py-2 bg-surface-raised border border-rmpg-700">
                         <MapPin className="w-3.5 h-3.5 text-brand-400 flex-shrink-0" />
                         <div className="flex-1">
-                          <div className="text-xs text-white font-medium">{prop.name}</div>
+                          <div className="text-xs text-rmpg-100 font-medium">{prop.name}</div>
                           <div className="text-[10px] text-rmpg-400">{prop.address}</div>
                         </div>
                         <span className={`px-1.5 py-0.5 text-[9px] font-bold ${prop.is_active !== 0 ? 'text-green-400' : 'text-rmpg-500'}`}>
@@ -646,7 +646,7 @@ export default function AdminClientsTab({
                     <tbody>
                       {clientIncidents.map((inc: any) => (
                         <tr key={inc.id}>
-                          <td className="font-bold text-white text-xs font-mono">{inc.incident_number}</td>
+                          <td className="font-bold text-rmpg-100 text-xs font-mono">{inc.incident_number}</td>
                           <td className="text-xs text-brand-400">{(inc.incident_type || '').replace(/_/g, ' ')}</td>
                           <td className="text-xs font-mono font-bold text-rmpg-300">{inc.priority}</td>
                           <td className="text-xs text-rmpg-300">{toDisplayLabel(inc.status)}</td>

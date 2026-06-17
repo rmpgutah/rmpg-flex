@@ -102,8 +102,8 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
           <div className="text-[7px] text-rmpg-500 uppercase">Total Cost</div>
         </div>
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <Calendar className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
-          <div className="text-[10px] font-bold font-mono text-gray-400">{formatMilitary(detail.last_service_date)}</div>
+          <Calendar className="w-3.5 h-3.5 mx-auto text-rmpg-400 mb-1" />
+          <div className="text-[10px] font-bold font-mono text-rmpg-400">{formatMilitary(detail.last_service_date)}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Last Service</div>
         </div>
         <div className={`panel-beveled p-2.5 text-center ${
@@ -308,7 +308,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                 <div className="text-[7px] text-rmpg-500 uppercase">Avg MPG</div>
               </div>
               <div className="text-center p-1.5 bg-surface-sunken rounded">
-                <div className="text-sm font-bold font-mono text-gray-400">{fuelEfficiency.data?.length || 0}</div>
+                <div className="text-sm font-bold font-mono text-rmpg-400">{fuelEfficiency.data?.length || 0}</div>
                 <div className="text-[7px] text-rmpg-500 uppercase">Fill-ups</div>
               </div>
             </div>
@@ -340,7 +340,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                 <div className="text-[7px] text-rmpg-500 uppercase">Parts</div>
               </div>
               <div className="text-center p-1.5 bg-surface-sunken rounded">
-                <div className="text-sm font-bold font-mono text-gray-400">${maintenanceCosts.total_labor_cost?.toLocaleString() || 0}</div>
+                <div className="text-sm font-bold font-mono text-rmpg-400">${maintenanceCosts.total_labor_cost?.toLocaleString() || 0}</div>
                 <div className="text-[7px] text-rmpg-500 uppercase">Labor</div>
               </div>
             </div>

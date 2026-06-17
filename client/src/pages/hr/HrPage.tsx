@@ -90,7 +90,7 @@ export default function HRPage() {
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-all duration-200 border-b-2 whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
                 activeTab === tab.key
-                  ? 'text-white border-brand-500'
+                  ? 'text-rmpg-100 border-brand-500'
                   : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:border-rmpg-500/50'
               }`}
             >

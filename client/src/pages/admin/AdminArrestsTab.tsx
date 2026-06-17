@@ -380,7 +380,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
       <div className="flex items-center gap-2 flex-wrap">
         <button type="button"
           onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({ ...EMPTY_BOOKING }); }}
-          className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white"
+          className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100"
         >
           <Plus className="w-3 h-3" />
           Add Booking
@@ -497,7 +497,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             <button type="button"
               onClick={handleSubmitBooking}
               disabled={formSaving || !form.full_name.trim()}
-              className="toolbar-btn text-[10px] flex items-center gap-1 px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
+              className="toolbar-btn text-[10px] flex items-center gap-1 px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50"
             >
               {formSaving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
               {editingId ? 'Update Record' : 'Save Booking'}
@@ -564,7 +564,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             <button type="button"
               onClick={handleCsvImport}
               disabled={csvImporting || !csvData.trim()}
-              className="toolbar-btn text-[10px] flex items-center gap-1 px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
+              className="toolbar-btn text-[10px] flex items-center gap-1 px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50"
             >
               {csvImporting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Upload className="w-3 h-3" />}
               {csvImporting ? 'Importing...' : 'Import Records'}
@@ -701,7 +701,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
             <div className="flex items-center gap-2">
               <button type="button" onClick={handleSaveKey} disabled={saving || !apiKey.trim() || apiKey.trim().length < 10}
-                className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50">
+                className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50">
                 {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Key className="w-3 h-3" />}
                 Save Key
               </button>
@@ -794,7 +794,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
                           {/* Type badge */}
                           <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-sm ${
-                            county.roster_type === 'pdf' ? 'bg-amber-900/40 text-amber-400' : 'bg-gray-900/40 text-gray-400'
+                            county.roster_type === 'pdf' ? 'bg-amber-900/40 text-amber-400' : 'bg-surface-sunken/40 text-rmpg-400'
                           }`}>{county.roster_type}</span>
 
                           {/* Enable/Disable toggle */}

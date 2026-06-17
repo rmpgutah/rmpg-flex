@@ -61,7 +61,7 @@ function DispositionPrompt({
         {/* 41: Close button with hover background and transition */}
         <button type="button"
           onClick={onCancel}
-          className="text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 p-0.5 transition-colors rounded-sm"
+          className="text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 p-0.5 transition-colors rounded-sm"
           title="Cancel clear"
           aria-label="Cancel disposition"
         >
@@ -74,7 +74,7 @@ function DispositionPrompt({
         <select id="ff-dispositionprompt-0"
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
-          className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 font-mono focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-none transition-colors"
+          className="flex-1 bg-surface-base border border-rmpg-600 text-rmpg-100 text-[10px] px-2 py-1 font-mono focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-none transition-colors"
           aria-label="Disposition code"
           autoFocus
         >

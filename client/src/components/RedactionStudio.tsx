@@ -100,7 +100,7 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
         <span className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-[#d4a017]">
           <ShieldOff className="w-4 h-4" /> REDACTION STUDIO — EVENT #{eventId}
         </span>
-        <button onClick={onClose} className="text-rmpg-400 hover:text-white p-1" aria-label="Close redaction studio"><X className="w-5 h-5" /></button>
+        <button onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100 p-1" aria-label="Close redaction studio"><X className="w-5 h-5" /></button>
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_300px] overflow-hidden">

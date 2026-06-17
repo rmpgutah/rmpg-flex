@@ -103,7 +103,7 @@ export default function MyIdPage() {
             )}
           </div>
           <div className="min-w-0 flex-1 space-y-1">
-            <div className="text-white font-semibold text-base leading-tight">{badge.full_name}</div>
+            <div className="text-rmpg-100 font-semibold text-base leading-tight">{badge.full_name}</div>
             <Field label="Badge" value={badge.badge_number} />
             <Field label="Rank" value={badge.rank} />
             <Field label="Dept" value={badge.department} />

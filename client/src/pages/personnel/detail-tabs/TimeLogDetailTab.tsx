@@ -80,7 +80,7 @@ export default function TimeLogDetailTab({
               {isClockedIn && (
                 <button type="button"
                   onClick={() => onStartBreak(officerId)}
-                  className="toolbar-btn flex items-center gap-1.5 text-gray-400 border-gray-700/50 hover:bg-gray-900/40"
+                  className="toolbar-btn flex items-center gap-1.5 text-rmpg-400 border-border-default/50 hover:bg-surface-sunken/40"
                 >
                   <Coffee className="w-3 h-3" /> Start Break
                 </button>
@@ -193,7 +193,7 @@ export default function TimeLogDetailTab({
                         </span>
                       )}
                       {entry.status === 'edited' && (
-                        <span className="text-[8px] px-1 py-0.5 bg-gray-900/40 text-gray-400 border border-gray-700/50 font-bold uppercase">
+                        <span className="text-[8px] px-1 py-0.5 bg-surface-sunken/40 text-rmpg-400 border border-border-default/50 font-bold uppercase">
                           Edited
                         </span>
                       )}

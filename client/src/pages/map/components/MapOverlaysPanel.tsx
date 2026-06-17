@@ -50,7 +50,7 @@ export default function MapOverlaysPanel({ overlays, className = '' }: MapOverla
   return (
     <div
       className={`flex flex-col ${className}`}
-      style={{ background: '#0a0a0a', border: '1px solid #222222', borderRadius: 2 }}
+      style={{ background:"var(--surface-sunken)", border: '1px solid #222222', borderRadius: 2 }}
     >
       <PanelTitleBar title="MAP OVERLAYS" icon={Layers} statusLed="amber" />
 

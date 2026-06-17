@@ -87,7 +87,7 @@ export default function SpecialOpsPage() {
     { key: 'duration_minutes', label: 'Duration', render: (r: Callout) => r.duration_minutes ? `${r.duration_minutes}m` : '--' },
     { key: 'actions', label: '', width: '80px', render: (r: Callout) => (
       <div className="flex gap-2">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-rmpg-400 hover:text-white" title="Edit"><Pencil size={12} /></button>
+        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-rmpg-400 hover:text-rmpg-100" title="Edit"><Pencil size={12} /></button>
         <button onClick={(e) => { e.stopPropagation(); setDeleteId(r.id); }} className="text-red-500 hover:text-red-300" title="Delete"><Trash2 size={12} /></button>
       </div>
     )},
@@ -100,7 +100,7 @@ export default function SpecialOpsPage() {
     { key: 'assigned_to', label: 'Assigned To' },
     { key: 'actions', label: '', width: '80px', render: (r: Equipment) => (
       <div className="flex gap-2">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-rmpg-400 hover:text-white" title="Edit"><Pencil size={12} /></button>
+        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-rmpg-400 hover:text-rmpg-100" title="Edit"><Pencil size={12} /></button>
         <button onClick={(e) => { e.stopPropagation(); setDeleteId(r.id); }} className="text-red-500 hover:text-red-300" title="Delete"><Trash2 size={12} /></button>
       </div>
     )},

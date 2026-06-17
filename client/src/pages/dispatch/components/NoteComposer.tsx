@@ -103,7 +103,7 @@ export default function NoteComposer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, apply, wrap, onSubmit]);
 
-  const btn = 'w-6 h-5 flex items-center justify-center text-[10px] text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]';
+  const btn = 'w-6 h-5 flex items-center justify-center text-[10px] text-[#9ca3af] hover:text-rmpg-100 hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]';
 
   return (
     <div>

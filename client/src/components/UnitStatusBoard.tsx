@@ -195,12 +195,12 @@ export default React.memo(function UnitStatusBoard({
             onClick={() => onUnitClick?.(unit)}
             onContextMenu={(e) => openMenu(e, buildUnitMenu(unit))}
             className={`flex items-center gap-2 p-1.5 panel-beveled cursor-pointer hover:bg-surface-raised transition-colors ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''}`}
-            style={{ background: '#0a0a0a' }}
+            style={{ background:"var(--surface-sunken)" }}
           >
             {/* 33: aria-hidden on decorative LED dot */}
             <span className={STATUS_LED_CLASSES[unit.status]} aria-hidden="true" />
             <div className="min-w-0">
-              <div className="text-xs font-bold text-white font-mono truncate">{unit.call_sign}</div>
+              <div className="text-xs font-bold text-rmpg-100 font-mono truncate">{unit.call_sign}</div>
               {isOnFoot(unit) && <OnFootBadge since={unit.on_foot_since} onClick={() => setFootUnit(unit)} />}
               {/* 34: Italic unassigned label in compact mode */}
               <div className={`text-[10px] truncate ${unit.officer_name ? 'text-rmpg-300' : 'text-rmpg-500 italic'}`}>{unit.officer_name || 'Unassigned'}</div>
@@ -243,12 +243,12 @@ export default React.memo(function UnitStatusBoard({
               <td>
                 <div className="flex items-center gap-2">
                   <span className={STATUS_LED_CLASSES[unit.status] || 'led-dot led-off'} />
-                  <span className="font-bold text-white font-mono">{unit.call_sign}</span>
+                  <span className="font-bold text-rmpg-100 font-mono">{unit.call_sign}</span>
                   {/* Spillman EMERGENCY overlay — flashing red badge, floats this
                       row to the top of the board (see sort above). */}
                   {isEmergency(unit) && (
                     <span
-                      className="inline-flex items-center gap-0.5 px-1 py-0 text-[8px] font-black uppercase tracking-wider text-white animate-emergency-blink"
+                      className="inline-flex items-center gap-0.5 px-1 py-0 text-[8px] font-black uppercase tracking-wider text-rmpg-100 animate-emergency-blink"
                       style={{ background: '#dc2626', letterSpacing: '1px' }}
                       title="EMERGENCY — active panic activation"
                     >

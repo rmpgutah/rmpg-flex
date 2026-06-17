@@ -272,7 +272,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                         transform: 'translateY(-50%)',
                       }}
                     >
-                      <span className="text-[10px] font-medium text-white">{item.label}</span>
+                      <span className="text-[10px] font-medium text-rmpg-100">{item.label}</span>
                     </div>
                   )}
                 </button>

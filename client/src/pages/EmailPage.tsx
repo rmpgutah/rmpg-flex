@@ -109,7 +109,7 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
     <div className="border-t border-border-subtle pt-2 mt-2 space-y-1.5">
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider" style={{ letterSpacing: '0.1em' }}>Email Signature</span>
-        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
       <RichTextArea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
         className="input-dark w-full text-xs font-mono resize-y min-h-[36px]" placeholder="Your Name&#10;Title | Organization&#10;Phone: (555) 123-4567" />
@@ -233,7 +233,7 @@ function ContactAutocompleteInput({
               key={`${contact.email}-${idx}`}
               onClick={() => selectSuggestion(contact)}
               className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
-                idx === activeIdx ? 'bg-brand-500/20 text-white' : 'text-rmpg-300 hover:bg-brand-500/10 hover:text-white'
+                idx === activeIdx ? 'bg-brand-500/20 text-rmpg-100' : 'text-rmpg-300 hover:bg-brand-500/10 hover:text-rmpg-100'
               }`}
             >
               <div className="w-5 h-5 rounded-full bg-brand-500/20 flex items-center justify-center text-[9px] text-brand-400 font-bold flex-shrink-0">
@@ -293,15 +293,15 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
     <div ref={ref} className="absolute left-0 top-full mt-1 z-50 w-72 bg-surface-base border border-border-strong rounded-sm shadow-xl">
       <div className="px-3 py-2 border-b border-border-subtle flex items-center justify-between">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Email Templates</span>
-        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
       {/* Category filter */}
       <div className="px-2 py-1.5 border-b border-border-subtle flex items-center gap-1 flex-wrap">
         <button type="button" onClick={() => setFilter('')}
-          className={`text-[9px] px-1.5 py-0.5 rounded-sm ${!filter ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>All</button>
+          className={`text-[9px] px-1.5 py-0.5 rounded-sm ${!filter ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-rmpg-100'}`}>All</button>
         {categories.map(cat => (
           <button type="button" key={cat} onClick={() => setFilter(cat)}
-            className={`text-[9px] px-1.5 py-0.5 rounded-sm capitalize ${filter === cat ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>{cat}</button>
+            className={`text-[9px] px-1.5 py-0.5 rounded-sm capitalize ${filter === cat ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-rmpg-100'}`}>{cat}</button>
         ))}
       </div>
       <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent py-1">
@@ -313,7 +313,7 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
           filtered.map(t => (
             <button type="button" key={t.id} onClick={() => { onSelect(t); onClose(); }}
               className="w-full text-left px-3 py-2 hover:bg-brand-500/10 transition-colors border-b border-border-subtle/30 last:border-0">
-              <div className="text-[11px] text-white font-medium truncate">{t.name}</div>
+              <div className="text-[11px] text-rmpg-100 font-medium truncate">{t.name}</div>
               <div className="text-[9px] text-rmpg-500 truncate">{t.subject}</div>
               <div className="flex items-center gap-1 mt-0.5">
                 <span className="text-[8px] text-rmpg-600 capitalize bg-surface-sunken px-1 rounded-sm">{(t.category || '').replace(/_/g, ' ')}</span>
@@ -359,8 +359,8 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="bg-surface-base border border-border-subtle rounded-sm w-80 mx-4">
         <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Clock className="w-4 h-4 text-brand-400" /> Schedule Send</h3>
-          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
+          <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><Clock className="w-4 h-4 text-brand-400" /> Schedule Send</h3>
+          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
         </div>
         <div className="p-4 space-y-3">
           {/* Quick presets */}
@@ -371,7 +371,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
                 const d = preset.getDate();
                 return (
                   <button type="button" key={preset.label} onClick={() => { setDate(dateToLocalYMD(d)); setTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`); }}
-                    className="text-left px-2 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/10 hover:text-white rounded-sm transition-colors">
+                    className="text-left px-2 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/10 hover:text-rmpg-100 rounded-sm transition-colors">
                     {preset.label}
                   </button>
                 );
@@ -572,7 +572,7 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
             <button type="button" onClick={handleLink} disabled={saving || !linkId.trim()} className="btn-primary text-[9px] px-2 py-1 disabled:opacity-40">
               {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : 'Link'}
             </button>
-            <button type="button" onClick={() => { setShowForm(false); setLinkId(''); setLinkNotes(''); }} className="text-rmpg-500 hover:text-white">
+            <button type="button" onClick={() => { setShowForm(false); setLinkId(''); setLinkNotes(''); }} className="text-rmpg-500 hover:text-rmpg-100">
               <X className="w-3 h-3" />
             </button>
           </div>
@@ -856,7 +856,7 @@ function SearchFilterPanel({
     <div ref={ref} className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-xl p-3 space-y-2">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Search Filters</span>
-        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
 
       <div>
@@ -898,7 +898,7 @@ function SearchFilterPanel({
 
       <div className="flex items-center justify-between pt-1 border-t border-border-subtle">
         {hasActiveFilters(local) ? (
-          <button type="button" onClick={handleReset} className="text-[10px] text-rmpg-500 hover:text-white">Clear filters</button>
+          <button type="button" onClick={handleReset} className="text-[10px] text-rmpg-500 hover:text-rmpg-100">Clear filters</button>
         ) : <div />}
         <button type="button" onClick={handleApply} className="btn-primary text-[10px] px-3 py-0.5">Apply</button>
       </div>
@@ -1163,7 +1163,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c] rounded-t-sm">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
             {mode === 'reply' ? <Reply className="w-4 h-4 text-brand-400" /> :
              mode === 'reply-all' ? <ReplyAll className="w-4 h-4 text-brand-400" /> :
              mode === 'forward' ? <Forward className="w-4 h-4 text-brand-400" /> :
@@ -1172,7 +1172,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           </h3>
           <div className="flex items-center gap-1">
             {draftStatus && <span className="text-[9px] text-green-500 italic mr-2">{draftStatus}</span>}
-            <IconButton onClick={onClose} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
+            <IconButton onClick={onClose} className="p-1 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
           </div>
         </div>
 
@@ -1199,8 +1199,8 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
             <span className="text-[10px] text-rmpg-500 w-6 text-right flex-shrink-0">To</span>
             <div className="flex-1"><ContactAutocompleteInput value={to} onChange={setTo} placeholder="Recipients..." /></div>
             <div className="flex items-center gap-1 text-[9px] flex-shrink-0">
-              <button type="button" onClick={() => setCc(cc || ' ')} className={`px-1.5 py-0.5 rounded-sm transition-colors ${cc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Cc</button>
-              <button type="button" onClick={() => { setShowBcc(!showBcc); if (!showBcc) setBcc(bcc || ' '); }} className={`px-1.5 py-0.5 rounded-sm transition-colors ${showBcc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Bcc</button>
+              <button type="button" onClick={() => setCc(cc || ' ')} className={`px-1.5 py-0.5 rounded-sm transition-colors ${cc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-rmpg-100'}`}>Cc</button>
+              <button type="button" onClick={() => { setShowBcc(!showBcc); if (!showBcc) setBcc(bcc || ' '); }} className={`px-1.5 py-0.5 rounded-sm transition-colors ${showBcc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-rmpg-100'}`}>Bcc</button>
             </div>
           </div>
 
@@ -1221,7 +1221,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-rmpg-500 w-6 text-right flex-shrink-0">Sub</span>
             <input id="ff-emailpage-13" value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject"
-              className="flex-1 bg-transparent text-xs text-white border-0 outline-none placeholder:text-rmpg-600 py-1" />
+              className="flex-1 bg-transparent text-xs text-rmpg-100 border-0 outline-none placeholder:text-rmpg-600 py-1" />
           </div>
         </div>
 
@@ -1230,27 +1230,27 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         {/* Formatting toolbar */}
         <div className="flex items-center gap-0.5 px-4 py-1">
           <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '**', '**', 'bold text')}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Bold (Ctrl+B)"><Bold className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Bold (Ctrl+B)"><Bold className="w-3.5 h-3.5" /></button>
           <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '*', '*', 'italic text')}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Italic (Ctrl+I)"><Italic className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Italic (Ctrl+I)"><Italic className="w-3.5 h-3.5" /></button>
           <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '[', '](https://)', 'link text')}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert link"><Link className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert link"><Link className="w-3.5 h-3.5" /></button>
           <div className="w-px h-4 bg-rmpg-700 mx-1" />
           <button type="button" onClick={() => fileInputRef.current?.click()}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Attach file"><Paperclip className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Attach file"><Paperclip className="w-3.5 h-3.5" /></button>
           <IconButton onClick={handleInlineImage}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert inline image" aria-label="Insert inline image"><Image className="w-3.5 h-3.5" /></IconButton>
+            className="p-1.5 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert inline image" aria-label="Insert inline image"><Image className="w-3.5 h-3.5" /></IconButton>
           <input id="ff-emailpage-14" ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
           <div className="flex-1" />
           <div className="relative">
             <button type="button" onClick={() => setShowTemplatePicker(!showTemplatePicker)}
-              className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Use template">
+              className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Use template">
               <FileStack className="w-3 h-3" /> Templates
             </button>
             {showTemplatePicker && <TemplatePicker onSelect={handleTemplateSelect} onClose={() => setShowTemplatePicker(false)} />}
           </div>
           <button type="button" onClick={() => setShowSignatureEditor(!showSignatureEditor)}
-            className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Edit signature">
+            className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Edit signature">
             <Settings2 className="w-3 h-3" /> Sig
           </button>
           <select value={importance} onChange={e => setImportance(e.target.value as 'low' | 'normal' | 'high')}
@@ -1261,7 +1261,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
             <option value="high">! High</option>
           </select>
           <button type="button" onClick={() => setReadReceipt(!readReceipt)}
-            className={`flex items-center gap-1 px-2 py-1 text-[9px] rounded-sm transition-colors ${readReceipt ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'}`}
+            className={`flex items-center gap-1 px-2 py-1 text-[9px] rounded-sm transition-colors ${readReceipt ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50'}`}
             title="Request a read receipt">
             <CheckCircle className="w-3 h-3" /> Receipt
           </button>
@@ -1328,7 +1328,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
             <span className="sm:hidden">Ctrl+Enter to send</span>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">
+            <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors">
               Discard
             </button>
             {mode === 'new' && (
@@ -1350,18 +1350,18 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                   } catch { setError('Failed to save draft to mailbox'); }
                   finally { setSavingDraft(false); }
                 }}
-                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-40">
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-40">
                 {savingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <FileText className="w-3.5 h-3.5" />} Draft
               </button>
             )}
             {mode === 'new' && (
               <button type="button" onClick={() => setShowScheduleModal(true)} disabled={sending}
-                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-40">
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-40">
                 <Clock className="w-3.5 h-3.5" /> Later
               </button>
             )}
             <button type="button" onClick={handleSend} disabled={sending}
-              className="px-5 py-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-all flex items-center gap-1.5 shadow-sm shadow-brand-500/30 hover:shadow-md hover:shadow-brand-500/40 disabled:opacity-40">
+              className="px-5 py-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-rmpg-100 rounded-sm transition-all flex items-center gap-1.5 shadow-sm shadow-brand-500/30 hover:shadow-md hover:shadow-brand-500/40 disabled:opacity-40">
               {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Send className="w-3.5 h-3.5" />}
               {sending ? 'Sending...' : 'Send'}
             </button>
@@ -1402,14 +1402,14 @@ function MoveToFolderDropdown({ folders, currentFolder, onMove }: { folders: Ema
 
   return (
     <div className="relative" ref={ref}>
-      <button type="button" onClick={() => setOpen(!open)} className="p-1 text-rmpg-500 hover:text-white" title="Move to folder"><FolderInput className="w-3.5 h-3.5" /></button>
+      <button type="button" onClick={() => setOpen(!open)} className="p-1 text-rmpg-500 hover:text-rmpg-100" title="Move to folder"><FolderInput className="w-3.5 h-3.5" /></button>
       {open && (
         <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-surface-base border border-border-strong rounded-sm shadow-lg py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
           {folders.filter(f => getFolderKey(f) !== currentFolder).map(f => {
             const Icon = FOLDER_ICONS[f.displayName] || Folder;
             return (
               <button type="button" key={f.id} onClick={() => { onMove(getFolderKey(f)); setOpen(false); }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white transition-colors">
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100 transition-colors">
                 <Icon className="w-3 h-3" /> {f.displayName}
               </button>
             );
@@ -1456,7 +1456,7 @@ function ContextMenu({
 
   const MenuItem = ({ icon: Icon, label, onClick, danger }: { icon: React.ElementType; label: string; onClick: () => void; danger?: boolean }) => (
     <button type="button" onClick={() => { onClick(); onClose(); }}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${danger ? 'text-red-400 hover:bg-red-500/10' : 'text-rmpg-300 hover:bg-brand-500/15 hover:text-white'}`}>
+      className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${danger ? 'text-red-400 hover:bg-red-500/10' : 'text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100'}`}>
       <Icon className="w-3 h-3" /> {label}
     </button>
   );
@@ -1484,7 +1484,7 @@ function ContextMenu({
       <div className="relative"
         onMouseEnter={() => setShowMoveMenu(true)}
         onMouseLeave={() => setShowMoveMenu(false)}>
-        <div className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white cursor-default">
+        <div className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100 cursor-default">
           <FolderInput className="w-3 h-3" /> Move to <ChevronRightIcon className="w-3 h-3 ml-auto" />
         </div>
         {showMoveMenu && (
@@ -1493,7 +1493,7 @@ function ContextMenu({
               const Icon = FOLDER_ICONS[f.displayName] || Folder;
               return (
                 <button type="button" key={f.id} onClick={() => { onMove(getFolderKey(f)); onClose(); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white transition-colors">
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100 transition-colors">
                   <Icon className="w-3 h-3" /> {f.displayName}
                 </button>
               );
@@ -1559,9 +1559,9 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
         <div className="flex items-center justify-between px-3 py-2 bg-[#0c0c0c]/50">
           <span className="text-[9px] text-rmpg-600 font-mono">Ctrl+Enter to send &middot; Esc to cancel</span>
           <div className="flex items-center gap-1.5">
-            <button type="button" onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">Cancel</button>
+            <button type="button" onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors">Cancel</button>
             <button type="button" onClick={handleSend} disabled={sending || !body.trim()}
-              className="px-4 py-1 text-[10px] font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors flex items-center gap-1 disabled:opacity-40 shadow-sm shadow-brand-500/20">
+              className="px-4 py-1 text-[10px] font-semibold bg-brand-500 hover:bg-brand-600 text-rmpg-100 rounded-sm transition-colors flex items-center gap-1 disabled:opacity-40 shadow-sm shadow-brand-500/20">
               {sending ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Send className="w-3 h-3" />} Reply
             </button>
           </div>
@@ -1618,7 +1618,7 @@ function SnoozeMenu({ onSnooze, onClose }: { onSnooze: (untilIso: string) => voi
       <div className="px-3 py-1.5 text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider border-b border-border-subtle">Snooze until…</div>
       {presets.map(p => (
         <button type="button" key={p.label} onClick={() => { onSnooze(toLocalIso(p.get())); onClose(); }}
-          className="w-full text-left px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white transition-colors">{p.label}</button>
+          className="w-full text-left px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100 transition-colors">{p.label}</button>
       ))}
       <div className="border-t border-border-subtle mt-1 px-3 py-2 space-y-1.5">
         <div className="flex items-center gap-1.5">
@@ -1656,8 +1656,8 @@ function HeadersModal({ messageId, onClose }: { messageId: string; onClose: () =
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="bg-surface-base border border-border-subtle rounded-sm w-[640px] max-w-[95vw] max-h-[80vh] mx-4 flex flex-col">
         <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><FileText className="w-4 h-4 text-brand-400" /> Internet Headers</h3>
-          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
+          <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><FileText className="w-4 h-4 text-brand-400" /> Internet Headers</h3>
+          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
         </div>
         <div className="px-4 py-2 border-b border-border-subtle">
           <input value={hFilter} onChange={e => setHFilter(e.target.value)} placeholder="Filter headers (e.g. spf, dkim, received)…"
@@ -1725,15 +1725,15 @@ function AutoReplyModal({ onClose, onSnackbar }: { onClose: () => void; onSnackb
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="bg-surface-base border border-border-subtle rounded-sm w-[480px] max-w-[95vw] mx-4">
         <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><CalendarClock className="w-4 h-4 text-brand-400" /> Automatic Replies (Out of Office)</h3>
-          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
+          <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><CalendarClock className="w-4 h-4 text-brand-400" /> Automatic Replies (Out of Office)</h3>
+          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
         </div>
         {loading ? <div className="p-6 text-center"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div> : (
           <div className="p-4 space-y-3">
             <div className="flex items-center gap-2">
               {(['disabled', 'alwaysEnabled', 'scheduled'] as const).map(s => (
                 <button type="button" key={s} onClick={() => setOofStatus(s)}
-                  className={`text-[10px] px-2 py-1 rounded-sm border transition-colors ${oofStatus === s ? 'bg-brand-500/20 text-brand-400 border-brand-500/40' : 'text-rmpg-400 border-border-subtle hover:text-white'}`}>
+                  className={`text-[10px] px-2 py-1 rounded-sm border transition-colors ${oofStatus === s ? 'bg-brand-500/20 text-brand-400 border-brand-500/40' : 'text-rmpg-400 border-border-subtle hover:text-rmpg-100'}`}>
                   {s === 'disabled' ? 'Off' : s === 'alwaysEnabled' ? 'On' : 'Scheduled'}
                 </button>
               ))}
@@ -1819,7 +1819,7 @@ function CategoryMenu({ messageId, onApplied, onClose, onSnackbar }: {
           cats.length === 0 ? <div className="py-3 text-center text-[10px] text-rmpg-600">No categories yet</div> :
           cats.map(cat => (
             <button type="button" key={cat.id} onClick={() => toggle(cat.displayName)}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white transition-colors">
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100 transition-colors">
               <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: CATEGORY_PRESET_COLORS[cat.color] || '#888888' }} />
               <span className="flex-1 text-left truncate">{cat.displayName}</span>
               {selected.has(cat.displayName) && <CheckCircle className="w-3 h-3 text-brand-400" />}
@@ -2460,7 +2460,7 @@ export default function EmailPage() {
           <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20">
             <WifiOff className="w-8 h-8 text-red-400/60" />
           </div>
-          <h2 className="text-sm font-semibold text-white tracking-wide">Email Not Configured</h2>
+          <h2 className="text-sm font-semibold text-rmpg-100 tracking-wide">Email Not Configured</h2>
           <p className="text-xs text-rmpg-400 leading-relaxed">
             Microsoft 365 email integration needs to be set up by an administrator.
           </p>
@@ -2485,7 +2485,7 @@ export default function EmailPage() {
           <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
             <AlertTriangle className="w-8 h-8 text-amber-400/60" />
           </div>
-          <h2 className="text-sm font-semibold text-white tracking-wide">Authorization Required</h2>
+          <h2 className="text-sm font-semibold text-rmpg-100 tracking-wide">Authorization Required</h2>
           <p className="text-xs text-rmpg-400 leading-relaxed">
             Microsoft email credentials are configured, but OAuth authorization hasn't been completed yet.
             An administrator needs to sign in with the Microsoft 365 account.
@@ -2556,7 +2556,7 @@ export default function EmailPage() {
       <div key={f.id}>
         <div
           className={`group w-full flex items-center gap-1.5 py-1.5 text-xs transition-colors cursor-pointer ${
-            isActive ? 'bg-brand-500/15 text-brand-400 border-l-2 border-brand-500' : 'text-rmpg-300 hover:bg-surface-base hover:text-white border-l-2 border-transparent'
+            isActive ? 'bg-brand-500/15 text-brand-400 border-l-2 border-brand-500' : 'text-rmpg-300 hover:bg-surface-base hover:text-rmpg-100 border-l-2 border-transparent'
           }`}
           style={{ paddingLeft: folderCollapsed ? 12 : 12 + depth * 16 }}
           onClick={() => handleSelectFolder(key)}
@@ -2571,7 +2571,7 @@ export default function EmailPage() {
           }}
         >
           {hasChildren && !folderCollapsed ? (
-            <button type="button" onClick={e => { e.stopPropagation(); toggleFolderExpand(f.id); }} className="p-0.5 -ml-0.5 text-rmpg-500 hover:text-white">
+            <button type="button" onClick={e => { e.stopPropagation(); toggleFolderExpand(f.id); }} className="p-0.5 -ml-0.5 text-rmpg-500 hover:text-rmpg-100">
               {isExpanded ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRightIcon className="w-2.5 h-2.5" />}
             </button>
           ) : !folderCollapsed ? <div className="w-3.5" /> : null}
@@ -2583,7 +2583,7 @@ export default function EmailPage() {
               <input id="ff-emailpage-15" value={renameValue} onChange={e => setRenameValue(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleRenameFolder(f.id); if (e.key === 'Escape') { setRenamingFolder(null); setRenameValue(''); } }}
                 onBlur={() => { setRenamingFolder(null); setRenameValue(''); }}
-                className="flex-1 bg-transparent text-xs text-white border-b border-brand-500 outline-none" autoFocus
+                className="flex-1 bg-transparent text-xs text-rmpg-100 border-b border-brand-500 outline-none" autoFocus
                 onClick={e => e.stopPropagation()} />
             ) : (
               <span className="flex-1 text-left truncate">{f.displayName}</span>
@@ -2607,7 +2607,7 @@ export default function EmailPage() {
 
   // Phase 4: per-user enrollment gate
   if (enrolled === false) return <EnrollmentBanner />;
-  if (enrolled === null) return <div className="p-8 text-center text-xs text-gray-500">Checking enrollment...</div>;
+  if (enrolled === null) return <div className="p-8 text-center text-xs text-rmpg-500">Checking enrollment...</div>;
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -2615,11 +2615,11 @@ export default function EmailPage() {
       <div className={`flex-shrink-0 border-r border-border-subtle bg-surface-sunken hidden md:flex flex-col transition-all ${folderCollapsed ? 'w-12' : 'w-48'}`}>
         {/* Collapse toggle + compose */}
         <div className="px-2 py-2 border-b border-border-subtle flex items-center gap-1">
-          <IconButton onClick={toggleFolderCollapse} className="p-1 text-rmpg-500 hover:text-white" title={folderCollapsed ? 'Expand folders' : 'Collapse folders'} aria-label={folderCollapsed ? 'Expand folders' : 'Collapse folders'}>
+          <IconButton onClick={toggleFolderCollapse} className="p-1 text-rmpg-500 hover:text-rmpg-100" title={folderCollapsed ? 'Expand folders' : 'Collapse folders'} aria-label={folderCollapsed ? 'Expand folders' : 'Collapse folders'}>
             {folderCollapsed ? <PanelLeftOpen className="w-3.5 h-3.5" /> : <PanelLeftClose className="w-3.5 h-3.5" />}
           </IconButton>
           {!folderCollapsed && (
-            <button type="button" onClick={() => setComposing('new')} className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-sm transition-all shadow-sm shadow-brand-500/20 hover:shadow-md hover:shadow-brand-500/30">
+            <button type="button" onClick={() => setComposing('new')} className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-rmpg-100 font-semibold rounded-sm transition-all shadow-sm shadow-brand-500/20 hover:shadow-md hover:shadow-brand-500/30">
               <Plus className="w-3.5 h-3.5" /> Compose
             </button>
           )}
@@ -2649,11 +2649,11 @@ export default function EmailPage() {
                   onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); } }}
                   className="flex-1 input-dark text-[10px] px-2 py-0.5 min-h-[36px]" placeholder="Folder name" autoFocus />
                 <button type="button" onClick={() => handleCreateFolder()} className="p-0.5 text-brand-400 hover:text-brand-300"><CheckCircle className="w-3.5 h-3.5" /></button>
-                <button type="button" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} className="p-0.5 text-rmpg-500 hover:text-white"><X className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} className="p-0.5 text-rmpg-500 hover:text-rmpg-100"><X className="w-3.5 h-3.5" /></button>
               </div>
             ) : (
               <button type="button" onClick={() => setShowNewFolder(true)}
-                className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-white transition-colors py-0.5">
+                className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-rmpg-100 transition-colors py-0.5">
                 <FolderPlus className="w-3 h-3" /> New Folder
               </button>
             )}
@@ -2664,7 +2664,7 @@ export default function EmailPage() {
         {!folderCollapsed && (
           <div className="border-t border-border-subtle">
             <button type="button" onClick={() => setShowScheduledPanel(!showScheduledPanel)}
-              className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-rmpg-400 hover:text-white transition-colors">
+              className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-rmpg-400 hover:text-rmpg-100 transition-colors">
               <CalendarClock className="w-3 h-3" />
               <span className="flex-1 text-left">Scheduled</span>
               {showScheduledPanel ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRightIcon className="w-2.5 h-2.5" />}
@@ -2686,12 +2686,12 @@ export default function EmailPage() {
               setNotificationsOn(newState);
               showSnackbar(newState ? 'Email notifications enabled' : 'Email notifications disabled');
             }}
-              className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-white transition-colors py-0.5">
+              className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-rmpg-100 transition-colors py-0.5">
               {notificationsOn ? <Bell className="w-3 h-3 text-brand-400" /> : <BellOff className="w-3 h-3" />}
               {notificationsOn ? 'Notifications on' : 'Notifications off'}
             </button>
             <button type="button" onClick={() => setShowAutoReply(true)}
-              className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-white transition-colors py-0.5">
+              className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-rmpg-100 transition-colors py-0.5">
               <CalendarClock className="w-3 h-3" /> Automatic replies
             </button>
             <div className="text-[8px] text-rmpg-600 space-y-0.5 font-mono">
@@ -2713,9 +2713,9 @@ export default function EmailPage() {
               }
             }}>
             <button type="button" onClick={() => { setRenamingFolder(folderContextMenu.folder.id); setRenameValue(folderContextMenu.folder.displayName); setFolderContextMenu(null); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><Edit3 className="w-3 h-3" /> Rename</button>
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Edit3 className="w-3 h-3" /> Rename</button>
             <button type="button" onClick={() => { setShowNewFolder(true); setFolderContextMenu(null); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><FolderPlus className="w-3 h-3" /> New Subfolder</button>
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><FolderPlus className="w-3 h-3" /> New Subfolder</button>
             <div className="border-t border-border-subtle my-1" />
             <button type="button" onClick={() => { handleDeleteFolder(folderContextMenu.folder.id); setFolderContextMenu(null); }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><Trash className="w-3 h-3" /> Delete</button>
@@ -2732,14 +2732,14 @@ export default function EmailPage() {
           <select id="ff-emailpage-17"
             value={selectedFolder}
             onChange={e => handleSelectFolder(e.target.value)}
-            className="flex-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
+            className="flex-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-rmpg-100 focus:border-brand-500 focus:outline-none"
           >
             {sortedFolders.map(f => {
               const key = getFolderKey(f);
               return <option key={f.id} value={key}>{f.displayName}{f.unreadItemCount > 0 ? ` (${f.unreadItemCount})` : ''}</option>;
             })}
           </select>
-          <button type="button" onClick={() => setComposing('new')} className="p-2 bg-brand-500 rounded-sm text-white" title="Compose">
+          <button type="button" onClick={() => setComposing('new')} className="p-2 bg-brand-500 rounded-sm text-rmpg-100" title="Compose">
             <Plus className="w-4 h-4" />
           </button>
         </div>
@@ -2763,13 +2763,13 @@ export default function EmailPage() {
             </IconButton>
             <span className="text-[10px] text-brand-400 font-medium">{selectedIds.size} selected</span>
             <div className="flex-1" />
-            <button type="button" onClick={() => handleBatchAction('archive')} className="p-1 text-rmpg-400 hover:text-white" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('archive')} className="p-1 text-rmpg-400 hover:text-rmpg-100" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => handleBatchAction('flag')} className="p-1 text-rmpg-400 hover:text-yellow-400" title="Flag"><Flag className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => handleBatchAction('junk')} className="p-1 text-rmpg-400 hover:text-amber-400" title="Move to Junk"><AlertTriangle className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => handleBatchAction('markRead')} className="p-1 text-rmpg-400 hover:text-white" title="Mark read"><Eye className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => handleBatchAction('markUnread')} className="p-1 text-rmpg-400 hover:text-white" title="Mark unread"><EyeOff className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('markRead')} className="p-1 text-rmpg-400 hover:text-rmpg-100" title="Mark read"><Eye className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('markUnread')} className="p-1 text-rmpg-400 hover:text-rmpg-100" title="Mark unread"><EyeOff className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => handleBatchAction('delete')} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => setSelectedIds(new Set())} className="p-1 text-rmpg-500 hover:text-white" title="Clear selection"><X className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => setSelectedIds(new Set())} className="p-1 text-rmpg-500 hover:text-rmpg-100" title="Clear selection"><X className="w-3.5 h-3.5" /></button>
           </div>
         ) : (
           <div className="px-2 py-1.5 border-b border-border-subtle flex flex-col gap-1">
@@ -2779,30 +2779,30 @@ export default function EmailPage() {
                 <input id="ff-emailpage-18" value={searchInput} onChange={e => { setSearchInput(e.target.value); setSearchQuery(e.target.value); }} placeholder="Search emails (subject, body, from)..." aria-label="Search emails..."
                   className="input-dark w-full text-[11px] pl-7 pr-7 py-1 min-h-[36px]" />
                 {searchInput && (
-                  <IconButton onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Clear search" title="Clear"><X className="w-3 h-3" /></IconButton>
+                  <IconButton onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100" aria-label="Clear search" title="Clear"><X className="w-3 h-3" /></IconButton>
                 )}
                 {showSearchFilters && (
                   <SearchFilterPanel filters={searchFilters} onChange={setSearchFilters} onClose={() => setShowSearchFilters(false)} />
                 )}
               </div>
               <button type="button" onClick={() => setShowSearchFilters(!showSearchFilters)}
-                className={`p-1 rounded-sm transition-colors ${hasActiveFilters(searchFilters) ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}
+                className={`p-1 rounded-sm transition-colors ${hasActiveFilters(searchFilters) ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-rmpg-100'}`}
                 title="Search filters">
                 <SlidersHorizontal className="w-3.5 h-3.5" />
               </button>
               {unreadCount > 0 && (
-                <IconButton onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Mark all as read" aria-label="Mark all as read"><Eye className="w-3.5 h-3.5" /></IconButton>
+                <IconButton onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm" title="Mark all as read" aria-label="Mark all as read"><Eye className="w-3.5 h-3.5" /></IconButton>
               )}
               {(selectedFolder === 'deleteditems' || selectedFolder === 'junkemail') && messages.length > 0 && (
                 <IconButton onClick={handleEmptyFolder} className="p-1 text-rmpg-500 hover:text-red-400 rounded-sm" title="Empty folder" aria-label="Empty folder"><Trash className="w-3.5 h-3.5" /></IconButton>
               )}
-              <IconButton onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Refresh" aria-label="Refresh">
+              <IconButton onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm" title="Refresh" aria-label="Refresh">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               </IconButton>
               {/* Feature 25: Thread View Toggle */}
               <button type="button"
                 onClick={() => { const next = viewMode === 'messages' ? 'threads' : 'messages'; setViewMode(next); if (next === 'threads') fetchThreads(); }}
-                className={`p-1 rounded-sm transition-colors ${viewMode === 'threads' ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}
+                className={`p-1 rounded-sm transition-colors ${viewMode === 'threads' ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-rmpg-100'}`}
                 title={viewMode === 'threads' ? 'Switch to messages view' : 'Switch to thread view'}
               >
                 <MessageSquare className="w-3.5 h-3.5" />
@@ -2811,7 +2811,7 @@ export default function EmailPage() {
               <button type="button"
                 onClick={handleAutoCategorize}
                 disabled={categorizing}
-                className="p-1 text-rmpg-500 hover:text-white rounded-sm"
+                className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm"
                 title="Auto-categorize emails"
               >
                 {categorizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Hash className="w-3.5 h-3.5" />}
@@ -2832,7 +2832,7 @@ export default function EmailPage() {
                 {searchFilters.unreadOnly && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">unread</span>}
                 {searchFilters.dateFrom && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">from: {searchFilters.dateFrom}</span>}
                 {searchFilters.dateTo && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">to: {searchFilters.dateTo}</span>}
-                <button type="button" onClick={() => setSearchFilters(EMPTY_FILTERS)} className="text-[8px] text-rmpg-500 hover:text-white ml-1">clear</button>
+                <button type="button" onClick={() => setSearchFilters(EMPTY_FILTERS)} className="text-[8px] text-rmpg-500 hover:text-rmpg-100 ml-1">clear</button>
               </div>
             )}
           </div>
@@ -2899,7 +2899,7 @@ export default function EmailPage() {
                             {selectedIds.has(msg.id) ? (
                               <button type="button" onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
                                 className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center">
-                                <CheckCircle className="w-4 h-4 text-white" />
+                                <CheckCircle className="w-4 h-4 text-rmpg-100" />
                               </button>
                             ) : (
                               <button type="button" onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
@@ -2926,7 +2926,7 @@ export default function EmailPage() {
                             }}
                           >
                             <div className="flex items-center gap-1.5 mb-0.5">
-                              <span className={`text-[11px] truncate flex-1 ${msg.isRead ? 'text-rmpg-300' : 'text-white font-semibold'}`}>
+                              <span className={`text-[11px] truncate flex-1 ${msg.isRead ? 'text-rmpg-300' : 'text-rmpg-100 font-semibold'}`}>
                                 {msg.fromName || msg.fromAddress}
                               </span>
                               {isMulti && !isExpanded && (
@@ -2960,8 +2960,8 @@ export default function EmailPage() {
 
                           {/* Hover quick actions */}
                           <div className="flex-shrink-0 flex flex-col items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button type="button" onClick={e => { e.stopPropagation(); handleArchive(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
-                            <button type="button" onClick={e => { e.stopPropagation(); handleToggleRead(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm" title={msg.isRead ? 'Mark unread' : 'Mark read'}>
+                            <button type="button" onClick={e => { e.stopPropagation(); handleArchive(msg); }} className="p-1 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
+                            <button type="button" onClick={e => { e.stopPropagation(); handleToggleRead(msg); }} className="p-1 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm" title={msg.isRead ? 'Mark unread' : 'Mark read'}>
                               {msg.isRead ? <MailOpen className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                             </button>
                             <button type="button" onClick={e => { e.stopPropagation(); handleDelete(msg); }} className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded-sm" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -2994,8 +2994,8 @@ export default function EmailPage() {
             <div className="border-b border-border-subtle bg-surface-base">
               {/* Subject + back button */}
               <div className="flex items-center gap-2 px-4 pt-3 pb-2">
-                <button type="button" onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-white flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
-                <h2 className="text-sm font-semibold text-white flex-1 truncate">{fullMessage.subject || '(no subject)'}</h2>
+                <button type="button" onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-rmpg-100 flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
+                <h2 className="text-sm font-semibold text-rmpg-100 flex-1 truncate">{fullMessage.subject || '(no subject)'}</h2>
                 {fullMessage.importance === 'high' && (
                   <span className="text-[8px] px-1.5 py-0.5 bg-red-900/20 text-red-400 rounded-sm font-bold uppercase flex-shrink-0 border border-red-700/20 tracking-wider">Important</span>
                 )}
@@ -3014,7 +3014,7 @@ export default function EmailPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-[12px] text-white font-semibold">{fullMessage.fromName || fullMessage.fromAddress}</span>
+                        <span className="text-[12px] text-rmpg-100 font-semibold">{fullMessage.fromName || fullMessage.fromAddress}</span>
                         <span className="text-[10px] text-rmpg-500">&lt;{fullMessage.fromAddress}&gt;</span>
                       </div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
@@ -3040,48 +3040,48 @@ export default function EmailPage() {
                 <button type="button" onClick={() => setComposing('reply')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/30 rounded-sm transition-colors">
                   <Reply className="w-3 h-3" /> Reply
                 </button>
-                <button type="button" onClick={() => setComposing('reply-all')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">
+                <button type="button" onClick={() => setComposing('reply-all')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors">
                   <ReplyAll className="w-3 h-3" /> Reply All
                 </button>
-                <button type="button" onClick={() => setComposing('forward')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">
+                <button type="button" onClick={() => setComposing('forward')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors">
                   <Forward className="w-3 h-3" /> Forward
                 </button>
                 <div className="w-px h-4 bg-rmpg-700 mx-1" />
-                <button type="button" onClick={() => selectedMessage && handleArchive(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => selectedMessage && handleArchive(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
                 <MoveToFolderDropdown folders={folders} currentFolder={selectedFolder} onMove={handleMoveToFolder} />
                 <div className="flex-1" />
-                <button type="button" onClick={() => selectedMessage && handleToggleRead(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Toggle read">
+                <button type="button" onClick={() => selectedMessage && handleToggleRead(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Toggle read">
                   {selectedMessage?.isRead ? <MailOpen className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
                 <button type="button" onClick={() => selectedMessage && handleToggleFlag(selectedMessage)} className="p-1.5 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Toggle flag">
                   <Flag className={`w-3.5 h-3.5 ${selectedMessage?.isFlagged ? 'text-yellow-400 fill-yellow-400' : 'text-rmpg-400 hover:text-yellow-400'}`} />
                 </button>
                 <div className="relative">
-                  <button type="button" onClick={() => setShowSnoozeMenu(!showSnoozeMenu)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Snooze"><Clock className="w-3.5 h-3.5" /></button>
+                  <button type="button" onClick={() => setShowSnoozeMenu(!showSnoozeMenu)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Snooze"><Clock className="w-3.5 h-3.5" /></button>
                   {showSnoozeMenu && <SnoozeMenu onSnooze={handleSnooze} onClose={() => setShowSnoozeMenu(false)} />}
                 </div>
                 <div className="relative">
-                  <button type="button" onClick={() => setShowCategoryMenu(!showCategoryMenu)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Categorize"><Hash className="w-3.5 h-3.5" /></button>
+                  <button type="button" onClick={() => setShowCategoryMenu(!showCategoryMenu)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Categorize"><Hash className="w-3.5 h-3.5" /></button>
                   {showCategoryMenu && fullMessage && (
                     <CategoryMenu messageId={fullMessage.id} onApplied={() => fetchFullMessage(fullMessage.id)} onClose={() => setShowCategoryMenu(false)} onSnackbar={showSnackbar} />
                   )}
                 </div>
-                <button type="button" onClick={toggleReadingTheme} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors"
+                <button type="button" onClick={toggleReadingTheme} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors"
                   title={readingTheme === 'dark' ? 'Light reading mode' : 'Dark reading mode'}>
                   {readingTheme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
                 </button>
-                <button type="button" onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Print"><Printer className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Print"><Printer className="w-3.5 h-3.5" /></button>
                 <div className="relative">
-                  <button type="button" onClick={() => setShowMoreMenu(!showMoreMenu)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="More actions"><SlidersHorizontal className="w-3.5 h-3.5" /></button>
+                  <button type="button" onClick={() => setShowMoreMenu(!showMoreMenu)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="More actions"><SlidersHorizontal className="w-3.5 h-3.5" /></button>
                   {showMoreMenu && (
                     <div className="absolute right-0 top-full mt-1 z-50 min-w-[200px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1"
                       onMouseLeave={() => setShowMoreMenu(false)}>
-                      <button type="button" onClick={() => { setShowHeadersModal(true); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><FileText className="w-3 h-3" /> View internet headers</button>
-                      <button type="button" onClick={() => { handleDownloadEml(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><Download className="w-3 h-3" /> Download as .eml</button>
+                      <button type="button" onClick={() => { setShowHeadersModal(true); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><FileText className="w-3 h-3" /> View internet headers</button>
+                      <button type="button" onClick={() => { handleDownloadEml(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Download className="w-3 h-3" /> Download as .eml</button>
                       <div className="border-t border-border-subtle my-1" />
-                      <button type="button" onClick={() => { handleSweepSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><Archive className="w-3 h-3" /> Sweep sender to Archive</button>
-                      <button type="button" onClick={() => { handleToggleFocused(true); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><Eye className="w-3 h-3" /> Move to Focused</button>
-                      <button type="button" onClick={() => { handleToggleFocused(false); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><EyeOff className="w-3 h-3" /> Move to Other</button>
+                      <button type="button" onClick={() => { handleSweepSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Archive className="w-3 h-3" /> Sweep sender to Archive</button>
+                      <button type="button" onClick={() => { handleToggleFocused(true); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Eye className="w-3 h-3" /> Move to Focused</button>
+                      <button type="button" onClick={() => { handleToggleFocused(false); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><EyeOff className="w-3 h-3" /> Move to Other</button>
                       <div className="border-t border-border-subtle my-1" />
                       <button type="button" onClick={() => { handleReport('junk-report'); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-amber-400 hover:bg-amber-500/10"><AlertTriangle className="w-3 h-3" /> Report junk</button>
                       <button type="button" onClick={() => { handleReport('phishing-report'); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><Shield className="w-3 h-3" /> Report phishing</button>
@@ -3109,7 +3109,7 @@ export default function EmailPage() {
                       const viewable = isImage || isPdf;
                       return (
                         <div key={att.id}
-                          className="flex items-center gap-2 px-3 py-2 bg-surface-sunken border border-border-subtle rounded-sm text-[10px] text-rmpg-300 hover:text-white hover:border-brand-500/40 transition-all hover:shadow-lg group min-w-[140px]">
+                          className="flex items-center gap-2 px-3 py-2 bg-surface-sunken border border-border-subtle rounded-sm text-[10px] text-rmpg-300 hover:text-rmpg-100 hover:border-brand-500/40 transition-all hover:shadow-lg group min-w-[140px]">
                           <button type="button" onClick={() => handleOpenAttachment(att)} disabled={attBusyId === att.id}
                             className="flex items-center gap-2 min-w-0 flex-1 text-left disabled:opacity-50"
                             title={viewable ? 'Open in viewer' : 'Download'}>

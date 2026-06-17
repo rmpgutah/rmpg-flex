@@ -514,22 +514,22 @@ export default function RecordsPage() {
         <div className="flex items-center gap-1">
           <UserCircle className="w-2.5 h-2.5 text-brand-400" />
           <span className="text-rmpg-400">P:</span>
-          <span className="text-white font-bold">{persons.length}</span>
+          <span className="text-rmpg-100 font-bold">{persons.length}</span>
         </div>
         <div className="flex items-center gap-1">
-          <Car className="w-2.5 h-2.5 text-gray-400" />
+          <Car className="w-2.5 h-2.5 text-rmpg-400" />
           <span className="text-rmpg-400">V:</span>
-          <span className="text-white font-bold">{vehicles.length}</span>
+          <span className="text-rmpg-100 font-bold">{vehicles.length}</span>
         </div>
         <div className="flex items-center gap-1">
           <Building2 className="w-2.5 h-2.5 text-green-400" />
           <span className="text-rmpg-400">Pr:</span>
-          <span className="text-white font-bold">{properties.length}</span>
+          <span className="text-rmpg-100 font-bold">{properties.length}</span>
         </div>
         <div className="flex items-center gap-1">
           <Package className="w-2.5 h-2.5 text-purple-400" />
           <span className="text-rmpg-400">Ev:</span>
-          <span className="text-white font-bold">{evidence.length}</span>
+          <span className="text-rmpg-100 font-bold">{evidence.length}</span>
         </div>
         <div className="flex items-center gap-1">
           <Shield className="w-2.5 h-2.5 text-red-400" />
@@ -540,8 +540,8 @@ export default function RecordsPage() {
           <>
             <div className="w-px h-2.5 bg-rmpg-600" />
             <div className="flex items-center gap-1">
-              <Warehouse className="w-2.5 h-2.5 text-gray-400" />
-              <span className="text-gray-400 font-bold">{evidenceInStorage}</span>
+              <Warehouse className="w-2.5 h-2.5 text-rmpg-400" />
+              <span className="text-rmpg-300 font-bold">{evidenceInStorage}</span>
             </div>
             <div className="flex items-center gap-1">
               <FlaskConical className="w-2.5 h-2.5 text-purple-400" />

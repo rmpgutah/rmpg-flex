@@ -408,7 +408,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
         <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}>
           <div className="flex items-center gap-2">
             {formData.is_historical ? <History className="w-4 h-4 text-amber-400" /> : <Phone className="w-4 h-4 text-brand-400" />}
-            <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">
+            <h2 id={titleId} className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">
               {formData.is_historical ? 'Historical Call Entry' : 'New Call for Service'}
             </h2>
             {/* Quick / Full mode toggle */}
@@ -433,7 +433,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           <button type="button"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors rounded-sm disabled:opacity-40"
+            className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-300 hover:text-rmpg-100 transition-colors rounded-sm disabled:opacity-40"
             style={{ touchAction: 'manipulation' }}
             aria-label="Close">
             <X className="w-5 h-5 sm:w-4 sm:h-4" />
@@ -445,7 +445,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           <div className="flex items-center gap-2 px-4 py-2 bg-amber-900/30 border-b border-amber-700/30">
             <History className="w-3.5 h-3.5 text-amber-400" />
             <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Restored pending draft</span>
-            <button type="button" onClick={discardDraft} className="ml-auto text-[9px] text-rmpg-400 hover:text-white transition-colors uppercase tracking-wider font-bold">
+            <button type="button" onClick={discardDraft} className="ml-auto text-[9px] text-rmpg-400 hover:text-rmpg-100 transition-colors uppercase tracking-wider font-bold">
               Discard
             </button>
           </div>
@@ -1009,7 +1009,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                       update('subject_description', desc);
                       setShowPersonDropdown(false);
                     }}>
-                      <span className="font-semibold text-white">{p.last_name}, {p.first_name}</span>
+                      <span className="font-semibold text-rmpg-100">{p.last_name}, {p.first_name}</span>
                       {p.dob && <span className="text-rmpg-400 ml-1">DOB: {p.dob}</span>}
                       {p.address && <span className="text-rmpg-500 ml-1 text-[10px]">— {p.address}</span>}
                     </button>
@@ -1028,7 +1028,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                       update('vehicle_description', desc);
                       setShowVehicleDropdown(false);
                     }}>
-                      <span className="font-semibold text-white">{[v.color, v.year, v.make, v.model].filter(Boolean).join(' ')}</span>
+                      <span className="font-semibold text-rmpg-100">{[v.color, v.year, v.make, v.model].filter(Boolean).join(' ')}</span>
                       {v.plate_number && <span className="text-brand-400 ml-1">PLT: {v.plate_number}{v.plate_state ? `/${v.plate_state}` : ''}</span>}
                       {v.owner_first_name && <span className="text-rmpg-400 ml-1 text-[10px]">Owner: {v.owner_last_name}, {v.owner_first_name}</span>}
                     </button>

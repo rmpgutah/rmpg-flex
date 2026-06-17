@@ -1006,7 +1006,7 @@ export default function PersonnelPage() {
               onChange={e => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors duration-150" aria-label="Clear search">
+              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100 transition-colors duration-150" aria-label="Clear search">
                 <X className="w-3 h-3" />
               </button>
             )}
@@ -1055,7 +1055,7 @@ export default function PersonnelPage() {
                 <div className="flex-1 min-w-0">
                   {/* Line 1: Name + role badge */}
                   <div className="flex items-center gap-2">
-                    <span className="text-[13px] font-bold text-white truncate">
+                    <span className="text-[13px] font-bold text-rmpg-100 truncate">
                       {officer.last_name}, {officer.first_name}
                       {officer.middle_name ? ` ${officer.middle_name[0]}.` : ''}
                     </span>
@@ -1075,7 +1075,7 @@ export default function PersonnelPage() {
                   )}
                   {/* Line 4: Compliance row */}
                   <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-400">
-                    {yrsOfService !== null && <span className="font-mono text-gray-400">{yrsOfService} yr{yrsOfService !== 1 ? 's' : ''}</span>}
+                    {yrsOfService !== null && <span className="font-mono text-rmpg-400">{yrsOfService} yr{yrsOfService !== 1 ? 's' : ''}</span>}
                     {officerCreds.length > 0 && (
                       <>
                         <span className="text-rmpg-600">&middot;</span>
@@ -1251,11 +1251,11 @@ export default function PersonnelPage() {
             <span className="text-[9px] text-rmpg-400 uppercase tracking-wider">Clocked In</span>
           </div>
           <div className="flex items-center gap-2 px-4 py-1.5 border-r border-rmpg-700">
-            <span className="text-white font-bold text-base font-mono">{totalHoursThisPeriod.toFixed(1)}</span>
+            <span className="text-rmpg-100 font-bold text-base font-mono">{totalHoursThisPeriod.toFixed(1)}</span>
             <span className="text-[9px] text-rmpg-400 uppercase tracking-wider">Period Hours</span>
           </div>
           <div className="flex items-center gap-2 px-4 py-1.5">
-            <span className="text-white font-bold text-base font-mono">{officers.length}</span>
+            <span className="text-rmpg-100 font-bold text-base font-mono">{officers.length}</span>
             <span className="text-[9px] text-rmpg-400 uppercase tracking-wider">Total Staff</span>
           </div>
         </div>

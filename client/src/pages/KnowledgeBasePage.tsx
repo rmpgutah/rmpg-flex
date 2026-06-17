@@ -88,10 +88,10 @@ export default function KnowledgeBasePage() {
           ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by call #, name, plate, warrant / citation #, badge, unit call sign, statute…"
           aria-label="Knowledge base search"
-          className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-600 outline-none"
+          className="flex-1 bg-transparent text-sm text-rmpg-100 placeholder-rmpg-600 outline-none"
         />
         {query && (
-          <button type="button" onClick={() => setQuery('')} className="text-rmpg-500 hover:text-white shrink-0" aria-label="Clear"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={() => setQuery('')} className="text-rmpg-500 hover:text-rmpg-100 shrink-0" aria-label="Clear"><X className="w-4 h-4" /></button>
         )}
       </div>
 
@@ -151,7 +151,7 @@ export default function KnowledgeBasePage() {
             >
               <Icon className="w-4 h-4 shrink-0" style={{ color }} />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-white truncate font-medium">{r.label}</p>
+                <p className="text-sm text-rmpg-100 truncate font-medium">{r.label}</p>
                 {(r.title || r.subtitle) && (
                   <p className="text-xs text-rmpg-400 truncate">{[r.title, r.subtitle].filter(Boolean).join(' · ')}</p>
                 )}

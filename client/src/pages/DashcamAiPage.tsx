@@ -419,7 +419,7 @@ export default function DashcamAiPage(): React.ReactElement {
                     FORENSIC PLAYBACK
                   </span>
                   {selected.plate && (
-                    <span className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/90 to-transparent text-base tracking-[0.18em] font-semibold text-white">
+                    <span className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/90 to-transparent text-base tracking-[0.18em] font-semibold text-rmpg-100">
                       {selected.plate}
                       {selected.confidence != null && (
                         <span className="text-[9px] font-mono text-[#d4a017] ml-2 align-middle">{(selected.confidence * 100).toFixed(0)}%</span>

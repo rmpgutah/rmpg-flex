@@ -32,9 +32,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   defensive_tactics: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   first_aid: 'bg-green-900/40 text-green-400 border-green-700/50',
   legal: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
-  communication: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
-  driving: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
-  technology: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+  communication: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
+  driving: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
+  technology: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
   leadership: 'bg-brand-900/40 text-brand-400 border-brand-700/50',
   compliance: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
@@ -42,7 +42,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   completed: { bg: 'bg-green-900/50', text: 'text-green-400', border: 'border-green-700/50' },
-  in_progress: { bg: 'bg-gray-900/50', text: 'text-gray-400', border: 'border-gray-700/50' },
+  in_progress: { bg: 'bg-surface-sunken/50', text: 'text-rmpg-400', border: 'border-border-default/50' },
   scheduled: { bg: 'bg-amber-900/50', text: 'text-amber-400', border: 'border-amber-700/50' },
   overdue: { bg: 'bg-red-900/50', text: 'text-red-400', border: 'border-red-700/50' },
   expired: { bg: 'bg-red-900/50', text: 'text-red-400', border: 'border-red-700/50' },

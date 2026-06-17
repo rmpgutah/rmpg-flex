@@ -199,7 +199,7 @@ export default function ActiveCallsCard() {
           <button
             type="button"
             onClick={() => { setLoading(true); fetchCalls(); }}
-            className="min-h-[44px] h-11 px-3 bg-[#1a1a1a] border border-[#222] text-gray-300 text-xs uppercase tracking-widest"
+            className="min-h-[44px] h-11 px-3 bg-[#1a1a1a] border border-[#222] text-rmpg-300 text-xs uppercase tracking-widest"
           >
             Retry
           </button>
@@ -213,7 +213,7 @@ export default function ActiveCallsCard() {
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest">ACTIVE CALLS</h2>
         {geoStatus === 'denied' ? (
-          <span className="text-gray-500 text-[10px] italic">Enable Location in Settings</span>
+          <span className="text-rmpg-500 text-[10px] italic">Enable Location in Settings</span>
         ) : (
           <button
             type="button"
@@ -221,7 +221,7 @@ export default function ActiveCallsCard() {
             aria-pressed={showDistance}
             className={[
               'h-8 px-2 text-[10px] uppercase tracking-widest border',
-              showDistance ? 'text-[#d4a017] border-[#d4a017]' : 'text-gray-400 border-[#222]',
+              showDistance ? 'text-[#d4a017] border-[#d4a017]' : 'text-rmpg-400 border-[#222]',
             ].join(' ')}
           >
             {showDistance ? 'Distance ON' : 'Show Distance'}
@@ -235,7 +235,7 @@ export default function ActiveCallsCard() {
       </div>
 
       {visible.length === 0 ? (
-        <p className="text-gray-500 text-xs italic">No active calls.</p>
+        <p className="text-rmpg-500 text-xs italic">No active calls.</p>
       ) : (
         <ul>
           {visible.map((c, i) => {
@@ -251,14 +251,14 @@ export default function ActiveCallsCard() {
                   type="button"
                   onClick={() => handleRowClick(c)}
                   onContextMenu={(e) => openMenu(e, buildCallMenu(c, addr))}
-                  className="flex-1 min-w-0 min-h-[44px] py-2 text-white text-xs flex items-center justify-between gap-2 text-left"
+                  className="flex-1 min-w-0 min-h-[44px] py-2 text-rmpg-100 text-xs flex items-center justify-between gap-2 text-left"
                 >
                   <span className="flex-1 min-w-0 truncate">
                     <span className="font-mono text-[#d4a017]">{c.call_number || `#${c.id}`}</span>
-                    {c.incident_type ? <span className="text-gray-300"> · {c.incident_type}</span> : null}
-                    {addr ? <span className="text-gray-500"> · {addr}</span> : null}
+                    {c.incident_type ? <span className="text-rmpg-300"> · {c.incident_type}</span> : null}
+                    {addr ? <span className="text-rmpg-500"> · {addr}</span> : null}
                   </span>
-                  <span className="text-gray-400 text-[10px] font-mono shrink-0">
+                  <span className="text-rmpg-400 text-[10px] font-mono shrink-0">
                     {dist ? `${dist} · ` : ''}{ageLabel(c.created_at)}
                   </span>
                 </button>

@@ -882,7 +882,7 @@ body.fx-noise::after {
   .table-dark thead th {
     @apply px-2 py-[3px] text-[9px] font-bold uppercase tracking-wider;
     color: #d4a017;
-    border-right: 1px solid rgba(43, 49, 58, 0.6);
+    border-right: 1px solid var(--border-default);
   }
 
   .table-dark thead th:last-child {
@@ -891,11 +891,11 @@ body.fx-noise::after {
 
   .table-dark tbody tr {
     @apply transition-colors duration-150;
-    border-bottom: 1px solid rgba(43, 49, 58, 0.45);
+    border-bottom: 1px solid var(--border-default);
   }
 
   .table-dark tbody tr:hover {
-    background: rgba(167, 177, 188, 0.1);
+    background: rgba(var(--rmpg-300-rgb) / 0.08);
   }
 
   .table-dark tbody tr:nth-child(even) {
@@ -904,7 +904,7 @@ body.fx-noise::after {
 
   .table-dark tbody td {
     @apply px-2 py-[2px];
-    color: #d2d7dd;
+    color: var(--text-secondary);
     font-size: 10px;
   }
 

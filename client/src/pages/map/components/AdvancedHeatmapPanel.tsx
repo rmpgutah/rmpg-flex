@@ -650,7 +650,7 @@ export default function AdvancedHeatmapPanel({
                       borderColor: checked ? activeMode.accent : '#444444',
                     }}
                   >
-                    {checked && <Check size={9} className="text-white" strokeWidth={3} />}
+                    {checked && <Check size={9} className="text-rmpg-100" strokeWidth={3} />}
                   </div>
                   <span
                     className="text-[9px] flex-1 truncate"

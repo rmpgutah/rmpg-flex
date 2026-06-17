@@ -2005,7 +2005,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={toggleFullscreen}
-          className="toolbar-btn flex items-center justify-center text-rmpg-300 hover:text-white"
+          className="toolbar-btn flex items-center justify-center text-rmpg-300 hover:text-rmpg-100"
           title={isFullscreen ? 'Exit full screen' : 'Full screen'}
           aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
         >
@@ -2013,7 +2013,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => navigate('/map')}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase text-rmpg-300 hover:text-white"
+          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase text-rmpg-300 hover:text-rmpg-100"
           title="Back to map"
           aria-label="Back to map"
         >
@@ -2045,7 +2045,7 @@ export default function NavigationPage() {
               className="flex-1 bg-transparent outline-none text-[13px] text-rmpg-100 placeholder:text-rmpg-600"
             />
             {searching && <span className="text-[9px] text-rmpg-500 shrink-0">…</span>}
-            <button onClick={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); }} className="text-rmpg-500 hover:text-white shrink-0" aria-label="Close search">
+            <button onClick={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); }} className="text-rmpg-500 hover:text-rmpg-100 shrink-0" aria-label="Close search">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -2081,7 +2081,7 @@ export default function NavigationPage() {
             </div>
             <div className="flex flex-col gap-1 shrink-0">
               <button onClick={refitRoute} title="Fit route on map" aria-label="Fit route on map"
-                className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-white hover:border-brand-500" style={{ borderRadius: 2 }}>
+                className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-rmpg-100 hover:border-brand-500" style={{ borderRadius: 2 }}>
                 <Navigation2 className="w-3.5 h-3.5" />
               </button>
               <button onClick={clearDestination} title="Clear route" aria-label="Clear route"

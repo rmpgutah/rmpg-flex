@@ -6,7 +6,7 @@ import { toDisplayLabel } from '../../../utils/formatters';
 const FUEL_TYPE_BADGE: Record<FuelType, { bg: string; text: string; border: string }> = {
   regular: { bg: 'bg-rmpg-800', text: 'text-rmpg-300', border: 'border-rmpg-600' },
   premium: { bg: 'bg-amber-900/30', text: 'text-amber-400', border: 'border-amber-700/40' },
-  diesel: { bg: 'bg-gray-900/30', text: 'text-gray-400', border: 'border-gray-700/40' },
+  diesel: { bg: 'bg-surface-sunken/30', text: 'text-rmpg-400', border: 'border-border-default/40' },
 };
 
 function mpgColor(mpg: number | null | undefined): string {
@@ -200,8 +200,8 @@ export default function FleetFuelTab({
       {/* Summary Stats — Top Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <Fuel className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
-          <div className="text-sm font-bold font-mono tabular-nums text-gray-400">
+          <Fuel className="w-3.5 h-3.5 mx-auto text-rmpg-400 mb-1" />
+          <div className="text-sm font-bold font-mono tabular-nums text-rmpg-400">
             {summary?.total_gallons != null ? summary.total_gallons.toFixed(3) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total Gallons</div>
@@ -232,8 +232,8 @@ export default function FleetFuelTab({
       {/* Summary Stats — Second Row (efficiency details) */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <Route className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
-          <div className="text-sm font-bold font-mono tabular-nums text-gray-400">
+          <Route className="w-3.5 h-3.5 mx-auto text-rmpg-400 mb-1" />
+          <div className="text-sm font-bold font-mono tabular-nums text-rmpg-400">
             {summary?.total_distance != null ? summary.total_distance.toLocaleString(undefined, { maximumFractionDigits: 1 }) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total Miles</div>
@@ -319,8 +319,8 @@ export default function FleetFuelTab({
             const dist = log.calc_distance ?? log.distance ?? null;
             return (
               <div key={log.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
-                <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-gray-900/20 border border-gray-700/40">
-                  <Fuel className="w-4 h-4 text-gray-400" />
+                <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-surface-sunken/20 border border-border-default/40">
+                  <Fuel className="w-4 h-4 text-rmpg-400" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -347,7 +347,7 @@ export default function FleetFuelTab({
                     )}
                     {/* Distance */}
                     {dist != null && dist > 0 && (
-                      <span className="text-[9px] font-mono tabular-nums text-gray-400">
+                      <span className="text-[9px] font-mono tabular-nums text-rmpg-400">
                         {dist.toFixed(1)} mi
                       </span>
                     )}

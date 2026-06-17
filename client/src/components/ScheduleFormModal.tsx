@@ -107,7 +107,7 @@ export default function ScheduleFormModal({
           required
           value={form.officer_id}
           onChange={(e) => set('officer_id', e.target.value)}
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
         >
           <option value="">Select officer...</option>
           {officers.map((o) => (
@@ -126,7 +126,7 @@ export default function ScheduleFormModal({
         <select id="ff-scheduleformmodal-1"
           value={form.property_id}
           onChange={(e) => set('property_id', e.target.value)}
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
         >
           <option value="">None (floating)</option>
           {properties.map((p) => (
@@ -147,7 +147,7 @@ export default function ScheduleFormModal({
           required
           value={form.shift_date}
           onChange={(e) => set('shift_date', e.target.value)}
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
         />
       </div>
 
@@ -162,7 +162,7 @@ export default function ScheduleFormModal({
             required
             value={form.start_time}
             onChange={(e) => set('start_time', e.target.value)}
-            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
         <div>
@@ -174,7 +174,7 @@ export default function ScheduleFormModal({
             required
             value={form.end_time}
             onChange={(e) => set('end_time', e.target.value)}
-            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
       </div>
@@ -190,7 +190,7 @@ export default function ScheduleFormModal({
           rows={3}
           placeholder="Optional shift notes..."
           maxLength={2000}
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500 resize-none"
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500 resize-none"
         />
         <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/2000</div>
       </div>

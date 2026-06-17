@@ -103,7 +103,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-bold text-white flex items-center gap-2"><FileText className="w-4 h-4" /> HR Document Library</h2>
+        <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2"><FileText className="w-4 h-4" /> HR Document Library</h2>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
@@ -156,7 +156,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
                 <div>
                   <div className="flex items-center gap-2">
                     <FileText className="w-3.5 h-3.5 text-brand-400" />
-                    <span className="text-xs font-bold text-white">{doc.title}</span>
+                    <span className="text-xs font-bold text-rmpg-100">{doc.title}</span>
                     <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 uppercase rounded-sm border border-rmpg-700">{(doc.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                   </div>
                   {doc.description && <p className="text-[10px] text-rmpg-400 mt-1">{doc.description}</p>}

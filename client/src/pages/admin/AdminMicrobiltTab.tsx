@@ -406,7 +406,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
           <button type="button"
             onClick={handleSaveCredentials}
             disabled={saving || !clientId.trim() || !clientSecret.trim()}
-            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
+            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
             Save Credentials

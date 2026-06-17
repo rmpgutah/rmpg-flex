@@ -20,7 +20,7 @@ const STYLES: Array<{ value: PageLabelRule['style']; label: string }> = [
   { value: 'Alpha', label: 'A, B, C' },
 ];
 
-const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
 
 /** Configure custom page-label rules (prefix + numbering style per page range).
  *  Drives the {label} token in the page-number footer. */
@@ -48,7 +48,7 @@ export default function PageLabelsDialog({ open, pageCount, rules, onClose, onAp
           <div className="text-[11px] uppercase tracking-wider text-[#d4a017] font-semibold inline-flex items-center gap-1.5">
             <Hash className="w-3.5 h-3.5" /> Page labels
           </div>
-          <IconButton onClick={onClose} aria-label="Close" title="Close" className="text-rmpg-400 hover:text-white p-1"><X className="w-4 h-4" /></IconButton>
+          <IconButton onClick={onClose} aria-label="Close" title="Close" className="text-rmpg-400 hover:text-rmpg-100 p-1"><X className="w-4 h-4" /></IconButton>
         </div>
 
         <div className="text-[10px] text-rmpg-500 mb-3">
@@ -94,7 +94,7 @@ export default function PageLabelsDialog({ open, pageCount, rules, onClose, onAp
           ))}
         </div>
 
-        <button type="button" onClick={add} className="inline-flex items-center gap-1 text-[10px] text-rmpg-300 border border-[#222] rounded-sm px-2 py-1 hover:text-white mb-3">
+        <button type="button" onClick={add} className="inline-flex items-center gap-1 text-[10px] text-rmpg-300 border border-[#222] rounded-sm px-2 py-1 hover:text-rmpg-100 mb-3">
           <Plus className="w-3 h-3" /> Add rule
         </button>
 

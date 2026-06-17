@@ -85,7 +85,7 @@ function WeatherWidget() {
           <div className="flex items-center gap-2">
             <WeatherIcon className="w-7 h-7 text-brand-400" />
             <div>
-              <div className="text-xl font-bold font-mono text-white">{weather.temperature}°<span className="text-xs text-rmpg-400">F</span></div>
+              <div className="text-xl font-bold font-mono text-rmpg-100">{weather.temperature}°<span className="text-xs text-rmpg-400">F</span></div>
               <div className="text-[10px] text-rmpg-300">{weather.condition}</div>
             </div>
           </div>

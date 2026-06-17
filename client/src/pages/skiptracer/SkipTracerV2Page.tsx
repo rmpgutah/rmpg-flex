@@ -299,7 +299,7 @@ function CopyBtn({ value, label, copied, copy }: {
   return (
     <button type="button"
       onClick={(e) => { e.stopPropagation(); copy(value, label); }}
-      className="p-0.5 rounded-sm hover:bg-surface-raised/50 text-[#8899aa] hover:text-white transition-colors"
+      className="p-0.5 rounded-sm hover:bg-surface-raised/50 text-[#8899aa] hover:text-rmpg-100 transition-colors"
       title={`Copy ${label}`}
     >
       {copied === label ? <CheckCircle2 size={12} className="text-green-400" /> : <Copy size={12} />}
@@ -896,7 +896,7 @@ export default function SkipTracerV2Page() {
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
               placeholder="Name, phone, email, or address..."
-              className="w-full pl-8 pr-24 py-2 bg-surface-sunken border border-border-subtle rounded-sm text-[12px] text-white placeholder-[#525252] focus:outline-none focus:border-[#888888] font-mono"
+              className="w-full pl-8 pr-24 py-2 bg-surface-sunken border border-border-subtle rounded-sm text-[12px] text-rmpg-100 placeholder-[#525252] focus:outline-none focus:border-[#888888] font-mono"
             />
             {query.trim() && (
               <>
@@ -906,7 +906,7 @@ export default function SkipTracerV2Page() {
                 >
                   {inputType}
                 </span>
-                <IconButton onClick={() => setQuery('')} className="absolute right-10 top-1/2 -translate-y-1/2 p-0.5 text-[#556677] hover:text-white" aria-label="Clear query">
+                <IconButton onClick={() => setQuery('')} className="absolute right-10 top-1/2 -translate-y-1/2 p-0.5 text-[#556677] hover:text-rmpg-100" aria-label="Clear query">
                   <X size={12} />
                 </IconButton>
               </>
@@ -914,7 +914,7 @@ export default function SkipTracerV2Page() {
             <button type="button"
               onClick={() => handleSearch()}
               disabled={loading || (!query.trim() && !Object.values(advancedFields).some(v => v.trim()))}
-              className="absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[10px] font-bold text-white transition-colors"
+              className="absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[10px] font-bold text-rmpg-100 transition-colors"
             >
               {loading ? <Loader2 size={12} className="animate-spin" /> : 'GO'}
             </button>
@@ -922,7 +922,7 @@ export default function SkipTracerV2Page() {
           <button type="button"
             onClick={() => setBatchOpen(!batchOpen)}
             className={`px-2 py-2 rounded-sm text-[10px] font-bold transition-colors flex items-center gap-1 ${
-              batchOpen ? 'bg-[#888888] text-white' : 'bg-surface-raised text-[#8899aa] hover:text-white hover:bg-surface-overlay border border-border-subtle'
+              batchOpen ? 'bg-[#888888] text-rmpg-100' : 'bg-surface-raised text-[#8899aa] hover:text-rmpg-100 hover:bg-surface-overlay border border-border-subtle'
             }`}
             title="Batch search multiple names"
           >
@@ -944,7 +944,7 @@ export default function SkipTracerV2Page() {
               onClick={() => setSearchEngine(eng.id)}
               className={`px-2 py-1 rounded-sm text-[9px] font-bold uppercase tracking-wider transition-all ${
                 searchEngine === eng.id
-                  ? 'text-white shadow-sm'
+                  ? 'text-rmpg-100 shadow-sm'
                   : 'text-rmpg-500 hover:text-[#8899aa] bg-surface-sunken border border-border-subtle'
               }`}
               style={searchEngine === eng.id ? { backgroundColor: eng.color + '33', color: eng.color, border: `1px solid ${eng.color}55` } : undefined}
@@ -964,7 +964,7 @@ export default function SkipTracerV2Page() {
               onChange={e => setBatchText(e.target.value)}
               placeholder={"John Smith\nJane Doe\nBob Johnson"}
               rows={5}
-              className="w-full px-2 py-1.5 bg-surface-raised border border-border-subtle rounded-sm text-[11px] text-white font-mono placeholder-[#525252] focus:outline-none focus:border-[#888888] resize-y"
+              className="w-full px-2 py-1.5 bg-surface-raised border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono placeholder-[#525252] focus:outline-none focus:border-[#888888] resize-y"
             />
             <div className="flex items-center justify-between">
               <span className="text-[9px] text-[#556677] font-mono">
@@ -973,7 +973,7 @@ export default function SkipTracerV2Page() {
               <button type="button"
                 onClick={handleBatchSearch}
                 disabled={loading || !batchText.trim()}
-                className="px-3 py-1.5 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[10px] font-bold text-white transition-colors flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[10px] font-bold text-rmpg-100 transition-colors flex items-center gap-1.5"
               >
                 {batchProgress ? (
                   <>
@@ -1019,7 +1019,7 @@ export default function SkipTracerV2Page() {
                   type="text"
                   value={advancedFields[field.key] || ''}
                   onChange={e => setAdvancedFields(prev => ({ ...prev, [field.key]: e.target.value }))}
-                  className="w-full px-2 py-1 bg-surface-raised border border-border-subtle rounded-sm text-[11px] text-white font-mono focus:outline-none focus:border-[#888888]"
+                  className="w-full px-2 py-1 bg-surface-raised border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono focus:outline-none focus:border-[#888888]"
                 />
               </div>
             ))}
@@ -1050,7 +1050,7 @@ export default function SkipTracerV2Page() {
           {selectedCategories.size > 0 && (
             <button type="button"
               onClick={() => setSelectedCategories(new Set())}
-              className="text-[8px] text-[#556677] hover:text-white uppercase tracking-wider px-1 py-0.5"
+              className="text-[8px] text-[#556677] hover:text-rmpg-100 uppercase tracking-wider px-1 py-0.5"
             >
               Clear
             </button>
@@ -1140,7 +1140,7 @@ export default function SkipTracerV2Page() {
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-[12px] font-bold text-white truncate">{name}</span>
+                    <span className="text-[12px] font-bold text-rmpg-100 truncate">{name}</span>
                     {profile.confidenceScore !== undefined && <ConfidenceBadge score={profile.confidenceScore} />}
                   </div>
                   <div className="flex items-center gap-2 mt-0.5 text-[10px] text-[#8899aa]">
@@ -1205,7 +1205,7 @@ export default function SkipTracerV2Page() {
                     <User size={20} className="text-[#888888]" />
                   </div>
                   <div>
-                    <h2 className="text-[18px] font-bold text-white leading-tight">{getDisplayName(selected)}</h2>
+                    <h2 className="text-[18px] font-bold text-rmpg-100 leading-tight">{getDisplayName(selected)}</h2>
                     <div className="flex items-center gap-3 mt-0.5 text-[11px] text-[#8899aa] flex-wrap">
                       {selected.age !== undefined && <span className="flex items-center gap-1"><User size={10} /> Age {selected.age}</span>}
                       {selected.dob && <span className="font-mono">DOB: {selected.dob}</span>}
@@ -1225,7 +1225,7 @@ export default function SkipTracerV2Page() {
                 <button type="button"
                   onClick={handleExportFromSearch}
                   disabled={exporting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-sunken hover:bg-surface-overlay border border-border-subtle rounded-sm text-[10px] font-bold text-[#8899aa] hover:text-white transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-sunken hover:bg-surface-overlay border border-border-subtle rounded-sm text-[10px] font-bold text-[#8899aa] hover:text-rmpg-100 transition-colors"
                   title="Save & export as PDF"
                 >
                   {exporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
@@ -1238,8 +1238,8 @@ export default function SkipTracerV2Page() {
                     onClick={() => setLinkDropdownOpen(!linkDropdownOpen)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-[10px] font-bold transition-colors border ${
                       linkDropdownOpen
-                        ? 'bg-[#888888] text-white border-[#888888]'
-                        : 'bg-surface-sunken text-[#8899aa] hover:text-white border-border-subtle hover:bg-surface-overlay'
+                        ? 'bg-[#888888] text-rmpg-100 border-[#888888]'
+                        : 'bg-surface-sunken text-[#8899aa] hover:text-rmpg-100 border-border-subtle hover:bg-surface-overlay'
                     }`}
                   >
                     <Link2 size={12} />
@@ -1255,7 +1255,7 @@ export default function SkipTracerV2Page() {
                             key={t}
                             onClick={() => setLinkType(t)}
                             className={`flex-1 text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-sm transition-colors ${
-                              linkType === t ? 'bg-[#888888] text-white' : 'bg-surface-sunken text-rmpg-500 hover:text-white'
+                              linkType === t ? 'bg-[#888888] text-rmpg-100' : 'bg-surface-sunken text-rmpg-500 hover:text-rmpg-100'
                             }`}
                           >
                             {t}
@@ -1267,13 +1267,13 @@ export default function SkipTracerV2Page() {
                         value={linkValue}
                         onChange={e => setLinkValue(e.target.value)}
                         placeholder={linkType === 'incident' ? 'Incident number...' : 'Case number...'}
-                        className="w-full px-2 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[11px] text-white font-mono placeholder-[#525252] focus:outline-none focus:border-[#888888]"
+                        className="w-full px-2 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono placeholder-[#525252] focus:outline-none focus:border-[#888888]"
                         onKeyDown={e => e.key === 'Enter' && handleLinkDossier()}
                       />
                       <button type="button"
                         onClick={handleLinkDossier}
                         disabled={linkSaving || !linkValue.trim()}
-                        className="w-full px-2 py-1.5 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[10px] font-bold text-white transition-colors flex items-center justify-center gap-1.5"
+                        className="w-full px-2 py-1.5 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[10px] font-bold text-rmpg-100 transition-colors flex items-center justify-center gap-1.5"
                       >
                         {linkSaving ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
                         Link
@@ -1285,7 +1285,7 @@ export default function SkipTracerV2Page() {
                 <button type="button"
                   onClick={handleSaveDossier}
                   disabled={saving}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-50 rounded-sm text-[10px] font-bold text-white transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-50 rounded-sm text-[10px] font-bold text-rmpg-100 transition-colors"
                 >
                   {saving ? <Loader2 size={12} className="animate-spin" /> : saveSuccess ? <CheckCircle2 size={12} /> : <Save size={12} />}
                   {saveSuccess ? 'Saved!' : 'Save Dossier'}
@@ -1308,7 +1308,7 @@ export default function SkipTracerV2Page() {
                   onChange={e => handleNotesChange(e.target.value, activeDossierId)}
                   placeholder="Add investigative notes..."
                   rows={3}
-                  className="w-full px-2 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[11px] text-white font-mono placeholder-[#525252] focus:outline-none focus:border-[#888888] resize-y"
+                  className="w-full px-2 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono placeholder-[#525252] focus:outline-none focus:border-[#888888] resize-y"
                 />
               </div>
             )}
@@ -1326,7 +1326,7 @@ export default function SkipTracerV2Page() {
               return (
                 <div key={item.label} className="border border-border-subtle rounded-sm bg-surface-sunken p-2 text-center">
                   <I size={14} className="mx-auto mb-1" style={{ color: item.color }} />
-                  <div className="text-[14px] font-bold text-white font-mono">{item.count}</div>
+                  <div className="text-[14px] font-bold text-rmpg-100 font-mono">{item.count}</div>
                   <div className="text-[8px] text-[#556677] uppercase tracking-wider">{item.label}</div>
                 </div>
               );
@@ -1345,7 +1345,7 @@ export default function SkipTracerV2Page() {
               ].filter(f => f.value).map(f => (
                 <div key={f.label}>
                   <span className="text-[9px] text-[#556677] uppercase tracking-wider block">{f.label}</span>
-                  <span className="text-white font-mono">{f.value}</span>
+                  <span className="text-rmpg-100 font-mono">{f.value}</span>
                 </div>
               ))}
               {selected.aliases && selected.aliases.length > 0 && (
@@ -1372,7 +1372,7 @@ export default function SkipTracerV2Page() {
                   const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(fullAddr)}`;
                   return (
                     <tr key={`addr-${addr}-${i}`} className="hover:bg-surface-raised/50">
-                      <td className="px-2 py-1.5 text-white">{addr}</td>
+                      <td className="px-2 py-1.5 text-rmpg-100">{addr}</td>
                       <td className="px-2 py-1.5 text-[#c0ccdd]">{a.city || '—'}</td>
                       <td className="px-2 py-1.5 text-[#c0ccdd]">{a.state || '—'}</td>
                       <td className="px-2 py-1.5 text-[#c0ccdd]">{a.zip || '—'}</td>
@@ -1403,7 +1403,7 @@ export default function SkipTracerV2Page() {
               <DataTable headers={['Number', 'Type', 'Carrier', 'Status', 'Source', '']}>
                 {selected.phones!.map((p, i) => (
                   <tr key={`phone-${p.number}-${i}`} className="hover:bg-surface-raised/50">
-                    <td className="px-2 py-1.5 text-white font-mono">{p.number}</td>
+                    <td className="px-2 py-1.5 text-rmpg-100 font-mono">{p.number}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd] text-[9px] uppercase">{p.type || '—'}</td>
                     <td className="px-2 py-1.5 text-[#8899aa]">{p.carrier || '—'}</td>
                     <td className="px-2 py-1.5">
@@ -1437,7 +1437,7 @@ export default function SkipTracerV2Page() {
                     return (
                       <div key={`email-${emailAddr}-${i}`} className="flex items-center gap-2 text-[11px] font-mono">
                         <Mail size={11} className="text-[#556677]" />
-                        <span className="text-white">{emailAddr}</span>
+                        <span className="text-rmpg-100">{emailAddr}</span>
                         <SourceBadge source={e.source} />
                         {emailAddr && (
                           <>
@@ -1499,7 +1499,7 @@ export default function SkipTracerV2Page() {
               <DataTable headers={['Case #', 'Court', 'Type', 'Charge', 'Date', 'Status', 'Source', '']}>
                 {selected.courtRecords!.map((c, i) => (
                   <tr key={`court-${c.caseNumber}-${i}`} className="hover:bg-surface-raised/50">
-                    <td className="px-2 py-1.5 text-white font-mono">{c.caseNumber || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-100 font-mono">{c.caseNumber || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd] max-w-[120px] truncate" title={c.court}>{c.court || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{c.caseType || c.type || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd] max-w-[150px] truncate" title={c.charge || c.charges?.join('; ')}>
@@ -1515,7 +1515,7 @@ export default function SkipTracerV2Page() {
                     <td className="px-2 py-1.5"><SourceBadge source={c.source} /></td>
                     <td className="px-2 py-1.5">
                       {c.sourceUrl && (
-                        <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-[#a0a0a0] hover:text-gray-300">
+                        <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-[#a0a0a0] hover:text-rmpg-300">
                           <ExternalLink size={11} />
                         </a>
                       )}
@@ -1555,7 +1555,7 @@ export default function SkipTracerV2Page() {
               <DataTable headers={['Address', 'Type', 'Value', 'Owner', 'Source']}>
                 {selected.propertyRecords!.map((p, i) => (
                   <tr key={`prop-${p.address}-${i}`} className="hover:bg-surface-raised/50">
-                    <td className="px-2 py-1.5 text-white">{[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}</td>
+                    <td className="px-2 py-1.5 text-rmpg-100">{[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{p.propertyType || '—'}</td>
                     <td className="px-2 py-1.5 text-green-400 font-mono">{p.marketValue ? `$${p.marketValue.toLocaleString()}` : '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{p.ownerName || '—'}</td>
@@ -1572,7 +1572,7 @@ export default function SkipTracerV2Page() {
               <DataTable headers={['Business', 'Role', 'Status', 'Reg #', 'Jurisdiction', 'Source']}>
                 {selected.businesses!.map((b, i) => (
                   <tr key={`biz-${b.name}-${i}`} className="hover:bg-surface-raised/50">
-                    <td className="px-2 py-1.5 text-white">{b.name}</td>
+                    <td className="px-2 py-1.5 text-rmpg-100">{b.name}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{b.role || '—'}</td>
                     <td className="px-2 py-1.5">
                       <span className={`text-[9px] uppercase font-bold ${
@@ -1594,7 +1594,7 @@ export default function SkipTracerV2Page() {
               <DataTable headers={['Type', 'Number', 'State', 'Status', 'Expires', 'Source']}>
                 {selected.licenses!.map((l, i) => (
                   <tr key={`${l.type}-${l.number}-${l.state}`} className="hover:bg-surface-raised/50">
-                    <td className="px-2 py-1.5 text-white">{l.type || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-100">{l.type || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd] font-mono">{l.number || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{l.state || '—'}</td>
                     <td className="px-2 py-1.5">
@@ -1616,7 +1616,7 @@ export default function SkipTracerV2Page() {
               <DataTable headers={['Vehicle', 'Plate', 'VIN', 'Source']}>
                 {selected.vehicles!.map((v, i) => (
                   <tr key={`${v.vin || ''}-${v.plate || ''}-${i}`} className="hover:bg-surface-raised/50">
-                    <td className="px-2 py-1.5 text-white">{[v.year, v.make, v.model, v.color].filter(Boolean).join(' ') || '—'}</td>
+                    <td className="px-2 py-1.5 text-rmpg-100">{[v.year, v.make, v.model, v.color].filter(Boolean).join(' ') || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd] font-mono">{v.plate ? `${v.plate}${v.plateState ? ` (${v.plateState})` : ''}` : '—'}</td>
                     <td className="px-2 py-1.5 text-[#8899aa] font-mono">{v.vin || '—'}</td>
                     <td className="px-2 py-1.5"><SourceBadge source={v.source} /></td>
@@ -1698,7 +1698,7 @@ export default function SkipTracerV2Page() {
                           />
                           <div className="pb-0.5">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[10px] font-bold text-white">{ev.label}</span>
+                              <span className="text-[10px] font-bold text-rmpg-100">{ev.label}</span>
                               <span
                                 className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
                                 style={{ backgroundColor: color + '22', color }}
@@ -1729,10 +1729,10 @@ export default function SkipTracerV2Page() {
   const dossiersTab = (
     <div className="flex-1 overflow-y-auto p-4 bg-surface-raised">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
+        <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
           <Bookmark size={16} className="text-[#888888]" /> Saved Dossiers
         </h2>
-        <IconButton onClick={loadDossiers} className="text-[#556677] hover:text-white p-1" aria-label="Refresh dossiers"><RefreshCw size={14} /></IconButton>
+        <IconButton onClick={loadDossiers} className="text-[#556677] hover:text-rmpg-100 p-1" aria-label="Refresh dossiers"><RefreshCw size={14} /></IconButton>
       </div>
 
       <div className="relative mb-3">
@@ -1743,7 +1743,7 @@ export default function SkipTracerV2Page() {
           onChange={e => setDossierSearch(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && loadDossiers()}
           placeholder="Search saved dossiers..." aria-label="Search saved dossiers..."
-          className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[12px] text-white placeholder-[#525252] focus:outline-none focus:border-[#888888] font-mono"
+          className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[12px] text-rmpg-100 placeholder-[#525252] focus:outline-none focus:border-[#888888] font-mono"
         />
       </div>
 
@@ -1757,16 +1757,16 @@ export default function SkipTracerV2Page() {
             <div key={d.id} className="border border-border-subtle rounded-sm bg-surface-raised p-3 hover:bg-surface-overlay transition-colors" onContextMenu={(e) => openMenu(e, buildDossierMenu(d))}>
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-bold text-white">{d.subject_name}</div>
+                  <div className="text-[12px] font-bold text-rmpg-100">{d.subject_name}</div>
                   <div className="text-[9px] text-[#556677] mt-0.5 font-mono">
                     {d.created_at} {d.created_by_name && `by ${d.created_by_name}`}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <IconButton onClick={() => openDossier(d)} className="p-1.5 text-[#556677] hover:text-white hover:bg-surface-raised/50 rounded-sm" title="View" aria-label="View dossier">
+                  <IconButton onClick={() => openDossier(d)} className="p-1.5 text-[#556677] hover:text-rmpg-100 hover:bg-surface-raised/50 rounded-sm" title="View" aria-label="View dossier">
                     <Eye size={13} />
                   </IconButton>
-                  <IconButton onClick={() => handleExportPdf(d.id)} className="p-1.5 text-[#556677] hover:text-white hover:bg-surface-raised/50 rounded-sm" title="Export PDF" aria-label="Export dossier PDF">
+                  <IconButton onClick={() => handleExportPdf(d.id)} className="p-1.5 text-[#556677] hover:text-rmpg-100 hover:bg-surface-raised/50 rounded-sm" title="Export PDF" aria-label="Export dossier PDF">
                     <Download size={13} />
                   </IconButton>
                 </div>
@@ -1783,10 +1783,10 @@ export default function SkipTracerV2Page() {
   const historyTab = (
     <div className="flex-1 overflow-y-auto p-4 bg-surface-raised">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
+        <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
           <History size={16} className="text-[#888888]" /> Search History
         </h2>
-        <IconButton onClick={loadHistory} className="text-[#556677] hover:text-white p-1" aria-label="Refresh history"><RefreshCw size={14} /></IconButton>
+        <IconButton onClick={loadHistory} className="text-[#556677] hover:text-rmpg-100 p-1" aria-label="Refresh history"><RefreshCw size={14} /></IconButton>
       </div>
 
       {historyLoading ? (
@@ -1815,7 +1815,7 @@ export default function SkipTracerV2Page() {
                       >
                         {h.search_type}
                       </span>
-                      <span className="text-[11px] text-white font-mono truncate">{queryDisplay}</span>
+                      <span className="text-[11px] text-rmpg-100 font-mono truncate">{queryDisplay}</span>
                     </div>
                     <div className="text-[9px] text-[#556677] mt-0.5 font-mono flex items-center gap-2 flex-wrap">
                       <Clock size={9} /> {h.created_at}
@@ -1842,10 +1842,10 @@ export default function SkipTracerV2Page() {
   const sourcesTab = (
     <div className="flex-1 overflow-y-auto p-4 bg-surface-raised">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
+        <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
           <Database size={16} className="text-[#888888]" /> Data Sources ({sources.length})
         </h2>
-        <IconButton onClick={loadSources} disabled={sourcesLoading} className="text-[#556677] hover:text-white p-1" aria-label="Refresh sources">
+        <IconButton onClick={loadSources} disabled={sourcesLoading} className="text-[#556677] hover:text-rmpg-100 p-1" aria-label="Refresh sources">
           <RefreshCw size={14} className={sourcesLoading ? 'animate-spin' : ''} />
         </IconButton>
       </div>
@@ -1854,7 +1854,7 @@ export default function SkipTracerV2Page() {
         {Object.entries(sourceSummary).map(([cat, counts]) => (
           <div key={cat} className="border border-border-subtle rounded-sm bg-surface-sunken p-2 text-center">
             <div className="text-[8px] font-bold uppercase tracking-wider mb-1" style={{ color: categoryColor(cat) }}>{cat}</div>
-            <div className="text-[12px] font-bold text-white">{counts.healthy}/{counts.total}</div>
+            <div className="text-[12px] font-bold text-rmpg-100">{counts.healthy}/{counts.total}</div>
             <div className="text-[8px] text-[#556677]">healthy</div>
           </div>
         ))}
@@ -1870,7 +1870,7 @@ export default function SkipTracerV2Page() {
                   style={{ backgroundColor: s.healthy ? '#22c55e' : s.enabled ? '#f59e0b' : '#444444' }}
                 />
                 <div>
-                  <div className="text-[11px] font-bold text-white">{s.displayName || s.name}</div>
+                  <div className="text-[11px] font-bold text-rmpg-100">{s.displayName || s.name}</div>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5 rounded-sm"
                       style={{ backgroundColor: categoryColor(s.category) + '22', color: categoryColor(s.category) }}
@@ -1901,10 +1901,10 @@ export default function SkipTracerV2Page() {
   const statsTab = (
     <div className="flex-1 overflow-y-auto p-4 bg-surface-raised">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
+        <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
           <BarChart3 size={16} className="text-[#888888]" /> Usage Statistics
         </h2>
-        <IconButton onClick={loadStats} disabled={statsLoading} className="text-[#556677] hover:text-white p-1" aria-label="Refresh stats">
+        <IconButton onClick={loadStats} disabled={statsLoading} className="text-[#556677] hover:text-rmpg-100 p-1" aria-label="Refresh stats">
           <RefreshCw size={14} className={statsLoading ? 'animate-spin' : ''} />
         </IconButton>
       </div>
@@ -1947,7 +1947,7 @@ export default function SkipTracerV2Page() {
                       <span className="text-[9px] text-rmpg-500 w-4 text-right font-mono">{i + 1}</span>
                       <div className="flex-1 h-5 bg-surface-sunken rounded-sm overflow-hidden relative">
                         <div className="h-full rounded-sm transition-all" style={{ width: `${pct}%`, backgroundColor: '#888888' }} />
-                        <span className="absolute left-2 top-0.5 text-[10px] text-white font-mono">{s.name}</span>
+                        <span className="absolute left-2 top-0.5 text-[10px] text-rmpg-100 font-mono">{s.name}</span>
                       </div>
                       <span className="text-[10px] text-[#8899aa] font-mono w-8 text-right">{s.count}</span>
                     </div>

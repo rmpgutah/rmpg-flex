@@ -247,7 +247,7 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
               <th className="p-2 text-left w-8">
                 <button
                   onClick={toggleAll}
-                  className="text-rmpg-400 hover:text-white"
+                  className="text-rmpg-400 hover:text-rmpg-100"
                   title="Select all (filtered)"
                 >
                   {selected.size === filtered.length && filtered.length > 0 ? (
@@ -287,12 +287,12 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
                     <td className="p-2">
                       <button
                         onClick={() => toggleOne(s.source_key)}
-                        className="text-rmpg-400 hover:text-white"
+                        className="text-rmpg-400 hover:text-rmpg-100"
                       >
                         {isSelected ? <CheckSquare size={12} /> : <Square size={12} />}
                       </button>
                     </td>
-                    <td className="p-2 text-white truncate max-w-[260px]" title={s.display_name}>
+                    <td className="p-2 text-rmpg-100 truncate max-w-[260px]" title={s.display_name}>
                       {s.source_key}
                     </td>
                     <td className="p-2 text-rmpg-400">{s.state}</td>

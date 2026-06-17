@@ -30,7 +30,7 @@ import { parseTimestamp } from '../utils/dateUtils';
 // ─── Constants ─────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
   checked_in: 'bg-green-900/50 text-green-400 border-green-700/50',
-  in_storage: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
+  in_storage: 'bg-surface-sunken/50 text-rmpg-400 border-border-default/50',
   checked_out: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   submitted_to_le: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
   pending_disposition: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
@@ -463,8 +463,8 @@ export default function EvidencePropertyPage() {
         {stats && (
           <div className="flex gap-3 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
             {[
-              { label: 'TOTAL', value: stats.total || 0, color: 'text-white' },
-              { label: 'COLLECTED', value: stats.collected || 0, color: 'text-gray-400' },
+              { label: 'TOTAL', value: stats.total || 0, color: 'text-rmpg-100' },
+              { label: 'COLLECTED', value: stats.collected || 0, color: 'text-rmpg-400' },
               { label: 'IN STORAGE', value: stats.stored || 0, color: 'text-amber-400' },
               { label: 'CLOSED', value: stats.closed || 0, color: 'text-orange-400' },
             ].map(s => (
@@ -487,7 +487,7 @@ export default function EvidencePropertyPage() {
           <div className="border-b border-rmpg-700 bg-surface-sunken px-3 py-2 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Evidence Aging Report</span>
-              <IconButton onClick={() => setShowAgingReport(false)} className="text-rmpg-500 hover:text-white" aria-label="Close aging report"><X style={{ width: 12, height: 12 }} /></IconButton>
+              <IconButton onClick={() => setShowAgingReport(false)} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close aging report"><X style={{ width: 12, height: 12 }} /></IconButton>
             </div>
             {agingLoading ? (
               <div className="flex items-center justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-brand-400" /></div>
@@ -497,7 +497,7 @@ export default function EvidencePropertyPage() {
                   {(agingReport.aging_breakdown || []).map((a: any) => (
                     <div key={a.age_range} className="panel-beveled p-2 text-center">
                       <div className="text-[9px] text-rmpg-500">{a.age_range}</div>
-                      <div className="text-sm font-bold text-white">{a.count}</div>
+                      <div className="text-sm font-bold text-rmpg-100">{a.count}</div>
                       <div className="text-[9px] text-rmpg-500">{a.in_storage || 0} stored / {a.checked_out || 0} out</div>
                     </div>
                   ))}
@@ -593,7 +593,7 @@ export default function EvidencePropertyPage() {
                 aria-selected={selected?.id === item.id}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-mono font-bold text-white truncate px-1.5 py-0.5" style={{ background: 'repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(255,255,255,0.06) 2px, rgba(255,255,255,0.06) 4px)', letterSpacing: '0.08em' }}>
+                  <span className="text-[11px] font-mono font-bold text-rmpg-100 truncate px-1.5 py-0.5" style={{ background: 'repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(255,255,255,0.06) 2px, rgba(255,255,255,0.06) 4px)', letterSpacing: '0.08em' }}>
                     {item.evidence_number || `EV-${item.id}`}
                   </span>
                   <span className={`text-[9px] px-1.5 py-0.5 border font-semibold whitespace-nowrap ${STATUS_COLORS[item.status] || STATUS_COLORS.in_storage}`}>
@@ -627,13 +627,13 @@ export default function EvidencePropertyPage() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-base">
-            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">
+            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-rmpg-100 transition-colors">
               ← Prev
             </button>
             <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">
               Page {page} / {totalPages} &bull; {totalCount} items
             </span>
-            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">
+            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-rmpg-100 transition-colors">
               Next →
             </button>
           </div>
@@ -673,7 +673,7 @@ export default function EvidencePropertyPage() {
                     onClick={() => setDetailTab(tab.id)}
                     className={`flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 ${
                       detailTab === tab.id
-                        ? 'text-white border-b-2 border-brand-500 bg-brand-900/10'
+                        ? 'text-rmpg-100 border-b-2 border-brand-500 bg-brand-900/10'
                         : 'text-rmpg-500 hover:text-rmpg-300 hover:bg-rmpg-700/20'
                     }`}
                   >
@@ -840,7 +840,7 @@ export default function EvidencePropertyPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-bold text-white">
+                              <span className="text-xs font-bold text-rmpg-100">
                                 {actionDef?.label || entry.action}
                               </span>
                               <span className="text-[9px] font-mono text-rmpg-500 flex-shrink-0">
@@ -922,7 +922,7 @@ export default function EvidencePropertyPage() {
                   {/* Disposition */}
                   <div className="border-t border-rmpg-700 pt-3 mt-3">
                     <button type="button" onClick={() => setDispositionOpen(!dispositionOpen)}
-                      className="text-[10px] text-rmpg-400 uppercase tracking-wider font-bold hover:text-white">
+                      className="text-[10px] text-rmpg-400 uppercase tracking-wider font-bold hover:text-rmpg-100">
                       {dispositionOpen ? '▾' : '▸'} Evidence Disposition
                     </button>
                     {dispositionOpen && (
@@ -1005,7 +1005,7 @@ export default function EvidencePropertyPage() {
                       {linkedRecords.incident && (
                         <div className="panel-beveled p-2">
                           <div className="text-[10px] text-rmpg-400 uppercase font-bold">Linked Incident</div>
-                          <div className="text-xs text-white">{linkedRecords.incident.incident_number} — {humanizeType(linkedRecords.incident.incident_type)}</div>
+                          <div className="text-xs text-rmpg-100">{linkedRecords.incident.incident_number} — {humanizeType(linkedRecords.incident.incident_type)}</div>
                           <div className="text-[10px] text-rmpg-500">Status: {humanizeStatus(linkedRecords.incident.status, 'incident')}</div>
                         </div>
                       )}
@@ -1014,7 +1014,7 @@ export default function EvidencePropertyPage() {
                           <div className="text-[10px] text-rmpg-400 uppercase font-bold mb-1">Linked Cases ({linkedRecords.cases.length})</div>
                           {linkedRecords.cases.map((c: any) => (
                             <div key={c.id} className="panel-beveled p-2 mb-1">
-                              <div className="text-xs text-white">{c.case_number} — {(c.case_type || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</div>
+                              <div className="text-xs text-rmpg-100">{c.case_number} — {(c.case_type || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</div>
                               <div className="text-[10px] text-rmpg-500">Status: {(c.status || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</div>
                             </div>
                           ))}
@@ -1025,7 +1025,7 @@ export default function EvidencePropertyPage() {
                           <div className="text-[10px] text-rmpg-400 uppercase font-bold mb-1">Forensic Cases ({linkedRecords.forensic_cases.length})</div>
                           {linkedRecords.forensic_cases.map((fc: any) => (
                             <div key={fc.id} className="panel-beveled p-2 mb-1">
-                              <div className="text-xs text-white">{fc.lab_number} — {fc.title}</div>
+                              <div className="text-xs text-rmpg-100">{fc.lab_number} — {fc.title}</div>
                               <div className="text-[10px] text-rmpg-500">{(fc.case_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} | {(fc.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</div>
                             </div>
                           ))}
@@ -1065,7 +1065,7 @@ export default function EvidencePropertyPage() {
                             <Video style={{ width: 16, height: 16 }} className="text-brand-400" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-white truncate">{vid.title}</div>
+                            <div className="text-xs font-bold text-rmpg-100 truncate">{vid.title}</div>
                             <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
                               <span className="flex items-center gap-1">
                                 <Shield style={{ width: 9, height: 9 }} />

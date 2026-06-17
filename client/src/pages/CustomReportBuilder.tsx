@@ -161,7 +161,7 @@ export default function CustomReportBuilder() {
   useEffect(() => { document.title = 'Custom Report Builder \u2014 RMPG Flex'; }, []);
 
   return (
-    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+    <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden">
       {!isMobile && <PanelTitleBar title="Custom Report Builder" icon={Database}>
         <div className="flex items-center gap-2">
           {source && step !== 'source' && (
@@ -207,7 +207,7 @@ export default function CustomReportBuilder() {
                   }`}
                 >
                   <Database className="w-5 h-5 text-brand-400 mb-2" />
-                  <p className="text-sm font-bold text-white">{src.label}</p>
+                  <p className="text-sm font-bold text-rmpg-100">{src.label}</p>
                   <p className="text-[9px] text-rmpg-400 mt-1">{src.columns.length} columns available</p>
                 </button>
               ))}

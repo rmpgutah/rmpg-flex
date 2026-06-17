@@ -94,7 +94,7 @@ export default function WelfareCheckModal() {
         <div className="flex items-center gap-3 border-b pb-4" style={{ borderColor: urgent ? '#ef4444' : '#d4a017' }}>
           <Activity className={`w-9 h-9 ${urgent ? 'text-red-500' : 'text-brand-gold-500'}`} />
           <div className="flex-1">
-            <div id="welfare-title" className="text-2xl font-black uppercase tracking-wider text-white">
+            <div id="welfare-title" className="text-2xl font-black uppercase tracking-wider text-rmpg-100">
               Welfare Check
             </div>
             <div className="text-[10px] uppercase tracking-wider text-rmpg-300 font-bold">
@@ -108,7 +108,7 @@ export default function WelfareCheckModal() {
           </div>
         </div>
 
-        <div className="text-sm text-white leading-relaxed">
+        <div className="text-sm text-rmpg-100 leading-relaxed">
           {active.message || 'Dispatch requesting status check. Please confirm.'}
         </div>
 

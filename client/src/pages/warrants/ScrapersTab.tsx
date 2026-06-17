@@ -171,7 +171,7 @@ function StatusLed({
   return (
     <div className="flex items-center gap-2">
       <span className={`w-2 h-2 rounded-full ${colorMap[color]}`} />
-      <span className="text-lg font-mono font-bold text-white">{count}</span>
+      <span className="text-lg font-mono font-bold text-rmpg-100">{count}</span>
       <span className="text-[10px] uppercase tracking-widest text-rmpg-500">
         {label}
       </span>
@@ -232,7 +232,7 @@ function ScraperHealthDistribution({
           const pct = (counts[g] / total) * 100;
           return (
             <div key={g} className="flex items-center gap-2">
-              <span className="w-4 text-xs font-mono font-bold text-white">{g}</span>
+              <span className="w-4 text-xs font-mono font-bold text-rmpg-100">{g}</span>
               <div className="flex-1 h-4 bg-rmpg-900 border border-rmpg-700 relative">
                 <div
                   className={`h-full ${GRADE_BAR_COLORS[g]}`}
@@ -270,7 +270,7 @@ function ScraperLiveFeed({ entries }: { entries: LiveFeedEntry[] }) {
                 <span className="text-rmpg-400 w-14 flex-shrink-0">
                   {display.label}
                 </span>
-                <span className="text-white truncate flex-1">{display.detail}</span>
+                <span className="text-rmpg-100 truncate flex-1">{display.detail}</span>
               </div>
             );
           })
@@ -337,7 +337,7 @@ function ScraperSourceCard({
         <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-rmpg-900 text-rmpg-400 border border-rmpg-700 w-12 text-center">
           {TIER_LABELS[source.priority] || 'NORM'}
         </span>
-        <span className="text-xs text-white flex-1 truncate">{source.display_name}</span>
+        <span className="text-xs text-rmpg-100 flex-1 truncate">{source.display_name}</span>
         <span className="text-[10px] text-rmpg-500 w-10 text-right">{source.state}</span>
         <span
           className={`text-[10px] font-mono font-bold px-1.5 py-0.5 border w-6 text-center ${GRADE_BADGE_CLASSES[grade]}`}
@@ -361,29 +361,29 @@ function ScraperSourceCard({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <span className="text-rmpg-500">URL: </span>
-              <span className="text-white break-all">{source.source_url}</span>
+              <span className="text-rmpg-100 break-all">{source.source_url}</span>
             </div>
             <div>
               <span className="text-rmpg-500">Last success: </span>
-              <span className="text-white">
+              <span className="text-rmpg-100">
                 {safeDateTimeStr(source.last_success_at, 'never')}
               </span>
             </div>
             <div>
               <span className="text-rmpg-500">Runs 24h: </span>
-              <span className="text-white">{m?.total_runs ?? 0}</span>
+              <span className="text-rmpg-100">{m?.total_runs ?? 0}</span>
             </div>
             <div>
               <span className="text-rmpg-500">Avg parsed: </span>
-              <span className="text-white">{m?.avg_parsed?.toFixed(1) ?? 0}</span>
+              <span className="text-rmpg-100">{m?.avg_parsed?.toFixed(1) ?? 0}</span>
             </div>
             <div>
               <span className="text-rmpg-500">p95 latency: </span>
-              <span className="text-white">{m?.p95_duration_ms ?? 0}ms</span>
+              <span className="text-rmpg-100">{m?.p95_duration_ms ?? 0}ms</span>
             </div>
             <div>
               <span className="text-rmpg-500">Consecutive errors: </span>
-              <span className="text-white">{source.consecutive_errors}</span>
+              <span className="text-rmpg-100">{source.consecutive_errors}</span>
             </div>
           </div>
 

@@ -232,7 +232,7 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100 transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -438,7 +438,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
         <button type="button"
           onClick={handleComputeHashes}
           disabled={computing}
-          className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-40"
+          className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-40"
         >
           {computing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Hash className="w-3 h-3" />}
           {computing ? 'Computing...' : 'Compute Hashes'}
@@ -560,7 +560,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
               <span className="uppercase font-semibold text-purple-300">{(selectedEvidence.evidence_type || 'physical').replace(/_/g, ' ')}</span>
               {selectedEvidence.category && <span>· {selectedEvidence.category}</span>}
               {selectedEvidence.incident_number && (
-                <span className="flex items-center gap-1"><Link2 className="w-3 h-3" />Incident <span className="font-mono text-white">{selectedEvidence.incident_number}</span></span>
+                <span className="flex items-center gap-1"><Link2 className="w-3 h-3" />Incident <span className="font-mono text-rmpg-100">{selectedEvidence.incident_number}</span></span>
               )}
             </span>
           }
@@ -663,7 +663,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                       <div className={`absolute left-1.5 top-1 w-3 h-3 rounded-full border-2 border-surface-base ${actionColors[entry.action] || 'bg-rmpg-500'}`} />
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-white uppercase">{entry.action.replace(/_/g, ' ')}</span>
+                          <span className="text-[10px] font-bold text-rmpg-100 uppercase">{entry.action.replace(/_/g, ' ')}</span>
                           <span className="text-[9px] text-rmpg-500">{safeDateTimeStr(entry.timestamp, '')}</span>
                         </div>
                         <div className="text-xs text-rmpg-300 mt-0.5">

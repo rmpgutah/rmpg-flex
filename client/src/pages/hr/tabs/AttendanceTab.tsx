@@ -33,7 +33,7 @@ interface AttendanceSummary {
 const TYPE_COLORS: Record<string, string> = {
   absent: 'bg-red-900/50 text-red-400 border border-red-700/50',
   tardy: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
-  early_departure: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
+  early_departure: 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50',
   no_call_no_show: 'bg-red-900/60 text-red-300 border border-red-600/50',
 };
 
@@ -100,7 +100,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-bold text-white flex items-center gap-2"><ClipboardCheck className="w-4 h-4" /> Attendance Tracking</h2>
+        <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2"><ClipboardCheck className="w-4 h-4" /> Attendance Tracking</h2>
         {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Log Incident</button>}
       </div>
 
@@ -109,12 +109,12 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="panel-beveled p-2 text-center">
             <p className="field-label">Total Incidents</p>
-            <p className="text-lg font-bold font-mono text-white">{summary.total_incidents}</p>
+            <p className="text-lg font-bold font-mono text-rmpg-100">{summary.total_incidents}</p>
           </div>
           {summary.by_type.map(t => (
             <div key={t.type} className="panel-beveled p-2 text-center">
               <p className="field-label">{t.type.replace(/_/g, ' ')}</p>
-              <p className="text-lg font-bold font-mono text-white">{t.count} <span className="text-[10px] text-rmpg-400">({t.excused_count} excused)</span></p>
+              <p className="text-lg font-bold font-mono text-rmpg-100">{t.count} <span className="text-[10px] text-rmpg-400">({t.excused_count} excused)</span></p>
             </div>
           ))}
           {summary.monday_friday_pattern && (
@@ -197,7 +197,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
             <div key={r.id} role="listitem" onContextMenu={(e) => openMenu(e, buildAttendanceMenu(r))} className="panel-beveled p-2.5 flex items-center justify-between hover:bg-surface-raised/30 hover:shadow-sm transition-all duration-150">
               <div className="flex items-center gap-3">
                 <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${TYPE_COLORS[r.type] || TYPE_COLORS.absent}`}>{r.type.replace(/_/g, ' ')}</span>
-                <span className="text-xs text-white">{r.officer_name}</span>
+                <span className="text-xs text-rmpg-100">{r.officer_name}</span>
                 <span className="text-[10px] text-rmpg-400">{r.date ? parseTimestamp(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : r.date}</span>
                 {r.minutes_late > 0 && <span className="text-[10px] text-amber-400">{r.minutes_late}m late</span>}
                 {r.reason && <span className="text-[10px] text-rmpg-400 italic truncate max-w-[200px]">{r.reason}</span>}

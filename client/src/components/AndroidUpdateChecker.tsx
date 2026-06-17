@@ -164,13 +164,13 @@ export default function AndroidUpdateChecker() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-amber-400" />
-            <span className="text-sm font-bold text-white uppercase tracking-wider">
+            <span className="text-sm font-bold text-rmpg-100 uppercase tracking-wider">
               Update Available
             </span>
           </div>
           <button type="button"
             onClick={() => setDismissed(true)}
-            className="p-1 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors"
+            className="p-1 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700 transition-colors"
             aria-label="Dismiss"
           >
             <X className="w-4 h-4" />

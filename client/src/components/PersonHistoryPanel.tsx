@@ -131,7 +131,7 @@ const WARRANT_STATUS_CLASSES: Record<string, string> = {
 };
 
 const CITATION_STATUS_CLASSES: Record<string, string> = {
-  issued: 'bg-gray-900/60 text-gray-300 border-gray-600/60',
+  issued: 'bg-surface-sunken/60 text-rmpg-300 border-border-subtle/60',
   paid: 'bg-green-900/50 text-green-400 border-green-700/50',
   contested: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
@@ -143,7 +143,7 @@ const CITATION_TYPE_CLASSES: Record<string, string> = {
   traffic: 'bg-orange-900/40 text-orange-300 border-orange-700/50',
   criminal: 'bg-red-900/50 text-red-300 border-red-700/50',
   parking: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
-  warning: 'bg-gray-900/40 text-gray-300 border-gray-700/50',
+  warning: 'bg-surface-sunken/40 text-rmpg-300 border-border-default/50',
 };
 
 // ── Component ──────────────────────────────────────
@@ -302,7 +302,7 @@ export default function PersonHistoryPanel({
                   }`}
                 >
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-white font-mono font-bold text-[11px]">
+                    <span className="text-rmpg-100 font-mono font-bold text-[11px]">
                       {w.warrant_number || `W-${w.id}`}
                     </span>
                     <span
@@ -372,7 +372,7 @@ export default function PersonHistoryPanel({
                 }`}
               >
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-white font-mono font-bold text-[11px]">{c.citation_number}</span>
+                  <span className="text-rmpg-100 font-mono font-bold text-[11px]">{c.citation_number}</span>
                   <span
                     className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase border panel-beveled ${
                       CITATION_STATUS_CLASSES[c.status] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
@@ -441,7 +441,7 @@ export default function PersonHistoryPanel({
                   key={inc.id}
                   className="flex items-center gap-2 text-xs px-2 py-1.5 bg-surface-raised border border-rmpg-700 flex-wrap"
                 >
-                  <span className="text-white font-mono font-bold">{inc.incident_number || `I-${inc.id}`}</span>
+                  <span className="text-rmpg-100 font-mono font-bold">{inc.incident_number || `I-${inc.id}`}</span>
                   <span className="px-1 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold">
                     {formatRole(inc.role)}
                   </span>
@@ -481,7 +481,7 @@ export default function PersonHistoryPanel({
                   key={c.id}
                   className="flex items-center gap-2 text-xs px-2 py-1.5 bg-surface-raised border border-rmpg-700 flex-wrap"
                 >
-                  <span className="text-white font-mono font-bold">{c.call_number || `C-${c.id}`}</span>
+                  <span className="text-rmpg-100 font-mono font-bold">{c.call_number || `C-${c.id}`}</span>
                   <span className="text-rmpg-300">{formatType(c.incident_type)}</span>
                   {c.priority && <StatusBadge status={c.priority} type="priority" size="sm" />}
                   <StatusBadge status={c.status} type="call_status" size="sm" />

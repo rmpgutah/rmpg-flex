@@ -103,14 +103,14 @@ export default function RunCardPreview({ incidentType, onCardLoaded }: Props) {
       <div className="flex items-center gap-3 text-[10px] text-rmpg-200 flex-wrap">
         <span className="flex items-center gap-1">
           <Users className="w-3 h-3 text-brand-gold-500" />
-          <strong className="text-white">{totalUnits}</strong> unit{totalUnits !== 1 ? 's' : ''}
+          <strong className="text-rmpg-100">{totalUnits}</strong> unit{totalUnits !== 1 ? 's' : ''}
           {card.backup_units > 0 && (
             <span className="text-rmpg-400">({card.required_units}+{card.backup_units} backup)</span>
           )}
         </span>
         {card.required_roles.length > 0 && (
           <span className="text-rmpg-300">
-            Roles: <strong className="text-white">{card.required_roles.join(', ')}</strong>
+            Roles: <strong className="text-rmpg-100">{card.required_roles.join(', ')}</strong>
           </span>
         )}
       </div>

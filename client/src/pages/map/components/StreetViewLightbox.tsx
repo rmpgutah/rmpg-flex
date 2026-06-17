@@ -96,7 +96,7 @@ export default function StreetViewLightbox({ target, onClose }: Props) {
           {target.imageId && (
             <button
               onClick={() => setForcePerspective((v) => !v)}
-              className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-rmpg-300 hover:text-white bg-rmpg-800/60 hover:bg-rmpg-700/60 transition-colors"
+              className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-rmpg-300 hover:text-rmpg-100 bg-rmpg-800/60 hover:bg-rmpg-700/60 transition-colors"
               style={{ borderRadius: 2 }}
               title="Switch between Mapillary street imagery and the Mapbox oblique perspective"
             >

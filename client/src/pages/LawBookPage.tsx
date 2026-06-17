@@ -243,7 +243,7 @@ export default function LawBookPage() {
           { label: 'Classified Offenses', value: stats.offenses, accent: '#fbbf24' },
         ].map((t) => (
           <div key={t.label} className="border border-rmpg-800 bg-surface-raised px-3 py-2" style={{ borderRadius: 2, borderTop: `2px solid ${t.accent}` }}>
-            <div className="text-[18px] font-black tabular-nums leading-none text-white">{tocLoading ? '—' : t.value.toLocaleString()}</div>
+            <div className="text-[18px] font-black tabular-nums leading-none text-rmpg-100">{tocLoading ? '—' : t.value.toLocaleString()}</div>
             <div className="text-[9px] uppercase tracking-wider text-rmpg-500 mt-1">{t.label}</div>
           </div>
         ))}
@@ -273,10 +273,10 @@ export default function LawBookPage() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
             <input value={query} onChange={(e) => setQuery(e.target.value)}
               placeholder='Search — "76-5-102", "assault", "DUI", "arrest", "stalking"…'
-              className="w-full pl-8 pr-8 py-2 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder:text-rmpg-500" style={{ borderRadius: 2 }} />
+              className="w-full pl-8 pr-8 py-2 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder:text-rmpg-500" style={{ borderRadius: 2 }} />
             {(query || level) && (
               <button type="button" onClick={resetToBrowse} aria-label="Clear search"
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100">
                 {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-gold-500" /> : <X className="w-3.5 h-3.5" />}
               </button>
             )}
@@ -377,7 +377,7 @@ export default function LawBookPage() {
                     className="text-left border border-rmpg-800 bg-surface-base hover:bg-surface-sunken p-3 transition-colors"
                     style={{ borderRadius: 2, borderTop: `2px solid ${meta.accent}` }}>
                     <Icon className="w-5 h-5 mb-2" style={{ color: meta.accent }} />
-                    <div className="text-[12px] font-bold text-white">{meta.label}</div>
+                    <div className="text-[12px] font-bold text-rmpg-100">{meta.label}</div>
                     <div className="text-[10px] text-rmpg-500 leading-snug mt-1">{meta.blurb}</div>
                     <div className="text-[10px] font-mono mt-2" style={{ color: meta.accent }}>{count.toLocaleString()} sections →</div>
                   </button>
@@ -404,7 +404,7 @@ export default function LawBookPage() {
                       className="w-full text-left px-3 py-2 hover:bg-surface-base flex items-start gap-2">
                       {open ? <ChevronDown className="w-3.5 h-3.5 text-rmpg-500 mt-0.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-rmpg-500 mt-0.5 shrink-0" />}
                       <span className="font-mono text-[11px] text-brand-gold-500 shrink-0 w-24">{s.citation}</span>
-                      <span className="text-[12px] text-white leading-tight flex-1">{s.short_title}</span>
+                      <span className="text-[12px] text-rmpg-100 leading-tight flex-1">{s.short_title}</span>
                       {s.plain_summary && <Sparkles className="w-3 h-3 text-brand-gold-500/70 shrink-0 mt-0.5" aria-label="Has plain-language summary" />}
                       {s.code_type === 'rule' && (
                         <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border border-rmpg-600 text-rmpg-400 shrink-0" style={{ borderRadius: 2 }}>Rule</span>

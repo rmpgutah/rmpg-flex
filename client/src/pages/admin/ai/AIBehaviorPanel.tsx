@@ -65,7 +65,7 @@ export default function AIBehaviorPanel() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+        <Loader2 className="w-5 h-5 animate-spin text-rmpg-400" />
       </div>
     );
   }
@@ -81,7 +81,7 @@ export default function AIBehaviorPanel() {
         <div className="space-y-5">
           {/* Response Style */}
           <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-white">Response Style</h3>
+            <h3 className="text-sm font-semibold text-rmpg-100">Response Style</h3>
             <div className="space-y-2">
               <RadioOption
                 name="responseStyle"
@@ -112,7 +112,7 @@ export default function AIBehaviorPanel() {
 
           {/* Tone */}
           <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-white">Tone</h3>
+            <h3 className="text-sm font-semibold text-rmpg-100">Tone</h3>
             <div className="space-y-2">
               <RadioOption
                 name="tone"
@@ -143,7 +143,7 @@ export default function AIBehaviorPanel() {
 
           {/* Safety Filter */}
           <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-white">Safety Filter</h3>
+            <h3 className="text-sm font-semibold text-rmpg-100">Safety Filter</h3>
             <div className="space-y-2">
               <RadioOption
                 name="safetyFilter"
@@ -176,40 +176,40 @@ export default function AIBehaviorPanel() {
         {/* Right Column — Performance */}
         <div className="space-y-5">
           <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-4">
-            <h3 className="text-sm font-semibold text-white">Performance</h3>
+            <h3 className="text-sm font-semibold text-rmpg-100">Performance</h3>
 
             {/* Rate Limit */}
             <div className="space-y-1">
-              <label className="text-xs text-gray-300">Rate Limit (req/min)</label>
+              <label className="text-xs text-rmpg-300">Rate Limit (req/min)</label>
               <input id="ff-aibehaviorpanel-0"
                 type="number" min={1} max={100}
                 value={config.rateLimit}
                 onChange={e => update('rateLimit', Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
-                className="w-full px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs focus:outline-none focus:border-gray-500"
+                className="w-full px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
               />
               <p className="text-[10px] text-gray-600">Maximum requests per minute (1-100)</p>
             </div>
 
             {/* Max Concurrent */}
             <div className="space-y-1">
-              <label className="text-xs text-gray-300">Max Concurrent Requests</label>
+              <label className="text-xs text-rmpg-300">Max Concurrent Requests</label>
               <input id="ff-aibehaviorpanel-1"
                 type="number" min={1} max={10}
                 value={config.maxConcurrent}
                 onChange={e => update('maxConcurrent', Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
-                className="w-full px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs focus:outline-none focus:border-gray-500"
+                className="w-full px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
               />
               <p className="text-[10px] text-gray-600">Maximum simultaneous AI requests (1-10)</p>
             </div>
 
             {/* Request Timeout */}
             <div className="space-y-1">
-              <label className="text-xs text-gray-300">Request Timeout (seconds)</label>
+              <label className="text-xs text-rmpg-300">Request Timeout (seconds)</label>
               <input id="ff-aibehaviorpanel-2"
                 type="number" min={10} max={300}
                 value={config.requestTimeout}
                 onChange={e => update('requestTimeout', Math.min(300, Math.max(10, parseInt(e.target.value) || 10)))}
-                className="w-full px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs focus:outline-none focus:border-gray-500"
+                className="w-full px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
               />
               <p className="text-[10px] text-gray-600">Time before request is aborted (10-300s)</p>
             </div>
@@ -218,7 +218,7 @@ export default function AIBehaviorPanel() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <label className="text-xs text-gray-300">Auto Retry</label>
+                  <label className="text-xs text-rmpg-300">Auto Retry</label>
                   <p className="text-[10px] text-gray-600">Automatically retry failed requests</p>
                 </div>
                 <button
@@ -235,12 +235,12 @@ export default function AIBehaviorPanel() {
 
               {config.autoRetry && (
                 <div className="space-y-1 pl-4 border-l-2 border-[#303030]">
-                  <label className="text-xs text-gray-300">Retry Count</label>
+                  <label className="text-xs text-rmpg-300">Retry Count</label>
                   <input id="ff-aibehaviorpanel-3"
                     type="number" min={1} max={5}
                     value={config.retryCount}
                     onChange={e => update('retryCount', Math.min(5, Math.max(1, parseInt(e.target.value) || 1)))}
-                    className="w-full px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs focus:outline-none focus:border-gray-500"
+                    className="w-full px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
                   />
                   <p className="text-[10px] text-gray-600">Number of retry attempts (1-5)</p>
                 </div>
@@ -255,7 +255,7 @@ export default function AIBehaviorPanel() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 disabled:opacity-50 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-rmpg-100 text-sm rounded hover:bg-gray-700 disabled:opacity-50 transition-colors"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           Save Behavior Settings
@@ -282,8 +282,8 @@ function RadioOption({ name, value, selected, label, description, onChange }: {
         className="mt-1 accent-gray-500"
       />
       <div>
-        <p className="text-sm text-white font-medium">{label}</p>
-        <p className="text-xs text-gray-500">{description}</p>
+        <p className="text-sm text-rmpg-100 font-medium">{label}</p>
+        <p className="text-xs text-rmpg-500">{description}</p>
       </div>
     </label>
   );

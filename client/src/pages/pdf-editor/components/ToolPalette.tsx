@@ -62,7 +62,7 @@ export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth,
             onClick={() => onTool(t.id)}
             aria-label={t.label}
             title={t.label}
-            className={`p-1.5 rounded-sm transition-colors ${active ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'}`}
+            className={`p-1.5 rounded-sm transition-colors ${active ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50'}`}
           >
             <Icon className="w-4 h-4" />
           </IconButton>

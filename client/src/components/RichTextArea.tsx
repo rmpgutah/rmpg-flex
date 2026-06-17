@@ -91,7 +91,7 @@ const RichTextArea = forwardRef<HTMLTextAreaElement, RichTextAreaProps>(
     const wrap = (p: string, s: string, ph: string) => () => innerRef.current && applyWrap(innerRef.current, p, s, ph);
     const linePrefix = (p: string) => () => innerRef.current && applyLinePrefix(innerRef.current, p);
 
-    const btnCls = 'p-1 text-rmpg-400 hover:text-white hover:bg-rmpg-700/60 rounded-sm transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-rmpg-400';
+    const btnCls = 'p-1 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/60 rounded-sm transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-rmpg-400';
 
     return (
       <div className="flex flex-col">

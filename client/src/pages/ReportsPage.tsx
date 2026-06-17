@@ -415,7 +415,7 @@ function DailyBriefingCard() {
                 <div className="text-[8px] text-rmpg-500 uppercase">P2 Calls</div>
               </div>
               <div className="panel-beveled bg-surface-sunken p-2 text-center">
-                <div className="text-lg font-bold font-mono text-gray-400">{briefing.prevDayStats?.avg_response || 'N/A'}m</div>
+                <div className="text-lg font-bold font-mono text-rmpg-400">{briefing.prevDayStats?.avg_response || 'N/A'}m</div>
                 <div className="text-[8px] text-rmpg-500 uppercase">Avg Response</div>
               </div>
             </div>
@@ -686,7 +686,7 @@ function BeatActivityCard() {
   return (
     <div className="bg-surface-base panel-beveled">
       <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
-        <MapPin className="w-3.5 h-3.5 text-gray-400" />
+        <MapPin className="w-3.5 h-3.5 text-rmpg-400" />
         <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Beat Activity Report</h3>
       </div>
       <div className="p-4">
@@ -705,7 +705,7 @@ function BeatActivityCard() {
                 {data.beats.map((b: any) => (
                   <tr key={b.beat_code} className="border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors">
                     <td className="px-2 py-1.5 text-rmpg-200 font-mono font-bold">{b.beat_name || b.beat_code}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-gray-400">{b.calls}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-rmpg-400">{b.calls}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.incidents}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.citations}</td>
                   </tr>
@@ -1127,7 +1127,7 @@ export default function ReportsPage() {
             <div className="panel-beveled p-4 bg-surface-base">
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp className="w-4 h-4 text-brand-blue" />
-                <span className="text-xs font-bold text-white uppercase">This Week vs Last Week</span>
+                <span className="text-xs font-bold text-rmpg-100 uppercase">This Week vs Last Week</span>
               </div>
               <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-4 gap-3'}`}>
                 {[
@@ -1137,7 +1137,7 @@ export default function ReportsPage() {
                   { label: 'Avg Response', current: comparisonData.responseTime.current, previous: comparisonData.responseTime.previous, change: comparisonData.responseTime.change },
                 ].map(item => (
                   <div key={item.label} className="bg-surface-sunken p-3 text-center">
-                    <div className="text-lg font-bold text-white font-mono">{item.current ?? '-'}{item.label === 'Avg Response' && item.current != null ? 'm' : ''}</div>
+                    <div className="text-lg font-bold text-rmpg-100 font-mono">{item.current ?? '-'}{item.label === 'Avg Response' && item.current != null ? 'm' : ''}</div>
                     <div className="text-[9px] text-rmpg-400 uppercase">{item.label}</div>
                     {item.change != null && (
                       <div className={`text-[10px] font-bold mt-0.5 ${item.change > 0 ? (item.label === 'Avg Response' ? 'text-red-400' : 'text-green-400') : item.change < 0 ? (item.label === 'Avg Response' ? 'text-green-400' : 'text-amber-400') : 'text-rmpg-400'}`}>
@@ -1156,7 +1156,7 @@ export default function ReportsPage() {
             <div className="panel-beveled p-4 bg-surface-base">
               <div className="flex items-center gap-2 mb-3">
                 <Calendar className="w-4 h-4 text-purple-400" />
-                <span className="text-xs font-bold text-white uppercase">Scheduled Reports</span>
+                <span className="text-xs font-bold text-rmpg-100 uppercase">Scheduled Reports</span>
                 <span className="ml-auto text-[9px] text-rmpg-500">{reportSchedules.length} active</span>
               </div>
               <div className="space-y-1.5">
@@ -1176,7 +1176,7 @@ export default function ReportsPage() {
           <div className="panel-beveled p-4 bg-surface-base">
             <div className="flex items-center gap-2 mb-3">
               <FileText className="w-4 h-4 text-purple-400" />
-              <span className="text-xs font-bold text-white uppercase">Report Approval Queue</span>
+              <span className="text-xs font-bold text-rmpg-100 uppercase">Report Approval Queue</span>
             </div>
             <ReportApprovalQueue />
           </div>
@@ -1191,7 +1191,7 @@ export default function ReportsPage() {
               </div>
               <div className="p-4">
                 {incidentsChartData.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                  <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
                     <BarChart3 className="w-8 h-8 mb-2 opacity-50" />
                     <p className="text-sm">No data for selected filters</p>
                   </div>
@@ -1238,7 +1238,7 @@ export default function ReportsPage() {
               </div>
               <div className="p-4">
               {priorityChartData.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
                   <BarChart3 className="w-8 h-8 mb-2 opacity-50" />
                   <p className="text-sm">No data for selected filters</p>
                 </div>
@@ -1268,7 +1268,7 @@ export default function ReportsPage() {
               </div>
               <div className="p-4">
               {responseTimeChartData.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
                   <BarChart3 className="w-8 h-8 mb-2 opacity-50" />
                   <p className="text-sm">No data for selected filters</p>
                 </div>
@@ -1296,7 +1296,7 @@ export default function ReportsPage() {
               </div>
               <div className="p-4">
               {officerChartData.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
                   <BarChart3 className="w-8 h-8 mb-2 opacity-50" />
                   <p className="text-sm">No data for selected filters</p>
                 </div>
@@ -1583,10 +1583,10 @@ function PatrolTrackingCard() {
       {/* Preview stats */}
       {preview && (
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[9px] text-rmpg-400 font-mono border-t border-rmpg-700/50 pt-2">
-          <span>Units: <strong className="text-white">{preview.totalUnits}</strong></span>
-          <span>Points: <strong className="text-white">{preview.totalPoints}</strong></span>
+          <span>Units: <strong className="text-rmpg-100">{preview.totalUnits}</strong></span>
+          <span>Points: <strong className="text-rmpg-100">{preview.totalPoints}</strong></span>
           <span>Miles: <strong className="text-brand-400">{preview.totalMiles}</strong></span>
-          <span>Duration: <strong className="text-white">{preview.totalMinutes} min</strong></span>
+          <span>Duration: <strong className="text-rmpg-100">{preview.totalMinutes} min</strong></span>
         </div>
       )}
     </div>

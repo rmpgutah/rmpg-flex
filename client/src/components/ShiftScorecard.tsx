@@ -79,7 +79,7 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
   const trend = data ? TREND_ICONS[data.trend.direction] : null;
 
   return (
-    <div className="panel-beveled" style={{ background: '#0a0a0a' }}>
+    <div className="panel-beveled" style={{ background:"var(--surface-sunken)" }}>
       <PanelTitleBar title="Shift Scorecard" icon={Award}>
         <input id="ff-shiftscorecard-0"
           type="date"

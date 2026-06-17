@@ -239,7 +239,7 @@ export default function ShiftCard() {
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest">SHIFT</h2>
         {isActive
           ? <span className="text-[#d4a017] text-xs font-bold uppercase">On Duty</span>
-          : <span className="text-gray-500 text-xs uppercase">Off Duty</span>}
+          : <span className="text-rmpg-500 text-xs uppercase">Off Duty</span>}
       </div>
 
       {error && <div className="text-amber-400 text-[11px] mb-2 leading-snug">{error}</div>}
@@ -247,16 +247,16 @@ export default function ShiftCard() {
       {isActive && (
         <div className="grid grid-cols-3 grid-keep gap-2 mb-3 px-1">
           <div className="flex flex-col">
-            <span className="text-gray-500 text-[9px] uppercase tracking-widest">Hours</span>
-            <span className="text-white text-base font-bold font-mono">{hours.toFixed(1)}</span>
+            <span className="text-rmpg-500 text-[9px] uppercase tracking-widest">Hours</span>
+            <span className="text-rmpg-100 text-base font-bold font-mono">{hours.toFixed(1)}</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-gray-500 text-[9px] uppercase tracking-widest">Unit</span>
-            <span className="text-white text-base font-bold font-mono truncate">{unit?.call_sign ?? '—'}</span>
+            <span className="text-rmpg-500 text-[9px] uppercase tracking-widest">Unit</span>
+            <span className="text-rmpg-100 text-base font-bold font-mono truncate">{unit?.call_sign ?? '—'}</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-gray-500 text-[9px] uppercase tracking-widest">Vehicle</span>
-            <span className="text-white text-base font-bold font-mono truncate" title={vehicleLabel(vehicle)}>{vehicleLabel(vehicle) || '—'}</span>
+            <span className="text-rmpg-500 text-[9px] uppercase tracking-widest">Vehicle</span>
+            <span className="text-rmpg-100 text-base font-bold font-mono truncate" title={vehicleLabel(vehicle)}>{vehicleLabel(vehicle) || '—'}</span>
           </div>
         </div>
       )}
@@ -264,7 +264,7 @@ export default function ShiftCard() {
       {/* Vehicle picker — shown when no take-home car is set for the unit. */}
       {!isActive && picking && (
         <div className="mb-2 border border-[#222] bg-[#0d0d0d] p-2">
-          <div className="text-gray-400 text-[9px] uppercase tracking-widest mb-1">Select your vehicle</div>
+          <div className="text-rmpg-400 text-[9px] uppercase tracking-widest mb-1">Select your vehicle</div>
           {state && state.available_vehicles.length > 0 ? (
             <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
               {state.available_vehicles.map((v) => (
@@ -276,10 +276,10 @@ export default function ShiftCard() {
               ))}
             </div>
           ) : (
-            <div className="text-gray-500 text-[11px]">No in-service vehicles available.</div>
+            <div className="text-rmpg-500 text-[11px]">No in-service vehicles available.</div>
           )}
           <button type="button" onClick={() => setPicking(false)}
-            className="mt-2 w-full h-9 bg-[#1a1a1a] border border-[#222] text-gray-400 text-[10px] uppercase tracking-widest">
+            className="mt-2 w-full h-9 bg-[#1a1a1a] border border-[#222] text-rmpg-400 text-[10px] uppercase tracking-widest">
             Cancel
           </button>
         </div>
@@ -290,9 +290,9 @@ export default function ShiftCard() {
           instant the shift ends, so a stale screenshot of the QR is harmless. */}
       {isActive && qrDataUrl && (
         <div className="mb-3 border border-[#222] bg-[#0d0d0d] p-2 flex flex-col items-center">
-          <div className="text-gray-400 text-[9px] uppercase tracking-widest mb-1">Scan with phone — vehicle walkthrough</div>
+          <div className="text-rmpg-400 text-[9px] uppercase tracking-widest mb-1">Scan with phone — vehicle walkthrough</div>
           <img src={qrDataUrl} alt="Shift inspection QR" width={180} height={180} className="block" />
-          <div className="mt-1 text-[9px] text-gray-500 font-mono truncate max-w-full" title={qrUrl ?? ''}>{qrUrl}</div>
+          <div className="mt-1 text-[9px] text-rmpg-500 font-mono truncate max-w-full" title={qrUrl ?? ''}>{qrUrl}</div>
         </div>
       )}
 

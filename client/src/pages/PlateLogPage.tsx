@@ -332,7 +332,7 @@ export default function PlateLogPage() {
                   className="w-24 h-24 object-cover border border-[#222222] shrink-0" />
               )}
               <div className="min-w-0 flex-1">
-                <div className="text-2xl tracking-[0.2em] text-white font-semibold">{scan.capture.plate || '—'}</div>
+                <div className="text-2xl tracking-[0.2em] text-rmpg-100 font-semibold">{scan.capture.plate || '—'}</div>
                 <div className="text-[11px] text-[#888888] mt-1">
                   {scan.capture.state ? `${scan.capture.state} · ` : ''}{summarize(scan.capture)}
                 </div>
@@ -387,7 +387,7 @@ export default function PlateLogPage() {
         onChange={(e) => setPlate(e.target.value.toUpperCase())}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
         placeholder="PLATE"
-        className="w-full bg-[#050505] border border-[#222222] px-3 py-3 text-2xl tracking-[0.3em] text-center text-white font-semibold focus:border-[#d4a017] outline-none uppercase"
+        className="w-full bg-[#050505] border border-[#222222] px-3 py-3 text-2xl tracking-[0.3em] text-center text-rmpg-100 font-semibold focus:border-[#d4a017] outline-none uppercase"
       />
       <div className="flex items-center gap-2">
         <MapPin className="w-4 h-4 text-[#888888] shrink-0" />
@@ -452,7 +452,7 @@ export default function PlateLogPage() {
                 <img src={authedImageUrl(q.image_url)} alt="" className="w-10 h-10 object-cover border border-[#222] shrink-0" />
               )}
               <div className="min-w-0 flex-1">
-                <div className="text-sm tracking-[0.15em] text-white font-semibold">
+                <div className="text-sm tracking-[0.15em] text-rmpg-100 font-semibold">
                   {q.plate || '—'}
                   {q.plate_confidence != null && <span className="text-[10px] text-yellow-500 ml-2 tracking-normal">{Math.round(q.plate_confidence * 100)}%</span>}
                 </div>

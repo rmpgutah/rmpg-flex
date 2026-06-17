@@ -151,7 +151,7 @@ export default function UnitStatusCard() {
           <button
             type="button"
             onClick={() => { setLoading(true); fetchUnit(); }}
-            className="min-h-[44px] h-11 px-3 bg-[#1a1a1a] border border-[#222] text-gray-300 text-xs uppercase tracking-widest"
+            className="min-h-[44px] h-11 px-3 bg-[#1a1a1a] border border-[#222] text-rmpg-300 text-xs uppercase tracking-widest"
           >
             Retry
           </button>
@@ -164,7 +164,7 @@ export default function UnitStatusCard() {
     return (
       <section className="bg-[#141414] border border-[#222] p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">UNIT STATUS</h2>
-        <p className="text-gray-500 text-xs italic">Not on a unit. Use /dispatch to log on.</p>
+        <p className="text-rmpg-500 text-xs italic">Not on a unit. Use /dispatch to log on.</p>
       </section>
     );
   }
@@ -216,13 +216,13 @@ export default function UnitStatusCard() {
             style={{ boxShadow: '0 0 6px currentColor' }}
             aria-hidden="true"
           />
-          <span className="text-white text-sm font-mono">{unitLabel}</span>
+          <span className="text-rmpg-100 text-sm font-mono">{unitLabel}</span>
         </div>
-        <span className="text-white text-sm font-mono">{toTenCode(current)}</span>
+        <span className="text-rmpg-100 text-sm font-mono">{toTenCode(current)}</span>
       </div>
 
       {assignment && (
-        <div className="text-gray-500 text-xs mb-2 truncate" title={assignment}>
+        <div className="text-rmpg-500 text-xs mb-2 truncate" title={assignment}>
           {assignment}
         </div>
       )}
@@ -238,7 +238,7 @@ export default function UnitStatusCard() {
               onClick={() => changeStatus(btn.backend)}
               className={[
                 'min-h-[44px] h-11 bg-[#1a1a1a] border text-xs uppercase tracking-widest',
-                active ? 'border-[#d4a017] text-[#d4a017]' : 'border-[#222] text-gray-300',
+                active ? 'border-[#d4a017] text-[#d4a017]' : 'border-[#222] text-rmpg-300',
                 busy ? 'opacity-50' : '',
               ].join(' ')}
             >

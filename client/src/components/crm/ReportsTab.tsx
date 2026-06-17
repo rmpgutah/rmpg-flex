@@ -178,7 +178,7 @@ export default function ReportsTab() {
             icon={Target}
             label="Leads This Month"
             value={String(metrics?.leads_this_month || 0)}
-            color="text-gray-400"
+            color="text-rmpg-400"
           />
           <MetricCard
             icon={FileText}
@@ -250,7 +250,7 @@ export default function ReportsTab() {
                 <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: STAGE_COLORS[ps.stage] }} />
                 <div>
                   <div className="text-[10px] text-rmpg-400">{toDisplayLabel(ps.stage)}</div>
-                  <div className="text-xs text-white font-mono">{ps.count} <span className="text-rmpg-500">({formatCurrency(ps.total_value)})</span></div>
+                  <div className="text-xs text-rmpg-100 font-mono">{ps.count} <span className="text-rmpg-500">({formatCurrency(ps.total_value)})</span></div>
                 </div>
               </div>
             ))}
@@ -280,7 +280,7 @@ export default function ReportsTab() {
             <tbody>
               {leadSourceROI.map(row => (
                 <tr key={row.source} className="border-b border-rmpg-700/30 hover:bg-[#181818]">
-                  <td className="px-2 py-1.5 text-xs text-white">{SOURCE_LABELS[row.source] || toDisplayLabel(row.source)}</td>
+                  <td className="px-2 py-1.5 text-xs text-rmpg-100">{SOURCE_LABELS[row.source] || toDisplayLabel(row.source)}</td>
                   <td className="px-2 py-1.5 text-xs text-rmpg-300 text-right font-mono">{row.total}</td>
                   <td className="px-2 py-1.5 text-xs text-green-400 text-right font-mono">{row.won}</td>
                   <td className="px-2 py-1.5 text-xs text-red-400 text-right font-mono">{row.lost}</td>

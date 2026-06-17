@@ -89,7 +89,7 @@ export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting,
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
         {sections.map(s => (
           <button key={s.id} type="button" onClick={() => setActiveSection(s.id)}
-            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${activeSection === s.id ? 'text-red-400 bg-red-900/20 border border-red-700/40' : 'text-rmpg-400 hover:text-white'}`}>
+            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${activeSection === s.id ? 'text-red-400 bg-red-900/20 border border-red-700/40' : 'text-rmpg-400 hover:text-rmpg-100'}`}>
             {s.label}
           </button>
         ))}

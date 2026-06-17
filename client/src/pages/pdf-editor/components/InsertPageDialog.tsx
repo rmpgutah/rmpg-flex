@@ -10,7 +10,7 @@ interface Props {
   onPickImage: () => void;
 }
 
-const cardCls = 'flex flex-col items-center justify-center gap-1.5 border border-[#222] hover:border-[#d4a017] rounded-[2px] py-4 text-[10px] text-rmpg-300 hover:text-white bg-[#0a0a0a]';
+const cardCls = 'flex flex-col items-center justify-center gap-1.5 border border-[#222] hover:border-[#d4a017] rounded-[2px] py-4 text-[10px] text-rmpg-300 hover:text-rmpg-100 bg-[#0a0a0a]';
 
 export default function InsertPageDialog({ open, onClose, onTemplate, onPickImage }: Props) {
   if (!open) return null;
@@ -20,7 +20,7 @@ export default function InsertPageDialog({ open, onClose, onTemplate, onPickImag
         <div className="flex items-center gap-2 mb-3">
           <FilePlus2 className="w-4 h-4 text-[#d4a017]" />
           <div className="text-sm text-rmpg-100 font-semibold">Insert New Page</div>
-          <button type="button" onClick={onClose} aria-label="Close" className="ml-auto text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="ml-auto text-rmpg-400 hover:text-rmpg-100"><X className="w-4 h-4" /></button>
         </div>
         <div className="text-[10px] text-rmpg-500 mb-3">A new US-Letter page is appended to the end of the document.</div>
         <div className="grid grid-cols-2 gap-2">

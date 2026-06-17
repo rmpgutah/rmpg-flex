@@ -444,7 +444,7 @@ export default function FieldCameraPage() {
       <div className="relative flex-1 overflow-hidden">
         {/* Patrol Scan: critical-hit banner — full-width, dismissable */}
         {patrol.lastHit && (
-          <div className="absolute top-0 left-0 right-0 z-20 bg-red-700 text-white px-3 py-2 flex items-start gap-2 shadow-lg">
+          <div className="absolute top-0 left-0 right-0 z-20 bg-red-700 text-rmpg-100 px-3 py-2 flex items-start gap-2 shadow-lg">
             <AlertTriangle className="w-5 h-5 shrink-0 mt-px animate-pulse" />
             <div className="flex-1 min-w-0">
               <div className="text-[10px] font-bold uppercase tracking-widest">Patrol Hit</div>
@@ -463,7 +463,7 @@ export default function FieldCameraPage() {
                 key={e.key}
                 className={`flex items-center justify-between px-3 py-1.5 ${e.critical ? 'bg-red-950' : ''}`}
               >
-                <span className={`text-sm tracking-[0.12em] font-semibold ${e.critical ? 'text-red-300' : 'text-white'}`}>
+                <span className={`text-sm tracking-[0.12em] font-semibold ${e.critical ? 'text-red-300' : 'text-rmpg-100'}`}>
                   {e.plate}
                 </span>
                 <span className="text-[10px] text-[#888] truncate ml-2 flex-1 text-right">
@@ -513,7 +513,7 @@ export default function FieldCameraPage() {
             {(scan.vehicles ?? []).map((v, i) => (
               <div key={v.vehicle_record_id ?? i} className="border border-[#222] bg-[#0b0b0b] p-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-lg tracking-[0.15em] text-white font-semibold">{v.plate || '—'}</span>
+                  <span className="text-lg tracking-[0.15em] text-rmpg-100 font-semibold">{v.plate || '—'}</span>
                   <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 border border-[#333] text-[#888]">
                     {v.vehicle_record_created ? 'NEW RECORD' : 'LINKED'}
                   </span>
@@ -561,14 +561,14 @@ export default function FieldCameraPage() {
             <video ref={videoRef} playsInline muted className="absolute inset-0 w-full h-full object-cover" />
             {/* HUD — mirrors what the stamp will burn in */}
             <div className="absolute top-0 left-0 right-0 px-3 py-2 flex items-start justify-between pointer-events-none">
-              <div className="bg-black/55 px-2 py-1 font-mono text-[11px] text-white">{clock}</div>
+              <div className="bg-black/55 px-2 py-1 font-mono text-[11px] text-rmpg-100">{clock}</div>
               <div className={`bg-black/55 px-2 py-1 font-mono text-[11px] flex items-center gap-1 ${gps ? 'text-[#d4a017]' : 'text-red-400'}`}>
                 <MapPin className="w-3 h-3" />
                 {gps ? `±${Math.round(gps.accuracy)}m` : 'NO GPS'}
               </div>
             </div>
             <div className="absolute bottom-0 left-0 right-0 px-3 pb-2 pointer-events-none">
-              <div className="bg-black/55 px-2 py-1 inline-block font-mono text-[11px] text-white">
+              <div className="bg-black/55 px-2 py-1 inline-block font-mono text-[11px] text-rmpg-100">
                 {user?.full_name || user?.username || '—'}
               </div>
             </div>

@@ -401,10 +401,10 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
       <div className="bg-[#141414] border border-[#222] rounded-[2px] w-full max-w-[860px] max-h-[88vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header + tabs */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#222]">
-          <h3 className="text-sm font-semibold text-white inline-flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
             <Stamp className="w-4 h-4 text-[#d4a017]" /> Stamp Studio
           </h3>
-          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-white" aria-label="Close"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
         <div className="flex border-b border-[#222]">
           {(['templates', 'background'] as StudioTab[]).map((t) => (
@@ -574,7 +574,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
         {/* Footer actions */}
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[#222]">
           <button type="button" onClick={() => { setSrcCanvas(null); setError(null); }}
-            className="text-[10px] text-rmpg-500 hover:text-white inline-flex items-center gap-1"
+            className="text-[10px] text-rmpg-500 hover:text-rmpg-100 inline-flex items-center gap-1"
             style={{ visibility: tab === 'background' && srcCanvas ? 'visible' : 'hidden' }}>
             <RotateCcw className="w-3 h-3" /> Clear upload
           </button>

@@ -49,7 +49,7 @@ function statusClass(status: string | null): string {
     return 'bg-green-900/50 text-green-400 border-green-700/50';
   if (s.includes('escape') || s.includes('abscond'))
     return 'bg-rose-900/60 text-rose-300 border-rose-600/50';
-  return 'bg-gray-900/50 text-gray-400 border-gray-700/50';
+  return 'bg-surface-sunken/50 text-rmpg-400 border-border-default/50';
 }
 
 // ── Main Component ───────────────────────────────────────────
@@ -212,7 +212,7 @@ export default function ColoradoDocPage() {
                 onClick={() => setSearchMode('name')}
                 className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
                   searchMode === 'name'
-                    ? 'bg-[#888888]/30 text-gray-300 border border-[#888888]/50'
+                    ? 'bg-[#888888]/30 text-rmpg-300 border border-[#888888]/50'
                     : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent'
                 }`}
               >
@@ -223,7 +223,7 @@ export default function ColoradoDocPage() {
                 onClick={() => setSearchMode('doc')}
                 className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
                   searchMode === 'doc'
-                    ? 'bg-[#888888]/30 text-gray-300 border border-[#888888]/50'
+                    ? 'bg-[#888888]/30 text-rmpg-300 border border-[#888888]/50'
                     : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent'
                 }`}
               >
@@ -238,7 +238,7 @@ export default function ColoradoDocPage() {
                   placeholder="Last Name *"
                   value={lastName}
                   onChange={e => setLastName(e.target.value)}
-                  className="flex-1 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2.5 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none"
+                  className="flex-1 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none"
                   autoFocus
                 />
                 <input id="ff-coloradodocpage-1"
@@ -246,7 +246,7 @@ export default function ColoradoDocPage() {
                   placeholder="First Name"
                   value={firstName}
                   onChange={e => setFirstName(e.target.value)}
-                  className="flex-1 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2.5 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none"
+                  className="flex-1 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none"
                 />
               </div>
             ) : (
@@ -255,7 +255,7 @@ export default function ColoradoDocPage() {
                 placeholder="DOC Number (e.g. 123456)"
                 value={docNumber}
                 onChange={e => setDocNumber(e.target.value)}
-                className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2.5 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none font-mono"
+                className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none font-mono"
                 autoFocus
               />
             )}
@@ -264,7 +264,7 @@ export default function ColoradoDocPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#888888]/20 border border-[#888888]/40 text-gray-300 text-[10px] uppercase tracking-wider font-bold rounded-sm hover:bg-[#888888]/30 transition-colors disabled:opacity-40"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#888888]/20 border border-[#888888]/40 text-rmpg-300 text-[10px] uppercase tracking-wider font-bold rounded-sm hover:bg-[#888888]/30 transition-colors disabled:opacity-40"
               >
                 {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
                 Search
@@ -317,11 +317,11 @@ export default function ColoradoDocPage() {
                       onClick={() => setSelected(r)}
                       className={`cursor-pointer border-b border-[#2b2b2b]/50 transition-colors ${
                         selected?.doc_number === r.doc_number
-                          ? 'bg-[#888888]/15 text-white'
+                          ? 'bg-[#888888]/15 text-rmpg-100'
                           : 'hover:bg-[#181818] text-rmpg-300'
                       }`}
                     >
-                      <td className="px-2.5 py-1.5 font-mono text-gray-400">{r.doc_number}</td>
+                      <td className="px-2.5 py-1.5 font-mono text-rmpg-400">{r.doc_number}</td>
                       <td className="px-2.5 py-1.5 font-medium">
                         {r.last_name}, {r.first_name}
                         {r.middle_name ? ` ${r.middle_name}` : ''}
@@ -374,8 +374,8 @@ export default function ColoradoDocPage() {
           <div className="w-[380px] border-l border-[#2b2b2b] bg-[#141414] overflow-y-auto flex-shrink-0">
             <div className="p-3 border-b border-[#2b2b2b] flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <User size={14} className="text-gray-400" />
-                <span className="text-xs font-bold text-white">Offender Detail</span>
+                <User size={14} className="text-rmpg-400" />
+                <span className="text-xs font-bold text-rmpg-100">Offender Detail</span>
               </div>
               <button type="button"
                 onClick={() => setSelected(null)}
@@ -400,7 +400,7 @@ export default function ColoradoDocPage() {
 
               {/* Name */}
               <div className="text-center">
-                <h2 className="text-sm font-bold text-white">
+                <h2 className="text-sm font-bold text-rmpg-100">
                   {selected.last_name}, {selected.first_name}
                   {selected.middle_name ? ` ${selected.middle_name}` : ''}
                 </h2>

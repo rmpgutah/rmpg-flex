@@ -82,7 +82,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
   return (
     <div
       className={`flex flex-col ${className}`}
-      style={{ background: '#0a0a0a', border: '1px solid #222222', borderRadius: 2, maxHeight: 'calc(100vh - 200px)' }}
+      style={{ background:"var(--surface-sunken)", border: '1px solid #222222', borderRadius: 2, maxHeight: 'calc(100vh - 200px)' }}
     >
       <PanelTitleBar title="DISPATCH TOOLS" icon={Gauge} statusLed="green" ledPulse />
 

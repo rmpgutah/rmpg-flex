@@ -62,7 +62,7 @@ export default function ForgotPasswordPage() {
                   <div className="w-10 h-10 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: 'rgba(136, 136, 136, 0.15)', border: '1px solid rgba(136, 136, 136, 0.3)' }}>
                     <Mail className="w-5 h-5" style={{ color: '#999999' }} />
                   </div>
-                  <h2 className="text-sm font-bold text-white mb-1">Forgot Your Password?</h2>
+                  <h2 className="text-sm font-bold text-rmpg-100 mb-1">Forgot Your Password?</h2>
                   <p className="text-[10px] leading-relaxed" style={{ color: '#666666' }}>
                     Enter the email address associated with your account and we'll send you a link to reset your password.
                   </p>
@@ -97,7 +97,7 @@ export default function ForgotPasswordPage() {
                   <button
                     type="submit"
                     disabled={loading || !email.trim()}
-                    className="w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full h-10 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     style={{
                       background: 'linear-gradient(180deg, #888888 0%, #3a3a3a 100%)',
                       border: '1px solid rgba(136, 136, 136, 0.5)',
@@ -123,7 +123,7 @@ export default function ForgotPasswordPage() {
                 <div className="w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
                   <CheckCircle className="w-6 h-6 text-green-400" />
                 </div>
-                <h2 className="text-sm font-bold text-white mb-2">Check Your Email</h2>
+                <h2 className="text-sm font-bold text-rmpg-100 mb-2">Check Your Email</h2>
                 <p className="text-[10px] leading-relaxed mb-1" style={{ color: '#888888' }}>
                   If an account with that email exists, we've sent a password reset link.
                 </p>

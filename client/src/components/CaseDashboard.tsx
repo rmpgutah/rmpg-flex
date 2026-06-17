@@ -109,7 +109,7 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
                 {investigators.map((row, i) => (
                   <tr key={i} className="border-b border-rmpg-800 last:border-0">
                     <td className="py-[3px] text-rmpg-300">{row.investigator}</td>
-                    <td className="py-[3px] text-right font-bold text-white tabular-nums">{row.count}</td>
+                    <td className="py-[3px] text-right font-bold text-rmpg-100 tabular-nums">{row.count}</td>
                     <td className={`py-[3px] text-right font-bold tabular-nums ${row.overdue ? 'text-red-400' : 'text-rmpg-600'}`}>{row.overdue || 0}</td>
                   </tr>
                 ))}

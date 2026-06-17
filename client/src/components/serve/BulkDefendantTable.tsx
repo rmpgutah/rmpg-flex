@@ -156,7 +156,7 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <FileSpreadsheet className="w-4 h-4 text-amber-400" />
-          <h3 className="text-xs font-bold text-white uppercase tracking-wider">Bulk Defendant Table</h3>
+          <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Bulk Defendant Table</h3>
           <span className="text-[10px] text-rmpg-500">{validRowCount} valid row{validRowCount === 1 ? '' : 's'}</span>
         </div>
         <div className="flex items-center gap-2">
@@ -212,7 +212,7 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
                           field === 'address' ? '123 Main St, City, ST 00000' :
                           ''
                         }
-                        className="w-full bg-transparent border-0 px-1.5 py-1 text-[11px] text-white focus:outline-none focus:bg-amber-900/10 disabled:bg-[#0a0a0a] disabled:text-rmpg-700"
+                        className="w-full bg-transparent border-0 px-1.5 py-1 text-[11px] text-rmpg-100 focus:outline-none focus:bg-amber-900/10 disabled:bg-[#0a0a0a] disabled:text-rmpg-700"
                         style={{ minWidth: field === 'address' ? 220 : field === 'businessName' ? 180 : field === 'middleName' ? 70 : 100 }}
                       />
                     </td>

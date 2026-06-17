@@ -118,7 +118,7 @@ export default function AlertSystemPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="text-rmpg-400 hover:text-white hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] p-0.5 rounded-sm"
+          className="text-rmpg-400 hover:text-rmpg-100 hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] p-0.5 rounded-sm"
           title="Close"
           aria-label="Close alert system panel"
         >

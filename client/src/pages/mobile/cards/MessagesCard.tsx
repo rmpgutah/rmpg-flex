@@ -157,12 +157,12 @@ export default function MessagesCard() {
         {unreadCount > 0 ? (
           <span className="text-[#d4a017] text-xs font-bold">Inbox · {unreadCount} new</span>
         ) : (
-          <span className="text-gray-500 text-xs">Inbox · caught up</span>
+          <span className="text-rmpg-500 text-xs">Inbox · caught up</span>
         )}
       </div>
 
       {messages.length === 0 ? (
-        <p className="text-gray-500 text-xs italic">No messages.</p>
+        <p className="text-rmpg-500 text-xs italic">No messages.</p>
       ) : (
         <ul>
           {topThree.map((m) => {
@@ -170,18 +170,18 @@ export default function MessagesCard() {
             const bodyText = (m.text || m.body || '').toString();
             const preview = bodyText.length > 60 ? `${bodyText.slice(0, 60)}…` : bodyText;
             const rowClass = [
-              'py-2 border-b border-[#1a1a1a] last:border-b-0 text-white text-xs',
+              'py-2 border-b border-[#1a1a1a] last:border-b-0 text-rmpg-100 text-xs',
               isUnread ? 'border-l-2 border-l-[#d4a017] pl-2' : '',
             ].join(' ');
             return (
               <li key={m.id} className={rowClass} onContextMenu={(e) => openMenu(e, buildMessageMenu(m))}>
                 <div className="flex items-baseline">
                   <span className="font-bold">{m.from_name || m.sender_name || 'Unknown'}</span>
-                  <span className="text-gray-500 text-[11px] ml-2">
+                  <span className="text-rmpg-500 text-[11px] ml-2">
                     {m.created_at ? relativeTime(m.created_at) : ''}
                   </span>
                 </div>
-                <div className="text-gray-300 text-[11px] mt-0.5 line-clamp-1">{preview}</div>
+                <div className="text-rmpg-300 text-[11px] mt-0.5 line-clamp-1">{preview}</div>
               </li>
             );
           })}

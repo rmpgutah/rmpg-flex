@@ -217,9 +217,9 @@ export default function IntegrationWizardModal({
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700/30">
           <div className="flex items-center gap-2">
             <Icon className="w-4 h-4 text-brand-400" />
-            <span className="text-xs font-bold text-white uppercase tracking-wide">Setup {config.name}</span>
+            <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wide">Setup {config.name}</span>
           </div>
-          <button onClick={onClose} className="text-rmpg-500 hover:text-white"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100"><X className="w-4 h-4" /></button>
         </div>
 
         {/* Step indicator bar */}
@@ -228,8 +228,8 @@ export default function IntegrationWizardModal({
             <React.Fragment key={s}>
               {i > 0 && <div className="flex-1 h-px bg-rmpg-700" />}
               <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold ${
-                step === s ? 'bg-brand-500 text-white' :
-                currentStepIndex > i ? 'bg-green-600 text-white' :
+                step === s ? 'bg-brand-500 text-rmpg-100' :
+                currentStepIndex > i ? 'bg-green-600 text-rmpg-100' :
                 'bg-rmpg-700 text-rmpg-500'
               }`}>{i + 1}</div>
             </React.Fragment>
@@ -242,7 +242,7 @@ export default function IntegrationWizardModal({
           {step === 'welcome' && (
             <div className="space-y-3 text-center py-4">
               <Icon className="w-10 h-10 text-brand-400 mx-auto" />
-              <h3 className="text-sm font-bold text-white">{config.name}</h3>
+              <h3 className="text-sm font-bold text-rmpg-100">{config.name}</h3>
               <p className="text-[10px] text-rmpg-400 max-w-sm mx-auto">{config.description}</p>
               <div className="panel-beveled bg-surface-sunken p-3 text-left">
                 <p className="text-[9px] text-rmpg-300 font-semibold uppercase mb-1">What You'll Need</p>
@@ -372,7 +372,7 @@ export default function IntegrationWizardModal({
               ) : (
                 <>
                   <Download className="w-10 h-10 text-brand-400 mx-auto" />
-                  <p className="text-xs text-white font-semibold">Initial Data Sync</p>
+                  <p className="text-xs text-rmpg-100 font-semibold">Initial Data Sync</p>
                   <p className="text-[10px] text-rmpg-400">Pull the latest data from {config.name} into RMPG Flex.</p>
                 </>
               )}
@@ -405,7 +405,7 @@ export default function IntegrationWizardModal({
               <div className="w-12 h-12 rounded-full bg-green-900/30 border border-green-700/50 flex items-center justify-center mx-auto">
                 <CheckCircle className="w-7 h-7 text-green-400" />
               </div>
-              <p className="text-sm text-white font-bold">{config.name} is Ready</p>
+              <p className="text-sm text-rmpg-100 font-bold">{config.name} is Ready</p>
               <p className="text-[10px] text-rmpg-400">The integration has been configured successfully. You can manage it from the Admin panel at any time.</p>
               <button onClick={() => { onComplete(); onClose(); }} className="toolbar-btn toolbar-btn-primary text-[10px] mx-auto flex items-center gap-1" style={{ padding: '4px 16px' }}>
                 <CheckCircle className="w-3 h-3" /> Done

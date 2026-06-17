@@ -1921,13 +1921,13 @@ export default function PdfEditorPage() {
       {error && (
         <div className="bg-yellow-900/20 border border-yellow-700/40 text-yellow-200 text-[11px] px-3 py-1.5 rounded-sm mb-2 flex items-start gap-2">
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> <div>{error}</div>
-          <button type="button" onClick={() => setError(null)} className="ml-auto text-yellow-300 hover:text-white">×</button>
+          <button type="button" onClick={() => setError(null)} className="ml-auto text-yellow-300 hover:text-rmpg-100">×</button>
         </div>
       )}
       {savedNotice && (
         <div className="bg-green-900/20 border border-green-700/40 text-green-200 text-[11px] px-3 py-1.5 rounded-sm mb-2 flex items-start gap-2">
           <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> <div>{savedNotice}</div>
-          <button type="button" onClick={() => navigate('/documents')} className="ml-auto text-green-300 hover:text-white text-[10px]">Open Documents →</button>
+          <button type="button" onClick={() => navigate('/documents')} className="ml-auto text-green-300 hover:text-rmpg-100 text-[10px]">Open Documents →</button>
         </div>
       )}
 
@@ -2167,7 +2167,7 @@ export default function PdfEditorPage() {
               <ToolPalette tool={tool} onTool={setTool} color={color} onColor={setColor} strokeWidth={strokeWidth} onStrokeWidth={setStrokeWidth} />
               {isMobile && (
                 <button type="button" onClick={() => setMobileToolsOpen(false)} aria-label="Close tools"
-                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-rmpg-400 hover:text-white">×</button>
+                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-rmpg-400 hover:text-rmpg-100">×</button>
               )}
             </div>
           )}
@@ -2197,7 +2197,7 @@ export default function PdfEditorPage() {
               />
               {isMobile && (
                 <button type="button" onClick={() => setMobileThumbsOpen(false)} aria-label="Close pages"
-                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-rmpg-400 hover:text-white">×</button>
+                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-rmpg-400 hover:text-rmpg-100">×</button>
               )}
             </div>
           )}

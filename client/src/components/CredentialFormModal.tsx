@@ -132,7 +132,7 @@ export default function CredentialFormModal({
           required
           value={form.officer_id}
           onChange={(e) => setForm((prev) => ({ ...prev, officer_id: e.target.value }))}
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           disabled={mode === 'edit'}
         >
           <option value="">Select officer...</option>
@@ -151,7 +151,7 @@ export default function CredentialFormModal({
           required
           value={form.credential_type}
           onChange={(e) => setForm((prev) => ({ ...prev, credential_type: e.target.value }))}
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
         >
           <option value="">Select type...</option>
           {CREDENTIAL_TYPES.map((t) => (
@@ -171,7 +171,7 @@ export default function CredentialFormModal({
             value={form.credential_number}
             onChange={(e) => setForm((prev) => ({ ...prev, credential_number: e.target.value }))}
             placeholder="License/Cert #"
-            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
         <div>
@@ -183,7 +183,7 @@ export default function CredentialFormModal({
             value={form.issuing_authority}
             onChange={(e) => setForm((prev) => ({ ...prev, issuing_authority: e.target.value }))}
             placeholder="e.g. State of Utah"
-            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
       </div>
@@ -198,7 +198,7 @@ export default function CredentialFormModal({
             type="date"
             value={form.issued_date}
             onChange={(e) => setForm((prev) => ({ ...prev, issued_date: e.target.value }))}
-            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
         <div>
@@ -209,7 +209,7 @@ export default function CredentialFormModal({
             type="date"
             value={form.expiry_date}
             onChange={(e) => setForm((prev) => ({ ...prev, expiry_date: e.target.value }))}
-            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
       </div>
@@ -225,7 +225,7 @@ export default function CredentialFormModal({
           rows={3}
           placeholder="Additional notes..."
           maxLength={2000}
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500 resize-none"
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500 resize-none"
         />
         <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/2000</div>
       </div>

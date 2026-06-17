@@ -71,11 +71,11 @@ export default function RecordDetailWindow() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
             <div>
               <label className="text-[10px] text-rmpg-500 block">Last Name</label>
-              <p className="text-white font-medium">{record.last_name}</p>
+              <p className="text-rmpg-100 font-medium">{record.last_name}</p>
             </div>
             <div>
               <label className="text-[10px] text-rmpg-500 block">First Name</label>
-              <p className="text-white font-medium">{record.first_name}</p>
+              <p className="text-rmpg-100 font-medium">{record.first_name}</p>
             </div>
             <div>
               <label className="text-[10px] text-rmpg-500 block">Middle Name</label>
@@ -171,7 +171,7 @@ export default function RecordDetailWindow() {
               <tbody>
                 {incidents.map((inc: any, i: number) => (
                   <tr key={inc.id || `incident-${i}`} className="border-t border-rmpg-700/50">
-                    <td className="py-1.5 text-white font-mono font-bold text-xs">{inc.incident_number}</td>
+                    <td className="py-1.5 text-rmpg-100 font-mono font-bold text-xs">{inc.incident_number}</td>
                     <td className="py-1.5 text-brand-400">{formatIncidentType(inc.incident_type || '')}</td>
                     <td className="py-1.5 text-rmpg-300">{(inc.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</td>
                     <td className="py-1.5 text-rmpg-300">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</td>
@@ -203,7 +203,7 @@ export default function RecordDetailWindow() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div>
             <label className="text-[10px] text-rmpg-500 block">Plate Number</label>
-            <p className="text-white font-mono font-bold">{record.plate_number || 'N/A'}</p>
+            <p className="text-rmpg-100 font-mono font-bold">{record.plate_number || 'N/A'}</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-500 block">State</label>
@@ -287,7 +287,7 @@ export default function RecordDetailWindow() {
             <tbody>
               {incidents.map((inc: any, i: number) => (
                 <tr key={inc.id || `incident-${i}`} className="border-t border-rmpg-700/50">
-                  <td className="py-1.5 text-white font-mono font-bold text-xs">{inc.incident_number}</td>
+                  <td className="py-1.5 text-rmpg-100 font-mono font-bold text-xs">{inc.incident_number}</td>
                   <td className="py-1.5 text-brand-400">{formatIncidentType(inc.incident_type || '')}</td>
                   <td className="py-1.5 text-rmpg-300">{(inc.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</td>
                   <td className="py-1.5 text-rmpg-300">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</td>

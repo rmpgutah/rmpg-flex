@@ -175,7 +175,7 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
       <div className="border border-[#232323] bg-[#0b0b0b] p-2 space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-[9px] font-semibold text-[#d4a017] tracking-wider">CAPTURE GALLERY</span>
-          <button onClick={load} aria-label="Refresh captures" title="Refresh captures" className="text-[9px] text-[#888] hover:text-white flex items-center gap-1">
+          <button onClick={load} aria-label="Refresh captures" title="Refresh captures" className="text-[9px] text-[#888] hover:text-rmpg-100 flex items-center gap-1">
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> {shown.length}/{caps.length}
           </button>
         </div>
@@ -213,7 +213,7 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
           )}
           {(filter.plate || filter.eventType || filter.source !== 'all' || filter.band !== 'all' || filter.hits === 'hits') && (
             <button onClick={() => setFilter({ source: 'all', band: 'all', hits: 'all' })}
-              className="text-[9px] px-2 py-1 border border-[#2a2a2a] text-[#888] hover:text-white">CLEAR</button>
+              className="text-[9px] px-2 py-1 border border-[#2a2a2a] text-[#888] hover:text-rmpg-100">CLEAR</button>
           )}
         </div>
       </div>

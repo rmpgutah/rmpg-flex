@@ -15,7 +15,7 @@ interface DetachedLayoutProps {
 
 export default function DetachedLayout({ title, subtitle, children, actions }: DetachedLayoutProps) {
   return (
-    <div className="min-h-screen bg-surface-deep text-white flex flex-col">
+    <div className="min-h-screen bg-surface-deep text-rmpg-100 flex flex-col">
       {/* Header — Panel title bar style */}
       <header className="sticky top-0 z-50 print:hidden">
         <div className="panel-title-bar flex items-center gap-2">

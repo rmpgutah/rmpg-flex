@@ -101,7 +101,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-sm font-bold text-white flex items-center gap-2"><Heart className="w-4 h-4" /> Benefits Enrollment</h2>
+        <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2"><Heart className="w-4 h-4" /> Benefits Enrollment</h2>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
@@ -178,12 +178,12 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
         <div className="space-y-4">
           {Object.entries(grouped).map(([name, bens]) => (
             <div key={name} className="panel-beveled p-3">
-              <h3 className="text-xs font-bold text-white mb-2">{name}</h3>
+              <h3 className="text-xs font-bold text-rmpg-100 mb-2">{name}</h3>
               <div className="space-y-1">
                 {bens.map(b => (
                   <div key={b.id} onContextMenu={(e) => openMenu(e, buildBenefitMenu(b))} className="flex items-center justify-between text-[10px] py-1.5 border-b border-rmpg-700 last:border-0 hover:bg-surface-raised/30 transition-colors duration-150">
                     <div className="flex items-center gap-3">
-                      <span className="text-white font-bold uppercase">{b.benefit_type === '401k' ? '401(k)' : b.benefit_type === 'hsa' ? 'HSA' : b.benefit_type === 'fsa' ? 'FSA' : b.benefit_type}</span>
+                      <span className="text-rmpg-100 font-bold uppercase">{b.benefit_type === '401k' ? '401(k)' : b.benefit_type === 'hsa' ? 'HSA' : b.benefit_type === 'fsa' ? 'FSA' : b.benefit_type}</span>
                       <span className="text-rmpg-300">{b.plan_name}</span>
                       <span className="text-rmpg-400">{b.provider}</span>
                       <span className="text-rmpg-400">{COVERAGE_LABELS[b.coverage_level] || b.coverage_level}</span>

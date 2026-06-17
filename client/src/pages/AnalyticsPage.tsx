@@ -272,7 +272,7 @@ export default function AnalyticsPage() {
               key={d}
               onClick={() => setDays(d)}
               className={`px-3 py-1 text-[11px] font-semibold transition-colors ${
-                days === d ? 'bg-brand-700 text-white' : 'bg-surface-raised text-rmpg-300 hover:text-brand-400'
+                days === d ? 'bg-brand-700 text-rmpg-100' : 'bg-surface-raised text-rmpg-300 hover:text-brand-400'
               }`}
             >
               {d}d
@@ -321,7 +321,7 @@ export default function AnalyticsPage() {
           <button
             onClick={() => searchPlate()}
             disabled={plateLoading}
-            className="px-4 py-2 bg-brand-700 text-white text-sm font-semibold rounded-sm hover:bg-brand-600 disabled:opacity-50 transition-colors"
+            className="px-4 py-2 bg-brand-700 text-rmpg-100 text-sm font-semibold rounded-sm hover:bg-brand-600 disabled:opacity-50 transition-colors"
           >
             {plateLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Search'}
           </button>
@@ -568,7 +568,7 @@ export default function AnalyticsPage() {
                 <button
                   onClick={runRaw}
                   disabled={rawLoading}
-                  className="px-4 py-1.5 bg-brand-700 text-white text-[12px] font-semibold rounded-sm hover:bg-brand-600 disabled:opacity-50 transition-colors"
+                  className="px-4 py-1.5 bg-brand-700 text-rmpg-100 text-[12px] font-semibold rounded-sm hover:bg-brand-600 disabled:opacity-50 transition-colors"
                 >
                   {rawLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Run'}
                 </button>

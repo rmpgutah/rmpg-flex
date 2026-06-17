@@ -130,10 +130,10 @@ export default function MileagePromptModal({
             borderColor: 'var(--color-rmpg-600, #373737)',
           }}
         >
-          <span className="text-xs sm:text-xs font-bold text-white">
+          <span className="text-xs sm:text-xs font-bold text-rmpg-100">
             {mode === 'starting' ? 'Starting Mileage' : 'Ending Mileage'} — {callNumber}
           </span>
-          <button type="button" onClick={onCancel} className="text-rmpg-400 hover:text-white p-2 sm:p-0 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" aria-label="Close" title="Close">
+          <button type="button" onClick={onCancel} className="text-rmpg-400 hover:text-rmpg-100 p-2 sm:p-0 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" aria-label="Close" title="Close">
             <X className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
           </button>
         </div>

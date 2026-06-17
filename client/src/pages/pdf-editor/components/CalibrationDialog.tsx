@@ -18,7 +18,7 @@ interface Props {
   onApply: (cal: MeasureCalibration | null) => void;
 }
 
-const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
 const labelCls = 'text-[9px] uppercase tracking-wider text-rmpg-500 block mb-0.5';
 
 export default function CalibrationDialog({ open, value, onClose, onApply }: Props) {
@@ -58,10 +58,10 @@ export default function CalibrationDialog({ open, value, onClose, onApply }: Pro
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[#141414] border border-[#222] rounded-[2px] p-4 max-w-[420px] w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-white inline-flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
             <Ruler className="w-4 h-4 text-[#d4a017]" /> Measurement calibration
           </h3>
-          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-white" aria-label="Close"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
 
         <p className="text-[10px] text-rmpg-400 mb-3">
@@ -114,7 +114,7 @@ export default function CalibrationDialog({ open, value, onClose, onApply }: Pro
             <button type="button" onClick={() => { onApply(null); onClose(); }}
               className="btn-secondary text-[11px] px-3 py-1">Clear (back to raw in/pt)</button>
           )}
-          <button type="button" onClick={onClose} className="ml-auto text-[11px] text-rmpg-400 hover:text-white px-2 py-1">Cancel</button>
+          <button type="button" onClick={onClose} className="ml-auto text-[11px] text-rmpg-400 hover:text-rmpg-100 px-2 py-1">Cancel</button>
         </div>
       </div>
     </div>

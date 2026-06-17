@@ -204,7 +204,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                       </span>
                     )}
                     {te.status === 'edited' && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-gray-900/50 text-gray-400 border border-gray-700/50">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-surface-sunken/50 text-rmpg-400 border border-border-default/50">
                         Edited
                       </span>
                     )}

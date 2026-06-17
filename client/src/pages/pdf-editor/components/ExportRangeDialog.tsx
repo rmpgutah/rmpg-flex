@@ -36,7 +36,7 @@ export default function ExportRangeDialog({ open, pageCount, onClose, onExport }
           <div className="text-[11px] uppercase tracking-wider text-[#d4a017] font-semibold inline-flex items-center gap-1.5">
             <FileOutput className="w-3.5 h-3.5" /> Export page range
           </div>
-          <IconButton onClick={onClose} aria-label="Close" title="Close" className="text-rmpg-400 hover:text-white p-1"><X className="w-4 h-4" /></IconButton>
+          <IconButton onClick={onClose} aria-label="Close" title="Close" className="text-rmpg-400 hover:text-rmpg-100 p-1"><X className="w-4 h-4" /></IconButton>
         </div>
 
         <div className="text-[10px] text-rmpg-500 mb-3">Document has {pageCount} page{pageCount === 1 ? '' : 's'}. Choose a 1-indexed range to export as a new PDF.</div>
@@ -46,13 +46,13 @@ export default function ExportRangeDialog({ open, pageCount, onClose, onExport }
             <span className="block text-[9px] uppercase tracking-wider text-rmpg-500 mb-0.5">From</span>
             <input id="ff-exportrange-from" type="number" min={1} max={pageCount} value={from}
               onChange={e => setFrom(parseInt(e.target.value, 10) || 1)}
-              className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
+              className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
           </label>
           <label className="text-[10px] text-rmpg-300 flex-1">
             <span className="block text-[9px] uppercase tracking-wider text-rmpg-500 mb-0.5">To</span>
             <input id="ff-exportrange-to" type="number" min={1} max={pageCount} value={to}
               onChange={e => setTo(parseInt(e.target.value, 10) || pageCount)}
-              className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
+              className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
           </label>
         </div>
 

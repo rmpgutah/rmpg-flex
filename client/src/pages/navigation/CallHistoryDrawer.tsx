@@ -196,10 +196,10 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
         <span className="text-[9px] font-mono font-bold text-brand-300">
           {unitCallSign ? `UNIT ${unitCallSign}` : unitId != null ? `UNIT ${unitId}` : 'ALL UNITS'}
         </span>
-        <button onClick={load} className="text-rmpg-500 hover:text-white" aria-label="Refresh call history" title="Refresh">
+        <button onClick={load} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Refresh call history" title="Refresh">
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
-        <button onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close call history"><X className="w-4 h-4" /></button>
+        <button onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close call history"><X className="w-4 h-4" /></button>
       </div>
 
       {/* window selector + summary */}
@@ -313,7 +313,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
                   {c.latitude != null && c.longitude != null && (
                     <button
                       onClick={() => onRouteToCall(c.latitude!, c.longitude!, `${c.call_number} · ${c.incident_type?.replace(/_/g, ' ')}`)}
-                      className="flex items-center gap-0.5 text-[8px] font-bold uppercase px-1 py-0.5 border border-rmpg-700 text-brand-300 hover:border-brand-500 hover:text-white shrink-0"
+                      className="flex items-center gap-0.5 text-[8px] font-bold uppercase px-1 py-0.5 border border-rmpg-700 text-brand-300 hover:border-brand-500 hover:text-rmpg-100 shrink-0"
                       style={{ borderRadius: 2 }}
                       title="Route to this call"
                     >
