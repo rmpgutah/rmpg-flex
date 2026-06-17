@@ -93,6 +93,10 @@ export default function FlexCamFootagePage() {
   const [pkgMsg, setPkgMsg]         = useState<string | null>(null);
   const [markersLoading, setMarkersLoading] = useState(false);
   const [manifestBusy, setManifestBusy] = useState(false);
+  const [rate, setRate]               = useState(1);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [overlaysOn, setOverlaysOn]   = useState(true);
+  const [capMsg, setCapMsg]           = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const urlCache = useRef<Map<number, string>>(new Map());
   const fullRef  = useRef<HTMLDivElement | null>(null);
@@ -248,6 +252,55 @@ export default function FlexCamFootagePage() {
       setTimeout(() => URL.revokeObjectURL(url), 3000);
     } catch (e) { setErr((e as Error).message); }
     finally { setManifestBusy(false); }
+  }
+
+  function captureFrame() {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) { setCapMsg('⚠ No frame available — start playback first.'); return; }
+    const canvas = document.createElement('canvas');
+    const stampH = 22;
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight + stampH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    // Evidence stamp strip
+    ctx.fillStyle = '#0d1722';
+    ctx.fillRect(0, video.videoHeight, canvas.width, stampH);
+    ctx.fillStyle = '#d4a017';
+    ctx.font = 'bold 9px monospace';
+    const ts = new Date(data!.request.from_ts + posMs).toLocaleString('en-US', {
+      timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+    });
+    const evLabel = data!.request.evidence_locked
+      ? (data!.request.evidence_number ?? 'EVIDENCE')
+      : 'UNCLASSIFIED';
+    ctx.fillText(
+      `RMPG FLEXCAM · ${ts} · ${data!.request.title ?? `REQUEST ${data!.request.id}`} · ${evLabel}`,
+      6, video.videoHeight + 14,
+    );
+    // Diagonal watermark when locked
+    if (data!.request.evidence_locked) {
+      ctx.save();
+      ctx.globalAlpha = 0.07;
+      ctx.fillStyle = '#d4a017';
+      ctx.font = `bold ${Math.round(canvas.width / 10)}px monospace`;
+      ctx.translate(canvas.width / 2, video.videoHeight / 2);
+      ctx.rotate(-Math.PI / 10);
+      ctx.textAlign = 'center';
+      ctx.fillText(data!.request.evidence_number ?? 'EVIDENCE', 0, 0);
+      ctx.restore();
+    }
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const tsSlug = new Date(data!.request.from_ts + posMs).toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      a.href = url; a.download = `frame-req${data!.request.id}-${tsSlug}.jpg`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      setCapMsg(`✓ Frame captured @ T+${fmt(posMs)}`);
+      setTimeout(() => setCapMsg(null), 4000);
+    }, 'image/jpeg', 0.92);
   }
 
   async function genCourtPkg() {
@@ -600,6 +653,11 @@ export default function FlexCamFootagePage() {
         <button onClick={genCourtPkg} disabled={!data.request.evidence_locked || pkgBusy}
           className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-brand-400 border border-border-default hover:border-brand-500 px-2.5 py-1 transition-colors disabled:opacity-30">
           <FileText className="w-3 h-3" />{pkgBusy ? 'GENERATING…' : 'COURT PACKAGE'}
+        </button>
+        <button onClick={captureFrame} disabled={!posMs && !playing}
+          title="Capture current frame as JPEG with evidence stamp"
+          className="flex items-center gap-1 text-[10px] text-rmpg-400 hover:text-brand-400 px-1 transition-colors disabled:opacity-40">
+          <Camera className="w-3 h-3" />CAPTURE FRAME
         </button>
         <button onClick={downloadManifest} disabled={manifestBusy}
           className="flex items-center gap-1 text-[10px] text-rmpg-400 hover:text-brand-400 px-1 transition-colors ml-auto disabled:opacity-40">
