@@ -453,7 +453,7 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
         </CollapsibleSection>
       )}
 
-      <LinkedRecordsSection key={`biz-links-${b.id}-${linkRefreshKey}`} entityType="business" entityId={b.id} onOpenLinkModal={() => openLinkModal('business' as any, b.id)} />
+      <LinkedRecordsSection key={`biz-links-${b.id}-${linkRefreshKey}`} entityType="business" entityId={b.id} onOpenLinkModal={() => openLinkModal('business', b.id)} />
 
       <div className="panel-beveled p-3 bg-surface-base">
         <FileAttachments entityType="business" entityId={b.id} />

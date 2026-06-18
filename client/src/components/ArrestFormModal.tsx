@@ -105,6 +105,7 @@ export default function ArrestFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<ArrestFormData>({
     storageKey: 'rmpg_arrest_form',
@@ -177,6 +178,7 @@ export default function ArrestFormModal({
       .split('\n')
       .map(l => l.trim())
       .filter(l => l.length > 0);
+    signalSaved();
     onSubmit({
       ...form,
       address: composeAddressUnit(form.address, addressUnit),

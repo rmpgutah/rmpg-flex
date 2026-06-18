@@ -683,6 +683,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
               </div>
             )}
 
+            <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
             <div className="space-y-1.5 mt-2">
               <label className="text-[9px] text-rmpg-400 uppercase">RapidAPI Key</label>
               <div className="relative">
@@ -720,6 +721,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                 </>
               )}
             </div>
+            </form>
 
             {status?.lastError && (
               <div className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm bg-red-950/30 border border-red-800/40 text-red-400">

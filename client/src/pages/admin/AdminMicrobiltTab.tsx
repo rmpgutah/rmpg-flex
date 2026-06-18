@@ -324,6 +324,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
       </div>
 
       {/* ═══ Section 1: Credentials ═══ */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
         <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
           <Key className="w-3.5 h-3.5" />
@@ -447,6 +448,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
           </div>
         )}
       </div>
+      </form>
 
       {/* ═══ Section 2: API Products Catalog ═══ */}
       <div className="panel-beveled bg-surface-base p-3 space-y-3">

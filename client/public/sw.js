@@ -666,6 +666,36 @@
 // v993: Full-drive clip playback — fix 401 on <video> src; auth middleware
 //       now accepts ?token=<jwt> on /full-drive/clip/* paths; client appends
 //       JWT from localStorage to all streamUrl values before passing to <video>.
+// v1003: FlexCam repair — POST /flexcam/footage/:id/repair resets missing chunks
+//        back to pending_request and reopens request to fulfilling so the cron can
+//        retry. REPAIR button surfaces on partial trips in FlexCamPage (list) and
+//        FlexCamFootagePage (player evidence bar). Fixes Rules-of-Hooks violation:
+//        keyboard-shortcut useEffect was declared after early returns (triggered
+//        "rendered more hooks" crash when error/loading state changed).
+// v1002: FlexCam enhanced player — skip ±10s buttons, speed toggle (0.25–2×),
+//        keyboard shortcuts panel (?), CAPTURE FRAME button (canvas burn + evidence
+//        stamp JPEG download), video HUD overlays (live timestamp / REC / rate /
+//        evidence watermark, togglable), improved "No events detected" fallback
+//        with RE-SCAN button and contextual messaging.
+// v1001: FlexCam auth-link fix — MANIFEST download button in FlexCamFootagePage
+//        and Download icon in FlexCamPage were bare <a href="/api/..."> links
+//        that sent no JWT, returning 401. Both converted to buttons that use
+//        apiFetch → blob → URL.createObjectURL → a.click() for authenticated
+//        JSON manifest download. Same pattern as the markers rebuild fix (v1000).
+// v1000: FlexCam reconfigure button — stops playback, revokes all cached blob
+//        URLs, resets state, and re-fetches fresh request data so the officer
+//        can restart without leaving the page. Markers rebuild fixed to use
+//        apiFetch (JWT header) instead of a bare <a> link (auth 401).
+// v999: FlexCam clip-to-clip fix — generation counter prevents stale async
+//       playSegment() chains; drop video.load() (implicit load via src= is
+//       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
+//       use canplay + readyState guard; pause() before src swap for clean
+//       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v998: caseActivity — replace Unicode arrow with ASCII -> in status.changed
+//       label so it renders correctly in PDF (sanitizePdfText strips U+2192).
+// v997: FlexCam capture pipeline — batch chunk INSERTs (prevents 720-row
+//       Worker timeout on multi-hour drives); gap-fill cron for truncated
+//       requests; remove on_demand-only gate from full-drive cron pass.
 // v996: ErrorBoundary chunk-reload guard — import shared CHUNK_RELOAD_KEY/
 //       CHUNK_RELOAD_WINDOW_MS/isChunkLoadError from chunkRetry.ts (was
 //       duplicated hardcoded strings); handleReload clears the guard key so

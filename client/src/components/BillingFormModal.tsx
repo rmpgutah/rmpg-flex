@@ -19,7 +19,7 @@ const EMPTY_FORM: BillingFormData = {
 };
 
 export default function BillingFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError }: BillingFormModalProps) {
-  const { form, setForm, isDirty, wasRestored, clearDraft, snapshot } = useFormDraft<BillingFormData>({
+  const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<BillingFormData>({
     storageKey: 'rmpg_invoice_form', defaultValue: EMPTY_FORM, isActive: isOpen,
   });
 
@@ -44,7 +44,7 @@ export default function BillingFormModal({ isOpen, onClose, onSubmit, isSubmitti
   };
 
   return (
-    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); onSubmit(form); }}
+    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); signalSaved(); onSubmit(form); }}
       title={editingRecord ? 'Edit Invoice' : 'New Invoice'} icon={DollarSign}
       submitLabel={editingRecord ? 'Update' : 'Create'} isSubmitting={isSubmitting}
       isDirty={isDirty} draftRestored={wasRestored} onDiscardDraft={clearDraft}

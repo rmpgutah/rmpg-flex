@@ -1690,22 +1690,34 @@ records.get('/search', async (c) => {
       }));
     }
 
-    if (type === 'business' || type === 'property') {
+    if (type === 'business') {
+      // businesses live in the dedicated `businesses` table (migration 0125);
+      // `properties` is real-estate only. LINK_ENTITY_TABLE and recordExists
+      // both target `businesses`, so search must return IDs from that table.
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, name, dba_name, business_type, address, city, state, phone, owner_name FROM businesses
+        WHERE name LIKE ? OR dba_name LIKE ? OR address LIKE ? OR owner_name LIKE ?
+        ORDER BY name LIMIT 50
+      `, like, like, like, like);
+      return c.json(rows.map((r) => {
+        const name = (r.name as string | null) || '';
+        const dba = (r.dba_name as string | null) || '';
+        const address = (r.address as string | null) || '';
+        const label = dba ? `${name} (${dba})` : (name || address || `Business #${r.id}`);
+        return { ...r, label };
+      }));
+    }
+
+    if (type === 'property') {
       const rows = await query<Record<string, unknown>>(db, `
         SELECT * FROM properties
         WHERE name LIKE ? OR address LIKE ?
         ORDER BY name LIMIT 50
       `, like, like);
       return c.json(rows.map((r) => {
-        // If `business_type` is populated the property is a business → name first;
-        // otherwise treat as residential → address first. Falls back the other
-        // direction if the chosen field is empty so we never return just the id.
-        const isBusiness = Boolean((r.business_type as string | null) || '');
         const name = (r.name as string | null) || '';
         const address = (r.address as string | null) || '';
-        const label = isBusiness
-          ? (name || address || `Property #${r.id}`)
-          : (address || name || `Property #${r.id}`);
+        const label = address || name || `Property #${r.id}`;
         return { ...r, label };
       }));
     }
@@ -2032,8 +2044,8 @@ records.get('/links', async (c) => {
         );
         if (veh) linked_meta = veh as Record<string, unknown>;
       } else if (linkedType === 'person') {
-        const per = await queryFirst<{ date_of_birth?: string }>(
-          db, 'SELECT date_of_birth FROM persons WHERE id = ?', linkedId,
+        const per = await queryFirst<{ dob?: string }>(
+          db, 'SELECT dob FROM persons WHERE id = ?', linkedId,
         );
         const wRow = await queryFirst<{ cnt: number }>(
           db, "SELECT COUNT(*) AS cnt FROM warrants WHERE person_id = ? AND LOWER(status) = 'active'", linkedId,

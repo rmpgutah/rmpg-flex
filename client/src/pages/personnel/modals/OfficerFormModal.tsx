@@ -101,6 +101,7 @@ export default function OfficerFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<OfficerFormData>({
     storageKey: 'rmpg_personnel_officer_form',
@@ -121,6 +122,7 @@ export default function OfficerFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    signalSaved();
     onSubmit(form);
   };
 

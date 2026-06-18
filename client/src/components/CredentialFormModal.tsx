@@ -74,6 +74,7 @@ export default function CredentialFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<CredentialFormData>({
     storageKey: 'rmpg_credential_form',
@@ -102,6 +103,7 @@ export default function CredentialFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    signalSaved();
     onSubmit(form);
   };
 

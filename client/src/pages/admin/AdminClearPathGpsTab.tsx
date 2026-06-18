@@ -681,6 +681,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       </div>
 
       {/* ═══ Section 1: Credentials ═══ */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
         <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
           <Key className="w-3.5 h-3.5" />
@@ -808,6 +809,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
           </div>
         )}
       </div>
+      </form>
 
       {/* ═══ Section 2: Enable/Disable + Poll Interval ═══ */}
       {status?.configured && (

@@ -895,9 +895,15 @@ export interface PersonPdfData {
   updated_at?: string;
   id_photo?: PdfImage | null;
   attachment_images?: PdfImage[];
-  // Linked records (from record_links)
+  // Linked records (from record_links — manual cross-references)
   linked_vehicles?: { license_plate: string; year?: string; make?: string; model?: string; color?: string; relationship?: string }[];
   linked_properties?: { name: string; address?: string; relationship?: string }[];
+  linked_businesses?: { name: string; relationship?: string }[];
+  linked_persons?: { name: string; dob?: string; flags?: string; relationship?: string }[];
+  linked_evidence?: { label: string; relationship?: string }[];
+  linked_incidents_xref?: { label: string; relationship?: string }[];
+  linked_cases?: { label: string; relationship?: string }[];
+  linked_warrants_xref?: { label: string; relationship?: string }[];
   // Cross-reference dossier appendix payload (Phase B). Caller fetches
   // /api/records/persons/:id/dossier and stuffs the result here before
   // calling downloadRecordPdf. Listed in NON_CANONICAL_FIELDS in
@@ -3959,6 +3965,91 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = addTableWithShading(doc,
       [{ label: 'PROPERTY', x: lx }, { label: 'ADDRESS', x: lx + 50 }, { label: 'RELATIONSHIP', x: lx + 140 }],
       propRows, y, [lx, lx + 50, lx + 140]);
+  }
+
+  // ── 14d. Linked Businesses ───────────────────────────────────
+  if (Array.isArray(data.linked_businesses) && data.linked_businesses.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Businesses', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const bizRows = data.linked_businesses.map((b: any) => [
+      b.name || 'N/A',
+      humanizeRelationship(b.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'BUSINESS', x: lx }, { label: 'RELATIONSHIP', x: lx + 120 }],
+      bizRows, y, [lx, lx + 120]);
+  }
+
+  // ── 14e. Linked Persons ──────────────────────────────────────
+  if (Array.isArray(data.linked_persons) && data.linked_persons.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Persons', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const lnkPersonRows = data.linked_persons.map((p: any) => [
+      p.name || 'N/A',
+      p.dob ? fmtDate(p.dob) : 'N/A',
+      humanizeRelationship(p.relationship),
+      p.flags || '',
+    ]);
+    y = addTableWithShading(doc,
+      [
+        { label: 'NAME', x: lx },
+        { label: 'DOB', x: lx + 70 },
+        { label: 'RELATIONSHIP', x: lx + 100 },
+        { label: 'FLAGS', x: lx + 152 },
+      ],
+      lnkPersonRows, y, [lx, lx + 70, lx + 100, lx + 152]);
+  }
+
+  // ── 14f. Linked Evidence ─────────────────────────────────────
+  if (Array.isArray(data.linked_evidence) && data.linked_evidence.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Evidence', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const evRows = data.linked_evidence.map((e: any) => [
+      e.label || 'N/A',
+      humanizeRelationship(e.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'EVIDENCE', x: lx }, { label: 'RELATIONSHIP', x: lx + 120 }],
+      evRows, y, [lx, lx + 120]);
+  }
+
+  // ── 14g. Linked Incidents (cross-reference) ──────────────────
+  if (Array.isArray(data.linked_incidents_xref) && data.linked_incidents_xref.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Incidents', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const xrefIncRows = data.linked_incidents_xref.map((i: any) => [
+      i.label || 'N/A',
+      humanizeRelationship(i.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'INCIDENT', x: lx }, { label: 'RELATIONSHIP', x: lx + 120 }],
+      xrefIncRows, y, [lx, lx + 120]);
+  }
+
+  // ── 14h. Linked Cases (cross-reference) ─────────────────────
+  if (Array.isArray(data.linked_cases) && data.linked_cases.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Cases', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const caseRows = data.linked_cases.map((c: any) => [
+      c.label || 'N/A',
+      humanizeRelationship(c.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'CASE', x: lx }, { label: 'RELATIONSHIP', x: lx + 120 }],
+      caseRows, y, [lx, lx + 120]);
+  }
+
+  // ── 14i. Linked Warrants (cross-reference) ───────────────────
+  if (Array.isArray(data.linked_warrants_xref) && data.linked_warrants_xref.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Warrants', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const wXrefRows = data.linked_warrants_xref.map((w: any) => [
+      w.label || 'N/A',
+      humanizeRelationship(w.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'WARRANT', x: lx }, { label: 'RELATIONSHIP', x: lx + 120 }],
+      wXrefRows, y, [lx, lx + 120]);
   }
 
   // ── 15. Notes ─────────────────────────────────────────────

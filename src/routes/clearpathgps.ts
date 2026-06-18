@@ -320,6 +320,13 @@ cpg.get('/media-status', async (c) => {
       db, "SELECT COUNT(*) AS n, COALESCE(SUM(file_size),0) AS b FROM dashcam_videos WHERE source = 'clearpathgps'");
     if (r) totals = { total_synced_clips: r.n ?? 0, total_synced_bytes: r.b ?? 0 };
   } catch { /* table may predate Phase B */ }
+  // Also count Full Drive clips (footage_chunks) so the stats panel reflects
+  // trips downloaded via the full-drive job, not only the legacy media-sync path.
+  try {
+    const fd = await queryFirst<{ n: number; b: number }>(
+      db, "SELECT COUNT(*) AS n, COALESCE(SUM(bytes),0) AS b FROM footage_chunks WHERE status='downloaded'");
+    if (fd) { totals.total_synced_clips += fd.n ?? 0; totals.total_synced_bytes += fd.b ?? 0; }
+  } catch { /* footage_chunks may not exist yet */ }
   // Dashcam ALPR reads landed in alpr_captures (capture_id 'cpg_dashcam:*'). The
   // plate-log panel's "reads" tile previously counted only the recent-sightings
   // window (→ 0 even with hundreds of captures); surface the real total here.

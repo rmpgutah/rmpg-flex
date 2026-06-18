@@ -9,7 +9,7 @@
 
 import type { Bindings } from '../types';
 import { getDb, query, queryFirst, execute } from './db';
-import { enqueueFootage, ensureFootageSchema, runRequestPass, pollAndDownload } from './footage/captureOrchestrator';
+import { enqueueFootage, ensureFootageSchema, runRequestPass, pollAndDownload, resumeTruncatedRequests } from './footage/captureOrchestrator';
 import { getApiConfig, isEnabled } from './clearpathGps';
 
 // A gap of 15+ minutes between GPS pings means the vehicle was stopped / engine off.
@@ -264,11 +264,15 @@ export async function maybePollFullDriveChunks(env: Bindings): Promise<void> {
   if (!client) return;
   if (!(await isEnabled(db))) return;
 
-  // Are there any full-drive requests with pending chunks?
+  // Resume any requests where chunk creation was truncated by a Worker timeout.
+  const resumed = await resumeTruncatedRequests(env).catch(() => null);
+  if (resumed?.added) console.log(`[full-drive] resumed ${resumed.resumed} requests, added ${resumed.added} chunks`);
+
+  // Are there any full-drive requests with pending chunks (any reason)?
   const pending = await queryFirst<{ n: number }>(db, `
     SELECT COUNT(*) AS n FROM footage_chunks ch
     JOIN footage_requests rq ON rq.id = ch.request_id
-    WHERE rq.reason = 'on_demand' AND ch.status IN ('pending_request','requested') LIMIT 1`).catch(() => null);
+    WHERE ch.status IN ('pending_request','requested') LIMIT 1`).catch(() => null);
   if (!pending?.n) return;
 
   const r = await runRequestPass(env).catch((err) => {

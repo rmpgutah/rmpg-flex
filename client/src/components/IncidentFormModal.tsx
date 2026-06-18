@@ -367,6 +367,7 @@ export default function IncidentFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<IncidentFormData>({
     storageKey: 'rmpg_incident_form',
@@ -503,6 +504,7 @@ export default function IncidentFormModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.incident_type) return;
+    signalSaved();
     onSubmit({
       ...formData,
       location_address: composeAddressUnit(formData.location_address, locationUnit),
