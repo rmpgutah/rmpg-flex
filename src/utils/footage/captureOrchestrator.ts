@@ -8,7 +8,7 @@ import { retentionCutoffMs } from './retention';
 
 const R2_PREFIX = 'flexcam/trips/';
 const MAX_DOWNLOADS_PER_RUN = 40;  // download pass cap per cron tick
-const MAX_REQUESTS_PER_RUN = 30;   // request pass cap per cron tick (vendor subrequest safety)
+const MAX_REQUESTS_PER_RUN = 150;  // request pass cap per cron tick (raised for bulk historical jobs)
 const MAX_POLL_ATTEMPTS = 30;      // ~30 cron minutes before an event/auto chunk expires
 const MAX_POLL_ATTEMPTS_ON_DEMAND = 720; // ~12 hours for historical footage the camera must upload
 const CHUNK_SECONDS = 40;          // segment length we split a drive into
@@ -116,7 +116,7 @@ export async function runRequestPass(env: Bindings): Promise<{ requested: number
   const pend = await query<{ id: number; from_ts: number; to_ts: number; channel: string; asset_id: number; attempts: number; reason: string }>(db,
     `SELECT ch.id, ch.from_ts, ch.to_ts, ch.channel, rq.asset_id, ch.attempts, rq.reason
        FROM footage_chunks ch JOIN footage_requests rq ON rq.id = ch.request_id
-      WHERE ch.status='pending_request' ORDER BY ch.request_id, ch.seq LIMIT ?`, limit).catch(() => []);
+      WHERE ch.status='pending_request' ORDER BY ch.request_id DESC, ch.seq ASC LIMIT ?`, limit).catch(() => []);
   let requested = 0, expired = 0;
   for (const ch of pend) {
     const maxAttempts = ch.reason === 'on_demand' ? MAX_POLL_ATTEMPTS_ON_DEMAND : MAX_POLL_ATTEMPTS;
