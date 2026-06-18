@@ -91,25 +91,31 @@ export class ClearPathSource implements FootageSource {
   async pollChunk(assetId: number, handle: FootageRequestHandle): Promise<FootageChunkStatus> {
     // ClearPath indexes media by event-trigger time, not media-start time, so the
     // timestamp returned by listMedia can differ from the window we requested by
-    // ±seconds (pre-event buffer, GPS clock drift). Search ±5 minutes around the
-    // chunk window to catch clips that are available but slightly time-shifted.
-    const SLOP_MS = 5 * 60_000;
+    // ±seconds (pre-event buffer, GPS clock drift). Use a small slop window that
+    // fits within a single 40s chunk (30s < 40s) so adjacent chunks never share the
+    // same clip candidate. 5-minute slop was the prior value — it caused every chunk
+    // in a drive to match the same clip and repeat it across the full trip.
+    const SLOP_MS = 30_000; // 30s — comfortably covers ClearPath indexing jitter
+    const chunkSpan = handle.toTs - handle.fromTs;
     const searchFrom = handle.fromTs - SLOP_MS;
     const searchTo = handle.toTs + SLOP_MS;
     const chunkMid = (handle.fromTs + handle.toTs) / 2;
     const page = await listMedia(this.env, this.client, assetId, searchFrom, searchTo, 0, 50);
 
-    // Collect all available clips whose event timestamp is within ±5 min; pick the
-    // one whose event time is closest to the chunk's midpoint.
+    // Collect all available clips whose event timestamp falls within the chunk's own
+    // window (± slop); pick the one closest to the chunk midpoint. The delta guard
+    // (delta > chunkSpan + SLOP_MS) rejects clips whose index time is clearly outside
+    // this chunk's territory, preventing a clip from being claimed by adjacent chunks.
     let best: FootageChunkStatus | null = null;
     let bestDelta = Infinity;
 
     for (const ev of page.items) {
       const delta = Math.abs(ev.eventTimestamp - chunkMid);
+      if (delta > chunkSpan + SLOP_MS) continue; // outside this chunk's territory
       for (const mo of ev.mediaObject) {
         const matchChannel = handle.channel === 'inside' ? mo.channel === 'inside' : mo.channel !== 'inside';
         if (matchChannel && mo.type === 'VIDEO') {
-          const chunkSec = (handle.toTs - handle.fromTs) / 1000;
+          const chunkSec = chunkSpan / 1000;
           if (isTriggerClip(mo.eventType, mo.durationSec, chunkSec)) continue;
 
           const st = classifyChunkStatus(mo as unknown as Record<string, unknown>);
