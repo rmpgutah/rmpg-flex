@@ -40,6 +40,44 @@ export function isTriggerClip(eventType: string, durationSec: number | null | un
   return false;
 }
 
+/** Pure: pick the best available clip from a listMedia page for a given chunk window,
+ *  skipping trigger clips, out-of-territory clips, and any URL already claimed by another
+ *  chunk in the same request. Exported for tests. */
+export interface PollCandidatePage {
+  items: Array<{
+    eventTimestamp: number;
+    mediaObject: Array<{
+      channel: string; type: string; eventType: string;
+      durationSec?: number | null;
+      status?: string; accessUrl?: string; contentType?: string; thumbnailUrl?: string;
+    }>;
+  }>;
+}
+
+export function pickBestClip(
+  page: PollCandidatePage, fromTs: number, toTs: number, channel: string,
+  slopMs: number, claimedUrls?: Set<string>,
+): FootageChunkStatus {
+  const chunkSpan = toTs - fromTs;
+  const chunkMid = (fromTs + toTs) / 2;
+  let best: FootageChunkStatus | null = null;
+  let bestDelta = Infinity;
+  for (const ev of page.items) {
+    const delta = Math.abs(ev.eventTimestamp - chunkMid);
+    if (delta > chunkSpan + slopMs) continue;
+    for (const mo of ev.mediaObject) {
+      const matchChannel = channel === 'inside' ? mo.channel === 'inside' : mo.channel !== 'inside';
+      if (!matchChannel || mo.type !== 'VIDEO') continue;
+      if (isTriggerClip(mo.eventType, mo.durationSec, chunkSpan / 1000)) continue;
+      const st = classifyChunkStatus(mo as unknown as Record<string, unknown>);
+      if (st.state === 'missing' || st.state === 'error') return st;
+      if (st.state === 'available' && st.accessUrl && claimedUrls?.has(st.accessUrl)) continue;
+      if (st.state === 'available' && delta < bestDelta) { best = st; bestDelta = delta; }
+    }
+  }
+  return best ?? { state: 'requested' };
+}
+
 export function classifyChunkStatus(obj: Record<string, unknown>): FootageChunkStatus {
   const status = String(obj?.status ?? '').toUpperCase();
   const accessUrl = obj?.accessUrl ? String(obj.accessUrl) : undefined;
@@ -97,38 +135,10 @@ export class ClearPathSource implements FootageSource {
     // (delta guard below enforces uniqueness). isTriggerClip (not SLOP size) is what
     // prevents trigger clips from being used as continuous segments.
     const SLOP_MS = 120_000; // 2min — covers ClearPath on-demand indexing lag
-    const chunkSpan = handle.toTs - handle.fromTs;
     const searchFrom = handle.fromTs - SLOP_MS;
     const searchTo = handle.toTs + SLOP_MS;
-    const chunkMid = (handle.fromTs + handle.toTs) / 2;
     const page = await listMedia(this.env, this.client, assetId, searchFrom, searchTo, 0, 50);
-
-    // Collect all available clips whose event timestamp falls within the chunk's own
-    // window (± slop); pick the one closest to the chunk midpoint. The delta guard
-    // (delta > chunkSpan + SLOP_MS) rejects clips whose index time is clearly outside
-    // this chunk's territory, preventing a clip from being claimed by adjacent chunks.
-    let best: FootageChunkStatus | null = null;
-    let bestDelta = Infinity;
-
-    for (const ev of page.items) {
-      const delta = Math.abs(ev.eventTimestamp - chunkMid);
-      if (delta > chunkSpan + SLOP_MS) continue; // outside this chunk's territory
-      for (const mo of ev.mediaObject) {
-        const matchChannel = handle.channel === 'inside' ? mo.channel === 'inside' : mo.channel !== 'inside';
-        if (matchChannel && mo.type === 'VIDEO') {
-          const chunkSec = chunkSpan / 1000;
-          if (isTriggerClip(mo.eventType, mo.durationSec, chunkSec)) continue;
-
-          const st = classifyChunkStatus(mo as unknown as Record<string, unknown>);
-          if (st.state === 'missing' || st.state === 'error') return st;
-          if (st.state === 'available' && delta < bestDelta) {
-            best = st;
-            bestDelta = delta;
-          }
-        }
-      }
-    }
-    return best ?? { state: 'requested' };
+    return pickBestClip(page, handle.fromTs, handle.toTs, handle.channel, SLOP_MS, handle.claimedUrls);
   }
 }
 

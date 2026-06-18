@@ -7,6 +7,11 @@ export interface FootageRequestHandle {
   fromTs: number;
   toTs: number;
   channel: string;           // 'outside' | 'inside'
+  /** Source URLs already claimed by other chunks in this request. pollChunk MUST
+   *  skip clips matching any of these — ClearPath's listMedia returns the same
+   *  clips to every chunk's poll, so without dedup the closest-to-midpoint clip
+   *  is repeated across adjacent chunks (segment-to-segment copy bug). */
+  claimedUrls?: Set<string>;
 }
 
 export interface FootageChunkStatus {
