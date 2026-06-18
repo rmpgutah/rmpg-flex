@@ -89,13 +89,14 @@ export class ClearPathSource implements FootageSource {
   }
 
   async pollChunk(assetId: number, handle: FootageRequestHandle): Promise<FootageChunkStatus> {
-    // ClearPath indexes media by event-trigger time, not media-start time, so the
-    // timestamp returned by listMedia can differ from the window we requested by
-    // ±seconds (pre-event buffer, GPS clock drift). Use a small slop window that
-    // fits within a single 40s chunk (30s < 40s) so adjacent chunks never share the
-    // same clip candidate. 5-minute slop was the prior value — it caused every chunk
-    // in a drive to match the same clip and repeat it across the full trip.
-    const SLOP_MS = 30_000; // 30s — comfortably covers ClearPath indexing jitter
+    // ClearPath indexes media by event-trigger time, not media-start time. On-demand
+    // clips can appear in listMedia with eventTimestamp offset from the requested
+    // fromTs by up to ~90s (pre-event buffer, async processing, GPS clock drift).
+    // 30s was too tight — 248 poll attempts produced zero matches. 2 minutes gives
+    // enough headroom to find the clip without crossing into adjacent chunk territory
+    // (delta guard below enforces uniqueness). isTriggerClip (not SLOP size) is what
+    // prevents trigger clips from being used as continuous segments.
+    const SLOP_MS = 120_000; // 2min — covers ClearPath on-demand indexing lag
     const chunkSpan = handle.toTs - handle.fromTs;
     const searchFrom = handle.fromTs - SLOP_MS;
     const searchTo = handle.toTs + SLOP_MS;
