@@ -1,6 +1,6 @@
 // tests/footage/clearpathSource.test.ts
 import { describe, it, expect } from 'vitest';
-import { buildMediaRequestPayload, parseRequestId, classifyChunkStatus } from '../../src/utils/footage/clearpathSource';
+import { buildMediaRequestPayload, parseRequestId, classifyChunkStatus, isTriggerClip } from '../../src/utils/footage/clearpathSource';
 
 describe('buildMediaRequestPayload', () => {
   it('builds the confirmed HAR-verified request body (timestamp ms, cameraTypes, duration sec)', () => {
@@ -34,5 +34,51 @@ describe('classifyChunkStatus', () => {
   });
   it('missing when the camera has no footage for the window', () => {
     expect(classifyChunkStatus({ status: 'NO_MEDIA' }).state).toBe('missing');
+  });
+});
+
+describe('isTriggerClip', () => {
+  const CHUNK = 40; // standard 40s chunk duration
+
+  it('flags recognised driving-event types as trigger clips', () => {
+    expect(isTriggerClip('hard brake event', null, CHUNK)).toBe(true);
+    expect(isTriggerClip('Speeding Violation', null, CHUNK)).toBe(true);
+    expect(isTriggerClip('Frontal Collision Warning', null, CHUNK)).toBe(true);
+    expect(isTriggerClip('Lane Departure', null, CHUNK)).toBe(true);
+    expect(isTriggerClip('SOS panic alert', null, CHUNK)).toBe(true);
+  });
+
+  it('accepts on-demand clips with empty eventType', () => {
+    expect(isTriggerClip('', null, CHUNK)).toBe(false);
+    expect(isTriggerClip('', 40, CHUNK)).toBe(false);
+  });
+
+  it('accepts clips with unrecognised (custom) eventType regardless of label', () => {
+    expect(isTriggerClip('ON_DEMAND', null, CHUNK)).toBe(false);
+    expect(isTriggerClip('REQUESTED', 40, CHUNK)).toBe(false);
+    expect(isTriggerClip('custom-event-xyz', 40, CHUNK)).toBe(false);
+  });
+
+  it('duration guard: skips clips shorter than 75% of the requested window', () => {
+    expect(isTriggerClip('', 29, CHUNK)).toBe(true);   // 29 < 30 (75% of 40)
+    expect(isTriggerClip('', 30, CHUNK)).toBe(false);  // exactly 75% — accept
+    expect(isTriggerClip('', 31, CHUNK)).toBe(false);
+    expect(isTriggerClip('', 40, CHUNK)).toBe(false);
+  });
+
+  it('duration guard: null/undefined durationSec is not a skip signal', () => {
+    expect(isTriggerClip('', null, CHUNK)).toBe(false);
+    expect(isTriggerClip('', undefined, CHUNK)).toBe(false);
+  });
+
+  it('duration guard: works correctly for short final chunks', () => {
+    // A 15s last segment: threshold = 11.25; a 15s clip should pass
+    expect(isTriggerClip('', 15, 15)).toBe(false);
+    // A 10s clip against a 15s chunk: 10 < 11.25 → skip
+    expect(isTriggerClip('', 10, 15)).toBe(true);
+  });
+
+  it('event type check takes precedence — recognised type skipped even at full duration', () => {
+    expect(isTriggerClip('hard brake event', 40, CHUNK)).toBe(true);
   });
 });
