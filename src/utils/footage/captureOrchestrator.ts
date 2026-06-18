@@ -38,6 +38,13 @@ export async function ensureFootageSchema(db: D1Database): Promise<void> {
     status TEXT NOT NULL DEFAULT 'requested', alpr_status TEXT DEFAULT 'pending', attempts INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')))`);
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_footage_chunks_req ON footage_chunks(request_id, seq)`);
+  // source_url: the ClearPath signed download URL we pulled bytes from. Used to
+  // dedup clips across chunks in the same request — ClearPath returns the same
+  // handful of clips to every chunk's poll, so without this guard the same video
+  // can land on multiple consecutive segments.
+  if (!(await columnExists(db, 'footage_chunks', 'source_url').catch(() => true))) {
+    await execute(db, `ALTER TABLE footage_chunks ADD COLUMN source_url TEXT`).catch(() => {});
+  }
   schemaReady = true;
 }
 
@@ -144,11 +151,24 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
      FROM footage_chunks ch JOIN footage_requests rq ON rq.id = ch.request_id
      WHERE ch.status = 'requested' ORDER BY ch.request_id DESC, ch.seq ASC LIMIT ?`, MAX_DOWNLOADS_PER_RUN).catch(() => []);
 
+  // Per-request URL claim sets: any clip already pulled by another chunk in the
+  // same request is off-limits to the rest. Seeded from the DB (older downloads
+  // in earlier ticks) and grown in-memory as we download in this tick.
+  const claimedByRequest = new Map<number, Set<string>>();
+  const requestIds = Array.from(new Set(pending.map((p) => p.request_id)));
+  for (const rid of requestIds) {
+    const rows = await query<{ source_url: string | null }>(db,
+      `SELECT source_url FROM footage_chunks WHERE request_id=? AND source_url IS NOT NULL`, rid).catch(() => []);
+    claimedByRequest.set(rid, new Set(rows.map((r) => r.source_url!).filter(Boolean)));
+  }
+
   let downloaded = 0, missing = 0;
   for (const ch of pending) {
     const maxAttempts = ch.reason === 'on_demand' ? MAX_POLL_ATTEMPTS_ON_DEMAND : MAX_POLL_ATTEMPTS;
+    const claimed = claimedByRequest.get(ch.request_id) ?? new Set<string>();
     const st = await source.pollChunk(ch.asset_id, {
       seq: ch.seq, vendorId: ch.vendor_media_id, fromTs: ch.from_ts, toTs: ch.to_ts, channel: ch.channel,
+      claimedUrls: claimed,
     }).catch(() => ({ state: 'requested' as const }));
 
     if (st.state === 'available' && st.accessUrl) {
@@ -159,8 +179,9 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
         const put = await env.UPLOADS.put(key, resp.body, { httpMetadata: { contentType: ct } });
         const bytes = put?.size ?? parseInt(resp.headers.get('content-length') || '0', 10);
         const alpr = ch.channel === 'inside' ? 'skipped' : 'pending';
-        await execute(db, `UPDATE footage_chunks SET status='downloaded', r2_key=?, content_type=?, bytes=?, alpr_status=?, updated_at=datetime('now') WHERE id=?`,
-          key, ct, bytes, alpr, ch.id);
+        await execute(db, `UPDATE footage_chunks SET status='downloaded', r2_key=?, source_url=?, content_type=?, bytes=?, alpr_status=?, updated_at=datetime('now') WHERE id=?`,
+          key, st.accessUrl, ct, bytes, alpr, ch.id);
+        claimed.add(st.accessUrl);  // block this URL from being claimed by sibling chunks later in this tick
         // NOTE: stateless-cron two-step write — a Worker eviction between R2 put and this update can re-download + double-count chunks_done (informational only; R2 put is idempotent by key). Accepted, same as clearpathSync.
         await execute(db, `UPDATE footage_requests SET chunks_done = chunks_done + 1, bytes = bytes + ?, updated_at=datetime('now') WHERE id=?`, bytes, ch.request_id);
         downloaded++;
