@@ -11,6 +11,9 @@ const MAX_DOWNLOADS_PER_RUN = 40;  // download pass cap per cron tick
 const MAX_REQUESTS_PER_RUN = 10;   // request pass cap per cron tick — ClearPath rate-limits above ~10/min
 const MAX_POLL_ATTEMPTS = 30;      // ~30 cron minutes before an event/auto chunk expires
 const MAX_POLL_ATTEMPTS_ON_DEMAND = 720; // ~12 hours for historical footage the camera must upload
+// requestChunk 500s mean ClearPath rejected the request outright (footage unavailable,
+// camera offline, etc). Stop after 5 tries — not 720 — so the queue clears fast.
+const MAX_REQUEST_ATTEMPTS = 5;
 const CHUNK_SECONDS = 40;          // segment length we split a drive into
 
 /** Read an integer config from system_config (category integrations); def on absent/NaN. */
@@ -119,7 +122,6 @@ export async function runRequestPass(env: Bindings): Promise<{ requested: number
       WHERE ch.status='pending_request' ORDER BY ch.request_id, ch.seq LIMIT ?`, limit).catch(() => []);
   let requested = 0, expired = 0, consecutiveErrors = 0;
   for (const ch of pend) {
-    const maxAttempts = ch.reason === 'on_demand' ? MAX_POLL_ATTEMPTS_ON_DEMAND : MAX_POLL_ATTEMPTS;
     try {
       const vendorId = await source.requestChunk(ch.asset_id, ch.from_ts, ch.to_ts, ch.channel);
       await execute(db, `UPDATE footage_chunks SET status='requested', vendor_media_id=?, attempts=0, updated_at=datetime('now') WHERE id=?`, vendorId, ch.id);
@@ -128,7 +130,7 @@ export async function runRequestPass(env: Bindings): Promise<{ requested: number
     } catch (e) {
       console.error('[flexcam] requestChunk failed:', (e as Error).message);
       consecutiveErrors++;
-      if (ch.attempts + 1 >= maxAttempts) {
+      if (ch.attempts + 1 >= MAX_REQUEST_ATTEMPTS) {
         await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
         expired++;
       } else {
