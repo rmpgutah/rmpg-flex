@@ -117,21 +117,26 @@ export async function runRequestPass(env: Bindings): Promise<{ requested: number
     `SELECT ch.id, ch.from_ts, ch.to_ts, ch.channel, rq.asset_id, ch.attempts, rq.reason
        FROM footage_chunks ch JOIN footage_requests rq ON rq.id = ch.request_id
       WHERE ch.status='pending_request' ORDER BY ch.request_id, ch.seq LIMIT ?`, limit).catch(() => []);
-  let requested = 0, expired = 0;
+  let requested = 0, expired = 0, consecutiveErrors = 0;
   for (const ch of pend) {
     const maxAttempts = ch.reason === 'on_demand' ? MAX_POLL_ATTEMPTS_ON_DEMAND : MAX_POLL_ATTEMPTS;
     try {
       const vendorId = await source.requestChunk(ch.asset_id, ch.from_ts, ch.to_ts, ch.channel);
       await execute(db, `UPDATE footage_chunks SET status='requested', vendor_media_id=?, attempts=0, updated_at=datetime('now') WHERE id=?`, vendorId, ch.id);
       requested++;
+      consecutiveErrors = 0;
     } catch (e) {
       console.error('[flexcam] requestChunk failed:', (e as Error).message);
+      consecutiveErrors++;
       if (ch.attempts + 1 >= maxAttempts) {
         await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
         expired++;
       } else {
         await execute(db, `UPDATE footage_chunks SET attempts = attempts + 1, updated_at=datetime('now') WHERE id=?`, ch.id);
       }
+      // Stop hammering ClearPath when it's clearly down — remaining chunks in this
+      // run will fail the same way. They stay 'pending_request' and retry next tick.
+      if (consecutiveErrors >= 3) break;
     }
   }
   return { requested, expired };
