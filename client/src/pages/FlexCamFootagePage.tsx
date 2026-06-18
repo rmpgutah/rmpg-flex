@@ -1,6 +1,11 @@
 // client/src/pages/FlexCamFootagePage.tsx
 // Police MDT-style dashcam footage player — sequential 40s chunk playback,
 // evidence lock/court-package workflow, touchscreen-optimised controls.
+//
+// Player uses a DOUBLE-BUFFER: two <video> elements (vid0/vid1) that swap roles.
+// While vid0 plays clip N, vid1 silently pre-parses clip N+1. On transition we
+// flip which element is "front" (z-10) — the browser never needs to re-parse,
+// giving near-zero gap between segments.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
@@ -100,13 +105,30 @@ export default function FlexCamFootagePage() {
   const [overlaysOn, setOverlaysOn]   = useState(true);
   const [repairBusy, setRepairBusy]   = useState(false);
   const [repairMsg, setRepairMsg]     = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Double-buffer: two video elements that swap roles.
+  // frontRef / front (state) = which slot (0 or 1) is currently visible.
+  // backSeqRef = which seq is pre-loaded in the back buffer (null if none).
+  const vid0 = useRef<HTMLVideoElement | null>(null);
+  const vid1 = useRef<HTMLVideoElement | null>(null);
+  const frontRef    = useRef<0 | 1>(0);
+  const backSeqRef  = useRef<number | null>(null);
+  const [front, setFront] = useState<0 | 1>(0);
+
   const urlCache = useRef<Map<number, string>>(new Map());
   const fullRef  = useRef<HTMLDivElement | null>(null);
   // Monotonically-increasing generation counter: every playSegment call grabs
   // the next value. Any async continuation that sees a newer value is stale
   // (another call won) and must bail out without touching the video element.
   const genRef   = useRef(0);
+
+  // Helpers: get front/back video element from current frontRef value.
+  function getFrontEl(): HTMLVideoElement | null {
+    return (frontRef.current === 0 ? vid0 : vid1).current;
+  }
+  function getBackEl(): HTMLVideoElement | null {
+    return (frontRef.current === 0 ? vid1 : vid0).current;
+  }
 
   const reload = useCallback(() => {
     apiFetch<Detail>(`/flexcam/footage/${id}`).then(setData).catch((e: Error) => setErr(e.message));
@@ -118,8 +140,12 @@ export default function FlexCamFootagePage() {
     urlCache.current.clear();
   }, []);
 
-  // Apply playback speed when rate or video source changes.
-  useEffect(() => { if (videoRef.current) videoRef.current.playbackRate = rate; }, [rate]);
+  // Apply playback speed to the front video whenever rate changes.
+  useEffect(() => {
+    const v = getFrontEl();
+    if (v) v.playbackRate = rate;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rate]);
 
   const timeline = useMemo(() => {
     const downloaded = (data?.chunks ?? [])
@@ -172,53 +198,85 @@ export default function FlexCamFootagePage() {
   async function playSegment(segIndex: number, withinMs = 0) {
     const myGen = ++genRef.current;
     const seg   = timeline.segments[segIndex];
-    const video = videoRef.current;
-    if (!seg || !video) return;
+    if (!seg) return;
     setIdx(segIndex);
 
-    // Fetch (or retrieve from cache) before touching the video element so we
-    // overlap network time with the tail of the previous clip playing.
     const url = await loadSeq(seg.seq);
-    if (!url || myGen !== genRef.current) return; // stale — newer call took over
+    if (!url || myGen !== genRef.current) return;
 
-    // Pause the current clip before changing src so that in-flight play()
-    // promises resolve cleanly and the browser doesn't re-fire 'ended'.
-    video.pause();
-    video.src = url;
-    // Do NOT call video.load() — assigning to .src triggers an implicit load.
-    // Calling load() explicitly while the element is at end-of-clip causes the
-    // browser to re-fire 'ended', which re-enters onEnded and starts a second
-    // parallel playSegment chain (the repeat / bad-transition bugs).
+    // Determine which slot is front / back right now.
+    const fSlot = frontRef.current;
+    const bSlot = (1 - fSlot) as 0 | 1;
+    const fEl = (fSlot === 0 ? vid0 : vid1).current!;
+    const bEl = (bSlot === 0 ? vid0 : vid1).current!;
 
-    await new Promise<void>((resolve) => {
-      // readyState >= 2 (HAVE_CURRENT_DATA) means data is already available
-      // — blob URLs backed by in-memory cache hit this path immediately.
-      if (video.readyState >= 2) { resolve(); return; }
-      const onCanPlay = () => { video.removeEventListener('canplay', onCanPlay); resolve(); };
-      video.addEventListener('canplay', onCanPlay);
-    });
-
-    if (myGen !== genRef.current) return; // stale during canplay wait
-    if (withinMs > 0) {
-      try { video.currentTime = withinMs / 1000; } catch { /* */ }
+    // Fast-path: seek within the segment already loaded in the front video.
+    if (fEl.src === url) {
+      if (withinMs > 0) { try { fEl.currentTime = withinMs / 1000; } catch { /* */ } }
+      fEl.playbackRate = rate;
+      fEl.play().catch(() => { if (myGen === genRef.current) setPlaying(false); });
+      return;
     }
-    video.play().catch(() => { if (myGen === genRef.current) setPlaying(false); });
 
-    // Warm the next segment while this one plays to eliminate fetch-gap on hand-off.
-    if (timeline.segments[segIndex + 1]) void loadSeq(timeline.segments[segIndex + 1].seq);
+    // Check whether back buffer already has this segment pre-parsed and ready.
+    // Only use the pre-loaded buffer for sequential playback (withinMs===0);
+    // seeks always re-load so currentTime can be set precisely.
+    const isPreloaded = backSeqRef.current === seg.seq && bEl.readyState >= 3 && withinMs === 0;
+
+    if (!isPreloaded) {
+      // Load segment into back buffer, wait for canplay before flipping.
+      bEl.pause();
+      bEl.src = url;
+      setLoading(true);
+      await new Promise<void>((resolve) => {
+        if (bEl.readyState >= 2) { resolve(); return; }
+        const fn = () => { bEl.removeEventListener('canplay', fn); resolve(); };
+        bEl.addEventListener('canplay', fn);
+      });
+      setLoading(false);
+      if (myGen !== genRef.current) return; // stale — newer call won
+      if (withinMs > 0) { try { bEl.currentTime = withinMs / 1000; } catch { /* */ } }
+    }
+
+    // Flip: back buffer becomes front. Update frontRef BEFORE play() so that
+    // the onPlay handler on bEl sees the correct frontRef value.
+    frontRef.current = bSlot;
+    setFront(bSlot);
+    fEl.pause();                                      // old front stops
+    bEl.playbackRate = rate;
+    bEl.play().catch(() => { if (myGen === genRef.current) setPlaying(false); });
+    backSeqRef.current = null;
+
+    // Pre-load next segment into the (now free) old-front slot while this clip plays.
+    const nextSeg = timeline.segments[segIndex + 1];
+    if (nextSeg) {
+      void loadSeq(nextSeg.seq).then((nextUrl) => {
+        if (!nextUrl || myGen !== genRef.current) return;
+        // After the flip, fSlot is now the back buffer.
+        const newBackEl = (fSlot === 0 ? vid0 : vid1).current;
+        if (!newBackEl || newBackEl.src === nextUrl) return;
+        newBackEl.pause();
+        newBackEl.src = nextUrl;
+        newBackEl.preload = 'auto';
+        newBackEl.load(); // start parsing — does NOT autoplay
+        backSeqRef.current = nextSeg.seq;
+      });
+    }
   }
 
-  function onEnded() {
+  function onEnded(e: React.SyntheticEvent<HTMLVideoElement>) {
+    // Guard: only the front video's ended event advances the timeline.
+    if (e.currentTarget !== getFrontEl()) return;
     if (idx < timeline.segments.length - 1) void playSegment(idx + 1);
     else setPlaying(false);
   }
-  function onTimeUpdate() {
-    const seg   = timeline.segments[idx];
-    const video = videoRef.current;
-    if (seg && video) setPosMs(seg.startMs + video.currentTime * 1000);
+  function onTimeUpdate(e: React.SyntheticEvent<HTMLVideoElement>) {
+    if (e.currentTarget !== getFrontEl()) return;
+    const seg = timeline.segments[idx];
+    if (seg) setPosMs(seg.startMs + (e.currentTarget as HTMLVideoElement).currentTime * 1000);
   }
   function togglePlay() {
-    const video = videoRef.current;
+    const video = getFrontEl();
     if (!video) return;
     if (!video.src && timeline.segments.length) { void playSegment(0); setPlaying(true); return; }
     if (video.paused) video.play().then(() => setPlaying(true)).catch(() => {});
@@ -248,13 +306,18 @@ export default function FlexCamFootagePage() {
   }
 
   // Hard-reset the player: cancel in-flight loads, revoke cached blobs,
-  // clear video element, reset all state, and re-fetch fresh request data.
+  // clear both video elements, reset all state, and re-fetch fresh request data.
   function reconfigure() {
     genRef.current++;
-    const video = videoRef.current;
-    if (video) { video.pause(); video.src = ''; }
+    for (const ref of [vid0, vid1]) {
+      const v = ref.current;
+      if (v) { v.pause(); v.src = ''; }
+    }
     for (const u of urlCache.current.values()) URL.revokeObjectURL(u);
     urlCache.current.clear();
+    frontRef.current = 0;
+    backSeqRef.current = null;
+    setFront(0);
     setIdx(0); setPosMs(0); setPlaying(false); setLoading(false); setPkgMsg(null);
     reload();
   }
@@ -288,7 +351,7 @@ export default function FlexCamFootagePage() {
   // Burn the current frame to canvas (evidence stamp + optional watermark) and download.
   // Blob-URL src is always same-origin → ctx.drawImage never raises SecurityError.
   async function captureFrame() {
-    const video = videoRef.current;
+    const video = getFrontEl();
     if (!video || !data || capturing) return;
     setCapturing(true);
     try {
@@ -403,6 +466,15 @@ export default function FlexCamFootagePage() {
   const dlBytes  = data.chunks.filter((c) => c.status === 'downloaded').reduce((s, c) => s + c.bytes, 0);
   const dlCount  = data.chunks.filter((c) => c.status === 'downloaded').length;
 
+  // Shared video-element props (same on both buffer slots).
+  const videoProps = {
+    controls: false as const,
+    playsInline: true,
+    onEnded,
+    onTimeUpdate,
+    style: { position: 'absolute' as const, inset: 0, width: '100%', height: '100%', objectFit: 'contain' as const, background: '#000' },
+  };
+
   return (
     <div className="flex flex-col min-h-full bg-surface-base">
 
@@ -434,22 +506,36 @@ export default function FlexCamFootagePage() {
         )}
       </div>
 
-      {/* ── Video ───────────────────────────────────────────── */}
-      <div ref={fullRef} className="relative bg-black border-b border-border-default flex-shrink-0">
+      {/* ── Video ───────────────────────────────────────────────────────────
+          Stable 16:9 container that never collapses. Height = 56.25vw (16:9 of
+          full width) capped at 56vh. Both buffer videos sit absolutely inside;
+          the front one has z-index 10 (visible), the back one z-index 0 (hidden).
+      ─────────────────────────────────────────────────────────────────────── */}
+      <div
+        ref={fullRef}
+        className="relative bg-black border-b border-border-default flex-shrink-0 w-full overflow-hidden"
+        style={{ height: 'min(56.25vw, 56vh)' }}
+      >
+        {/* Slot 0 */}
         <video
-          ref={videoRef}
-          className="w-full max-h-[56vh] bg-black"
-          onEnded={onEnded}
-          onTimeUpdate={onTimeUpdate}
-          onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
-          controls={false}
-          playsInline
+          ref={vid0}
+          {...videoProps}
+          onPlay={() => { if (frontRef.current === 0) setPlaying(true); }}
+          onPause={() => { if (frontRef.current === 0) setPlaying(false); }}
+          style={{ ...videoProps.style, zIndex: front === 0 ? 10 : 0 }}
+        />
+        {/* Slot 1 */}
+        <video
+          ref={vid1}
+          {...videoProps}
+          onPlay={() => { if (frontRef.current === 1) setPlaying(true); }}
+          onPause={() => { if (frontRef.current === 1) setPlaying(false); }}
+          style={{ ...videoProps.style, zIndex: front === 1 ? 10 : 0 }}
         />
 
         {/* ── HUD overlays (pointer-events-none so click-to-play still works) */}
         {overlaysOn && (
-          <div className="absolute inset-0 pointer-events-none select-none">
+          <div className="absolute inset-0 pointer-events-none select-none" style={{ zIndex: 20 }}>
             {/* Top-left: unit / date badge */}
             <div className="absolute top-2 left-2 flex items-center gap-1.5">
               <Shield className="w-3 h-3 text-white/30" />
@@ -498,7 +584,7 @@ export default function FlexCamFootagePage() {
         )}
 
         {/* Fullscreen + overlay toggle */}
-        <div className="absolute bottom-2 right-2 z-10 flex items-center gap-1">
+        <div className="absolute bottom-2 right-2 flex items-center gap-1" style={{ zIndex: 30 }}>
           <button onClick={() => setOverlaysOn((v) => !v)}
             title={overlaysOn ? 'Hide HUD overlays' : 'Show HUD overlays'}
             className={`p-1.5 bg-black/50 transition-colors ${overlaysOn ? 'text-[#d4a017]/70 hover:text-[#d4a017]' : 'text-white/25 hover:text-white/60'}`}>
@@ -510,16 +596,16 @@ export default function FlexCamFootagePage() {
           </button>
         </div>
 
-        {/* Loading segment overlay */}
+        {/* Loading segment overlay — shown only on initial fetch; pre-buffered transitions skip this */}
         {loading && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 pointer-events-none">
-            <span className="text-[10px] text-brand-400 font-mono animate-pulse tracking-widest">LOADING SEGMENT…</span>
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none" style={{ zIndex: 40 }}>
+            <span className="text-[10px] text-brand-400 font-mono animate-pulse tracking-widest">LOADING…</span>
           </div>
         )}
 
         {/* No footage state */}
         {!timeline.segments.length && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 gap-2 pointer-events-none">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 gap-2 pointer-events-none" style={{ zIndex: 20 }}>
             <Video className="w-8 h-8 text-rmpg-600" />
             <span className="text-[10px] text-rmpg-400 font-mono uppercase tracking-wider">
               {data.request.status === 'fulfilling' ? 'DOWNLOADING FOOTAGE…' : 'NO FOOTAGE AVAILABLE'}
