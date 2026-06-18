@@ -325,6 +325,20 @@ export default {
   // can't crash the cron loop.
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     if (event.cron === '* * * * *') {
+      // Quick D1 connectivity check before launching all concurrent sweeps.
+      // When D1 has a transient network blip every sweep fails at the same
+      // instant — this collapses 9 individual errors into one quiet warning
+      // and lets the next tick attempt cleanly rather than thundering in.
+      try {
+        await env.DB.prepare('SELECT 1').first();
+      } catch (e) {
+        const msg = (e as Error)?.message ?? '';
+        if (msg.includes('Network connection lost') || msg.includes('D1_ERROR')) {
+          console.warn('[cron] D1 connectivity check failed — skipping this tick:', msg);
+          return;
+        }
+        // Unknown error — still attempt sweeps; individual handlers will surface it.
+      }
       // Per-minute trip idle/stale sweep — backstop for units that go dark while
       // stationary (lazy-on-gps-write handles the common case).
       ctx.waitUntil(
