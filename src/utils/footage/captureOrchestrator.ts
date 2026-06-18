@@ -179,6 +179,7 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
         const put = await env.UPLOADS.put(key, resp.body, { httpMetadata: { contentType: ct } });
         const bytes = put?.size ?? parseInt(resp.headers.get('content-length') || '0', 10);
         const alpr = ch.channel === 'inside' ? 'skipped' : 'pending';
+        console.log('[flexcam-download]', { seq: ch.seq, rid: ch.request_id, accessUrl: st.accessUrl, type: typeof st.accessUrl, state: st.state });
         await execute(db, `UPDATE footage_chunks SET status='downloaded', r2_key=?, source_url=?, content_type=?, bytes=?, alpr_status=?, updated_at=datetime('now') WHERE id=?`,
           key, st.accessUrl, ct, bytes, alpr, ch.id);
         claimed.add(st.accessUrl);  // block this URL from being claimed by sibling chunks later in this tick
