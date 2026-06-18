@@ -36,7 +36,10 @@ export function loadPlateDetector(): Promise<unknown | null> {
         // Force pure-WASM ONNX backend — avoids Node.js require('buffer'/'long') errors
         // that onnxruntime-web emits when loaded in a browser via esm.sh.
         if (env.backends?.onnx) env.backends.onnx.wasm.proxy = false;
-        return await pipeline('object-detection', LP_MODEL_ID, { revision: 'main', device: 'wasm' });
+        // quantized: false → loads onnx/model.onnx directly; the quantized
+        // variant (model_quantized.onnx) doesn't exist in this HuggingFace repo
+        // and causes a 404 that kills the pipeline() call entirely.
+        return await pipeline('object-detection', LP_MODEL_ID, { revision: 'main', device: 'wasm', quantized: false });
       } catch (e) {
         console.warn('[fast-alpr] plate detector unavailable — falling back to heuristic plateRegion', e);
         return null;
