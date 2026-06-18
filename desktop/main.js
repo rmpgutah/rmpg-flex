@@ -14,11 +14,11 @@ const { ConnectivityMonitor } = require('./connectivityMonitor');
 const { InternalGps, findGpsPort } = require('./internalGps');
 
 // ─── Chromium Geolocation ────────────────────────────────────
-// Electron strips Chrome's bundled Google API key. Without it,
-// navigator.geolocation silently fails on desktop (no GPS hardware).
-// Chromium's Network Location Provider uses this key to resolve
-// WiFi/IP-based positions. This is a generic Geolocation API key.
-process.env.GOOGLE_API_KEY = 'AIzaSyCfKRUuJkUFlfuc9FvjJiVpm6_p5kASCtM';
+// Chromium's Network Location Provider requires a Google API key to resolve
+// WiFi/IP-based positions via navigator.geolocation. Set GOOGLE_API_KEY in
+// the environment before launching if WiFi geolocation is needed. GPS hardware
+// runs independently through InternalGps and is unaffected when this is unset.
+// (Key removed from source — set via environment variable instead.)
 
 // ─── Configuration ──────────────────────────────────────────
 const APP_TITLE = 'RMPG Flex — CAD/RMS';
