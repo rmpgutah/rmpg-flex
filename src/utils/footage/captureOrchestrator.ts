@@ -142,7 +142,7 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
     `SELECT ch.id, ch.request_id, ch.seq, ch.from_ts, ch.to_ts, ch.channel, ch.vendor_media_id, ch.attempts,
             rq.asset_id, rq.cpg_device_id, rq.reason
      FROM footage_chunks ch JOIN footage_requests rq ON rq.id = ch.request_id
-     WHERE ch.status = 'requested' ORDER BY ch.request_id, ch.seq LIMIT ?`, MAX_DOWNLOADS_PER_RUN).catch(() => []);
+     WHERE ch.status = 'requested' ORDER BY ch.request_id DESC, ch.seq ASC LIMIT ?`, MAX_DOWNLOADS_PER_RUN).catch(() => []);
 
   let downloaded = 0, missing = 0;
   for (const ch of pending) {
