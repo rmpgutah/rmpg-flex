@@ -8,7 +8,7 @@ import { retentionCutoffMs } from './retention';
 
 const R2_PREFIX = 'flexcam/trips/';
 const MAX_DOWNLOADS_PER_RUN = 40;  // download pass cap per cron tick
-const MAX_REQUESTS_PER_RUN = 30;   // request pass cap per cron tick (vendor subrequest safety)
+const MAX_REQUESTS_PER_RUN = 150;  // request pass cap per cron tick (raised for bulk historical jobs)
 const MAX_POLL_ATTEMPTS = 30;      // ~30 cron minutes before an event/auto chunk expires
 const MAX_POLL_ATTEMPTS_ON_DEMAND = 720; // ~12 hours for historical footage the camera must upload
 const CHUNK_SECONDS = 40;          // segment length we split a drive into
