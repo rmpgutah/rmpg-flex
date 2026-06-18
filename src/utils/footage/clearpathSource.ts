@@ -105,6 +105,9 @@ async function post(env: EnvLike, client: CpgClient, path: string, body: unknown
       try { await env.KV.delete('cpg:access_token'); } catch { /* KV optional */ }
       return attempt(true);
     }
+    // 409 = ClearPath already has a pending request for this camera+window.
+    // Treat as an accepted request — the clip will appear in listMedia when ready.
+    if (res.status === 409) return (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       throw new Error(`ClearPath media-request ${res.status}: ${body.slice(0, 200)}`);
