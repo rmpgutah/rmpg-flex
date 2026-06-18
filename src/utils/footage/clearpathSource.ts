@@ -105,7 +105,10 @@ async function post(env: EnvLike, client: CpgClient, path: string, body: unknown
       try { await env.KV.delete('cpg:access_token'); } catch { /* KV optional */ }
       return attempt(true);
     }
-    if (!res.ok) throw new Error(`ClearPath media-request ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`ClearPath media-request ${res.status}: ${body.slice(0, 200)}`);
+    }
     return (await res.json()) as Record<string, unknown>;
   };
   return attempt(false);
