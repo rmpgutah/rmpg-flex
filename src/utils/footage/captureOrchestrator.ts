@@ -116,22 +116,27 @@ export async function runRequestPass(env: Bindings): Promise<{ requested: number
   const pend = await query<{ id: number; from_ts: number; to_ts: number; channel: string; asset_id: number; attempts: number; reason: string }>(db,
     `SELECT ch.id, ch.from_ts, ch.to_ts, ch.channel, rq.asset_id, ch.attempts, rq.reason
        FROM footage_chunks ch JOIN footage_requests rq ON rq.id = ch.request_id
-      WHERE ch.status='pending_request' ORDER BY ch.request_id DESC, ch.seq ASC LIMIT ?`, limit).catch(() => []);
-  let requested = 0, expired = 0;
+      WHERE ch.status='pending_request' ORDER BY ch.request_id, ch.seq LIMIT ?`, limit).catch(() => []);
+  let requested = 0, expired = 0, consecutiveErrors = 0;
   for (const ch of pend) {
     const maxAttempts = ch.reason === 'on_demand' ? MAX_POLL_ATTEMPTS_ON_DEMAND : MAX_POLL_ATTEMPTS;
     try {
       const vendorId = await source.requestChunk(ch.asset_id, ch.from_ts, ch.to_ts, ch.channel);
       await execute(db, `UPDATE footage_chunks SET status='requested', vendor_media_id=?, attempts=0, updated_at=datetime('now') WHERE id=?`, vendorId, ch.id);
       requested++;
+      consecutiveErrors = 0;
     } catch (e) {
       console.error('[flexcam] requestChunk failed:', (e as Error).message);
+      consecutiveErrors++;
       if (ch.attempts + 1 >= maxAttempts) {
         await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
         expired++;
       } else {
         await execute(db, `UPDATE footage_chunks SET attempts = attempts + 1, updated_at=datetime('now') WHERE id=?`, ch.id);
       }
+      // Stop hammering ClearPath when it's clearly down — remaining chunks in this
+      // run will fail the same way. They stay 'pending_request' and retry next tick.
+      if (consecutiveErrors >= 3) break;
     }
   }
   return { requested, expired };
@@ -179,7 +184,6 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
         const put = await env.UPLOADS.put(key, resp.body, { httpMetadata: { contentType: ct } });
         const bytes = put?.size ?? parseInt(resp.headers.get('content-length') || '0', 10);
         const alpr = ch.channel === 'inside' ? 'skipped' : 'pending';
-        console.log('[flexcam-download]', { seq: ch.seq, rid: ch.request_id, accessUrl: st.accessUrl, type: typeof st.accessUrl, state: st.state });
         await execute(db, `UPDATE footage_chunks SET status='downloaded', r2_key=?, source_url=?, content_type=?, bytes=?, alpr_status=?, updated_at=datetime('now') WHERE id=?`,
           key, st.accessUrl, ct, bytes, alpr, ch.id);
         claimed.add(st.accessUrl);  // block this URL from being claimed by sibling chunks later in this tick
