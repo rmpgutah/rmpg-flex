@@ -225,12 +225,19 @@ const FLAG_COLORS: Record<string, string> = {
 // "None", which is truthy and once fired a false GANG alert + badge) now lives
 // in the shared ../../utils/sentinel module — see hasValue import above.
 
+// Import-provenance tags written into flags[] by DL-scan import flows.
+// They are data-lineage metadata, not officer-caution flags, and must be
+// excluded from badge rendering, warning counts, and posture computation.
+function isProvenanceFlag(flag: string): boolean {
+  return /_IMPORTED$/i.test(flag);
+}
+
 // Single source of truth for a person's posture-relevant flags. Shared by the
 // list avatar ring, the detail hero, and the alert computation so all three
 // agree on severity (and all get the gang-"None" guard for free).
 function personPostureFlags(p: Person): Array<string | null | undefined> {
   return [
-    ...p.flags.map((f) => (typeof f === 'object' ? f.type : f)),
+    ...p.flags.map((f) => (typeof f === 'object' ? f.type : f)).filter(f => !isProvenanceFlag(f)),
     p.watchlist_match ? 'watchlist' : null,
     p.is_sex_offender ? 'sex offender' : null,
     hasValue(p.gang_affiliation) ? 'gang' : null,
@@ -758,19 +765,26 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                 )}
               </div>
               <div className="flex flex-col items-end gap-1">
-                {person.flags.length > 0 && (
-                  <div className="flex gap-1">
-                    {person.flags.slice(0, 2).map((flag, i) => {
-                      const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
-                      return (
-                        <RecordBadge key={`${label}-${i}`} flag={label} glow={false} title={humanizeFlag(label)}>{label}</RecordBadge>
-                      );
-                    })}
-                    {person.flags.length > 2 && (
-                      <span className="text-[9px] text-rmpg-400">+{person.flags.length - 2}</span>
-                    )}
-                  </div>
-                )}
+                {(() => {
+                  const securityFlags = person.flags.filter(f => {
+                    const label = typeof f === 'object' ? (f.type || '') : f;
+                    return !isProvenanceFlag(label);
+                  });
+                  if (securityFlags.length === 0) return null;
+                  return (
+                    <div className="flex gap-1">
+                      {securityFlags.slice(0, 2).map((flag, i) => {
+                        const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+                        return (
+                          <RecordBadge key={`${label}-${i}`} flag={label} glow={false} title={humanizeFlag(label)}>{label}</RecordBadge>
+                        );
+                      })}
+                      {securityFlags.length > 2 && (
+                        <span className="text-[9px] text-rmpg-400">+{securityFlags.length - 2}</span>
+                      )}
+                    </div>
+                  );
+                })()}
                 {/* Phone: only the call action — the rest of the cluster would
                     eat the whole row width at 44px touch size; row tap opens
                     the detail panel and long-press has the full menu. */}
