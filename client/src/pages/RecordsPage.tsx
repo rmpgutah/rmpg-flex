@@ -565,10 +565,12 @@ export default function RecordsPage() {
             )}
           </>
         )}
-        {persons.some(p => p.flags.length > 0) && (
+        {persons.some(p => p.flags.some(f => !/_IMPORTED$/i.test(typeof f === 'object' ? (f as any).type ?? '' : f))) && (
           <div className="flex items-center gap-1 ml-auto">
             <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
-            <span className="text-amber-400 font-bold">{persons.filter(p => p.flags.length > 0).length}</span>
+            <span className="text-amber-400 font-bold">
+              {persons.filter(p => p.flags.some(f => !/_IMPORTED$/i.test(typeof f === 'object' ? (f as any).type ?? '' : f))).length}
+            </span>
           </div>
         )}
       </div>
