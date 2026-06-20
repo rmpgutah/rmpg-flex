@@ -2033,7 +2033,7 @@ export default function AdminSystemTab({
                                       tpl.priority === 'P2' ? 'text-amber-400' :
                                       tpl.priority === 'P3' ? 'text-rmpg-400' :
                                       'text-rmpg-400'
-                                    }`}>{tpl.priority}</span>
+                                    }`}>{(tpl.priority || '').toUpperCase()}</span>
                                   </td>
                                   <td className="text-xs text-rmpg-300 max-w-xs truncate">{tpl.description_template || '--'}</td>
                                   <td>

@@ -244,7 +244,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
                       <span className="text-xs text-rmpg-200 font-mono truncate">{r.label}</span>
                       {r.status && (
                         <span className={`text-[9px] font-semibold uppercase shrink-0 ${STATUS_COLORS[r.status] || 'text-rmpg-500'}`}>
-                          {r.status}
+                          {formatEnumValue(r.status)}
                         </span>
                       )}
                     </div>
