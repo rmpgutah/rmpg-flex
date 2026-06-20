@@ -10706,7 +10706,7 @@ function SiteMigratorPanel() {
               </div>
               <span className="text-[10px] text-rmpg-400">{m.pages_crawled}/{m.pages_total} pages</span>
               <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${m.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : m.status === 'failed' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'}`}>
-                {m.status}
+                {(m.status || '').replace(/_/g, ' ')}
               </span>
               <span className="text-[9px] text-rmpg-500 shrink-0">{fmtDate(m.created_at)}</span>
               <SmallBtn onClick={() => deleteMigration(m.id)} loading={deletingIds.has(m.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
@@ -10810,7 +10810,7 @@ function CodeRepoPanel() {
                 <span className="text-[10px] text-rmpg-400">{r.total_lines || 0} lines</span>
                 <span className="text-[10px] text-rmpg-400">{r.issues_found || 0} issues</span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${r.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : r.status === 'failed' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'}`}>
-                  {r.status}
+                  {(r.status || '').replace(/_/g, ' ')}
                 </span>
                 <SmallBtn onClick={() => deleteRepo(r.id)} loading={deletingIds.has(r.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
               </div>

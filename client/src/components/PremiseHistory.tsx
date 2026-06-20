@@ -294,7 +294,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
                   textAlign: 'center',
                 }}
               >
-                {call.priority}
+                {(call.priority || '').toUpperCase()}
               </span>
               <span className="text-[10px] font-mono text-rmpg-300">{call.call_number}</span>
               <span className="text-[10px] font-semibold text-rmpg-100">

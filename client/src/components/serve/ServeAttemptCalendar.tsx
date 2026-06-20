@@ -196,7 +196,7 @@ export default function ServeAttemptCalendar({ onSelectQueue }: Props) {
                           </span>
                         )}
                         <span className={`text-[9px] border px-1 py-px rounded-sm ${prioClass}`}>
-                          {slot.priority}
+                          {(slot.priority || '').toUpperCase()}
                         </span>
                       </div>
                       <div className="text-rmpg-500 text-[10px] truncate mt-0.5">

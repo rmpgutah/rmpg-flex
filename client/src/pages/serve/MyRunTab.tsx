@@ -25,7 +25,7 @@ export default function MyRunTab({ officerId }: { officerId: number }) {
         <div key={j.id} className="flex items-center gap-3 border border-border-default bg-surface-sunken px-3 py-2 text-[11px]">
           <span className="text-[#d4a017] font-mono">{i + 1}</span>
           <div className="flex-1">
-            <div className="text-rmpg-300">{j.defendant_name ?? j.recipient_name ?? `Job ${j.id}`} <span className="text-rmpg-500">{j.priority}</span></div>
+            <div className="text-rmpg-300">{j.defendant_name ?? j.recipient_name ?? `Job ${j.id}`} <span className="text-rmpg-500">{(j.priority || '').charAt(0).toUpperCase() + (j.priority || '').slice(1)}</span></div>
             <div className="text-[#888] text-[10px]">{j.recipient_address ?? '—'} · due {j.deadline ?? '—'} · attempts {j.attempt_count ?? 0}</div>
           </div>
           {j.recipient_address && (

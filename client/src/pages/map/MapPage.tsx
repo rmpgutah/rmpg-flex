@@ -6214,7 +6214,7 @@ export default function MapPage() {
                           <span
                             className="text-[8px] font-mono font-bold px-1.5 py-0.5"
                             style={{ background: pColor + '25', color: pColor, border: `1px solid ${pColor}40` }}
-                          >{call.priority}</span>
+                          >{(call.priority || '').toUpperCase()}</span>
                           <span className="text-[10px] font-mono font-bold text-rmpg-100 flex-1">{call.call_number}</span>
                           <span className="text-[8px] font-mono text-rmpg-400 uppercase font-bold">{call.status.replace(/_/g, ' ')}</span>
                         </div>

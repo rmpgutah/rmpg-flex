@@ -291,7 +291,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
                   it.priority === 'normal' ? 'bg-blue-900 text-blue-300' :
                   'bg-surface-muted text-brand-500'
                 }`}>
-                  {it.priority}
+                  {(it.priority || '').toUpperCase()}
                 </span>
               </div>
             ))}
