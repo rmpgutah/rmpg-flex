@@ -208,12 +208,15 @@ export function escalatePriorityForDeadline(
   return PRIORITY_RANK[floor] > PRIORITY_RANK[priority] ? floor : priority;
 }
 
-// ── Geographic clustering (PR 1) ─────────────────────────────────
+// ── Geographic clustering ──────────────────────────────────────
 // Stable cluster id for grouping nearby attempts on the same officer's day.
 // 3-decimal lat/lng truncation = ~110 m cell — same building shares; different
 // ZIPs do not. Falls back to ZIP5 when lat/lng is missing.
 // IMPORTANT: uses Math.trunc(x * 1000) / 1000, NOT toFixed(3), because
 // toFixed rounds, which would split adjacent buildings between two cells.
+// Format: `g-{lat3}-{lng3}`. For US coordinates (always negative lng) the
+// template dash + negative sign render as `--` in the output, giving a
+// stable two-character delimiter.
 export function clusterByProximity(
   lat: number | null,
   lng: number | null,
