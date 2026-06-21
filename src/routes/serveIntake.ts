@@ -36,8 +36,9 @@
 
 import { Hono } from 'hono';
 import { getContainer } from '@cloudflare/containers';
+import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import {
   extractFromText,
   extractFromImage,
@@ -63,6 +64,43 @@ import {
   type AttemptWindow,
 } from '../utils/serveDiligencePlanner';
 import { persistAttemptSchedule } from '../utils/serveAttemptScheduler';
+
+// ── Migration 0140 runtime reconciler ───────────────────────
+// D1 deploy apply is continue-on-error; columns may be absent on live.
+// One-shot per Worker instance (cold starts re-run, idempotent).
+let scheduleSchemaReconciled = false;
+async function reconcileScheduleSchema(db: D1Database): Promise<void> {
+  if (scheduleSchemaReconciled) return;
+  scheduleSchemaReconciled = true;
+
+  // serve_attempt_schedules columns from migration 0140
+  for (const [name, type] of [
+    ['manually_moved', 'INTEGER NOT NULL DEFAULT 0'],
+    ['moved_by_user_id', 'INTEGER'],
+    ['moved_at', 'TEXT'],
+    ['auto_replan_source', 'INTEGER'],
+    ['officer_id', 'INTEGER'],
+  ] as const) {
+    try {
+      if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
+        await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
+      }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+  }
+
+  // serve_queue columns from migration 0140
+  for (const [name, type] of [
+    ['geo_cluster_id', 'TEXT'],
+    ['urgency_tier', 'TEXT'],
+    ['urgency_computed_at', 'TEXT'],
+  ] as const) {
+    try {
+      if (!(await columnExists(db, 'serve_queue', name))) {
+        await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
+      }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+  }
+}
 
 const si = new Hono<Env>();
 
@@ -1067,6 +1105,7 @@ si.get('/', async (c) => {
 // for the next 14 days, grouped by date. Used by the dashboard calendar.
 si.get('/schedule', async (c) => {
   const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
   // Guard: table may not exist on live yet (migration pending).
   const tableExists = await queryFirst<{ n: number }>(
     db, `SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='serve_attempt_schedules'`,
@@ -1321,6 +1360,7 @@ si.post('/:id/attempts', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}));
   const user = c.get('user') as { id: number } | undefined;
   const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
 
   const queue = await queryFirst<{ attempt_count: number; max_attempts: number; status: string }>(
     db,
