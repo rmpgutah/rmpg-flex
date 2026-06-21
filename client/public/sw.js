@@ -1110,6 +1110,14 @@
 //        Warrant/Citation/Arrest types in the cross-link modal fall back to
 //        typed numeric input for now (rare in practice; dedicated pickers
 //        can land in a follow-up when the operator hits them).
+// v1004: Salt Lake County Assessor lookup wired into Business + Property
+//        records forms. Address blur (typed or picked) → /assessor/parcels;
+//        AssessorSuggestionPanel renders the 0/1/N matches below the address
+//        input. Apply posts to /assessor/apply with the record id + parcel
+//        number; server's never-clobber patch merges into the form state and
+//        a "N field(s) skipped (already filled)" hint flashes for ~5 s. Apply
+//        short-circuits when the record is unsaved (the panel still surfaces
+//        the match list; a hint asks the operator to save first).
 // v1003: Search-by-name record pickers — operator can no longer be expected
 //        to know that "Camden Clark is ID 4" when linking records. Three new
 //        reusable components: PersonPicker (debounced /records/persons/search,
