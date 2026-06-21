@@ -85,6 +85,12 @@ const PROPERTY_WRITABLE_COLUMNS = new Set([
   'parking_info', 'roof_access', 'utility_shutoffs', 'known_hazards',
   'contact_email', 'secondary_contact_name', 'secondary_contact_phone',
   'patrol_frequency', 'opening_hours', 'closing_hours',
+  // Assessor-sourced columns (migration 0142). `year_built` was already
+  // writable above (pre-existing column from 0037); the rest are new.
+  'parcel_number', 'owner_of_record', 'owner_type', 'owner_mailing_address',
+  'total_market_value', 'land_sqft',
+  'last_sale_date', 'last_sale_price', 'legal_description', 'tax_district',
+  'assessor_last_synced_at', 'assessor_source_url',
 ]);
 
 // POST /records/properties
@@ -1187,6 +1193,13 @@ const BUSINESS_WRITABLE_COLUMNS = new Set([
   'phone', 'email', 'website', 'owner_name', 'owner_phone',
   'contact_name', 'contact_phone', 'contact_email',
   'industry', 'employee_count', 'annual_revenue', 'status', 'flags', 'notes',
+  // Assessor-sourced columns (migration 0142). Autofill writes these via
+  // /api/assessor/apply, but a manual save through the records PATCH/POST
+  // must travel the same allow-list.
+  'parcel_number', 'owner_of_record', 'owner_type', 'owner_mailing_address',
+  'year_built', 'total_market_value', 'land_sqft',
+  'last_sale_date', 'last_sale_price', 'legal_description', 'tax_district',
+  'assessor_last_synced_at', 'assessor_source_url',
 ]);
 
 // GET /records/businesses — list businesses.
