@@ -1116,6 +1116,36 @@ si.get('/', async (c) => {
   return c.json(rows);
 });
 
+// ── GET /queue — list serve_queue rows with filters ──────────
+si.get('/queue', async (c) => {
+  const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
+  const officerParam = c.req.query('officer_id');
+  const statusParam = c.req.query('status') ?? 'pending,assigned';
+  const statuses = statusParam.split(',').map((s) => s.trim()).filter(Boolean);
+  if (!statuses.length) return c.json([]);
+  const placeholders = statuses.map(() => '?').join(',');
+
+  let officerClause = '';
+  const binds: unknown[] = [...statuses];
+  if (officerParam === 'null') officerClause = 'AND officer_id IS NULL';
+  else if (officerParam && /^\d+$/.test(officerParam)) {
+    officerClause = 'AND officer_id = ?';
+    binds.push(parseInt(officerParam, 10));
+  }
+
+  const rows = await query<any>(
+    db,
+    `SELECT id, recipient_name, case_number, deadline, urgency_tier, priority, document_type
+       FROM serve_queue
+      WHERE status IN (${placeholders}) ${officerClause}
+      ORDER BY (deadline IS NULL), deadline ASC, id ASC
+      LIMIT 200`,
+    ...binds,
+  );
+  return c.json(rows);
+});
+
 // ── GET /schedule — upcoming attempt windows (calendar feed) ─
 // Returns all pending/assigned/in_progress queue items' attempt windows
 // for the next 14 days, grouped by date. Used by the dashboard calendar.
