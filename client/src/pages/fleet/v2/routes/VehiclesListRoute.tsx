@@ -27,7 +27,9 @@ export function VehiclesListRoute() {
   const [mode, setMode] = useState<ViewMode>('card');
 
   useEffect(() => {
-    apiFetch<FleetVehicleRow[]>('/fleet').then((r) => setRows(r ?? [])).catch(() => setRows([]));
+    apiFetch<FleetVehicleRow[]>('/fleet')
+      .then((r) => setRows(Array.isArray(r) ? r : []))
+      .catch(() => setRows([]));
   }, []);
 
   const filtered = useMemo(() => {
