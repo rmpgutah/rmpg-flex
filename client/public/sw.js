@@ -926,6 +926,18 @@
 //          (These need backend changes and are tracked for a follow-up PR.)
 //
 //        Tests: all 1504 client tests pass; worker typecheck clean.
+// v1009: Salt Lake County Assessor backfill UI lands on /records.
+//        AssessorBackfillButton (admin/manager-only) sits in the Businesses
+//        and Properties PanelTitleBar toolbars. It polls
+//        /assessor/backfill/status every 5s and POSTs /assessor/backfill on
+//        click to enqueue every business + property that has an address but
+//        no parcel_number. Live counter shows {done}/{total} done · {n} need
+//        review next to the button while the cron drains the queue.
+//        AssessorReviewQueueBanner sits above the tab list and renders the
+//        ambiguous-match queue from GET /assessor/review-queue — each row
+//        expands inline into the shared AssessorSuggestionPanel, and Apply
+//        POSTs /assessor/apply + reloads so the resolved row drops out.
+//        Banner self-hides when the queue is empty.
 // v1008: Critical safety + silent-failure sweep. Ultracode forward-looking
 //        audit (4 agents, 53 findings) caught 4 critical + 13 major bugs;
 //        this PR ships the safety-critical and CAD-integrity fixes.

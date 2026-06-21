@@ -35,6 +35,9 @@ import LinkRecordModal from '../components/LinkRecordModal';
 import PersonDuplicatesModal from '../components/PersonDuplicatesModal';
 import type { Person, Vehicle, Property, RecordEntityType } from '../types';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
+import { AssessorBackfillButton } from '../components/AssessorBackfillButton';
+import { AssessorReviewQueueBanner } from '../components/AssessorReviewQueueBanner';
 
 // Tab hooks + components
 import { usePersonsTab, PersonsTabList, PersonsTabDetail, mapDbPerson } from './records/PersonsTab';
@@ -60,6 +63,8 @@ type TabId = 'persons' | 'vehicles' | 'properties' | 'businesses' | 'evidence';
 export default function RecordsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
   const [urlParams] = useSearchParams();
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'businesses', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
@@ -431,6 +436,7 @@ export default function RecordsPage() {
         )}
         {activeTab === 'properties' && (
           <>
+            <AssessorBackfillButton isAdminOrManager={isAdminOrManager} />
             {!showArchived && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPropertyTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
@@ -441,6 +447,7 @@ export default function RecordsPage() {
         )}
         {activeTab === 'businesses' && (
           <>
+            <AssessorBackfillButton isAdminOrManager={isAdminOrManager} />
             {!showArchived && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => businessState.setShowFormModal(true)}>
                 <Plus className="w-3.5 h-3.5" /> New Business
@@ -604,6 +611,12 @@ export default function RecordsPage() {
           </button>
         </div>
       )}
+
+      {/* Salt Lake County Assessor backfill — ambiguous-match review queue.
+          Self-renders nothing when the queue is empty. */}
+      <div className="px-3 pt-2">
+        <AssessorReviewQueueBanner />
+      </div>
 
       {/* Active TabList Content */}
       <div className="flex-1 overflow-hidden" role="tabpanel" aria-label={`${activeTab} records`} style={{ overscrollBehavior: 'contain' }}>
