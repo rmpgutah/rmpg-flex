@@ -86,6 +86,7 @@ const ATTEMPT_RESULTS = new Set([
   'served', 'sub_served', 'posted', 'no_answer', 'refused',
   'bad_address', 'moved', 'deceased', 'other',
 ]);
+const REPLAN_RESULTS = new Set(['no_answer', 'refused', 'bad_address', 'moved']);
 
 // ── OCR + upload constants ──────────────────────────────────
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;   // 25 MB per file
@@ -1370,7 +1371,6 @@ si.post('/:id/attempts', async (c) => {
   }
 
   // Auto-replan on failure (PR 1) — spawn next slot, recompute tier
-  const REPLAN_RESULTS = new Set(['no_answer', 'refused', 'bad_address', 'moved']);
   let replanSummary: { slot_id: number; scheduled_date: string; window: string } | null = null;
   const attemptId = ins.meta.last_row_id as number;
 
@@ -1380,17 +1380,18 @@ si.post('/:id/attempts', async (c) => {
       id: number; deadline: string | null; max_attempts: number;
       attempt_count: number; recipient_lat: number | null;
       recipient_lng: number | null; document_type: string | null;
+      recipient_type: string | null;
     }>(
       db,
       `SELECT id, deadline, max_attempts, attempt_count, recipient_lat,
-              recipient_lng, document_type
+              recipient_lng, document_type,
+              parsed_data->>'recipient_type' AS recipient_type
          FROM serve_queue WHERE id = ?`,
       id,
     );
 
     if (q && q.attempt_count < q.max_attempts) {
-      const isBusiness = (q.document_type ?? '').toLowerCase().includes('corporate')
-        || (q.document_type ?? '').toLowerCase().includes('business');
+      const isBusiness = (q.recipient_type ?? '').toLowerCase() === 'business';
 
       const next = replanAfterFailedAttempt(
         {
@@ -1427,7 +1428,10 @@ si.post('/:id/attempts', async (c) => {
             db,
             `UPDATE serve_attempt_schedules SET auto_replan_source = ? WHERE id = ?`,
             attemptId, slot.id,
-          ).catch(() => null); // column may not exist on live yet (mig 0140 pending Task 7)
+          ).catch((e) => {
+            console.warn('[serveIntake] auto_replan_source FK stamp skipped:', e instanceof Error ? e.message : e);
+            return null;
+          }); // column may not exist on live yet (mig 0140 pending Task 7)
           replanSummary = {
             slot_id: slot.id,
             scheduled_date: slot.scheduled_date,
@@ -1445,7 +1449,10 @@ si.post('/:id/attempts', async (c) => {
           `UPDATE serve_queue SET urgency_tier = ?, urgency_computed_at = datetime('now') ${priorityClause}
              WHERE id = ?`,
           tier, id,
-        ).catch(() => null); // urgency_tier column may not exist on live yet (mig 0140 pending Task 7)
+        ).catch((e) => {
+          console.warn('[serveIntake] urgency_tier update skipped:', e instanceof Error ? e.message : e);
+          return null;
+        }); // urgency_tier column may not exist on live yet (mig 0140 pending Task 7)
       } else {
         // replanAfterFailedAttempt returned null (no viable window) — mark failed.
         await execute(
