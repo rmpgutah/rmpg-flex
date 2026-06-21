@@ -832,19 +832,32 @@ export default function MapPage() {
       place: { fillId: 'geojson-place-fill', lineId: 'geojson-place-line' },
     };
 
+    // Reject any persisted color value that Mapbox can't parse — most often a
+    // CSS variable string left over from an old config (e.g. 'var(--surface-base)'
+    // hardcoded in the AdminMapSettingsTab defaults before it shipped a real
+    // hex). Without this guard a single bad cell in `map_config` crashes the
+    // whole addLayer call and the map renders nothing.
+    const safeColor = (v: unknown): string | null => {
+      if (typeof v !== 'string') return null;
+      const s = v.trim();
+      if (!s) return null;
+      if (s.toLowerCase().startsWith('var(')) return null;
+      return s;
+    };
+
     for (const [layerId, ids] of Object.entries(LAYER_STYLE_MAP)) {
       const visible = cfg.default_visible_layers.includes(layerId);
 
       if (ids.fillId && hasLayer(map, ids.fillId)) {
         map.setLayoutProperty(ids.fillId, 'visibility', visible ? 'visible' : 'none');
-        const fillColor = (cfg as any)[`layer_${layerId}_fill`];
+        const fillColor = safeColor((cfg as any)[`layer_${layerId}_fill`]);
         const fillOpacity = (cfg as any)[`layer_${layerId}_fill_opacity`];
         if (fillColor) map.setPaintProperty(ids.fillId, 'fill-color', fillColor);
         if (fillOpacity != null) map.setPaintProperty(ids.fillId, 'fill-opacity', fillOpacity);
       }
       if (ids.lineId && hasLayer(map, ids.lineId)) {
         map.setLayoutProperty(ids.lineId, 'visibility', visible ? 'visible' : 'none');
-        const strokeColor = (cfg as any)[`layer_${layerId}_stroke`];
+        const strokeColor = safeColor((cfg as any)[`layer_${layerId}_stroke`]);
         const strokeOpacity = (cfg as any)[`layer_${layerId}_stroke_opacity`];
         const strokeWeight = (cfg as any)[`layer_${layerId}_stroke_weight`];
         if (strokeColor) map.setPaintProperty(ids.lineId, 'line-color', strokeColor);
@@ -2795,21 +2808,30 @@ export default function MapPage() {
           existingDotSrc.setData(dotsData);
         } else {
           whenStyleReady(map, () => {
-            map.addSource(DOTS_SOURCE_ID, { type: 'geojson', data: dotsData });
-            map.addLayer({
-              id: DOTS_LAYER_ID,
-              type: 'circle',
-              source: DOTS_SOURCE_ID,
-              paint: {
-                'circle-color': ['get', 'color'],
-                // Last point of each trail renders slightly larger / brighter
-                // outline (preserves the visual emphasis the old DOM marker had).
-                'circle-radius': ['case', ['get', 'isLast'], 5, 4],
-                'circle-stroke-color': ['case', ['get', 'isLast'], '#fbbf24', '#fff'],
-                'circle-stroke-width': ['case', ['get', 'isLast'], 2, 0.5],
-                'circle-opacity': ['case', ['get', 'isLast'], 1, 0.6],
-              },
-            });
+            // Re-check inside the deferred callback — two back-to-back refreshes
+            // both see "no source yet" and both schedule an addSource(); without
+            // this guard the second one throws
+            //   `There is already a source with ID "rmpg-breadcrumb-dots"`.
+            // Mirrors the ARROWS_SOURCE block below that already does this.
+            if (!hasSource(map, DOTS_SOURCE_ID)) {
+              map.addSource(DOTS_SOURCE_ID, { type: 'geojson', data: dotsData });
+            }
+            if (!hasLayer(map, DOTS_LAYER_ID)) {
+              map.addLayer({
+                id: DOTS_LAYER_ID,
+                type: 'circle',
+                source: DOTS_SOURCE_ID,
+                paint: {
+                  'circle-color': ['get', 'color'],
+                  // Last point of each trail renders slightly larger / brighter
+                  // outline (preserves the visual emphasis the old DOM marker had).
+                  'circle-radius': ['case', ['get', 'isLast'], 5, 4],
+                  'circle-stroke-color': ['case', ['get', 'isLast'], '#fbbf24', '#fff'],
+                  'circle-stroke-width': ['case', ['get', 'isLast'], 2, 0.5],
+                  'circle-opacity': ['case', ['get', 'isLast'], 1, 0.6],
+                },
+              });
+            }
           });
         }
 
