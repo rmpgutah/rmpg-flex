@@ -122,6 +122,14 @@ function makeDb(state: FleetTables) {
             state.fleet_fuel_log[id].__last_update_bindings = ctx.bindings;
             return { meta: { changes: 1, last_row_id: id } };
           }
+          // recordLink helper — sync engine records a new fleetio_links row
+          // after a successful create dispatch.
+          if (/^INSERT OR IGNORE INTO fleetio_links/i.test(sql)) {
+            const [rmpgTable, rmpgId, , fleetioId] = ctx.bindings as [string, number, string, number];
+            const exists = state.links.some(l => l.rmpg_table === rmpgTable && l.rmpg_id === rmpgId);
+            if (!exists) state.links.push({ rmpg_table: rmpgTable, rmpg_id: rmpgId, fleetio_id: fleetioId });
+            return { meta: { changes: exists ? 0 : 1, last_row_id: state.links.length } };
+          }
           return { meta: { changes: 0, last_row_id: 0 } };
         },
       };
@@ -296,6 +304,129 @@ describe('applyOutbound', () => {
     expect(updateCalled).toBe(false);
     expect(result.completed).toBe(1);
     expect(state.events[0].status).toBe('completed');
+  });
+
+  // ─── PR 4 hotfix coverage — 3 dispatch cases previously left 501 ────
+
+  it('vehicle/create — pushes to Fleet.io, records fleetio_links, marks completed', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ id: 11, event_id: 'evt-vc', resource: 'vehicle', action: 'create',
+        payload_json: JSON.stringify({ name: 'Patrol 99', vin: '1HGCM82633A123456' }) })],
+      links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    let createCalls = 0;
+    const adapter = {
+      async createVehicle(args: { payload: Record<string, unknown> }) {
+        createCalls++;
+        expect(args.payload.name).toBe('Patrol 99');
+        return { id: 7777, name: args.payload.name } as never;
+      },
+      async updateVehicle() { throw new Error('not used'); },
+      async archiveVehicle() { throw new Error('not used'); },
+      async createFuelEntry() { throw new Error('not used'); },
+      async createWorkOrder() { throw new Error('not used'); },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(createCalls).toBe(1);
+    expect(result.completed).toBe(1);
+    expect(state.events[0].status).toBe('completed');
+    // Link recorded so the next emit (update/delete) can find the fleetio_id.
+    expect(state.links).toEqual([{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 7777 }]);
+  });
+
+  it('vehicle/create — idempotent: skips remote call if link already exists', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ id: 12, event_id: 'evt-vc-dup', resource: 'vehicle', action: 'create',
+        payload_json: JSON.stringify({ name: 'Patrol 99' }) })],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 7777 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    let createCalls = 0;
+    const adapter = {
+      async createVehicle() { createCalls++; return {} as never; },
+      async updateVehicle() { throw new Error('not used'); },
+      async archiveVehicle() { throw new Error('not used'); },
+      async createFuelEntry() { throw new Error('not used'); },
+      async createWorkOrder() { throw new Error('not used'); },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(createCalls).toBe(0);                          // no duplicate push
+    expect(result.completed).toBe(1);
+    expect(state.events[0].status).toBe('completed');
+  });
+
+  it('vehicle/delete — archives via PATCH with ISO timestamp from injected now()', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ id: 13, event_id: 'evt-vd', resource: 'vehicle', action: 'delete',
+        payload_json: JSON.stringify({ id: 42, archived: true }) })],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 7777 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    let archivedAtSeen: string | null = null;
+    const adapter = {
+      async createVehicle() { throw new Error('not used'); },
+      async updateVehicle() { throw new Error('not used'); },
+      async archiveVehicle(args: { fleetioId: number; archivedAtIso: string }) {
+        expect(args.fleetioId).toBe(7777);
+        archivedAtSeen = args.archivedAtIso;
+        return { id: args.fleetioId, name: 'Patrol' } as never;
+      },
+      async createFuelEntry() { throw new Error('not used'); },
+      async createWorkOrder() { throw new Error('not used'); },
+    };
+    const fixedNow = () => new Date('2026-06-21T22:43:51Z');
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig, now: fixedNow });
+    expect(result.completed).toBe(1);
+    expect(archivedAtSeen).toBe('2026-06-21T22:43:51.000Z');
+  });
+
+  it('vehicle/delete with no link — no-op completion (never linked, nothing to archive)', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ id: 14, event_id: 'evt-vd-unlinked', resource: 'vehicle', action: 'delete',
+        payload_json: JSON.stringify({ id: 4 }) })],
+      links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    let archiveCalls = 0;
+    const adapter = {
+      async createVehicle() { throw new Error('not used'); },
+      async updateVehicle() { throw new Error('not used'); },
+      async archiveVehicle() { archiveCalls++; return {} as never; },
+      async createFuelEntry() { throw new Error('not used'); },
+      async createWorkOrder() { throw new Error('not used'); },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(archiveCalls).toBe(0);
+    expect(result.completed).toBe(1);
+    expect(state.events[0].status).toBe('completed');
+  });
+
+  it('work_order/create — pushes to Fleet.io and records work_orders link', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ id: 15, event_id: 'evt-wo', resource: 'work_order', resource_id: 1, action: 'create',
+        payload_json: JSON.stringify({ vehicle_id: 7777, description: 'Brake job' }) })],
+      links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    let woCalls = 0;
+    const adapter = {
+      async createVehicle() { throw new Error('not used'); },
+      async updateVehicle() { throw new Error('not used'); },
+      async archiveVehicle() { throw new Error('not used'); },
+      async createFuelEntry() { throw new Error('not used'); },
+      async createWorkOrder(args: { payload: Record<string, unknown> }) {
+        woCalls++;
+        expect(args.payload.description).toBe('Brake job');
+        return { id: 8888, vehicle_id: 7777 } as never;
+      },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(woCalls).toBe(1);
+    expect(result.completed).toBe(1);
+    expect(state.links).toEqual([{ rmpg_table: 'work_orders', rmpg_id: 1, fleetio_id: 8888 }]);
   });
 });
 

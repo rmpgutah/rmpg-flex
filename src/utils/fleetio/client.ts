@@ -304,6 +304,59 @@ export async function createFuelEntry(input: CreateFuelEntryInput): Promise<Flee
   });
 }
 
+// ── PR 4 hotfix — handlers stubbed in PR 4 but never implemented ──
+// These were left as 501 in dispatchOutbound when PR 4 shipped because
+// no vehicle had been seeded yet, so no outbound events for delete /
+// work-order creation were exercised. Production diagnostic 2026-06-21
+// found 2 stuck events (vehicle/delete id=2, work_order/create id=3) —
+// adding the missing client + dispatch wiring unblocks them.
+
+export interface ArchiveVehicleInput {
+  config: FleetioConfig;
+  fleetioId: number;
+  /** ISO-8601 archive timestamp. Caller provides — sync engine injects
+   *  from its `now()` so tests stay deterministic and we don't reach for
+   *  `new Date()` in module scope (CLAUDE.md guidance). */
+  archivedAtIso: string;
+  fetchImpl?: typeof fetch;
+}
+
+/** Fleet.io has no DELETE on /vehicles — archiving = PATCH with archived_at.
+ *  Same row, retained for history; just removed from active filters. */
+export async function archiveVehicle(input: ArchiveVehicleInput): Promise<FleetioVehicle> {
+  return fleetioFetch<FleetioVehicle>({
+    method: 'PATCH',
+    path: `/vehicles/${input.fleetioId}`,
+    config: input.config,
+    body: { archived_at: input.archivedAtIso },
+    fetchImpl: input.fetchImpl,
+  });
+}
+
+export interface FleetioWorkOrder {
+  id: number;
+  vehicle_id: number;
+  state: string;
+  number: string | null;
+  [key: string]: unknown;
+}
+
+export interface CreateWorkOrderInput {
+  config: FleetioConfig;
+  payload: Record<string, unknown>;  // Fleet.io work_orders shape — pass through
+  fetchImpl?: typeof fetch;
+}
+
+export async function createWorkOrder(input: CreateWorkOrderInput): Promise<FleetioWorkOrder> {
+  return fleetioFetch<FleetioWorkOrder>({
+    method: 'POST',
+    path: '/work_orders',
+    config: input.config,
+    body: input.payload,
+    fetchImpl: input.fetchImpl,
+  });
+}
+
 /** Helper for routes: build a FleetioConfig from the env bindings, throwing
  *  FleetioConfigError if either secret is unset. */
 export function configFromEnv(env: Record<string, unknown>): FleetioConfig {
