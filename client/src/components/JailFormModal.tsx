@@ -3,6 +3,8 @@ import { Building2 } from 'lucide-react';
 import FormModal from '../components/FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { localToday } from '../utils/dateUtils';
+import OfficerPicker from '../components/OfficerPicker';
+import IncidentPickerInline from '../components/IncidentPickerInline';
 
 export interface JailFormData {
   last_name: string; first_name: string; middle_name: string;
@@ -125,8 +127,14 @@ export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting,
             </select></div>
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Agency</label>
             <input name="arresting_agency" className="input-dark mt-1" value={form.arresting_agency} onChange={handleChange} /></div>
-          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Officer ID</label>
-            <input name="arresting_officer_id" type="number" className="input-dark mt-1" value={form.arresting_officer_id} onChange={handleChange} /></div>
+          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Arresting Officer</label>
+            <div className="mt-1">
+              <OfficerPicker
+                value={form.arresting_officer_id ? Number(form.arresting_officer_id) : null}
+                onChange={(id) => setForm(f => ({ ...f, arresting_officer_id: id ? String(id) : '' }))}
+                placeholder="Search by name, badge, rank, unit…"
+              />
+            </div></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Bail Amount</label>
@@ -172,8 +180,14 @@ export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting,
             <input name="housing_cell" className="input-dark mt-1" value={form.housing_cell} onChange={handleChange} /></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Arrest Incident ID</label>
-            <input name="arrest_incident_id" type="number" className="input-dark mt-1" value={form.arrest_incident_id} onChange={handleChange} /></div>
+          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Arrest Incident</label>
+            <div className="mt-1">
+              <IncidentPickerInline
+                value={form.arrest_incident_id ? Number(form.arrest_incident_id) : null}
+                onChange={(id) => setForm(f => ({ ...f, arrest_incident_id: id ? String(id) : '' }))}
+                placeholder="Search incident # / type / location…"
+              />
+            </div></div>
         </div>
       </>)}
 

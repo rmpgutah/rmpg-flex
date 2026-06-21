@@ -16,6 +16,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import StatusBadge from '../components/StatusBadge';
 import VideoPlayer from '../components/VideoPlayer';
+import IncidentPickerInline from '../components/IncidentPickerInline';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { humanizeType, humanizeStatus } from '../utils/statusLabels';
@@ -1227,13 +1228,12 @@ export default function EvidencePropertyPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Incident #</label>
-                  <input id="ff-evidencepropertypage-13"
-                    type="text"
-                    value={newEvidence.incident_id}
-                    onChange={e => setNewEvidence(p => ({ ...p, incident_id: e.target.value }))}
-                    className="input-dark w-full min-h-[36px]"
-                    placeholder="Optional incident ID"
+                  <label className="field-label">Linked Incident</label>
+                  <IncidentPickerInline
+                    id="ff-evidencepropertypage-13"
+                    value={newEvidence.incident_id ? Number(newEvidence.incident_id) : null}
+                    onChange={(id) => setNewEvidence(p => ({ ...p, incident_id: id ? String(id) : '' }))}
+                    placeholder="Optional — search by incident # / type / location…"
                   />
                 </div>
                 <div>

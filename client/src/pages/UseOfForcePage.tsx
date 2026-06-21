@@ -13,6 +13,8 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 
 import RichTextArea from '../components/RichTextArea';
+import PersonPicker from '../components/PersonPicker';
+import IncidentPickerInline from '../components/IncidentPickerInline';
 interface UofReport {
   id: number; incident_id?: number; officer_id: number; subject_person_id?: number;
   force_type: string; force_level?: string; justification?: string;
@@ -338,12 +340,24 @@ export default function UseOfForcePage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Linked Incident ID</label>
-                  <input id="ff-useofforcepage-4" className="input-dark text-xs w-full mt-1" value={form.incident_id} onChange={e => setForm(f => ({ ...f, incident_id: e.target.value.replace(/\D/g, '') }))} placeholder="Optional" />
+                  <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Linked Incident</label>
+                  <IncidentPickerInline
+                    id="ff-useofforcepage-4"
+                    value={form.incident_id ? Number(form.incident_id) : null}
+                    onChange={(id) => setForm(f => ({ ...f, incident_id: id ? String(id) : '' }))}
+                    placeholder="Optional — search incident # / type / location…"
+                    className="mt-1"
+                  />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Subject Person ID</label>
-                  <input id="ff-useofforcepage-5" className="input-dark text-xs w-full mt-1" value={form.subject_person_id} onChange={e => setForm(f => ({ ...f, subject_person_id: e.target.value.replace(/\D/g, '') }))} placeholder="Optional" />
+                  <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Subject</label>
+                  <PersonPicker
+                    id="ff-useofforcepage-5"
+                    value={form.subject_person_id ? Number(form.subject_person_id) : null}
+                    onChange={(id) => setForm(f => ({ ...f, subject_person_id: id ? String(id) : '' }))}
+                    placeholder="Optional — search subject by name…"
+                    className="mt-1"
+                  />
                 </div>
               </div>
               <div>
