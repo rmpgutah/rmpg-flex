@@ -91,6 +91,89 @@ let _assessorColumnsEnsured = false;
 
 export async function ensureAssessorColumns(db: D1Database): Promise<void> {
   if (_assessorColumnsEnsured) return;
+  // ── Tables first ──
+  // Mirrors the alpr.ts pattern: inline DDL self-heals when the migration step
+  // (continue-on-error) doesn't reach live D1. DDL is identical to
+  // migrations/0142_assessor_integration.sql.
+  try {
+    await db.prepare(`CREATE TABLE IF NOT EXISTS parcel_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      parcel_number TEXT NOT NULL UNIQUE,
+      source TEXT NOT NULL DEFAULT 'sl_county_assessor',
+      source_url TEXT,
+      account_number TEXT,
+      serial_number TEXT,
+      tax_district TEXT,
+      owner_of_record TEXT,
+      owner_type TEXT,
+      owner_mailing_address TEXT,
+      situs_address TEXT,
+      situs_city TEXT,
+      situs_zip TEXT,
+      subdivision TEXT,
+      land_acres REAL,
+      land_sqft INTEGER,
+      land_value INTEGER,
+      zoning TEXT,
+      year_built INTEGER,
+      effective_year_built INTEGER,
+      total_bldg_sqft INTEGER,
+      finished_sqft INTEGER,
+      basement_sqft INTEGER,
+      garage_sqft INTEGER,
+      stories REAL,
+      bedrooms INTEGER,
+      bathrooms REAL,
+      construction_type TEXT,
+      improvement_class TEXT,
+      improvement_value INTEGER,
+      market_value_total INTEGER,
+      market_value_land INTEGER,
+      market_value_improvement INTEGER,
+      taxable_value INTEGER,
+      assessed_value INTEGER,
+      tax_year INTEGER,
+      legal_description TEXT,
+      plat TEXT,
+      lot TEXT,
+      block TEXT,
+      raw_data_json TEXT,
+      fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+      refreshed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`).run();
+  } catch { /* race or pre-existing — tolerated */ }
+  try {
+    await db.prepare(`CREATE TABLE IF NOT EXISTS parcel_sales (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      parcel_record_id INTEGER NOT NULL,
+      sale_date TEXT,
+      sale_price INTEGER,
+      doc_number TEXT,
+      buyer TEXT,
+      seller TEXT,
+      sale_type TEXT,
+      FOREIGN KEY (parcel_record_id) REFERENCES parcel_records(id) ON DELETE CASCADE
+    )`).run();
+  } catch { /* race or pre-existing — tolerated */ }
+  try {
+    await db.prepare(`CREATE TABLE IF NOT EXISTS assessor_backfill_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_type TEXT NOT NULL CHECK(record_type IN ('business','property')),
+      record_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending','applied','no_match','ambiguous','unfetchable','error')),
+      matches_json TEXT,
+      applied_parcel_number TEXT,
+      error_message TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      started_at TEXT,
+      completed_at TEXT,
+      UNIQUE(record_type, record_id)
+    )`).run();
+  } catch { /* race or pre-existing — tolerated */ }
+
+  // ── Columns on existing tables ──
   for (const [table, col, type] of ASSESSOR_COLUMNS) {
     try {
       if (!(await columnExists(db, table, col))) {
@@ -100,12 +183,33 @@ export async function ensureAssessorColumns(db: D1Database): Promise<void> {
       // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
     }
   }
-  // Indexes are idempotent natively.
+
+  // ── Indexes (all 6 from the migration) ──
+  // Idempotent natively via IF NOT EXISTS.
   try {
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_businesses_parcel ON businesses(parcel_number)`).run();
   } catch { /* ignore */ }
   try {
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_properties_parcel ON properties(parcel_number)`).run();
   } catch { /* ignore */ }
-  _assessorColumnsEnsured = true;
+  try {
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_parcel_records_situs ON parcel_records(situs_address)`).run();
+  } catch { /* ignore */ }
+  try {
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_parcel_records_owner ON parcel_records(owner_of_record)`).run();
+  } catch { /* ignore */ }
+  try {
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_parcel_sales_record ON parcel_sales(parcel_record_id)`).run();
+  } catch { /* ignore */ }
+  try {
+    await db.prepare(
+      `CREATE INDEX IF NOT EXISTS idx_backfill_pending ON assessor_backfill_jobs(status, retry_count) WHERE status = 'pending'`
+    ).run();
+  } catch { /* ignore */ }
+
+  // Canary verification (mirrors ensureOutboxRecordColumns in routes/email.ts):
+  // only mark the cache flag true if a known new column actually landed.
+  // If a partial failure occurred above, the canary stays false and the next
+  // call retries the whole reconciliation. Cheap — one PRAGMA per cold start.
+  _assessorColumnsEnsured = await columnExists(db, 'businesses', 'parcel_number');
 }
