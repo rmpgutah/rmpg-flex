@@ -207,3 +207,25 @@ export function escalatePriorityForDeadline(
   const floor: ServePriority = days <= 3 ? 'urgent' : days <= 7 ? 'rush' : priority;
   return PRIORITY_RANK[floor] > PRIORITY_RANK[priority] ? floor : priority;
 }
+
+// ── Geographic clustering (PR 1) ─────────────────────────────────
+// Stable cluster id for grouping nearby attempts on the same officer's day.
+// 3-decimal lat/lng truncation = ~110 m cell — same building shares; different
+// ZIPs do not. Falls back to ZIP5 when lat/lng is missing.
+// IMPORTANT: uses Math.trunc(x * 1000) / 1000, NOT toFixed(3), because
+// toFixed rounds, which would split adjacent buildings between two cells.
+export function clusterByProximity(
+  lat: number | null,
+  lng: number | null,
+  zip: string | null,
+): string | null {
+  if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+    const lat3 = (Math.trunc(lat * 1000) / 1000).toFixed(3);
+    const lng3 = (Math.trunc(lng * 1000) / 1000).toFixed(3);
+    return `g-${lat3}-${lng3}`;
+  }
+  if (zip && /^\d{5}/.test(zip)) {
+    return `z-${zip.slice(0, 5)}`;
+  }
+  return null;
+}

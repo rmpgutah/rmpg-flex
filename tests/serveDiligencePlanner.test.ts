@@ -3,6 +3,7 @@ import {
   planAttemptWindows,
   escalatePriorityForDeadline,
   daysUntilDeadline,
+  clusterByProximity,
 } from '../src/utils/serveDiligencePlanner';
 
 // 2026-06-11 is a Thursday. 18:00 UTC = 12:00 in America/Denver (MDT).
@@ -60,5 +61,26 @@ describe('escalatePriorityForDeadline', () => {
   it('leaves priority alone with no deadline or a far one', () => {
     expect(escalatePriorityForDeadline('normal', NOW, null)).toBe('normal');
     expect(escalatePriorityForDeadline('normal', NOW, '2026-09-01')).toBe('normal');
+  });
+});
+
+describe('clusterByProximity', () => {
+  it('returns a 3-decimal lat/lng cluster id when coordinates are present', () => {
+    expect(clusterByProximity(40.76078, -111.89105, '84101')).toBe('g-40.760--111.891');
+  });
+  it('truncates rather than rounds so adjacent buildings can still share a cluster id', () => {
+    const a = clusterByProximity(40.7609, -111.8919, null);
+    const b = clusterByProximity(40.7611, -111.8919, null);
+    // Both fall in the same 3-decimal cell once truncated, even though they round differently.
+    expect(a).toBe('g-40.760--111.891');
+    expect(b).toBe('g-40.761--111.891');
+  });
+  it('falls back to ZIP when lat/lng is missing', () => {
+    expect(clusterByProximity(null, null, '84101')).toBe('z-84101');
+    expect(clusterByProximity(null, null, '84101-1234')).toBe('z-84101');
+  });
+  it('returns null when nothing is known about location', () => {
+    expect(clusterByProximity(null, null, null)).toBeNull();
+    expect(clusterByProximity(null, null, '')).toBeNull();
   });
 });
