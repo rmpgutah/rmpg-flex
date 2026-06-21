@@ -691,6 +691,22 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1014: FlexCam per-request poll rewrite (Plan B — addresses the
+//        architecture problem the queue drain only swept around).
+//        captureOrchestrator.pollAndDownload now groups pending chunks
+//        by request_id, calls source.listRequestWindow ONCE per request
+//        (instead of per-chunk listMedia + pickBestClip), and runs
+//        assignClipsToChunks to greedy-match clips to chunks by
+//        timestamp proximity. Eliminates the dedup-starvation root
+//        cause: prior path had sibling chunks within one tick competing
+//        for the same handful of clips returned by overlapping per-
+//        chunk queries, leaving most as 'requested' forever (avg 41
+//        polls/chunk before expiring to 'missing', max 712 — just under
+//        the 720 cap, weeks of real time). Per-chunk pollChunk stays in
+//        FootageSource for on-demand / diagnostic single-clip pulls.
+//        Same close-query, max-attempts, alpr-on-thumbnail, R2 path.
+//        No migration; no client change.
+//
 // v1013: FlexCam queue drain + player visibility — stop the LOADING…
 //        silent-hang and stop the cron's per-tick poll budget from being
 //        eaten by stale requests. Three pieces:
