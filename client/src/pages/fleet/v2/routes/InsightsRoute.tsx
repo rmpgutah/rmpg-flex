@@ -281,9 +281,29 @@ function fmtUsd(n: number | null | undefined): string {
 
 // ─── Route ─────────────────────────────────────────────────
 
+const PERIOD_STORAGE_KEY = 'rmpg_fleet_insights_period';
+
+// Pull initial period from localStorage so the choice persists across reloads
+// (PR 9b saved-view persistence). Falls back to '90d' for fresh installs and
+// silently to in-memory state if localStorage is unavailable (SSR / private).
+export function readSavedPeriod(): Period {
+  if (typeof window === 'undefined' || !window.localStorage) return '90d';
+  try {
+    const raw = window.localStorage.getItem(PERIOD_STORAGE_KEY);
+    if (raw === '30d' || raw === '90d' || raw === 'ytd') return raw;
+  } catch { /* private mode → fall through */ }
+  return '90d';
+}
+
+function savePeriod(period: Period): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try { window.localStorage.setItem(PERIOD_STORAGE_KEY, period); } catch { /* quota / private — silent */ }
+}
+
 export function InsightsRoute() {
   useFleetV2View('/fleet/v2/insights');
-  const [period, setPeriod] = useState<Period>('90d');
+  const [period, setPeriodState] = useState<Period>(() => readSavedPeriod());
+  const setPeriod = (next: Period) => { setPeriodState(next); savePeriod(next); };
   return (
     <div className="h-full flex flex-col">
       <SectionHeader
@@ -301,8 +321,13 @@ export function InsightsRoute() {
           <CostPerMileStackCard period={period} />
         </div>
         <FuelAnomaliesCard period={period} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <PmUpcomingCard />
+          <WorkOrderFlowCard period={period} />
+        </div>
+        <PmTimelineCard />
         <p className="text-[10px] text-rmpg-500 pt-2">
-          Backed by <code>/api/fleet-viz/*</code> aggregates landed in PR 7-9 backend (#1500). V1 Fleet Map (Mapbox) lands in PR 8c; V2/V5/V8 in PR 9b.
+          Backed by <code>/api/fleet-viz/*</code> aggregates (PR 7-9 backend #1500). V1 Fleet Map (Mapbox) lands in PR 8c. Period selection persisted to localStorage (`{PERIOD_STORAGE_KEY}`).
         </p>
       </div>
     </div>
@@ -493,6 +518,232 @@ function FuelAnomaliesCard({ period }: { period: Period }) {
             </tbody>
           </table>
         </div>
+       )}
+    </Card>
+  );
+}
+
+// ─── V8: PM upcoming (table) ─────────────────────────────
+
+interface PmUpcomingResp {
+  count: number;
+  data: {
+    id: number;
+    vehicle_number: string | null;
+    vehicle_name: string | null;
+    current_mileage: number | null;
+    next_service_mileage: number | null;
+    next_service_date: string | null;
+    miles_to_pm: number | null;
+  }[];
+}
+
+function PmUpcomingCard() {
+  const [data, setData] = useState<PmUpcomingResp | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setData(null); setErr(null);
+    apiFetch<PmUpcomingResp>('/fleet-viz/pm-upcoming?limit=12')
+      .then((r) => { if (!cancelled) setData(r); })
+      .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
+    return () => { cancelled = true; };
+  }, []);
+  const rows = Array.isArray(data?.data) ? data!.data : [];
+  const overdueCount = rows.filter((r) => (r.miles_to_pm ?? 0) <= 0).length;
+  return (
+    <Card
+      title="PM upcoming"
+      hint={overdueCount > 0 ? `${overdueCount} overdue` : `${rows.length} due soon`}
+    >
+      {err ? <div className="text-xs text-red-400">{err}</div> :
+       data == null ? <Skeleton lines={6} /> :
+       rows.length === 0 ? <div className="text-xs text-rmpg-400">No PMs scheduled.</div> :
+       (
+        <table className="w-full text-[10px]">
+          <thead>
+            <tr className="text-left text-rmpg-400 border-b border-rmpg-700">
+              <th className="py-1 pr-2">Vehicle</th>
+              <th className="py-1 px-2 text-right">Current mi</th>
+              <th className="py-1 px-2 text-right">Next at</th>
+              <th className="py-1 px-2 text-right">Miles to PM</th>
+              <th className="py-1 pl-2">By date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const overdue = (r.miles_to_pm ?? 0) <= 0;
+              return (
+                <tr key={r.id} className="border-b border-rmpg-800/40">
+                  <td className="py-1 pr-2 text-rmpg-100">{r.vehicle_number ?? r.vehicle_name ?? `#${r.id}`}</td>
+                  <td className="py-1 px-2 text-right font-mono text-rmpg-300">{fmt(r.current_mileage)}</td>
+                  <td className="py-1 px-2 text-right font-mono text-rmpg-300">{fmt(r.next_service_mileage)}</td>
+                  <td className={`py-1 px-2 text-right font-mono ${overdue ? 'text-red-400 font-semibold' : 'text-rmpg-100'}`}>
+                    {r.miles_to_pm == null ? '—' : fmt(r.miles_to_pm)}
+                  </td>
+                  <td className="py-1 pl-2 font-mono text-rmpg-300">{(r.next_service_date ?? '').slice(0, 10) || '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+       )}
+    </Card>
+  );
+}
+
+// ─── V5: Work order flow (status counts) ──────────────────
+
+interface WoFlowResp {
+  period: string;
+  nodes: { name: string; count: number }[];
+}
+
+const WO_STATUS_TONES: Record<string, string> = {
+  open: '#f59e0b',
+  in_progress: '#3b82f6',
+  waiting_parts: '#a855f7',
+  completed: '#10b981',
+  cancelled: '#64748b',
+};
+
+function WorkOrderFlowCard({ period }: { period: Period }) {
+  const [data, setData] = useState<WoFlowResp | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setData(null); setErr(null);
+    apiFetch<WoFlowResp>(`/fleet-viz/work-order-flow?period=${period}`)
+      .then((r) => { if (!cancelled) setData(r); })
+      .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
+    return () => { cancelled = true; };
+  }, [period]);
+  const nodes = Array.isArray(data?.nodes) ? data!.nodes : [];
+  const total = nodes.reduce((s, n) => s + (n.count ?? 0), 0);
+  return (
+    <Card title="Work order flow" hint={`${total} total`}>
+      {err ? <div className="text-xs text-red-400">{err}</div> :
+       data == null ? <Skeleton lines={4} /> :
+       total === 0 ? <div className="text-xs text-rmpg-400">No work orders this period.</div> :
+       (
+         <div className="space-y-2">
+           {/* Horizontal stacked bar — 100% width split by status. The Sankey
+               proper would need d3-sankey + edge weights; with only nodes
+               (no transition counts in the data), a stacked bar conveys the
+               same total breakdown more honestly. */}
+           <div className="w-full h-6 flex rounded-sm overflow-hidden border border-rmpg-700">
+             {nodes.filter((n) => n.count > 0).map((n) => (
+               <div
+                 key={n.name}
+                 title={`${n.name}: ${n.count}`}
+                 style={{
+                   width: `${(n.count / total) * 100}%`,
+                   background: WO_STATUS_TONES[n.name] ?? '#475569',
+                 }}
+               />
+             ))}
+           </div>
+           <table className="w-full text-[10px]">
+             <tbody>
+               {nodes.map((n) => (
+                 <tr key={n.name} className="border-b border-rmpg-800/40">
+                   <td className="py-1 pr-2">
+                     <span
+                       className="inline-block w-2 h-2 rounded-sm mr-1.5 align-middle"
+                       style={{ background: WO_STATUS_TONES[n.name] ?? '#475569' }}
+                     />
+                     <span className="text-rmpg-100">{n.name.replace('_', ' ')}</span>
+                   </td>
+                   <td className="py-1 text-right font-mono text-rmpg-100">{n.count.toLocaleString()}</td>
+                   <td className="py-1 pl-2 text-right text-rmpg-400 w-12">
+                     {total > 0 ? `${((n.count / total) * 100).toFixed(0)}%` : '—'}
+                   </td>
+                 </tr>
+               ))}
+             </tbody>
+           </table>
+         </div>
+       )}
+    </Card>
+  );
+}
+
+// ─── V2: PM timeline (overdue / upcoming / future bucketed) ────
+
+interface PmTimelineResp {
+  horizon_days: number;
+  count: number;
+  data: {
+    vehicle_id: number;
+    vehicle_number: string | null;
+    vehicle_name: string | null;
+    next_service_date: string | null;
+    next_service_mileage: number | null;
+    current_mileage: number | null;
+    bucket: 'overdue' | 'upcoming' | 'future';
+  }[];
+}
+
+const BUCKET_TONES: Record<string, string> = {
+  overdue: 'bg-red-500/15 text-red-300 border-red-500/40',
+  upcoming: 'bg-amber-500/15 text-amber-300 border-amber-500/40',
+  future: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
+};
+
+function PmTimelineCard() {
+  const [data, setData] = useState<PmTimelineResp | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setData(null); setErr(null);
+    apiFetch<PmTimelineResp>('/fleet-viz/pm-timeline?horizon_days=90')
+      .then((r) => { if (!cancelled) setData(r); })
+      .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
+    return () => { cancelled = true; };
+  }, []);
+  const rows = Array.isArray(data?.data) ? data!.data : [];
+  const counts = { overdue: 0, upcoming: 0, future: 0 };
+  for (const r of rows) counts[r.bucket] = (counts[r.bucket] ?? 0) + 1;
+  return (
+    <Card
+      title="PM timeline (90-day horizon)"
+      hint={`${counts.overdue} overdue · ${counts.upcoming} upcoming · ${counts.future} future`}
+    >
+      {err ? <div className="text-xs text-red-400">{err}</div> :
+       data == null ? <Skeleton lines={5} /> :
+       rows.length === 0 ? <div className="text-xs text-rmpg-400">No vehicles with PM schedule.</div> :
+       (
+         <div className="overflow-x-auto">
+           <table className="w-full text-[10px]">
+             <thead>
+               <tr className="text-left text-rmpg-400 border-b border-rmpg-700">
+                 <th className="py-1 pr-2">Vehicle</th>
+                 <th className="py-1 px-2">Bucket</th>
+                 <th className="py-1 px-2 text-right">Current mi</th>
+                 <th className="py-1 px-2 text-right">PM at mi</th>
+                 <th className="py-1 pl-2">PM by date</th>
+               </tr>
+             </thead>
+             <tbody>
+               {rows.slice(0, 16).map((r) => (
+                 <tr key={r.vehicle_id} className="border-b border-rmpg-800/40">
+                   <td className="py-1 pr-2 text-rmpg-100">{r.vehicle_number ?? r.vehicle_name ?? `#${r.vehicle_id}`}</td>
+                   <td className="py-1 px-2">
+                     <span className={`px-1.5 py-0.5 rounded-sm text-[9px] uppercase tracking-wide border ${BUCKET_TONES[r.bucket] ?? ''}`}>
+                       {r.bucket}
+                     </span>
+                   </td>
+                   <td className="py-1 px-2 text-right font-mono text-rmpg-300">{fmt(r.current_mileage)}</td>
+                   <td className="py-1 px-2 text-right font-mono text-rmpg-300">{fmt(r.next_service_mileage)}</td>
+                   <td className="py-1 pl-2 font-mono text-rmpg-300">{(r.next_service_date ?? '').slice(0, 10) || '—'}</td>
+                 </tr>
+               ))}
+             </tbody>
+           </table>
+           {rows.length > 16 ? (
+             <div className="text-[9px] text-rmpg-500 mt-1">+ {rows.length - 16} more vehicles</div>
+           ) : null}
+         </div>
        )}
     </Card>
   );

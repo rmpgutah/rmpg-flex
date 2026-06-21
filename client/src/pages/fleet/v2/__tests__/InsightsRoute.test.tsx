@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { InsightsRoute } from '../routes/InsightsRoute';
+import { InsightsRoute, readSavedPeriod } from '../routes/InsightsRoute';
 
 function stubApi(handlers: Record<string, unknown>) {
   vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
@@ -71,6 +71,62 @@ describe('<InsightsRoute>', () => {
     // The failed inspection badge should appear
     expect(screen.getByText('FAIL')).toBeInTheDocument();
     expect(screen.getByText('PASS')).toBeInTheDocument();
+  });
+
+  it('renders the new V2/V5/V8 cards (PR 9b)', async () => {
+    stubApi({
+      '/fleet-viz/kpi': { period: 'x', in_service: 0, in_shop: 0, overdue_pms: 0, avg_mpg: 0, cost_per_mile: null, total_cost: 0, miles_driven: 0 },
+      '/fleet-viz/readiness': { count: 0, data: [] },
+      '/fleet-viz/calls-per-gallon': { period: 'x', count: 0, data: [] },
+      '/fleet-viz/mpg-by-officer': { period: 'x', samples: [], by_officer: [] },
+      '/fleet-viz/cost-per-mile': { period: 'x', count: 0, data: [] },
+      '/fleet-viz/fuel-anomalies': { period: 'x', count: 0, data: [] },
+      '/fleet-viz/pm-upcoming': {
+        count: 2,
+        data: [
+          { id: 1, vehicle_number: 'P12', vehicle_name: null, current_mileage: 50000, next_service_mileage: 49000, next_service_date: '2026-06-20', miles_to_pm: -1000 },
+          { id: 2, vehicle_number: 'P13', vehicle_name: null, current_mileage: 30000, next_service_mileage: 32000, next_service_date: '2026-07-15', miles_to_pm: 2000 },
+        ],
+      },
+      '/fleet-viz/work-order-flow': {
+        period: 'x',
+        nodes: [
+          { name: 'open', count: 5 },
+          { name: 'in_progress', count: 3 },
+          { name: 'waiting_parts', count: 1 },
+          { name: 'completed', count: 12 },
+          { name: 'cancelled', count: 0 },
+        ],
+      },
+      '/fleet-viz/pm-timeline': {
+        horizon_days: 90,
+        count: 2,
+        data: [
+          { vehicle_id: 1, vehicle_number: 'P12', vehicle_name: null, next_service_date: '2026-06-20', next_service_mileage: 49000, current_mileage: 50000, bucket: 'overdue' },
+          { vehicle_id: 2, vehicle_number: 'P13', vehicle_name: null, next_service_date: '2026-07-15', next_service_mileage: 32000, current_mileage: 30000, bucket: 'upcoming' },
+        ],
+      },
+    });
+    render(<MemoryRouter><InsightsRoute /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText(/pm upcoming/i)).toBeInTheDocument());
+    expect(screen.getByText(/work order flow/i)).toBeInTheDocument();
+    expect(screen.getByText(/pm timeline/i)).toBeInTheDocument();
+    // 1 overdue PM appears in BOTH the upcoming-card hint AND the
+    // pm-timeline hint, so use getAllByText.
+    expect(screen.getAllByText(/1 overdue/i).length).toBeGreaterThanOrEqual(1);
+    // 21 total work orders flow → hint shows "21 total"
+    await waitFor(() => expect(screen.getByText(/21 total/i)).toBeInTheDocument());
+  });
+
+  it('persists the selected period to localStorage (saved view, PR 9b)', () => {
+    // readSavedPeriod is the pure helper exposed for tests.
+    window.localStorage.removeItem('rmpg_fleet_insights_period');
+    expect(readSavedPeriod()).toBe('90d');
+    window.localStorage.setItem('rmpg_fleet_insights_period', 'ytd');
+    expect(readSavedPeriod()).toBe('ytd');
+    window.localStorage.setItem('rmpg_fleet_insights_period', 'bogus');
+    expect(readSavedPeriod()).toBe('90d');  // rejects unknown values
+    window.localStorage.removeItem('rmpg_fleet_insights_period');
   });
 
   it('renders the new V3/V4/V6 cards (PR 8b)', async () => {
