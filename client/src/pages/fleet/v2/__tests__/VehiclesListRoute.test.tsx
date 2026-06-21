@@ -49,4 +49,14 @@ describe('<VehiclesListRoute>', () => {
     const link = screen.getByRole('link', { name: /unit 12/i }) as HTMLAnchorElement;
     expect(link.pathname).toBe('/fleet/v2/vehicles/1');
   });
+
+  it('the "New Vehicle" header button opens the modal (was previously a dead button)', async () => {
+    renderList();
+    await screen.findByText('Unit 12', {}, { timeout: 3000 });
+    // Modal isn't in the DOM yet
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^new vehicle$/i }));
+    // After click the VehicleFormModal mounts; its dialog role appears
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
 });

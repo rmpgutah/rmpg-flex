@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { LayoutGrid, Table as TableIcon, Plus } from 'lucide-react';
 import { apiFetch } from '../../../../hooks/useApi';
 import { FleetListShell } from '../shell/FleetListShell';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
+import VehicleFormModal, {
+  EMPTY_VEHICLE_FORM,
+  type VehicleFormState,
+} from '../../modals/VehicleFormModal';
 
 interface FleetVehicleRow {
   id: number;
@@ -26,11 +30,62 @@ export function VehiclesListRoute() {
   const [search, setSearch] = useState('');
   const [mode, setMode] = useState<ViewMode>('card');
 
-  useEffect(() => {
+  // ─── New Vehicle modal state ────────────────────────────
+  // The header button used to be unwired (zero onClick) — click did nothing.
+  // Reuses the same VehicleFormModal the legacy /fleet page mounts so the
+  // form contract + validation stays identical across both surfaces.
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState<VehicleFormState>(EMPTY_VEHICLE_FORM);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  const fetchRows = useCallback(() => {
     apiFetch<FleetVehicleRow[]>('/fleet')
       .then((r) => setRows(Array.isArray(r) ? r : []))
       .catch(() => setRows([]));
   }, []);
+
+  useEffect(() => { fetchRows(); }, [fetchRows]);
+
+  const openNew = () => {
+    setForm(EMPTY_VEHICLE_FORM);
+    setModalOpen(true);
+  };
+  const closeNew = () => setModalOpen(false);
+
+  const handleSave = async () => {
+    if (!form.vehicle_number.trim()) return; // modal already shows inline error
+    setSaving(true);
+    setToast(null);
+    try {
+      const equipArr = form.equipment_str.split(',').map((s) => s.trim()).filter(Boolean);
+      const payload = {
+        vehicle_number: form.vehicle_number.trim(),
+        make: form.make.trim() || null,
+        model: form.model.trim() || null,
+        year: form.year ? parseInt(form.year, 10) : null,
+        color: form.color.trim() || null,
+        vin: form.vin.trim() || null,
+        plate_number: form.plate_number.trim() || null,
+        plate_state: form.plate_state.trim() || null,
+        status: form.status,
+        current_mileage: form.current_mileage ? parseInt(form.current_mileage, 10) : null,
+        next_service_mileage: form.next_service_mileage ? parseInt(form.next_service_mileage, 10) : null,
+        insurance_expiry: form.insurance_expiry || null,
+        registration_expiry: form.registration_expiry || null,
+        equipment: equipArr,
+        notes: form.notes.trim() || null,
+      };
+      await apiFetch('/fleet', { method: 'POST', body: JSON.stringify(payload) });
+      setToast({ kind: 'ok', text: `Vehicle "${payload.vehicle_number}" created.` });
+      setModalOpen(false);
+      fetchRows();
+    } catch (err) {
+      setToast({ kind: 'err', text: err instanceof Error ? err.message : 'Failed to save vehicle' });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -56,13 +111,48 @@ export function VehiclesListRoute() {
             {mode === 'card' ? <TableIcon className="w-3 h-3 inline mr-1" /> : <LayoutGrid className="w-3 h-3 inline mr-1" />}
             {mode === 'card' ? 'Table view' : 'Card view'}
           </button>
-          <button className="px-2 py-1 text-[11px] bg-brand-400 text-rmpg-950 rounded-sm hover:brightness-110">
+          <button
+            type="button"
+            onClick={openNew}
+            className="px-2 py-1 text-[11px] bg-brand-400 text-rmpg-950 rounded-sm hover:brightness-110"
+            aria-label="New vehicle"
+          >
             <Plus className="w-3 h-3 inline mr-1" /> New Vehicle
           </button>
         </>
       }
     >
+      {toast ? (
+        <div
+          role="status"
+          className={`mx-3 mt-2 px-3 py-2 rounded-sm border text-xs ${
+            toast.kind === 'ok'
+              ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+              : 'border-red-500/40 text-red-300 bg-red-500/10'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span>{toast.text}</span>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="text-[10px] underline opacity-80 hover:opacity-100"
+            >
+              dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
       {mode === 'card' ? <CardGrid rows={filtered} /> : <TableView rows={filtered} />}
+      <VehicleFormModal
+        isOpen={modalOpen}
+        mode="new_vehicle"
+        form={form}
+        onChange={setForm}
+        onSave={handleSave}
+        onClose={closeNew}
+        saving={saving}
+      />
     </FleetListShell>
   );
 }
