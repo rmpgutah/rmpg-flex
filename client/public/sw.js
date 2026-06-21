@@ -1243,6 +1243,24 @@
 //       chunk covering the event timestamp over the short AI clip; response
 //       includes footage_request_id so ForensicDashcamPlayer can show a
 //       "▶ Full Trip" link into the FlexCam trip viewer.
+// v995: Notice of Attempt to Serve — full PDF + data-input overhaul.
+//       PDF: CONFIDENTIAL watermark rotated 45° + wrapped in save/restore
+//       GState (was rendering inline through body text); empty Date/Time/
+//       Notes cells fall back to created_at → em-dash so the recipient
+//       notice is never blank; GPS coords + "GPS coordinates recorded
+//       on-scene" attribution line under the attempt table; hiring-party
+//       label shows "Atty (atty) for Client" when both are on record;
+//       signature image from the latest attempt now actually flows
+//       through to the notice (was unwired). Modal: failed attempts take
+//       a 3-step fast path (Location → Reason → Submit) and skip the
+//       signature step entirely (failed notices are unsworn); next-
+//       attempt picker (date + start/end time) auto-builds an editable
+//       sentence persisted on serve_queue.next_attempt_note (migration
+//       0142); "Other (specify)" free-text reason prepends to notes;
+//       notes field shows a live 90-char counter against the PDF
+//       truncation limit. Server /api/process-server/:id/attempt now
+//       persists next_attempt_note when the column exists, falls back
+//       gracefully when migration 0142 hasn't landed.
 // Stamped at build time by the stamp-sw-version Vite plugin (vite.config.ts)
 // with the git short SHA → 'rmpg-flex-<sha>'. Dev server serves 'rmpg-flex-BUILD'.
 const CACHE_NAME = 'rmpg-flex-BUILD';

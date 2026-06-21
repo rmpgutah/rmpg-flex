@@ -42,7 +42,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { generateServeCharges } from '../utils/serveChargeStore';
 import { geocodeAddress } from './geocode';
 import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
@@ -485,13 +485,20 @@ sv.put('/:id', async (c) => {
     'document_type', 'case_number', 'court_name', 'jurisdiction',
     'client_name', 'attorney_name', 'priority', 'time_window', 'deadline',
     'max_attempts', 'service_instructions', 'notes', 'status', 'sort_order', 'contract_id',
+    'next_attempt_note',
   ];
   const sets: string[] = [];
   const args: any[] = [];
+  // Schema-guard newly-added columns so the route doesn't 500 when callers
+  // post next_attempt_note before migration 0142 reaches live D1.
+  const hasNextAttemptCol = 'next_attempt_note' in body
+    ? await columnExists(getDb(c.env), 'serve_queue', 'next_attempt_note')
+    : true;
   for (const k of allowed) {
     if (!(k in body)) continue;
     if (k === 'status' && body[k] && !STATUSES.has(body[k])) continue;
     if (k === 'priority' && body[k] && !PRIORITIES.has(body[k])) continue; // skip invalid (CHECK enum)
+    if (k === 'next_attempt_note' && !hasNextAttemptCol) continue;
     sets.push(`${k} = ?`);
     args.push(body[k]);
   }
@@ -553,11 +560,28 @@ async function logAttempt(c: any, defaultResult: string) {
   else if (nextNum >= (queue.max_attempts ?? 3)) newStatus = 'failed';
   else newStatus = 'attempted';
 
-  await execute(
-    db,
-    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
-    nextNum, newStatus, id,
-  );
+  // Operator-set next-attempt note lives on the parent queue row so it
+  // persists across attempts and survives until the Notice of Attempt PDF
+  // reads it. Guard the column write — migration 0142 may not be applied
+  // to live D1 yet when the new client deploys (deploy step is
+  // continue-on-error per CLAUDE.md).
+  const hasNextAttemptCol =
+    typeof body.next_attempt_note === 'string'
+      ? await columnExists(db, 'serve_queue', 'next_attempt_note')
+      : false;
+  if (hasNextAttemptCol) {
+    await execute(
+      db,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, next_attempt_note = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      nextNum, newStatus, body.next_attempt_note || null, id,
+    );
+  } else {
+    await execute(
+      db,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      nextNum, newStatus, id,
+    );
+  }
   // Best-effort: bill on completion (served or non-est/failed). Must never
   // break the serve write, so failures are swallowed by generateServeCharges.
   if (newStatus === 'served' || newStatus === 'failed') {
