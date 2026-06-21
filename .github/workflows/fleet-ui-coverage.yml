@@ -31,10 +31,16 @@ jobs:
           # migrations/. So scope the guard: it only fails when the PR also
           # touches fleet-UI files. A pure backend mig PR (e.g. fleet-ref,
           # fleetio PR 2) gets a green pass-through.
+          # Scope: only client/src/pages/fleet/** counts as fleet-UI. The
+          # workflow's trigger `paths:` list includes src/routes/fleet.ts and
+          # migrations/** so endpoint-coverage can see backend changes, but
+          # backend-only PRs (Fleet.io PR 3 schema parity, future fleet-ref
+          # work, etc.) legitimately edit src/routes/fleet.ts AND migrations/**
+          # and must not be blocked by this guard.
           touches_fleet_ui=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- \
-            'client/src/pages/fleet/**' 'src/routes/fleet.ts' | head -1 | tr -d '[:space:]')
+            'client/src/pages/fleet/**' | head -1 | tr -d '[:space:]')
           if [ -z "$touches_fleet_ui" ]; then
-            echo "OK: PR does not touch fleet-UI files; DDL guard does not apply."
+            echo "OK: PR does not touch fleet-UI files (client/src/pages/fleet/**); DDL guard does not apply."
             exit 0
           fi
           new_migrations=$(git diff --name-only --diff-filter=A "$BASE_SHA...$HEAD_SHA" -- 'migrations/*.sql' | tr -d '[:space:]')
