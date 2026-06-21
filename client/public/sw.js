@@ -691,6 +691,29 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1005: Picker rollout audit follow-up — adversarial verification of v1004
+//        caught 3 surfaces the first audit missed plus 1 picker bug:
+//
+//        Missed surfaces:
+//          • BillingFormModal.client_id   (numeric input → new ClientPicker
+//            via /clients?status=active, filters name + contact + phone)
+//          • BillingFormModal.contract_id (numeric input → new ContractPicker
+//            via /billing/contracts?client_id=<picked>, scoped to the picked
+//            client; auto-clears stale selection when client changes)
+//          • TaskFormModal: assigned_to (numeric input → OfficerPicker),
+//            linked_entity_type (free-text → typed <select>),
+//            linked_entity_id (numeric input → polymorphic RecordPicker)
+//
+//        Picker bug:
+//          • PersonPicker's onChange handler didn't setOpen(true) — the other
+//            5 inline pickers do, so typing into PersonPicker after picking
+//            left the dropdown closed until the 300ms debounce fired. Now
+//            consistent with the rest.
+//
+//        After v1004 + v1005, ALL FK-by-ID input surfaces in the React client
+//        are picker-driven (modulo the warrant/citation/arrest fallback inside
+//        RecordPicker, which still types numeric — those are rarer types in
+//        the cross-link modals and can get dedicated pickers in a follow-up).
 // v1004: System-wide search-by-name picker rollout — sweep follow-up to v1003.
 //        Four new pickers (UnitPicker via /dispatch/units, CallPicker via
 //        /dispatch/calls, CasePicker via /cases, plus a polymorphic

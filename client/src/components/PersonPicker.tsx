@@ -143,8 +143,8 @@ export default function PersonPicker({
           ref={inputRef}
           type="text"
           value={query}
-          onChange={(e) => { setQuery(e.target.value); if (value != null) onChange(null); }}
-          onFocus={() => { if (results.length > 0) setOpen(true); }}
+          onChange={(e) => { setQuery(e.target.value); if (value != null) onChange(null); setOpen(true); }}
+          onFocus={() => setOpen(true)}
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
