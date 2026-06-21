@@ -8,7 +8,7 @@ import {
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
   Upload, Building2, ShieldAlert, Megaphone, GraduationCap, CheckCircle,
   DollarSign, Shield, Share2, Swords, Brain, Heart, Bell, Pill, Award, UserPlus,
-  Globe, ScanSearch, Film,
+  Globe, ScanSearch, Film, CalendarDays,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -69,6 +69,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     id: 'serve',
     label: 'Process Service',
     items: [
+      { path: '/serve-intake/scheduler', icon: CalendarDays, label: 'Scheduler' },
       { path: '/serve-intake', icon: Upload, label: 'Serve Intake' },
       { path: '/serve', icon: Briefcase, label: 'Process Server' },
     ],
