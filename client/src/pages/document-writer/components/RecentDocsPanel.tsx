@@ -35,7 +35,7 @@ export default function RecentDocsPanel({ onClose, onOpen, onChange }: Props) {
             </button>
             <button type="button" aria-label={`Remove ${d.title} from recent`} title="Remove from recent"
               onClick={() => { removeRecentDoc(d.id); onChange?.(); }}
-              className="text-rmpg-600 hover:text-red-400 px-1 opacity-0 group-hover:opacity-100">
+              className="text-rmpg-600 hover:text-red-400 px-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
               <Trash2 className="w-3 h-3" />
             </button>
           </div>

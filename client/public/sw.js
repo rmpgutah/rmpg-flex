@@ -691,6 +691,64 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1008: Critical safety + silent-failure sweep. Ultracode forward-looking
+//        audit (4 agents, 53 findings) caught 4 critical + 13 major bugs;
+//        this PR ships the safety-critical and CAD-integrity fixes.
+//
+//        OFFICER SAFETY (useOfficerSafety.ts):
+//          • Welfare check-in (POST /dispatch/welfare/checkin/:unitId) was
+//            using `.catch(() => {})` AFTER optimistically flipping local
+//            state to {lastCheckin: now, missedCount: 0}. If the request
+//            failed (radio dead-spot, transient 5xx, DNS blip), the OFFICER
+//            saw a green ✓ and the dispatcher console heard NOTHING — the
+//            WelfareWatchDO timer kept ticking with no human aware. Now
+//            awaits + rolls back the optimistic flip on failure + sets a
+//            visible lastFailure state for an inline "CHECK-IN FAILED —
+//            RETRY" pill + logs to localStorage.
+//          • Auto-escalate (POST /dispatch/welfare/escalate) had the same
+//            silent swallow — supervisor was never paged on failure. Now
+//            surfaces a persistent banner and writes to the same failure
+//            log so a supervisor can reconstruct missed pages after the
+//            fact.
+//          • Adds rmpg_welfare_failures localStorage key + appendFailureLog
+//            helper. Trimmed to most recent 200 entries.
+//
+//        CAD DATA INTEGRITY (DispatchPage.tsx):
+//          • The inline incident-number editor (lines 3654 + 3668) was
+//            sending body `{ case_number: val }`. The server wrote the
+//            incident value into case_number, the displayed incident_number
+//            never updated, and the operator saw "Linked to incident X"
+//            for an action that silently corrupted the CAD→RMS linkage.
+//            Now sends `{ incident_number: val }`.
+//          • Same editor's blur handler was deliberately /* silent on blur */
+//            and the case_number editor blur (line 3626) too. Operator
+//            tabbed away thinking the write succeeded. Both now surface an
+//            error toast.
+//
+//        SILENT SAVE SWEEP:
+//          • CriminalHistorySection:154 save handler — added addToast on
+//            failure (operator was hitting Save N times wondering why
+//            nothing happened).
+//          • AdminInvoiceTab:275 invoice-notes autosave — added addToast
+//            on failure (billing/audit-trail surface, subpoena-relevant).
+//          • IncidentsPage:344 chain-of-custody — opaque `addToast('Network
+//            error')` discarded the error object; replaced with the actual
+//            err.message so 401 / 409 / 422 surface vs being mistaken for
+//            network blips.
+//
+//        TOUCH / KEYBOARD A11Y (sweep across 23 .tsx files):
+//          • Every `opacity-0 group-hover:opacity-100` wrapper now extends
+//            with `group-focus-within:opacity-100` AND `[@media(hover:none)]
+//            :opacity-100`. Result: on vehicle MDT touchscreens the primary
+//            D/ER/OS/CL/X dispatch buttons (CallCard:617), document-attach
+//            controls (EmailPage, DocumentsPage, CallDocumentsPanel), and
+//            similar hover-gated functional controls are now permanently
+//            visible. On desktop the keyboard user reveals them by Tab focus.
+//
+//        Tests: existing 1504 tests still pass; worker typecheck clean.
+//        No new tests added for useOfficerSafety because the hook composes
+//        with apiFetch + localStorage which the test harness mocks at the
+//        module boundary — would need miniflare-style integration test.
 // v1007: Picker polish + audit-driven fixes — keyboard nav, ARIA, race fix,
 //        and a load-bearing route that was orphaned.
 //

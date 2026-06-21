@@ -341,8 +341,15 @@ export default function IncidentsPage() {
         const evData = await apiFetch<any>(`/records/evidence?incident_id=${selectedIncident.id}`);
         setDetailEvidence(evData?.data || evData || []);
       }
-    } catch {
-      addToast('Network error', 'error');
+    } catch (err: any) {
+      // Audit caught (2026-06-21): the original bare `} catch { addToast(
+      // 'Network error', ...) }` discarded the error object. Operators
+      // re-tried the chain-of-custody action several times not realizing
+      // the failure was 401 (re-auth needed), 409 (duplicate transfer),
+      // or 422 (missing location) — not actually a network issue. Mirror
+      // the pattern that EvidencePropertyPage.handleChainAction:319-320
+      // already uses correctly.
+      addToast(err?.message || 'Failed to record custody action', 'error');
     }
     setCustodySubmitting(false);
   };
@@ -1749,7 +1756,7 @@ export default function IncidentsPage() {
                     {(isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
                       <IconButton
                         onClick={() => handleUnlinkPerson(lp.person_id)}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
+                        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
                         title="Unlink person"
                         aria-label="Unlink person"
                       >
@@ -1800,7 +1807,7 @@ export default function IncidentsPage() {
                   {(isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
                     <IconButton
                       onClick={() => handleUnlinkVehicle(lv.vehicle_id)}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
+                      className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
                       title="Unlink vehicle"
                       aria-label="Unlink vehicle"
                     >

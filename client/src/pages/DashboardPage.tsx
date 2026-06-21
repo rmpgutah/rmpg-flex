@@ -762,7 +762,7 @@ export default function DashboardPage() {
               <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono tabular-nums`} style={{ color: valueColor }}>{count}</div>
               <div className={`${isMobile ? 'text-[11px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide`}>{isMobile ? label : labelFull}</div>
             </div>
-            <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200" aria-hidden="true" />
+            <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity duration-200" aria-hidden="true" />
           </div>
         ))}
       </div>
@@ -1020,7 +1020,7 @@ export default function DashboardPage() {
                     <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono tabular-nums`} style={{ color: valueColor }}>{count}</div>
                     <div className={`${isMobile ? 'text-[11px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide`}>{isMobile ? label : labelFull}</div>
                   </div>
-                  <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200" aria-hidden="true" />
+                  <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity duration-200" aria-hidden="true" />
                 </div>
               ))}
             </div>

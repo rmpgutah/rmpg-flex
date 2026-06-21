@@ -2118,7 +2118,7 @@ export default function ForensicLabPage() {
                           {(c.exhibit_count ?? 0) > 0 && (
                             <span className="text-[9px] font-mono tabular-nums">{c.exhibit_count} exhibits</span>
                           )}
-                          <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity" />
                         </div>
                       </div>
                     </div>

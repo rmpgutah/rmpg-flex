@@ -612,9 +612,18 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         </div>
       )}
 
-      {/* 42: Quick Status Advance Buttons with smoother reveal */}
+      {/* 42: Quick Status Advance Buttons.
+           ORIGINAL: only `opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100`. That made the
+           primary call-lifecycle action (D/ER/OS/CL/X) UNREACHABLE on:
+             • Vehicle MDT touchscreens (no hover event)
+             • Keyboard navigation (Tab focus doesn't trigger :hover)
+             • Screen readers (button is rendered but invisible)
+           Now reveal on hover OR focus-within OR on any pointer device
+           that has no hover capability (mobile / touch tablets). On touch
+           devices the buttons are permanently visible because there's no
+           way to discover them otherwise. */}
       {onStatusChange && !['closed', 'cancelled', 'archived'].includes(call.status) && (
-        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-0.5 z-10"
+        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all duration-200 flex gap-0.5 z-10"
           onClick={(e) => e.stopPropagation()}
           style={{ WebkitBackdropFilter: 'blur(2px)', backdropFilter: 'blur(2px)' }}
         >

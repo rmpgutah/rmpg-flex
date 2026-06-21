@@ -1024,7 +1024,7 @@ export default function CommunicationsPage() {
                                   {msg.from_user_id === currentUserId && (
                                     <button type="button"
                                       onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg.id); }}
-                                      className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-500 hover:text-red-400 transition-all"
+                                      className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-500 hover:text-red-400 transition-all"
                                       title="Delete message"
                                     >
                                       <Trash2 className="w-3 h-3" />

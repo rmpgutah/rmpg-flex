@@ -483,7 +483,7 @@ export default function IpedPage() {
                     </div>
                     <button type="button"
                       onClick={() => handleRemoveHashSet(hs.name)}
-                      className="p-1 rounded-sm text-rmpg-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all"
+                      className="p-1 rounded-sm text-rmpg-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
                       title="Remove hash set"
                     >
                       <Trash2 size={12} />

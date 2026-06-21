@@ -524,7 +524,7 @@ export default function DocumentsPage() {
                     {!folder.child_count && !folder.file_count ? 'Empty' : ''}
                   </span>
                 </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                   {isAdmin && (
                     <>
                       <button type="button" onClick={() => { setRenamingFolder(folder); setRenameValue(folder.name); }}
@@ -566,7 +566,7 @@ export default function DocumentsPage() {
                 <span className="text-[10px] text-rmpg-200 text-center truncate w-full font-medium">{file.original_name}</span>
                 <span className="text-[8px] text-rmpg-500">{formatSize(file.file_size)}</span>
                 {/* Hover actions */}
-                <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                   <button type="button" onClick={() => setInfoFile(file)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-amber-400"><Info className="w-3 h-3" /></button>
                   {file.mime_type === 'application/pdf' && (
                     <button type="button"

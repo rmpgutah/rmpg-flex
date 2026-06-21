@@ -1071,7 +1071,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                     title="Click to enlarge"
                   >
                     <img src={authedImageUrl(selectedPerson.id_image_url)} alt="ID" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex items-center justify-center">
                       <Eye className="w-4 h-4 text-rmpg-100" />
                     </div>
                   </div>

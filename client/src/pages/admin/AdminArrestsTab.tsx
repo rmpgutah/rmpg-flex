@@ -639,7 +639,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                   <button type="button" onClick={() => handleEdit(rec)} className="p-1 text-rmpg-500 hover:text-brand-400" title="Edit">
                     <Edit2 className="w-3 h-3" />
                   </button>

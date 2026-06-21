@@ -3609,7 +3609,9 @@ export default function DispatchPage() {
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Case number set to ${val}` : 'Case number cleared', 'success');
-                            } catch { addToast('Failed to update case number', 'error'); }
+                            } catch (err: any) {
+                              addToast(err?.message || 'Failed to update case number', 'error');
+                            }
                             setEditingTimestamp(null);
                           }
                           if (e.key === 'Escape') setEditingTimestamp(null);
@@ -3623,7 +3625,13 @@ export default function DispatchPage() {
                               const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
-                            } catch { /* silent on blur */ }
+                            } catch (err: any) {
+                              // Was deliberately /* silent on blur */ but an
+                              // unreported failure on a documented audit-trail
+                              // field meant the operator believed the value
+                              // persisted when in fact it didn't.
+                              addToast(err?.message || 'Failed to update case number — change not persisted', 'error');
+                            }
                           }
                           setEditingTimestamp(null);
                         }}
@@ -3651,12 +3659,21 @@ export default function DispatchPage() {
                           if (e.key === 'Enter') {
                             const val = (e.target as HTMLInputElement).value.trim();
                             try {
-                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
+                              // BUG FIX (2026-06-21 audit): this editor is the
+                              // incident_number field but the body used to send
+                              // { case_number: val }. The server overwrote
+                              // case_number with the incident value, the displayed
+                              // incident_number never updated, and the operator
+                              // saw a green "Linked to incident X" toast for an
+                              // action that silently corrupted the CAD-RMS link.
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ incident_number: val || null }) });
                               const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
-                            } catch { addToast('Failed to update incident link', 'error'); }
+                            } catch (err: any) {
+                              addToast(err?.message || 'Failed to update incident link', 'error');
+                            }
                             setEditingTimestamp(null);
                           }
                           if (e.key === 'Escape') setEditingTimestamp(null);
@@ -3665,12 +3682,18 @@ export default function DispatchPage() {
                           const val = e.target.value.trim();
                           if (val !== ((selectedCall as any).incident_number || '')) {
                             try {
-                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ incident_number: val || null }) });
                               const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
-                            } catch { /* silent on blur */ }
+                            } catch (err: any) {
+                              // Was deliberately /* silent on blur */ — but a
+                              // silent failure on a documented audit-trail
+                              // field meant the operator tabbed away thinking
+                              // the value persisted. Audit caught this.
+                              addToast(err?.message || 'Failed to update incident link — change not persisted', 'error');
+                            }
                           }
                           setEditingTimestamp(null);
                         }}
@@ -5788,7 +5811,7 @@ export default function DispatchPage() {
                           ) : (
                             <>
                               <span className="text-rmpg-200 flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
-                              <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
+                              <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 flex items-center gap-0.5 transition-opacity">
                                 <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[#d4a017] text-[var(--spm-text-muted)] transition-colors" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
                                 </button>
@@ -5849,7 +5872,7 @@ export default function DispatchPage() {
                           <>
                             <span className="text-rmpg-200 leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[var(--spm-text-muted)] text-[8px] ml-1">(edited)</span>}</span>
                             {(canEditNote(note) || isAdminOrManager) && (
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
+                              <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex gap-0.5 shrink-0">
                                 {canEditNote(note) && (
                                   <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-[var(--spm-text)] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
                                 )}

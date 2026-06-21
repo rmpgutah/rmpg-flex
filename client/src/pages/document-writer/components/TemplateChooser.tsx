@@ -233,7 +233,7 @@ export default function TemplateChooser({ onSelect }: Props) {
                     </button>
                     <button type="button" aria-label={`Delete template ${t.name}`} title="Delete saved template"
                       onClick={() => handleDeleteCustom(t.name)}
-                      className="absolute top-1 right-1 p-1 text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100">
+                      className="absolute top-1 right-1 p-1 text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
@@ -261,7 +261,7 @@ export default function TemplateChooser({ onSelect }: Props) {
                     aria-label={isStarred ? `Unstar template ${t.name}` : `Star template ${t.name}`}
                     title={isStarred ? 'Unstar' : 'Star'}
                     onClick={() => toggleStar(t.id)}
-                    className={`absolute top-1 right-1 p-1 transition-colors ${isStarred ? 'text-[#d4a017]' : 'text-rmpg-600 opacity-0 group-hover:opacity-100 hover:text-[#d4a017]'}`}
+                    className={`absolute top-1 right-1 p-1 transition-colors ${isStarred ? 'text-[#d4a017]' : 'text-rmpg-600 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 hover:text-[#d4a017]'}`}
                   >
                     <StarIcon className="w-3 h-3" fill={isStarred ? '#d4a017' : 'none'} />
                   </button>
