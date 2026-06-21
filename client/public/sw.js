@@ -691,6 +691,20 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1017: FlexCam close-query honesty (Plan E — surface 'failed' on
+//        the request the moment the cron concludes a 0-downloaded
+//        trip instead of marking it 'partial' and waiting 6h for the
+//        drain to flip it. Trip 94 repair exposed this gap: 5 min
+//        after reset the cron correctly Plan-C-early-abandoned all
+//        23 chunks to 'missing', but the close-query then marked the
+//        request 'partial' (which reads as "some footage retrieved"
+//        when there is none). New CASE:
+//          chunks_done<=0 AND any missing → 'failed'  (NEW)
+//          chunks_done>0  AND any missing → 'partial'
+//          else                            → 'complete'
+//        Pure helper resolveCloseStatus in src/utils/footage/closeStatus.ts
+//        + 4 unit tests in tests/footageCloseStatus.test.ts.
+//
 // v1016: FlexCam download integrity (Plan D — ensures every chunk
 //        that lands in 'downloaded' state is proper, in order, and
 //        not repeated/corrupted bytes). Every download now buffers
