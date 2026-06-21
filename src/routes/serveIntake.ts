@@ -64,6 +64,8 @@ import {
   type AttemptWindow,
 } from '../utils/serveDiligencePlanner';
 import { persistAttemptSchedule, appendAttemptSlot } from '../utils/serveAttemptScheduler';
+import { broadcastAll } from './ws';
+import { recordAudit } from '../utils/auditLog';
 
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
@@ -97,6 +99,17 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
     try {
       if (!(await columnExists(db, 'serve_queue', name))) {
         await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
+      }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+  }
+
+  // PR 2: updated_at for optimistic concurrency on PATCH /schedule/:slotId
+  for (const [name, type] of [
+    ['updated_at', "TEXT NOT NULL DEFAULT (datetime('now'))"],
+  ] as const) {
+    try {
+      if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
+        await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
       }
     } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
   }
@@ -1166,6 +1179,135 @@ si.get('/schedule', async (c) => {
     return { date, weekday: DAYS[dow], slots };
   });
   return c.json({ schedule, generated_at: now });
+});
+
+// ── PATCH /schedule/:slotId — manual reschedule (drag-drop or full-page edit) ─
+si.patch('/schedule/:slotId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+
+  const slotId = parseInt(c.req.param('slotId'), 10);
+  if (isNaN(slotId)) return c.json({ error: 'Invalid slot id' }, 400);
+
+  const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
+
+  const body = await c.req.json<any>().catch(() => ({}));
+  const force = c.req.query('force') === '1';
+  const userId = (c.get('userId') as number | undefined) ?? null;
+  const ifUnmodifiedSince = c.req.header('If-Unmodified-Since') ?? body.if_unmodified_since ?? null;
+
+  const { detectSlotOverlap, isStaleUpdate, normalizeWindow } = await import('../utils/serveScheduleEdit');
+
+  // Read the slot being edited.
+  const current = await queryFirst<{
+    id: number; queue_id: number; officer_id: number | null;
+    scheduled_date: string; window_start: string; window_end: string;
+    updated_at: string;
+  }>(
+    db,
+    `SELECT id, queue_id, officer_id, scheduled_date, window_start, window_end, updated_at
+       FROM serve_attempt_schedules WHERE id = ?`,
+    slotId,
+  );
+  if (!current) return c.json({ error: 'Not found' }, 404);
+
+  if (isStaleUpdate(ifUnmodifiedSince, current.updated_at)) {
+    return c.json({ error: 'stale', current }, 409);
+  }
+
+  // Build the candidate window from body + current row defaults.
+  let candidateWindow: { window_start: string; window_end: string };
+  try {
+    candidateWindow = normalizeWindow(
+      String(body.window_start ?? current.window_start),
+      String(body.window_end ?? current.window_end),
+    );
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+  const candidateDate = typeof body.scheduled_date === 'string' && body.scheduled_date
+    ? body.scheduled_date
+    : current.scheduled_date;
+  const candidateOfficer = body.officer_id === undefined ? current.officer_id : body.officer_id;
+
+  if (!force) {
+    // Pull all other slots on the candidate (officer, date) for overlap detection.
+    const peers = await query<{
+      id: number; queue_id: number; officer_id: number | null;
+      scheduled_date: string; window_start: string; window_end: string;
+      updated_at: string;
+    }>(
+      db,
+      `SELECT id, queue_id, officer_id, scheduled_date, window_start, window_end, updated_at
+         FROM serve_attempt_schedules
+        WHERE scheduled_date = ? AND officer_id IS ?`,
+      candidateDate, candidateOfficer,
+    );
+    const conflicts = detectSlotOverlap(
+      peers,
+      { officer_id: candidateOfficer, scheduled_date: candidateDate, ...candidateWindow },
+      slotId,
+    );
+    if (conflicts.length) {
+      return c.json({ error: 'overlap', conflicts }, 409);
+    }
+  }
+
+  // Apply the update. updated_at refreshes so the next read picks up the new value.
+  await execute(
+    db,
+    `UPDATE serve_attempt_schedules
+        SET scheduled_date = ?, window_start = ?, window_end = ?,
+            officer_id = ?, manually_moved = 1, moved_by_user_id = ?,
+            moved_at = datetime('now'), notified = 0,
+            updated_at = datetime('now')
+      WHERE id = ?`,
+    candidateDate, candidateWindow.window_start, candidateWindow.window_end,
+    candidateOfficer, userId, slotId,
+  );
+
+  // If the officer changed, propagate to serve_queue so future attempts route correctly.
+  if (candidateOfficer !== current.officer_id) {
+    await execute(
+      db,
+      `UPDATE serve_queue SET officer_id = ? WHERE id = ?`,
+      candidateOfficer, current.queue_id,
+    );
+  }
+
+  // Audit (force = supervisor flag for visibility).
+  await recordAudit(c, {
+    action: force ? 'serve_schedule.force_overlap' : 'serve_schedule.move',
+    entityType: 'serve_schedule_slot',
+    entityId: slotId,
+    details: {
+      from: { scheduled_date: current.scheduled_date, window: `${current.window_start}-${current.window_end}`, officer_id: current.officer_id },
+      to: { scheduled_date: candidateDate, window: `${candidateWindow.window_start}-${candidateWindow.window_end}`, officer_id: candidateOfficer },
+      reason: typeof body.reason === 'string' ? body.reason : null,
+    },
+  });
+
+  // Broadcast — clients refetch via useLiveSync.
+  broadcastAll('data_changed', {
+    module: 'serve-schedule',
+    entity: 'slot',
+    action: 'updated',
+    slot_id: slotId,
+    queue_id: current.queue_id,
+  });
+
+  const updated = await queryFirst(
+    db,
+    `SELECT id, queue_id, attempt_number, scheduled_date, window_start, window_end,
+            window_label, notify_at, notify_before_secs, notified, dismissed,
+            officer_id, manually_moved, moved_by_user_id, moved_at,
+            auto_replan_source, updated_at
+       FROM serve_attempt_schedules WHERE id = ?`,
+    slotId,
+  );
+
+  return c.json({ slot: updated });
 });
 
 // ── DELETE /schedule/:slotId — dismiss a slot ────────────────
