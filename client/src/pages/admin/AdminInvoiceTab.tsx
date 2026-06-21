@@ -12,6 +12,7 @@ import type {
   Invoice, InvoiceDetail, InvoiceLineItem, Payment, InvoiceStats, Client,
 } from '../../types';
 import DocumentViewer from '../../components/DocumentViewer';
+import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
@@ -66,6 +67,7 @@ function formatCurrency(n: number | undefined | null): string {
 // ============================================================
 
 export default function AdminInvoiceTab({ clientId, clientName, client }: AdminInvoiceTabProps) {
+  const { addToast } = useToast();
   const [view, setView] = useState<'list' | 'detail' | 'create'>('list');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceDetail | null>(null);
@@ -272,7 +274,15 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         method: 'PUT',
         body: JSON.stringify({ internal_notes: notes }),
       });
-    } catch (e) { console.error('Failed to save invoice notes:', e); }
+    } catch (e: any) {
+      // Audit caught (2026-06-21): autosave handler for collection notes /
+      // payment-disputed-reason was silently swallowing failures. Notes
+      // are a billing audit-trail surface — subpoena-relevant — so a
+      // silent failure here is high-risk. Surface the error so the
+      // operator knows to retry.
+      console.error('Failed to save invoice notes:', e);
+      addToast(e?.message || 'Failed to save invoice notes — retry', 'error');
+    }
   };
 
   // ─── Render Stats Bar ─────────────────────────────

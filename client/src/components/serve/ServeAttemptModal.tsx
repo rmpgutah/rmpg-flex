@@ -479,7 +479,7 @@ export default function ServeAttemptModal({
                       <img src={photo.url} alt="Attempt photo" className="w-full h-full object-cover" />
                       <button type="button"
                         onClick={() => removePhoto(photo.id)}
-                        className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
                       >
                         <Trash2 className="w-2.5 h-2.5 text-rmpg-100" />
                       </button>

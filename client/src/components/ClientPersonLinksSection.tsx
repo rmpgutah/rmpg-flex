@@ -149,7 +149,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
               <button
                 type="button"
                 onClick={() => handleRemove(link.id)}
-                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
                 title="Remove link"
               >
                 <Trash2 className="w-3 h-3" />
@@ -261,7 +261,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
               <button
                 type="button"
                 onClick={() => handleRemove(link.id)}
-                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
                 title="Remove link"
               >
                 <Trash2 className="w-3 h-3" />

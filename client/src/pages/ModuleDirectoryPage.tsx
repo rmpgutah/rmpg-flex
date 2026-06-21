@@ -679,7 +679,7 @@ export default function ModuleDirectoryPage() {
         </button>
 
         <div
-          className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
         >
           {canPopOut && (
             <button

@@ -538,7 +538,7 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
                 <Icon className="w-3 h-3 text-brand-400" />
                 <span>{getLinkLabel(link)}</span>
                 {link.link_type && <span className="text-[8px] text-rmpg-600 capitalize">{link.link_type}</span>}
-                <button type="button" onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
+                <button type="button" onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
                   <X className="w-2.5 h-2.5" />
                 </button>
               </div>
@@ -633,7 +633,7 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
               <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{email.subject || '(No subject)'}</span>
               {email.status === 'pending' && (
                 <button type="button" onClick={() => handleCancel(email.id)}
-                  className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity" title="Cancel">
+                  className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity" title="Cancel">
                   <X className="w-3 h-3" />
                 </button>
               )}
@@ -1313,7 +1313,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                       style={{ backgroundColor: fileColor + '15', color: fileColor }}>{ext.slice(0, 3)}</div>
                     <span className="truncate max-w-[100px]">{att.name}</span>
                     <span className="text-rmpg-600 text-[9px]">{formatSize(att.size)}</span>
-                    <button type="button" onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
                   </div>
                 );
               })}
@@ -2959,7 +2959,7 @@ export default function EmailPage() {
                           </div>
 
                           {/* Hover quick actions */}
-                          <div className="flex-shrink-0 flex flex-col items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex-shrink-0 flex flex-col items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                             <button type="button" onClick={e => { e.stopPropagation(); handleArchive(msg); }} className="p-1 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
                             <button type="button" onClick={e => { e.stopPropagation(); handleToggleRead(msg); }} className="p-1 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm" title={msg.isRead ? 'Mark unread' : 'Mark read'}>
                               {msg.isRead ? <MailOpen className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}

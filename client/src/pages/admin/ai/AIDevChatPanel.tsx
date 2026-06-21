@@ -509,7 +509,7 @@ export default function AIDevChatPanel() {
               </div>
               <button
                 onClick={(e) => deleteSession(s.session_id, e)}
-                className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-all"
+                className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-all"
               >
                 <Trash2 className="w-3 h-3" />
               </button>
