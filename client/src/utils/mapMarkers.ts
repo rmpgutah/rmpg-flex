@@ -166,10 +166,26 @@ export function buildCallMarker(opts: CallMarkerOpts): HTMLElement {
   return el;
 }
 
+export interface DotHalo {
+  /** Halo ring color (e.g. red for an ALPR plate hit, gold for a watchlist hit). */
+  color: string;
+  /** Border width in px. Default 2. */
+  width?: number;
+  /** Drop-shadow spread in px. Default 8. */
+  shadowSpread?: number;
+}
+
 export interface DotMarkerOpts {
   color?: string;
   size?: number;
   pulse?: boolean;
+  /**
+   * Optional outer halo — replaces the default 1px black border + 4px glow
+   * with a colored ring + larger spread, e.g. for ALPR plate hits or
+   * watchlist matches. Additive: callers that don't pass `halo` get the
+   * existing styling, so this is signature-safe for every prior consumer.
+   */
+  halo?: DotHalo;
 }
 
 /** Simple colored dot for sightings / track points. */
@@ -177,14 +193,29 @@ export function buildDotMarker(opts: DotMarkerOpts): HTMLElement {
   const color = opts.color || GOLD;
   const size = opts.size ?? 10;
   const el = document.createElement('div');
+  const halo = opts.halo;
   applyStyles(el, {
     width: `${size}px`,
     height: `${size}px`,
     'border-radius': '50%',
     background: color,
-    border: '1px solid #000000',
-    'box-shadow': `0 0 4px ${color}`,
+    border: halo ? `${halo.width ?? 2}px solid ${halo.color}` : '1px solid #000000',
+    'box-shadow': halo
+      ? `0 0 ${halo.shadowSpread ?? 8}px 2px ${halo.color}`
+      : `0 0 4px ${color}`,
   });
   if (opts.pulse) el.style.animation = 'rmpg-recovery-pulse 1.4s ease-in-out infinite';
   return el;
 }
+
+/**
+ * Canonical status colors for dispatch UI status pills + map markers. Mapbox
+ * layer paint properties don't accept CSS variables, so the named source
+ * lives here in JS — one place to change every status hue.
+ */
+export const STATUS_COLORS = {
+  online: GREEN,      // #22c55e
+  warning: GOLD,      // #d4a017 (brand)
+  caution: '#f59e0b', // amber-500
+  offline: NEUTRAL,   // #888888
+} as const;

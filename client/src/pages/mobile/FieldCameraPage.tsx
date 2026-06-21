@@ -382,7 +382,7 @@ export default function FieldCameraPage() {
   const clearScan = useCallback(() => { setScan(null); discard(); }, [discard]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+    <div className="fixed inset-0 z-50 bg-black flex flex-col safe-pt safe-pb safe-px">
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between px-3 py-2 bg-surface-sunken border-b border-border-default">
         <button
@@ -448,7 +448,7 @@ export default function FieldCameraPage() {
       <div className="relative flex-1 overflow-hidden">
         {/* Patrol Scan: critical-hit banner — full-width, dismissable */}
         {patrol.lastHit && (
-          <div className="absolute top-0 left-0 right-0 z-20 bg-red-700 text-rmpg-100 px-3 py-2 flex items-start gap-2 shadow-lg">
+          <div className="absolute top-0 left-0 right-0 z-20 bg-red-700 text-rmpg-100 px-3 py-2 flex items-start gap-2 shadow-lg safe-pt safe-px">
             <AlertTriangle className="w-5 h-5 shrink-0 mt-px animate-pulse" />
             <div className="flex-1 min-w-0">
               <div className="text-[10px] font-bold uppercase tracking-widest">Patrol Hit</div>
@@ -461,7 +461,7 @@ export default function FieldCameraPage() {
         )}
         {/* Patrol Scan: live read log along the bottom */}
         {patrolRunning && patrol.log.length > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 z-10 max-h-[42%] overflow-y-auto bg-black/80 border-t border-border-default divide-y divide-[#161616]">
+          <div className="absolute bottom-0 left-0 right-0 z-10 max-h-[42%] overflow-y-auto bg-black/80 border-t border-border-default divide-y divide-[#161616] safe-pb safe-px">
             {patrol.log.map((e) => (
               <div
                 key={e.key}
@@ -565,14 +565,14 @@ export default function FieldCameraPage() {
             {/* eslint-disable-next-line jsx-a11y/media-has-caption -- live viewfinder, no audio track */}
             <video ref={videoRef} playsInline muted className="absolute inset-0 w-full h-full object-cover" />
             {/* HUD — mirrors what the stamp will burn in */}
-            <div className="absolute top-0 left-0 right-0 px-3 py-2 flex items-start justify-between pointer-events-none">
+            <div className="absolute top-0 left-0 right-0 px-3 py-2 flex items-start justify-between pointer-events-none safe-pt safe-px">
               <div className="bg-black/55 px-2 py-1 font-mono text-[11px] text-rmpg-100">{clock}</div>
               <div className={`bg-black/55 px-2 py-1 font-mono text-[11px] flex items-center gap-1 ${gps ? 'text-[#d4a017]' : 'text-red-400'}`}>
                 <MapPin className="w-3 h-3" />
                 {gps ? `±${Math.round(gps.accuracy)}m` : 'NO GPS'}
               </div>
             </div>
-            <div className="absolute bottom-0 left-0 right-0 px-3 pb-2 pointer-events-none">
+            <div className="absolute bottom-0 left-0 right-0 px-3 pb-2 pointer-events-none safe-pb safe-px">
               <div className="bg-black/55 px-2 py-1 inline-block font-mono text-[11px] text-rmpg-100">
                 {user?.full_name || user?.username || '—'}
               </div>

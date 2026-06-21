@@ -1903,7 +1903,12 @@ export default function MapPage() {
               // Fetch full property details (includes recent calls, contacts, schedules)
               try {
                 const details = await apiFetch<any>(`/records/properties/${prop.id}`);
+                // Race guard + teardown guard: bail if the user clicked another
+                // property mid-flight OR if the map itself unmounted/recovered
+                // (a WebGL context loss + rebuild swaps `mapInstanceRef.current`,
+                // so an in-flight setHTML against the old infoWindow could fail).
                 if (lastClickedPropRef.current !== propId) return;
+                if (!mapInstanceRef.current) return;
                 const recentCalls = details.recentCalls || [];
                 const schedules = details.todaySchedules || [];
                 const linkedPersons: any[] = details.linkedPersons || [];
