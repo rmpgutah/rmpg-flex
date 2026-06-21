@@ -15,7 +15,7 @@ import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregiste
 import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildUnitMarker, buildCallMarker, isValidLngLat } from '../utils/mapMarkers';
+import { buildUnitMarker, buildCallMarker, isValidLngLat, STATUS_COLORS } from '../utils/mapMarkers';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { apiFetch } from '../hooks/useApi';
@@ -479,13 +479,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
             padding: '2px 6px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-base)',
           }}>
-            <span style={{ fontSize: 8, color: '#888888', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+            <span style={{ fontSize: 8, color: STATUS_COLORS.offline, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               {activeRoute.unitCallSign}→{activeRoute.callNumber}
             </span>
-            <span style={{ fontSize: 13, color: '#22c55e', fontWeight: 900, letterSpacing: '0.02em' }}>
+            <span style={{ fontSize: 13, color: STATUS_COLORS.online, fontWeight: 900, letterSpacing: '0.02em' }}>
               {activeRoute.eta} <span style={{ fontSize: 8, color: '#16a34a' }}>ETA</span>
             </span>
-            <span style={{ fontSize: 12, color: '#d4a017', fontWeight: 900 }}>{activeRoute.distance}</span>
+            <span style={{ fontSize: 12, color: STATUS_COLORS.warning, fontWeight: 900 }}>{activeRoute.distance}</span>
           </div>
           {/* Current direction, one at a time */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px' }}>
@@ -526,11 +526,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.9)', border: '1px solid #d4a01755',
+            background: 'rgba(0,0,0,0.9)', border: `1px solid ${STATUS_COLORS.warning}55`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
           }}>
-            <RefreshCw style={{ width: 8, height: 8, color: '#d4a017' }} className="animate-spin" />
-            <span style={{ fontSize: 8, color: '#d4a017', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+            <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.warning }} className="animate-spin" />
+            <span style={{ fontSize: 8, color: STATUS_COLORS.warning, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               RECONNECTING
             </span>
           </div>
@@ -544,11 +544,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.85)', border: '1px solid #f59e0b40',
+            background: 'rgba(0,0,0,0.85)', border: `1px solid ${STATUS_COLORS.caution}40`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
           }}>
-            <RefreshCw style={{ width: 8, height: 8, color: '#f59e0b' }} className="animate-spin" />
-            <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+            <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.caution }} className="animate-spin" />
+            <span style={{ fontSize: 8, color: STATUS_COLORS.caution, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               OFFLINE
             </span>
           </div>

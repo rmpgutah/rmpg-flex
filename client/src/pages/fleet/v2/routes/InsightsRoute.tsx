@@ -889,8 +889,12 @@ function FleetMapCard() {
         box-shadow: 0 0 4px rgba(0,0,0,0.6);
       `;
       const label = v.vehicle_number ?? v.vehicle_name ?? `#${v.id}`;
+      // Popup color inherits via `currentColor` instead of a hardcoded hex —
+      // if the popup ever renders on a light-themed surface (or if the brand
+      // palette shifts), the text follows the surrounding theme tokens
+      // instead of staying frozen at `#0d1722`.
       const popup = new mapboxgl.Popup({ offset: 12, closeButton: false }).setHTML(`
-        <div style="font: 11px monospace; color: #0d1722;">
+        <div class="rmpg-fleet-popup" style="font: 11px monospace; color: currentColor;">
           <div style="font-weight: 600;">${escapeHtml(label)}</div>
           <div>readiness: <strong>${v.readiness}</strong></div>
           ${v.miles_to_pm != null ? `<div>miles to PM: ${v.miles_to_pm.toLocaleString()}</div>` : ''}
