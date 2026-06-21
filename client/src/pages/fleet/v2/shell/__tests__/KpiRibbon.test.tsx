@@ -17,17 +17,30 @@ beforeEach(() => { vi.unstubAllGlobals(); });
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('<KpiRibbon>', () => {
-  it('renders 5 KPI cells with values from the 2 endpoints', async () => {
+  it('renders cells against the real /api/fleet/analytics shape (status_breakdown + fleet_summary + cost_per_mile_ranking)', async () => {
     stubFetch({
-      '/api/fleet/analytics': { in_service: 15, in_maintenance: 2, monthly_fuel_spend_usd: 4321.5, monthly_cost_per_mile_usd: 0.42 },
+      '/api/fleet/analytics': {
+        status_breakdown: [
+          { status: 'in_service', count: 15 },
+          { status: 'maintenance', count: 2 },
+          { status: 'out_of_service', count: 1 },
+        ],
+        fleet_summary: { total_fuel_cost: 4321.5 },
+        cost_per_mile_ranking: [
+          { vehicle_id: 1, cost_per_mile: 0.42 },
+          { vehicle_id: 2, cost_per_mile: 0.50 },
+          { vehicle_id: 3, cost_per_mile: 0.34 },
+        ],
+      },
       '/api/fleet/overdue-inspections': { alerts: [{ id: 1 }, { id: 2 }, { id: 3 }] },
     });
     render(<KpiRibbon />);
     await waitFor(() => expect(screen.getByText(/in service/i)).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByText(/15/)).toBeInTheDocument());
-    expect(screen.getByText(/^2$/)).toBeInTheDocument();
-    expect(screen.getByText(/^3$/)).toBeInTheDocument();
-    expect(screen.getByText(/\$4,321/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/15/)).toBeInTheDocument(), { timeout: 3000 });
+    expect(screen.getByText(/^2$/)).toBeInTheDocument();          // maintenance
+    expect(screen.getByText(/^3$/)).toBeInTheDocument();          // overdue PMs (alerts.length)
+    expect(screen.getByText(/\$4,321/)).toBeInTheDocument();      // fuel period total
+    // Avg cost-per-mile = (0.42 + 0.50 + 0.34) / 3 = 0.42 → "$0.42"
     expect(screen.getByText(/\$0\.42/)).toBeInTheDocument();
   });
 

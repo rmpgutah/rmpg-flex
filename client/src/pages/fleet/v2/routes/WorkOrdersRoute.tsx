@@ -73,8 +73,16 @@ export function WorkOrdersRoute() {
   useEffect(() => { fetchRows(); }, [fetchRows]);
 
   useEffect(() => {
-    apiFetch<VehicleStub[]>('/fleet')
-      .then((r) => setVehicles(Array.isArray(r) ? r : []))
+    // /api/fleet returns { data, pagination } — unwrap.
+    apiFetch<VehicleStub[] | { data: VehicleStub[] }>('/fleet?limit=500')
+      .then((r) => {
+        const arr = Array.isArray(r)
+          ? r
+          : (r && Array.isArray((r as { data?: VehicleStub[] }).data))
+            ? (r as { data: VehicleStub[] }).data
+            : [];
+        setVehicles(arr);
+      })
       .catch(() => setVehicles([]));
   }, []);
 

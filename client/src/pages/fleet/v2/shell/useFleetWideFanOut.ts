@@ -35,10 +35,15 @@ export function useFleetWideFanOut<T>(
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<VehicleStub[]>('/fleet')
+    // /api/fleet returns { data, pagination } — unwrap.
+    apiFetch<VehicleStub[] | { data: VehicleStub[] }>('/fleet?limit=500')
       .then((vlist) => {
         if (cancelled) return;
-        const list = Array.isArray(vlist) ? vlist : [];
+        const list = Array.isArray(vlist)
+          ? vlist
+          : (vlist && Array.isArray((vlist as { data?: VehicleStub[] }).data))
+            ? (vlist as { data: VehicleStub[] }).data
+            : [];
         setVehicles(list);
         if (list.length === 0) { setLoading(false); return; }
         Promise.allSettled(list.map((v) => apiFetch<unknown>(pathFor(v.id))))
