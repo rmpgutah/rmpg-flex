@@ -64,6 +64,22 @@ export default function OfficerPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayValue, value]);
 
+  // Self-heal hydration: when the parent passes `value` (an officer FK)
+  // without a `displayValue` (the common case — modal forms hydrate the
+  // numeric FK from an existing record but don't know the officer's
+  // name), look up the officer in the already-loaded list and surface
+  // the name. Without this, editing an existing record would show the
+  // picker BLANK until the operator re-typed, which made every edit
+  // look like "no officer assigned" — high-risk for booking / IA /
+  // QA forms (caught by the 2026-06-21 audit).
+  useEffect(() => {
+    if (value != null && query === '' && officers.length > 0) {
+      const match = officers.find((o) => o.id === value);
+      if (match) setQuery(formatName(match));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, officers]);
+
   // One-shot fetch.
   useEffect(() => {
     let cancelled = false;

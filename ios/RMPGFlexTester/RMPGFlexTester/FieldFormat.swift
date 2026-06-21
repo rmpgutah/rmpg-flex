@@ -22,7 +22,12 @@ enum FieldFormat {
         "bail_amount": "Bail", "bond_amount": "Bond", "issuing_court": "Issuing Court",
         "issuing_agency": "Issuing Agency", "issued_date": "Issued", "expires_at": "Expires",
         "plate_number": "License Plate", "plate_state": "Plate State", "vin": "VIN",
-        "registered_owner": "Registered Owner", "owner_person_id": "Owner (Person #)",
+        // `registered_owner` is the human label; the `owner_person_id` FK is intentionally
+        // omitted from this map so it never renders as "Owner (Person #)" in the UI.
+        // FieldToolkitView already filters `_id`-suffix keys as FK noise; this stays
+        // consistent with that rule. If the field-toolkit needs to surface the owner,
+        // resolve owner_person_id → registered_owner_name server-side.
+        "registered_owner": "Registered Owner",
         "make": "Make", "model": "Model", "year": "Year", "color": "Color",
         "stolen_status": "Stolen Status", "ncic_entry_number": "NCIC Entry #",
         "citation_number": "Citation #", "violation_description": "Violation",

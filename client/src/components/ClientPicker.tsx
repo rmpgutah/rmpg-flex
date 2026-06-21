@@ -55,6 +55,14 @@ export default function ClientPicker({
   }, [displayValue, value]);
 
   useEffect(() => {
+    if (value != null && query === '' && clients.length > 0) {
+      const match = clients.find((c) => c.id === value);
+      if (match) setQuery(formatLabel(match));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, clients]);
+
+  useEffect(() => {
     let cancelled = false;
     setLoading(true);
     const url = activeOnly ? '/clients?status=active' : '/clients';

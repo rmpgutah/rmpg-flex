@@ -691,6 +691,54 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1006: Picker rollout finale — Warrant/Citation/Arrest pickers + self-healing
+//        hydration + mobile PSO auth fix + iOS FK leak. Closes the entire
+//        picker rollout work.
+//
+//        New pickers (close the RecordPicker numeric fallback):
+//          • WarrantPicker  — debounced POST /warrants/search-all; routes
+//            digit-only queries to warrantNumber, anything else to lastName.
+//            Returns local hits only (external warrant indices have no DB id
+//            to FK against).
+//          • CitationPicker — debounced GET /citations/search?q=.
+//          • ArrestPicker   — one-shot GET /jail/inmates?per_page=200,
+//            client-filter on booking_number + first/last name + housing.
+//
+//        Mobile critical fix (audit caught this):
+//          • mobile/MobilePsoCfsPage PSO auth screen used a raw numeric
+//            <input type="number" placeholder="e.g. 1572"> for the
+//            officer's user_id. A typo silently authenticated the wrong
+//            officer to a live call (then drove status updates, narrative,
+//            PSO service entries under that wrong identity). Replaced with
+//            OfficerPicker. The chosen officer's full_name + badge + unit
+//            now render in a confirmation strip BEFORE the "Open Dispatch"
+//            tap so the guard verifies identity pre-auth.
+//
+//        Self-healing hydration (defends every wired edit-mode form
+//        without touching the 6 server endpoints or 6 modal forms):
+//          • Every picker (Person/Officer/Incident/Unit/Call/Case/
+//            Client/Contract/Warrant/Citation/Arrest) now auto-hydrates
+//            its visible name when given a `value` (FK) but no
+//            `displayValue`. Client-filter pickers look the row up in
+//            their already-loaded list; server-search pickers (Person,
+//            Warrant, Citation) fetch the specific record by id.
+//          • Fixes the major hydration gaps surfaced by the audit:
+//            BillingFormModal client+contract, TaskFormModal officer+
+//            linked_entity, JailFormModal officer+incident,
+//            AffairsFormModal officer, DashcamPage unit, QAPage officer.
+//            Editing an existing record now shows the linked name
+//            immediately instead of an empty input that looks like
+//            "no record assigned" (the bug that risked accidental
+//            silent reassignment on every edit).
+//
+//        iOS cosmetic:
+//          • FieldFormat.swift no longer renders owner_person_id as the
+//            user-facing label "Owner (Person #)". Aligns with
+//            FieldToolkitView's existing filter on `_id`-suffix keys
+//            so internal FKs don't leak into the UI.
+//
+//        After this PR, RecordPicker has zero numeric-input fallbacks
+//        — every LinkableRecordType resolves to a name-search picker.
 // v1005: Picker rollout audit follow-up — adversarial verification of v1004
 //        caught 3 surfaces the first audit missed plus 1 picker bug:
 //

@@ -49,6 +49,14 @@ export default function CallPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayValue, value]);
 
+  useEffect(() => {
+    if (value != null && query === '' && calls.length > 0) {
+      const match = calls.find((c) => c.id === value);
+      if (match) setQuery(formatLabel(match));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, calls]);
+
   // /dispatch/calls supports server-side `search` param + paging; ask for a
   // generous page (300) so the recent-calls universe fits in one fetch and
   // we can client-filter without burning network on every keystroke.
