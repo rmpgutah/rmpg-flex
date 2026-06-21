@@ -172,6 +172,11 @@ calls.get('/', async (c) => {
 // POST /dispatch/calls - Create call
   const VALID_PRIORITIES = new Set(['P1', 'P2', 'P3', 'P4']);
   const VALID_PRIORITIES_SQL = ['P1', 'P2', 'P3', 'P4'];
+  // Mirrors the enum used by POST /:id/status (line 973) AND the CHECK
+  // constraint on calls_for_service.status (migrations/0001_initial.sql:84).
+  // 'on_hold' is intentionally absent — hold is an orthogonal flag in
+  // calls_for_service_ext.held_at, not a status value.
+  const VALID_STATUSES = new Set(['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived']);
   calls.post('/', requireRole(...WRITE_ROLES), async (c) => {
     try {
       const db = getDb(c.env);
@@ -784,8 +789,33 @@ calls.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
 
     for (const [key, val] of Object.entries(body)) {
       if (UPDATABLE_CALL_COLUMNS_BASE.has(key)) {
+        let bindVal: unknown;
+        if (key === 'assigned_unit_ids') {
+          bindVal = canonicalUnitIdsJson(val);
+        } else if (key === 'priority' && val != null) {
+          // REGRESSION-GUARD: mirror POST normalization + CHECK enum on
+          // calls_for_service.priority. Without this, a bad value reaches
+          // the bind at line 804 and the CHECK rejects with a raw SQL
+          // error that the catch leaks as a 500. Same posture as the POST
+          // path at line 188.
+          const normalized = String(val).toUpperCase();
+          if (!VALID_PRIORITIES.has(normalized)) {
+            return c.json({ error: `Invalid priority '${val}'. Must be P1, P2, P3, or P4.`, code: 'INVALID_PRIORITY' }, 400);
+          }
+          bindVal = normalized;
+        } else if (key === 'status' && val != null) {
+          // Mirror /:id/status enum check (line 973) so the PUT path cannot
+          // sneak past with hyphenated/uppercase variants that the CHECK rejects.
+          const normalized = String(val).toLowerCase();
+          if (!VALID_STATUSES.has(normalized)) {
+            return c.json({ error: `Invalid status '${val}'. Must be one of: ${[...VALID_STATUSES].join(', ')}.`, code: 'INVALID_STATUS' }, 400);
+          }
+          bindVal = normalized;
+        } else {
+          bindVal = val ?? null;
+        }
         baseUpdates.push(`${key} = ?`);
-        baseParams.push(key === 'assigned_unit_ids' ? canonicalUnitIdsJson(val) : (val ?? null));
+        baseParams.push(bindVal);
       } else if (UPDATABLE_CALL_COLUMNS_EXT.has(key)) {
         extUpdates.push(`${key} = ?`);
         extParams.push(val ?? null);

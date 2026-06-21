@@ -21,7 +21,11 @@ weather.get('/', async (c) => {
   const data = await resp.json();
 
   if (kv) {
-    c.executionCtx.waitUntil(kv.put(CACHE_KEY, JSON.stringify(data), { expirationTtl: CACHE_TTL_SEC }));
+    // Best-effort cache — don't fail the request if KV write errors.
+    // Mirrors the established pattern at src/routes/geocode.ts:175-177.
+    c.executionCtx.waitUntil(
+      kv.put(CACHE_KEY, JSON.stringify(data), { expirationTtl: CACHE_TTL_SEC }).catch(() => {}),
+    );
   }
 
   return c.json(data);

@@ -62,6 +62,11 @@ stubs.get('/bolos/active', (c) => c.json([]));
 
 // GET /api/comms/bolos/check?address=&subject=&vehicle= — active-BOLO match.
 stubs.get('/bolos/check', async (c) => {
+  // The same `stubs` router is also mounted at /api/diagnostics + /api/updates
+  // as auth:'public' (for /ui-trap and /check). authMiddleware only sets
+  // userId on the auth:'required' mounts, so this gate keeps live BOLO data
+  // (subject_description, vehicle_description, priority) from leaking publicly.
+  if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
   try {
     const address = c.req.query('address') || '';
     const subject = c.req.query('subject') || '';
@@ -119,6 +124,9 @@ stubs.post('/emergency-broadcast', async (c) => {
 
 // ── Comms stats (mounted at /api/comms) — D1-backed aggregates ──
 stubs.get('/bolos/stats', async (c) => {
+  // See /bolos/check above — same router is also mounted public, so this
+  // aggregate over the live `bolos` table needs an in-handler gate.
+  if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
   try {
     const db = c.env.DB;
     const [{ totalActive }] = (await db.prepare("SELECT COUNT(*) as totalActive FROM bolos WHERE status = 'active'").all()).results as any[];
@@ -140,6 +148,8 @@ stubs.get('/bolos/stats', async (c) => {
 });
 
 stubs.get('/messages/priority-stats', async (c) => {
+  // See /bolos/check / /bolos/stats — same public-mount leak surface.
+  if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
   try {
     const db = c.env.DB;
     const byPriority = (await db.prepare("SELECT priority, COUNT(*) as total, SUM(CASE WHEN read_at IS NOT NULL THEN 1 ELSE 0 END) as read_count, ROUND(AVG(CASE WHEN read_at IS NOT NULL THEN (julianday(read_at) - julianday(created_at)) * 24 * 60 END), 1) as avg_read_time_minutes FROM messages GROUP BY priority ORDER BY CASE priority WHEN 'emergency' THEN 0 WHEN 'urgent' THEN 1 ELSE 2 END").all()).results as any[];
