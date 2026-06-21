@@ -60,8 +60,10 @@ scripts/            Codegen + one-off ops scripts (D1 schema sync, geography see
 edge/               Python edge runner for Flex Dashcam AI (independent of Worker)
 
 legacy/             ⚠️  RETIRED VPS-era code (read-only, do not import) — see LEGACY.md
-desktop/            Electron wrapper — undecided whether to keep in CF era
-deploy/             ⚠️  DEAD VPS deploy scripts (host decommissioned 2026-06-15) — never invoke
+desktop/            Electron wrapper — kept (in active use)
+                    NOTE: deploy/ (VPS-era deploy scripts) was DELETED in cleanup PR 2.
+                    If a comment or doc still references bash deploy/deploy.sh —
+                    that's the canonical "do not use" recipe; it never lived in CF era.
 ```
 
 ## Deploy
