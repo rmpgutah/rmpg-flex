@@ -209,6 +209,10 @@ import flexcam from './routes/flexcam';
 import coloradoDoc from './routes/coloradoDoc';
 // Server-side Mapbox proxy backing client/src/utils/mapboxServices.ts.
 import mapbox from './routes/mapbox';
+// Mapbox telemetry sink — Mapbox SDK posts usage events to events.mapbox.com,
+// which some operator networks block; redirect those POSTs to a same-origin
+// 204 to kill the console spam without affecting map functionality.
+import mapboxTelemetry from './routes/mapboxTelemetry';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -520,6 +524,13 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // table (migration 0078). Ported from legacy Express handler.
   { prefix: '/api/company-documents', router: companyDocuments, auth: 'required',
     note: 'Agency document library: list/create/update/delete + CSV export for TrainingDocsPage' },
+
+  // ── Mapbox telemetry sink (public; longer prefix wins) ─────
+  // Registered BEFORE /api/mapbox so the trie matches this prefix first.
+  // mapboxLoader points mapboxgl.config.EVENTS_URL here so SDK POSTs land
+  // on a 204 instead of events.mapbox.com (which some operator networks block).
+  { prefix: '/api/mapbox/events', router: mapboxTelemetry, auth: 'public',
+    note: 'Mapbox SDK telemetry sink — POST /v2 returns 204, swallows the payload' },
 
   // ── Mapbox server-side proxy ───────────────────────────────
   // Backs client/src/utils/mapboxServices.ts (geocode/directions/isochrone/
