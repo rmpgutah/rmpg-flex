@@ -172,9 +172,26 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
   await ensureReanalysisSchema(db);
 
   if (!c.env.R2_ANALYTICS_WAREHOUSE || !c.env.R2_SQL_TOKEN) {
-    return c.json({
-      error: 'Analytics warehouse not provisioned — set R2_ANALYTICS_WAREHOUSE and R2_SQL_TOKEN first',
-    }, 503);
+    // 200 with `skipped:true` instead of 503: the warehouse-missing case is
+    // a benign configuration gap, not a server outage. 503 polluted the
+    // browser console + tripped the client's error banner; the client now
+    // sees a normal no-op replay (replayed:0, has_more:false). The admin
+    // page's "Analytics warehouse not provisioned" banner remains the
+    // single visible warning.
+    const noop = {
+      skipped: true,
+      reason: 'analytics_not_provisioned' as const,
+      replayed: 0,
+      has_more: false,
+      job_id: 0,
+      next_cursor_sightings: parseInt(c.req.query('cursor_sightings') ?? '0', 10) || 0,
+      next_cursor_audit:     parseInt(c.req.query('cursor_audit')     ?? '0', 10) || 0,
+      next_cursor_gps:       parseInt(c.req.query('cursor_gps')       ?? '0', 10) || 0,
+      next_cursor_cfs:       parseInt(c.req.query('cursor_cfs')       ?? '0', 10) || 0,
+      next_cursor_citations: parseInt(c.req.query('cursor_citations') ?? '0', 10) || 0,
+      next_cursor_incidents: parseInt(c.req.query('cursor_incidents') ?? '0', 10) || 0,
+    };
+    return c.json(noop);
   }
 
   const qi = (k: string) => parseInt(c.req.query(k) ?? '0', 10) || 0;
