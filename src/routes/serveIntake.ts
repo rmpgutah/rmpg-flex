@@ -1612,7 +1612,41 @@ si.delete('/:id', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
+
+  // Read first so audit can capture context after the row is gone.
+  const queue = await queryFirst<{
+    id: number; recipient_name: string | null; case_number: string | null;
+    document_type: string | null; status: string;
+  }>(
+    db, 'SELECT id, recipient_name, case_number, document_type, status FROM serve_queue WHERE id = ?', id,
+  );
+  if (!queue) return c.json({ error: 'Not found' }, 404);
+
+  // serve_attempts + serve_skip_traces cascade via FK (migration 0030), but
+  // serve_attempt_schedules has no REFERENCES clause (migration 0130) — clean
+  // up explicitly before the parent DELETE.
+  await execute(db, 'DELETE FROM serve_attempt_schedules WHERE queue_id = ?', id);
   await execute(db, 'DELETE FROM serve_queue WHERE id = ?', id);
+
+  await recordAudit(c, {
+    action: 'serve_queue.delete',
+    entityType: 'serve_queue',
+    entityId: id,
+    details: {
+      recipient_name: queue.recipient_name,
+      case_number: queue.case_number,
+      document_type: queue.document_type,
+      status_at_delete: queue.status,
+    },
+  });
+
+  broadcastAll('data_changed', {
+    module: 'serve-schedule',
+    entity: 'queue',
+    action: 'deleted',
+    queue_id: id,
+  });
+
   return c.json({ success: true });
 });
 
