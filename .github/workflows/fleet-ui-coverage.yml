@@ -7,6 +7,11 @@ on:
       - 'src/routes/fleet.ts'
       - 'migrations/**'
 
+# Principle-of-least-privilege: jobs only read the checked-out source.
+# No deploy, no comment-on-PR, no write to anywhere. CodeQL recommendation.
+permissions:
+  contents: read
+
 jobs:
   no-ddl-guard:
     name: No DDL in fleet-ui PR
