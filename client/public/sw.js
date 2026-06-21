@@ -691,6 +691,25 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1000: Patrol Mileage Audit follow-up — close the +/-60 mi gap between
+//        the CFS and PATROL chains visible on prod after v999. Two root
+//        causes: (1) tripStore was reading mileage_anchor for the PATROL
+//        auto-stamp, but anchor is only written by admin /mileage/fix —
+//        the LIVE running odometer is fleet_vehicles.current_mileage (what
+//        calls.ts reads via vehicleOdometerForUnit). The two paths were
+//        using different sources, so PATROL stamps drifted ~60 mi behind
+//        the CFS chain. tripStore now reads fleet_vehicles first, anchor
+//        as fallback. (2) The noise filter required (<50m AND <180s),
+//        letting through long parked-engine-running sessions as 0.0 mi
+//        rows that flooded the chain. Tightened to discard any closed
+//        PATROL trip with distance_m == 0 regardless of duration. Plus
+//        the backfill endpoint was rewritten as a UNIFIED-chain walker:
+//        pulls CFS + PATROL rows for (officer, unit) ordered by time,
+//        treats CFS observations as authoritative, re-stamps PATROL rows
+//        to match. New POST /trips/discard-zero-mile and a "Discard 0-mi"
+//        toolbar button clean up the historical noise rows. The old
+//        "Backfill PATROL odo" button is now "Rebuild chain" — same
+//        endpoint, smarter algorithm.
 // v999: Patrol Mileage Audit — pin sub-tab nav + scope picker (sticky so
 //       changing officer/unit no longer requires scrolling back past hundreds
 //       of chain rows), auto-stamp odometer on GPS-detected PATROL trips
