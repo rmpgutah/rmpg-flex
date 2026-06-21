@@ -17,7 +17,7 @@ export function ActivityTab({ vehicleId }: { vehicleId: number }) {
   useEffect(() => {
     let cancelled = false;
     apiFetch<{ rows: AuditRow[] }>(`/audit/by-vehicle/${vehicleId}?limit=100`)
-      .then((r) => { if (!cancelled) setRows(r?.rows ?? []); })
+      .then((r) => { if (!cancelled) setRows(Array.isArray(r?.rows) ? r.rows : []); })
       .catch(() => { if (!cancelled) setRows([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
