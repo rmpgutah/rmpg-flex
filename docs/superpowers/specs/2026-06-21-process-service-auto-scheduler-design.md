@@ -95,7 +95,7 @@ layer; new pure functions wrap or follow it.
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ D1                                                               │
-│  serve_attempt_schedules    (+ 5 columns via migration 0134)     │
+│  serve_attempt_schedules    (+ 5 columns via migration 0140)     │
 │  serve_queue                (+ 3 columns)                        │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -106,7 +106,7 @@ Routes call them and persist. UI components are dumb — they render whatever
 [`themeSchedule.ts`](../../client/src/utils/themeSchedule.ts) /
 [`planAttemptWindows`](../../src/utils/serveDiligencePlanner.ts) pattern.
 
-## Schema delta — migration `0134_serve_scheduler_advanced.sql`
+## Schema delta — migration `0140_serve_scheduler_advanced.sql`
 
 ```sql
 ALTER TABLE serve_attempt_schedules ADD COLUMN manually_moved      INTEGER NOT NULL DEFAULT 0;
@@ -147,7 +147,7 @@ CREATE INDEX IF NOT EXISTS idx_serve_queue_urgency
 not idempotent in D1. Two defenses:
 1. Route layer uses `columnExists()` reconciler at boot (same as
    [`alpr.ts`](../../src/routes/alpr.ts))
-2. **Manual post-merge step**: apply `0134` directly to live D1
+2. **Manual post-merge step**: apply `0140` directly to live D1
    `785de7ae` via Cloudflare API, verify with
    `pragma_table_info('serve_attempt_schedules')` and `pragma_table_info('serve_queue')`
 
@@ -699,7 +699,7 @@ Land in three PRs to keep each merge sized for the project's squash-merge
 flow (project memory `feedback-verify-main-compiles-after-stack-merge`):
 
 1. **PR 1 — Schema + algorithm + auto-replan + tier rebalance**
-   - Migration 0134
+   - Migration 0140
    - `clusterByProximity`, `applyUrgencyTier`, `replanAfterFailedAttempt`
      pure functions + tests
    - `commitIntake` hook (cluster + tier at intake)

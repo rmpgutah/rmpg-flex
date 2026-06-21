@@ -4,7 +4,7 @@
 
 **Goal:** Land the backend half of the auto-scheduler — schema migration, three new pure scheduling functions (`clusterByProximity`, `applyUrgencyTier`, `replanAfterFailedAttempt`), intake-time wiring, attempts-route auto-replan hook, and the daily 04:00 Denver rebalance cron. No UI changes; PR 2 (dashboard panel) and PR 3 (full-page scheduler) follow on separate plans once this lands and is verified in prod.
 
-**Architecture:** Pure functions in `serveDiligencePlanner.ts` (no D1, no `Date.now`, no fetch) → called from existing `commitIntake()` + `POST /attempts` handler + a new `runDailyRebalance()` driven by `src/index.ts`'s scheduled handler. Single migration `0134_serve_scheduler_advanced.sql` reconciled at boot via `columnExists()` (same pattern as `alpr.ts`) so deploy-step failure doesn't block runtime.
+**Architecture:** Pure functions in `serveDiligencePlanner.ts` (no D1, no `Date.now`, no fetch) → called from existing `commitIntake()` + `POST /attempts` handler + a new `runDailyRebalance()` driven by `src/index.ts`'s scheduled handler. Single migration `0140_serve_scheduler_advanced.sql` reconciled at boot via `columnExists()` (same pattern as `alpr.ts`) so deploy-step failure doesn't block runtime.
 
 **Tech Stack:** Cloudflare Workers + Hono (Worker), D1 (SQLite) for storage, vitest for unit tests, TypeScript strict throughout. America/Denver-local string timestamps for all schedule dates (the project's existing convention — lexicographic comparison is reliable when timezone is fixed).
 
@@ -14,7 +14,7 @@
 
 | Action | Path | Responsibility |
 |---|---|---|
-| Create | `migrations/0134_serve_scheduler_advanced.sql` | 5 new cols on `serve_attempt_schedules` + 3 new cols on `serve_queue` + 3 indexes |
+| Create | `migrations/0140_serve_scheduler_advanced.sql` | 5 new cols on `serve_attempt_schedules` + 3 new cols on `serve_queue` + 3 indexes |
 | Modify | `src/utils/serveDiligencePlanner.ts` | Append 3 pure functions: `clusterByProximity`, `applyUrgencyTier`, `replanAfterFailedAttempt` |
 | Modify | `src/utils/serveIntakeRecords.ts` | Wire cluster + tier into the `INSERT INTO serve_queue` site at intake commit |
 | Modify | `src/routes/serveIntake.ts` | (a) `columnExists` reconcile for new cols at first request; (b) `POST /attempts` calls `replanAfterFailedAttempt` + persists new slot |
@@ -27,15 +27,15 @@
 
 ---
 
-## Task 1: Migration 0134 — schema delta
+## Task 1: Migration 0140 — schema delta
 
 **Files:**
-- Create: `migrations/0134_serve_scheduler_advanced.sql`
+- Create: `migrations/0140_serve_scheduler_advanced.sql`
 
 - [ ] **Step 1: Create the migration file**
 
 ```sql
--- migrations/0134_serve_scheduler_advanced.sql
+-- migrations/0140_serve_scheduler_advanced.sql
 --
 -- PR 1 of the process-service auto-scheduler:
 -- 1. serve_attempt_schedules: track manually-moved slots, replan lineage, and
@@ -72,14 +72,14 @@ CREATE INDEX IF NOT EXISTS idx_serve_queue_urgency
 
 - [ ] **Step 2: Verify the migration prefix is free**
 
-Run: `ls migrations/ | grep -E "^0134"`
+Run: `ls migrations/ | grep -E "^0140"`
 Expected: only your new file shows up (no duplicate prefix). If another `0134_*.sql` already exists, rename yours to the next free prefix and update Step 1's filename + the migration's leading comment.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add migrations/0134_serve_scheduler_advanced.sql
-git commit -m "feat(serve): migration 0134 — auto-scheduler schema delta (cluster + tier + manual-move tracking)"
+git add migrations/0140_serve_scheduler_advanced.sql
+git commit -m "feat(serve): migration 0140 — auto-scheduler schema delta (cluster + tier + manual-move tracking)"
 ```
 
 ---
@@ -463,7 +463,7 @@ const urgencyComputedAt = nowIso;
 
 In the `INSERT INTO serve_queue (…)` block, append `, geo_cluster_id, urgency_tier, urgency_computed_at` to the column list, and add three `?` placeholders to the VALUES tuple. Add the three values (`geoClusterId, urgencyTier, urgencyComputedAt`) to the `.bind()` chain in the same order.
 
-The columns may not exist on live D1 yet at first request — Task 7 adds the boot-time `columnExists()` reconciler. If you hit a `no such column` error during local testing, run `npx wrangler d1 execute rmpg-flex --local --file migrations/0134_serve_scheduler_advanced.sql` once.
+The columns may not exist on live D1 yet at first request — Task 7 adds the boot-time `columnExists()` reconciler. If you hit a `no such column` error during local testing, run `npx wrangler d1 execute rmpg-flex --local --file migrations/0140_serve_scheduler_advanced.sql` once.
 
 - [ ] **Step 5: Typecheck**
 
@@ -652,7 +652,7 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
   if (scheduleSchemaReconciled) return;
   scheduleSchemaReconciled = true;
 
-  // serve_attempt_schedules columns from migration 0134
+  // serve_attempt_schedules columns from migration 0140
   for (const [name, type] of [
     ['manually_moved', 'INTEGER NOT NULL DEFAULT 0'],
     ['moved_by_user_id', 'INTEGER'],
@@ -667,7 +667,7 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
     } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
   }
 
-  // serve_queue columns from migration 0134
+  // serve_queue columns from migration 0140
   for (const [name, type] of [
     ['geo_cluster_id', 'TEXT'],
     ['urgency_tier', 'TEXT'],
@@ -702,7 +702,7 @@ Expected: 0 errors.
 
 ```bash
 git add src/routes/serveIntake.ts
-git commit -m "feat(serve): reconcile migration 0134 columns at first request (alpr.ts pattern)"
+git commit -m "feat(serve): reconcile migration 0140 columns at first request (alpr.ts pattern)"
 ```
 
 ---
@@ -952,7 +952,7 @@ gh pr create --title "feat(serve): auto-scheduler PR 1 — backend (cluster + ti
 - Wires cluster id + urgency tier into `commitIntake`
 - Hooks the `POST /queue/:id/attempts` route to auto-replan a new schedule slot when an attempt fails (`no_answer | refused | bad_address | moved`)
 - Adds a daily 04:00 Denver rebalance cron that recomputes tiers and escalates `priority='rush'` on flip-to-critical (one-way ratchet)
-- Migration 0134 + boot-time `columnExists()` reconciler (alpr.ts pattern)
+- Migration 0140 + boot-time `columnExists()` reconciler (alpr.ts pattern)
 
 No UI changes — dashboard panel lands in PR 2, full-page scheduler in PR 3. Spec at [docs/superpowers/specs/2026-06-21-process-service-auto-scheduler-design.md](docs/superpowers/specs/2026-06-21-process-service-auto-scheduler-design.md).
 
@@ -960,7 +960,7 @@ No UI changes — dashboard panel lands in PR 2, full-page scheduler in PR 3. Sp
 - [x] `npm test` — all pure functions covered (20 new tests)
 - [x] `npm run typecheck` — Worker clean
 - [x] `cd client && npx tsc --noEmit` — Client clean (defense)
-- [ ] Post-merge: apply `0134_serve_scheduler_advanced.sql` directly to live D1 `785de7ae` via Cloudflare API and verify with `pragma_table_info('serve_attempt_schedules')` + `pragma_table_info('serve_queue')`
+- [ ] Post-merge: apply `0140_serve_scheduler_advanced.sql` directly to live D1 `785de7ae` via Cloudflare API and verify with `pragma_table_info('serve_attempt_schedules')` + `pragma_table_info('serve_queue')`
 - [ ] Post-merge: file a sample serve intake via the existing intake page, verify `serve_queue.geo_cluster_id` and `urgency_tier` are populated
 - [ ] Post-merge: log a `no_answer` attempt, confirm a new `serve_attempt_schedules` row appears with `auto_replan_source` set
 - [ ] Post-merge: confirm the `[serve-rebalance] daily:` log line appears in Worker logs at the next 10:00 UTC tick
@@ -978,7 +978,7 @@ Expected: PR URL printed; no force-push, no merge — leave the PR for the user 
 
 After the implementation lands, the spec asks for one manual post-merge step that no plan task can do for you:
 
-- Apply `migrations/0134_serve_scheduler_advanced.sql` directly to live D1 `rmpg-flex` (id `785de7ae-3e7a-4e01-93bb-d24ddd813f6b`) via the Cloudflare API. The `continue-on-error` deploy step is unreliable for `ALTER TABLE ADD COLUMN` (D1 lacks `IF NOT EXISTS`).
+- Apply `migrations/0140_serve_scheduler_advanced.sql` directly to live D1 `rmpg-flex` (id `785de7ae-3e7a-4e01-93bb-d24ddd813f6b`) via the Cloudflare API. The `continue-on-error` deploy step is unreliable for `ALTER TABLE ADD COLUMN` (D1 lacks `IF NOT EXISTS`).
 - Verify with `pragma_table_info('serve_attempt_schedules')` (expect 5 new columns) and `pragma_table_info('serve_queue')` (expect 3 new columns).
 - The `reconcileScheduleSchema()` boot-time reconciler in Task 7 is the runtime safety net — but applying the migration directly first means the very first user request doesn't pay a multi-`ALTER` latency tax.
 
@@ -986,7 +986,7 @@ After the implementation lands, the spec asks for one manual post-merge step tha
 
 | Spec section | Plan task(s) |
 |---|---|
-| Schema delta — migration 0134 | Task 1 |
+| Schema delta — migration 0140 | Task 1 |
 | Algorithm — `clusterByProximity` | Task 2 |
 | Algorithm — `applyUrgencyTier` | Task 3 |
 | Algorithm — `replanAfterFailedAttempt` (incl. bad_address path) | Task 4 |
