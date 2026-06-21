@@ -20,9 +20,9 @@ describe('SIDEBAR_SECTIONS config', () => {
     expect(rmpg.length).toBe(5);
   });
 
-  it('has 4 empty sections (work-orders / issues / documents / parts)', () => {
+  it('has 3 empty sections (issues / documents / parts) — work-orders graduated in PR 5b', () => {
     const empty = SIDEBAR_SECTIONS.filter((s) => s.empty);
-    expect(empty.map((s) => s.id).sort()).toEqual(['documents', 'issues', 'parts', 'work-orders']);
+    expect(empty.map((s) => s.id).sort()).toEqual(['documents', 'issues', 'parts']);
   });
 
   it('every section has a unique id and a route path under /fleet/v2', () => {
@@ -49,8 +49,10 @@ describe('<Sidebar>', () => {
 
   it('marks empty sections with "coming soon" in the accessible label', () => {
     renderSidebar();
-    const wo = screen.getByRole('link', { name: /work orders.*coming soon/i });
-    expect(wo).toBeInTheDocument();
+    // After PR 5b, work-orders graduated from empty → real. The remaining
+    // empty sections (documents / issues / parts) carry the "coming soon" tag.
+    const issues = screen.getByRole('link', { name: /issues.*coming soon/i });
+    expect(issues).toBeInTheDocument();
   });
 
   it('marks RMPG-only sections with "(RMPG only)" in the accessible label', () => {
