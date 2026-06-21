@@ -3,6 +3,7 @@ import {
   constantTimeEquals,
   hmacSha256Hex,
   normalizeSignatureHeader,
+  normalizeAuthorizationHeader,
   extractEventId,
   normalizeResource,
 } from '../src/routes/fleetioWebhook';
@@ -64,6 +65,37 @@ describe('normalizeSignatureHeader', () => {
   it('strips a sha256= prefix if present', () => {
     expect(normalizeSignatureHeader('sha256=DEADBEEF')).toBe('deadbeef');
     expect(normalizeSignatureHeader('SHA256=deadbeef')).toBe('deadbeef');
+  });
+});
+
+describe('normalizeAuthorizationHeader (PR 4c — Fleet.io echo scheme)', () => {
+  it('returns null for null/empty', () => {
+    expect(normalizeAuthorizationHeader(null)).toBeNull();
+    expect(normalizeAuthorizationHeader(undefined)).toBeNull();
+    expect(normalizeAuthorizationHeader('')).toBeNull();
+    expect(normalizeAuthorizationHeader('   ')).toBeNull();
+  });
+
+  it('passes a bare secret through unchanged (trim only)', () => {
+    expect(normalizeAuthorizationHeader('a1b2c3d4')).toBe('a1b2c3d4');
+    expect(normalizeAuthorizationHeader('  a1b2c3d4 ')).toBe('a1b2c3d4');
+  });
+
+  it('strips "Bearer " prefix case-insensitively', () => {
+    expect(normalizeAuthorizationHeader('Bearer abc123')).toBe('abc123');
+    expect(normalizeAuthorizationHeader('bearer abc123')).toBe('abc123');
+    expect(normalizeAuthorizationHeader('BEARER abc123')).toBe('abc123');
+  });
+
+  it('strips "Token " prefix case-insensitively', () => {
+    expect(normalizeAuthorizationHeader('Token abc123')).toBe('abc123');
+    expect(normalizeAuthorizationHeader('TOKEN abc123')).toBe('abc123');
+  });
+
+  it('preserves the secret byte-for-byte after prefix strip (does not lowercase)', () => {
+    // Operators paste hex secrets — must not lowercase, must not trim mid-secret.
+    expect(normalizeAuthorizationHeader('Bearer A1B2C3D4'))
+      .toBe('A1B2C3D4');
   });
 });
 

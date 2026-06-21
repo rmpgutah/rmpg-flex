@@ -66,10 +66,13 @@ Two of the three secrets come from Fleet.io's admin UI.
    manages multiple Fleet.io accounts in parallel, you need one token per
    account.
 
-### 1c. Generate the webhook signing secret
+### 1c. Generate the webhook shared secret
 
-This is RMPG-side — Fleet.io HMACs every webhook payload with a secret
-you pick, then RMPG verifies the signature using the same secret.
+This is RMPG-side. Fleet.io's webhook UI does **not** sign request
+bodies — it instead lets you pick an `Authorization` HTTP header value
+(any string), then echoes that value back as the `Authorization` header
+on every webhook POST. RMPG then verifies the inbound header equals
+the configured secret (constant-time compare).
 
 Generate a strong random value:
 
@@ -130,17 +133,18 @@ npx wrangler tail rmpg-flex-api --format pretty
 Leave the tail running. In another terminal:
 
 ```bash
-# This request fakes a webhook with a bogus signature — expect 401, not 503.
+# This request fakes a webhook with a bogus Authorization header — expect 401, not 503.
 # (Before secret was set, this returned 503 FLEETIO_WEBHOOK_SECRET_UNSET.)
 curl -s -X POST https://api.rmpgutah.us/api/fleetio/webhook \
-  -H 'x-fleetio-webhook-signature: deadbeef' \
+  -H 'Authorization: not-the-real-secret' \
   -d '{}' \
   -w "\nHTTP %{http_code}\n"
 ```
 
-**Expected**: `HTTP 401` with body `{"error":"invalid signature"}`. The
-tail also shows `[fleetio-webhook] audit_log INSERT` for the bad-sig
-attempt (the route logs probe traffic to `audit_log`).
+**Expected**: `HTTP 401` with body `{"error":"invalid authorization"}`. The
+tail also shows `[fleetio-webhook] audit_log INSERT` for the bad-auth
+attempt (the route logs probe traffic to `audit_log` as
+`FLEETIO_WEBHOOK_BAD_AUTH`).
 
 If you instead see `HTTP 503` with `FLEETIO_WEBHOOK_SECRET_UNSET`, the
 secret didn't take. Run `wrangler secret list` again and re-put the
@@ -155,12 +159,18 @@ This is the inbound side — Fleet.io pushes events to RMPG.
 1. Sign in to https://secure.fleetio.com.
 2. **Account Settings** → **Webhooks** (left nav under "Integrations").
 3. Click **Add Webhook**.
-4. Fill in:
-   - **Name**: `RMPG Flex`
-   - **URL**: `https://api.rmpgutah.us/api/fleetio/webhook`
-   - **Signing secret**: paste the same 64-char hex you generated in step 1c
-   - **Events**: subscribe to at least these (the PR 4 sync engine handles
-     them — anything else is silently ignored as `unsupported event_type`):
+4. Fill in (this matches Fleet.io's actual form fields verbatim — they
+   don't sign request bodies; they echo an `Authorization` header instead):
+   - **URL** *(required)*: `https://api.rmpgutah.us/api/fleetio/webhook`
+   - **Authorization HTTP Header** *(optional in their UI, REQUIRED for our
+     receiver)*: paste the same 64-char hex you generated in step 1c.
+     You may prefix with `Bearer ` if you like; the receiver tolerates
+     both `<hex>` and `Bearer <hex>` interchangeably.
+   - **Description**: `RMPG Flex sync` (free text — not validated)
+   - **Enabled**: leave checked.
+   - **All Events** vs **Select Events**: pick **Select Events** and
+     subscribe to at least these (anything else is silently ignored as
+     `unsupported event_type`):
      - `vehicle.create`
      - `vehicle.update`
      - `vehicle.delete`
@@ -168,8 +178,8 @@ This is the inbound side — Fleet.io pushes events to RMPG.
      - `fuel_entry.update`
      - `fuel_entry.delete`
      - (Future: `work_order.*`, `inspection_submission.*` — PR 5/6 emit
-       outbound events for these but inbound apply is also wired and ready.)
-5. Save.
+       outbound for these and inbound apply is wired and ready.)
+5. Click **Save**.
 
 Fleet.io typically sends a test event immediately. Watch the tail:
 
@@ -273,11 +283,13 @@ The seed is idempotent — re-running skips already-linked rows.
 
 ## Troubleshooting
 
-### "Webhook returns 401 'invalid signature' on every Fleet.io request"
+### "Webhook returns 401 'invalid authorization' on every Fleet.io request"
 
-The signing secret you pasted into Fleet.io doesn't match what's in
-`FLEETIO_WEBHOOK_SECRET`. Generate a fresh `openssl rand -hex 32`, paste
-it into both places.
+The string you pasted into Fleet.io's **Authorization HTTP Header** field
+doesn't match `FLEETIO_WEBHOOK_SECRET`. Generate a fresh
+`openssl rand -hex 32`, paste the same value into both places. The
+receiver tolerates an optional `Bearer ` or `Token ` prefix on either
+side, so `Bearer <hex>` in Fleet.io + bare `<hex>` in wrangler is fine.
 
 ### "Reconciliation cron seems to run but nothing changes"
 
@@ -334,9 +346,9 @@ npx wrangler d1 execute rmpg-flex --remote --command \
 ### "I need to rotate one of the secrets"
 
 `wrangler secret put` overwrites. For the webhook secret, also update
-Fleet.io's webhook signing secret to match. The cron's adapter calls
-read fresh config on every invocation, so rotation takes effect on the
-next cron tick (or webhook receive).
+the **Authorization HTTP Header** value on Fleet.io's webhook config to
+match. The cron's adapter calls read fresh config on every invocation,
+so rotation takes effect on the next cron tick (or webhook receive).
 
 ### "I need to deprovision the integration"
 

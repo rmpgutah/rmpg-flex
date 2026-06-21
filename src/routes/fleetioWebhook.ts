@@ -1,24 +1,30 @@
 // ============================================================
-// RMPG Flex — Fleet.io webhook receiver (PR 4)
+// RMPG Flex — Fleet.io webhook receiver (PR 4c rewrite)
 // ============================================================
 // POST /api/fleetio/webhook
 //
-// Auth model: HMAC SHA-256 over the RAW request body, signed with
-// FLEETIO_WEBHOOK_SECRET. The signature is delivered in the
-// X-Fleetio-Webhook-Signature header. Mismatch → 401 + audit_log
-// 'FLEETIO_WEBHOOK_BAD_SIG'. Missing secret → 503 (so we don't open the
-// door during a misconfigured deploy).
+// Auth model: Authorization-header echo. This is Fleet.io's actual
+// webhook authentication scheme — the operator picks a secret value
+// when registering the webhook in app.fleetio.com → Account →
+// Webhooks. Fleet.io then sends that exact value back as the HTTP
+// 'Authorization' header on every POST. We constant-time compare
+// the inbound header against FLEETIO_WEBHOOK_SECRET.
+//
+// (PR 4 originally implemented HMAC SHA-256 over the body — that's
+// a common pattern at other vendors, but Fleet.io doesn't sign
+// bodies; their UI only exposes the Authorization header field.
+// The HMAC helpers stay exported because they're still useful for
+// future signed-vendor integrations and the existing tests rely on
+// them, but they're no longer called on the hot path.)
 //
 // Performance contract: ack 200 in <100ms. We do the minimum on the hot
-// path — verify signature, INSERT OR IGNORE into fleetio_events, ack —
+// path — verify header, INSERT OR IGNORE into fleetio_events, ack —
 // and push applyInbound onto waitUntil. Fleet.io's webhook timeout is
 // 30 seconds; we leave 29.9s of headroom for transient D1 / sync work.
 //
 // Deduplication: Fleet.io's retry policy (5×/hr + 1×/hr for 24h) means
 // duplicates are the norm, not the exception. UNIQUE (direction, event_id)
-// on fleetio_events silently absorbs them. We treat the absence of a new
-// row the same as a fresh acceptance — the caller already trusted the
-// signature, so the work is done.
+// on fleetio_events silently absorbs them.
 //
 // Spec: docs/superpowers/specs/2026-06-21-fleetio-integration-design.md
 // ============================================================
@@ -31,7 +37,7 @@ const fleetioWebhook = new Hono<Env>();
 
 // ─── Pure helpers (unit-testable) ───────────────────────────
 
-/** Constant-time string compare to avoid timing leaks on the HMAC equals check. */
+/** Constant-time string compare to avoid timing leaks on the equals check. */
 export function constantTimeEquals(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
@@ -39,7 +45,8 @@ export function constantTimeEquals(a: string, b: string): boolean {
   return diff === 0;
 }
 
-/** Compute HMAC SHA-256 over a body string with a secret. Web Crypto. */
+/** Compute HMAC SHA-256 over a body string with a secret. Web Crypto.
+ *  Retained for future signed-webhook vendors; not on the Fleet.io hot path. */
 export async function hmacSha256Hex(secret: string, body: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw',
@@ -54,13 +61,28 @@ export async function hmacSha256Hex(secret: string, body: string): Promise<strin
     .join('');
 }
 
-/** Normalize header values like 'sha256=<hex>' down to just the hex. */
+/** Normalize header values like 'sha256=<hex>' down to just the hex. Retained
+ *  because the helper is harmless and protects future signed-vendor flows. */
 export function normalizeSignatureHeader(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const trimmed = raw.trim().toLowerCase();
-  // Fleet.io's header is documented as raw hex, but allow the sha256=… prefix
-  // a number of vendors use so we don't fail on a future format change.
   if (trimmed.startsWith('sha256=')) return trimmed.slice('sha256='.length);
+  return trimmed;
+}
+
+/** Normalize an Authorization header for comparison. Strips the optional
+ *  'Bearer ' / 'Token ' scheme prefix Fleet.io's UI implies but never enforces
+ *  (operators paste raw secrets just as often as `Bearer <secret>` form).
+ *  Trim only — preserves the secret's bytes for the equals check. */
+export function normalizeAuthorizationHeader(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+  // Accept the three common prefixes interchangeably — operators don't know
+  // which one Fleet.io expects and inconsistency between vendors is the norm.
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('bearer ')) return trimmed.slice('bearer '.length).trim();
+  if (lower.startsWith('token ')) return trimmed.slice('token '.length).trim();
   return trimmed;
 }
 
@@ -98,32 +120,29 @@ fleetioWebhook.post('/webhook', async (c) => {
   if (typeof secret !== 'string' || !secret) {
     return c.json({ error: 'webhook_not_configured', code: 'FLEETIO_WEBHOOK_SECRET_UNSET' }, 503);
   }
-  const sigHeader = normalizeSignatureHeader(c.req.header('x-fleetio-webhook-signature'));
-  if (!sigHeader) {
-    return c.json({ error: 'missing signature' }, 401);
+  const authHeader = normalizeAuthorizationHeader(c.req.header('authorization'));
+  if (!authHeader) {
+    return c.json({ error: 'missing authorization' }, 401);
   }
-  const rawBody = await c.req.text();
-  let expected: string;
-  try {
-    expected = await hmacSha256Hex(secret, rawBody);
-  } catch {
-    return c.json({ error: 'signature compute failure' }, 500);
-  }
-  if (!constantTimeEquals(sigHeader, expected)) {
-    // Don't broadcast the expected hex back to the caller. Log to audit_log
-    // so we can spot probe traffic later.
+  // The configured secret may have been pasted with a Bearer/Token prefix on
+  // the wrangler side too — normalize both sides identically for the compare.
+  const expected = normalizeAuthorizationHeader(secret) ?? '';
+  if (!constantTimeEquals(authHeader, expected)) {
+    // Don't broadcast anything about the expected value back to the caller.
+    // Log to audit_log so we can spot probe traffic later.
     try {
       await c.env.DB.prepare(
         `INSERT INTO audit_log (action, entity_type, details, created_at)
-         VALUES ('FLEETIO_WEBHOOK_BAD_SIG', 'fleetio_webhook', ?, datetime('now'))`,
+         VALUES ('FLEETIO_WEBHOOK_BAD_AUTH', 'fleetio_webhook', ?, datetime('now'))`,
       ).bind(JSON.stringify({ ip: c.req.header('cf-connecting-ip') ?? null })).run();
     } catch (err) {
       console.error('[fleetio-webhook] audit_log INSERT failed', err);
     }
-    return c.json({ error: 'invalid signature' }, 401);
+    return c.json({ error: 'invalid authorization' }, 401);
   }
 
-  // Signature OK — parse + queue.
+  // Auth OK — parse + queue.
+  const rawBody = await c.req.text();
   let parsed: unknown;
   try { parsed = JSON.parse(rawBody); } catch {
     return c.json({ error: 'invalid JSON' }, 400);
@@ -145,9 +164,9 @@ fleetioWebhook.post('/webhook', async (c) => {
     ).bind(eventId, norm.resource, norm.resource_id, norm.action, rawBody).run();
   } catch (err) {
     console.error('[fleetio-webhook] queue INSERT failed', err);
-    // Even on D1 failure we ACK 200 — Fleet.io's retry will deliver this
-    // event again, and the reconciliation cron picks up gaps. Returning
-    // 5xx here would cause Fleet.io to back off the entire webhook stream.
+    // Even on D1 failure we ACK 200 — Fleet.io's retry will redeliver, and
+    // the reconciliation cron picks up gaps. 5xx here would cause Fleet.io
+    // to back off the entire webhook stream.
   }
 
   // Fire-and-forget the apply pass. If executionCtx isn't present (tests),
