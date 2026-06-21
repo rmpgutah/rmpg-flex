@@ -1659,6 +1659,17 @@ si.post('/:id/attempts', async (c) => {
     }
   }
 
+  // Broadcast auto-replan slot creation to all clients so dashboards refetch.
+  if (replanSummary) {
+    broadcastAll('data_changed', {
+      module: 'serve-schedule',
+      entity: 'slot',
+      action: 'created',
+      slot_id: replanSummary.slot_id,
+      queue_id: id,
+    });
+  }
+
   return c.json({
     success: true,
     id: attemptId,

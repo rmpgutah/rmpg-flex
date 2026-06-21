@@ -934,6 +934,10 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
 
   // ── 5b. Persist dated attempt schedule ───────────────────
   // Best-effort: a scheduling failure must never abort the intake commit.
+  // NB: no broadcastAll here — the route that calls commitIntake responds
+  // with the new queue_id, and the client navigates to a fresh view that
+  // fetches via useLiveSync on mount. The PATCH route + replan hook DO
+  // broadcast because those happen without a page navigation.
   if (queueId && attemptPlan.length) {
     persistAttemptSchedule(db, queueId, attemptPlan, nowIso).catch((err) =>
       console.error('[serve-schedule] persist failed (non-fatal):', err),
