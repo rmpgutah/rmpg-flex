@@ -73,6 +73,7 @@ const VerifyIdPage = lazyRetry(() => import('./pages/wallet/VerifyIdPage'));
 const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
 const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
 const FleetPage = lazyRetry(() => import('./pages/fleet'));
+const FleetShell = lazyRetry(() => import('./pages/fleet/v2/FleetShell'));
 const WarrantsPage = lazyRetry(() => import('./pages/WarrantsPage'));
 const CitationsPage = lazyRetry(() => import('./pages/CitationsPage'));
 const LawBookPage = lazyRetry(() => import('./pages/LawBookPage'));
@@ -462,6 +463,7 @@ function AppRoutes() {
             <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
             <Route path="/analytics" element={<RouteErrorBoundary><AnalyticsPage /></RouteErrorBoundary>} />
             <Route path="/patrol" element={<RouteErrorBoundary><PatrolPage /></RouteErrorBoundary>} />
+            <Route path="/fleet/v2/*" element={<RouteErrorBoundary><FleetShell /></RouteErrorBoundary>} />
             <Route path="/fleet" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />

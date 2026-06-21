@@ -93,6 +93,7 @@ import incidentSupplements from './routes/incidentSupplements';
 import incidentSubresources from './routes/incidentSubresources';
 import incidentsRouter from './routes/incidents';
 import audit from './routes/audit';
+import auditEmit from './routes/auditEmit';
 import arrests from './routes/arrests';
 import cases from './routes/cases';
 import accreditation from './routes/accreditation';
@@ -434,6 +435,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/assets', router: assets, auth: 'required',
     note: 'Asset/inventory management: equipment, checkouts, weapons, ammo, K9 records' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
+  { prefix: '/api/audit-emit', router: auditEmit, auth: 'required' },
   { prefix: '/api/billing', router: billing, auth: 'required',
     note: 'Financial/billing module: contracts, invoices, line items, payments, expenses' },
   { prefix: '/api/billing', router: serveBilling, auth: 'required',
