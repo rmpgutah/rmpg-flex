@@ -464,7 +464,8 @@ function CostPerMileStackCard({ period }: { period: Period }) {
 
 interface FuelAnomalyEntry {
   id: number; fuel_date: string; gallons: number; total_cost: number;
-  driver_id: number | null; vehicle_id: number;
+  // Server returns driver_name (TEXT) — fleet_fuel_log has no driver_id column.
+  driver_name: string | null; vehicle_id: number;
   cost_per_gallon: number; z_gallons: number; z_cost_per_gallon: number;
   flagged: boolean;
 }

@@ -271,29 +271,35 @@ viz.get('/mpg-by-officer', async (c) => {
   try {
     const db = getDb(c.env);
     const win = buildDateWindow(c.req.query('period'), 'fuel_date');
+    // Schema: fleet_fuel_log has `driver_name TEXT` — there is no driver_id
+    // column and no `officers` table. Group by driver_name directly.
+    // Synthetic officer_id = stable hash of name so the frontend can key on
+    // it without colliding for distinct drivers with the same display name
+    // (rare in this fleet but cheap to guard against).
     const rows = await query<Record<string, unknown>>(
       db, `
       SELECT
-        o.id AS officer_id, o.full_name AS officer_name,
+        f.driver_name AS officer_name,
         f.vehicle_id,
         f.fuel_date,
         f.mpg,
         f.gallons,
         f.total_cost
       FROM fleet_fuel_log f
-      LEFT JOIN officers o ON o.id = f.driver_id
-      WHERE f.mpg IS NOT NULL AND f.driver_id IS NOT NULL ${win.whereClause}
+      WHERE f.mpg IS NOT NULL
+        AND f.driver_name IS NOT NULL
+        AND TRIM(f.driver_name) != '' ${win.whereClause}
       ORDER BY f.fuel_date DESC
       LIMIT 5000`,
     );
-    // Group + average per officer for the scatter aggregate.
-    const byOfficer: Record<number, { officer_id: number; officer_name: string; samples: number; mean_mpg: number; total_gallons: number; total_cost: number }> = {};
+    // Group + average per driver_name for the scatter aggregate.
+    const byOfficer: Record<string, { officer_id: number; officer_name: string; samples: number; mean_mpg: number; total_gallons: number; total_cost: number }> = {};
     for (const r of rows) {
-      const id = r.officer_id as number | null;
-      if (id == null) continue;
-      const slot = byOfficer[id] ?? (byOfficer[id] = {
-        officer_id: id,
-        officer_name: (r.officer_name as string) ?? `Officer #${id}`,
+      const name = String(r.officer_name ?? '').trim();
+      if (!name) continue;
+      const slot = byOfficer[name] ?? (byOfficer[name] = {
+        officer_id: stableHash(name),
+        officer_name: name,
         samples: 0, mean_mpg: 0, total_gallons: 0, total_cost: 0,
       });
       slot.samples++;
@@ -303,7 +309,13 @@ viz.get('/mpg-by-officer', async (c) => {
     }
     return c.json({
       period: win.label,
-      samples: rows.slice(0, 500),
+      // Stamp officer_id onto each sample so the frontend (which keys by it)
+      // can stay typed without a schema migration. Hash is deterministic per
+      // driver_name so the same driver maps to the same id across requests.
+      samples: rows.slice(0, 500).map((r) => ({
+        ...r,
+        officer_id: stableHash(String(r.officer_name ?? '')),
+      })),
       by_officer: Object.values(byOfficer).map((s) => ({
         ...s,
         mean_mpg: Math.round(s.mean_mpg * 10) / 10,
@@ -317,12 +329,26 @@ viz.get('/mpg-by-officer', async (c) => {
   }
 });
 
+/** Stable 31-bit non-negative hash of a string — used to synthesize an
+ *  officer_id from driver_name when the underlying schema doesn't have one.
+ *  Not cryptographic; only needs to be deterministic + collision-rare across
+ *  ~tens of drivers. */
+function stableHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
 // ─── V4: Cost-per-mile stack ──────────────────────────────
 
 viz.get('/cost-per-mile', async (c) => {
   try {
     const db = getDb(c.env);
-    const win = buildDateWindow(c.req.query('period'), 'maintenance_date');
+    // Schema: fleet_maintenance uses `service_date` (NOT `maintenance_date`).
+    // The latter was a renamed column that never landed in baseline schema.
+    const win = buildDateWindow(c.req.query('period'), 'service_date');
     const fuelWin = buildDateWindow(c.req.query('period'), 'fuel_date');
     const rows = await query<Record<string, unknown>>(
       db, `
@@ -386,11 +412,13 @@ viz.get('/fuel-anomalies', async (c) => {
   try {
     const db = getDb(c.env);
     const win = buildDateWindow(c.req.query('period'), 'fuel_date');
+    // Schema: fleet_fuel_log has `driver_name TEXT`, no `driver_id`. Return
+    // driver_name on the row so the frontend can display + group by it.
     const rows = await query<{
       id: number; fuel_date: string; gallons: number; total_cost: number;
-      driver_id: number | null; vehicle_id: number;
+      driver_name: string | null; vehicle_id: number;
     }>(db, `
-      SELECT id, fuel_date, gallons, total_cost, driver_id, vehicle_id
+      SELECT id, fuel_date, gallons, total_cost, driver_name, vehicle_id
       FROM fleet_fuel_log
       WHERE gallons IS NOT NULL AND total_cost IS NOT NULL ${win.whereClause}
       ORDER BY fuel_date`,
