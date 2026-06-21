@@ -17,6 +17,14 @@ describe('Fleet.io error classes', () => {
     expect(e instanceof Error).toBe(true);
   });
 
+  it('FleetioError with no opts: status and detail are undefined', () => {
+    const e = new FleetioError('bare');
+    expect(e.message).toBe('bare');
+    expect(e.status).toBeUndefined();
+    expect(e.detail).toBeUndefined();
+    expect(e.name).toBe('FleetioError');
+  });
+
   it('subclasses extend FleetioError and Error', () => {
     expect(new FleetioConfigError('no key') instanceof FleetioError).toBe(true);
     expect(new FleetioTimeoutError('slow') instanceof FleetioError).toBe(true);
@@ -24,10 +32,22 @@ describe('Fleet.io error classes', () => {
     expect(new FleetioRateLimitError(30) instanceof FleetioError).toBe(true);
   });
 
+  it('FleetioTimeoutError sets its name', () => {
+    const e = new FleetioTimeoutError('slow');
+    expect(e.name).toBe('FleetioTimeoutError');
+    expect(e.message).toBe('slow');
+  });
+
   it('FleetioConfigError defaults to no status', () => {
     const e = new FleetioConfigError('missing FLEETIO_API_KEY');
     expect(e.status).toBeUndefined();
     expect(e.name).toBe('FleetioConfigError');
+  });
+
+  it('FleetioConfigError carries the optional detail', () => {
+    const e = new FleetioConfigError('bad config', { raw: 'some context' });
+    expect(e.detail).toEqual({ raw: 'some context' });
+    expect(e.status).toBeUndefined();
   });
 
   it('FleetioHttpError carries the status as a number', () => {
@@ -42,5 +62,6 @@ describe('Fleet.io error classes', () => {
     expect(e.status).toBe(429);
     expect(e.retryAfterSeconds).toBe(60);
     expect(e.name).toBe('FleetioRateLimitError');
+    expect(e.message).toBe('Fleet.io rate limit hit; retry after 60s');
   });
 });
