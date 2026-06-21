@@ -60,6 +60,14 @@ export default function ContractPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayValue, value]);
 
+  useEffect(() => {
+    if (value != null && query === '' && contracts.length > 0) {
+      const match = contracts.find((k) => k.id === value);
+      if (match) setQuery(formatLabel(match));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, contracts]);
+
   // Refetch when clientId changes so the dropdown reflects the new scope.
   // If the previously-selected contract belonged to a different client,
   // surface that mismatch by clearing the selection — keeps the FK aligned

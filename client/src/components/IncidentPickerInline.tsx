@@ -57,6 +57,16 @@ export default function IncidentPickerInline({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayValue, value]);
 
+  // Self-heal: hydrate the visible name from the loaded list when value is
+  // set but query is empty (edit-mode forms without an explicit displayValue).
+  useEffect(() => {
+    if (value != null && query === '' && incidents.length > 0) {
+      const match = incidents.find((i) => i.id === value);
+      if (match) setQuery(match.incident_number);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, incidents]);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);

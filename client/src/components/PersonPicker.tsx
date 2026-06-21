@@ -77,6 +77,22 @@ export default function PersonPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayValue, value]);
 
+  // Self-heal: when the parent passes `value` (a person FK) without a
+  // `displayValue`, fetch that person's record by id and surface the name.
+  // PersonPicker uses server-search (debounced 2-char min) instead of a
+  // one-shot list, so unlike the other 8 pickers it can't pull the name
+  // from a local cache — it has to ask the server. One GET per edit-mode
+  // mount; cheap.
+  useEffect(() => {
+    if (value == null || query !== '' || displayValue) return;
+    let cancelled = false;
+    apiFetch<PersonSummary>(`/records/persons/${value}`)
+      .then((p) => { if (!cancelled && p) setQuery(formatName(p)); })
+      .catch(() => { /* leave blank; the user can search */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, displayValue]);
+
   // Click-outside closes the dropdown without losing the selection.
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {

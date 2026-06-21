@@ -1,29 +1,33 @@
 // ============================================================
-// CasePicker — inline search dropdown for Cases
+// CitationPicker — inline name-search dropdown for citations
 // ============================================================
-// Pulls /cases (full list, client-filters) on case_number, case_type,
-// title, suspect_name. Identical UX to Person/Officer/Incident pickers.
+// Uses GET /citations/search?q=… (the server endpoint already
+// supports a 2-char minimum and LIKE-searches citation_number,
+// person_name, vehicle_plate). Debounced 300ms.
+//
+// Closes the typed-numeric fallback in RecordPicker for citation
+// linking from IncidentsPage / TaskFormModal.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Briefcase, X } from 'lucide-react';
+import { Search, ScrollText, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 
-export interface CaseSummary {
+export interface CitationSummary {
   id: number;
-  case_number?: string | null;
-  case_type?: string | null;
-  title?: string | null;
+  citation_number?: string | null;
+  person_name?: string | null;
+  vehicle_plate?: string | null;
+  violation_date?: string | null;
+  violation_code?: string | null;
+  violation_description?: string | null;
+  fine_amount?: number | null;
   status?: string | null;
-  suspect_name?: string | null;
-  victim_name?: string | null;
-  assigned_to_name?: string | null;
-  opened_at?: string | null;
 }
 
 interface Props {
   value: number | null;
   displayValue?: string;
-  onChange: (id: number | null, kase?: CaseSummary) => void;
+  onChange: (id: number | null, citation?: CitationSummary) => void;
   placeholder?: string;
   disabled?: boolean;
   required?: boolean;
@@ -31,17 +35,17 @@ interface Props {
   className?: string;
 }
 
-const formatLabel = (k: CaseSummary): string =>
-  k.case_number ?? k.title ?? `Case #${k.id}`;
+const formatLabel = (k: CitationSummary): string =>
+  k.citation_number ?? k.person_name ?? `Citation #${k.id}`;
 
-export default function CasePicker({
+export default function CitationPicker({
   value, displayValue, onChange,
-  placeholder = 'Search case # / title / suspect…',
+  placeholder = 'Search citation # / name / plate…',
   disabled = false, required = false, id, className = '',
 }: Props) {
   const [query, setQuery] = useState(displayValue ?? '');
-  const [cases, setCases] = useState<CaseSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [results, setResults] = useState<CitationSummary[]>([]);
+  const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -52,28 +56,16 @@ export default function CasePicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayValue, value]);
 
+  // Self-heal: fetch the citation by id when value is set but query is empty.
   useEffect(() => {
-    if (value != null && query === '' && cases.length > 0) {
-      const match = cases.find((k) => k.id === value);
-      if (match) setQuery(formatLabel(match));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, cases]);
-
-  useEffect(() => {
+    if (value == null || query !== '' || displayValue) return;
     let cancelled = false;
-    setLoading(true);
-    apiFetch<{ data?: CaseSummary[] } | CaseSummary[]>('/cases?limit=300')
-      .then((res) => {
-        if (cancelled) return;
-        const list = Array.isArray(res) ? res : (res?.data ?? []);
-        setCases(list);
-        setError(null);
-      })
-      .catch((err: any) => { if (!cancelled) setError(err?.message || 'Failed to load cases'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+    apiFetch<CitationSummary>(`/citations/${value}`)
+      .then((c) => { if (!cancelled && c) setQuery(formatLabel(c)); })
+      .catch(() => { /* leave blank */ });
     return () => { cancelled = true; };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, displayValue]);
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -83,24 +75,38 @@ export default function CasePicker({
     return () => document.removeEventListener('mousedown', onDocClick);
   }, []);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return cases.slice(0, 12);
-    return cases
-      .filter((k) =>
-        (k.case_number ?? '').toLowerCase().includes(q) ||
-        (k.title ?? '').toLowerCase().includes(q) ||
-        (k.case_type ?? '').toLowerCase().includes(q) ||
-        (k.suspect_name ?? '').toLowerCase().includes(q) ||
-        (k.victim_name ?? '').toLowerCase().includes(q),
-      )
-      .slice(0, 12);
-  }, [query, cases]);
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2 || (value != null && q === displayValue)) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const data = await apiFetch<{ data?: CitationSummary[] } | CitationSummary[]>(
+          `/citations/search?q=${encodeURIComponent(q)}`,
+        );
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : (data?.data ?? []);
+        setResults(list.slice(0, 20));
+        setError(null);
+        setOpen(true);
+      } catch (err: any) {
+        if (!cancelled) setError(err?.message || 'Citation search failed');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [query, value, displayValue]);
 
-  const select = useCallback((kase: CaseSummary) => {
-    setQuery(formatLabel(kase));
+  const select = useCallback((citation: CitationSummary) => {
+    setQuery(formatLabel(citation));
     setOpen(false);
-    onChange(kase.id, kase);
+    onChange(citation.id, citation);
   }, [onChange]);
 
   const clear = useCallback(() => {
@@ -110,7 +116,7 @@ export default function CasePicker({
     inputRef.current?.focus();
   }, [onChange]);
 
-  const showClear = value != null || query.length > 0;
+  const showClear = useMemo(() => value != null || query.length > 0, [value, query]);
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
@@ -128,7 +134,7 @@ export default function CasePicker({
           autoComplete="off"
           className="w-full bg-surface-sunken border border-border-default pl-7 pr-7 py-1.5 text-[11px] text-rmpg-100 disabled:opacity-50"
           style={{ borderRadius: 2 }}
-          aria-label={required ? 'Search case (required)' : 'Search case'}
+          aria-label={required ? 'Search citation (required)' : 'Search citation'}
           aria-autocomplete="list"
           aria-expanded={open}
         />
@@ -138,23 +144,25 @@ export default function CasePicker({
           </button>
         )}
       </div>
-      {open && (filtered.length > 0 || loading || error || query.trim().length > 0) && (
+      {open && (results.length > 0 || loading || error || query.trim().length >= 2) && (
         <div className="absolute left-0 right-0 mt-1 bg-surface-base border border-border-default panel-beveled z-30 max-h-[260px] overflow-y-auto scrollbar-dark" style={{ borderRadius: 2 }}>
-          {loading && <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">Loading cases…</div>}
+          {loading && <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">Searching citations…</div>}
           {error && <div className="px-3 py-2 text-[11px] text-[#ef4444]">{error}</div>}
-          {!loading && !error && filtered.length === 0 && <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">No matches.</div>}
-          {filtered.map((k) => {
+          {!loading && !error && results.length === 0 && query.trim().length >= 2 && (
+            <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">No citations matched.</div>
+          )}
+          {results.map((k) => {
             const selected = value === k.id;
-            const sub = [k.case_type, k.suspect_name && `Suspect: ${k.suspect_name}`, k.assigned_to_name].filter(Boolean).join(' · ');
+            const sub = [k.person_name, k.vehicle_plate, k.violation_code].filter(Boolean).join(' · ');
             return (
               <button key={k.id} type="button" onClick={() => select(k)}
                 className={`w-full text-left px-3 py-2 border-b border-border-default hover:bg-surface-raised flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''}`}
                 style={{ borderLeft: selected ? '2px solid #d4a017' : '2px solid transparent' }}>
-                <Briefcase className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? '#d4a017' : '#666' }} />
+                <ScrollText className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? '#d4a017' : '#666' }} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-mono font-semibold text-[#d4a017]">{formatLabel(k)}</div>
-                  {k.title && <div className="text-[10px] text-rmpg-300 mt-0.5 truncate">{k.title}</div>}
-                  {sub && <div className="text-[10px] text-rmpg-500 mt-0.5 truncate">{sub}</div>}
+                  {sub && <div className="text-[10px] text-rmpg-400 mt-0.5 truncate">{sub}</div>}
+                  {k.violation_description && <div className="text-[10px] text-rmpg-500 mt-0.5 truncate">{k.violation_description}</div>}
                 </div>
               </button>
             );
