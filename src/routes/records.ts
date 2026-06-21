@@ -2207,7 +2207,7 @@ records.delete('/links/:id', async (c) => {
 const PERSONS_BULK_COLUMNS = `id, first_name, middle_name, last_name, alias_nickname, dob, ssn_last4, dl_number, dl_state,
   phone, phone_secondary, email, address, city, state, zip, height_feet, height_inches, weight, race, gender, build,
   complexion, hair_color, hair_length, hair_style, facial_hair, eye_color, glasses, scars_marks_tattoos,
-  is_sex_offender, is_veteran, occupation, employer, photo, caution_flags, flags, notes,
+  is_sex_offender, is_veteran, occupation, employer, photo, photo_url, id_image_url, caution_flags, flags, notes,
   created_at, updated_at`;
 
 const VEHICLES_BULK_COLUMNS = `id, vin, plate_number, state, make, model, year, color, body_style,
