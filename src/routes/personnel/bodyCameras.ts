@@ -300,27 +300,57 @@ bodyCamerasRouter.delete('/:id', async (c) => {
       }, 409);
     }
 
+    // Snapshot every assigned video BEFORE the cascade. The 2026-06-21
+    // safety pass caught that the previous version wrote ONE parent-
+    // camera audit row carrying only heldCount (an integer) — so a
+    // subpoena later asking "what happened to video #N tied to case Y"
+    // had no per-video trail. Now we record a row per destroyed video
+    // with the same shape as the per-video DELETE handler at line 538,
+    // so the chain-of-custody story is recoverable regardless of which
+    // path destroyed the row.
+    const assigned = await query<{ id: number; case_number: string | null; retention_status: string | null; classification: string | null }>(
+      db,
+      'SELECT id, case_number, retention_status, classification FROM bodycam_videos WHERE camera_id = ?',
+      id,
+    );
+
     await db.batch([
       db.prepare('DELETE FROM bodycam_videos WHERE camera_id = ?').bind(id),
       db.prepare('DELETE FROM body_cameras WHERE id = ?').bind(id),
     ]);
 
-    // Append-only audit trail on evidence destruction — currently zero
-    // entries are written when evidentiary footage is destroyed, which
-    // is a SOX/chain-of-custody gap the audit flagged separately.
+    // Per-video audit rows first — these are the SUBPOENA-CRITICAL
+    // ones. recordAudit never throws (best-effort by design), so a
+    // single failure doesn't break the loop.
+    for (const v of assigned) {
+      const wasHeld = isEvidenceLocked(v.retention_status);
+      try {
+        await recordAudit(c, {
+          action: wasHeld && canForce ? 'bodycam_video_force_deleted' : 'bodycam_video_deleted',
+          entityType: 'bodycam_video',
+          entityId: v.id,
+          details: wasHeld && canForce
+            ? `ADMIN OVERRIDE via parent camera ${id}: held video destroyed (retention=${v.retention_status}; classification=${v.classification ?? 'n/a'}; case=${v.case_number ?? 'n/a'})`
+            : `Cascade delete via parent camera ${id} (classification=${v.classification ?? 'n/a'}; case=${v.case_number ?? 'n/a'}; retention=${v.retention_status ?? 'n/a'})`,
+          actorId: actor.id,
+        });
+      } catch { /* best-effort */ }
+    }
+
+    // Parent camera audit row last — gives the "operation" envelope.
     try {
       await recordAudit(c, {
         action: canForce && heldCount > 0 ? 'body_camera_force_deleted' : 'body_camera_deleted',
         entityType: 'body_camera',
         entityId: id,
         details: canForce && heldCount > 0
-          ? `ADMIN OVERRIDE: body camera ${id} destroyed despite ${heldCount} held video(s)`
-          : `Body camera ${id} and all assigned videos destroyed by ${actor.role} ${actor.id}`,
+          ? `ADMIN OVERRIDE: body camera ${id} destroyed despite ${heldCount} held video(s) — ${assigned.length} total video(s) destroyed in cascade`
+          : `Body camera ${id} destroyed; ${assigned.length} assigned video(s) cascaded`,
         actorId: actor.id,
       });
     } catch { /* audit best-effort, don't 500 a successful destruction */ }
 
-    return c.json({ ok: true, id });
+    return c.json({ ok: true, id, videos_destroyed: assigned.length });
   } catch (err) {
     console.error('DELETE /personnel/body-cameras/:id failed:', err);
     return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
