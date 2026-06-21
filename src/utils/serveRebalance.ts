@@ -36,13 +36,13 @@ export async function runDailyRebalance(db: D1Database, nowIso: string): Promise
     db,
     `SELECT id, deadline, max_attempts, attempt_count, priority, urgency_tier
        FROM serve_queue
-      WHERE status IN ('pending', 'assigned', 'in_progress')`,
+      WHERE status IN ('pending', 'assigned', 'in_progress', 'attempted')`,
   );
 
   let tiers_recomputed = 0;
   let tiers_promoted_critical = 0;
   let priority_escalated = 0;
-  const slots_skipped_manual = 0; // populated in PR 2/3 when slot reshuffling lands
+  let slots_skipped_manual = 0; // populated in PR 2/3 when slot reshuffling lands
 
   for (const row of rows) {
     const newTier: UrgencyTier = applyUrgencyTier(
