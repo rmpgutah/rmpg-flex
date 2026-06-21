@@ -169,6 +169,17 @@ billing.put('/invoices/:id', async (c) => {
     const id = parseInt(c.req.param('id'), 10);
     const b = await c.req.json<Record<string, unknown>>();
 
+    // Tracks whether THIS request is an admin override flipping an
+    // under-paid invoice to 'paid'. Audit caught (2026-06-21 safety
+    // pass): the v1011 path landed the override but wrote the generic
+    // 'invoice_updated' action, so a SOX reviewer scanning audit_log
+    // for unusual financial actions could not distinguish an admin
+    // force-paid from a normal status edit. Captured here so the
+    // recordAudit call below can branch on it.
+    let forcedPaid = false;
+    let paidPriorToForce = 0;
+    let totalForForce = 0;
+
     if ('status' in b) {
       const s = String(b.status);
       if (!VALID_INVOICE_STATUSES.has(s)) {
@@ -191,6 +202,11 @@ billing.put('/invoices/:id', async (c) => {
             canOverride: actorRole === 'admin',
           }, 409);
         }
+        if (paid < total && force) {
+          forcedPaid = true;
+          paidPriorToForce = paid;
+          totalForForce = total;
+        }
       }
     }
 
@@ -203,10 +219,12 @@ billing.put('/invoices/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', id);
     try {
       await recordAudit(c, {
-        action: 'invoice_updated',
+        action: forcedPaid ? 'invoice_marked_paid_admin' : 'invoice_updated',
         entityType: 'invoice',
         entityId: id,
-        details: `changed=${Object.keys(b).filter(k => updatable.has(k)).join(',')}`,
+        details: forcedPaid
+          ? `ADMIN OVERRIDE: marked paid with ${paidPriorToForce} of ${totalForForce} received; changed=${Object.keys(b).filter(k => updatable.has(k)).join(',')}`
+          : `changed=${Object.keys(b).filter(k => updatable.has(k)).join(',')}`,
         actorId: userId,
       });
     } catch { /* best-effort */ }

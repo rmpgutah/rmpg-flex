@@ -691,6 +691,39 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1012: Audit-trail completeness — close the two real gaps the safety
+//        review of #1480 found. No new features, no relaxations; just
+//        making the audit_log actually carry the chain-of-custody +
+//        SOX-distinguishable signal the comments promised.
+//
+//        • Invoice paid-override: billing.ts PUT /invoices/:id wrote
+//          generic 'invoice_updated' even when an admin force-paid an
+//          under-paid invoice. Now branches to action=
+//          'invoice_marked_paid_admin' with details carrying the
+//          paid/total numbers at the moment of override. SOX reviewers
+//          filtering audit_log can now spot the override row at a glance.
+//
+//        • Cascade per-video chain-of-custody: bodyCameras.ts DELETE
+//          on a parent camera previously wrote a single audit row
+//          carrying only heldCount (an integer). A subpoena later
+//          asking "what happened to video #N tied to case Y" had NO
+//          per-video trail. Now: SELECT every assigned video before
+//          the batch, then write one recordAudit row per destroyed
+//          video with action=bodycam_video_force_deleted (or
+//          _deleted), entityId=videoId, and full retention/case/
+//          classification context. Parent envelope row writes after
+//          the per-video rows. Same audit shape as the direct
+//          single-video DELETE handler — so a subpoena response that
+//          greps for "video #N" finds the row regardless of which
+//          path destroyed it.
+//
+//        Safety audit also confirmed: zero false positives in the v1010
+//        wrapping-label htmlFor sweep, admin override wiring is correct
+//        end-to-end, and no tests/docs/audit-log consumers depend on
+//        the v1010 absolute strings.
+//
+//        Tests: 1524 vitests still pass. Worker typecheck clean.
+//
 // v1011: Soften the v1010 guards so legitimate operator workflows aren't
 //        blocked. The fraud/security walls stay — but admin (the
 //        operator-owner) now has audit-logged escape hatches, and the
