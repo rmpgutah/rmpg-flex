@@ -7,7 +7,7 @@ beforeEach(() => {
   vi.unstubAllGlobals();
   vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : (input instanceof URL ? input.toString() : (input as Request).url);
-    if (url.endsWith('/api/fleet')) {
+    if (/\/api\/fleet(\?|$)/.test(url)) {
       return Promise.resolve(new Response(JSON.stringify([
         { id: 1, vehicle_name: 'Unit 12' },
         { id: 2, vehicle_name: 'Unit 8' },

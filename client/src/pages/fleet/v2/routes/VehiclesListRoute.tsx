@@ -40,8 +40,20 @@ export function VehiclesListRoute() {
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const fetchRows = useCallback(() => {
-    apiFetch<FleetVehicleRow[]>('/fleet')
-      .then((r) => setRows(Array.isArray(r) ? r : []))
+    // /api/fleet returns { data: FleetVehicleRow[], pagination: {...} } —
+    // a wrapped envelope, NOT a bare array. The earlier defensive guard
+    // `Array.isArray(r) ? r : []` was correct against crashes but silently
+    // hid the data. Extract .data explicitly; accept a bare array too in
+    // case the contract ever simplifies.
+    apiFetch<FleetVehicleRow[] | { data: FleetVehicleRow[] }>('/fleet?limit=500')
+      .then((r) => {
+        const arr = Array.isArray(r)
+          ? r
+          : (r && Array.isArray((r as { data?: FleetVehicleRow[] }).data))
+            ? (r as { data: FleetVehicleRow[] }).data
+            : [];
+        setRows(arr);
+      })
       .catch(() => setRows([]));
   }, []);
 
