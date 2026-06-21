@@ -32,8 +32,8 @@ export default function ServeSchedulerPanel() {
       setError(null);
       const include = 'tier';
       const range = view === 'week' ? 7 : 31;
-      // new-date-ok: epoch math on a Z-suffixed ISO string, not a naive server timestamp
-      const endDate = new Date(Date.parse(`${today}T12:00:00Z`) + (range - 1) * 86_400_000)
+      const startMs = Date.parse(`${today}T12:00:00Z`);
+      const endDate = new Date(startMs + (range - 1) * 86_400_000) // new-date-ok: epoch-ms arithmetic, not a server string
         .toISOString().slice(0, 10);
       const data = await apiFetch<ScheduleResp>(
         `/serve-intake/schedule?start_date=${today}&end_date=${endDate}&include=${include}`,
