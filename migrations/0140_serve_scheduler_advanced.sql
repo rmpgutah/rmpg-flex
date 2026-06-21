@@ -16,7 +16,7 @@
 ALTER TABLE serve_attempt_schedules ADD COLUMN manually_moved      INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE serve_attempt_schedules ADD COLUMN moved_by_user_id    INTEGER;
 ALTER TABLE serve_attempt_schedules ADD COLUMN moved_at            TEXT;
-ALTER TABLE serve_attempt_schedules ADD COLUMN auto_replan_source  INTEGER;
+ALTER TABLE serve_attempt_schedules ADD COLUMN auto_replan_source  INTEGER;  -- serve_attempts.id that triggered this slot
 ALTER TABLE serve_attempt_schedules ADD COLUMN officer_id          INTEGER;
 
 CREATE INDEX IF NOT EXISTS idx_sas_date_officer
