@@ -691,6 +691,19 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1003: Search-by-name record pickers — operator can no longer be expected
+//        to know that "Camden Clark is ID 4" when linking records. Three new
+//        reusable components: PersonPicker (debounced /records/persons/search,
+//        2-char min, dropdown shows name + DOB + phone + city/state),
+//        OfficerPicker (one-shot /personnel?status=active fetch + client
+//        filter on name/badge/rank/unit call sign), IncidentPickerInline
+//        (the existing IncidentPicker is panel-shaped; inline variant has the
+//        same dropdown UX). Replaces five numeric-ID text inputs:
+//        UseOfForcePage subject_person_id + incident_id; JailFormModal
+//        arresting_officer_id + arrest_incident_id; EvidencePropertyPage
+//        incident_id. The DB FK columns are unchanged — pickers just emit
+//        the selected record's id via onChange, so existing rows continue to
+//        link correctly.
 // v1002: Patrol Mileage Audit gap auto-fixer — new POST /mileage/auto-fix-gaps
 //        endpoint walks the unified CFS+PATROL chain and closes remaining
 //        +/- gaps left after Rebuild has aligned PATROL forward. Per pair:
