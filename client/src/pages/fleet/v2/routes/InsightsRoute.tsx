@@ -848,6 +848,10 @@ function FleetMapCard() {
         map.addControl(new mapboxgl.AttributionControl({ compact: true }));
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
         mapRef.current = map;
+        // Clear any prior err (e.g. a transient "loading…" / fetch failure) —
+        // a successful map init means Mapbox is alive. Without this, the
+        // "MAPBOX UNAVAILABLE" chip persists even after the map renders.
+        if (!cancelled) setErr(null);
       } catch (e) {
         if (!cancelled) setErr(e instanceof Error ? e.message : 'Mapbox initialization failed');
       }
