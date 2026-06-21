@@ -129,18 +129,18 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
         <div className="panel-beveled p-4 space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <label className="field-label">Officer</label>
+              <label htmlFor="ff-attendancetab-0" className="field-label">Officer</label>
               <select id="ff-attendancetab-0" value={form.officer_id} onChange={e => setForm(f => ({ ...f, officer_id: e.target.value }))} className="input-field w-full text-xs">
                 <option value="">Select officer...</option>
                 {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
               </select>
             </div>
             <div>
-              <label className="field-label">Date</label>
+              <label htmlFor="ff-attendancetab-1" className="field-label">Date</label>
               <input id="ff-attendancetab-1" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="input-field w-full text-xs" />
             </div>
             <div>
-              <label className="field-label">Type</label>
+              <label htmlFor="ff-attendancetab-2" className="field-label">Type</label>
               <select id="ff-attendancetab-2" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="input-field w-full text-xs">
                 <option value="absent">Absent</option>
                 <option value="tardy">Tardy</option>
@@ -149,18 +149,18 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
               </select>
             </div>
             <div>
-              <label className="field-label">Minutes Late</label>
+              <label htmlFor="ff-attendancetab-3" className="field-label">Minutes Late</label>
               <input id="ff-attendancetab-3" type="number" min="0" max="480" value={form.minutes_late} onChange={e => setForm(f => ({ ...f, minutes_late: Number(e.target.value) }))} className="input-field w-full text-xs tabular-nums" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Reason</label>
+              <label htmlFor="ff-attendancetab-4" className="field-label">Reason</label>
               <input id="ff-attendancetab-4" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} className="input-field w-full text-xs" />
             </div>
             <div className="flex items-center gap-2 pt-4">
               <input id="ff-attendancetab-5" type="checkbox" checked={form.excused} onChange={e => setForm(f => ({ ...f, excused: e.target.checked }))} className="w-3 h-3" />
-              <label className="text-xs text-rmpg-300">Excused</label>
+              <label htmlFor="ff-attendancetab-6" className="text-xs text-rmpg-300">Excused</label>
             </div>
           </div>
           <div className="flex gap-2">

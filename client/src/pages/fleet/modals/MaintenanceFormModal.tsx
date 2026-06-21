@@ -101,65 +101,65 @@ export default function MaintenanceFormModal({ isOpen, mode = 'create', form, on
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Type</label>
+              <label htmlFor="ff-maintenanceformmodal-0" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Type</label>
               <select id="ff-maintenanceformmodal-0" className="select-dark w-full text-[11px] min-h-[36px]" value={form.type}
                 onChange={(e) => setField('type', e.target.value)}>
                 {MAINTENANCE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Performed At (Date/Time)</label>
+              <label htmlFor="ff-maintenanceformmodal-1" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Performed At (Date/Time)</label>
               <input id="ff-maintenanceformmodal-1" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1" value={form.performed_at}
                 onChange={(e) => setField('performed_at', e.target.value)} />
             </div>
             <div className="col-span-2">
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Description *</label>
+              <label htmlFor="ff-maintenanceformmodal-2" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Description *</label>
               <textarea id="ff-maintenanceformmodal-2" className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.description}
                 onChange={(e) => setField('description', e.target.value)} maxLength={3000} placeholder="Describe the maintenance work performed..." />
               <div className="text-[8px] text-rmpg-500 text-right mt-0.5">{form.description.length}/3000</div>
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Mileage at Service</label>
+              <label htmlFor="ff-maintenanceformmodal-3" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Mileage at Service</label>
               <input id="ff-maintenanceformmodal-3" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.mileage_at_service}
                 onChange={(e) => setField('mileage_at_service', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Total Cost ($)</label>
+              <label htmlFor="ff-maintenanceformmodal-4" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Total Cost ($)</label>
               <input id="ff-maintenanceformmodal-4" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" value={form.cost}
                 onChange={(e) => setField('cost', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Labor Cost ($)</label>
+              <label htmlFor="ff-maintenanceformmodal-8" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Labor Cost ($)</label>
               <input id="ff-maintenanceformmodal-8" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" value={form.labor_cost}
                 onChange={(e) => setField('labor_cost', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Vendor</label>
+              <label htmlFor="ff-maintenanceformmodal-5" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Vendor</label>
               <input id="ff-maintenanceformmodal-5" className="input-dark w-full text-[11px] min-h-[36px]" value={form.vendor}
                 onChange={(e) => setField('vendor', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Performed By</label>
+              <label htmlFor="ff-maintenanceformmodal-6" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Performed By</label>
               <input id="ff-maintenanceformmodal-6" className="input-dark w-full text-[11px] min-h-[36px]" value={form.performed_by}
                 onChange={(e) => setField('performed_by', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Next Due Date/Time</label>
+              <label htmlFor="ff-maintenanceformmodal-7" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Next Due Date/Time</label>
               <input id="ff-maintenanceformmodal-7" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1" value={form.next_due_date}
                 onChange={(e) => setField('next_due_date', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Next Due Mileage</label>
+              <label htmlFor="ff-maintenanceformmodal-9" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Next Due Mileage</label>
               <input id="ff-maintenanceformmodal-9" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.next_due_mileage}
                 onChange={(e) => setField('next_due_mileage', e.target.value)} placeholder="e.g. 96000" />
             </div>
             <div className="col-span-2">
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Service Tasks (comma-separated)</label>
+              <label htmlFor="ff-maintenanceformmodal-10" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Service Tasks (comma-separated)</label>
               <input id="ff-maintenanceformmodal-10" className="input-dark w-full text-[11px] min-h-[36px]" value={form.service_tasks}
                 onChange={(e) => setField('service_tasks', e.target.value)} placeholder="oil filter, drain plug gasket, cabin filter…" />
             </div>
             <div className="col-span-2">
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
+              <label htmlFor="ff-maintenanceformmodal-11" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
               <textarea id="ff-maintenanceformmodal-11" className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
                 onChange={(e) => setField('notes', e.target.value)} maxLength={2000} placeholder="Warranty info, invoice #, parts detail, follow-ups…" />
             </div>

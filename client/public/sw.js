@@ -691,6 +691,75 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1009: Audit punch-list sweep — 21 findings from the v1008 forward-looking
+//        audit landed in one PR. Highlights:
+//
+//        DESTRUCTIVE CONFIRMATIONS — new <DeleteRecordModal> + <ConfirmDialog>
+//        carrying row identity:
+//          • ConfirmDialog Enter bug: was firing the destructive action even
+//            when focus was on the X close button (autofocus landed on X +
+//            global Enter handler). Now focus lands on Cancel for danger
+//            variants and Enter is handled natively per-button, not at the
+//            dialog level. data-confirm-cancel / data-confirm-action hooks
+//            mark which button is the safe vs destructive target.
+//          • ConfirmDialog `details` slot for structured row context.
+//          • New <DeleteRecordModal> wraps ConfirmDialog with a record-
+//            specific shape. Optional evidenceLocked guard for evidentiary
+//            video / chain-of-custody surfaces.
+//          • 4 highest-stakes pages converted to DeleteRecordModal with full
+//            row context: VictimServicesPage, AffairsPage (IA), CrisisResponsePage,
+//            NarcoticsPage. Each now surfaces name + case_number + crime_type
+//            etc. so the operator can verify the row before destruction.
+//          • BodyCamerasPage + DashCamerasPage: replaced bare window.confirm
+//            (evidentiary video destroyed with zero identity check) with
+//            DeleteRecordModal showing officer + capture timestamp + unit/
+//            trip context. Evidence-lock guard blocks delete when video
+//            retention_status != 'active' (under hold).
+//          • IncidentsPage: "Remove this offense/officer/link?" prompts
+//            now show the offense code + officer name + link reference
+//            number.
+//
+//        ACCESSIBILITY:
+//          • AddressAutocomplete now has the full ARIA combobox shape:
+//            role=combobox + aria-expanded + aria-controls +
+//            aria-activedescendant + aria-haspopup on the input;
+//            role=listbox + role=option + aria-selected on suggestions.
+//            Used in every call-intake form (NewCallModal / IncidentFormModal
+//            / QuickPsoModal / DispatchPage QuickDispatch). Was the largest
+//            assistive-tech gap in the CAD intake path.
+//          • 1,304 <label> elements across 160 .tsx files got htmlFor=
+//            wired to their existing id="ff-X-N" inputs. Closes the
+//            single largest screen-reader regression in the codebase
+//            (audit reported ~99% of labels missed it).
+//          • Touch targets bumped to 44px on FieldCameraPage (Back, Flip,
+//            patrol-hit Dismiss, scan Done) and ShiftCard (vehicle picker
+//            min-h-[40px]→44px, Cancel h-9→h-11).
+//
+//        SILENT FAILURES — surfaced:
+//          • DispatchPage 1336 (full-call hydrate): was silently showing
+//            list-version selectedCall → operator double-wrote PSO fields.
+//            Now addToast on failure.
+//          • DispatchPage 1213 (serve:attempt refresh): was leaving
+//            serve-link stale → dispatcher could re-dispatch same officer.
+//            Now addToast.
+//          • ServeIntakePage 283 (clients dropdown): tracks clientLoadError.
+//          • IncidentsPage 568+578 unlink person/vehicle: was silent with
+//            no confirmation. Now confirms with the person's name +
+//            vehicle plate and surfaces a success toast.
+//
+//        STATUS ENUM PROPER-CASE STRAGGLERS (commit d147f78d missed these):
+//          VictimServicesPage, NarcoticsPage, GangIntelPage,
+//          AlarmManagementPage, IntelSourcesPage, BoloCard,
+//          CallHistoryDrawer — all now use formatEnumValue().
+//
+//        DEFERRED (require server-side joins or new schema):
+//          • AuditLogPage entity_label
+//          • EmailPage / WebResearchPage / FlexCamPage identifier exposure
+//          • Quick Dispatch dialog focus trap
+//          • IncidentFormModal tab bar + priority radio ARIA
+//          (These need backend changes and are tracked for a follow-up PR.)
+//
+//        Tests: all 1504 client tests pass; worker typecheck clean.
 // v1008: Critical safety + silent-failure sweep. Ultracode forward-looking
 //        audit (4 agents, 53 findings) caught 4 critical + 13 major bugs;
 //        this PR ships the safety-critical and CAD-integrity fixes.

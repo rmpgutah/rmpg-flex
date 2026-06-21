@@ -813,7 +813,7 @@ export default function IpedPage() {
             <div className="p-4 space-y-3">
               {/* Job type */}
               <div>
-                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Job Type</label>
+                <label htmlFor="ff-ipedpage-2" className="text-[10px] text-rmpg-500 uppercase block mb-1">Job Type</label>
                 <select id="ff-ipedpage-2"
                   value={newJob.jobType}
                   onChange={(e) => setNewJob(j => ({ ...j, jobType: e.target.value }))}
@@ -828,7 +828,7 @@ export default function IpedPage() {
 
               {/* Input path */}
               <div>
-                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Input Path *</label>
+                <label htmlFor="ff-ipedpage-3" className="text-[10px] text-rmpg-500 uppercase block mb-1">Input Path *</label>
                 <input id="ff-ipedpage-3"
                   type="text"
                   value={newJob.inputPath}
@@ -840,7 +840,7 @@ export default function IpedPage() {
 
               {/* Output path */}
               <div>
-                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Output Path (optional)</label>
+                <label htmlFor="ff-ipedpage-4" className="text-[10px] text-rmpg-500 uppercase block mb-1">Output Path (optional)</label>
                 <input id="ff-ipedpage-4"
                   type="text"
                   value={newJob.outputPath}
@@ -852,7 +852,7 @@ export default function IpedPage() {
 
               {/* Evidence ID */}
               <div>
-                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Evidence ID (optional)</label>
+                <label htmlFor="ff-ipedpage-5" className="text-[10px] text-rmpg-500 uppercase block mb-1">Evidence ID (optional)</label>
                 <input id="ff-ipedpage-5"
                   type="text"
                   value={newJob.evidenceId}
@@ -864,7 +864,7 @@ export default function IpedPage() {
 
               {/* Profile */}
               <div>
-                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">IPED Profile</label>
+                <label htmlFor="ff-ipedpage-6" className="text-[10px] text-rmpg-500 uppercase block mb-1">IPED Profile</label>
                 <input id="ff-ipedpage-6"
                   type="text"
                   value={newJob.profile}
@@ -909,7 +909,7 @@ export default function IpedPage() {
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">File Path *</label>
+                <label htmlFor="ff-ipedpage-7" className="text-[10px] text-rmpg-500 uppercase block mb-1">File Path *</label>
                 <input id="ff-ipedpage-7"
                   type="text"
                   value={importData.filePath}
@@ -919,7 +919,7 @@ export default function IpedPage() {
                 />
               </div>
               <div>
-                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Set Name *</label>
+                <label htmlFor="ff-ipedpage-8" className="text-[10px] text-rmpg-500 uppercase block mb-1">Set Name *</label>
                 <input id="ff-ipedpage-8"
                   type="text"
                   value={importData.setName}
@@ -930,7 +930,7 @@ export default function IpedPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Category</label>
+                  <label htmlFor="ff-ipedpage-9" className="text-[10px] text-rmpg-500 uppercase block mb-1">Category</label>
                   <select id="ff-ipedpage-9"
                     value={importData.category}
                     onChange={(e) => setImportData(d => ({ ...d, category: e.target.value }))}
@@ -942,7 +942,7 @@ export default function IpedPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Hash Type</label>
+                  <label htmlFor="ff-ipedpage-10" className="text-[10px] text-rmpg-500 uppercase block mb-1">Hash Type</label>
                   <select id="ff-ipedpage-10"
                     value={importData.hashType}
                     onChange={(e) => setImportData(d => ({ ...d, hashType: e.target.value }))}

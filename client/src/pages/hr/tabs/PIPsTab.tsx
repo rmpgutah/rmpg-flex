@@ -142,18 +142,18 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
         <div className="panel-beveled p-4 space-y-3">
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="field-label">Officer *</label>
+              <label htmlFor="ff-pipstab-2" className="field-label">Officer *</label>
               <select id="ff-pipstab-2" value={form.officer_id} onChange={e => setForm(f => ({ ...f, officer_id: e.target.value }))} className="input-field w-full text-xs">
                 <option value="">Select...</option>
                 {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
               </select>
             </div>
             <div>
-              <label className="field-label">Start Date *</label>
+              <label htmlFor="ff-pipstab-3" className="field-label">Start Date *</label>
               <input id="ff-pipstab-3" type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} className="input-field w-full text-xs" />
             </div>
             <div>
-              <label className="field-label">End Date *</label>
+              <label htmlFor="ff-pipstab-4" className="field-label">End Date *</label>
               <input id="ff-pipstab-4" type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} className="input-field w-full text-xs" />
             </div>
           </div>
@@ -162,7 +162,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
             <RichTextArea value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} className="input-field w-full text-xs" rows={3} placeholder="Describe the performance issues requiring improvement..." />
           </div>
           <div>
-            <label className="field-label">Goals *</label>
+            <label htmlFor="ff-pipstab-5" className="field-label">Goals *</label>
             {form.goals.map((g, i) => (
               <div key={i} className="flex gap-2 mb-1">
                 <input id="ff-pipstab-5" value={g} onChange={e => { const goals = [...form.goals]; goals[i] = e.target.value; setForm(f => ({ ...f, goals })); }} className="input-field flex-1 text-xs" placeholder={`Goal ${i + 1}`} />

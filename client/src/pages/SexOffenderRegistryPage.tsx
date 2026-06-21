@@ -1058,7 +1058,7 @@ function RecordFormModal({
           <div className="grid grid-cols-3 gap-2">
             <FormField label="Registry ID" value={form.registry_id} onChange={v => set('registry_id', v)} placeholder="UT-SO-XXXXXXXX" />
             <div>
-              <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Tier</label>
+              <label htmlFor="ff-sexoffenderregistrypage-4" className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Tier</label>
               <select id="ff-sexoffenderregistrypage-4" value={form.tier} onChange={e => set('tier', parseInt(e.target.value, 10))}
                 className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value={1}>Tier 1 — Low</option>
@@ -1067,7 +1067,7 @@ function RecordFormModal({
               </select>
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Risk Level</label>
+              <label htmlFor="ff-sexoffenderregistrypage-5" className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Risk Level</label>
               <select id="ff-sexoffenderregistrypage-5" value={form.risk_level} onChange={e => set('risk_level', e.target.value)}
                 className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value="">— None —</option>
@@ -1097,7 +1097,7 @@ function RecordFormModal({
           {/* Registration */}
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Status</label>
+              <label htmlFor="ff-sexoffenderregistrypage-6" className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Status</label>
               <select id="ff-sexoffenderregistrypage-6" value={form.registration_status} onChange={e => set('registration_status', e.target.value)}
                 className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value="compliant">Compliant</option>
@@ -1154,7 +1154,7 @@ function FormField({
   const cls = "w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder-rmpg-500";
   return (
     <div>
-      <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">{label}</label>
+      <label htmlFor="ff-sexoffenderregistrypage-7" className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">{label}</label>
       {multiline ? (
         <RichTextArea value={value} onChange={e => onChange(e.target.value)} rows={2}
           className={cls} placeholder={placeholder} />

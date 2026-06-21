@@ -388,7 +388,10 @@ export default function FieldCameraPage() {
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="flex items-center gap-1 text-[#888] text-xs font-bold uppercase tracking-wider p-2 -ml-2"
+          // Audit caught (2026-06-21): on-scene officer touch surface — Back
+          // was effectively ~32px; gloved finger on a moving phone routinely
+          // mis-taps. Bumped to 44px minimum per WCAG 2.5.5 target size.
+          className="flex items-center gap-1 text-[#888] text-xs font-bold uppercase tracking-wider p-2 -ml-2 min-w-[44px] min-h-[44px]"
           aria-label="Back"
         >
           <ArrowLeft className="w-4 h-4" /> Back
@@ -397,7 +400,7 @@ export default function FieldCameraPage() {
         <button
           type="button"
           onClick={() => setFacing((f) => (f === 'environment' ? 'user' : 'environment'))}
-          className="text-[#888] p-2 -mr-2"
+          className="text-[#888] p-2 -mr-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
           aria-label="Flip camera"
         >
           <RefreshCw className="w-4 h-4" />
@@ -451,7 +454,7 @@ export default function FieldCameraPage() {
               <div className="text-[10px] font-bold uppercase tracking-widest">Patrol Hit</div>
               <div className="text-sm font-semibold leading-tight">{patrol.lastHit.text}</div>
             </div>
-            <button type="button" onClick={patrol.clearHit} className="p-1 -mr-1" aria-label="Dismiss hit alert">
+            <button type="button" onClick={patrol.clearHit} className="p-1 -mr-1 min-w-[44px] min-h-[44px] flex items-center justify-center" aria-label="Dismiss hit alert">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -491,7 +494,7 @@ export default function FieldCameraPage() {
                   </span>
                 )}
               </div>
-              <button type="button" onClick={clearScan} className="text-[#888] p-1" aria-label="Done">
+              <button type="button" onClick={clearScan} className="text-[#888] p-1 min-w-[44px] min-h-[44px] flex items-center justify-center" aria-label="Done">
                 <X className="w-5 h-5" />
               </button>
             </div>

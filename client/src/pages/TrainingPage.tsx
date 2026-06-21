@@ -357,30 +357,30 @@ export default function TrainingPage() {
             </div>
             <div className="space-y-2">
               <div>
-                <label className="text-[9px] text-rmpg-400 uppercase font-bold">Course Name</label>
+                <label htmlFor="ff-trainingpage-0" className="text-[9px] text-rmpg-400 uppercase font-bold">Course Name</label>
                 <input id="ff-trainingpage-0" type="text" value={bulkCourseName} onChange={e => setBulkCourseName(e.target.value)}
                   className="input-dark w-full mt-1 text-xs" placeholder="e.g. Annual Firearms Qualification" />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Category</label>
+                  <label htmlFor="ff-trainingpage-1" className="text-[9px] text-rmpg-400 uppercase font-bold">Category</label>
                   <select id="ff-trainingpage-1" value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} className="input-dark w-full mt-1 text-xs">
                     {CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Hours</label>
+                  <label htmlFor="ff-trainingpage-2" className="text-[9px] text-rmpg-400 uppercase font-bold">Hours</label>
                   <input id="ff-trainingpage-2" type="number" value={bulkHours} onChange={e => setBulkHours(e.target.value)}
                     className="input-dark w-full mt-1 text-xs" />
                 </div>
               </div>
               <div>
-                <label className="text-[9px] text-rmpg-400 uppercase font-bold">Provider</label>
+                <label htmlFor="ff-trainingpage-3" className="text-[9px] text-rmpg-400 uppercase font-bold">Provider</label>
                 <input id="ff-trainingpage-3" type="text" value={bulkProvider} onChange={e => setBulkProvider(e.target.value)}
                   className="input-dark w-full mt-1 text-xs" placeholder="Optional" />
               </div>
               <div>
-                <label className="text-[9px] text-rmpg-400 uppercase font-bold">
+                <label htmlFor="ff-trainingpage-5" className="text-[9px] text-rmpg-400 uppercase font-bold">
                   Select Officers ({bulkOfficerIds.length} selected)
                   <button type="button" className="ml-2 text-brand-400 hover:text-brand-300"
                     onClick={() => setBulkOfficerIds(bulkOfficerIds.length === officers.length ? [] : officers.map(o => o.id))}>
@@ -389,7 +389,7 @@ export default function TrainingPage() {
                 </label>
                 <div className="max-h-[150px] overflow-y-auto mt-1 border border-rmpg-700 rounded-sm bg-surface-sunken p-1 space-y-0.5">
                   {officers.map(o => (
-                    <label key={o.id} className="flex items-center gap-2 px-2 py-1 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 cursor-pointer">
+                    <label htmlFor="ff-trainingpage-4" key={o.id} className="flex items-center gap-2 px-2 py-1 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 cursor-pointer">
                       <input id="ff-trainingpage-4" type="checkbox"
                         checked={bulkOfficerIds.includes(o.id)}
                         onChange={e => setBulkOfficerIds(e.target.checked ? [...bulkOfficerIds, o.id] : bulkOfficerIds.filter(id => id !== o.id))}
@@ -1317,7 +1317,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
         <div className="p-4 space-y-3">
           {/* Officer */}
           <div>
-            <label className="field-label mb-1 block">Officer *</label>
+            <label htmlFor="ff-trainingpage-9" className="field-label mb-1 block">Officer *</label>
             <select id="ff-trainingpage-9"
               value={form.officer_id}
               onChange={e => update('officer_id', e.target.value)}
@@ -1332,7 +1332,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
 
           {/* Course Name (with requirement suggestions) */}
           <div>
-            <label className="field-label mb-1 block">Course Name *</label>
+            <label htmlFor="ff-trainingpage-10" className="field-label mb-1 block">Course Name *</label>
             <input id="ff-trainingpage-10"
               list="course-suggestions"
               type="text"
@@ -1351,7 +1351,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             {/* Category */}
             <div>
-              <label className="field-label mb-1 block">Category</label>
+              <label htmlFor="ff-trainingpage-11" className="field-label mb-1 block">Category</label>
               <select id="ff-trainingpage-11"
                 value={form.category}
                 onChange={e => update('category', e.target.value)}
@@ -1365,7 +1365,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
 
             {/* Status */}
             <div>
-              <label className="field-label mb-1 block">Status</label>
+              <label htmlFor="ff-trainingpage-12" className="field-label mb-1 block">Status</label>
               <select id="ff-trainingpage-12"
                 value={form.status}
                 onChange={e => update('status', e.target.value)}
@@ -1382,7 +1382,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
 
           {/* Provider */}
           <div>
-            <label className="field-label mb-1 block">Provider</label>
+            <label htmlFor="ff-trainingpage-13" className="field-label mb-1 block">Provider</label>
             <input id="ff-trainingpage-13"
               type="text"
               value={form.provider}
@@ -1395,7 +1395,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             {/* Completed Date */}
             <div>
-              <label className="field-label mb-1 block">Completed Date</label>
+              <label htmlFor="ff-trainingpage-14" className="field-label mb-1 block">Completed Date</label>
               <input id="ff-trainingpage-14"
                 type="date"
                 value={form.completed_date}
@@ -1405,7 +1405,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
             </div>
             {/* Expiry Date */}
             <div>
-              <label className="field-label mb-1 block">Expiry Date</label>
+              <label htmlFor="ff-trainingpage-15" className="field-label mb-1 block">Expiry Date</label>
               <input id="ff-trainingpage-15"
                 type="date"
                 value={form.expiry_date}
@@ -1418,7 +1418,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
           <div className="grid grid-cols-3 gap-3">
             {/* Hours */}
             <div>
-              <label className="field-label mb-1 block">Hours</label>
+              <label htmlFor="ff-trainingpage-16" className="field-label mb-1 block">Hours</label>
               <input id="ff-trainingpage-16"
                 type="number"
                 value={form.hours}
@@ -1430,7 +1430,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
             </div>
             {/* Score */}
             <div>
-              <label className="field-label mb-1 block">Score</label>
+              <label htmlFor="ff-trainingpage-17" className="field-label mb-1 block">Score</label>
               <input id="ff-trainingpage-17"
                 type="number"
                 value={form.score}
@@ -1442,7 +1442,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
             </div>
             {/* Certificate Number */}
             <div>
-              <label className="field-label mb-1 block">Cert #</label>
+              <label htmlFor="ff-trainingpage-18" className="field-label mb-1 block">Cert #</label>
               <input id="ff-trainingpage-18"
                 type="text"
                 value={form.certificate_number}
@@ -1528,7 +1528,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
         <div className="p-4 space-y-3">
           {/* Course Name */}
           <div>
-            <label className="field-label mb-1 block">Course Name *</label>
+            <label htmlFor="ff-trainingpage-19" className="field-label mb-1 block">Course Name *</label>
             <input id="ff-trainingpage-19"
               type="text"
               value={form.course_name}
@@ -1541,7 +1541,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             {/* Category */}
             <div>
-              <label className="field-label mb-1 block">Category</label>
+              <label htmlFor="ff-trainingpage-20" className="field-label mb-1 block">Category</label>
               <select id="ff-trainingpage-20"
                 value={form.category}
                 onChange={e => update('category', e.target.value)}
@@ -1555,7 +1555,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
 
             {/* Mandatory */}
             <div className="flex items-end pb-1">
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label htmlFor="ff-trainingpage-21" className="flex items-center gap-2 cursor-pointer">
                 <input id="ff-trainingpage-21"
                   type="checkbox"
                   checked={form.is_mandatory}
@@ -1588,7 +1588,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             {/* Renewal Period */}
             <div>
-              <label className="field-label mb-1 block">Renewal (months)</label>
+              <label htmlFor="ff-trainingpage-22" className="field-label mb-1 block">Renewal (months)</label>
               <input id="ff-trainingpage-22"
                 type="number"
                 value={form.renewal_period_months}
@@ -1601,7 +1601,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
 
             {/* Minimum Hours */}
             <div>
-              <label className="field-label mb-1 block">Minimum Hours</label>
+              <label htmlFor="ff-trainingpage-23" className="field-label mb-1 block">Minimum Hours</label>
               <input id="ff-trainingpage-23"
                 type="number"
                 value={form.minimum_hours}

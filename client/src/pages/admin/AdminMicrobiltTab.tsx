@@ -360,7 +360,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
 
         {/* Client ID */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Client ID</label>
+          <label htmlFor="ff-adminmicrobilttab-0" className="text-[10px] text-rmpg-400">Client ID</label>
           <input id="ff-adminmicrobilttab-0"
             type="text"
             value={clientId}
@@ -372,7 +372,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
 
         {/* Client Secret */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Client Secret</label>
+          <label htmlFor="ff-adminmicrobilttab-1" className="text-[10px] text-rmpg-400">Client Secret</label>
           <div className="relative">
             <input id="ff-adminmicrobilttab-1"
               type={showSecret ? 'text' : 'password'}
@@ -392,7 +392,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
 
         {/* Subscriber ID (optional) */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Subscriber ID <span className="text-rmpg-600">(optional)</span></label>
+          <label htmlFor="ff-adminmicrobilttab-2" className="text-[10px] text-rmpg-400">Subscriber ID <span className="text-rmpg-600">(optional)</span></label>
           <input id="ff-adminmicrobilttab-2"
             type="text"
             value={subscriberId}

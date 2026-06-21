@@ -561,7 +561,7 @@ export default function InvoicesPage() {
       <div className="card-glass p-4 space-y-3">
         {/* Client */}
         <div>
-          <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Client *</label>
+          <label htmlFor="ff-invoicespage-0" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Client *</label>
           <select id="ff-invoicespage-0"
             value={createForm.client_id}
             onChange={e => setCreateForm(f => ({ ...f, client_id: e.target.value }))}
@@ -575,7 +575,7 @@ export default function InvoicesPage() {
         {/* Billing period */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Period Start *</label>
+            <label htmlFor="ff-invoicespage-1" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Period Start *</label>
             <input id="ff-invoicespage-1"
               type="date"
               value={createForm.period_start}
@@ -584,7 +584,7 @@ export default function InvoicesPage() {
             />
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Period End *</label>
+            <label htmlFor="ff-invoicespage-2" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Period End *</label>
             <input id="ff-invoicespage-2"
               type="date"
               value={createForm.period_end}
@@ -596,7 +596,7 @@ export default function InvoicesPage() {
 
         {/* Issue date */}
         <div>
-          <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Issue Date</label>
+          <label htmlFor="ff-invoicespage-3" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Issue Date</label>
           <input id="ff-invoicespage-3"
             type="date"
             value={createForm.issue_date}
@@ -607,7 +607,7 @@ export default function InvoicesPage() {
 
         {/* Notes */}
         <div>
-          <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Notes</label>
+          <label htmlFor="ff-invoicespage-5" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Notes</label>
           <RichTextArea
             value={createForm.notes}
             onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
@@ -618,7 +618,7 @@ export default function InvoicesPage() {
 
         {/* Internal notes */}
         <div>
-          <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Internal Notes</label>
+          <label htmlFor="ff-invoicespage-4" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Internal Notes</label>
           <RichTextArea
             value={createForm.internal_notes}
             onChange={e => setCreateForm(f => ({ ...f, internal_notes: e.target.value }))}

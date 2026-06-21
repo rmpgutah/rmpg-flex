@@ -484,7 +484,7 @@ const AuditLogPage: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {/* Action Filter */}
           <div>
-            <label className="block text-xs text-rmpg-300 mb-1">Action:</label>
+            <label htmlFor="ff-auditlogpage-0" className="block text-xs text-rmpg-300 mb-1">Action:</label>
             <select id="ff-auditlogpage-0"
               value={filters.action}
               onChange={(e) => handleFilterChange('action', e.target.value)}
@@ -499,7 +499,7 @@ const AuditLogPage: React.FC = () => {
 
           {/* Entity Type Filter */}
           <div>
-            <label className="block text-xs text-rmpg-300 mb-1">Entity Type:</label>
+            <label htmlFor="ff-auditlogpage-1" className="block text-xs text-rmpg-300 mb-1">Entity Type:</label>
             <select id="ff-auditlogpage-1"
               value={filters.entityType}
               onChange={(e) => handleFilterChange('entityType', e.target.value)}
@@ -514,7 +514,7 @@ const AuditLogPage: React.FC = () => {
 
           {/* User Filter */}
           <div>
-            <label className="block text-xs text-rmpg-300 mb-1">User:</label>
+            <label htmlFor="ff-auditlogpage-2" className="block text-xs text-rmpg-300 mb-1">User:</label>
             <select id="ff-auditlogpage-2"
               value={filters.userId}
               onChange={(e) => handleFilterChange('userId', e.target.value)}
@@ -531,7 +531,7 @@ const AuditLogPage: React.FC = () => {
 
           {/* Start Date */}
           <div>
-            <label className="block text-xs text-rmpg-300 mb-1">Start Date:</label>
+            <label htmlFor="ff-auditlogpage-3" className="block text-xs text-rmpg-300 mb-1">Start Date:</label>
             <div className="relative">
               <input id="ff-auditlogpage-3"
                 type="date"
@@ -545,7 +545,7 @@ const AuditLogPage: React.FC = () => {
 
           {/* End Date */}
           <div>
-            <label className="block text-xs text-rmpg-300 mb-1">End Date:</label>
+            <label htmlFor="ff-auditlogpage-4" className="block text-xs text-rmpg-300 mb-1">End Date:</label>
             <div className="relative">
               <input id="ff-auditlogpage-4"
                 type="date"
@@ -559,7 +559,7 @@ const AuditLogPage: React.FC = () => {
 
           {/* Search */}
           <div>
-            <label className="block text-xs text-rmpg-300 mb-1">Search Details:</label>
+            <label htmlFor="ff-auditlogpage-5" className="block text-xs text-rmpg-300 mb-1">Search Details:</label>
             <div className="relative">
               <input id="ff-auditlogpage-5"
                 type="text"

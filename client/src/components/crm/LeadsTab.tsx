@@ -560,7 +560,7 @@ export default function LeadsTab() {
             <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
               {/* Stage change */}
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-1">Move to Stage</label>
+                <label htmlFor="ff-leadstab-5" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-1">Move to Stage</label>
                 <select id="ff-leadstab-5"
                   value={selectedLead.pipeline_stage}
                   onChange={e => handleStageChange(selectedLead.id, e.target.value as PipelineStage)}
@@ -777,7 +777,7 @@ export default function LeadsTab() {
             </PanelTitleBar>
             <form onSubmit={handleCreateLead} className="p-3 space-y-2">
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Business Name *</label>
+                <label htmlFor="ff-leadstab-7" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Business Name *</label>
                 <input id="ff-leadstab-7"
                   type="text"
                   required
@@ -788,7 +788,7 @@ export default function LeadsTab() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Contact Name</label>
+                  <label htmlFor="ff-leadstab-8" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Contact Name</label>
                   <input id="ff-leadstab-8"
                     type="text"
                     value={createForm.contact_name}
@@ -797,7 +797,7 @@ export default function LeadsTab() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Business Type</label>
+                  <label htmlFor="ff-leadstab-9" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Business Type</label>
                   <select id="ff-leadstab-9"
                     value={createForm.business_type}
                     onChange={e => setCreateForm(f => ({ ...f, business_type: e.target.value }))}
@@ -819,7 +819,7 @@ export default function LeadsTab() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Email</label>
+                  <label htmlFor="ff-leadstab-10" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Email</label>
                   <input id="ff-leadstab-10"
                     type="email"
                     value={createForm.contact_email}
@@ -828,7 +828,7 @@ export default function LeadsTab() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Phone</label>
+                  <label htmlFor="ff-leadstab-11" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Phone</label>
                   <input id="ff-leadstab-11"
                     type="tel"
                     value={createForm.contact_phone}
@@ -838,7 +838,7 @@ export default function LeadsTab() {
                 </div>
               </div>
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Address</label>
+                <label htmlFor="ff-leadstab-12" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Address</label>
                 <input id="ff-leadstab-12"
                   type="text"
                   value={createForm.address}
@@ -848,7 +848,7 @@ export default function LeadsTab() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">City</label>
+                  <label htmlFor="ff-leadstab-13" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">City</label>
                   <input id="ff-leadstab-13"
                     type="text"
                     value={createForm.city}
@@ -857,7 +857,7 @@ export default function LeadsTab() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">State</label>
+                  <label htmlFor="ff-leadstab-14" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">State</label>
                   <input id="ff-leadstab-14"
                     type="text"
                     value={createForm.state}
@@ -866,7 +866,7 @@ export default function LeadsTab() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">ZIP</label>
+                  <label htmlFor="ff-leadstab-15" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">ZIP</label>
                   <input id="ff-leadstab-15"
                     type="text"
                     value={createForm.zip}
@@ -876,7 +876,7 @@ export default function LeadsTab() {
                 </div>
               </div>
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Estimated Monthly Value</label>
+                <label htmlFor="ff-leadstab-16" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Estimated Monthly Value</label>
                 <input id="ff-leadstab-16"
                   type="number"
                   step="0.01"

@@ -1449,7 +1449,7 @@ export default function CaseManagementPage() {
                     <div className="text-[10px] font-mono text-rmpg-500 uppercase mb-3">Solvability Factors</div>
                     <div className="space-y-2">
                       {SOLVABILITY_FACTORS.map(f => (
-                        <label key={f.key} className="flex items-center gap-3 cursor-pointer">
+                        <label htmlFor="ff-casemanagementpage-4" key={f.key} className="flex items-center gap-3 cursor-pointer">
                           <input id="ff-casemanagementpage-4"
                             type="checkbox"
                             checked={!!solvFactors[f.key]}
@@ -1518,7 +1518,7 @@ export default function CaseManagementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
-                <label className="field-label">Return Reason *</label>
+                <label htmlFor="ff-casemanagementpage-5" className="field-label">Return Reason *</label>
                 <RichTextArea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={3}
                   placeholder="Explain why this case needs additional work..."
                   className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none resize-none" />
@@ -1582,24 +1582,24 @@ export default function CaseManagementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
-                <label className="field-label">Title *</label>
+                <label htmlFor="ff-casemanagementpage-6" className="field-label">Title *</label>
                 <input id="ff-casemanagementpage-6" value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="field-label">Type</label>
+                  <label htmlFor="ff-casemanagementpage-7" className="field-label">Type</label>
                   <select id="ff-casemanagementpage-7" value={formData.case_type} onChange={e => setFormData(p => ({ ...p, case_type: e.target.value as CaseType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none">
                     {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Priority</label>
+                  <label htmlFor="ff-casemanagementpage-8" className="field-label">Priority</label>
                   <select id="ff-casemanagementpage-8" value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value as CasePriority }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none">
                     {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Lead Investigator</label>
+                  <label htmlFor="ff-casemanagementpage-9" className="field-label">Lead Investigator</label>
                   <select id="ff-casemanagementpage-9" value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} disabled={personnelLoading} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none disabled:opacity-60">
                     {personnelLoading ? (
                       <option value="">Loading…</option>

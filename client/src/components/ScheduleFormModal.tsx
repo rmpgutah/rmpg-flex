@@ -102,7 +102,7 @@ export default function ScheduleFormModal({
     >
       {/* Officer */}
       <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+        <label htmlFor="ff-scheduleformmodal-0" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Officer <span className="text-red-400">*</span>
         </label>
         <select id="ff-scheduleformmodal-0"
@@ -122,7 +122,7 @@ export default function ScheduleFormModal({
 
       {/* Property */}
       <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+        <label htmlFor="ff-scheduleformmodal-1" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Property
         </label>
         <select id="ff-scheduleformmodal-1"
@@ -141,7 +141,7 @@ export default function ScheduleFormModal({
 
       {/* Shift Date */}
       <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+        <label htmlFor="ff-scheduleformmodal-2" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Shift Date <span className="text-red-400">*</span>
         </label>
         <input id="ff-scheduleformmodal-2"
@@ -156,7 +156,7 @@ export default function ScheduleFormModal({
       {/* Time row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+          <label htmlFor="ff-scheduleformmodal-3" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Start Time <span className="text-red-400">*</span>
           </label>
           <input id="ff-scheduleformmodal-3"
@@ -168,7 +168,7 @@ export default function ScheduleFormModal({
           />
         </div>
         <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+          <label htmlFor="ff-scheduleformmodal-4" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             End Time <span className="text-red-400">*</span>
           </label>
           <input id="ff-scheduleformmodal-4"
@@ -183,7 +183,7 @@ export default function ScheduleFormModal({
 
       {/* Notes */}
       <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+        <label htmlFor="ff-scheduleformmodal-5" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Notes
         </label>
         <textarea id="ff-scheduleformmodal-5"

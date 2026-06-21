@@ -620,7 +620,7 @@ export default function DashCamUploadWizard({
                 <div className="px-3 pb-3 pt-1 space-y-3 border-t border-rmpg-700">
                   {/* Title */}
                   <div>
-                    <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                    <label htmlFor="ff-dashcamuploadwizard-1" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                       Title <span className="text-red-400">*</span>
                     </label>
                     <input id="ff-dashcamuploadwizard-1"
@@ -635,7 +635,7 @@ export default function DashCamUploadWizard({
                   {/* Vehicle & Unit */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-2" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Vehicle
                       </label>
                       <select id="ff-dashcamuploadwizard-2"
@@ -652,7 +652,7 @@ export default function DashCamUploadWizard({
                       </select>
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-3" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Unit
                       </label>
                       <select id="ff-dashcamuploadwizard-3"
@@ -673,7 +673,7 @@ export default function DashCamUploadWizard({
                   {/* Recorded At & Classification */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-4" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Recorded At
                       </label>
                       <input id="ff-dashcamuploadwizard-4"
@@ -684,7 +684,7 @@ export default function DashCamUploadWizard({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-5" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Classification
                       </label>
                       <select id="ff-dashcamuploadwizard-5"
@@ -704,7 +704,7 @@ export default function DashCamUploadWizard({
                   {/* Case Number & Speed */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-6" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Case Number
                       </label>
                       <input id="ff-dashcamuploadwizard-6"
@@ -716,7 +716,7 @@ export default function DashCamUploadWizard({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-7" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Speed (MPH)
                       </label>
                       <input id="ff-dashcamuploadwizard-7"
@@ -733,7 +733,7 @@ export default function DashCamUploadWizard({
                   {/* Lat/Lng */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-8" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Latitude
                       </label>
                       <input id="ff-dashcamuploadwizard-8"
@@ -746,7 +746,7 @@ export default function DashCamUploadWizard({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-9" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Longitude
                       </label>
                       <input id="ff-dashcamuploadwizard-9"
@@ -762,7 +762,7 @@ export default function DashCamUploadWizard({
 
                   {/* Address */}
                   <div>
-                    <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                    <label htmlFor="ff-dashcamuploadwizard-10" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                       Address
                     </label>
                     <input id="ff-dashcamuploadwizard-10"

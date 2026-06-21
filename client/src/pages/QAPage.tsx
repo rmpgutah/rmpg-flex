@@ -93,7 +93,7 @@ export default function QAPage() {
             <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord ? 'Edit Review' : 'New Review'}</h3>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Review Type <span className="text-red-500">*</span></label>
+                <div><label htmlFor="ff-qapage-0" className="text-[10px] text-rmpg-400 uppercase font-semibold">Review Type <span className="text-red-500">*</span></label>
                   <select id="ff-qapage-0" className="select-dark mt-1" value={formData.review_type || 'call_audit'} onChange={e => setFormData({...formData, review_type: e.target.value})}>
                     {['call_audit','report_review','bodycam_audit','investigation_review','dispatch_audit','other'].map(t=><option key={t} value={t}>{t}</option>)}
                   </select></div>
@@ -107,9 +107,9 @@ export default function QAPage() {
                     />
                   </div></div>
               </div>
-              <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Findings</label>
+              <div><label htmlFor="ff-qapage-2" className="text-[10px] text-rmpg-400 uppercase font-semibold">Findings</label>
                 <textarea id="ff-qapage-2" rows={3} className="input-dark mt-1" value={formData.findings || ''} onChange={e => setFormData({...formData, findings: e.target.value})} /></div>
-              <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Recommendations</label>
+              <div><label htmlFor="ff-qapage-3" className="text-[10px] text-rmpg-400 uppercase font-semibold">Recommendations</label>
                 <textarea id="ff-qapage-3" rows={2} className="input-dark mt-1" value={formData.recommendations || ''} onChange={e => setFormData({...formData, recommendations: e.target.value})} /></div>
             </div>
             <div className="flex justify-end gap-3 mt-4">

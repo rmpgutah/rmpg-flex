@@ -392,19 +392,19 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
           </div>
 
           <div className="flex flex-wrap items-center gap-6">
-            <label className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer">
+            <label htmlFor="ff-evidenceformmodal-10" className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer">
               <input id="ff-evidenceformmodal-10" type="checkbox" checked={form.photo_taken} onChange={(e) => updateField('photo_taken', e.target.checked)} className="accent-brand-500" />
               Photo Taken
             </label>
-            <label className="flex items-center gap-2 text-xs text-red-400 cursor-pointer">
+            <label htmlFor="ff-evidenceformmodal-11" className="flex items-center gap-2 text-xs text-red-400 cursor-pointer">
               <input id="ff-evidenceformmodal-11" type="checkbox" checked={form.is_biological} onChange={(e) => updateField('is_biological', e.target.checked)} className="accent-red-500" />
               Biological / Biohazard
             </label>
-            <label className="flex items-center gap-2 text-xs text-amber-400 cursor-pointer">
+            <label htmlFor="ff-evidenceformmodal-12" className="flex items-center gap-2 text-xs text-amber-400 cursor-pointer">
               <input id="ff-evidenceformmodal-12" type="checkbox" checked={form.narcotics_flag} onChange={(e) => updateField('narcotics_flag', e.target.checked)} className="accent-amber-500" />
               Controlled Substance
             </label>
-            <label className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer">
+            <label htmlFor="ff-evidenceformmodal-13" className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer">
               <input id="ff-evidenceformmodal-13" type="checkbox" checked={form.temperature_sensitive} onChange={(e) => updateField('temperature_sensitive', e.target.checked)} className="accent-[#d4a017]" />
               Temperature Sensitive
             </label>
@@ -450,9 +450,9 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
       {activeTab === 'lab' && (
         <div className="space-y-3">
           <div className="panel-beveled p-3">
-            <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 block">Lab Submission</label>
+            <label htmlFor="ff-evidenceformmodal-21" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 block">Lab Submission</label>
             <div className="flex items-center gap-4 mb-2">
-              <label className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer">
+              <label htmlFor="ff-evidenceformmodal-20" className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-evidenceformmodal-20" type="checkbox" checked={form.lab_submitted} onChange={(e) => updateField('lab_submitted', e.target.checked)} className="accent-brand-500" />
                 Submitted to Lab
               </label>
@@ -470,7 +470,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
           </div>
 
           <div className="panel-beveled p-3">
-            <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 block">Disposal Information</label>
+            <label htmlFor="ff-evidenceformmodal-23" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 block">Disposal Information</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="Disposal Method">
                 <select id="ff-evidenceformmodal-23" className="select-dark text-xs" value={form.disposal_method} onChange={(e) => updateField('disposal_method', e.target.value)}>

@@ -198,7 +198,7 @@ export default function Dropdown({
   return (
     <div ref={wrapperRef} className={`relative ${className}`} onKeyDown={handleKeyDown}>
       {label && (
-        <label className="field-label">
+        <label htmlFor="ff-dropdown-0" className="field-label">
           {label}
           {required && <span className="text-red-400 ml-0.5">*</span>}
         </label>

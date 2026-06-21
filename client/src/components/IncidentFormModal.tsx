@@ -606,21 +606,21 @@ export default function IncidentFormModal({
               })()}
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Section ID</label>
+              <label htmlFor="ff-incidentformmodal-0" className="text-[10px] text-rmpg-400 uppercase font-semibold">Section ID</label>
               <select id="ff-incidentformmodal-0" className="select-dark mt-1" value={formData.sector_id} onChange={(e) => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                 <option value="">-- Select --</option>
                 {sectionOptions.map((s) => <option key={s} value={s}>{s} — {sectionLabels.get(s) || s}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Zone ID</label>
+              <label htmlFor="ff-incidentformmodal-1" className="text-[10px] text-rmpg-400 uppercase font-semibold">Zone ID</label>
               <select id="ff-incidentformmodal-1" className="select-dark mt-1" value={formData.zone_id} onChange={(e) => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                 <option value="">-- Select --</option>
                 {zonesForSection(formData.sector_id).map((z) => <option key={z} value={z}>{z} — {zoneLabels.get(z) || z}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Beat ID</label>
+              <label htmlFor="ff-incidentformmodal-2" className="text-[10px] text-rmpg-400 uppercase font-semibold">Beat ID</label>
               <select id="ff-incidentformmodal-2" className="select-dark mt-1" value={formData.beat_id} onChange={(e) => update('beat_id', e.target.value)}>
                 <option value="">-- Select --</option>
                 {beatsForZone(formData.zone_id).map((b) => <option key={b} value={b}>{b} — {getBeatLabel(formData.zone_id, b)}</option>)}
@@ -679,7 +679,7 @@ export default function IncidentFormModal({
             />
             </div>
             <div className="w-28">
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Apt / Unit</label>
+              <label htmlFor="ff-incidentformmodal-locunit" className="text-[10px] text-rmpg-400 uppercase font-semibold">Apt / Unit</label>
               <input id="ff-incidentformmodal-locunit" type="text" className="input-dark mt-1 w-full" value={locationUnit} onChange={(e) => setLocationUnit(e.target.value)} placeholder="Apt 4B" />
             </div>
           </div>
@@ -688,7 +688,7 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {clients.length > 0 && (
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Client</label>
+                <label htmlFor="ff-incidentformmodal-3" className="text-[10px] text-rmpg-400 uppercase font-semibold">Client</label>
                 <select id="ff-incidentformmodal-3"
                   className="select-dark mt-1"
                   value={formData.client_id}
@@ -702,7 +702,7 @@ export default function IncidentFormModal({
               </div>
             )}
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contract ID</label>
+              <label htmlFor="ff-incidentformmodal-4" className="text-[10px] text-rmpg-400 uppercase font-semibold">Contract ID</label>
               <input id="ff-incidentformmodal-4" type="text" className="input-dark mt-1" placeholder="e.g. 15330838" value={formData.contract_id} onChange={(e) => update('contract_id', e.target.value)} />
             </div>
           </div>
@@ -710,26 +710,26 @@ export default function IncidentFormModal({
           {/* Occurred Date/Time */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Occurred Date</label>
+              <label htmlFor="ff-incidentformmodal-5" className="text-[10px] text-rmpg-400 uppercase font-semibold">Occurred Date</label>
               <input id="ff-incidentformmodal-5" type="date" className="input-dark mt-1" value={formData.occurred_date} onChange={(e) => update('occurred_date', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Occurred Time</label>
+              <label htmlFor="ff-incidentformmodal-6" className="text-[10px] text-rmpg-400 uppercase font-semibold">Occurred Time</label>
               <input id="ff-incidentformmodal-6" type="time" className="input-dark mt-1" value={formData.occurred_time} onChange={(e) => update('occurred_time', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">End Date</label>
+              <label htmlFor="ff-incidentformmodal-7" className="text-[10px] text-rmpg-400 uppercase font-semibold">End Date</label>
               <input id="ff-incidentformmodal-7" type="date" className="input-dark mt-1" value={formData.end_date} onChange={(e) => update('end_date', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">End Time</label>
+              <label htmlFor="ff-incidentformmodal-8" className="text-[10px] text-rmpg-400 uppercase font-semibold">End Time</label>
               <input id="ff-incidentformmodal-8" type="time" className="input-dark mt-1" value={formData.end_time} onChange={(e) => update('end_time', e.target.value)} />
             </div>
           </div>
 
           {/* Disposition */}
           <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Disposition</label>
+            <label htmlFor="ff-incidentformmodal-9" className="text-[10px] text-rmpg-400 uppercase font-semibold">Disposition</label>
             <select id="ff-incidentformmodal-9"
               className="select-dark mt-1"
               value={formData.disposition}
@@ -787,7 +787,7 @@ export default function IncidentFormModal({
           {/* Weather / Lighting */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Weather Conditions</label>
+              <label htmlFor="ff-incidentformmodal-10" className="text-[10px] text-rmpg-400 uppercase font-semibold">Weather Conditions</label>
               <select id="ff-incidentformmodal-10" className="select-dark mt-1" value={formData.weather_conditions} onChange={(e) => update('weather_conditions', e.target.value)}>
                 {WEATHER_OPTIONS.map((w) => (
                   <option key={w} value={w}>{w || '-- Select --'}</option>
@@ -795,7 +795,7 @@ export default function IncidentFormModal({
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Lighting Conditions</label>
+              <label htmlFor="ff-incidentformmodal-11" className="text-[10px] text-rmpg-400 uppercase font-semibold">Lighting Conditions</label>
               <select id="ff-incidentformmodal-11" className="select-dark mt-1" value={formData.lighting_conditions} onChange={(e) => update('lighting_conditions', e.target.value)}>
                 {LIGHTING_OPTIONS.map((l) => (
                   <option key={l} value={l}>{l || '-- Select --'}</option>
@@ -807,7 +807,7 @@ export default function IncidentFormModal({
           {/* Injuries */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Injuries</label>
+              <label htmlFor="ff-incidentformmodal-12" className="text-[10px] text-rmpg-400 uppercase font-semibold">Injuries</label>
               <select id="ff-incidentformmodal-12" className="select-dark mt-1" value={formData.injuries} onChange={(e) => update('injuries', e.target.value)}>
                 <option value="none">None</option>
                 <option value="minor">Minor</option>
@@ -817,7 +817,7 @@ export default function IncidentFormModal({
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Injury Description</label>
+              <label htmlFor="ff-incidentformmodal-13" className="text-[10px] text-rmpg-400 uppercase font-semibold">Injury Description</label>
               <input id="ff-incidentformmodal-13"
                 type="text"
                 className="input-dark mt-1"
@@ -831,7 +831,7 @@ export default function IncidentFormModal({
           {/* Damage — Feature 25: Property Damage Calculator */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Damage Estimate ($)</label>
+              <label htmlFor="ff-incidentformmodal-14" className="text-[10px] text-rmpg-400 uppercase font-semibold">Damage Estimate ($)</label>
               <input id="ff-incidentformmodal-14"
                 type="text"
                 className="input-dark mt-1"
@@ -858,7 +858,7 @@ export default function IncidentFormModal({
               })()}
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Damage Description</label>
+              <label htmlFor="ff-incidentformmodal-15" className="text-[10px] text-rmpg-400 uppercase font-semibold">Damage Description</label>
               <input id="ff-incidentformmodal-15"
                 type="text"
                 className="input-dark mt-1"
@@ -872,7 +872,7 @@ export default function IncidentFormModal({
           {/* Weapons + Hazard Code (F7 advanced detail) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Weapons Involved</label>
+              <label htmlFor="ff-incidentformmodal-16" className="text-[10px] text-rmpg-400 uppercase font-semibold">Weapons Involved</label>
               <select id="ff-incidentformmodal-16"
                 className="input-dark mt-1"
                 value={formData.weapons_involved}
@@ -887,7 +887,7 @@ export default function IncidentFormModal({
                   strip rendering + dispatch hazard banner. Uses F2's
                   HAZARD_CODE_OPTIONS for consistency with dispatch
                   console hazard tagging. */}
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Hazard Code</label>
+              <label htmlFor="ff-incidentformmodal-17" className="text-[10px] text-rmpg-400 uppercase font-semibold">Hazard Code</label>
               <select id="ff-incidentformmodal-17"
                 className="input-dark mt-1"
                 value={formData.hazard_code}
@@ -906,7 +906,7 @@ export default function IncidentFormModal({
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Road Conditions</label>
+              <label htmlFor="ff-incidentformmodal-18" className="text-[10px] text-rmpg-400 uppercase font-semibold">Road Conditions</label>
               <select id="ff-incidentformmodal-18" className="select-dark mt-1" value={formData.road_conditions} onChange={(e) => update('road_conditions', e.target.value)}>
                 <option value="">-- Select --</option>
                 <option value="dry">Dry</option>
@@ -920,7 +920,7 @@ export default function IncidentFormModal({
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Traffic Control</label>
+              <label htmlFor="ff-incidentformmodal-19" className="text-[10px] text-rmpg-400 uppercase font-semibold">Traffic Control</label>
               <select id="ff-incidentformmodal-19" className="select-dark mt-1" value={formData.traffic_control} onChange={(e) => update('traffic_control', e.target.value)}>
                 <option value="">-- Select --</option>
                 <option value="none">None</option>
@@ -956,7 +956,7 @@ export default function IncidentFormModal({
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Patient Status</label>
+              <label htmlFor="ff-incidentformmodal-20" className="text-[10px] text-rmpg-400 uppercase font-semibold">Patient Status</label>
               <select id="ff-incidentformmodal-20" className="select-dark mt-1" value={formData.patient_status} onChange={(e) => update('patient_status', e.target.value)}>
                 <option value="">-- Select --</option>
                 <option value="conscious_alert">Conscious & Alert</option>
@@ -969,7 +969,7 @@ export default function IncidentFormModal({
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">EMS Transport</label>
+              <label htmlFor="ff-incidentformmodal-21" className="text-[10px] text-rmpg-400 uppercase font-semibold">EMS Transport</label>
               <select id="ff-incidentformmodal-21" className="select-dark mt-1" value={formData.ems_transport} onChange={(e) => update('ems_transport', e.target.value)}>
                 <option value="">-- Select --</option>
                 <option value="not_needed">Not Needed</option>
@@ -996,7 +996,7 @@ export default function IncidentFormModal({
       {activeSection === 'trespass' && (
         <>
           <div className="flex items-center gap-3 p-3 bg-rmpg-800/50 border border-rmpg-600">
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label htmlFor="ff-incidentformmodal-22" className="flex items-center gap-2 cursor-pointer">
               <input id="ff-incidentformmodal-22"
                 type="checkbox"
                 checked={formData.trespass_warning_issued}
@@ -1008,11 +1008,11 @@ export default function IncidentFormModal({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Effective Date</label>
+              <label htmlFor="ff-incidentformmodal-23" className="text-[10px] text-rmpg-400 uppercase font-semibold">Effective Date</label>
               <input id="ff-incidentformmodal-23" type="date" className="input-dark mt-1" value={formData.trespass_effective_date} onChange={(e) => update('trespass_effective_date', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Expiry Date</label>
+              <label htmlFor="ff-incidentformmodal-24" className="text-[10px] text-rmpg-400 uppercase font-semibold">Expiry Date</label>
               <input id="ff-incidentformmodal-24" type="date" className="input-dark mt-1" value={formData.trespass_expiry_date} onChange={(e) => update('trespass_expiry_date', e.target.value)} />
             </div>
           </div>
@@ -1027,7 +1027,7 @@ export default function IncidentFormModal({
       {activeSection === 'use_of_force' && (
         <>
           <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Force Type / Level</label>
+            <label htmlFor="ff-incidentformmodal-25" className="text-[10px] text-rmpg-400 uppercase font-semibold">Force Type / Level</label>
             <select id="ff-incidentformmodal-25" className="select-dark mt-1" value={formData.force_type} onChange={(e) => update('force_type', e.target.value)}>
               <option value="">-- Select --</option>
               <option value="verbal_commands">Verbal Commands</option>
@@ -1052,11 +1052,11 @@ export default function IncidentFormModal({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Subject Injuries</label>
+              <label htmlFor="ff-incidentformmodal-26" className="text-[10px] text-rmpg-400 uppercase font-semibold">Subject Injuries</label>
               <input id="ff-incidentformmodal-26" type="text" className="input-dark mt-1" placeholder="Describe injuries to subject..." value={formData.subject_injuries} onChange={(e) => update('subject_injuries', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Officer Injuries</label>
+              <label htmlFor="ff-incidentformmodal-27" className="text-[10px] text-rmpg-400 uppercase font-semibold">Officer Injuries</label>
               <input id="ff-incidentformmodal-27" type="text" className="input-dark mt-1" placeholder="Describe injuries to officer..." value={formData.officer_injuries} onChange={(e) => update('officer_injuries', e.target.value)} />
             </div>
           </div>
@@ -1069,7 +1069,7 @@ export default function IncidentFormModal({
           {/* Service Type + Contract / Billing */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">PSO Service Type</label>
+              <label htmlFor="ff-incidentformmodal-28" className="text-[10px] text-rmpg-400 uppercase font-semibold">PSO Service Type</label>
               <select id="ff-incidentformmodal-28" className="select-dark mt-1" value={formData.pso_service_type} onChange={(e) => update('pso_service_type', e.target.value)}>
                 <option value="">-- Select --</option>
                 <option value="patrol">Patrol</option>
@@ -1081,7 +1081,7 @@ export default function IncidentFormModal({
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Process Service Type</label>
+              <label htmlFor="ff-incidentformmodal-29" className="text-[10px] text-rmpg-400 uppercase font-semibold">Process Service Type</label>
               <select id="ff-incidentformmodal-29" className="select-dark mt-1" value={formData.process_service_type} onChange={(e) => update('process_service_type', e.target.value)}>
                 <option value="">-- Select --</option>
                 <option value="subpoena">Subpoena</option>
@@ -1097,11 +1097,11 @@ export default function IncidentFormModal({
           {/* Billing / Authorization */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Billing Code / Contract ID</label>
+              <label htmlFor="ff-incidentformmodal-30" className="text-[10px] text-rmpg-400 uppercase font-semibold">Billing Code / Contract ID</label>
               <input id="ff-incidentformmodal-30" type="text" className="input-dark mt-1" placeholder="Contract or billing code" value={formData.pso_billing_code} onChange={(e) => update('pso_billing_code', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Authorization / PO Number</label>
+              <label htmlFor="ff-incidentformmodal-31" className="text-[10px] text-rmpg-400 uppercase font-semibold">Authorization / PO Number</label>
               <input id="ff-incidentformmodal-31" type="text" className="input-dark mt-1" placeholder="Auth or PO number" value={formData.pso_authorization} onChange={(e) => update('pso_authorization', e.target.value)} />
             </div>
           </div>
@@ -1111,15 +1111,15 @@ export default function IncidentFormModal({
             <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Client / Requestor Info</span>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Requestor Name</label>
+                <label htmlFor="ff-incidentformmodal-32" className="text-[10px] text-rmpg-400 uppercase font-semibold">Requestor Name</label>
                 <input id="ff-incidentformmodal-32" type="text" className="input-dark mt-1" placeholder="Contact name" value={formData.pso_requestor_name} onChange={(e) => update('pso_requestor_name', e.target.value)} />
               </div>
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone</label>
+                <label htmlFor="ff-incidentformmodal-33" className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone</label>
                 <input id="ff-incidentformmodal-33" type="tel" className="input-dark mt-1" placeholder="(801) 555-0000" value={formData.pso_requestor_phone} onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))} />
               </div>
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Email</label>
+                <label htmlFor="ff-incidentformmodal-34" className="text-[10px] text-rmpg-400 uppercase font-semibold">Email</label>
                 <input id="ff-incidentformmodal-34" type="email" className="input-dark mt-1" placeholder="contact@example.com" value={formData.pso_requestor_email} onChange={(e) => update('pso_requestor_email', e.target.value)} />
               </div>
             </div>
@@ -1130,7 +1130,7 @@ export default function IncidentFormModal({
             <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Service Details</span>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served To</label>
+                <label htmlFor="ff-incidentformmodal-35" className="text-[10px] text-rmpg-400 uppercase font-semibold">Served To</label>
                 <input id="ff-incidentformmodal-35" type="text" className="input-dark mt-1" placeholder="Name of person served" value={formData.process_served_to} onChange={(e) => update('process_served_to', e.target.value)} />
               </div>
                <div>
@@ -1144,21 +1144,21 @@ export default function IncidentFormModal({
                  />
                </div>
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served At</label>
+                <label htmlFor="ff-incidentformmodal-36" className="text-[10px] text-rmpg-400 uppercase font-semibold">Served At</label>
                 <input id="ff-incidentformmodal-36" type="datetime-local" className="input-dark mt-1" value={formData.process_served_at} onChange={(e) => update('process_served_at', e.target.value)} />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Attempt #</label>
+                <label htmlFor="ff-incidentformmodal-37" className="text-[10px] text-rmpg-400 uppercase font-semibold">Attempt #</label>
                 <input id="ff-incidentformmodal-37" type="number" min="1" className="input-dark mt-1" placeholder="1" value={formData.process_attempts} onChange={(e) => update('process_attempts', e.target.value)} />
               </div>
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">PSO Attempt #</label>
+                <label htmlFor="ff-incidentformmodal-38" className="text-[10px] text-rmpg-400 uppercase font-semibold">PSO Attempt #</label>
                 <input id="ff-incidentformmodal-38" type="number" min="1" className="input-dark mt-1" placeholder="1" value={formData.pso_attempt_number} onChange={(e) => update('pso_attempt_number', e.target.value)} />
               </div>
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Service Result</label>
+                <label htmlFor="ff-incidentformmodal-39" className="text-[10px] text-rmpg-400 uppercase font-semibold">Service Result</label>
                 <select id="ff-incidentformmodal-39" className="select-dark mt-1" value={formData.process_service_result} onChange={(e) => update('process_service_result', e.target.value)}>
                   <option value="">-- Select --</option>
                   <option value="served">Served</option>
@@ -1194,7 +1194,7 @@ export default function IncidentFormModal({
                 ['gang_related', 'Gang Related'],
                 ['hazmat', 'HAZMAT'],
               ] as [keyof IncidentFormData, string][]).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
+                <label htmlFor="ff-incidentformmodal-40" key={key} className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
                   <input id="ff-incidentformmodal-40" type="checkbox" checked={!!formData[key]} onChange={(e) => update(key, e.target.checked)} className="w-4 h-4 accent-red-500" />
                   <span className="text-xs text-rmpg-200">{label}</span>
                 </label>
@@ -1219,7 +1219,7 @@ export default function IncidentFormModal({
                 ['le_notified', 'LE Notified'],
                 ['supervisor_notified', 'Supervisor Notified'],
               ] as [keyof IncidentFormData, string][]).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
+                <label htmlFor="ff-incidentformmodal-41" key={key} className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
                   <input id="ff-incidentformmodal-41" type="checkbox" checked={!!formData[key]} onChange={(e) => update(key, e.target.checked)} className="w-4 h-4 accent-amber-500" />
                   <span className="text-xs text-rmpg-200">{label}</span>
                 </label>
@@ -1230,7 +1230,7 @@ export default function IncidentFormModal({
           {/* Responding Agency */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Responding Agency</label>
+              <label htmlFor="ff-incidentformmodal-42" className="text-[10px] text-rmpg-400 uppercase font-semibold">Responding Agency</label>
               <select id="ff-incidentformmodal-42"
                 className="input-dark mt-1"
                 value={formData.responding_le_agency}
@@ -1241,7 +1241,7 @@ export default function IncidentFormModal({
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">LE Case Number</label>
+              <label htmlFor="ff-incidentformmodal-43" className="text-[10px] text-rmpg-400 uppercase font-semibold">LE Case Number</label>
               <input id="ff-incidentformmodal-43"
                 type="text"
                 className="input-dark mt-1"

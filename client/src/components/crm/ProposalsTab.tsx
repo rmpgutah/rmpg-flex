@@ -381,7 +381,7 @@ export default function ProposalsTab() {
                   <div className="space-y-1.5">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[10px] text-rmpg-500">Monthly Value</label>
+                        <label htmlFor="ff-proposalstab-2" className="text-[10px] text-rmpg-500">Monthly Value</label>
                         <input id="ff-proposalstab-2"
                           type="number"
                           value={editForm.monthly_value || ''}
@@ -390,7 +390,7 @@ export default function ProposalsTab() {
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] text-rmpg-500">Total Value</label>
+                        <label htmlFor="ff-proposalstab-3" className="text-[10px] text-rmpg-500">Total Value</label>
                         <input id="ff-proposalstab-3"
                           type="number"
                           value={editForm.total_value || ''}
@@ -400,7 +400,7 @@ export default function ProposalsTab() {
                       </div>
                     </div>
                     <div>
-                      <label className="text-[10px] text-rmpg-500">Billing Frequency</label>
+                      <label htmlFor="ff-proposalstab-4" className="text-[10px] text-rmpg-500">Billing Frequency</label>
                       <select id="ff-proposalstab-4"
                         value={editForm.billing_frequency || 'monthly'}
                         onChange={e => setEditForm(f => ({ ...f, billing_frequency: e.target.value }))}
@@ -433,7 +433,7 @@ export default function ProposalsTab() {
                   <div className="space-y-1.5">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[10px] text-rmpg-500">Start Date</label>
+                        <label htmlFor="ff-proposalstab-5" className="text-[10px] text-rmpg-500">Start Date</label>
                         <input id="ff-proposalstab-5"
                           type="date"
                           value={editForm.proposed_start || ''}
@@ -442,7 +442,7 @@ export default function ProposalsTab() {
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] text-rmpg-500">End Date</label>
+                        <label htmlFor="ff-proposalstab-6" className="text-[10px] text-rmpg-500">End Date</label>
                         <input id="ff-proposalstab-6"
                           type="date"
                           value={editForm.proposed_end || ''}
@@ -453,7 +453,7 @@ export default function ProposalsTab() {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[10px] text-rmpg-500">Valid Until</label>
+                        <label htmlFor="ff-proposalstab-7" className="text-[10px] text-rmpg-500">Valid Until</label>
                         <input id="ff-proposalstab-7"
                           type="date"
                           value={editForm.valid_until || ''}
@@ -462,7 +462,7 @@ export default function ProposalsTab() {
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] text-rmpg-500">Contract Months</label>
+                        <label htmlFor="ff-proposalstab-8" className="text-[10px] text-rmpg-500">Contract Months</label>
                         <input id="ff-proposalstab-8"
                           type="number"
                           value={editForm.contract_length_months || ''}
@@ -573,7 +573,7 @@ export default function ProposalsTab() {
             </PanelTitleBar>
             <form onSubmit={handleCreate} className="p-3 space-y-2">
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Title *</label>
+                <label htmlFor="ff-proposalstab-9" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Title *</label>
                 <input id="ff-proposalstab-9"
                   type="text"
                   required
@@ -583,7 +583,7 @@ export default function ProposalsTab() {
                 />
               </div>
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Template</label>
+                <label htmlFor="ff-proposalstab-10" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Template</label>
                 <select id="ff-proposalstab-10"
                   value={form.template_type}
                   onChange={e => handleTemplateChange(e.target.value)}
@@ -597,7 +597,7 @@ export default function ProposalsTab() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Link to Lead</label>
+                  <label htmlFor="ff-proposalstab-11" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Link to Lead</label>
                   <select id="ff-proposalstab-11"
                     value={form.lead_id}
                     onChange={e => setForm(f => ({ ...f, lead_id: e.target.value }))}
@@ -610,7 +610,7 @@ export default function ProposalsTab() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Link to Client</label>
+                  <label htmlFor="ff-proposalstab-12" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Link to Client</label>
                   <select id="ff-proposalstab-12"
                     value={form.client_id}
                     onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
@@ -643,7 +643,7 @@ export default function ProposalsTab() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Monthly Value</label>
+                  <label htmlFor="ff-proposalstab-13" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Monthly Value</label>
                   <input id="ff-proposalstab-13"
                     type="number"
                     step="0.01"
@@ -653,7 +653,7 @@ export default function ProposalsTab() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Total Value</label>
+                  <label htmlFor="ff-proposalstab-14" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Total Value</label>
                   <input id="ff-proposalstab-14"
                     type="number"
                     step="0.01"
@@ -663,7 +663,7 @@ export default function ProposalsTab() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Billing</label>
+                  <label htmlFor="ff-proposalstab-15" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Billing</label>
                   <select id="ff-proposalstab-15"
                     value={form.billing_frequency}
                     onChange={e => setForm(f => ({ ...f, billing_frequency: e.target.value }))}
@@ -678,7 +678,7 @@ export default function ProposalsTab() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Start Date</label>
+                  <label htmlFor="ff-proposalstab-16" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Start Date</label>
                   <input id="ff-proposalstab-16"
                     type="date"
                     value={form.proposed_start}
@@ -687,7 +687,7 @@ export default function ProposalsTab() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">End Date</label>
+                  <label htmlFor="ff-proposalstab-17" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">End Date</label>
                   <input id="ff-proposalstab-17"
                     type="date"
                     value={form.proposed_end}
@@ -696,7 +696,7 @@ export default function ProposalsTab() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Contract Months</label>
+                  <label htmlFor="ff-proposalstab-18" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Contract Months</label>
                   <input id="ff-proposalstab-18"
                     type="number"
                     value={form.contract_length_months}
@@ -706,7 +706,7 @@ export default function ProposalsTab() {
                 </div>
               </div>
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Valid Until</label>
+                <label htmlFor="ff-proposalstab-19" className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Valid Until</label>
                 <input id="ff-proposalstab-19"
                   type="date"
                   value={form.valid_until}

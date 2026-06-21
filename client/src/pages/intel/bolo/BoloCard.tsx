@@ -1,6 +1,7 @@
 import { authedImageUrl } from '../../../hooks/useApi';
 import type { Bolo } from '../useBolos';
 
+import { formatEnumValue } from '../../../utils/formatters';
 const PRIORITY_TAG: Record<string, string> = {
   P1: 'bg-[#3a0d0a] text-[#ff6b5e] border-[#5a1410]',
   P2: 'bg-[#3a2a08] text-[#f0c050] border-[#5a3a10]',
@@ -25,7 +26,7 @@ export default function BoloCard({ bolo, canDelete, onResolve, onDelete }: {
           <div className="flex items-center gap-2">
             <span className={`font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] border ${PRIORITY_TAG[bolo.priority] || PRIORITY_TAG.P3}`}>{bolo.priority}</span>
             <span className="font-mono text-[9px] text-[#888]">{bolo.bolo_number}</span>
-            {expired && <span className="font-mono text-[8px] text-rmpg-500 uppercase">{bolo.status}</span>}
+            {expired && <span className="font-mono text-[8px] text-rmpg-500 uppercase">{formatEnumValue(bolo.status)}</span>}
           </div>
           <div className="text-[13px] text-rmpg-100 font-semibold mt-1 truncate">{bolo.title}</div>
           {bolo.subject_description && <div className="text-[11px] text-rmpg-300 truncate">{bolo.subject_description}</div>}

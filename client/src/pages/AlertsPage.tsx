@@ -95,19 +95,19 @@ export default function AlertsPage() {
           <div className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord ? 'Edit Template' : 'New Template'}</h3>
             <div className="space-y-3">
-              <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Name <span className="text-red-500">*</span></label>
+              <div><label htmlFor="ff-alertspage-0" className="text-[10px] text-rmpg-400 uppercase font-semibold">Name <span className="text-red-500">*</span></label>
                 <input id="ff-alertspage-0" className="input-dark mt-1" value={formData.template_name || ''} onChange={e => setFormData({...formData, template_name: e.target.value})} autoFocus /></div>
-              <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Subject</label>
+              <div><label htmlFor="ff-alertspage-1" className="text-[10px] text-rmpg-400 uppercase font-semibold">Subject</label>
                 <input id="ff-alertspage-1" className="input-dark mt-1" value={formData.subject || ''} onChange={e => setFormData({...formData, subject: e.target.value})} /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Channel</label>
+                <div><label htmlFor="ff-alertspage-2" className="text-[10px] text-rmpg-400 uppercase font-semibold">Channel</label>
                   <select id="ff-alertspage-2" className="select-dark mt-1" value={formData.channel || 'email'} onChange={e => setFormData({...formData, channel: e.target.value})}>
                     {['email','sms','push','all'].map(c=><option key={c} value={c}>{c}</option>)}
                   </select></div>
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Category</label>
+                <div><label htmlFor="ff-alertspage-3" className="text-[10px] text-rmpg-400 uppercase font-semibold">Category</label>
                   <input id="ff-alertspage-3" className="input-dark mt-1" value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})} /></div>
               </div>
-              <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Body <span className="text-red-500">*</span></label>
+              <div><label htmlFor="ff-alertspage-4" className="text-[10px] text-rmpg-400 uppercase font-semibold">Body <span className="text-red-500">*</span></label>
                 <textarea id="ff-alertspage-4" rows={4} className="input-dark mt-1" value={formData.body || ''} onChange={e => setFormData({...formData, body: e.target.value})} /></div>
             </div>
             <div className="flex justify-end gap-3 mt-4">

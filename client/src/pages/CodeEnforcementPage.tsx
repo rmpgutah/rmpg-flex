@@ -724,41 +724,41 @@ export default function CodeEnforcementPage() {
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Type</label>
+                  <label htmlFor="ff-codeenforcementpage-5" className="field-label">Type</label>
                   <select id="ff-codeenforcementpage-5" value={vFormData.violation_type} onChange={e => setVFormData(p => ({ ...p, violation_type: e.target.value as ViolationType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">
                     {VIOLATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Severity</label>
+                  <label htmlFor="ff-codeenforcementpage-6" className="field-label">Severity</label>
                   <select id="ff-codeenforcementpage-6" value={vFormData.severity} onChange={e => setVFormData(p => ({ ...p, severity: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">
                     <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option>
                   </select>
                 </div>
               </div>
               <div>
-                <label className="field-label">Location *</label>
+                <label htmlFor="ff-codeenforcementpage-7" className="field-label">Location *</label>
                 <input id="ff-codeenforcementpage-7" value={vFormData.location} onChange={e => setVFormData(p => ({ ...p, location: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${vFormErrors.location ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {vFormErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{vFormErrors.location}</p>}
               </div>
               <div>
-                <label className="field-label">Description *</label>
+                <label htmlFor="ff-codeenforcementpage-8" className="field-label">Description *</label>
                 <textarea id="ff-codeenforcementpage-8" value={vFormData.description} onChange={e => setVFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none resize-none ${vFormErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {vFormErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{vFormErrors.description}</p>}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Code Section</label>
+                  <label htmlFor="ff-codeenforcementpage-9" className="field-label">Code Section</label>
                   <input id="ff-codeenforcementpage-9" value={vFormData.code_section} onChange={e => setVFormData(p => ({ ...p, code_section: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
                 </div>
                 <div>
-                  <label className="field-label">Fine Amount</label>
+                  <label htmlFor="ff-codeenforcementpage-10" className="field-label">Fine Amount</label>
                   <input id="ff-codeenforcementpage-10" value={vFormData.fine_amount} onChange={e => setVFormData(p => ({ ...p, fine_amount: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="field-label">Section</label>
+                  <label htmlFor="ff-codeenforcementpage-11" className="field-label">Section</label>
                   <select id="ff-codeenforcementpage-11" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600"
                     value={vFormData.sector_id || ''} onChange={e => setVFormData(p => ({...p, sector_id: e.target.value, zone_id: '', beat_id: ''}))}>
                     <option value="">—</option>
@@ -766,7 +766,7 @@ export default function CodeEnforcementPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Zone</label>
+                  <label htmlFor="ff-codeenforcementpage-12" className="field-label">Zone</label>
                   <select id="ff-codeenforcementpage-12" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600"
                     value={vFormData.zone_id || ''} onChange={e => setVFormData(p => ({...p, zone_id: e.target.value, beat_id: ''}))}>
                     <option value="">—</option>
@@ -774,7 +774,7 @@ export default function CodeEnforcementPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Beat</label>
+                  <label htmlFor="ff-codeenforcementpage-13" className="field-label">Beat</label>
                   <select id="ff-codeenforcementpage-13" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600"
                     value={vFormData.beat_id || ''} onChange={e => setVFormData(p => ({...p, beat_id: e.target.value}))}>
                     <option value="">—</option>
@@ -819,19 +819,19 @@ export default function CodeEnforcementPage() {
                 </div>
               )}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div><label className="field-label">Year</label><input id="ff-codeenforcementpage-14" value={tFormData.vehicle_year} onChange={e => setTFormData(p => ({ ...p, vehicle_year: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
-                <div><label className="field-label">Make *</label><input id="ff-codeenforcementpage-15" value={tFormData.vehicle_make} onChange={e => setTFormData(p => ({ ...p, vehicle_make: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${tFormErrors.vehicle_make ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_make && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_make}</p>}</div>
-                <div><label className="field-label">Model</label><input id="ff-codeenforcementpage-16" value={tFormData.vehicle_model} onChange={e => setTFormData(p => ({ ...p, vehicle_model: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
-                <div><label className="field-label">Color</label><input id="ff-codeenforcementpage-17" value={tFormData.vehicle_color} onChange={e => setTFormData(p => ({ ...p, vehicle_color: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
+                <div><label htmlFor="ff-codeenforcementpage-14" className="field-label">Year</label><input id="ff-codeenforcementpage-14" value={tFormData.vehicle_year} onChange={e => setTFormData(p => ({ ...p, vehicle_year: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
+                <div><label htmlFor="ff-codeenforcementpage-15" className="field-label">Make *</label><input id="ff-codeenforcementpage-15" value={tFormData.vehicle_make} onChange={e => setTFormData(p => ({ ...p, vehicle_make: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${tFormErrors.vehicle_make ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_make && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_make}</p>}</div>
+                <div><label htmlFor="ff-codeenforcementpage-16" className="field-label">Model</label><input id="ff-codeenforcementpage-16" value={tFormData.vehicle_model} onChange={e => setTFormData(p => ({ ...p, vehicle_model: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
+                <div><label htmlFor="ff-codeenforcementpage-17" className="field-label">Color</label><input id="ff-codeenforcementpage-17" value={tFormData.vehicle_color} onChange={e => setTFormData(p => ({ ...p, vehicle_color: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="field-label">Plate</label><input id="ff-codeenforcementpage-18" value={tFormData.vehicle_plate} onChange={e => setTFormData(p => ({ ...p, vehicle_plate: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${tFormErrors.vehicle_plate ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_plate && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_plate}</p>}</div>
-                <div><label className="field-label">Reason</label><select id="ff-codeenforcementpage-19" value={tFormData.tow_reason} onChange={e => setTFormData(p => ({ ...p, tow_reason: e.target.value as TowReason }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">{TOW_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
+                <div><label htmlFor="ff-codeenforcementpage-18" className="field-label">Plate</label><input id="ff-codeenforcementpage-18" value={tFormData.vehicle_plate} onChange={e => setTFormData(p => ({ ...p, vehicle_plate: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${tFormErrors.vehicle_plate ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_plate && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_plate}</p>}</div>
+                <div><label htmlFor="ff-codeenforcementpage-19" className="field-label">Reason</label><select id="ff-codeenforcementpage-19" value={tFormData.tow_reason} onChange={e => setTFormData(p => ({ ...p, tow_reason: e.target.value as TowReason }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">{TOW_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
               </div>
-              <div><label className="field-label">Tow From *</label><input id="ff-codeenforcementpage-20" value={tFormData.tow_from} onChange={e => setTFormData(p => ({ ...p, tow_from: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${tFormErrors.tow_from ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.tow_from && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.tow_from}</p>}</div>
+              <div><label htmlFor="ff-codeenforcementpage-20" className="field-label">Tow From *</label><input id="ff-codeenforcementpage-20" value={tFormData.tow_from} onChange={e => setTFormData(p => ({ ...p, tow_from: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${tFormErrors.tow_from ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.tow_from && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.tow_from}</p>}</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="field-label">Tow Company</label><input id="ff-codeenforcementpage-21" value={tFormData.tow_company} onChange={e => setTFormData(p => ({ ...p, tow_company: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
-                <div><label className="field-label">Tow Fee ($)</label><input id="ff-codeenforcementpage-22" value={tFormData.tow_fee} onChange={e => setTFormData(p => ({ ...p, tow_fee: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
+                <div><label htmlFor="ff-codeenforcementpage-21" className="field-label">Tow Company</label><input id="ff-codeenforcementpage-21" value={tFormData.tow_company} onChange={e => setTFormData(p => ({ ...p, tow_company: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
+                <div><label htmlFor="ff-codeenforcementpage-22" className="field-label">Tow Fee ($)</label><input id="ff-codeenforcementpage-22" value={tFormData.tow_fee} onChange={e => setTFormData(p => ({ ...p, tow_fee: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
               </div>
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
                 <button type="button" onClick={handleCreateTow} disabled={submitting} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>

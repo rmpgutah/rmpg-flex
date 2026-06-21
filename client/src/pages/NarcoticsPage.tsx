@@ -8,6 +8,8 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import type { ContextMenuItem } from '../context/ContextMenuContext';
 import { Pill, TrendingUp, Scale, Shield, DollarSign, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
+import DeleteRecordModal from '../components/DeleteRecordModal';
+import { formatEnumValue } from '../utils/formatters';
 interface NarcCase { id: number; case_number: string; case_type: string; subject_name: string; location: string; substance: string; street_value: number; status: string; priority: string; notes: string; }
 interface NarcStats { totalInvestigations: number; totalSeizures: number; totalStreetValue: number; activeCIs: number; }
 
@@ -22,7 +24,8 @@ export default function NarcoticsPage() {
   const [formData, setFormData] = useState<any>(EMPTY_FORM);
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<NarcCase | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const { addToast } = useToast();
   const m = useMenuActions();
 
@@ -59,12 +62,13 @@ export default function NarcoticsPage() {
   };
 
   const handleDelete = async () => {
-    if (!deleteId) return;
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await apiFetch(`/narcotics/cases/${deleteId}`, { method: 'DELETE' });
-      setDeleteId(null); fetchData();
+      await apiFetch(`/narcotics/cases/${deleteTarget.id}`, { method: 'DELETE' });
+      setDeleteTarget(null); fetchData();
       addToast('Case deleted', 'success');
-    } catch (err) { addToast(err instanceof Error ? err.message : 'Delete failed', 'error'); }
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Delete failed', 'error'); } finally { setDeleting(false); }
   };
 
   const columns = [
@@ -73,12 +77,12 @@ export default function NarcoticsPage() {
     { key: 'subject_name', label: 'Subject' },
     { key: 'substance', label: 'Substance' },
     { key: 'street_value', label: 'Street Value', render: (r: NarcCase) => `$${(r.street_value || 0).toLocaleString()}` },
-    { key: 'status', label: 'Status', render: (r: NarcCase) => <span className={`badge ${r.status === 'open' || r.status === 'active' ? 'badge-p1' : 'badge-p4'}`}>{r.status}</span> },
+    { key: 'status', label: 'Status', render: (r: NarcCase) => <span className={`badge ${r.status === 'open' || r.status === 'active' ? 'badge-p1' : 'badge-p4'}`}>{formatEnumValue(r.status)}</span> },
     { key: 'priority', label: 'Priority' },
     { key: 'actions', label: '', width: '80px', render: (r: NarcCase) => (
       <div className="flex gap-2">
         <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-rmpg-400 hover:text-rmpg-100" title="Edit"><Pencil size={12} /></button>
-        <button onClick={(e) => { e.stopPropagation(); setDeleteId(r.id); }} className="text-red-500 hover:text-red-300" title="Delete"><Trash2 size={12} /></button>
+        <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }} className="text-red-500 hover:text-red-300" title="Delete"><Trash2 size={12} /></button>
       </div>
     )},
   ];
@@ -109,7 +113,7 @@ export default function NarcoticsPage() {
           m.action('Edit', () => openEdit(r), { icon: <Pencil size={12} /> }),
           m.separator(),
           m.copyId(r.id),
-          m.action('Delete', () => setDeleteId(r.id), { danger: true, icon: <Trash2 size={12} /> }),
+          m.action('Delete', () => setDeleteTarget(r), { danger: true, icon: <Trash2 size={12} /> }),
         ]}
       />
 
@@ -119,17 +123,17 @@ export default function NarcoticsPage() {
             <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord ? 'Edit Case' : 'New Case'}</h3>
             {formError && <div className="text-xs text-red-400 mb-2">{formError}</div>}
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Case # *</label><input id="ff-narcoticspage-0" value={formData.case_number} onChange={e => setFormData({...formData, case_number: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Type</label><select id="ff-narcoticspage-1" value={formData.case_type} onChange={e => setFormData({...formData, case_type: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="investigation">Investigation</option><option value="buy_bust">Buy Bust</option><option value="ci_management">CI Management</option><option value="surveillance">Surveillance</option><option value="other">Other</option></select></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Subject</label><input id="ff-narcoticspage-2" value={formData.subject_name} onChange={e => setFormData({...formData, subject_name: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Location</label><input id="ff-narcoticspage-3" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Substance</label><input id="ff-narcoticspage-4" value={formData.substance} onChange={e => setFormData({...formData, substance: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Quantity</label><input id="ff-narcoticspage-5" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Street Value</label><input id="ff-narcoticspage-6" type="number" value={formData.street_value} onChange={e => setFormData({...formData, street_value: parseFloat(e.target.value) || 0})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Status</label><select id="ff-narcoticspage-7" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="open">Open</option><option value="active">Active</option><option value="closed">Closed</option><option value="pending_review">Pending Review</option></select></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Priority</label><select id="ff-narcoticspage-8" value={formData.priority} onChange={e => setFormData({...formData, priority: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></div>
+              <div><label htmlFor="ff-narcoticspage-0" className="text-[9px] text-rmpg-400 uppercase font-bold">Case # *</label><input id="ff-narcoticspage-0" value={formData.case_number} onChange={e => setFormData({...formData, case_number: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label htmlFor="ff-narcoticspage-1" className="text-[9px] text-rmpg-400 uppercase font-bold">Type</label><select id="ff-narcoticspage-1" value={formData.case_type} onChange={e => setFormData({...formData, case_type: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="investigation">Investigation</option><option value="buy_bust">Buy Bust</option><option value="ci_management">CI Management</option><option value="surveillance">Surveillance</option><option value="other">Other</option></select></div>
+              <div><label htmlFor="ff-narcoticspage-2" className="text-[9px] text-rmpg-400 uppercase font-bold">Subject</label><input id="ff-narcoticspage-2" value={formData.subject_name} onChange={e => setFormData({...formData, subject_name: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label htmlFor="ff-narcoticspage-3" className="text-[9px] text-rmpg-400 uppercase font-bold">Location</label><input id="ff-narcoticspage-3" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label htmlFor="ff-narcoticspage-4" className="text-[9px] text-rmpg-400 uppercase font-bold">Substance</label><input id="ff-narcoticspage-4" value={formData.substance} onChange={e => setFormData({...formData, substance: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label htmlFor="ff-narcoticspage-5" className="text-[9px] text-rmpg-400 uppercase font-bold">Quantity</label><input id="ff-narcoticspage-5" value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label htmlFor="ff-narcoticspage-6" className="text-[9px] text-rmpg-400 uppercase font-bold">Street Value</label><input id="ff-narcoticspage-6" type="number" value={formData.street_value} onChange={e => setFormData({...formData, street_value: parseFloat(e.target.value) || 0})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label htmlFor="ff-narcoticspage-7" className="text-[9px] text-rmpg-400 uppercase font-bold">Status</label><select id="ff-narcoticspage-7" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="open">Open</option><option value="active">Active</option><option value="closed">Closed</option><option value="pending_review">Pending Review</option></select></div>
+              <div><label htmlFor="ff-narcoticspage-8" className="text-[9px] text-rmpg-400 uppercase font-bold">Priority</label><select id="ff-narcoticspage-8" value={formData.priority} onChange={e => setFormData({...formData, priority: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></div>
             </div>
-            <div className="mt-3"><label className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label><textarea id="ff-narcoticspage-9" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={3} /></div>
+            <div className="mt-3"><label htmlFor="ff-narcoticspage-9" className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label><textarea id="ff-narcoticspage-9" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={3} /></div>
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setFormOpen(false)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
               <button onClick={handleSave} disabled={formSubmitting || !formData.case_number} className="toolbar-btn toolbar-btn-primary px-4" style={{ height: 28 }}>{formSubmitting ? 'Saving...' : 'Save'}</button>
@@ -138,18 +142,24 @@ export default function NarcoticsPage() {
         </div>
       )}
 
-      {deleteId !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setDeleteId(null)}>
-          <div className="bg-surface-raised border border-red-800 p-6 max-w-sm w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-red-400 mb-2">Delete Case</h3>
-            <p className="text-xs text-rmpg-400 mb-4">This permanently removes this case. This cannot be undone.</p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setDeleteId(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
-              <button onClick={handleDelete} className="toolbar-btn toolbar-btn-primary px-4 text-red-400 border-red-800" style={{ height: 28, borderColor: '#991b1b' }}>Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteRecordModal
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        recordType="narcotics case"
+        recordLabel={deleteTarget?.case_number}
+        details={
+          deleteTarget && (
+            <>
+              {deleteTarget.subject_name && <div>Subject: {deleteTarget.subject_name}</div>}
+              {deleteTarget.substance && <div>Substance: {deleteTarget.substance}</div>}
+              {deleteTarget.location && <div className="text-rmpg-500">{deleteTarget.location}</div>}
+              {deleteTarget.status && <div className="text-rmpg-500">Status: {deleteTarget.status}</div>}
+            </>
+          )
+        }
+        isDeleting={deleting}
+      />
     </div>
   );
 }

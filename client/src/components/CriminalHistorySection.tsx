@@ -260,7 +260,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Record Type</label>
+                  <label htmlFor="ff-criminalhistorysection-0" className="text-[9px] text-rmpg-400 uppercase font-bold">Record Type</label>
                   <select id="ff-criminalhistorysection-0"
                     value={form.record_type}
                     onChange={e => setForm(prev => ({ ...prev, record_type: e.target.value }))}
@@ -270,7 +270,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   </select>
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Offense Level</label>
+                  <label htmlFor="ff-criminalhistorysection-1" className="text-[9px] text-rmpg-400 uppercase font-bold">Offense Level</label>
                   <select id="ff-criminalhistorysection-1"
                     value={form.offense_level}
                     onChange={e => setForm(prev => ({ ...prev, offense_level: e.target.value }))}
@@ -280,7 +280,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   </select>
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Offense Date</label>
+                  <label htmlFor="ff-criminalhistorysection-2" className="text-[9px] text-rmpg-400 uppercase font-bold">Offense Date</label>
                   <input id="ff-criminalhistorysection-2"
                     type="date"
                     value={form.offense_date}
@@ -291,7 +291,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
               </div>
 
               <div>
-                <label className="text-[9px] text-rmpg-400 uppercase font-bold">Offense / Charge *</label>
+                <label htmlFor="ff-criminalhistorysection-3" className="text-[9px] text-rmpg-400 uppercase font-bold">Offense / Charge *</label>
                 <input id="ff-criminalhistorysection-3"
                   type="text"
                   value={form.offense}
@@ -303,7 +303,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Statute / Code</label>
+                  <label htmlFor="ff-criminalhistorysection-4" className="text-[9px] text-rmpg-400 uppercase font-bold">Statute / Code</label>
                   <input id="ff-criminalhistorysection-4"
                     type="text"
                     value={form.statute}
@@ -313,7 +313,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Case Number</label>
+                  <label htmlFor="ff-criminalhistorysection-5" className="text-[9px] text-rmpg-400 uppercase font-bold">Case Number</label>
                   <input id="ff-criminalhistorysection-5"
                     type="text"
                     value={form.case_number}
@@ -322,7 +322,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Agency</label>
+                  <label htmlFor="ff-criminalhistorysection-6" className="text-[9px] text-rmpg-400 uppercase font-bold">Agency</label>
                   <input id="ff-criminalhistorysection-6"
                     type="text"
                     value={form.agency}
@@ -335,7 +335,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Jurisdiction</label>
+                  <label htmlFor="ff-criminalhistorysection-7" className="text-[9px] text-rmpg-400 uppercase font-bold">Jurisdiction</label>
                   <input id="ff-criminalhistorysection-7"
                     type="text"
                     value={form.jurisdiction}
@@ -345,7 +345,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Disposition</label>
+                  <label htmlFor="ff-criminalhistorysection-8" className="text-[9px] text-rmpg-400 uppercase font-bold">Disposition</label>
                   <input id="ff-criminalhistorysection-8"
                     type="text"
                     value={form.disposition}
@@ -355,7 +355,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Disposition Date</label>
+                  <label htmlFor="ff-criminalhistorysection-9" className="text-[9px] text-rmpg-400 uppercase font-bold">Disposition Date</label>
                   <input id="ff-criminalhistorysection-9"
                     type="date"
                     value={form.disposition_date}
@@ -367,7 +367,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Sentence</label>
+                  <label htmlFor="ff-criminalhistorysection-10" className="text-[9px] text-rmpg-400 uppercase font-bold">Sentence</label>
                   <input id="ff-criminalhistorysection-10"
                     type="text"
                     value={form.sentence}
@@ -377,7 +377,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Source</label>
+                  <label htmlFor="ff-criminalhistorysection-11" className="text-[9px] text-rmpg-400 uppercase font-bold">Source</label>
                   <input id="ff-criminalhistorysection-11"
                     type="text"
                     value={form.source}

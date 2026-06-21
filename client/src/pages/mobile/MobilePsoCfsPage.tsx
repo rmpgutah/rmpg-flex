@@ -393,7 +393,7 @@ function statusLabel(s: string): string {
 function LabeledInput({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
   return (
     <div>
-      <label className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
+      <label htmlFor="ff-mobilepsocfspage-1" className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
       <input id="ff-mobilepsocfspage-1" type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1" />
     </div>
   );
@@ -401,7 +401,7 @@ function LabeledInput({ label, value, onChange, type = 'text' }: { label: string
 function LabeledSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
   return (
     <div>
-      <label className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
+      <label htmlFor="ff-mobilepsocfspage-2" className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
       <select id="ff-mobilepsocfspage-2" value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1">
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>

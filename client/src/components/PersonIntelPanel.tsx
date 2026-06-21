@@ -170,7 +170,7 @@ export default function PersonIntelPanel() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div>
-            <label className="text-[9px] uppercase text-rmpg-400 font-bold">First Name *</label>
+            <label htmlFor="ff-personintelpanel-0" className="text-[9px] uppercase text-rmpg-400 font-bold">First Name *</label>
             <input id="ff-personintelpanel-0"
               type="text"
               className="input-dark w-full text-sm"
@@ -181,7 +181,7 @@ export default function PersonIntelPanel() {
             />
           </div>
           <div>
-            <label className="text-[9px] uppercase text-rmpg-400 font-bold">Last Name *</label>
+            <label htmlFor="ff-personintelpanel-1" className="text-[9px] uppercase text-rmpg-400 font-bold">Last Name *</label>
             <input id="ff-personintelpanel-1"
               type="text"
               className="input-dark w-full text-sm"
@@ -192,7 +192,7 @@ export default function PersonIntelPanel() {
             />
           </div>
           <div>
-            <label className="text-[9px] uppercase text-rmpg-400 font-bold">DOB (optional)</label>
+            <label htmlFor="ff-personintelpanel-2" className="text-[9px] uppercase text-rmpg-400 font-bold">DOB (optional)</label>
             <input id="ff-personintelpanel-2"
               type="date"
               className="input-dark w-full text-sm"

@@ -7,6 +7,11 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
   title: string;
   message: string;
+  /** Optional rendered AFTER `message` — typically the row's identifying
+   *  context (record number, name, capture timestamp, linked incident).
+   *  Used by destructive flows so the operator sees what they are about
+   *  to act on, not just a generic "delete this record?" string. */
+  details?: React.ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   confirmVariant?: 'danger' | 'warning' | 'default';
@@ -19,6 +24,7 @@ export default function ConfirmDialog({
   onConfirm,
   title,
   message,
+  details,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   confirmVariant = 'danger',
@@ -57,7 +63,21 @@ export default function ConfirmDialog({
     const dialog = dialogRef.current;
     if (!dialog) return;
 
+    // Pick initial focus carefully. For danger variants the safe default
+    // is the CANCEL button — that way a user reading the dialog who
+    // hits Enter to dismiss the previous interaction confirms cancellation,
+    // not destruction. For non-danger variants the confirm button is the
+    // expected target. The previous version autofocused whichever
+    // element came first in the DOM (the X close button) AND globally
+    // bound Enter to onConfirm — so Enter on the X executed the
+    // destructive action with no warning. Audit caught this.
     const raf = requestAnimationFrame(() => {
+      const selector = confirmVariant === 'danger'
+        ? '[data-confirm-cancel="true"]'
+        : '[data-confirm-action="true"]';
+      const preferred = dialog.querySelector<HTMLElement>(selector);
+      if (preferred) { preferred.focus(); return; }
+      // Fallback: first focusable (legacy behavior) if data hook didn't render.
       const focusable = dialog.querySelectorAll<HTMLElement>(
         'button:not([disabled]):not([tabindex="-1"]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
       );
@@ -66,7 +86,12 @@ export default function ConfirmDialog({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { onCloseRef.current(); return; }
-      if (e.key === 'Enter') { onConfirmRef.current(); return; }
+      // Enter is intentionally NOT bound at the dialog level. Native
+      // Enter-activates-focused-button is sufficient — Enter on the
+      // Cancel button cancels; Enter on the Confirm button confirms.
+      // Globally binding Enter caused the previous bug where Enter
+      // anywhere in the dialog (including on the X close button) fired
+      // the destructive action.
       if (e.key !== 'Tab') return;
       const focusable = dialog.querySelectorAll<HTMLElement>(
         'button:not([disabled]):not([tabindex="-1"]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -84,7 +109,11 @@ export default function ConfirmDialog({
       cancelAnimationFrame(raf);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen]);
+    // The eslint-disable + manual deps mirror the first effect — we
+    // intentionally re-run only when isOpen or confirmVariant changes so
+    // the initial-focus selector picks the correct preferred button.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, confirmVariant]);
 
   if (!isOpen) return null;
 
@@ -116,14 +145,20 @@ export default function ConfirmDialog({
         </div>
         <div className="p-6">
           <p id={descId} className="text-sm text-rmpg-200 leading-relaxed">{message}</p>
+          {details && (
+            <div className="mt-3 pl-3 border-l-2 border-rmpg-600 text-xs text-rmpg-300 space-y-0.5">
+              {details}
+            </div>
+          )}
           <div className="flex items-center justify-end gap-3 mt-6">
-            <button type="button" onClick={onClose} className="toolbar-btn" disabled={isLoading}>
+            <button type="button" onClick={onClose} className="toolbar-btn" disabled={isLoading} data-confirm-cancel="true">
               {cancelLabel}
             </button>
             <button
               type="button"
               onClick={onConfirm}
               disabled={isLoading}
+              data-confirm-action="true"
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm transition-colors ${confirmClass} disabled:opacity-50`}
             >
               {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}

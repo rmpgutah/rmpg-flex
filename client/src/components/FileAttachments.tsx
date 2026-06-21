@@ -271,7 +271,7 @@ export default function FileAttachments({
 
   return (
     <div className="space-y-2">
-      <label className="text-[10px] text-rmpg-400 uppercase font-semibold flex items-center gap-1">
+      <label htmlFor="ff-fileattachments-0" className="text-[10px] text-rmpg-400 uppercase font-semibold flex items-center gap-1">
         <Paperclip className="w-3 h-3" />
         Attachments ({attachments.length})
       </label>

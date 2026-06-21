@@ -1014,7 +1014,7 @@ export default function SkipTracerV2Page() {
               { key: 'state', label: 'State', icon: MapPin },
             ].map(field => (
               <div key={field.key}>
-                <label className="text-[8px] text-rmpg-500 uppercase tracking-wider block mb-0.5">{field.label}</label>
+                <label htmlFor="ff-skiptracerv2page-1" className="text-[8px] text-rmpg-500 uppercase tracking-wider block mb-0.5">{field.label}</label>
                 <input id="ff-skiptracerv2page-1"
                   type="text"
                   value={advancedFields[field.key] || ''}

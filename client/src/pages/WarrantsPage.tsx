@@ -2515,7 +2515,7 @@ export default function WarrantsPage() {
                 {/* Row 1: First Name, Last Name, DOB */}
                 <div className="flex gap-2 items-end flex-wrap mb-2 relative">
                   <div className="flex-1 min-w-[120px]">
-                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">First Name</label>
+                    <label htmlFor="ff-warrantspage-14" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">First Name</label>
                     <input id="ff-warrantspage-14"
                       type="text"
                       className="input-dark w-full"
@@ -2529,7 +2529,7 @@ export default function WarrantsPage() {
                     />
                   </div>
                   <div className="flex-1 min-w-[120px]">
-                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Last Name</label>
+                    <label htmlFor="ff-warrantspage-15" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Last Name</label>
                     <input id="ff-warrantspage-15"
                       type="text"
                       className="input-dark w-full"
@@ -2542,7 +2542,7 @@ export default function WarrantsPage() {
                     />
                   </div>
                   <div className="w-[140px]">
-                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">DOB</label>
+                    <label htmlFor="ff-warrantspage-16" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">DOB</label>
                     <input id="ff-warrantspage-16"
                       type="date"
                       className="input-dark w-full"
@@ -2580,7 +2580,7 @@ export default function WarrantsPage() {
                 {/* Row 2: Warrant #, Court, Source */}
                 <div className="flex gap-2 items-end flex-wrap mb-2">
                   <div className="flex-1 min-w-[120px]">
-                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Warrant #</label>
+                    <label htmlFor="ff-warrantspage-17" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Warrant #</label>
                     <input id="ff-warrantspage-17"
                       type="text"
                       className="input-dark w-full"
@@ -2590,7 +2590,7 @@ export default function WarrantsPage() {
                     />
                   </div>
                   <div className="flex-1 min-w-[120px]">
-                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Court</label>
+                    <label htmlFor="ff-warrantspage-18" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Court</label>
                     <input id="ff-warrantspage-18"
                       type="text"
                       className="input-dark w-full"
@@ -2600,7 +2600,7 @@ export default function WarrantsPage() {
                     />
                   </div>
                   <div className="w-[160px]">
-                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Source</label>
+                    <label htmlFor="ff-warrantspage-19" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Source</label>
                     <select id="ff-warrantspage-19" className="input-dark w-full" value={uniSearchSource} onChange={(e) => setUniSearchSource(e.target.value)}>
                       <option value="">All Sources</option>
                       <option value="local">Local System</option>
@@ -2622,33 +2622,33 @@ export default function WarrantsPage() {
                 {uniAdvancedOpen && (
                   <div className="flex gap-2 items-end flex-wrap mb-2 border-t border-surface-border pt-2">
                     <div className="w-[140px]">
-                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Date From</label>
+                      <label htmlFor="ff-warrantspage-20" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Date From</label>
                       <input id="ff-warrantspage-20" type="date" className="input-dark w-full" value={uniSearchDateFrom} onChange={(e) => setUniSearchDateFrom(e.target.value)} />
                     </div>
                     <div className="w-[140px]">
-                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Date To</label>
+                      <label htmlFor="ff-warrantspage-21" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Date To</label>
                       <input id="ff-warrantspage-21" type="date" className="input-dark w-full" value={uniSearchDateTo} onChange={(e) => setUniSearchDateTo(e.target.value)} />
                     </div>
                     <div className="w-[140px]">
-                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Offense Level</label>
+                      <label htmlFor="ff-warrantspage-22" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Offense Level</label>
                       <select id="ff-warrantspage-22" className="input-dark w-full" value={uniSearchOffenseLevel} onChange={(e) => setUniSearchOffenseLevel(e.target.value)}>
                         <option value="">Any</option>
                         {OFFENSE_LEVELS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </div>
                     <div className="flex-1 min-w-[120px]">
-                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Charge Keyword</label>
+                      <label htmlFor="ff-warrantspage-23" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Charge Keyword</label>
                       <input id="ff-warrantspage-23" type="text" className="input-dark w-full" placeholder="e.g. theft, DUI..." value={uniSearchCharge} onChange={(e) => setUniSearchCharge(e.target.value)} />
                     </div>
                     <div className="w-[120px]">
-                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Status</label>
+                      <label htmlFor="ff-warrantspage-24" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Status</label>
                       <select id="ff-warrantspage-24" className="input-dark w-full" value={uniSearchStatus} onChange={(e) => setUniSearchStatus(e.target.value)}>
                         <option value="">Any</option>
                         {WARRANT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                       </select>
                     </div>
                     <div className="w-[120px]">
-                      <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Type</label>
+                      <label htmlFor="ff-warrantspage-25" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Type</label>
                       <select id="ff-warrantspage-25" className="input-dark w-full" value={uniSearchType} onChange={(e) => setUniSearchType(e.target.value)}>
                         <option value="">Any</option>
                         {WARRANT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -3816,13 +3816,13 @@ export default function WarrantsPage() {
               {/* Type + Offense Level */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Warrant Type *</label>
+                  <label htmlFor="ff-warrantspage-26" className="field-label">Warrant Type *</label>
                   <select id="ff-warrantspage-26" className="select-dark text-xs w-full" value={formData.type} onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}>
                     {WARRANT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Offense Level</label>
+                  <label htmlFor="ff-warrantspage-27" className="field-label">Offense Level</label>
                   <select id="ff-warrantspage-27" className="select-dark text-xs w-full" value={formData.offense_level} onChange={(e) => setFormData(prev => ({ ...prev, offense_level: e.target.value }))}>
                     <option value="">-- Select --</option>
                     {OFFENSE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
@@ -3832,7 +3832,7 @@ export default function WarrantsPage() {
 
               {/* Subject person search */}
               <div className="relative">
-                <label className="field-label">Subject Person</label>
+                <label htmlFor="ff-warrantspage-28" className="field-label">Subject Person</label>
                 {selectedPersonName && formData.subject_person_id ? (
                   <div className="flex items-center gap-2 p-2 bg-surface-raised border border-rmpg-600 rounded-sm text-xs">
                     <User className="w-3 h-3 text-brand-400" />
@@ -3924,11 +3924,11 @@ export default function WarrantsPage() {
               {/* Court + Judge */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Issuing Court</label>
+                  <label htmlFor="ff-warrantspage-29" className="field-label">Issuing Court</label>
                   <input id="ff-warrantspage-29" type="text" className="input-dark text-xs w-full min-h-[36px]" value={formData.issuing_court} onChange={(e) => setFormData(prev => ({ ...prev, issuing_court: e.target.value }))} placeholder="e.g. 3rd District Court" />
                 </div>
                 <div>
-                  <label className="field-label">Issuing Judge</label>
+                  <label htmlFor="ff-warrantspage-30" className="field-label">Issuing Judge</label>
                   <input id="ff-warrantspage-30" type="text" className="input-dark text-xs w-full min-h-[36px]" value={formData.issuing_judge} onChange={(e) => setFormData(prev => ({ ...prev, issuing_judge: e.target.value }))} placeholder="e.g. Hon. Smith" />
                 </div>
               </div>
@@ -3936,12 +3936,12 @@ export default function WarrantsPage() {
               {/* Bail + Expires */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Bail Amount</label>
+                  <label htmlFor="ff-warrantspage-31" className="field-label">Bail Amount</label>
                   <input id="ff-warrantspage-31" type="number" step="0.01" className={`input-dark text-xs w-full ${formErrors.bail_amount ? '!border-red-500' : ''}`} value={formData.bail_amount} onChange={(e) => setFormData(prev => ({ ...prev, bail_amount: e.target.value }))} placeholder="0.00" />
                   {formErrors.bail_amount && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.bail_amount}</p>}
                 </div>
                 <div>
-                  <label className="field-label">Expires</label>
+                  <label htmlFor="ff-warrantspage-32" className="field-label">Expires</label>
                   <input id="ff-warrantspage-32" type="date" className="input-dark text-xs w-full min-h-[36px]" value={formData.expires_at} onChange={(e) => setFormData(prev => ({ ...prev, expires_at: e.target.value }))} />
                 </div>
               </div>
@@ -3987,7 +3987,7 @@ export default function WarrantsPage() {
                 Mark warrant <span className="font-bold text-rmpg-100 font-mono">{selectedWarrant.warrant_number}</span> as served?
               </p>
               <div>
-                <label className="field-label">Location Served (optional)</label>
+                <label htmlFor="ff-warrantspage-33" className="field-label">Location Served (optional)</label>
                 <input id="ff-warrantspage-33"
                   type="text"
                   className="input-dark text-xs w-full min-h-[36px]"

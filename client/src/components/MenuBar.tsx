@@ -1230,7 +1230,7 @@ export default function MenuBar({
               <button type="button" onClick={() => setTimerPromptOpen(false)} className="text-rmpg-400 hover:text-rmpg-100 text-xs px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500">ESC</button>
             </div>
             <div className="p-4 space-y-3">
-              <label className="block text-xs text-rmpg-300">Duration (minutes)</label>
+              <label htmlFor="ff-menubar-0" className="block text-xs text-rmpg-300">Duration (minutes)</label>
               <input id="ff-menubar-0"
                 ref={timerInputRef}
                 type="number"

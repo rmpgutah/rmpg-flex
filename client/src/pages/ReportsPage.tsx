@@ -1507,7 +1507,7 @@ function PatrolTrackingCard() {
 
         {/* Unit selector */}
         <div className="flex items-center gap-1.5">
-          <label className="text-[10px] text-rmpg-400 font-bold uppercase">Unit:</label>
+          <label htmlFor="ff-reportspage-3" className="text-[10px] text-rmpg-400 font-bold uppercase">Unit:</label>
           <select id="ff-reportspage-3"
             value={unitId}
             onChange={e => setUnitId(e.target.value)}
@@ -1525,7 +1525,7 @@ function PatrolTrackingCard() {
       <div className="flex items-center gap-3 flex-wrap">
         {mode === 'hours' ? (
           <div className="flex items-center gap-1.5">
-            <label className="text-[10px] text-rmpg-400 font-bold uppercase">Hours:</label>
+            <label htmlFor="ff-reportspage-4" className="text-[10px] text-rmpg-400 font-bold uppercase">Hours:</label>
             <select id="ff-reportspage-4"
               value={hours}
               onChange={e => setHours(parseInt(e.target.value, 10))}
@@ -1540,7 +1540,7 @@ function PatrolTrackingCard() {
         ) : (
           <>
             <div className="flex items-center gap-1.5">
-              <label className="text-[10px] text-rmpg-400 font-bold uppercase">Start:</label>
+              <label htmlFor="ff-reportspage-5" className="text-[10px] text-rmpg-400 font-bold uppercase">Start:</label>
               <input id="ff-reportspage-5"
                 type="date"
                 value={startDate}
@@ -1549,7 +1549,7 @@ function PatrolTrackingCard() {
               />
             </div>
             <div className="flex items-center gap-1.5">
-              <label className="text-[10px] text-rmpg-400 font-bold uppercase">End:</label>
+              <label htmlFor="ff-reportspage-6" className="text-[10px] text-rmpg-400 font-bold uppercase">End:</label>
               <input id="ff-reportspage-6"
                 type="date"
                 value={endDate}
@@ -1560,7 +1560,7 @@ function PatrolTrackingCard() {
           </>
         )}
 
-        <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400 cursor-pointer">
+        <label htmlFor="ff-reportspage-7" className="flex items-center gap-1.5 text-[10px] text-rmpg-400 cursor-pointer">
           <input id="ff-reportspage-7"
             type="checkbox"
             checked={includeGeocode}

@@ -672,7 +672,7 @@ export default function LoginPage() {
                 </button>
 
                 {/* Trust this device checkbox */}
-                <label className="flex items-center gap-2 cursor-pointer select-none py-1 group min-h-[44px]">
+                <label htmlFor="ff-loginpage-0" className="flex items-center gap-2 cursor-pointer select-none py-1 group min-h-[44px]">
                   <input id="ff-loginpage-0"
                     type="checkbox"
                     checked={trustThisDevice}
@@ -1110,7 +1110,7 @@ export default function LoginPage() {
                     </div>
                     {[0, 1, 2].map((i) => (
                       <div key={i}>
-                        <label className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                        <label htmlFor="ff-loginpage-2" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
                           Question {i + 1}
                         </label>
                         <p className="text-[10px] mb-1" style={{ color: 'var(--rmpg-400)' }}>{forgotQuestions[i]}</p>

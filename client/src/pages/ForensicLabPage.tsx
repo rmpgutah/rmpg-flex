@@ -962,7 +962,7 @@ export default function ForensicLabPage() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Device Type</label>
+                        <label htmlFor="ff-forensiclabpage-1" className="block text-[10px] text-rmpg-500 mb-0.5">Device Type</label>
                         <select id="ff-forensiclabpage-1"
                           value={device.device_type}
                           onChange={e => handleSaveDeviceInfo({ ...device, device_type: e.target.value })}
@@ -973,7 +973,7 @@ export default function ForensicLabPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Make</label>
+                        <label htmlFor="ff-forensiclabpage-2" className="block text-[10px] text-rmpg-500 mb-0.5">Make</label>
                         <input id="ff-forensiclabpage-2" type="text" value={device.make} onBlur={e => handleSaveDeviceInfo({ ...device, make: e.target.value })} onChange={e => { /* controlled via onBlur */ }}
                           defaultValue={device.make}
                           className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 focus:border-brand-500 focus:outline-none"
@@ -981,28 +981,28 @@ export default function ForensicLabPage() {
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Model</label>
+                        <label htmlFor="ff-forensiclabpage-3" className="block text-[10px] text-rmpg-500 mb-0.5">Model</label>
                         <input id="ff-forensiclabpage-3" type="text" defaultValue={device.model} onBlur={e => handleSaveDeviceInfo({ ...device, model: e.target.value })}
                           className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 focus:border-brand-500 focus:outline-none"
                           placeholder="e.g. iPhone 15 Pro"
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Serial Number</label>
+                        <label htmlFor="ff-forensiclabpage-4" className="block text-[10px] text-rmpg-500 mb-0.5">Serial Number</label>
                         <input id="ff-forensiclabpage-4" type="text" defaultValue={device.serial_number} onBlur={e => handleSaveDeviceInfo({ ...device, serial_number: e.target.value })}
                           className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 focus:border-brand-500 focus:outline-none font-mono"
                           placeholder="S/N"
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-rmpg-500 mb-0.5">OS Version</label>
+                        <label htmlFor="ff-forensiclabpage-5" className="block text-[10px] text-rmpg-500 mb-0.5">OS Version</label>
                         <input id="ff-forensiclabpage-5" type="text" defaultValue={device.os_version} onBlur={e => handleSaveDeviceInfo({ ...device, os_version: e.target.value })}
                           className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 focus:border-brand-500 focus:outline-none"
                           placeholder="e.g. iOS 18.2, Windows 11"
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Storage Capacity</label>
+                        <label htmlFor="ff-forensiclabpage-6" className="block text-[10px] text-rmpg-500 mb-0.5">Storage Capacity</label>
                         <input id="ff-forensiclabpage-6" type="text" defaultValue={device.storage_capacity} onBlur={e => handleSaveDeviceInfo({ ...device, storage_capacity: e.target.value })}
                           className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 focus:border-brand-500 focus:outline-none"
                           placeholder="e.g. 256 GB, 1 TB"
@@ -1014,7 +1014,7 @@ export default function ForensicLabPage() {
                       <div className="text-[10px] text-rmpg-400 font-semibold mb-1.5">Digital Forensic Steps</div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                         {DIGITAL_FORENSIC_STEPS.map(step => (
-                          <label key={step} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-surface-base transition-colors cursor-pointer">
+                          <label htmlFor="ff-forensiclabpage-7" key={step} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-surface-base transition-colors cursor-pointer">
                             <input id="ff-forensiclabpage-7"
                               type="checkbox"
                               checked={!!steps[step]}
@@ -1116,7 +1116,7 @@ export default function ForensicLabPage() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Imaging Tool</label>
+                        <label htmlFor="ff-forensiclabpage-8" className="block text-[10px] text-rmpg-500 mb-0.5">Imaging Tool</label>
                         <select id="ff-forensiclabpage-8"
                           value={imaging.imaging_tool}
                           onChange={e => handleSaveImaging({ ...imaging, imaging_tool: e.target.value })}
@@ -1127,7 +1127,7 @@ export default function ForensicLabPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Hash Algorithm</label>
+                        <label htmlFor="ff-forensiclabpage-9" className="block text-[10px] text-rmpg-500 mb-0.5">Hash Algorithm</label>
                         <select id="ff-forensiclabpage-9"
                           value={imaging.hash_algorithm}
                           onChange={e => handleSaveImaging({ ...imaging, hash_algorithm: e.target.value })}
@@ -1138,7 +1138,7 @@ export default function ForensicLabPage() {
                         </select>
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Original Hash Value</label>
+                        <label htmlFor="ff-forensiclabpage-10" className="block text-[10px] text-rmpg-500 mb-0.5">Original Hash Value</label>
                         <input id="ff-forensiclabpage-10" type="text" defaultValue={imaging.original_hash}
                           onBlur={e => handleSaveImaging({ ...imaging, original_hash: e.target.value })}
                           className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 focus:border-brand-500 focus:outline-none font-mono"
@@ -1146,7 +1146,7 @@ export default function ForensicLabPage() {
                         />
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Verification Hash</label>
+                        <label htmlFor="ff-forensiclabpage-11" className="block text-[10px] text-rmpg-500 mb-0.5">Verification Hash</label>
                         <div className="flex items-center gap-2">
                           <input id="ff-forensiclabpage-11" type="text" defaultValue={imaging.verification_hash}
                             onBlur={e => handleSaveImaging({ ...imaging, verification_hash: e.target.value })}
@@ -1164,14 +1164,14 @@ export default function ForensicLabPage() {
                         )}
                       </div>
                       <div>
-                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Imaging Date/Time</label>
+                        <label htmlFor="ff-forensiclabpage-12" className="block text-[10px] text-rmpg-500 mb-0.5">Imaging Date/Time</label>
                         <input id="ff-forensiclabpage-12" type="datetime-local" defaultValue={imaging.imaging_date}
                           onBlur={e => handleSaveImaging({ ...imaging, imaging_date: e.target.value })}
                           className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 focus:border-brand-500 focus:outline-none"
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Imager Name</label>
+                        <label htmlFor="ff-forensiclabpage-13" className="block text-[10px] text-rmpg-500 mb-0.5">Imager Name</label>
                         <input id="ff-forensiclabpage-13" type="text" defaultValue={imaging.imager_name}
                           onBlur={e => handleSaveImaging({ ...imaging, imager_name: e.target.value })}
                           className="w-full px-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 focus:border-brand-500 focus:outline-none"
@@ -1455,10 +1455,10 @@ export default function ForensicLabPage() {
                     className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 h-16 resize-none"
                     placeholder="Reviewer notes..." />
                   <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-1.5 text-xs text-green-400 cursor-pointer">
+                    <label htmlFor="ff-forensiclabpage-16" className="flex items-center gap-1.5 text-xs text-green-400 cursor-pointer">
                       <input id="ff-forensiclabpage-16" type="radio" checked={qcForm.pass} onChange={() => setQcForm(f => ({ ...f, pass: true }))} className="accent-green-400" /> Pass
                     </label>
-                    <label className="flex items-center gap-1.5 text-xs text-red-400 cursor-pointer">
+                    <label htmlFor="ff-forensiclabpage-17" className="flex items-center gap-1.5 text-xs text-red-400 cursor-pointer">
                       <input id="ff-forensiclabpage-17" type="radio" checked={!qcForm.pass} onChange={() => setQcForm(f => ({ ...f, pass: false }))} className="accent-red-400" /> Fail
                     </label>
                   </div>
@@ -1650,7 +1650,7 @@ export default function ForensicLabPage() {
           >
             <div className="space-y-3">
               <div>
-                <label className="block text-[11px] text-rmpg-400 mb-1">Analysis Type</label>
+                <label htmlFor="ff-forensiclabpage-19" className="block text-[11px] text-rmpg-400 mb-1">Analysis Type</label>
                 <select id="ff-forensiclabpage-19"
                   value={analysisForm.analysis_type}
                   onChange={e => setAnalysisForm(f => ({ ...f, analysis_type: e.target.value }))}
@@ -1671,7 +1671,7 @@ export default function ForensicLabPage() {
                 />
               </div>
               <div>
-                <label className="block text-[11px] text-rmpg-400 mb-1">Equipment Used</label>
+                <label htmlFor="ff-forensiclabpage-20" className="block text-[11px] text-rmpg-400 mb-1">Equipment Used</label>
                 <input id="ff-forensiclabpage-20"
                   type="text"
                   value={analysisForm.equipment_used}
@@ -1711,7 +1711,7 @@ export default function ForensicLabPage() {
                 Each exhibit is auto-assigned a letter (A, B, C...) for chain of custody tracking.
               </div>
               <div>
-                <label className="block text-[11px] text-rmpg-400 mb-1">Description <span className="text-red-400">*</span></label>
+                <label htmlFor="ff-forensiclabpage-21" className="block text-[11px] text-rmpg-400 mb-1">Description <span className="text-red-400">*</span></label>
                 <input id="ff-forensiclabpage-21"
                   type="text"
                   value={exhibitForm.description}
@@ -1722,7 +1722,7 @@ export default function ForensicLabPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] text-rmpg-400 mb-1">Item Type</label>
+                  <label htmlFor="ff-forensiclabpage-22" className="block text-[11px] text-rmpg-400 mb-1">Item Type</label>
                   <input id="ff-forensiclabpage-22"
                     type="text"
                     value={exhibitForm.exhibit_type}
@@ -1732,7 +1732,7 @@ export default function ForensicLabPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] text-rmpg-400 mb-1">Condition</label>
+                  <label htmlFor="ff-forensiclabpage-23" className="block text-[11px] text-rmpg-400 mb-1">Condition</label>
                   <input id="ff-forensiclabpage-23"
                     type="text"
                     value={exhibitForm.condition_received}
@@ -1743,7 +1743,7 @@ export default function ForensicLabPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-[11px] text-rmpg-400 mb-1">Examination Requested</label>
+                <label htmlFor="ff-forensiclabpage-24" className="block text-[11px] text-rmpg-400 mb-1">Examination Requested</label>
                 <select id="ff-forensiclabpage-24"
                   value={exhibitForm.examination_requested}
                   onChange={e => setExhibitForm(f => ({ ...f, examination_requested: e.target.value }))}
@@ -1791,7 +1791,7 @@ export default function ForensicLabPage() {
                 />
               </div>
               <div>
-                <label className="block text-[11px] text-rmpg-400 mb-1">Conclusion</label>
+                <label htmlFor="ff-forensiclabpage-31" className="block text-[11px] text-rmpg-400 mb-1">Conclusion</label>
                 <RichTextArea
                   value={editForm.conclusion}
                   onChange={e => setEditForm(f => ({ ...f, conclusion: e.target.value }))}
@@ -1800,7 +1800,7 @@ export default function ForensicLabPage() {
                 />
               </div>
               <div>
-                <label className="block text-[11px] text-rmpg-400 mb-1">Due Date</label>
+                <label htmlFor="ff-forensiclabpage-25" className="block text-[11px] text-rmpg-400 mb-1">Due Date</label>
                 <input id="ff-forensiclabpage-25"
                   type="date"
                   value={editForm.due_date}
@@ -1809,7 +1809,7 @@ export default function ForensicLabPage() {
                 />
               </div>
               <div>
-                <label className="block text-[11px] text-rmpg-400 mb-1">Notes</label>
+                <label htmlFor="ff-forensiclabpage-30" className="block text-[11px] text-rmpg-400 mb-1">Notes</label>
                 <RichTextArea
                   value={editForm.notes}
                   onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
@@ -1839,7 +1839,7 @@ export default function ForensicLabPage() {
                 Record every transfer of evidence to maintain a complete chain of custody.
               </div>
               <div>
-                <label className="block text-[11px] text-rmpg-400 mb-1">Action</label>
+                <label htmlFor="ff-forensiclabpage-26" className="block text-[11px] text-rmpg-400 mb-1">Action</label>
                 <select id="ff-forensiclabpage-26"
                   value={custodyForm.action}
                   onChange={e => setCustodyForm(f => ({ ...f, action: e.target.value as CustodyEvent['action'] }))}
@@ -1854,7 +1854,7 @@ export default function ForensicLabPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] text-rmpg-400 mb-1">From <span className="text-red-400">*</span></label>
+                  <label htmlFor="ff-forensiclabpage-27" className="block text-[11px] text-rmpg-400 mb-1">From <span className="text-red-400">*</span></label>
                   <input id="ff-forensiclabpage-27"
                     type="text"
                     value={custodyForm.from_person}
@@ -1864,7 +1864,7 @@ export default function ForensicLabPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] text-rmpg-400 mb-1">To <span className="text-red-400">*</span></label>
+                  <label htmlFor="ff-forensiclabpage-28" className="block text-[11px] text-rmpg-400 mb-1">To <span className="text-red-400">*</span></label>
                   <input id="ff-forensiclabpage-28"
                     type="text"
                     value={custodyForm.to_person}
@@ -1875,7 +1875,7 @@ export default function ForensicLabPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-[11px] text-rmpg-400 mb-1">Notes</label>
+                <label htmlFor="ff-forensiclabpage-29" className="block text-[11px] text-rmpg-400 mb-1">Notes</label>
                 <RichTextArea
                   value={custodyForm.notes}
                   onChange={e => setCustodyForm(f => ({ ...f, notes: e.target.value }))}
@@ -2165,7 +2165,7 @@ export default function ForensicLabPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-rmpg-400 mb-1">Case Title <span className="text-red-400">*</span></label>
+                  <label htmlFor="ff-forensiclabpage-32" className="block text-[11px] text-rmpg-400 mb-1">Case Title <span className="text-red-400">*</span></label>
                   <input id="ff-forensiclabpage-32"
                     type="text"
                     value={wizardData.title}
@@ -2176,7 +2176,7 @@ export default function ForensicLabPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-rmpg-400 mb-1">Case Type</label>
+                  <label htmlFor="ff-forensiclabpage-37" className="block text-[11px] text-rmpg-400 mb-1">Case Type</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {CASE_TYPES.map(ct => {
                       const Icon = ct.icon;
@@ -2202,7 +2202,7 @@ export default function ForensicLabPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-rmpg-400 mb-1">Priority</label>
+                  <label htmlFor="ff-forensiclabpage-36" className="block text-[11px] text-rmpg-400 mb-1">Priority</label>
                   <div className="flex gap-2">
                     {PRIORITIES.map(p => (
                       <button type="button"
@@ -2223,7 +2223,7 @@ export default function ForensicLabPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-rmpg-400 mb-1">Synopsis</label>
+                  <label htmlFor="ff-forensiclabpage-35" className="block text-[11px] text-rmpg-400 mb-1">Synopsis</label>
                   <RichTextArea
                     value={wizardData.synopsis}
                     onChange={e => setWizardData(d => ({ ...d, synopsis: e.target.value }))}
@@ -2233,7 +2233,7 @@ export default function ForensicLabPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-rmpg-400 mb-1">Linked Incident (optional)</label>
+                  <label htmlFor="ff-forensiclabpage-34" className="block text-[11px] text-rmpg-400 mb-1">Linked Incident (optional)</label>
                   <IncidentPickerInline
                     id="ff-forensiclabpage-33"
                     value={wizardData.incident_id ? Number(wizardData.incident_id) : null}

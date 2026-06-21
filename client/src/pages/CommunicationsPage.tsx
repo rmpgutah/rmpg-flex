@@ -1132,11 +1132,11 @@ export default function CommunicationsPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block tracking-wider">Title:</label>
+                    <label htmlFor="ff-communicationspage-1" className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block tracking-wider">Title:</label>
                     <input id="ff-communicationspage-1" type="text" className="input-dark min-h-[36px]" placeholder="BOLO title" value={boloTitle} onChange={(e) => setBoloTitle(e.target.value)} required />
                   </div>
                   <div>
-                    <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Type:</label>
+                    <label htmlFor="ff-communicationspage-2" className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Type:</label>
                     <select id="ff-communicationspage-2" className="select-dark" value={boloType} onChange={(e) => setBoloType(e.target.value as BOLOType)}>
                       <option value="person">Person</option>
                       <option value="vehicle">Vehicle</option>
@@ -1144,7 +1144,7 @@ export default function CommunicationsPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Priority:</label>
+                    <label htmlFor="ff-communicationspage-3" className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Priority:</label>
                     <select id="ff-communicationspage-3" className="select-dark" value={boloPriority} onChange={(e) => setBoloPriority(e.target.value as CallPriority)}>
                       <option value="P1">P1 - Emergency</option>
                       <option value="P2">P2 - Urgent</option>
@@ -1152,11 +1152,11 @@ export default function CommunicationsPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject Description:</label>
+                    <label htmlFor="ff-communicationspage-4" className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject Description:</label>
                     <input id="ff-communicationspage-4" type="text" className="input-dark min-h-[36px]" placeholder="Subject description" value={boloSubjectDescription} onChange={(e) => setBoloSubjectDescription(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Vehicle Description:</label>
+                    <label htmlFor="ff-communicationspage-5" className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Vehicle Description:</label>
                     <input id="ff-communicationspage-5" type="text" className="input-dark min-h-[36px]" placeholder="Vehicle description" value={boloVehicleDescription} onChange={(e) => setBoloVehicleDescription(e.target.value)} />
                   </div>
                   <div className="col-span-2">
@@ -1164,7 +1164,7 @@ export default function CommunicationsPage() {
                     <RichTextArea className="textarea-dark" rows={3} placeholder="Detailed description..." value={boloDescription} onChange={(e) => setBoloDescription(e.target.value)} />
                   </div>
                   <div className="col-span-2">
-                    <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Photo (optional):</label>
+                    <label htmlFor="ff-communicationspage-6" className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Photo (optional):</label>
                     <div className="flex items-center gap-4">
                       <input id="ff-communicationspage-6" type="file" accept="image/*" className="text-xs text-rmpg-300 file:mr-3 file:py-1 file:px-3 file:border file:border-rmpg-600 file:bg-rmpg-700 file:text-rmpg-200 file:text-xs file:cursor-pointer hover:file:bg-rmpg-600" onChange={handleBoloPhotoChange} />
                       {boloPhotoPreview && (
@@ -1376,7 +1376,7 @@ export default function CommunicationsPage() {
         maxWidth="max-w-lg"
       >
         <div>
-          <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">To:</label>
+          <label htmlFor="ff-communicationspage-7" className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">To:</label>
           <select id="ff-communicationspage-7" className="select-dark" value={composeTo} onChange={(e) => setComposeTo(e.target.value)} required>
             <option value="">Select recipient...</option>
             <option value="broadcast">All Units (Broadcast)</option>
@@ -1386,7 +1386,7 @@ export default function CommunicationsPage() {
           </select>
         </div>
         <div>
-          <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Priority:</label>
+          <label htmlFor="ff-communicationspage-8" className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Priority:</label>
           <select id="ff-communicationspage-8" className={`select-dark ${composePriority === 'emergency' ? 'border-red-500 text-red-400' : composePriority === 'urgent' ? 'border-amber-500 text-amber-400' : ''}`} value={composePriority} onChange={(e) => setComposePriority(e.target.value)}>
             <option value="routine">Normal</option>
             <option value="urgent">Urgent</option>
@@ -1401,7 +1401,7 @@ export default function CommunicationsPage() {
           )}
         </div>
         <div>
-          <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject:</label>
+          <label htmlFor="ff-communicationspage-9" className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject:</label>
           <input id="ff-communicationspage-9" type="text" className="input-dark min-h-[36px]" placeholder="Message subject..." value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} required />
         </div>
         <div>

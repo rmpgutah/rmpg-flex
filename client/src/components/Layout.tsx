@@ -944,7 +944,7 @@ export default function Layout() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="field-label">First Name <span className="text-red-500">*</span></label>
+                <label htmlFor="ff-layout-0" className="field-label">First Name <span className="text-red-500">*</span></label>
                 <input id="ff-layout-0"
                   type="text"
                   value={setupFirstName}
@@ -955,7 +955,7 @@ export default function Layout() {
                 />
               </div>
               <div>
-                <label className="field-label">Last Name <span className="text-red-500">*</span></label>
+                <label htmlFor="ff-layout-1" className="field-label">Last Name <span className="text-red-500">*</span></label>
                 <input id="ff-layout-1"
                   type="text"
                   value={setupLastName}

@@ -690,7 +690,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
         {/* Refresh Token */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Refresh Token</label>
+          <label htmlFor="ff-adminclearpathgpstab-0" className="text-[10px] text-rmpg-400">Refresh Token</label>
           <div className="relative">
             <input id="ff-adminclearpathgpstab-0"
               type={showSecret ? 'text' : 'password'}
@@ -710,7 +710,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
         {/* User ID */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">User ID <span className="text-rmpg-600">(optional)</span></label>
+          <label htmlFor="ff-adminclearpathgpstab-1" className="text-[10px] text-rmpg-400">User ID <span className="text-rmpg-600">(optional)</span></label>
           <input id="ff-adminclearpathgpstab-1"
             type="text"
             value={userId}
@@ -722,7 +722,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
         {/* Account ID (optional — derived server-side; for display/scoping) */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Account ID <span className="text-rmpg-600">(optional)</span></label>
+          <label htmlFor="ff-adminclearpathgpstab-2" className="text-[10px] text-rmpg-400">Account ID <span className="text-rmpg-600">(optional)</span></label>
           <input id="ff-adminclearpathgpstab-2"
             type="text"
             value={accountId}

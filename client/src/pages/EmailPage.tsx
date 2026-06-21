@@ -216,7 +216,7 @@ function ContactAutocompleteInput({
 
   return (
     <div ref={containerRef} className="relative">
-      {label && <label className="text-[10px] text-rmpg-400 block mb-0.5">{label}</label>}
+      {label && <label htmlFor="ff-emailpage-0" className="text-[10px] text-rmpg-400 block mb-0.5">{label}</label>}
       <input id="ff-emailpage-0"
         ref={inputRef}
         value={value}
@@ -860,23 +860,23 @@ function SearchFilterPanel({
       </div>
 
       <div>
-        <label className="text-[9px] text-rmpg-500 block mb-0.5">From (sender)</label>
+        <label htmlFor="ff-emailpage-7" className="text-[9px] text-rmpg-500 block mb-0.5">From (sender)</label>
         <input id="ff-emailpage-7" value={local.sender} onChange={e => setLocal(prev => ({ ...prev, sender: e.target.value }))}
           className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" placeholder="name or email" />
       </div>
 
       <div className="flex items-center gap-3">
-        <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+        <label htmlFor="ff-emailpage-8" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
           <input id="ff-emailpage-8" type="checkbox" checked={local.hasAttachments} onChange={e => setLocal(prev => ({ ...prev, hasAttachments: e.target.checked }))}
             className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Paperclip className="w-3 h-3 text-rmpg-500" /> Has attachments
         </label>
-        <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+        <label htmlFor="ff-emailpage-9" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
           <input id="ff-emailpage-9" type="checkbox" checked={local.isFlagged} onChange={e => setLocal(prev => ({ ...prev, isFlagged: e.target.checked }))}
             className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Flag className="w-3 h-3 text-rmpg-500" /> Flagged
         </label>
-        <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+        <label htmlFor="ff-emailpage-10" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
           <input id="ff-emailpage-10" type="checkbox" checked={local.unreadOnly} onChange={e => setLocal(prev => ({ ...prev, unreadOnly: e.target.checked }))}
             className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Mail className="w-3 h-3 text-rmpg-500" /> Unread only
@@ -885,12 +885,12 @@ function SearchFilterPanel({
 
       <div className="flex items-center gap-2">
         <div className="flex-1">
-          <label className="text-[9px] text-rmpg-500 block mb-0.5">From date</label>
+          <label htmlFor="ff-emailpage-11" className="text-[9px] text-rmpg-500 block mb-0.5">From date</label>
           <input id="ff-emailpage-11" type="date" value={local.dateFrom} onChange={e => setLocal(prev => ({ ...prev, dateFrom: e.target.value }))}
             className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
         </div>
         <div className="flex-1">
-          <label className="text-[9px] text-rmpg-500 block mb-0.5">To date</label>
+          <label htmlFor="ff-emailpage-12" className="text-[9px] text-rmpg-500 block mb-0.5">To date</label>
           <input id="ff-emailpage-12" type="date" value={local.dateTo} onChange={e => setLocal(prev => ({ ...prev, dateTo: e.target.value }))}
             className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
         </div>
@@ -1741,11 +1741,11 @@ function AutoReplyModal({ onClose, onSnackbar }: { onClose: () => void; onSnackb
             {oofStatus === 'scheduled' && (
               <div className="flex items-center gap-2">
                 <div className="flex-1">
-                  <label className="text-[9px] text-rmpg-500 block mb-0.5">Starts</label>
+                  <label htmlFor="ff-emailpage-16" className="text-[9px] text-rmpg-500 block mb-0.5">Starts</label>
                   <input type="datetime-local" value={startAt} onChange={e => setStartAt(e.target.value)} className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
                 </div>
                 <div className="flex-1">
-                  <label className="text-[9px] text-rmpg-500 block mb-0.5">Ends</label>
+                  <label htmlFor="ff-emailpage-15" className="text-[9px] text-rmpg-500 block mb-0.5">Ends</label>
                   <input type="datetime-local" value={endAt} onChange={e => setEndAt(e.target.value)} className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
                 </div>
               </div>

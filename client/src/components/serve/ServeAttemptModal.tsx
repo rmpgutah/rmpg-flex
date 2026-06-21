@@ -405,7 +405,7 @@ export default function ServeAttemptModal({
 
             {attemptType === 'failed' && (
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-rmpg-300 uppercase">Reason</label>
+                <label htmlFor="ff-serveattemptmodal-0" className="block text-xs font-semibold text-rmpg-300 uppercase">Reason</label>
                 <select id="ff-serveattemptmodal-0"
                   value={failedReason || ''}
                   onChange={(e) => setFailedReason(e.target.value as FailedReason)}
@@ -448,7 +448,7 @@ export default function ServeAttemptModal({
             {/* Camera input */}
             <div className="space-y-2">
               <label className="block text-xs font-semibold text-rmpg-300 uppercase">Photos ({photos.length}/5)</label>
-              <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-sm border-2 border-dashed cursor-pointer transition-colors ${
+              <label htmlFor="ff-serveattemptmodal-1" className={`flex items-center justify-center gap-2 px-4 py-3 rounded-sm border-2 border-dashed cursor-pointer transition-colors ${
                 photos.length >= 5
                   ? 'border-rmpg-700 text-rmpg-600 cursor-not-allowed'
                   : 'border-rmpg-500 text-rmpg-300 hover:border-brand-500 hover:text-brand-300'
@@ -495,7 +495,7 @@ export default function ServeAttemptModal({
                 <legend className="text-xs font-semibold text-rmpg-300 uppercase px-1">Physical Description</legend>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Age Range</label>
+                    <label htmlFor="ff-serveattemptmodal-2" className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Age Range</label>
                     <select id="ff-serveattemptmodal-2"
                       value={ageRange}
                       onChange={(e) => setAgeRange(e.target.value)}
@@ -506,7 +506,7 @@ export default function ServeAttemptModal({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Hair Color</label>
+                    <label htmlFor="ff-serveattemptmodal-3" className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Hair Color</label>
                     <select id="ff-serveattemptmodal-3"
                       value={hairColor}
                       onChange={(e) => setHairColor(e.target.value)}
@@ -517,7 +517,7 @@ export default function ServeAttemptModal({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Height</label>
+                    <label htmlFor="ff-serveattemptmodal-4" className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Height</label>
                     <input id="ff-serveattemptmodal-4"
                       type="text"
                       value={height}
@@ -527,7 +527,7 @@ export default function ServeAttemptModal({
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Weight</label>
+                    <label htmlFor="ff-serveattemptmodal-5" className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Weight</label>
                     <input id="ff-serveattemptmodal-5"
                       type="text"
                       value={weight}
@@ -538,7 +538,7 @@ export default function ServeAttemptModal({
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Clothing Description</label>
+                  <label htmlFor="ff-serveattemptmodal-6" className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Clothing Description</label>
                   <input id="ff-serveattemptmodal-6"
                     type="text"
                     value={clothing}
@@ -555,7 +555,7 @@ export default function ServeAttemptModal({
               <fieldset className="space-y-3 border border-rmpg-700 rounded-[2px] p-3">
                 <legend className="text-xs font-semibold text-rmpg-300 uppercase px-1">Person Served</legend>
                 <div>
-                  <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">
+                  <label htmlFor="ff-serveattemptmodal-7" className="block text-[10px] text-rmpg-400 uppercase mb-0.5">
                     Name <span className="text-red-400">*</span>
                   </label>
                   <input id="ff-serveattemptmodal-7"
@@ -568,7 +568,7 @@ export default function ServeAttemptModal({
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Relationship</label>
+                  <label htmlFor="ff-serveattemptmodal-8" className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Relationship</label>
                   <select id="ff-serveattemptmodal-8"
                     value={relationship}
                     onChange={(e) => setRelationship(e.target.value)}

@@ -448,7 +448,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
               { key: 'release_date', label: 'Release Date', ph: '', type: 'date' },
             ].map(f => (
               <div key={f.key} className={f.span ? 'col-span-2 sm:col-span-3' : ''}>
-                <label className="text-[9px] text-rmpg-400 uppercase">{f.label}</label>
+                <label htmlFor="ff-adminarreststab-2" className="text-[9px] text-rmpg-400 uppercase">{f.label}</label>
                 {f.select ? (
                   <select id="ff-adminarreststab-2"
                     value={(form as any)[f.key]}
@@ -483,7 +483,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
           </div>
 
           <div>
-            <label className="text-[9px] text-rmpg-400 uppercase">Notes</label>
+            <label htmlFor="ff-adminarreststab-7" className="text-[9px] text-rmpg-400 uppercase">Notes</label>
             <RichTextArea
               value={form.notes}
               onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
@@ -524,7 +524,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="text-[9px] text-rmpg-400 uppercase">Default County</label>
+              <label htmlFor="ff-adminarreststab-4" className="text-[9px] text-rmpg-400 uppercase">Default County</label>
               <select id="ff-adminarreststab-4"
                 value={csvCounty}
                 onChange={e => setCsvCounty(e.target.value)}
@@ -535,7 +535,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
               </select>
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-400 uppercase">Default Agency</label>
+              <label htmlFor="ff-adminarreststab-5" className="text-[9px] text-rmpg-400 uppercase">Default Agency</label>
               <input id="ff-adminarreststab-5"
                 value={csvAgency}
                 onChange={e => setCsvAgency(e.target.value)}
@@ -685,7 +685,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
             <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
             <div className="space-y-1.5 mt-2">
-              <label className="text-[9px] text-rmpg-400 uppercase">RapidAPI Key</label>
+              <label htmlFor="ff-adminarreststab-6" className="text-[9px] text-rmpg-400 uppercase">RapidAPI Key</label>
               <div className="relative">
                 <input id="ff-adminarreststab-6"
                   type={showKey ? 'text' : 'password'}

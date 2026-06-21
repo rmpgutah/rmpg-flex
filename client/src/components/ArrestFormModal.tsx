@@ -365,7 +365,7 @@ export default function ArrestFormModal({
              />
              </div>
              <div className="w-28">
-               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Apt / Unit</label>
+               <label htmlFor="ff-arrestformmodal-addrunit" className="text-[10px] text-rmpg-400 uppercase font-semibold">Apt / Unit</label>
                <input id="ff-arrestformmodal-addrunit" type="text" className="input-dark mt-1 w-full" value={addressUnit} onChange={e => setAddressUnit(e.target.value)} placeholder="Apt 4B" />
              </div>
            </div>

@@ -1164,9 +1164,9 @@ export default function CitationsPage() {
                 ) : (
                   <div className="space-y-2 mt-2 p-2 border border-rmpg-700 bg-surface-sunken">
                     <div className="grid grid-cols-2 gap-2">
-                      <div><label className="text-[9px] text-rmpg-400 uppercase">Amount *</label>
+                      <div><label htmlFor="ff-citationspage-3" className="text-[9px] text-rmpg-400 uppercase">Amount *</label>
                         <input id="ff-citationspage-3" type="number" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.amount} onChange={e => setPaymentForm(p => ({ ...p, amount: e.target.value }))} /></div>
-                      <div><label className="text-[9px] text-rmpg-400 uppercase">Date *</label>
+                      <div><label htmlFor="ff-citationspage-4" className="text-[9px] text-rmpg-400 uppercase">Date *</label>
                         <input id="ff-citationspage-4" type="date" className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.payment_date} onChange={e => setPaymentForm(p => ({ ...p, payment_date: e.target.value }))} /></div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -1179,7 +1179,7 @@ export default function CitationsPage() {
                           getKey={(o) => o.value}
                           placeholder="Method"
                         /></div>
-                      <div><label className="text-[9px] text-rmpg-400 uppercase">Reference #</label>
+                      <div><label htmlFor="ff-citationspage-6" className="text-[9px] text-rmpg-400 uppercase">Reference #</label>
                         <input id="ff-citationspage-6" className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.reference_number} onChange={e => setPaymentForm(p => ({ ...p, reference_number: e.target.value }))} /></div>
                     </div>
                     <div className="flex gap-2">
@@ -1556,7 +1556,7 @@ export default function CitationsPage() {
           </h3>
           <div className="space-y-3">
             <div ref={personDropdownRef} className="relative">
-              <label className="field-label">Search Existing Person</label>
+              <label htmlFor="ff-citationspage-12" className="field-label">Search Existing Person</label>
               <div className="relative">
                 <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-400" />
                 <input id="ff-citationspage-12"
@@ -1600,7 +1600,7 @@ export default function CitationsPage() {
             )}
 
             <div>
-              <label className="field-label">Full Name *</label>
+              <label htmlFor="ff-citationspage-13" className="field-label">Full Name *</label>
               <input id="ff-citationspage-13"
                 type="text"
                 value={form.person_name}
@@ -1614,11 +1614,11 @@ export default function CitationsPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="field-label">Date of Birth</label>
+                <label htmlFor="ff-citationspage-14" className="field-label">Date of Birth</label>
                 <input id="ff-citationspage-14" type="date" value={form.person_dob} onChange={e => updateField('person_dob', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
               </div>
               <div>
-                <label className="field-label">Driver License #</label>
+                <label htmlFor="ff-citationspage-15" className="field-label">Driver License #</label>
                 <input id="ff-citationspage-15" type="text" value={form.person_dl} onChange={e => updateField('person_dl', e.target.value)} placeholder="DL number" className="input-dark w-full py-2 text-xs font-mono min-h-[36px]" />
               </div>
             </div>
@@ -1640,7 +1640,7 @@ export default function CitationsPage() {
                />
                </div>
                <div className="w-24">
-                 <label className="field-label">Apt / Unit</label>
+                 <label htmlFor="ff-citationspage-addrunit" className="field-label">Apt / Unit</label>
                  <input id="ff-citationspage-addrunit" type="text" className="input-dark w-full py-2 text-xs min-h-[36px]" value={personAddressUnit} onChange={e => setPersonAddressUnit(e.target.value)} placeholder="4B" />
                </div>
              </div>
@@ -1655,12 +1655,12 @@ export default function CitationsPage() {
             </h3>
             <div className="space-y-3">
               <div>
-                <label className="field-label">Vehicle Description</label>
+                <label htmlFor="ff-citationspage-16" className="field-label">Vehicle Description</label>
                 <input id="ff-citationspage-16" type="text" value={form.vehicle_description} onChange={e => updateField('vehicle_description', e.target.value)} placeholder="Year Make Model Color" className="input-dark w-full py-2 text-xs min-h-[36px]" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">License Plate</label>
+                  <label htmlFor="ff-citationspage-17" className="field-label">License Plate</label>
                   <input id="ff-citationspage-17" type="text" value={form.vehicle_plate} onChange={e => updateField('vehicle_plate', e.target.value.toUpperCase())} placeholder="ABC1234" className="input-dark w-full py-2 text-xs font-mono uppercase min-h-[36px]" />
                 </div>
                 <div>
@@ -1687,7 +1687,7 @@ export default function CitationsPage() {
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="field-label">Violation Date *</label>
+                <label htmlFor="ff-citationspage-19" className="field-label">Violation Date *</label>
                 <input id="ff-citationspage-19"
                   type="date"
                   value={form.violation_date}
@@ -1697,7 +1697,7 @@ export default function CitationsPage() {
                 {formErrors.violation_date && <p className="text-red-400 text-[10px] mt-1">{formErrors.violation_date}</p>}
               </div>
               <div>
-                <label className="field-label">Violation Time</label>
+                <label htmlFor="ff-citationspage-20" className="field-label">Violation Time</label>
                 <input id="ff-citationspage-20" type="time" value={form.violation_time} onChange={e => updateField('violation_time', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
               </div>
             </div>
@@ -1732,7 +1732,7 @@ export default function CitationsPage() {
             {/* Section / Zone / Beat — cascading */}
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Section</label>
+                <label htmlFor="ff-citationspage-21" className="block text-xs text-rmpg-400 mb-1">Section</label>
                 <select id="ff-citationspage-21" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                   value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
                   <option value="">—</option>
@@ -1740,7 +1740,7 @@ export default function CitationsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
+                <label htmlFor="ff-citationspage-22" className="block text-xs text-rmpg-400 mb-1">Zone</label>
                 <select id="ff-citationspage-22" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                   value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
                   <option value="">—</option>
@@ -1748,7 +1748,7 @@ export default function CitationsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
+                <label htmlFor="ff-citationspage-23" className="block text-xs text-rmpg-400 mb-1">Beat</label>
                 <select id="ff-citationspage-23" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                   value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
                   <option value="">—</option>
@@ -1766,11 +1766,11 @@ export default function CitationsPage() {
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Officer Name</label>
+              <label htmlFor="ff-citationspage-24" className="field-label">Officer Name</label>
               <input id="ff-citationspage-24" type="text" value={form.issuing_officer_name} onChange={e => updateField('issuing_officer_name', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
             <div>
-              <label className="field-label">Badge #</label>
+              <label htmlFor="ff-citationspage-25" className="field-label">Badge #</label>
               <input id="ff-citationspage-25" type="text" value={form.badge_number} onChange={e => updateField('badge_number', e.target.value)} className="input-dark w-full py-2 text-xs font-mono min-h-[36px]" />
             </div>
           </div>
@@ -1783,11 +1783,11 @@ export default function CitationsPage() {
           </h3>
           <div className="space-y-3">
             <div>
-              <label className="field-label">Court Date</label>
+              <label htmlFor="ff-citationspage-26" className="field-label">Court Date</label>
               <input id="ff-citationspage-26" type="date" value={form.court_date} onChange={e => updateField('court_date', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
             <div>
-              <label className="field-label">Court Name</label>
+              <label htmlFor="ff-citationspage-27" className="field-label">Court Name</label>
               <input id="ff-citationspage-27" type="text" value={form.court_name} onChange={e => updateField('court_name', e.target.value)} placeholder="e.g. Provo Justice Court" className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
              <div>

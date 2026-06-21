@@ -371,7 +371,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
         <div className="grid grid-cols-1 gap-2">
           <div>
             <div className="flex items-center justify-between mb-0.5">
-              <label className="block text-[10px] text-rmpg-400">Application (Client) ID</label>
+              <label htmlFor="ff-adminemailtab-0" className="block text-[10px] text-rmpg-400">Application (Client) ID</label>
               {clientId.trim() && (
                 AZURE_GUID.test(clientId.trim())
                   ? <span className="text-[9px] text-green-400">✓ valid GUID</span>
@@ -398,7 +398,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           </div>
           <div>
             <div className="flex items-center justify-between mb-0.5">
-              <label className="block text-[10px] text-rmpg-400">Client Secret <span className="text-rmpg-600">(the VALUE, not the ID)</span></label>
+              <label htmlFor="ff-adminemailtab-1" className="block text-[10px] text-rmpg-400">Client Secret <span className="text-rmpg-600">(the VALUE, not the ID)</span></label>
               {clientSecret.trim() && (
                 AZURE_GUID.test(clientSecret.trim())
                   ? <span className="text-[9px] text-red-400">✗ looks like the Secret ID — paste the VALUE</span>
@@ -431,7 +431,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           </div>
           <div>
             <div className="flex items-center justify-between mb-0.5">
-              <label className="block text-[10px] text-rmpg-400">Directory (Tenant) ID</label>
+              <label htmlFor="ff-adminemailtab-2" className="block text-[10px] text-rmpg-400">Directory (Tenant) ID</label>
               {tenantId.trim() && (
                 (AZURE_GUID.test(tenantId.trim()) || SPECIAL_TENANTS.has(tenantId.trim().toLowerCase()))
                   ? <span className="text-[9px] text-green-400">✓ valid</span>
@@ -531,7 +531,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           </div>
 
           <div className="flex items-center gap-3">
-            <label className="text-[10px] text-rmpg-400">Poll Interval:</label>
+            <label htmlFor="ff-adminemailtab-3" className="text-[10px] text-rmpg-400">Poll Interval:</label>
             <select id="ff-adminemailtab-3"
               value={pollInterval}
               onChange={e => handlePollIntervalChange(Number(e.target.value))}

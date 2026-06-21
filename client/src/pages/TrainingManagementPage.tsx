@@ -95,22 +95,22 @@ export default function TrainingManagementPage() {
           <div className="bg-surface-raised border border-rmpg-600 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord ? 'Edit Course' : 'New Course'}</h3>
             <div className="space-y-3">
-              <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Course Name <span className="text-red-500">*</span></label>
+              <div><label htmlFor="ff-trainingmanagementpage-0" className="text-[10px] text-rmpg-400 uppercase font-semibold">Course Name <span className="text-red-500">*</span></label>
                 <input id="ff-trainingmanagementpage-0" className="input-dark mt-1" value={formData.course_name || ''} onChange={e => setFormData({...formData, course_name: e.target.value})} autoFocus /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Code</label>
+                <div><label htmlFor="ff-trainingmanagementpage-1" className="text-[10px] text-rmpg-400 uppercase font-semibold">Code</label>
                   <input id="ff-trainingmanagementpage-1" className="input-dark mt-1" value={formData.course_code || ''} onChange={e => setFormData({...formData, course_code: e.target.value})} /></div>
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Category</label>
+                <div><label htmlFor="ff-trainingmanagementpage-2" className="text-[10px] text-rmpg-400 uppercase font-semibold">Category</label>
                   <select id="ff-trainingmanagementpage-2" className="select-dark mt-1" value={formData.category || 'other'} onChange={e => setFormData({...formData, category: e.target.value})}>
                     {['firearms','defensive_tactics','legal','first_aid','de_escalation','professionalism','technical','other'].map(c=><option key={c} value={c}>{c}</option>)}
                   </select></div>
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Duration (hrs)</label>
+                <div><label htmlFor="ff-trainingmanagementpage-3" className="text-[10px] text-rmpg-400 uppercase font-semibold">Duration (hrs)</label>
                   <input id="ff-trainingmanagementpage-3" className="input-dark mt-1" value={formData.duration_hours || ''} onChange={e => setFormData({...formData, duration_hours: e.target.value})} /></div>
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Instructor ID</label>
+                <div><label htmlFor="ff-trainingmanagementpage-4" className="text-[10px] text-rmpg-400 uppercase font-semibold">Instructor ID</label>
                   <input id="ff-trainingmanagementpage-4" className="input-dark mt-1" value={formData.instructor_id || ''} onChange={e => setFormData({...formData, instructor_id: e.target.value})} /></div>
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Location</label>
+                <div><label htmlFor="ff-trainingmanagementpage-5" className="text-[10px] text-rmpg-400 uppercase font-semibold">Location</label>
                   <input id="ff-trainingmanagementpage-5" className="input-dark mt-1" value={formData.location || ''} onChange={e => setFormData({...formData, location: e.target.value})} /></div>
               </div>
             </div>

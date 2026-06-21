@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 
+import { formatEnumValue } from '../../utils/formatters';
 interface Source {
   id: number; source_code: string; source_type: string; display_label: string;
   reliability_grade: string; status: string; restricted: number; _restricted?: boolean;
@@ -58,7 +59,7 @@ export default function IntelSourcesPage() {
               <td className="py-[2px]">{s.source_type}{s._restricted && <span style={{ color: '#888' }}> 🔒</span>}</td>
               <td className="py-[2px]">{s.display_label || '—'}</td>
               <td className="py-[2px]">{s.reliability_grade || '—'}</td>
-              <td className="py-[2px] uppercase">{s.status}</td>
+              <td className="py-[2px] uppercase">{formatEnumValue(s.status)}</td>
             </tr>
           ))}
           {!rows.length && <tr><td colSpan={5} className="py-3 text-center" style={{ color: 'var(--rmpg-500)' }}>No sources.</td></tr>}

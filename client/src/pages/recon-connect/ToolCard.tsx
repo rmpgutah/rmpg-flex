@@ -369,7 +369,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           const suggestions = targetHistory[arg.name] || [];
           return (
             <div key={arg.name} className="flex flex-col gap-1">
-              <label className="text-[9px] text-[#888] uppercase tracking-wider">{arg.label}{arg.required && ' *'}</label>
+              <label htmlFor="ff-toolcard-0" className="text-[9px] text-[#888] uppercase tracking-wider">{arg.label}{arg.required && ' *'}</label>
               <input id="ff-toolcard-0"
                 type="text"
                 placeholder={arg.placeholder}

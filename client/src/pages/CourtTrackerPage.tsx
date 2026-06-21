@@ -1033,47 +1033,47 @@ export default function CourtTrackerPage() {
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Type</label>
+                  <label htmlFor="ff-courttrackerpage-2" className="field-label">Type</label>
                   <select id="ff-courttrackerpage-2" value={formData.event_type} onChange={e => setFormData(p => ({ ...p, event_type: e.target.value as CourtEventType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">
                     {EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Date *</label>
+                  <label htmlFor="ff-courttrackerpage-3" className="field-label">Date *</label>
                   <input id="ff-courttrackerpage-3" type="date" value={formData.event_date} onChange={e => setFormData(p => ({ ...p, event_date: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${formErrors.event_date ? 'border-red-500' : 'border-rmpg-700'}`} />
                   {formErrors.event_date && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.event_date}</p>}
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="field-label">Time</label>
+                  <label htmlFor="ff-courttrackerpage-4" className="field-label">Time</label>
                   <input id="ff-courttrackerpage-4" type="time" value={formData.event_time} onChange={e => setFormData(p => ({ ...p, event_time: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
                 </div>
                 <div>
-                  <label className="field-label">Court *</label>
+                  <label htmlFor="ff-courttrackerpage-5" className="field-label">Court *</label>
                   <input id="ff-courttrackerpage-5" value={formData.court_name} onChange={e => setFormData(p => ({ ...p, court_name: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${formErrors.court_name ? 'border-red-500' : 'border-rmpg-700'}`} />
                   {formErrors.court_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.court_name}</p>}
                 </div>
                 <div>
-                  <label className="field-label">Courtroom</label>
+                  <label htmlFor="ff-courttrackerpage-6" className="field-label">Courtroom</label>
                   <input id="ff-courttrackerpage-6" value={formData.courtroom} onChange={e => setFormData(p => ({ ...p, courtroom: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Defendant Name</label>
+                  <label htmlFor="ff-courttrackerpage-7" className="field-label">Defendant Name</label>
                   <input id="ff-courttrackerpage-7" value={formData.defendant_name} onChange={e => setFormData(p => ({ ...p, defendant_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
                 </div>
                 <div>
-                  <label className="field-label">Judge</label>
+                  <label htmlFor="ff-courttrackerpage-8" className="field-label">Judge</label>
                   <input id="ff-courttrackerpage-8" value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
                 </div>
                 <div>
-                  <label className="field-label">Prosecutor</label>
+                  <label htmlFor="ff-courttrackerpage-9" className="field-label">Prosecutor</label>
                   <input id="ff-courttrackerpage-9" value={formData.prosecutor} onChange={e => setFormData(p => ({ ...p, prosecutor: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
                 </div>
                 <div>
-                  <label className="field-label">Defense Attorney</label>
+                  <label htmlFor="ff-courttrackerpage-10" className="field-label">Defense Attorney</label>
                   <input id="ff-courttrackerpage-10" value={formData.defense_attorney} onChange={e => setFormData(p => ({ ...p, defense_attorney: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
                 </div>
               </div>
@@ -1098,18 +1098,18 @@ export default function CourtTrackerPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
-                <label className="field-label">Outcome *</label>
+                <label htmlFor="ff-courttrackerpage-11" className="field-label">Outcome *</label>
                 <select id="ff-courttrackerpage-11" value={outcomeData.outcome} onChange={e => setOutcomeData(p => ({ ...p, outcome: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">
                   <option value="">Select outcome...</option>
                   {OUTCOME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
-                <label className="field-label">Sentence</label>
+                <label htmlFor="ff-courttrackerpage-26" className="field-label">Sentence</label>
                 <RichTextArea value={outcomeData.sentence} onChange={e => setOutcomeData(p => ({ ...p, sentence: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600 resize-none" />
               </div>
               <div>
-                <label className="field-label">Fine Amount ($)</label>
+                <label htmlFor="ff-courttrackerpage-12" className="field-label">Fine Amount ($)</label>
                 <input id="ff-courttrackerpage-12" value={outcomeData.fine_amount} onChange={e => setOutcomeData(p => ({ ...p, fine_amount: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
@@ -1133,16 +1133,16 @@ export default function CourtTrackerPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
-                <label className="field-label">Reason *</label>
+                <label htmlFor="ff-courttrackerpage-25" className="field-label">Reason *</label>
                 <RichTextArea value={continuanceData.reason} onChange={e => setContinuanceData(p => ({ ...p, reason: e.target.value }))} rows={2} placeholder="Reason for continuance..." className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600 resize-none" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">New Date</label>
+                  <label htmlFor="ff-courttrackerpage-13" className="field-label">New Date</label>
                   <input id="ff-courttrackerpage-13" type="date" value={continuanceData.new_date} onChange={e => setContinuanceData(p => ({ ...p, new_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
                 </div>
                 <div>
-                  <label className="field-label">New Time</label>
+                  <label htmlFor="ff-courttrackerpage-14" className="field-label">New Time</label>
                   <input id="ff-courttrackerpage-14" type="time" value={continuanceData.new_time} onChange={e => setContinuanceData(p => ({ ...p, new_time: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
                 </div>
               </div>
@@ -1167,11 +1167,11 @@ export default function CourtTrackerPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
-                <label className="field-label">Bail Amount ($)</label>
+                <label htmlFor="ff-courttrackerpage-15" className="field-label">Bail Amount ($)</label>
                 <input id="ff-courttrackerpage-15" type="number" value={bailData.bail_amount} onChange={e => setBailData(p => ({ ...p, bail_amount: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
               </div>
               <div>
-                <label className="field-label">Bond Status</label>
+                <label htmlFor="ff-courttrackerpage-16" className="field-label">Bond Status</label>
                 <select id="ff-courttrackerpage-16" value={bailData.bond_status} onChange={e => setBailData(p => ({ ...p, bond_status: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">
                   <option value="">Select...</option>
                   <option value="posted">Posted</option>
@@ -1183,7 +1183,7 @@ export default function CourtTrackerPage() {
                 </select>
               </div>
               <div>
-                <label className="field-label">Surety Info</label>
+                <label htmlFor="ff-courttrackerpage-17" className="field-label">Surety Info</label>
                 <input id="ff-courttrackerpage-17" value={bailData.surety_info} onChange={e => setBailData(p => ({ ...p, surety_info: e.target.value }))} placeholder="Bonding company, etc." className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
@@ -1227,11 +1227,11 @@ export default function CourtTrackerPage() {
               <IconButton onClick={() => setProsecutorOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
-              <div><label className="field-label">Name</label>
+              <div><label htmlFor="ff-courttrackerpage-18" className="field-label">Name</label>
                 <input id="ff-courttrackerpage-18" value={prosecutorData.prosecutor_name} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
-              <div><label className="field-label">Phone</label>
+              <div><label htmlFor="ff-courttrackerpage-19" className="field-label">Phone</label>
                 <input id="ff-courttrackerpage-19" value={prosecutorData.prosecutor_phone} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_phone: formatPhoneInput(e.target.value) }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" placeholder="(555) 123-4567" /></div>
-              <div><label className="field-label">Email</label>
+              <div><label htmlFor="ff-courttrackerpage-20" className="field-label">Email</label>
                 <input id="ff-courttrackerpage-20" type="email" value={prosecutorData.prosecutor_email} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_email: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setProsecutorOpen(false)} className="toolbar-btn">Cancel</button>
@@ -1252,13 +1252,13 @@ export default function CourtTrackerPage() {
               <IconButton onClick={() => setFeeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
-              <div><label className="field-label">Filing Fee ($)</label>
+              <div><label htmlFor="ff-courttrackerpage-21" className="field-label">Filing Fee ($)</label>
                 <input id="ff-courttrackerpage-21" type="number" step="0.01" value={feeData.filing_fee} onChange={e => setFeeData(p => ({ ...p, filing_fee: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
-              <div><label className="field-label">Service Fee ($)</label>
+              <div><label htmlFor="ff-courttrackerpage-22" className="field-label">Service Fee ($)</label>
                 <input id="ff-courttrackerpage-22" type="number" step="0.01" value={feeData.service_fee} onChange={e => setFeeData(p => ({ ...p, service_fee: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
-              <div><label className="field-label">Other Fees ($)</label>
+              <div><label htmlFor="ff-courttrackerpage-23" className="field-label">Other Fees ($)</label>
                 <input id="ff-courttrackerpage-23" type="number" step="0.01" value={feeData.other_fees} onChange={e => setFeeData(p => ({ ...p, other_fees: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
-              <div><label className="field-label">Notes</label>
+              <div><label htmlFor="ff-courttrackerpage-24" className="field-label">Notes</label>
                 <RichTextArea value={feeData.fee_notes} onChange={e => setFeeData(p => ({ ...p, fee_notes: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600 resize-none" /></div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFeeOpen(false)} className="toolbar-btn">Cancel</button>

@@ -498,7 +498,7 @@ export default function TrespassOrdersPage() {
             <option value="lifted">Lifted</option>
             <option value="violated">Violated</option>
           </select>
-          <label className={`flex items-center gap-1 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400 cursor-pointer`} style={isMobile ? { minHeight: 44 } : undefined}>
+          <label htmlFor="ff-trespassorderspage-4" className={`flex items-center gap-1 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400 cursor-pointer`} style={isMobile ? { minHeight: 44 } : undefined}>
             <input id="ff-trespassorderspage-4" type="checkbox" checked={showArchived} onChange={e => { setShowArchived(e.target.checked); setPage(1); }} className="accent-brand-500" style={isMobile ? { width: 20, height: 20 } : undefined} /> Archived
           </label>
         </div>
@@ -688,7 +688,7 @@ export default function TrespassOrdersPage() {
               )}
               {/* Person search */}
               <div>
-                <label className="field-label">Link to Person Record (Optional)</label>
+                <label htmlFor="ff-trespassorderspage-5" className="field-label">Link to Person Record (Optional)</label>
                 <div className="relative">
                   <input id="ff-trespassorderspage-5" type="text" className="input-dark text-xs w-full min-h-[36px]" placeholder="Search person records..." aria-label="Search person records..."
                     value={personSearch} onChange={e => setPersonSearch(e.target.value)} />
@@ -709,24 +709,24 @@ export default function TrespassOrdersPage() {
 
               {/* Subject */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div><label className="field-label">First Name *</label>
+                <div><label htmlFor="ff-trespassorderspage-6" className="field-label">First Name *</label>
                   <input id="ff-trespassorderspage-6" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} />
                   {formErrors.subject_first_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_first_name}</p>}</div>
-                <div><label className="field-label">Last Name *</label>
+                <div><label htmlFor="ff-trespassorderspage-7" className="field-label">Last Name *</label>
                   <input id="ff-trespassorderspage-7" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} />
                   {formErrors.subject_last_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_last_name}</p>}</div>
-                <div><label className="field-label">DOB</label>
+                <div><label htmlFor="ff-trespassorderspage-8" className="field-label">DOB</label>
                   <input id="ff-trespassorderspage-8" type="date" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_dob} onChange={e => update('subject_dob', e.target.value)} /></div>
               </div>
 
               {/* Property + Location */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div><label className="field-label">Property</label>
+                <div><label htmlFor="ff-trespassorderspage-9" className="field-label">Property</label>
                   <select id="ff-trespassorderspage-9" className="select-dark text-xs w-full" value={formData.property_id} onChange={e => selectProperty(e.target.value)}>
                     <option value="">— Select Property —</option>
                     {properties.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select></div>
-                <div><label className="field-label">Location *</label>
+                <div><label htmlFor="ff-trespassorderspage-10" className="field-label">Location *</label>
                   <input id="ff-trespassorderspage-10" className="input-dark text-xs w-full min-h-[36px]" value={formData.location} onChange={e => update('location', e.target.value)} />
                   {formErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.location}</p>}</div>
               </div>
@@ -734,7 +734,7 @@ export default function TrespassOrdersPage() {
               {/* Section / Zone / Beat — cascading */}
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-xs text-rmpg-400 mb-1">Section</label>
+                  <label htmlFor="ff-trespassorderspage-11" className="block text-xs text-rmpg-400 mb-1">Section</label>
                   <select id="ff-trespassorderspage-11" className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                     value={formData.sector_id || ''} onChange={e => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                     <option value="">—</option>
@@ -742,7 +742,7 @@ export default function TrespassOrdersPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
+                  <label htmlFor="ff-trespassorderspage-12" className="block text-xs text-rmpg-400 mb-1">Zone</label>
                   <select id="ff-trespassorderspage-12" className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                     value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                     <option value="">—</option>
@@ -750,7 +750,7 @@ export default function TrespassOrdersPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
+                  <label htmlFor="ff-trespassorderspage-13" className="block text-xs text-rmpg-400 mb-1">Beat</label>
                   <select id="ff-trespassorderspage-13" className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                     value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
                     <option value="">—</option>
@@ -761,23 +761,23 @@ export default function TrespassOrdersPage() {
 
               {/* Order details */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div><label className="field-label">Order Type</label>
+                <div><label htmlFor="ff-trespassorderspage-14" className="field-label">Order Type</label>
                   <select id="ff-trespassorderspage-14" className="select-dark text-xs w-full" value={formData.order_type} onChange={e => update('order_type', e.target.value)}>
                     {ORDER_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select></div>
-                <div><label className="field-label">Duration (days)</label>
+                <div><label htmlFor="ff-trespassorderspage-15" className="field-label">Duration (days)</label>
                   <input id="ff-trespassorderspage-15" type="number" className="input-dark text-xs w-full min-h-[36px]" placeholder="Empty = permanent" value={formData.duration_days} onChange={e => update('duration_days', e.target.value)} /></div>
-                <div><label className="field-label">Authorized By</label>
+                <div><label htmlFor="ff-trespassorderspage-16" className="field-label">Authorized By</label>
                   <input id="ff-trespassorderspage-16" className="input-dark text-xs w-full min-h-[36px]" placeholder="Supervisor name" value={formData.authorized_by} onChange={e => update('authorized_by', e.target.value)} /></div>
               </div>
 
-              <div><label className="field-label">Reason</label>
+              <div><label htmlFor="ff-trespassorderspage-17" className="field-label">Reason</label>
                 <textarea id="ff-trespassorderspage-17" className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.reason} onChange={e => update('reason', e.target.value)} /></div>
 
-              <div><label className="field-label">Conditions / Exceptions</label>
+              <div><label htmlFor="ff-trespassorderspage-18" className="field-label">Conditions / Exceptions</label>
                 <textarea id="ff-trespassorderspage-18" className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.conditions} onChange={e => update('conditions', e.target.value)} /></div>
 
-              <div><label className="field-label">Notes</label>
+              <div><label htmlFor="ff-trespassorderspage-19" className="field-label">Notes</label>
                 <textarea id="ff-trespassorderspage-19" className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
 
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>

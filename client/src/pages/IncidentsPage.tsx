@@ -571,9 +571,19 @@ export default function IncidentsPage() {
 
   const handleUnlinkPerson = async (personId: string | number) => {
     if (!selectedIncident) return;
+    // Audit caught (2026-06-21): silent unlink with no confirm + no success
+    // toast. Operator destroyed link with zero feedback. Look up the
+    // person's display name from detailPersons (already loaded) so the
+    // confirm shows WHO is being removed, not just "this person".
+    const person = (detailPersons || []).find((p: any) => String(p?.id ?? p?.person_id) === String(personId));
+    const name = person
+      ? ([person.first_name, person.last_name].filter(Boolean).join(' ').trim() || (person as any).full_name || 'this person')
+      : 'this person';
+    if (!window.confirm(`Unlink ${name} from this incident?`)) return;
     try {
       await apiFetch(`/incidents/${selectedIncident.id}/persons/${personId}`, { method: 'DELETE' });
       fetchIncidentDetail(selectedIncident.id);
+      addToast(`Unlinked ${name}`, 'success');
     } catch (err: any) {
       addToast(err?.message || 'Failed to unlink person', 'error');
     }
@@ -581,9 +591,13 @@ export default function IncidentsPage() {
 
   const handleUnlinkVehicle = async (vehicleId: string | number) => {
     if (!selectedIncident) return;
+    const vehicle = (detailVehicles || []).find((v: any) => String(v?.id ?? v?.vehicle_id) === String(vehicleId));
+    const label = vehicle ? (vehicle.plate_number || (vehicle as any).vin || `vehicle #${vehicleId}`) : `vehicle #${vehicleId}`;
+    if (!window.confirm(`Unlink ${label} from this incident?`)) return;
     try {
       await apiFetch(`/incidents/${selectedIncident.id}/vehicles/${vehicleId}`, { method: 'DELETE' });
       fetchIncidentDetail(selectedIncident.id);
+      addToast(`Unlinked ${label}`, 'success');
     } catch (err: any) {
       addToast(err?.message || 'Failed to unlink vehicle', 'error');
     }
@@ -1862,7 +1876,10 @@ export default function IncidentsPage() {
                   </div>
                   {(isAdmin || isGodMode) && (
                     <IconButton onClick={async () => {
-                      if (!confirm('Remove this offense?')) return;
+                      // Audit caught (2026-06-21): bare "Remove this offense?"
+                      // was ambiguous on incidents with multiple offenses.
+                      const label = [offense.offense_code, offense.description].filter(Boolean).join(' — ') || `offense #${offense.id}`;
+                      if (!confirm(`Remove ${label}?`)) return;
                       try { await apiFetch(`/incidents/${selectedIncident.id}/offenses/${offense.id}`, { method: 'DELETE' }); } catch { return; }
                       fetchIncidentDetail(selectedIncident.id);
                     }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove offense"><Trash2 className="w-3 h-3" /></IconButton>
@@ -1908,7 +1925,9 @@ export default function IncidentsPage() {
                   {officer.action_taken && <span className="text-[9px] text-rmpg-400 truncate max-w-[120px]" title={officer.action_taken}>{officer.action_taken}</span>}
                   {(isAdmin || isGodMode) && (
                     <IconButton onClick={async () => {
-                      if (!confirm('Remove this officer?')) return;
+                      const officerName = officer.full_name || officer.officer_name || `officer #${officer.id}`;
+                      const role = officer.role ? ` (${officer.role})` : '';
+                      if (!confirm(`Remove ${officerName}${role} from this incident?`)) return;
                       try { await apiFetch(`/incidents/${selectedIncident.id}/officers/${officer.id}`, { method: 'DELETE' }); } catch { return; }
                       fetchIncidentDetail(selectedIncident.id);
                     }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove officer"><Trash2 className="w-3 h-3" /></IconButton>
@@ -1957,7 +1976,8 @@ export default function IncidentsPage() {
                     {link.link_reason && <span className="text-[9px] text-rmpg-400 italic ml-auto truncate max-w-[150px]">{link.link_reason}</span>}
                     {(isAdmin || isGodMode) && (
                       <IconButton onClick={async () => {
-                        if (!confirm('Remove this link?')) return;
+                        const linkLabel = [link.linked_type, link.detail?.incident_number || link.detail?.call_number || link.detail?.case_number || `#${link.linked_id}`].filter(Boolean).join(' ');
+                        if (!confirm(`Remove cross-reference to ${linkLabel || 'this record'}?`)) return;
                         try { await apiFetch(`/incidents/${selectedIncident.id}/links/${link.id}`, { method: 'DELETE' }); } catch { return; }
                         fetchIncidentDetail(selectedIncident.id);
                       }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove link"><Trash2 className="w-3 h-3" /></IconButton>
@@ -2443,7 +2463,7 @@ export default function IncidentsPage() {
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Action</label>
+                <label htmlFor="ff-incidentspage-1" className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Action</label>
                 <select id="ff-incidentspage-1"
                   value={custodyAction}
                   onChange={(e) => setCustodyAction(e.target.value)}
@@ -2460,7 +2480,7 @@ export default function IncidentsPage() {
               </div>
               {custodyTransfer.currentLocation && (
                 <div>
-                  <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">From Location</label>
+                  <label htmlFor="ff-incidentspage-2" className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">From Location</label>
                   <input id="ff-incidentspage-2"
                     value={custodyTransfer.currentLocation}
                     readOnly
@@ -2470,7 +2490,7 @@ export default function IncidentsPage() {
                 </div>
               )}
               <div>
-                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">To Location</label>
+                <label htmlFor="ff-incidentspage-3" className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">To Location</label>
                 <input id="ff-incidentspage-3"
                   value={custodyToLocation}
                   onChange={(e) => setCustodyToLocation(e.target.value)}

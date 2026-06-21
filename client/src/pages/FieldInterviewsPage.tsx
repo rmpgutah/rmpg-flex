@@ -396,7 +396,7 @@ export default function FieldInterviewsPage() {
             <option value="">All Reasons</option>
             {CONTACT_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
-          <label className={`flex items-center gap-1 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400 cursor-pointer`} style={isMobile ? { minHeight: 44 } : undefined}>
+          <label htmlFor="ff-fieldinterviewspage-2" className={`flex items-center gap-1 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400 cursor-pointer`} style={isMobile ? { minHeight: 44 } : undefined}>
             <input id="ff-fieldinterviewspage-2" type="checkbox" checked={showArchived} onChange={e => { setShowArchived(e.target.checked); setPage(1); }} className="accent-brand-500" style={isMobile ? { width: 20, height: 20 } : undefined} />
             Archived
           </label>
@@ -593,7 +593,7 @@ export default function FieldInterviewsPage() {
               )}
               {/* Person search */}
               <div>
-                <label className="field-label">Link to Person Record (Optional)</label>
+                <label htmlFor="ff-fieldinterviewspage-3" className="field-label">Link to Person Record (Optional)</label>
                 <div className="relative">
                   <input id="ff-fieldinterviewspage-3" type="text" className="input-dark text-xs w-full min-h-[36px]" placeholder="Search person records..." aria-label="Search person records..."
                     value={personSearch} onChange={e => setPersonSearch(e.target.value)} />
@@ -614,56 +614,56 @@ export default function FieldInterviewsPage() {
 
               {/* Subject info */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div><label className="field-label">First Name</label>
+                <div><label htmlFor="ff-fieldinterviewspage-4" className="field-label">First Name</label>
                   <input id="ff-fieldinterviewspage-4" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} /></div>
-                <div><label className="field-label">Last Name *</label>
+                <div><label htmlFor="ff-fieldinterviewspage-5" className="field-label">Last Name *</label>
                   <input id="ff-fieldinterviewspage-5" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} />
                   {formErrors.subject_last_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_last_name}</p>}</div>
-                <div><label className="field-label">DOB</label>
+                <div><label htmlFor="ff-fieldinterviewspage-6" className="field-label">DOB</label>
                   <input id="ff-fieldinterviewspage-6" type="date" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_dob} onChange={e => update('subject_dob', e.target.value)} /></div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div><label className="field-label">Gender</label>
+                <div><label htmlFor="ff-fieldinterviewspage-7" className="field-label">Gender</label>
                   <select id="ff-fieldinterviewspage-7" className="select-dark text-xs w-full" value={formData.subject_gender} onChange={e => update('subject_gender', e.target.value)}>
                     <option value="">—</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
                   </select></div>
-                <div><label className="field-label">Race</label>
+                <div><label htmlFor="ff-fieldinterviewspage-8" className="field-label">Race</label>
                   <input id="ff-fieldinterviewspage-8" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_race} onChange={e => update('subject_race', e.target.value)} /></div>
-                <div><label className="field-label">Height</label>
+                <div><label htmlFor="ff-fieldinterviewspage-9" className="field-label">Height</label>
                   <input id="ff-fieldinterviewspage-9" className="input-dark text-xs w-full min-h-[36px]" placeholder="5'10&quot;" value={formData.subject_height} onChange={e => update('subject_height', e.target.value)} /></div>
-                <div><label className="field-label">Weight</label>
+                <div><label htmlFor="ff-fieldinterviewspage-10" className="field-label">Weight</label>
                   <input id="ff-fieldinterviewspage-10" className="input-dark text-xs w-full min-h-[36px]" placeholder="180" value={formData.subject_weight} onChange={e => update('subject_weight', e.target.value)} /></div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div><label className="field-label">Hair</label>
+                <div><label htmlFor="ff-fieldinterviewspage-11" className="field-label">Hair</label>
                   <input id="ff-fieldinterviewspage-11" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_hair} onChange={e => update('subject_hair', e.target.value)} /></div>
-                <div><label className="field-label">Eyes</label>
+                <div><label htmlFor="ff-fieldinterviewspage-12" className="field-label">Eyes</label>
                   <input id="ff-fieldinterviewspage-12" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_eye} onChange={e => update('subject_eye', e.target.value)} /></div>
-                <div><label className="field-label">Clothing</label>
+                <div><label htmlFor="ff-fieldinterviewspage-13" className="field-label">Clothing</label>
                   <input id="ff-fieldinterviewspage-13" className="input-dark text-xs w-full min-h-[36px]" placeholder="Dark hoodie, jeans" value={formData.subject_clothing} onChange={e => update('subject_clothing', e.target.value)} /></div>
               </div>
 
               {/* UPGRADE 44: Gang Affiliation field */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div><label className="field-label">Gang Affiliation</label>
+                <div><label htmlFor="ff-fieldinterviewspage-14" className="field-label">Gang Affiliation</label>
                   <input id="ff-fieldinterviewspage-14" className="input-dark text-xs w-full min-h-[36px]" placeholder="Known gang affiliation (if any)" value={formData.gang_affiliation} onChange={e => update('gang_affiliation', e.target.value)} /></div>
-                <div><label className="field-label">Description</label>
+                <div><label htmlFor="ff-fieldinterviewspage-15" className="field-label">Description</label>
                   <input id="ff-fieldinterviewspage-15" className="input-dark text-xs w-full min-h-[36px]" placeholder="Physical description" value={formData.subject_description} onChange={e => update('subject_description', e.target.value)} /></div>
               </div>
 
               {/* Location + reason */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div><label className="field-label">Location *</label>
+                <div><label htmlFor="ff-fieldinterviewspage-16" className="field-label">Location *</label>
                   <input id="ff-fieldinterviewspage-16" className="input-dark text-xs w-full min-h-[36px]" value={formData.location} onChange={e => update('location', e.target.value)} />
                   {formErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.location}</p>}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div><label className="field-label">Reason</label>
+                  <div><label htmlFor="ff-fieldinterviewspage-17" className="field-label">Reason</label>
                     <select id="ff-fieldinterviewspage-17" className="select-dark text-xs w-full" value={formData.contact_reason} onChange={e => update('contact_reason', e.target.value)}>
                       {CONTACT_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                     </select></div>
-                  <div><label className="field-label">Type</label>
+                  <div><label htmlFor="ff-fieldinterviewspage-18" className="field-label">Type</label>
                     <select id="ff-fieldinterviewspage-18" className="select-dark text-xs w-full" value={formData.contact_type} onChange={e => update('contact_type', e.target.value)}>
                       {CONTACT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select></div>
@@ -673,7 +673,7 @@ export default function FieldInterviewsPage() {
               {/* Section / Zone / Beat — cascading: zone scoped to section, beat scoped to zone */}
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="field-label">Section</label>
+                  <label htmlFor="ff-fieldinterviewspage-19" className="field-label">Section</label>
                   <select id="ff-fieldinterviewspage-19" className="select-dark text-xs w-full"
                     value={formData.section_id || ''} onChange={e => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                     <option value="">—</option>
@@ -681,7 +681,7 @@ export default function FieldInterviewsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Zone</label>
+                  <label htmlFor="ff-fieldinterviewspage-20" className="field-label">Zone</label>
                   <select id="ff-fieldinterviewspage-20" className="select-dark text-xs w-full"
                     value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                     <option value="">—</option>
@@ -689,7 +689,7 @@ export default function FieldInterviewsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Beat</label>
+                  <label htmlFor="ff-fieldinterviewspage-21" className="field-label">Beat</label>
                   <select id="ff-fieldinterviewspage-21" className="select-dark text-xs w-full"
                     value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
                     <option value="">—</option>
@@ -699,19 +699,19 @@ export default function FieldInterviewsPage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div><label className="field-label">Action Taken</label>
+                <div><label htmlFor="ff-fieldinterviewspage-22" className="field-label">Action Taken</label>
                   <select id="ff-fieldinterviewspage-22" className="select-dark text-xs w-full" value={formData.action_taken} onChange={e => update('action_taken', e.target.value)}>
                     {ACTIONS_TAKEN.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                   </select></div>
-                <div><label className="field-label">Vehicle Plate</label>
+                <div><label htmlFor="ff-fieldinterviewspage-23" className="field-label">Vehicle Plate</label>
                   <input id="ff-fieldinterviewspage-23" className={`input-dark text-xs w-full ${formErrors.vehicle_plate ? '!border-red-500' : ''}`} value={formData.vehicle_plate} onChange={e => update('vehicle_plate', e.target.value)} />
                   {formErrors.vehicle_plate && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.vehicle_plate}</p>}</div>
-                <div><label className="field-label">Vehicle Desc.</label>
+                <div><label htmlFor="ff-fieldinterviewspage-24" className="field-label">Vehicle Desc.</label>
                   <input id="ff-fieldinterviewspage-24" className="input-dark text-xs w-full min-h-[36px]" value={formData.vehicle_description} onChange={e => update('vehicle_description', e.target.value)} /></div>
               </div>
 
               {/* Narrative */}
-              <div><label className="field-label">Narrative</label>
+              <div><label htmlFor="ff-fieldinterviewspage-25" className="field-label">Narrative</label>
                 <textarea id="ff-fieldinterviewspage-25" className="input-dark text-xs w-full min-h-[36px]" rows={4} value={formData.narrative} onChange={e => update('narrative', e.target.value)} /></div>
 
               {/* Actions */}

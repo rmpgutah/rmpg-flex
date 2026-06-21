@@ -543,22 +543,22 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <h4 className="text-xs font-semibold text-rmpg-100">Create Pay Period</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Name (optional)</label>
+                  <label htmlFor="ff-payrolltab-0" className="text-[10px] text-rmpg-400 block mb-1">Name (optional)</label>
                   <input id="ff-payrolltab-0" value={periodForm.name} onChange={e => setPeriodForm(p => ({ ...p, name: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" placeholder="e.g. March 1-15" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Start Date *</label>
+                  <label htmlFor="ff-payrolltab-1" className="text-[10px] text-rmpg-400 block mb-1">Start Date *</label>
                   <input id="ff-payrolltab-1" type="date" value={periodForm.start_date} onChange={e => setPeriodForm(p => ({ ...p, start_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">End Date *</label>
+                  <label htmlFor="ff-payrolltab-2" className="text-[10px] text-rmpg-400 block mb-1">End Date *</label>
                   <input id="ff-payrolltab-2" type="date" value={periodForm.end_date} onChange={e => setPeriodForm(p => ({ ...p, end_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Pay Date *</label>
+                  <label htmlFor="ff-payrolltab-3" className="text-[10px] text-rmpg-400 block mb-1">Pay Date *</label>
                   <input id="ff-payrolltab-3" type="date" value={periodForm.pay_date} onChange={e => setPeriodForm(p => ({ ...p, pay_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
@@ -657,7 +657,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <h4 className="text-xs font-semibold text-rmpg-100">Set Pay Rate</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Employee *</label>
+                  <label htmlFor="ff-payrolltab-4" className="text-[10px] text-rmpg-400 block mb-1">Employee *</label>
                   <select id="ff-payrolltab-4" value={rateForm.user_id} onChange={e => setRateForm(r => ({ ...r, user_id: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100">
                     <option value="">Select employee...</option>
@@ -665,7 +665,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Pay Type</label>
+                  <label htmlFor="ff-payrolltab-5" className="text-[10px] text-rmpg-400 block mb-1">Pay Type</label>
                   <select id="ff-payrolltab-5" value={rateForm.pay_type} onChange={e => setRateForm(r => ({ ...r, pay_type: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100">
                     <option value="hourly">Hourly</option>
@@ -674,22 +674,22 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Rate ($/hr) *</label>
+                  <label htmlFor="ff-payrolltab-6" className="text-[10px] text-rmpg-400 block mb-1">Rate ($/hr) *</label>
                   <input id="ff-payrolltab-6" type="number" step="0.01" value={rateForm.rate} onChange={e => setRateForm(r => ({ ...r, rate: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" placeholder="25.00" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">OT Multiplier</label>
+                  <label htmlFor="ff-payrolltab-7" className="text-[10px] text-rmpg-400 block mb-1">OT Multiplier</label>
                   <input id="ff-payrolltab-7" type="number" step="0.1" value={rateForm.overtime_rate} onChange={e => setRateForm(r => ({ ...r, overtime_rate: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Holiday Multiplier</label>
+                  <label htmlFor="ff-payrolltab-8" className="text-[10px] text-rmpg-400 block mb-1">Holiday Multiplier</label>
                   <input id="ff-payrolltab-8" type="number" step="0.1" value={rateForm.holiday_rate} onChange={e => setRateForm(r => ({ ...r, holiday_rate: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Effective Date *</label>
+                  <label htmlFor="ff-payrolltab-9" className="text-[10px] text-rmpg-400 block mb-1">Effective Date *</label>
                   <input id="ff-payrolltab-9" type="date" value={rateForm.effective_date} onChange={e => setRateForm(r => ({ ...r, effective_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
@@ -902,15 +902,15 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <div className="text-xs font-bold text-rmpg-100 uppercase">New OT Request</div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase">Date *</label>
+                  <label htmlFor="ff-payrolltab-12" className="text-[9px] text-rmpg-400 uppercase">Date *</label>
                   <input id="ff-payrolltab-12" type="date" value={otForm.requested_date} onChange={e => setOtForm(p => ({ ...p, requested_date: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase">Hours *</label>
+                  <label htmlFor="ff-payrolltab-13" className="text-[9px] text-rmpg-400 uppercase">Hours *</label>
                   <input id="ff-payrolltab-13" type="number" step="0.5" value={otForm.hours_requested} onChange={e => setOtForm(p => ({ ...p, hours_requested: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase">Reason</label>
+                  <label htmlFor="ff-payrolltab-14" className="text-[9px] text-rmpg-400 uppercase">Reason</label>
                   <input id="ff-payrolltab-14" value={otForm.reason} onChange={e => setOtForm(p => ({ ...p, reason: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
                 </div>
               </div>
