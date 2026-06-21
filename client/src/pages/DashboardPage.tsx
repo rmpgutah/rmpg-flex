@@ -27,6 +27,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import SpmGroup from './dashboard/SpmGroup';
 import DashboardViewSelector from './dashboard/DashboardViewSelector';
+import ServeSchedulerPanel from '../components/scheduler/ServeSchedulerPanel';
 import {
   resolveDashboardView, canSwitchView, writeSavedView,
   VIEW_PANELS, toolbarActionsForView,
@@ -1095,6 +1096,11 @@ export default function DashboardPage() {
           )}
         </div>
         </SpmGroup>
+      )}
+
+      {/* Serve Scheduler Panel — dispatch + admin only */}
+      {hasPanel('serveSchedule') && (
+        <ServeSchedulerPanel />
       )}
 
       {/* Main Content Grid */}

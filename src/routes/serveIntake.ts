@@ -64,6 +64,8 @@ import {
   type AttemptWindow,
 } from '../utils/serveDiligencePlanner';
 import { persistAttemptSchedule, appendAttemptSlot } from '../utils/serveAttemptScheduler';
+import { broadcastAll } from './ws';
+import { recordAudit } from '../utils/auditLog';
 
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
@@ -97,6 +99,17 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
     try {
       if (!(await columnExists(db, 'serve_queue', name))) {
         await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
+      }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+  }
+
+  // PR 2: updated_at for optimistic concurrency on PATCH /schedule/:slotId
+  for (const [name, type] of [
+    ['updated_at', "TEXT NOT NULL DEFAULT (datetime('now'))"],
+  ] as const) {
+    try {
+      if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
+        await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
       }
     } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
   }
@@ -1116,42 +1129,57 @@ si.get('/schedule', async (c) => {
   if (!tableExists?.n) return c.json({ schedule: [], generated_at: '' });
   const { denverNow } = await import('../utils/serveAttemptScheduler');
   const now = denverNow();
-  // "14 days out" in the same local-time string format
-  const cutoff = (() => {
-    const d = new Date(Date.now() + 14 * 86_400_000);
-    return new Intl.DateTimeFormat('sv-SE', {
-      timeZone: 'America/Denver',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit',
-      hour12: false,
-    }).format(d).replace(' ', 'T');
-  })();
+
+  // Client may request a specific date range + per-slot enrichment.
+  // ?start_date=YYYY-MM-DD (default: today Denver)
+  // ?end_date=YYYY-MM-DD   (default: start + 14 days)
+  // ?include=tier,cluster  (comma list — tier joins urgency_tier; cluster joins geo_cluster_id)
+  const YMD = /^\d{4}-\d{2}-\d{2}$/;
+  const startParam = c.req.query('start_date');
+  const endParam = c.req.query('end_date');
+  const startDate = startParam && YMD.test(startParam) ? startParam : now.slice(0, 10);
+  const endDate = endParam && YMD.test(endParam)
+    ? endParam
+    : (() => {
+        const d = new Date(Date.parse(`${startDate}T12:00:00Z`) + 14 * 86_400_000);
+        return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Denver' }).format(d);
+      })();
+  const include = new Set((c.req.query('include') ?? '').split(',').map((s) => s.trim()).filter(Boolean));
+  const withTier = include.has('tier');
+  const withCluster = include.has('cluster');
+
+  const tierProj = withTier ? `, q.urgency_tier` : '';
+  const clusterProj = withCluster ? `, q.geo_cluster_id` : '';
 
   const rows = await query<{
     id: number; queue_id: number; attempt_number: number;
     scheduled_date: string; window_start: string; window_end: string;
     window_label: string; notify_at: string; notify_before_secs: number;
     notified: number; dismissed: number;
+    officer_id: number | null; manually_moved: number;
+    auto_replan_source: number | null;
     recipient_name: string | null; recipient_address: string | null;
     recipient_city: string | null; recipient_state: string | null;
     case_number: string | null; priority: string; deadline: string | null;
     status: string;
+    urgency_tier?: string | null; geo_cluster_id?: string | null;
   }>(
     db,
     `SELECT s.id, s.queue_id, s.attempt_number, s.scheduled_date,
             s.window_start, s.window_end, s.window_label, s.notify_at,
             s.notify_before_secs, s.notified, s.dismissed,
+            s.officer_id, s.manually_moved, s.auto_replan_source,
             q.recipient_name, q.recipient_address, q.recipient_city, q.recipient_state,
-            q.case_number, q.priority, q.deadline, q.status
+            q.case_number, q.priority, q.deadline, q.status${tierProj}${clusterProj}
      FROM serve_attempt_schedules s
      JOIN serve_queue q ON q.id = s.queue_id
      WHERE s.dismissed = 0
        AND s.scheduled_date >= ?
-       AND (s.queue_id || 'T' || s.window_start) <= ?
+       AND s.scheduled_date <= ?
        AND q.status NOT IN ('served','cancelled','failed')
      ORDER BY s.scheduled_date ASC, s.window_start ASC`,
-    now.slice(0, 10),
-    cutoff,
+    startDate,
+    endDate,
   );
 
   // Group by date
@@ -1166,6 +1194,143 @@ si.get('/schedule', async (c) => {
     return { date, weekday: DAYS[dow], slots };
   });
   return c.json({ schedule, generated_at: now });
+});
+
+// ── PATCH /schedule/:slotId — manual reschedule (drag-drop or full-page edit) ─
+si.patch('/schedule/:slotId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+
+  const slotId = parseInt(c.req.param('slotId'), 10);
+  if (isNaN(slotId)) return c.json({ error: 'Invalid slot id' }, 400);
+
+  const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
+
+  const body = await c.req.json<any>().catch(() => ({}));
+  const force = c.req.query('force') === '1';
+  const userId = (c.get('userId') as number | undefined) ?? null;
+  const ifUnmodifiedSince = c.req.header('If-Unmodified-Since') ?? body.if_unmodified_since ?? null;
+
+  const { detectSlotOverlap, isStaleUpdate, normalizeWindow } = await import('../utils/serveScheduleEdit');
+
+  // Read the slot being edited.
+  const current = await queryFirst<{
+    id: number; queue_id: number; officer_id: number | null;
+    scheduled_date: string; window_start: string; window_end: string;
+    updated_at: string;
+  }>(
+    db,
+    `SELECT id, queue_id, officer_id, scheduled_date, window_start, window_end, updated_at
+       FROM serve_attempt_schedules WHERE id = ?`,
+    slotId,
+  );
+  if (!current) return c.json({ error: 'Not found' }, 404);
+
+  if (isStaleUpdate(ifUnmodifiedSince, current.updated_at)) {
+    return c.json({ error: 'stale', current }, 409);
+  }
+
+  // Build the candidate window from body + current row defaults.
+  let candidateWindow: { window_start: string; window_end: string };
+  try {
+    candidateWindow = normalizeWindow(
+      String(body.window_start ?? current.window_start),
+      String(body.window_end ?? current.window_end),
+    );
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+  const candidateDate = typeof body.scheduled_date === 'string' && body.scheduled_date
+    ? body.scheduled_date
+    : current.scheduled_date;
+  // Coerce officer_id: undefined → current; null → null (unassign);
+  // numeric string → number; otherwise fall back to current to avoid silent string-vs-number mismatch.
+  const candidateOfficer = body.officer_id === undefined
+    ? current.officer_id
+    : body.officer_id === null
+    ? null
+    : Number.isFinite(Number(body.officer_id))
+    ? Number(body.officer_id)
+    : current.officer_id;
+
+  if (!force) {
+    // Pull all other slots on the candidate (officer, date) for overlap detection.
+    const peers = await query<{
+      id: number; queue_id: number; officer_id: number | null;
+      scheduled_date: string; window_start: string; window_end: string;
+      updated_at: string;
+    }>(
+      db,
+      `SELECT id, queue_id, officer_id, scheduled_date, window_start, window_end, updated_at
+         FROM serve_attempt_schedules
+        WHERE scheduled_date = ? AND officer_id IS ?`,
+      candidateDate, candidateOfficer,
+    );
+    const conflicts = detectSlotOverlap(
+      peers,
+      { officer_id: candidateOfficer, scheduled_date: candidateDate, ...candidateWindow },
+      slotId,
+    );
+    if (conflicts.length) {
+      return c.json({ error: 'overlap', conflicts }, 409);
+    }
+  }
+
+  // Apply the update. updated_at refreshes so the next read picks up the new value.
+  await execute(
+    db,
+    `UPDATE serve_attempt_schedules
+        SET scheduled_date = ?, window_start = ?, window_end = ?,
+            officer_id = ?, manually_moved = 1, moved_by_user_id = ?,
+            moved_at = datetime('now'), notified = 0,
+            updated_at = datetime('now')
+      WHERE id = ?`,
+    candidateDate, candidateWindow.window_start, candidateWindow.window_end,
+    candidateOfficer, userId, slotId,
+  );
+
+  // If the officer changed, propagate to serve_queue so future attempts route correctly.
+  if (candidateOfficer !== current.officer_id) {
+    await execute(
+      db,
+      `UPDATE serve_queue SET officer_id = ? WHERE id = ?`,
+      candidateOfficer, current.queue_id,
+    );
+  }
+
+  // Audit (force = supervisor flag for visibility).
+  await recordAudit(c, {
+    action: force ? 'serve_schedule.force_overlap' : 'serve_schedule.move',
+    entityType: 'serve_schedule_slot',
+    entityId: slotId,
+    details: {
+      from: { scheduled_date: current.scheduled_date, window: `${current.window_start}-${current.window_end}`, officer_id: current.officer_id },
+      to: { scheduled_date: candidateDate, window: `${candidateWindow.window_start}-${candidateWindow.window_end}`, officer_id: candidateOfficer },
+      reason: typeof body.reason === 'string' ? body.reason : null,
+    },
+  });
+
+  // Broadcast — clients refetch via useLiveSync.
+  broadcastAll('data_changed', {
+    module: 'serve-schedule',
+    entity: 'slot',
+    action: 'updated',
+    slot_id: slotId,
+    queue_id: current.queue_id,
+  });
+
+  const updated = await queryFirst(
+    db,
+    `SELECT id, queue_id, attempt_number, scheduled_date, window_start, window_end,
+            window_label, notify_at, notify_before_secs, notified, dismissed,
+            officer_id, manually_moved, moved_by_user_id, moved_at,
+            auto_replan_source, updated_at
+       FROM serve_attempt_schedules WHERE id = ?`,
+    slotId,
+  );
+
+  return c.json({ slot: updated });
 });
 
 // ── DELETE /schedule/:slotId — dismiss a slot ────────────────
@@ -1507,6 +1672,17 @@ si.post('/:id/attempts', async (c) => {
         );
       }
     }
+  }
+
+  // Broadcast auto-replan slot creation to all clients so dashboards refetch.
+  if (replanSummary) {
+    broadcastAll('data_changed', {
+      module: 'serve-schedule',
+      entity: 'slot',
+      action: 'created',
+      slot_id: replanSummary.slot_id,
+      queue_id: id,
+    });
   }
 
   return c.json({
