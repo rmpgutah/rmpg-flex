@@ -10,7 +10,7 @@ import { RefreshCw } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildDotMarker } from '../utils/mapMarkers';
+import { buildDotMarker, isValidLngLat } from '../utils/mapMarkers';
 import { sightingSource } from '../utils/alprSource';
 
 export interface MapSighting {
@@ -36,7 +36,9 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const located = sightings.filter((s) => s.lat != null && s.lng != null);
+  // isValidLngLat rejects NaN/Infinity AND the exact (0,0) ClearPath no-fix
+  // signature so a pre-GPS-lock sighting never anchors a dot off the African coast.
+  const located = sightings.filter((s) => isValidLngLat(s.lng, s.lat));
 
   // Load token + init map once.
   useEffect(() => {

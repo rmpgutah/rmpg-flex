@@ -18,6 +18,8 @@
 // ============================================================
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
+import { resolveMapboxAccessToken, initMapbox, isMapboxReady } from '../../../../utils/mapboxLoader';
+import { isValidLngLat } from '../../../../utils/mapMarkers';
 import {
   ResponsiveContainer, ScatterChart, Scatter,
   XAxis, YAxis, ZAxis, Tooltip, CartesianGrid,
@@ -786,6 +788,10 @@ function FleetMapCard() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  // Monotonic counter for the rebuild effect — if `data` lands twice in quick
+  // succession the older invocation aborts before it touches markers, so a
+  // poll + manual refresh interleave can't tear down the freshly-built batch.
+  const rebuildGen = useRef(0);
   const [data, setData] = useState<FleetMapResp | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -810,25 +816,44 @@ function FleetMapCard() {
   // the map alive and only rebuild markers below when `data` changes.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    let cancelled = false;
     // If the token wasn't injected at build time the Mapbox constructor will
     // throw "An API access token is required to use Mapbox GL." — fail soft
     // by surfacing the error in the card rather than crashing the dashboard.
-    try {
-      const map = new mapboxgl.Map({
-        container: containerRef.current,
-        style: 'mapbox://styles/mapbox/dark-v11',
-        center: DEFAULT_CENTER,
-        zoom: DEFAULT_ZOOM,
-        attributionControl: false,
-      });
-      map.addControl(new mapboxgl.AttributionControl({ compact: true }));
-      map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
-      mapRef.current = map;
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Mapbox initialization failed');
-    }
+    (async () => {
+      try {
+        // mapboxLoader.ts sets mapboxgl.accessToken at module-import time from
+        // VITE_MAPBOX_ACCESS_TOKEN, so a token at build time gets us in directly;
+        // otherwise resolveMapboxAccessToken() pulls it from the worker proxy
+        // (/api/integrations/mapbox/client-token). Either way the access token
+        // is set before `new mapboxgl.Map` runs.
+        if (!isMapboxReady()) {
+          const token = await resolveMapboxAccessToken();
+          if (cancelled) return;
+          if (!token) {
+            setErr('An API access token is required to use Mapbox GL.');
+            return;
+          }
+          initMapbox(token);
+        }
+        if (cancelled || !containerRef.current) return;
+        const map = new mapboxgl.Map({
+          container: containerRef.current,
+          style: 'mapbox://styles/mapbox/dark-v11',
+          center: DEFAULT_CENTER,
+          zoom: DEFAULT_ZOOM,
+          attributionControl: false,
+        });
+        map.addControl(new mapboxgl.AttributionControl({ compact: true }));
+        map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+        mapRef.current = map;
+      } catch (e) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : 'Mapbox initialization failed');
+      }
+    })();
     return () => {
       // Tear down on unmount only (when the card itself goes away).
+      cancelled = true;
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
       mapRef.current?.remove();
@@ -837,20 +862,25 @@ function FleetMapCard() {
   }, []);
 
   // Rebuild markers whenever fleet data lands. Drops the prior batch so we
-  // don't pile dot-marker DOM nodes on every 30 s refresh.
+  // don't pile dot-marker DOM nodes on every 30 s refresh. The generation
+  // counter aborts mid-rebuild if a fresher `data` arrived — otherwise a poll
+  // + manual refresh interleave could remove the just-added markers.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !data) return;
+    const myGen = ++rebuildGen.current;
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
-    const located = data.data.filter(
-      (v) => typeof v.lat === 'number' && typeof v.lng === 'number',
-    );
+    // isValidLngLat rejects NaN/Infinity AND the exact (0,0) no-fix signature
+    // ClearPath emits before its first GPS lock, so an idle vehicle without a
+    // GPS fix doesn't ghost on the African coast.
+    const located = data.data.filter((v) => isValidLngLat(v.lng, v.lat));
     if (located.length === 0) return;
 
     const bounds = new mapboxgl.LngLatBounds();
     for (const v of located) {
+      if (myGen !== rebuildGen.current) return;
       const el = document.createElement('div');
       el.style.cssText = `
         width: 14px; height: 14px; border-radius: 50%;
@@ -882,7 +912,7 @@ function FleetMapCard() {
     }
   }, [data]);
 
-  const located = data?.data?.filter((v) => typeof v.lat === 'number' && typeof v.lng === 'number') ?? [];
+  const located = data?.data?.filter((v) => isValidLngLat(v.lng, v.lat)) ?? [];
   const counts = { ready: 0, attention: 0, unavailable: 0 };
   for (const v of located) counts[v.readiness] = (counts[v.readiness] ?? 0) + 1;
 

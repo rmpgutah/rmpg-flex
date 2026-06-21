@@ -11,7 +11,7 @@ import { Loader2 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildDotMarker } from '../utils/mapMarkers';
+import { buildDotMarker, isValidLngLat } from '../utils/mapMarkers';
 import { positionAtTime, type GpsPoint } from '../utils/dashcamForensics';
 
 const GOLD = '#d4a017';
@@ -29,7 +29,9 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const coords = gps.filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
+  // isValidLngLat rejects NaN/Infinity AND the exact (0,0) no-fix signature so
+  // a ClearPath device's pre-fix frames never anchor the route line off-coast.
+  const coords = gps.filter((p) => isValidLngLat(p.longitude, p.latitude));
 
   // Init once.
   useEffect(() => {
@@ -85,7 +87,9 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
     const pos = positionAtTime(gps, tSec);
-    if (pos && posMarkerRef.current) posMarkerRef.current.setLngLat([pos.longitude, pos.latitude]);
+    if (pos && isValidLngLat(pos.longitude, pos.latitude) && posMarkerRef.current) {
+      posMarkerRef.current.setLngLat([pos.longitude, pos.latitude]);
+    }
     const src = map.getSource('pred') as mapboxgl.GeoJSONSource | undefined;
     if (src) {
       const head = pos ? [[pos.longitude, pos.latitude]] : [];

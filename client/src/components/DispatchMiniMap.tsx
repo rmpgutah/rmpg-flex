@@ -15,7 +15,7 @@ import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregiste
 import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildUnitMarker, buildCallMarker } from '../utils/mapMarkers';
+import { buildUnitMarker, buildCallMarker, isValidLngLat } from '../utils/mapMarkers';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { apiFetch } from '../hooks/useApi';
@@ -128,7 +128,9 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   useEffect(() => {
     if (!loaded || !mapContainerRef.current) return;
 
-    const hasCallLoc = call?.latitude != null && call?.longitude != null;
+    // isValidLngLat rejects NaN/Infinity and the exact (0,0) no-fix signature
+    // so a call with bad coordinates never anchors the map / drops a teardrop.
+    const hasCallLoc = isValidLngLat(call?.longitude, call?.latitude);
     // A WebGL-loss rebuild reopens at the captured view; otherwise center on the
     // call (or the SLC fallback). One-shot: cleared after the new map is built.
     const recoverCam = recoverCamRef.current;
@@ -237,14 +239,14 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       assignedVehicleMarkerRef.current = null;
     }
 
-    if (!av || av.gps_lat == null || av.gps_lon == null) return;
+    if (!av || !isValidLngLat(av.gps_lon, av.gps_lat)) return;
 
     // Take-home vehicle: no dispatch status in scope, so render the shared unit
     // pin with the vehicle number as its label (gold-ring 'onscene' tone keeps
     // the original gold-branded accent the plain neutral ring would have lost).
     const el = buildUnitMarker({ label: av.vehicle_number || 'V', status: 'onscene' });
     const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-      .setLngLat([av.gps_lon, av.gps_lat])
+      .setLngLat([av.gps_lon!, av.gps_lat!])
       .addTo(map);
     assignedVehicleMarkerRef.current = marker;
 
@@ -269,7 +271,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     const assignedUnits = units.filter(u =>
       (assignedIds.has(String(u.id)) ||
         (u.current_call_id != null && String(u.current_call_id) === String(call?.id))) &&
-      u.latitude != null && u.longitude != null
+      isValidLngLat(u.longitude, u.latitude)
     );
 
     const liveIds = new Set<string>();

@@ -116,7 +116,7 @@ export function monitorTileLoading(
         border-radius: 2px;
         z-index: 2;
         pointer-events: none;
-        animation: rmpg-recovery-pulse 1s ease-in-out infinite;
+        animation: rmpg-recovery-pulse 1.4s ease-in-out infinite;
       }
     `;
     document.head.appendChild(style);
