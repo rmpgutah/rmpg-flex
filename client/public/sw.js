@@ -691,6 +691,23 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1013: FlexCam queue drain + player visibility — stop the LOADING…
+//        silent-hang and stop the cron's per-tick poll budget from being
+//        eaten by stale requests. Three pieces:
+//          • POST /api/flexcam/queue/drain (admin, dry_run optional) —
+//            bails out fulfilling/partial requests stalled >6h (zero
+//            downloads → 'failed'; some downloads → 'partial') and prunes
+//            duplicate-source-URL chunks within a request. Evidence-locked
+//            rows untouched. Idempotent.
+//          • Per-minute cron also runs the drain via maybeRunQueueDrain
+//            (kill-switch: system_config.flexcam_drain_enabled='false').
+//          • FlexCamFootagePage: <video> onError + 15s canplay timeout
+//            surface playbackErr instead of hanging forever; new
+//            formatPlayerStatus drives the empty-state message
+//            ("Downloading footage…", "19 of 27 clips ready", "Failed: …")
+//            and an inline dismissable error banner appears when a clip
+//            fails after a working timeline rendered.
+//
 // v1012: Audit-trail completeness — close the two real gaps the safety
 //        review of #1480 found. No new features, no relaxations; just
 //        making the audit_log actually carry the chain-of-custody +

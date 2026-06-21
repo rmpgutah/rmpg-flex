@@ -433,6 +433,22 @@ export default {
           .then(({ maybeRunFootagePoll }) => maybeRunFootagePoll(env))
           .catch((err) => console.error('[flexcam] poll error:', (err as Error)?.message)),
       );
+      // FlexCam queue drain — bail out fulfilling/partial requests stalled
+      // >6h (frees the per-tick poll budget for new requests) + prune
+      // duplicate source-URL chunks within a request. Kill-switch via
+      // system_config integrations.flexcam_drain_enabled='false'.
+      ctx.waitUntil(
+        import('./utils/footage/queueDrainRunner')
+          .then(({ maybeRunQueueDrain }) => maybeRunQueueDrain(env))
+          .then((r) => {
+            if (!r) return;
+            const { requests_failed, requests_partialed, duplicates_pruned, chunks_to_missing } = r;
+            if (requests_failed || requests_partialed || duplicates_pruned) {
+              console.log(`[flexcam-drain] failed=${requests_failed} partialed=${requests_partialed} chunks_missing=${chunks_to_missing} dups_pruned=${duplicates_pruned}`);
+            }
+          })
+          .catch((err) => console.error('[flexcam-drain] cron failed:', (err as Error)?.message)),
+      );
       // Jail roster detail enrichment (Salt Lake) — fetches each scraped
       // inmate's full IML profile document (booking date, charges, bond) in a
       // small, polite batch. KV-locked + no-ops cheaply when the backlog is empty.
