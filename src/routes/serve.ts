@@ -43,6 +43,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
+import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/processServiceCodes';
 import { generateServeCharges } from '../utils/serveChargeStore';
 import { geocodeAddress } from './geocode';
 import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
@@ -536,27 +537,61 @@ async function logAttempt(c: any, defaultResult: string) {
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
 
-  const result = ATTEMPT_RESULTS.has(body.result) ? body.result : defaultResult;
+  // Structured PS code (PS/15.05 etc.) is the new source of truth. When
+  // supplied, it derives both the legacy `result` enum (for the existing
+  // CHECK constraint) and the next queue status. When absent, fall back to
+  // whatever the caller passed in `result` (legacy path).
+  const psCode = typeof body.disposition_code === 'string' && lookupPsoCode(body.disposition_code)
+    ? body.disposition_code.trim().toUpperCase()
+    : null;
+  const result = psCode
+    ? codeToLegacyResult(psCode)
+    : (ATTEMPT_RESULTS.has(body.result) ? body.result : defaultResult);
   const nextNum = (queue.attempt_count ?? 0) + 1;
 
   // Live serve_attempts has no `status` column (migration 0030 drift —
   // never applied to 785de7ae). It's redundant with `result` + the
   // serve_queue.status update below, so omit it. See
   // [[feedback-verify-live-schema-before-insert]].
-  const ins = await execute(
-    db,
-    `INSERT INTO serve_attempts (
-       serve_queue_id, attempt_number, officer_id, result,
-       latitude, longitude, notes, attempt_type, photo_ids, signature_data
-     ) VALUES (?,?,?,?, ?,?,?,?, ?,?)`,
-    id, nextNum, body.officer_id ?? user?.id ?? null, result,
-    body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
-    body.attempt_type ?? null,
-    JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
-  );
+  // Guard the disposition_code write — migration 0143 may not have reached
+  // live D1 when a new client deploys (deploy step is continue-on-error).
+  const hasDispositionCol = psCode
+    ? await columnExists(db, 'serve_attempts', 'disposition_code')
+    : false;
+  const ins = hasDispositionCol
+    ? await execute(
+        db,
+        `INSERT INTO serve_attempts (
+           serve_queue_id, attempt_number, officer_id, result, disposition_code,
+           latitude, longitude, notes, attempt_type, photo_ids, signature_data
+         ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?)`,
+        id, nextNum, body.officer_id ?? user?.id ?? null, result, psCode,
+        body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
+        body.attempt_type ?? null,
+        JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
+      )
+    : await execute(
+        db,
+        `INSERT INTO serve_attempts (
+           serve_queue_id, attempt_number, officer_id, result,
+           latitude, longitude, notes, attempt_type, photo_ids, signature_data
+         ) VALUES (?,?,?,?, ?,?,?,?, ?,?)`,
+        id, nextNum, body.officer_id ?? user?.id ?? null, result,
+        body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
+        body.attempt_type ?? null,
+        JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
+      );
 
+  // Queue status: structured code wins (codeToQueueStatus knows whether a
+  // posting counts as completion, whether a sub-service flips the queue,
+  // etc.); legacy heuristic keeps the existing behavior for non-coded paths.
   let newStatus = queue.status;
-  if (result === 'served' || result === 'sub_served') newStatus = 'served';
+  if (psCode) {
+    const codeStatus = codeToQueueStatus(psCode);
+    if (codeStatus === 'served' || codeStatus === 'failed') newStatus = codeStatus;
+    else if (codeStatus === 'pending') newStatus = 'pending';
+    else newStatus = nextNum >= (queue.max_attempts ?? 3) ? 'failed' : 'attempted';
+  } else if (result === 'served' || result === 'sub_served') newStatus = 'served';
   else if (nextNum >= (queue.max_attempts ?? 3)) newStatus = 'failed';
   else newStatus = 'attempted';
 

@@ -26,6 +26,7 @@ import {
   sanitizePdfText,
   finalizePoliceReport,
 } from './pdfGenerator';
+import { lookupPsoCode, formatCodeFull } from '../constants/processServiceCodes';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   PDF_VALUE_FONT,
@@ -634,8 +635,16 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
 // Template 2b: Notice of Attempt to Serve (unsuccessful attempt notice)
 // ══════════════════════════════════════════════════════════════
 
-/** Human-readable label for a serve_attempt result/reason code. */
+/**
+ * Human-readable label for a serve_attempt result/reason code. Detects
+ * structured PS codes (PS/15.05) first so the new code library wins over
+ * legacy enum mapping; falls back to the historical enum labels below for
+ * legacy attempts logged before migration 0143.
+ */
 export function serveResultLabel(result: string): string {
+  // Structured code path — accept "PS/15.05" (uppercase or lowercase).
+  const psCode = lookupPsoCode(result);
+  if (psCode) return formatCodeFull(result);
   switch ((result || '').toLowerCase()) {
     case 'no_answer': return 'No answer at address';
     case 'refused': return 'Service refused';

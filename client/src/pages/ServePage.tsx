@@ -185,20 +185,32 @@ export default function ServePage() {
       const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
       const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
         .filter(Boolean).join(', ');
-      // Only unsuccessful attempts belong on a Notice of Attempt.
+      // Only unsuccessful attempts belong on a Notice of Attempt. Filter on
+      // both the legacy result enum AND the new disposition_code: a PS/05.*
+      // code is a completed service (Personal), so its attempt shouldn't
+      // appear on the "non-service" notice. Same for PS/10.* (Substitute)
+      // and PS/20.* (Posted, when the queue is `served`).
       const attempts = (job.attempts || [])
-        .filter((a) => (a.result || '').toLowerCase() !== 'served')
+        .filter((a) => {
+          if ((a.result || '').toLowerCase() === 'served') return false;
+          const code = String((a as any).disposition_code || '').toUpperCase();
+          if (code.startsWith('PS/05') || code.startsWith('PS/10') || code.startsWith('PS/25')) return false;
+          return true;
+        })
         .map((a, i) => {
           // Soft-recovery: prefer attempt_at, fall back to created_at. Legacy
           // and auto-logged attempts sometimes have a null attempt_at but
           // always have a created_at — without this the table renders blank.
           const ts = a.attempt_at || a.created_at || null;
           const at = ts ? new Date(ts) : null;
+          // Structured code wins over the legacy enum — the generator's
+          // serveResultLabel() prints the full PS/XX.XX — Label.
+          const resultText = (a as any).disposition_code || a.result || 'other';
           return {
             number: a.attempt_number ?? i + 1,
             date: at && !isNaN(at.getTime()) ? at.toLocaleDateString() : '',
             time: at && !isNaN(at.getTime()) ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
-            result: a.result || 'other',
+            result: resultText,
             notes: a.notes || '',
             gpsLat: a.latitude ?? null,
             gpsLng: a.longitude ?? null,

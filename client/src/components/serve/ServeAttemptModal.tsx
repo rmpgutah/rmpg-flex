@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../RichTextArea';
 import {
   X, MapPin, FileText, Camera, Send, CheckCircle, AlertTriangle,
@@ -7,6 +7,10 @@ import {
 import SignaturePad from '../SignaturePad';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob, ServeAttemptData } from '../../types';
+import {
+  PSO_CATEGORIES, codesInCategory, lookupPsoCode,
+  type PsoCategory,
+} from '../../constants/processServiceCodes';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -32,6 +36,19 @@ interface GpsState {
 
 type AttemptType = 'personal' | 'substitute' | 'posting' | 'failed';
 type FailedReason = 'no_answer' | 'refused' | 'wrong_address' | 'moved' | 'other';
+
+// Categories the operator can pick from in the failed-fast-path picker.
+// Every category is available, but the picker auto-suggests Non-Service /
+// Evasion / Administrative when the operator hasn't typed an attempt type.
+const FAILED_CATEGORIES: PsoCategory['code'][] = ['PS/00', 'PS/15', 'PS/40'];
+// Categories surfaced on the "successful service" picker for personal /
+// substitute / posting attempt types.
+const SUCCESS_CATEGORIES: Record<AttemptType, PsoCategory['code'][]> = {
+  personal:   ['PS/05'],
+  substitute: ['PS/10'],
+  posting:    ['PS/20'],
+  failed:     FAILED_CATEGORIES,
+};
 
 // Step labels are derived at render time from attemptType — failed attempts
 // collapse to a 3-step flow (Location → Reason → Submit) since they're
@@ -109,6 +126,14 @@ export default function ServeAttemptModal({
   // Free-text reason captured only when failedReason === 'other'. Persisted
   // by prepending to the notes column on submit (no dedicated column).
   const [customReason, setCustomReason] = useState('');
+  // Structured PS code — the new source of truth. Picker writes here; submit
+  // sends it as `disposition_code`. The server derives the legacy `result`
+  // enum from the code, so we only fill `failedReason` for the legacy code
+  // path (no structured pick).
+  const [dispositionCode, setDispositionCode] = useState<string>('');
+  // Category the operator drilled into on the structured picker. UI-only
+  // state — drives which sub-codes are listed below the category buttons.
+  const [pickerCategory, setPickerCategory] = useState<string | null>(null);
 
   // Next-attempt window — operator-set, lives on the parent serve_queue row,
   // surfaced verbatim on the Notice of Attempt PDF. The picker builds a
@@ -174,6 +199,8 @@ export default function ServeAttemptModal({
       setAttemptType(null);
       setFailedReason(null);
       setCustomReason('');
+      setDispositionCode('');
+      setPickerCategory(null);
       setNextAttemptDate('');
       setNextAttemptStart('');
       setNextAttemptEnd('');
@@ -193,6 +220,26 @@ export default function ServeAttemptModal({
       setSubmitResult(null);
     }
   }, [isOpen, acquireGps]);
+
+  // ─── Picker context ────────────────────────────────────────────────
+  // Which top-level PS categories are surfaced for the current attempt
+  // type. Failed = Non-Service / Evasion / Admin; Personal / Substitute /
+  // Posting = the matching service category. The operator can always drill
+  // into all 10 categories via the "Show all categories" toggle below.
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const availableCategories = useMemo(() => {
+    if (showAllCategories || !attemptType) return PSO_CATEGORIES;
+    const suggested = new Set(SUCCESS_CATEGORIES[attemptType] || []);
+    return PSO_CATEGORIES.filter((c) => suggested.has(c.code));
+  }, [attemptType, showAllCategories]);
+
+  // Whenever the attemptType changes, clear the picker so a stale code
+  // from a different category doesn't survive the switch.
+  useEffect(() => {
+    setDispositionCode('');
+    setPickerCategory(null);
+    setShowAllCategories(false);
+  }, [attemptType]);
 
   // ─── Next-Attempt Sentence Builder ─────────────────────────────────
   // Rebuild the editable text whenever the picker changes, unless the user
@@ -288,6 +335,11 @@ export default function ServeAttemptModal({
         signature_data: attemptType === 'failed' ? undefined : (signature ?? undefined),
         notes: composedNotes || undefined,
         next_attempt_note: nextAttemptText.trim() || undefined,
+        // Structured code wins on the server — codeToLegacyResult derives the
+        // CHECK-enum `result` from it. Only set when the operator actually
+        // picked one (failed-fast-path picker, or the structured picker on
+        // successful attempts).
+        disposition_code: dispositionCode || undefined,
       };
 
       if (attemptType === 'personal' || attemptType === 'substitute') {
@@ -498,23 +550,31 @@ export default function ServeAttemptModal({
 
             {attemptType === 'failed' && (
               <div className="space-y-3">
-                <div className="space-y-1">
-                  <label htmlFor="ff-serveattemptmodal-0" className="block text-xs font-semibold text-rmpg-300 uppercase">Reason</label>
-                  <select id="ff-serveattemptmodal-0"
-                    value={failedReason || ''}
-                    onChange={(e) => setFailedReason(e.target.value as FailedReason)}
-                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
-                  >
-                    <option value="">Select reason...</option>
-                    <option value="no_answer">No Answer</option>
-                    <option value="refused">Refused</option>
-                    <option value="wrong_address">Wrong Address</option>
-                    <option value="moved">Moved</option>
-                    <option value="other">Other (specify)</option>
-                  </select>
-                </div>
+                <PsoCodePicker
+                  attemptType="failed"
+                  available={availableCategories}
+                  pickerCategory={pickerCategory}
+                  setPickerCategory={setPickerCategory}
+                  dispositionCode={dispositionCode}
+                  setDispositionCode={(c) => {
+                    setDispositionCode(c);
+                    // Mirror the picked code into failedReason so the legacy
+                    // submit path + the Review screen + the older copy that
+                    // still reads `failedReason` keep working.
+                    const psc = lookupPsoCode(c);
+                    if (psc) {
+                      const legacyMap: Record<string, FailedReason> = {
+                        no_answer: 'no_answer', refused: 'refused',
+                        bad_address: 'wrong_address', moved: 'moved',
+                      };
+                      setFailedReason((legacyMap[psc.result] as FailedReason) || 'other');
+                    }
+                  }}
+                  showAll={showAllCategories}
+                  setShowAll={setShowAllCategories}
+                />
 
-                {failedReason === 'other' && (
+                {(dispositionCode === 'PS/00.99' || failedReason === 'other') && (
                   <div className="space-y-1">
                     <label htmlFor="ff-serveattemptmodal-other-reason" className="block text-[10px] font-semibold text-rmpg-300 uppercase">
                       Specify reason <span className="text-rmpg-500 normal-case">(prepended to notes on the notice)</span>
@@ -588,6 +648,24 @@ export default function ServeAttemptModal({
               </div>
             )}
 
+            {/* Successful flows (personal/substitute/posting) get the same
+                code picker, just suggesting the matching service category
+                instead of the failed-attempt categories. Operator can hit
+                "Show all 10 categories" to widen the picker when they need
+                an edge-case code (e.g. PS/40.10 already-served confirmation). */}
+            {attemptType && attemptType !== 'failed' && (
+              <PsoCodePicker
+                attemptType={attemptType}
+                available={availableCategories}
+                pickerCategory={pickerCategory}
+                setPickerCategory={setPickerCategory}
+                dispositionCode={dispositionCode}
+                setDispositionCode={setDispositionCode}
+                showAll={showAllCategories}
+                setShowAll={setShowAllCategories}
+              />
+            )}
+
             <div className="flex justify-between pt-2">
               <button type="button"
                 onClick={goBack}
@@ -597,7 +675,10 @@ export default function ServeAttemptModal({
               </button>
               <button type="button"
                 onClick={goNext}
-                disabled={!attemptType || (attemptType === 'failed' && !failedReason)}
+                disabled={
+                  !attemptType
+                  || (attemptType === 'failed' && !dispositionCode && !failedReason)
+                }
                 className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
               >
                 {isFailedPath ? 'Continue' : 'Next'}
@@ -1028,5 +1109,117 @@ function NotesField({
         }`}
       />
     </div>
+  );
+}
+
+// ─── PsoCodePicker ──────────────────────────────────────────────────────
+// Two-step structured picker: category → sub-code. The category buttons
+// show the PS/XX prefix + label; selecting one expands the sub-code list
+// below. Visually tuned to match the rest of the modal (steel-blue surfaces,
+// gold accent for the active item, gray border otherwise).
+function PsoCodePicker({
+  attemptType, available, pickerCategory, setPickerCategory,
+  dispositionCode, setDispositionCode, showAll, setShowAll,
+}: {
+  attemptType: AttemptType;
+  available: PsoCategory[];
+  pickerCategory: string | null;
+  setPickerCategory: (c: string | null) => void;
+  dispositionCode: string;
+  setDispositionCode: (c: string) => void;
+  showAll: boolean;
+  setShowAll: (v: boolean) => void;
+}) {
+  // When a code is already picked, jump the category view back to its
+  // parent so the operator sees the active state on first render.
+  useEffect(() => {
+    if (dispositionCode && !pickerCategory) {
+      const psc = lookupPsoCode(dispositionCode);
+      if (psc) setPickerCategory(psc.category);
+    }
+  }, [dispositionCode, pickerCategory, setPickerCategory]);
+
+  const subCodes = pickerCategory ? codesInCategory(pickerCategory) : [];
+
+  const toneClass = (tone: PsoCategory['tone'], active: boolean): string => {
+    if (active) return 'border-[#d4a017] bg-[#d4a017]/10 text-rmpg-100 shadow-[0_0_6px_rgba(212,160,23,0.2)]';
+    switch (tone) {
+      case 'success': return 'border-rmpg-700 bg-surface-sunken hover:border-green-500 text-rmpg-200';
+      case 'attempt': return 'border-rmpg-700 bg-surface-sunken hover:border-yellow-500 text-rmpg-200';
+      case 'danger':  return 'border-rmpg-700 bg-surface-sunken hover:border-red-500 text-rmpg-200';
+      case 'admin':   return 'border-rmpg-700 bg-surface-sunken hover:border-blue-500 text-rmpg-200';
+      case 'pending': return 'border-rmpg-700 bg-surface-sunken hover:border-rmpg-400 text-rmpg-200';
+    }
+  };
+
+  return (
+    <fieldset className="space-y-3 border border-rmpg-700 rounded-[2px] p-3">
+      <legend className="text-[10px] font-semibold text-rmpg-300 uppercase px-1">
+        Disposition code <span className="text-rmpg-500 normal-case">— structured PS code (printed on the notice)</span>
+      </legend>
+
+      {/* Category row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {available.map((cat) => (
+          <button
+            key={cat.code}
+            type="button"
+            onClick={() => setPickerCategory(cat.code === pickerCategory ? null : cat.code)}
+            className={`text-left p-2 rounded-[2px] border-2 transition-all duration-150 ${toneClass(cat.tone, pickerCategory === cat.code)}`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-mono font-bold text-[#d4a017]">{cat.code}</span>
+              {cat.isService && <span className="text-[9px] uppercase text-green-400">Completion</span>}
+            </div>
+            <div className="text-xs font-semibold leading-tight">{cat.label}</div>
+            <div className="text-[10px] text-rmpg-400 leading-tight mt-0.5">{cat.description}</div>
+          </button>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setShowAll(!showAll)}
+        className="text-[10px] uppercase tracking-wider text-rmpg-400 hover:text-[#d4a017] transition-colors"
+      >
+        {showAll
+          ? `Show only suggested for ${attemptType}`
+          : 'Show all 10 categories (mail, publication, court-ordered, admin…)'}
+      </button>
+
+      {/* Sub-code list */}
+      {pickerCategory && (
+        <div className="space-y-1 mt-1 max-h-48 overflow-y-auto scrollbar-dark border-t border-rmpg-700 pt-2">
+          {subCodes.map((c) => (
+            <label
+              key={c.code}
+              htmlFor={`ff-psocode-${c.code}`}
+              className={`flex items-start gap-2 p-1.5 rounded-[2px] cursor-pointer transition-colors ${
+                dispositionCode === c.code
+                  ? 'bg-[#d4a017]/10 border-l-2 border-[#d4a017]'
+                  : 'hover:bg-surface-raised border-l-2 border-transparent'
+              }`}
+            >
+              <input
+                id={`ff-psocode-${c.code}`}
+                type="radio"
+                name="pso-code"
+                value={c.code}
+                checked={dispositionCode === c.code}
+                onChange={() => setDispositionCode(c.code)}
+                className="mt-0.5 accent-[#d4a017]"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[10px] font-mono font-bold text-[#d4a017]">{c.code}</span>
+                  <span className="text-xs font-semibold text-rmpg-100">{c.label}</span>
+                </div>
+                {c.hint && <div className="text-[10px] text-rmpg-400 italic">{c.hint}</div>}
+              </div>
+            </label>
+          ))}
+        </div>
+      )}
+    </fieldset>
   );
 }

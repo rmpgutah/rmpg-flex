@@ -3225,6 +3225,10 @@ export interface ServeAttemptData {
   // parent serve_queue row, not on the attempt itself, so it persists across
   // attempts and is read at Notice-of-Attempt PDF generation time.
   next_attempt_note?: string;
+  // Structured PS disposition code (PS/00..PS/45.XX). When supplied, the
+  // server derives the legacy `result` enum from it via codeToLegacyResult
+  // and persists the full code in serve_attempts.disposition_code.
+  disposition_code?: string;
 }
 
 export interface ServeRoute {
