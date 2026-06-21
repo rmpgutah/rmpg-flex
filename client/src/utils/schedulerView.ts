@@ -41,7 +41,7 @@ export function dayRangeFromAnchor(anchorYmd: string, count: number): string[] {
   const [y, m, d] = anchorYmd.split('-').map(Number);
   const out: string[] = [];
   for (let i = 0; i < count; i++) {
-    const dt = new Date(Date.UTC(y, m - 1, d + i));
+    const dt = new Date(Date.UTC(y, m - 1, d + i)); // new-date-ok: epoch from Date.UTC, not a server string
     const yyyy = dt.getUTCFullYear();
     const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
     const dd = String(dt.getUTCDate()).padStart(2, '0');
@@ -68,7 +68,7 @@ export function groupByDay(slots: ScheduleSlot[]): Map<string, ScheduleSlot[]> {
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export function formatDayHeader(ymd: string): string {
   const [y, m, d] = ymd.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
+  const dt = new Date(Date.UTC(y, m - 1, d)); // new-date-ok: epoch from Date.UTC, not a server string
   return `${WEEKDAYS[dt.getUTCDay()]} ${d}`;
 }
 

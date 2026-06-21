@@ -15,9 +15,9 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // blanks if needed to fill the last row.
 function monthCells(anchorYmd: string): Array<{ ymd: string | null; inMonth: boolean }> {
   const [y, m] = anchorYmd.split('-').map(Number);
-  const firstOfMonth = new Date(Date.UTC(y, m - 1, 1));
+  const firstOfMonth = new Date(Date.UTC(y, m - 1, 1)); // new-date-ok: epoch from Date.UTC, not a server string
   const firstWeekday = firstOfMonth.getUTCDay();
-  const lastOfMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const lastOfMonth = new Date(Date.UTC(y, m, 0)).getUTCDate(); // new-date-ok: epoch from Date.UTC, not a server string
   const cells: Array<{ ymd: string | null; inMonth: boolean }> = [];
   for (let i = 0; i < firstWeekday; i++) cells.push({ ymd: null, inMonth: false });
   for (let d = 1; d <= lastOfMonth; d++) {

@@ -32,6 +32,7 @@ export default function ServeSchedulerPanel() {
       setError(null);
       const include = 'tier';
       const range = view === 'week' ? 7 : 31;
+      // new-date-ok: epoch math on a Z-suffixed ISO string, not a naive server timestamp
       const endDate = new Date(Date.parse(`${today}T12:00:00Z`) + (range - 1) * 86_400_000)
         .toISOString().slice(0, 10);
       const data = await apiFetch<ScheduleResp>(
