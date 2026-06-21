@@ -118,6 +118,32 @@ describe('<InsightsRoute>', () => {
     await waitFor(() => expect(screen.getByText(/21 total/i)).toBeInTheDocument());
   });
 
+  it('renders the Fleet Map card (PR 8c) with the readiness summary', async () => {
+    stubApi({
+      '/fleet-viz/kpi': { period: 'x', in_service: 0, in_shop: 0, overdue_pms: 0, avg_mpg: 0, cost_per_mile: null, total_cost: 0, miles_driven: 0 },
+      '/fleet-viz/readiness': { count: 0, data: [] },
+      '/fleet-viz/calls-per-gallon': { period: 'x', count: 0, data: [] },
+      '/fleet-viz/mpg-by-officer': { period: 'x', samples: [], by_officer: [] },
+      '/fleet-viz/cost-per-mile': { period: 'x', count: 0, data: [] },
+      '/fleet-viz/fuel-anomalies': { period: 'x', count: 0, data: [] },
+      '/fleet-viz/pm-upcoming': { count: 0, data: [] },
+      '/fleet-viz/work-order-flow': { period: 'x', nodes: [] },
+      '/fleet-viz/pm-timeline': { horizon_days: 90, count: 0, data: [] },
+      '/fleet-viz/fleet-map': {
+        count: 3,
+        data: [
+          { id: 1, vehicle_number: 'P12', vehicle_name: null, status: 'in_service', current_mileage: 50000, next_service_mileage: 55000, miles_to_pm: 5000, assigned_unit_id: 11, lat: 40.76, lng: -111.89, gps_ts: '2026-06-21T18:00:00Z', readiness: 'ready' },
+          { id: 2, vehicle_number: 'P13', vehicle_name: null, status: 'in_service', current_mileage: 70000, next_service_mileage: 70200, miles_to_pm: 200, assigned_unit_id: 12, lat: 40.77, lng: -111.90, gps_ts: '2026-06-21T17:30:00Z', readiness: 'attention' },
+          { id: 3, vehicle_number: 'P14', vehicle_name: null, status: 'in_shop', current_mileage: 90000, next_service_mileage: 95000, miles_to_pm: 5000, assigned_unit_id: null, lat: null, lng: null, gps_ts: null, readiness: 'unavailable' },
+        ],
+      },
+    });
+    render(<MemoryRouter><InsightsRoute /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText(/fleet map/i)).toBeInTheDocument());
+    // 2 vehicles have lat/lng — the hint summary should reflect "2 located".
+    await waitFor(() => expect(screen.getByText(/2 located/i)).toBeInTheDocument());
+  });
+
   it('persists the selected period to localStorage (saved view, PR 9b)', () => {
     // readSavedPeriod is the pure helper exposed for tests.
     window.localStorage.removeItem('rmpg_fleet_insights_period');
