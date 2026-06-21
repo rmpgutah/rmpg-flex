@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../../../../hooks/useApi';
 import { FleetListShell } from '../shell/FleetListShell';
+import { LegacyActionLink } from '../shell/LegacyActionLink';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 import { safeDateStr } from '../../../../utils/dateUtils';
 
@@ -51,6 +52,7 @@ export function PersonnelRoute() {
       title="Personnel"
       searchPlaceholder="Search by officer, vehicle, or notes…"
       onSearchChange={setSearch}
+      actions={<LegacyActionLink label="New Assignment" legacyPath="/fleet" />}
     >
       {loading ? (
         <div className="p-4 text-sm text-rmpg-400">Loading personnel assignments…</div>
