@@ -43,7 +43,7 @@ describe('buildFleetioRequest', () => {
     );
   });
 
-  it('normalizes a path that already starts with / (does not double-slash)', () => {
+  it('normalizes a path with no leading slash (adds one)', () => {
     const req = buildFleetioRequest({ method: 'GET', path: 'vehicles', config: cfg });
     expect(req.url).toBe('https://secure.fleetio.com/api/v1/vehicles');
   });
