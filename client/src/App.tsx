@@ -463,8 +463,18 @@ function AppRoutes() {
             <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
             <Route path="/analytics" element={<RouteErrorBoundary><AnalyticsPage /></RouteErrorBoundary>} />
             <Route path="/patrol" element={<RouteErrorBoundary><PatrolPage /></RouteErrorBoundary>} />
+            {/* === Fleet UI cutover (PR 7'c) ===
+                 /fleet now serves the v2 Fleet.io-style shell.
+                 /fleet-legacy keeps the old UI mounted for ≥7 days as the
+                 escape hatch — operators hit it when they need a feature
+                 the new shell doesn't have yet. The legacy mount + old
+                 FleetPage code are removed in PR 7'd after the second
+                 7-day soak. The /fleet/v2/* parallel mount is kept for
+                 one cycle as a redirect target (anyone with a bookmark
+                 hitting /fleet/v2 still lands on the new UI). */}
             <Route path="/fleet/v2/*" element={<RouteErrorBoundary><FleetShell /></RouteErrorBoundary>} />
-            <Route path="/fleet" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
+            <Route path="/fleet/*" element={<RouteErrorBoundary><FleetShell /></RouteErrorBoundary>} />
+            <Route path="/fleet-legacy" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
             <Route path="/flexcam" element={<RouteErrorBoundary><FlexCamPage /></RouteErrorBoundary>} />

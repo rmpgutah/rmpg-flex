@@ -31,7 +31,7 @@ export function AnalysisFormsRoute() {
             access the existing forms in the v1 UI.
           </p>
           <Link
-            to="/fleet"
+            to="/fleet-legacy"
             className="inline-flex items-center gap-1 text-sm text-brand-400 hover:underline"
           >
             Open Analysis Forms in v1 →
