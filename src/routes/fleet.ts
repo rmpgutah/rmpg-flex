@@ -1120,6 +1120,22 @@ fleet.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM fleet_vehicles WHERE id = ?', newId,
     );
+
+    // Fleet.io outbound (PR 3 catalog kind 'vehicle.create'). New vehicles
+    // need to land in Fleet.io so PM schedules / inspections / fuel entries
+    // can attach to them on the Fleet.io side. waitUntil keeps the response
+    // latency unchanged; try/catch guards the test runtime where executionCtx
+    // is undefined.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'vehicle.create', created, {
+          rmpgTable: 'fleet_vehicles',
+          rmpgId: Number(newId),
+          versionToken: `create:${newId}`,
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests — emit is best-effort */ }
+
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /fleet failed:', err);
@@ -1238,6 +1254,21 @@ fleet.delete('/:id{[0-9]+}', async (c) => {
        WHERE id = ?`,
       id,
     );
+
+    // Fleet.io outbound 'vehicle.delete' — Fleet.io should mirror our archive
+    // by archiving its own vehicle row (the sync engine maps this to the
+    // Fleet.io PATCH endpoint with archived: true). We send a tombstone-shape
+    // payload because the row is already archived locally.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'vehicle.delete', { id, archived: true }, {
+          rmpgTable: 'fleet_vehicles',
+          rmpgId: id,
+          versionToken: `delete:${id}`,
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests */ }
+
     return c.json({ success: true, id });
   } catch (err) {
     console.error('DELETE /fleet/:id failed:', err);
@@ -1429,6 +1460,20 @@ fleet.put('/fuel/:id', async (c) => {
     bindings.push(fuelId);
     await execute(db, `UPDATE fleet_fuel_log SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_fuel_log WHERE id = ?', fuelId);
+
+    // Fleet.io outbound 'fuel.update' — Fleet.io edits the corresponding
+    // fuel_entry. versionToken uses updated_at if present so retries against
+    // the same shape dedupe.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'fuel.update', updated, {
+          rmpgTable: 'fleet_fuel_log',
+          rmpgId: fuelId,
+          versionToken: String(updated?.updated_at ?? `update:${Date.now()}:${fuelId}`),
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests */ }
+
     return c.json(updated);
   } catch (err) { console.error('PUT /fleet/fuel/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
@@ -1440,6 +1485,19 @@ fleet.delete('/fuel/:id', async (c) => {
     if (!Number.isInteger(fuelId) || fuelId <= 0) return c.json({ error: 'Invalid fuel log id' }, 400);
     const db = getDb(c.env);
     await execute(db, 'DELETE FROM fleet_fuel_log WHERE id = ?', fuelId);
+
+    // Fleet.io outbound 'fuel.delete' — tombstone shape (id + deleted flag);
+    // the row is gone locally so a SELECT would return undefined.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'fuel.delete', { id: fuelId, deleted: true }, {
+          rmpgTable: 'fleet_fuel_log',
+          rmpgId: fuelId,
+          versionToken: `delete:${fuelId}`,
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests */ }
+
     return c.json({ success: true });
   } catch (err) { console.error('DELETE /fleet/fuel/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
