@@ -9,10 +9,11 @@
 // search endpoint doesn't take a `q` param and < 1000 incidents per
 // org keeps this responsive.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Search, FileText, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { humanizeType } from '../utils/statusLabels';
+import { useTypeaheadKeyboard } from '../hooks/useTypeaheadKeyboard';
 
 export interface IncidentSummary {
   id: number;
@@ -121,6 +122,13 @@ export default function IncidentPickerInline({
 
   const showClear = value != null || query.length > 0;
 
+  const idPrefix = useId();
+  const { onKeyDown, activeIndex, listboxProps, optionProps, activeDescendantId } =
+    useTypeaheadKeyboard({
+      open, items: filtered, onSelect: select,
+      onClose: () => setOpen(false), idPrefix: `ip${idPrefix}`,
+    });
+
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
@@ -132,14 +140,18 @@ export default function IncidentPickerInline({
           value={query}
           onChange={(e) => { setQuery(e.target.value); if (value != null) onChange(null); setOpen(true); }}
           onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
           className="w-full bg-surface-sunken border border-border-default pl-7 pr-7 py-1.5 text-[11px] text-rmpg-100 disabled:opacity-50"
           style={{ borderRadius: 2 }}
+          role="combobox"
           aria-label={required ? 'Search incident (required)' : 'Search incident'}
           aria-autocomplete="list"
           aria-expanded={open}
+          aria-controls={listboxProps.id}
+          aria-activedescendant={activeDescendantId ?? undefined}
         />
         {showClear && !disabled && (
           <button
@@ -154,6 +166,7 @@ export default function IncidentPickerInline({
       </div>
       {open && (filtered.length > 0 || loading || error) && (
         <div
+          {...listboxProps}
           className="absolute left-0 right-0 mt-1 bg-surface-base border border-border-default panel-beveled z-30 max-h-[260px] overflow-y-auto scrollbar-dark"
           style={{ borderRadius: 2 }}
         >
@@ -166,14 +179,16 @@ export default function IncidentPickerInline({
           {!loading && !error && filtered.length === 0 && (
             <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">No matches.</div>
           )}
-          {filtered.map((i) => {
+          {filtered.map((i, idx) => {
             const selected = value === i.id;
+            const active = idx === activeIndex;
             return (
               <button
                 key={i.id}
                 type="button"
                 onClick={() => select(i)}
-                className={`w-full text-left px-3 py-2 border-b border-border-default hover:bg-surface-raised flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''}`}
+                {...optionProps(idx, selected)}
+                className={`w-full text-left px-3 py-2 border-b border-border-default flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
                 style={{ borderLeft: selected ? '2px solid #d4a017' : '2px solid transparent' }}
               >
                 <FileText className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? '#d4a017' : '#666' }} />

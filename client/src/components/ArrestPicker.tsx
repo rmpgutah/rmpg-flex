@@ -10,9 +10,10 @@
 // Closes the typed-numeric fallback in RecordPicker for arrest
 // linking from IncidentsPage / TaskFormModal.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Search, Gavel, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useTypeaheadKeyboard } from '../hooks/useTypeaheadKeyboard';
 
 export interface ArrestSummary {
   id: number;
@@ -130,6 +131,13 @@ export default function ArrestPicker({
 
   const showClear = value != null || query.length > 0;
 
+  const idPrefix = useId();
+  const { onKeyDown, activeIndex, listboxProps, optionProps, activeDescendantId } =
+    useTypeaheadKeyboard({
+      open, items: filtered, onSelect: select,
+      onClose: () => setOpen(false), idPrefix: `ap${idPrefix}`,
+    });
+
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
@@ -141,14 +149,18 @@ export default function ArrestPicker({
           value={query}
           onChange={(e) => { setQuery(e.target.value); if (value != null) onChange(null); setOpen(true); }}
           onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
           className="w-full bg-surface-sunken border border-border-default pl-7 pr-7 py-1.5 text-[11px] text-rmpg-100 disabled:opacity-50"
           style={{ borderRadius: 2 }}
+          role="combobox"
           aria-label={required ? 'Search arrest record (required)' : 'Search arrest record'}
           aria-autocomplete="list"
           aria-expanded={open}
+          aria-controls={listboxProps.id}
+          aria-activedescendant={activeDescendantId ?? undefined}
         />
         {showClear && !disabled && (
           <button type="button" onClick={clear} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-rmpg-500 hover:text-rmpg-100" aria-label="Clear selection">
@@ -161,14 +173,16 @@ export default function ArrestPicker({
           {loading && <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">Loading bookings…</div>}
           {error && <div className="px-3 py-2 text-[11px] text-[#ef4444]">{error}</div>}
           {!loading && !error && filtered.length === 0 && <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">No matches.</div>}
-          {filtered.map((a) => {
+          {filtered.map((a, i) => {
             const selected = value === a.id;
+            const active = i === activeIndex;
             const name = [a.first_name, a.last_name].filter(Boolean).join(' ');
             const housing = [a.housing_unit, a.housing_cell].filter(Boolean).join(' / ');
             const sub = [name, housing, a.arresting_agency].filter(Boolean).join(' · ');
             return (
               <button key={a.id} type="button" onClick={() => select(a)}
-                className={`w-full text-left px-3 py-2 border-b border-border-default hover:bg-surface-raised flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''}`}
+                {...optionProps(i, selected)}
+                className={`w-full text-left px-3 py-2 border-b border-border-default  flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
                 style={{ borderLeft: selected ? '2px solid #d4a017' : '2px solid transparent' }}>
                 <Gavel className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? '#d4a017' : '#666' }} />
                 <div className="flex-1 min-w-0">

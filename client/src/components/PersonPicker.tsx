@@ -21,9 +21,10 @@
 // For officer pickers use OfficerPicker, which has the same shape
 // but pulls from /api/personnel.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Search, User, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useTypeaheadKeyboard } from '../hooks/useTypeaheadKeyboard';
 
 export interface PersonSummary {
   id: number;
@@ -83,11 +84,19 @@ export default function PersonPicker({
   // one-shot list, so unlike the other 8 pickers it can't pull the name
   // from a local cache — it has to ask the server. One GET per edit-mode
   // mount; cheap.
+  //
+  // Race-defense: the fetch is async, so the user can start typing before
+  // it resolves. The functional setQuery checks the LATEST query, not the
+  // value captured when the effect ran — if the user is mid-type, we
+  // don't overwrite their input.
   useEffect(() => {
     if (value == null || query !== '' || displayValue) return;
     let cancelled = false;
     apiFetch<PersonSummary>(`/records/persons/${value}`)
-      .then((p) => { if (!cancelled && p) setQuery(formatName(p)); })
+      .then((p) => {
+        if (cancelled || !p) return;
+        setQuery((current) => (current === '' ? formatName(p) : current));
+      })
       .catch(() => { /* leave blank; the user can search */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,6 +159,19 @@ export default function PersonPicker({
 
   const showClear = useMemo(() => value != null || query.length > 0, [value, query]);
 
+  // Keyboard navigation — ArrowUp/Down/Home/End/Enter/Esc. Hook resets the
+  // active index when the dropdown closes so opening fresh starts at -1
+  // (no preselection — Enter on a fresh dropdown picks results[0]).
+  const idPrefix = useId();
+  const { onKeyDown, activeIndex, listboxProps, optionProps, activeDescendantId } =
+    useTypeaheadKeyboard({
+      open,
+      items: results,
+      onSelect: select,
+      onClose: () => setOpen(false),
+      idPrefix: `pp${idPrefix}`,
+    });
+
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
@@ -161,14 +183,18 @@ export default function PersonPicker({
           value={query}
           onChange={(e) => { setQuery(e.target.value); if (value != null) onChange(null); setOpen(true); }}
           onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
           className="w-full bg-surface-sunken border border-border-default pl-7 pr-7 py-1.5 text-[11px] text-rmpg-100 disabled:opacity-50"
           style={{ borderRadius: 2 }}
+          role="combobox"
           aria-label={required ? 'Search person (required)' : 'Search person'}
           aria-autocomplete="list"
           aria-expanded={open}
+          aria-controls={listboxProps.id}
+          aria-activedescendant={activeDescendantId ?? undefined}
         />
         {showClear && !disabled && (
           <button
@@ -183,6 +209,7 @@ export default function PersonPicker({
       </div>
       {open && (results.length > 0 || loading || error || query.trim().length >= 2) && (
         <div
+          {...listboxProps}
           className="absolute left-0 right-0 mt-1 bg-surface-base border border-border-default panel-beveled z-30 max-h-[260px] overflow-y-auto scrollbar-dark"
           style={{ borderRadius: 2 }}
         >
@@ -195,8 +222,9 @@ export default function PersonPicker({
           {!loading && !error && results.length === 0 && query.trim().length >= 2 && (
             <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">No matches.</div>
           )}
-          {results.map((p) => {
+          {results.map((p, i) => {
             const selected = value === p.id;
+            const active = i === activeIndex;
             const name = formatName(p);
             const dob = p.date_of_birth ? new Date(p.date_of_birth).toLocaleDateString('en-US', { timeZone: 'UTC' }) : null;
             const cityState = [p.city, p.state].filter(Boolean).join(', ');
@@ -205,7 +233,8 @@ export default function PersonPicker({
                 key={p.id}
                 type="button"
                 onClick={() => select(p)}
-                className={`w-full text-left px-3 py-2 border-b border-border-default hover:bg-surface-raised flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''}`}
+                {...optionProps(i, selected)}
+                className={`w-full text-left px-3 py-2 border-b border-border-default flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
                 style={{ borderLeft: selected ? '2px solid #d4a017' : '2px solid transparent' }}
               >
                 <User className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? '#d4a017' : '#666' }} />

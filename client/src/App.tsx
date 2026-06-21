@@ -82,6 +82,7 @@ const TrespassOrdersPage = lazyRetry(() => import('./pages/TrespassOrdersPage'))
 const MdtPage = lazyRetry(() => import('./pages/MdtPage'));
 const MobileHomePage = lazyRetry(() => import('./pages/mobile/MobileHomePage'));
 const FieldCameraPage = lazyRetry(() => import('./pages/mobile/FieldCameraPage'));
+const MobilePsoCfsPage = lazyRetry(() => import('./pages/mobile/MobilePsoCfsPage'));
 const NavigationPage = lazyRetry(() => import('./pages/NavigationPage'));
 const ShiftPlansPage = lazyRetry(() => import('./pages/ShiftPlansPage'));
 const StatuteAnalyticsPage = lazyRetry(() => import('./pages/StatuteAnalyticsPage'));
@@ -414,6 +415,12 @@ function AppRoutes() {
           {/* QR-token-authed mobile vehicle inspection. Opened by scanning the
               per-shift QR on the ShiftCard; the :token IS the credential. */}
           <Route path="/m/shift/:token" element={<MobileShiftPage />} />
+          {/* QR-token-authed mobile PSO call dispatch surface. Opened by the
+              guard scanning the per-call QR; the ?token IS the credential and
+              the guard picks their identity via OfficerPicker before the auth
+              round-trip. Lives outside the auth gate because the QR token is
+              the auth — the guard is not yet logged in. */}
+          <Route path="/m/cfs/:id" element={<MobilePsoCfsPage />} />
 
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
