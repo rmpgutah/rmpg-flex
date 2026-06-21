@@ -109,28 +109,43 @@ export function extractEventId(parsed: unknown, fallbackBody?: string): string |
 }
 
 /** Map Fleet.io's resource name to our internal `resource` token.
- *  Fleet.io's webhook payload shape isn't uniform — over the course of this
- *  integration we've seen at least three variants in the wild:
+ *  Fleet.io's webhook payload shape varies. Captured from real live traffic
+ *  on 2026-06-21 (audit_log FLEETIO_WEBHOOK_UNPARSEABLE) + standard
+ *  vendor-emitter conventions, we accept four shape variants:
  *    1. `{ event_type: 'vehicle.update', data: { id: 123 } }`
  *    2. `{ subject_type: 'vehicle', verb: 'updated', subject_id: 123 }`
  *    3. `{ name: 'vehicle.updated', payload: { id: 123 } }`
- *  We try all three before giving up. `verb` is normalized to the
- *  create/update/delete trichotomy ('updated' → 'update', etc.). */
+ *    4. `{ event: 'vehicle_updated', payload: { vehicle_id: 123 } }`  ← Fleet.io's real shape
+ *  `verb`/`action` is normalized to the create/update/delete trichotomy
+ *  ('updated' → 'update', 'destroyed'/'deleted' → 'delete'). */
 export function normalizeResource(payload: unknown): { resource: string; action: 'create' | 'update' | 'delete'; resource_id: number | null } | null {
   if (!payload || typeof payload !== 'object') return null;
   const obj = payload as Record<string, unknown>;
 
-  // Variant 1: event_type='resource.action'
-  const eventType = typeof obj.event_type === 'string' ? obj.event_type
-                  : typeof obj.name === 'string' ? obj.name
-                  : '';
-  const dotted = /^(\w+)\.(\w+)$/.exec(eventType);
   let resource: string | null = null;
   let actionRaw: string | null = null;
+
+  // Variant 1/3: event_type='resource.action' OR name='resource.action' (dot-separated)
+  const dottedField = typeof obj.event_type === 'string' ? obj.event_type
+                    : typeof obj.name === 'string' ? obj.name
+                    : '';
+  const dotted = /^(\w+)\.(\w+)$/.exec(dottedField);
   if (dotted) {
     resource = dotted[1];
     actionRaw = dotted[2];
-  } else if (typeof obj.subject_type === 'string' && typeof obj.verb === 'string') {
+  } else if (typeof obj.event === 'string') {
+    // Variant 4: event='resource_action' (underscore-separated, Fleet.io's actual shape).
+    // The greedy split is correct here: 'fuel_entry_updated' must split as
+    // ('fuel_entry', 'updated'), not ('fuel', 'entry_updated'). Anchor on the
+    // KNOWN action suffixes so the split point is unambiguous.
+    const underscored = /^(.+)_(created|updated|destroyed|deleted)$/.exec(obj.event);
+    if (underscored) {
+      resource = underscored[1];
+      actionRaw = underscored[2];
+    }
+  }
+
+  if (!resource && typeof obj.subject_type === 'string' && typeof obj.verb === 'string') {
     // Variant 2: subject_type + verb
     resource = obj.subject_type;
     actionRaw = obj.verb;
@@ -146,10 +161,13 @@ export function normalizeResource(payload: unknown): { resource: string; action:
     null;
   if (!action) return null;
 
-  // Resource id — check several common nesting locations.
+  // Resource id — check the common nesting locations PLUS Fleet.io's
+  // payload.<resource>_id keyed convention (e.g. payload.vehicle_id for a
+  // vehicle event, payload.fuel_entry_id for a fuel entry event).
   const data = obj.data && typeof obj.data === 'object' ? obj.data as Record<string, unknown> : null;
   const payloadObj = obj.payload && typeof obj.payload === 'object' ? obj.payload as Record<string, unknown> : null;
-  const rawId = (data?.id) ?? (payloadObj?.id) ?? obj.subject_id ?? obj.resource_id ?? obj.id;
+  const resourceKeyed = payloadObj ? payloadObj[`${resource}_id`] : undefined;
+  const rawId = (data?.id) ?? (payloadObj?.id) ?? resourceKeyed ?? obj.subject_id ?? obj.resource_id ?? obj.id;
   const id = typeof rawId === 'number' ? rawId : (typeof rawId === 'string' ? parseInt(rawId, 10) : null);
 
   return {

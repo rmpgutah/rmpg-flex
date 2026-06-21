@@ -144,6 +144,54 @@ describe('normalizeResource', () => {
     expect(out).toEqual({ resource: 'vehicle', action: 'delete', resource_id: 7 });
   });
 
+  // ─── Variant 4: event='resource_action' (Fleet.io's REAL shape, PR 4e) ──
+  it("parses event='vehicle_updated' + payload.vehicle_id (PR 4e)", () => {
+    const out = normalizeResource({
+      event: 'vehicle_updated',
+      payload: { vehicle_id: 12345 },
+    });
+    expect(out).toEqual({ resource: 'vehicle', action: 'update', resource_id: 12345 });
+  });
+
+  it("splits 'fuel_entry_created' as ('fuel_entry', 'created') — greedy resource (PR 4e)", () => {
+    // 'fuel_entry' has an underscore in the resource name itself; the
+    // KNOWN-action-suffix anchor disambiguates the split.
+    const out = normalizeResource({
+      event: 'fuel_entry_created',
+      payload: { fuel_entry_id: 999 },
+    });
+    expect(out).toEqual({ resource: 'fuel_entry', action: 'create', resource_id: 999 });
+  });
+
+  it("recognizes 'destroyed' suffix → action=delete (PR 4e)", () => {
+    const out = normalizeResource({
+      event: 'vehicle_destroyed',
+      payload: { vehicle_id: 1 },
+    });
+    expect(out).toEqual({ resource: 'vehicle', action: 'delete', resource_id: 1 });
+  });
+
+  it("real Fleet.io 'user_updated' payload from 2026-06-21 → resource='user', action='update'", () => {
+    // Captured from production via audit_log FLEETIO_WEBHOOK_UNPARSEABLE
+    // (before this PR landed). Verbatim shape that flushed our parser.
+    const out = normalizeResource({
+      id: 91805667,
+      event: 'user_updated',
+      timestamp: '2026-06-21T14:40:40.000-06:00',
+      payload: {
+        contact_id: 2917654,
+        role_id: null,
+        user_id: 2473696,
+        user_type: 'owner',
+        name: 'Christopher Zamora',
+        email: 'chzamo@rmpgutah.us',
+      },
+      triggered_by: 'chzamo@rmpgutah.us',
+      account_url_token: '60e7fe9892',
+    });
+    expect(out).toEqual({ resource: 'user', action: 'update', resource_id: 2473696 });
+  });
+
   // ─── Variant 3: name='resource.action' + payload.id (alt-REST) ──
   it('parses name + payload.id (PR 4d)', () => {
     const out = normalizeResource({ name: 'vehicle.updated', payload: { id: 42 } });
