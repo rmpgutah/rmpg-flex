@@ -9,6 +9,7 @@ import { useMemo } from 'react';
 import { Navigation, MapPin, Clock, Star, PlusCircle, Plus } from 'lucide-react';
 import type { Unit } from '../types';
 import { rankUnits, type RankedUnit } from '../utils/unitRecommendation';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface UnitRecommendationPanelProps {
   units: Unit[];
@@ -109,7 +110,7 @@ export default function UnitRecommendationPanel({
                         className="text-[8px] uppercase font-bold px-1"
                         style={{ color: statusColor }}
                       >
-                        {item.unit.status === 'onscene' ? 'ON SCN' : item.unit.status.replace(/_/g, ' ')}
+                        {item.unit.status === 'onscene' ? 'ON SCN' : toDisplayLabel(item.unit.status)}
                       </span>
                     )}
                   </div>

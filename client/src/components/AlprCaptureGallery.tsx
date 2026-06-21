@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScanSearch, RefreshCw, AlertTriangle, ShieldCheck, Pencil } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 import TrustBadge from './TrustBadge';
 import VehicleDossier from './VehicleDossier';
 import CaptureReviewEditor, { type EditableCapture } from './CaptureReviewEditor';
@@ -78,7 +79,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
           </span>
           {cap.event_type && (
             <span className="text-[8px] px-1 py-[1px] bg-black/75 text-[#888] border border-border-subtle">
-              {String(cap.event_type).replace(/_/g, ' ')}
+              {toDisplayLabel(String(cap.event_type))}
             </span>
           )}
         </div>
@@ -208,7 +209,7 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
             <select value={filter.eventType || ''} onChange={(e) => setFilter((f) => ({ ...f, eventType: e.target.value || undefined }))}
               className="text-[10px] bg-black border border-border-default text-rmpg-300 px-1 py-1 focus:border-[#d4a017] focus:outline-none">
               <option value="">All events</option>
-              {eventTypes.map((t) => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+              {eventTypes.map((t) => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
             </select>
           )}
           {(filter.plate || filter.eventType || filter.source !== 'all' || filter.band !== 'all' || filter.hits === 'hits') && (

@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search, FileText } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { humanizeType } from '../utils/statusLabels';
+import { humanizeType, humanizeStatus } from '../utils/statusLabels';
 import { coded } from '../utils/searchText';
 
 export interface IncidentSummary {
@@ -130,7 +130,7 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
                 </div>
                 <div className="text-[10px] text-rmpg-300 mt-0.5">
                   {i.type || 'Unknown type'}
-                  {i.status && <span className="ml-2 text-[#888]">[{i.status}]</span>}
+                  {i.status && <span className="ml-2 text-[#888]">[{humanizeStatus(i.status, 'incident')}]</span>}
                   {i.officer_name && <span className="ml-2 text-rmpg-500">· {i.officer_name}</span>}
                 </div>
                 {i.location && (

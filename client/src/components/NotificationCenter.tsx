@@ -11,6 +11,7 @@ import { Bell, Check, Trash2, Radio, Shield, AlertTriangle, Mail, Clock, MapPin,
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch } from '../hooks/useApi';
 import type { Notification, NotificationType } from '../types';
+import { toDisplayLabel } from '../utils/formatters';
 import { isNotificationSoundEnabled, playNotificationTone } from '../utils/notificationTones';
 
 // ============================================================
@@ -396,7 +397,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                           filterType === type ? 'text-brand-400 font-bold' : 'text-rmpg-300'
                         }`}
                       >
-                        {type === 'all' ? 'All Types' : type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                        {type === 'all' ? 'All Types' : toDisplayLabel(type)}
                       </button>
                     ))}
                   </div>
@@ -468,7 +469,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                     background: notification.is_read ? 'var(--surface-sunken)' : 'var(--surface-base)',
                     borderLeft: notification.is_read ? '2px solid transparent' : '2px solid #888888',
                   }}
-                  title={route ? `Click to go to ${notification.type.replace(/_/g, ' ')}` : undefined}
+                  title={route ? `Click to go to ${toDisplayLabel(notification.type)}` : undefined}
                 >
                   {/* Type Icon + LED */}
                   <div className="flex-shrink-0 flex items-center gap-1" style={{ marginTop: '2px' }}>
@@ -519,7 +520,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                         className="text-rmpg-500 uppercase"
                         style={{ fontSize: '8px', fontWeight: 700, letterSpacing: '0.5px' }}
                       >
-                        {notification.type.replace(/_/g, ' ')}
+                        {toDisplayLabel(notification.type)}
                       </span>
                     </div>
                   </div>
