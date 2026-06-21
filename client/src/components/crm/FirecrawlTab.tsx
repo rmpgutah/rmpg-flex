@@ -3010,7 +3010,7 @@ function DeepSearchPanel({ toolContext, setToolContext, switchTab }: PanelChainP
             className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
             placeholder="Enter a claim or question to verify..."
           />
-          <label htmlFor="ff-firecrawltab-29" className="flex items-center gap-1 text-[10px] text-rmpg-400 cursor-pointer select-none shrink-0">
+          <label className="flex items-center gap-1 text-[10px] text-rmpg-400 cursor-pointer select-none shrink-0">
             <input id="ff-firecrawltab-29"
               type="checkbox"
               checked={validate}
@@ -5150,11 +5150,11 @@ function HtmlToMdPanel() {
 
       {/* Options */}
       <div className="flex items-center gap-4">
-        <label htmlFor="ff-firecrawltab-55" className="flex items-center gap-1.5 cursor-pointer">
+        <label className="flex items-center gap-1.5 cursor-pointer">
           <input id="ff-firecrawltab-55" type="checkbox" checked={includeLinks} onChange={e => setIncludeLinks(e.target.checked)} className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/30 w-3 h-3" />
           <span className="text-[10px] text-rmpg-300">Include links</span>
         </label>
-        <label htmlFor="ff-firecrawltab-56" className="flex items-center gap-1.5 cursor-pointer">
+        <label className="flex items-center gap-1.5 cursor-pointer">
           <input id="ff-firecrawltab-56" type="checkbox" checked={includeImages} onChange={e => setIncludeImages(e.target.checked)} className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/30 w-3 h-3" />
           <span className="text-[10px] text-rmpg-300">Include images</span>
         </label>
@@ -5722,7 +5722,7 @@ function McpPanel() {
           </div>
         </div>
         <div className="flex items-center gap-3 pt-1">
-          <label htmlFor="ff-firecrawltab-61" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
             <input id="ff-firecrawltab-61"
               type="checkbox"
               checked={config.enabled}
@@ -6924,7 +6924,7 @@ function SlackPanel() {
           <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1.5">Notify On</div>
           <div className="flex flex-wrap gap-3">
             {(['scout_alert', 'brand_mention', 'observer_change', 'enrichment_complete'] as const).map(key => (
-              <label htmlFor="ff-firecrawltab-79" key={key} className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+              <label key={key} className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
                 <input id="ff-firecrawltab-79"
                   type="checkbox"
                   checked={config.notify_on[key]}
@@ -7067,7 +7067,7 @@ function DiscordPanel() {
           <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1.5">Notify On</div>
           <div className="flex flex-wrap gap-3">
             {(['scout_alert', 'brand_mention', 'observer_change', 'enrichment_complete'] as const).map(key => (
-              <label htmlFor="ff-firecrawltab-81" key={key} className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+              <label key={key} className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
                 <input id="ff-firecrawltab-81"
                   type="checkbox"
                   checked={config.notify_on[key]}
@@ -7300,7 +7300,7 @@ function AgentsPanel() {
             <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Tools</div>
             <div className="flex gap-3">
               {['scrape', 'search', 'extract'].map(tool => (
-                <label htmlFor="ff-firecrawltab-85" key={tool} className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+                <label key={tool} className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
                   <input id="ff-firecrawltab-85"
                     type="checkbox"
                     checked={formTools.has(tool)}
@@ -7678,7 +7678,7 @@ function JobMatchPanel() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <label htmlFor="ff-firecrawltab-93" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
             <input id="ff-firecrawltab-93"
               type="checkbox" checked={remote} onChange={e => setRemote(e.target.checked)}
               className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/50"
@@ -8039,19 +8039,19 @@ function ApiConsolePanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="text-[10px] text-rmpg-400 font-medium mb-1">Format Options</div>
           <div className="flex items-center gap-4">
-            <label htmlFor="ff-firecrawltab-96" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+            <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
               <input id="ff-firecrawltab-96" type="checkbox" checked={fmtMarkdown} onChange={e => setFmtMarkdown(e.target.checked)} className="w-3 h-3 rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/30" />
               Markdown
             </label>
-            <label htmlFor="ff-firecrawltab-97" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+            <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
               <input id="ff-firecrawltab-97" type="checkbox" checked={fmtHtml} onChange={e => setFmtHtml(e.target.checked)} className="w-3 h-3 rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/30" />
               HTML
             </label>
-            <label htmlFor="ff-firecrawltab-98" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+            <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
               <input id="ff-firecrawltab-98" type="checkbox" checked={fmtLinks} onChange={e => setFmtLinks(e.target.checked)} className="w-3 h-3 rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/30" />
               Links
             </label>
-            <label htmlFor="ff-firecrawltab-99" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+            <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
               <input id="ff-firecrawltab-99" type="checkbox" checked={mainContent} onChange={e => setMainContent(e.target.checked)} className="w-3 h-3 rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/30" />
               Main Content Only
             </label>
@@ -10049,19 +10049,19 @@ function PdfToolsPanel() {
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
         <div className="text-[10px] text-rmpg-400 font-medium mb-1">Operations</div>
         <div className="flex items-center gap-4 flex-wrap">
-          <label htmlFor="ff-firecrawltab-131" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
             <input id="ff-firecrawltab-131" type="checkbox" checked={opExtractText} onChange={e => setOpExtractText(e.target.checked)} className="w-3 h-3 rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/30" />
             Extract Text
           </label>
-          <label htmlFor="ff-firecrawltab-132" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
             <input id="ff-firecrawltab-132" type="checkbox" checked={opCountPages} onChange={e => setOpCountPages(e.target.checked)} className="w-3 h-3 rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/30" />
             Count Pages
           </label>
-          <label htmlFor="ff-firecrawltab-133" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
             <input id="ff-firecrawltab-133" type="checkbox" checked={opExtractLinks} onChange={e => setOpExtractLinks(e.target.checked)} className="w-3 h-3 rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/30" />
             Extract Links
           </label>
-          <label htmlFor="ff-firecrawltab-134" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
             <input id="ff-firecrawltab-134" type="checkbox" checked={opGetMetadata} onChange={e => setOpGetMetadata(e.target.checked)} className="w-3 h-3 rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/30" />
             Get Metadata
           </label>
@@ -10324,7 +10324,7 @@ function AssistantPanel() {
           />
         </div>
         <div className="flex items-center gap-4">
-          <label htmlFor="ff-firecrawltab-138" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
             <input id="ff-firecrawltab-138" type="checkbox" checked={searchWeb} onChange={e => setSearchWeb(e.target.checked)} className="w-3 h-3 rounded-sm border-rmpg-600 bg-rmpg-800 text-orange-500 focus:ring-orange-500/30" />
             Search Web
           </label>

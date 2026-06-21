@@ -175,12 +175,22 @@ billing.put('/invoices/:id', async (c) => {
         return c.json({ error: `invalid status: ${s}`, valid: Array.from(VALID_INVOICE_STATUSES) }, 400);
       }
       if (s === 'paid') {
-        // Reject status='paid' unless paid_amount >= total_amount.
+        // Reject status='paid' unless paid_amount >= total_amount —
+        // admin can pass ?force=true to override (e.g. invoice paid
+        // off-platform, will record payments later). Override is
+        // audit-logged as invoice_marked_paid_admin.
         const inv = await queryFirst<{ paid_amount: number | null; total_amount: number | null }>(
           db, 'SELECT paid_amount, total_amount FROM invoices WHERE id = ?', id);
         const paid = Number(inv?.paid_amount || 0);
         const total = Number(inv?.total_amount || 0);
-        if (paid < total) return c.json({ error: `Cannot mark paid: ${paid} of ${total} received` }, 409);
+        const actorRole = (c.get('user') as { role?: string } | undefined)?.role;
+        const force = c.req.query('force') === 'true' && actorRole === 'admin';
+        if (paid < total && !force) {
+          return c.json({
+            error: `Cannot mark paid: ${paid} of ${total} received`,
+            canOverride: actorRole === 'admin',
+          }, 409);
+        }
       }
     }
 
@@ -423,13 +433,12 @@ billing.put('/expenses/:id', async (c) => {
     const id = parseInt(c.req.param('id'), 10);
     const b = await c.req.json<Record<string, unknown>>();
 
-    // Fraud surface caught by the 2026-06-21 audit: this route used
-    // to accept `approved_by` and `approved_at` directly from the body
-    // with no check that the actor wasn't approving their OWN expense.
-    // Also let `amount`/`category` be raised AFTER the fake approval
-    // landed. Three fixes below: strip approver-stamp fields from the
-    // updatable set; block self-approval; lock financial fields once
-    // the row has been approved/paid/reimbursed.
+    // Fraud surface caught by the 2026-06-21 audit + softened
+    // 2026-06-22 follow-up: a non-admin manager can never approve
+    // their OWN expense (the segregation-of-duties wall stays). But
+    // an ADMIN — the operator-owner — can self-approve and edit
+    // post-lock fields. Every admin self-approval is tagged loudly
+    // in audit_log so it shows up on any SOX review.
 
     const existing = await queryFirst<{ submitter_id: number; status: string | null; amount: number; category: string | null }>(
       db, 'SELECT submitter_id, status, amount, category FROM expense_reports WHERE id = ?', id);
@@ -439,22 +448,25 @@ billing.put('/expenses/:id', async (c) => {
     // they're stamped server-side from the JWT below.
     const updatable = new Set(['category','description','amount','expense_date','receipt_url','status','notes']);
 
-    // Self-approval block. An admin/manager can approve OTHERS' expenses
-    // — never their own. This applies whether status is being set
-    // directly to 'approved' or to any other downstream locked status.
+    // Self-approval rule:
+    //   • manager/contract_manager approving their OWN expense → 403
+    //   • admin self-approving → allowed, but tagged in audit_log
     const newStatus = typeof b.status === 'string' ? b.status : undefined;
-    if (newStatus && EXPENSE_LOCKED_STATUSES.has(newStatus) && existing.submitter_id === userId) {
-      return c.json({ error: 'Cannot approve your own expense report' }, 403);
+    const actorRole = (c.get('user') as { role?: string } | undefined)?.role;
+    const isAdmin = actorRole === 'admin';
+    const isSelfApproval = newStatus && EXPENSE_LOCKED_STATUSES.has(newStatus) && existing.submitter_id === userId;
+    if (isSelfApproval && !isAdmin) {
+      return c.json({ error: 'Cannot approve your own expense report (admin override required)' }, 403);
     }
 
-    // Once locked, financial fields freeze. Status can still move
-    // forward (e.g. approved → paid) but amount/category/expense_date
-    // do not. The audit log captures the post-lock transitions.
+    // Post-lock financial-field freeze. Non-admin gets 409; admin can
+    // edit anyway (with audit_log entry). The frozen workflow exists
+    // for non-admin actors only.
     const isLocked = EXPENSE_LOCKED_STATUSES.has(existing.status || '');
-    if (isLocked) {
+    if (isLocked && !isAdmin) {
       const lockedFields = ['amount','category','expense_date'];
       for (const f of lockedFields) {
-        if (f in b) return c.json({ error: `Cannot modify ${f} on a ${existing.status} expense` }, 409);
+        if (f in b) return c.json({ error: `Cannot modify ${f} on a ${existing.status} expense (admin override required)` }, 409);
       }
     }
 
@@ -483,14 +495,19 @@ billing.put('/expenses/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM expense_reports WHERE id = ?', id);
 
     try {
-      const action = newStatus && EXPENSE_LOCKED_STATUSES.has(newStatus) && !isLocked
-        ? 'expense_approved'
-        : 'expense_updated';
+      let action: string;
+      if (newStatus && EXPENSE_LOCKED_STATUSES.has(newStatus) && !isLocked) {
+        action = isSelfApproval ? 'expense_self_approved_admin' : 'expense_approved';
+      } else if (isLocked && isAdmin) {
+        action = 'expense_locked_edited_admin';
+      } else {
+        action = 'expense_updated';
+      }
       await recordAudit(c, {
         action,
         entityType: 'expense_report',
         entityId: id,
-        details: `status=${newStatus ?? existing.status}; changed=${Object.keys(b).join(',')}`,
+        details: `status=${newStatus ?? existing.status}; changed=${Object.keys(b).join(',')}${isSelfApproval ? ' [SELF-APPROVAL]' : ''}${isLocked && isAdmin ? ' [POST-LOCK ADMIN EDIT]' : ''}`,
         actorId: userId,
       });
     } catch { /* best-effort */ }

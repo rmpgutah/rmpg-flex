@@ -196,7 +196,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
     label: string; value: number | string; onChange: (v: any) => void;
     type?: string; step?: string; min?: string; max?: string; suffix?: string;
   }) => (
-    <label htmlFor="ff-adminmapsettingstab-0" className="flex items-center gap-2 text-[10px] text-rmpg-400">
+    <label className="flex items-center gap-2 text-[10px] text-rmpg-400">
       <span className="w-28 shrink-0">{label}</span>
       <div className="flex items-center gap-1">
         <input id="ff-adminmapsettingstab-0"
@@ -506,7 +506,7 @@ function CheckMini(props: React.SVGProps<SVGSVGElement>) {
 
 function ColorInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
-    <label htmlFor="ff-adminmapsettingstab-6" className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
+    <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
       <span className="w-14 shrink-0">{label}</span>
       <input id="ff-adminmapsettingstab-6" type="color" value={value} onChange={e => onChange(e.target.value)}
         className="w-6 h-6 p-0 border border-border-subtle bg-transparent cursor-pointer rounded-sm"
@@ -520,7 +520,7 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
 
 function OpacitySlider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
-    <label htmlFor="ff-adminmapsettingstab-8" className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
+    <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
       <span className="w-[72px] shrink-0">{label}</span>
       <input id="ff-adminmapsettingstab-8" type="range" min="0" max="1" step="0.01" value={value}
         onChange={e => onChange(parseFloat(e.target.value))}

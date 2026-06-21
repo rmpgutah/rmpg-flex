@@ -200,7 +200,7 @@ export default function AdminEmailRulesTab() {
             onChange={e => setEditing({ ...editing, actions_json: e.target.value })}
             className="w-full bg-black text-rmpg-100 px-2 py-1 h-20 font-mono text-xs"
           />
-          <label htmlFor="ff-adminemailrulestab-2" className="flex items-center gap-2 text-xs">
+          <label className="flex items-center gap-2 text-xs">
             <input id="ff-adminemailrulestab-2"
               type="checkbox"
               checked={!!editing.enabled}

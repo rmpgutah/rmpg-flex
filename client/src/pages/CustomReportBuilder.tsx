@@ -227,7 +227,7 @@ export default function CustomReportBuilder() {
             </div>
             <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-2`}>
               {availableCols.map(col => (
-                <label htmlFor="ff-customreportbuilder-0" key={col} className="flex items-center gap-2 panel-surface p-2 cursor-pointer hover:border-brand-500/50 transition-colors">
+                <label key={col} className="flex items-center gap-2 panel-surface p-2 cursor-pointer hover:border-brand-500/50 transition-colors">
                   <input id="ff-customreportbuilder-0"
                     type="checkbox"
                     checked={selectedCols.includes(col)}

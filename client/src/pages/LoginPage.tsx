@@ -672,7 +672,7 @@ export default function LoginPage() {
                 </button>
 
                 {/* Trust this device checkbox */}
-                <label htmlFor="ff-loginpage-0" className="flex items-center gap-2 cursor-pointer select-none py-1 group min-h-[44px]">
+                <label className="flex items-center gap-2 cursor-pointer select-none py-1 group min-h-[44px]">
                   <input id="ff-loginpage-0"
                     type="checkbox"
                     checked={trustThisDevice}

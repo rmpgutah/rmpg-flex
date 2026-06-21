@@ -444,7 +444,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
             />
           </div>
           <div className="flex items-center justify-between">
-            <label htmlFor="ff-clientpersonlinkssection-4" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+            <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
               <input id="ff-clientpersonlinkssection-4"
                 type="checkbox"
                 checked={isPrimary}

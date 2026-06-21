@@ -34,7 +34,7 @@ export default function PreferencesDialog({ open, prefs, onChange, onClose }: Pr
           </div>
 
           <div>
-            <label htmlFor="ff-preferencesdialog-1" className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
+            <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
               <input id="ff-preferencesdialog-1" type="checkbox" checked={prefs.snapToGrid}
                 onChange={(e) => onChange({ ...prefs, snapToGrid: e.target.checked })} />
               Snap drawing to grid
@@ -51,7 +51,7 @@ export default function PreferencesDialog({ open, prefs, onChange, onClose }: Pr
           )}
 
           <div>
-            <label htmlFor="ff-preferencesdialog-3" className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
+            <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
               <input id="ff-preferencesdialog-3" type="checkbox" checked={prefs.autoSaveDrafts}
                 onChange={(e) => onChange({ ...prefs, autoSaveDrafts: e.target.checked })} />
               Auto-save drafts to local storage
@@ -59,7 +59,7 @@ export default function PreferencesDialog({ open, prefs, onChange, onClose }: Pr
           </div>
 
           <div>
-            <label htmlFor="ff-preferencesdialog-4" className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
+            <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
               <input id="ff-preferencesdialog-4" type="checkbox" checked={prefs.showAnnotationsPanel}
                 onChange={(e) => onChange({ ...prefs, showAnnotationsPanel: e.target.checked })} />
               Show Annotations panel by default

@@ -866,17 +866,17 @@ function SearchFilterPanel({
       </div>
 
       <div className="flex items-center gap-3">
-        <label htmlFor="ff-emailpage-8" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+        <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
           <input id="ff-emailpage-8" type="checkbox" checked={local.hasAttachments} onChange={e => setLocal(prev => ({ ...prev, hasAttachments: e.target.checked }))}
             className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Paperclip className="w-3 h-3 text-rmpg-500" /> Has attachments
         </label>
-        <label htmlFor="ff-emailpage-9" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+        <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
           <input id="ff-emailpage-9" type="checkbox" checked={local.isFlagged} onChange={e => setLocal(prev => ({ ...prev, isFlagged: e.target.checked }))}
             className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Flag className="w-3 h-3 text-rmpg-500" /> Flagged
         </label>
-        <label htmlFor="ff-emailpage-10" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+        <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
           <input id="ff-emailpage-10" type="checkbox" checked={local.unreadOnly} onChange={e => setLocal(prev => ({ ...prev, unreadOnly: e.target.checked }))}
             className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Mail className="w-3 h-3 text-rmpg-500" /> Unread only

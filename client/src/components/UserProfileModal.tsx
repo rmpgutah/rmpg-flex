@@ -915,7 +915,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         <div key={key} className="flex items-center justify-between">
                           <span className="text-[11px] text-rmpg-200">{label}</span>
                           <div className="flex items-center gap-3">
-                            <label htmlFor="ff-userprofilemodal-8" className="flex items-center gap-1 cursor-pointer">
+                            <label className="flex items-center gap-1 cursor-pointer">
                               <input id="ff-userprofilemodal-8"
                                 type="checkbox"
                                 checked={!!prefs[`notify_${key}_inapp`]}
@@ -924,7 +924,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                               />
                               <span className="text-[9px] text-rmpg-500">In-App</span>
                             </label>
-                            <label htmlFor="ff-userprofilemodal-9" className="flex items-center gap-1 cursor-pointer">
+                            <label className="flex items-center gap-1 cursor-pointer">
                               <input id="ff-userprofilemodal-9"
                                 type="checkbox"
                                 checked={!!prefs[`notify_${key}_email`]}
@@ -941,7 +941,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
                   {/* Feature 23: Notification sound toggle */}
                   <div className="mt-3" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '8px 10px' }}>
-                    <label htmlFor="ff-userprofilemodal-10" className="flex items-center justify-between cursor-pointer">
+                    <label className="flex items-center justify-between cursor-pointer">
                       <span className="text-[11px] text-rmpg-200">Enable Notification Sounds</span>
                       <div className="flex items-center gap-2">
                         <input id="ff-userprofilemodal-10"

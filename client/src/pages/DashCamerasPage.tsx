@@ -232,12 +232,15 @@ export default function DashCamerasPage() {
   // Same reordering as BodyCamerasPage — clear modal state + report
   // success BEFORE the refresh, so a refresh failure surfaces as a
   // non-blocking info toast, not a false "Failed to delete".
-  const confirmDelete = async () => {
+  const confirmDelete = async (opts?: { force?: boolean }) => {
     if (!videoToDelete) return;
     const vidId = videoToDelete.id;
     setDeleting(true);
+    const path = opts?.force
+      ? `/fleet/dashcam-videos/${vidId}?force=true`
+      : `/fleet/dashcam-videos/${vidId}`;
     try {
-      await apiFetch(`/fleet/dashcam-videos/${vidId}`, { method: 'DELETE' });
+      await apiFetch(path, { method: 'DELETE' });
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete video', 'error');
       setDeleting(false);
@@ -246,7 +249,7 @@ export default function DashCamerasPage() {
     if (selectedVideo?.id === vidId) setSelectedVideo(null);
     setVideoToDelete(null);
     setDeleting(false);
-    addToast('Video deleted', 'success');
+    addToast(opts?.force ? 'Video destroyed (admin override)' : 'Video deleted', 'success');
     try { await fetchVideos(); }
     catch { addToast('Video list could not refresh — pull-to-refresh to retry', 'info'); }
   };

@@ -1079,90 +1079,90 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           <div>
             <label htmlFor="ff-newcallmodal-57" className="block text-xs font-semibold text-rmpg-300 uppercase mb-2">Flags</label>
             <div className="flex flex-wrap gap-4">
-              <label htmlFor="ff-newcallmodal-35" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-35" type="checkbox" checked={formData.injuries_reported as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, injuries_reported: e.target.checked }))} className="accent-red-500" />
                 Injuries Reported
               </label>
-              <label htmlFor="ff-newcallmodal-36" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-36" type="checkbox" checked={formData.alcohol_involved as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, alcohol_involved: e.target.checked }))} className="accent-amber-500" />
                 Alcohol Involved
               </label>
-              <label htmlFor="ff-newcallmodal-37" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-37" type="checkbox" checked={formData.drugs_involved as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, drugs_involved: e.target.checked }))} className="accent-red-500" />
                 Drugs Involved
               </label>
-              <label htmlFor="ff-newcallmodal-38" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-38" type="checkbox" checked={formData.domestic_violence as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, domestic_violence: e.target.checked }))} className="accent-red-500" />
                 Domestic Violence
               </label>
-              <label htmlFor="ff-newcallmodal-39" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-39" type="checkbox" checked={formData.supervisor_notified as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, supervisor_notified: e.target.checked }))} className="accent-brand-500" />
                 Supervisor Notified
               </label>
-              <label htmlFor="ff-newcallmodal-40" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-40" type="checkbox" checked={formData.le_notified as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, le_notified: e.target.checked }))} className="accent-brand-500" />
                 LE Notified
               </label>
             </div>
             {/* Extended Operational Flags */}
             <div className="flex flex-wrap gap-4 mt-2 pt-2 border-t border-rmpg-700/50">
-              <label htmlFor="ff-newcallmodal-41" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-41" type="checkbox" checked={formData.mental_health_crisis as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, mental_health_crisis: e.target.checked }))} className="accent-amber-500" />
                 Mental Health Crisis
               </label>
-              <label htmlFor="ff-newcallmodal-42" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-42" type="checkbox" checked={formData.juvenile_involved as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, juvenile_involved: e.target.checked }))} className="accent-amber-500" />
                 Juvenile Involved
               </label>
-              <label htmlFor="ff-newcallmodal-43" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-43" type="checkbox" checked={formData.felony_in_progress as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, felony_in_progress: e.target.checked }))} className="accent-red-500" />
                 Felony in Progress
               </label>
-              <label htmlFor="ff-newcallmodal-44" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-44" type="checkbox" checked={formData.officer_safety_caution as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, officer_safety_caution: e.target.checked }))} className="accent-red-500" />
                 Officer Safety Caution
               </label>
-              <label htmlFor="ff-newcallmodal-45" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-45" type="checkbox" checked={formData.k9_requested as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, k9_requested: e.target.checked }))} className="accent-brand-500" />
                 K9 Requested
               </label>
-              <label htmlFor="ff-newcallmodal-46" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-46" type="checkbox" checked={formData.ems_requested as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, ems_requested: e.target.checked }))} className="accent-brand-500" />
                 EMS Requested
               </label>
-              <label htmlFor="ff-newcallmodal-47" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-47" type="checkbox" checked={formData.fire_requested as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, fire_requested: e.target.checked }))} className="accent-brand-500" />
                 Fire Requested
               </label>
-              <label htmlFor="ff-newcallmodal-48" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-48" type="checkbox" checked={formData.hazmat as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, hazmat: e.target.checked }))} className="accent-red-500" />
                 HAZMAT
               </label>
-              <label htmlFor="ff-newcallmodal-49" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-49" type="checkbox" checked={formData.gang_related as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, gang_related: e.target.checked }))} className="accent-red-500" />
                 Gang Related
               </label>
-              <label htmlFor="ff-newcallmodal-50" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-50" type="checkbox" checked={formData.evidence_collected as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, evidence_collected: e.target.checked }))} className="accent-green-500" />
                 Evidence Collected
               </label>
-              <label htmlFor="ff-newcallmodal-51" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-51" type="checkbox" checked={formData.body_camera_active as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, body_camera_active: e.target.checked }))} className="accent-green-500" />
                 Body Camera Active
               </label>
-              <label htmlFor="ff-newcallmodal-52" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-52" type="checkbox" checked={formData.photos_taken as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, photos_taken: e.target.checked }))} className="accent-green-500" />
                 Photos Taken
               </label>
-              <label htmlFor="ff-newcallmodal-53" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-53" type="checkbox" checked={formData.trespass_issued as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, trespass_issued: e.target.checked }))} className="accent-amber-500" />
                 Trespass Issued
               </label>
-              <label htmlFor="ff-newcallmodal-54" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-54" type="checkbox" checked={formData.vehicle_pursuit as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, vehicle_pursuit: e.target.checked }))} className="accent-red-500" />
                 Vehicle Pursuit
               </label>
-              <label htmlFor="ff-newcallmodal-55" className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-55" type="checkbox" checked={formData.foot_pursuit as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, foot_pursuit: e.target.checked }))} className="accent-red-500" />
                 Foot Pursuit
               </label>
@@ -1202,7 +1202,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
           {/* Historical Entry Toggle */}
           <div className="border border-rmpg-600 p-3" style={{ background: formData.is_historical ? 'var(--surface-raised)' : 'transparent' }}>
-            <label htmlFor="ff-newcallmodal-60" className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input id="ff-newcallmodal-60"
                 type="checkbox"
                 checked={formData.is_historical as boolean}

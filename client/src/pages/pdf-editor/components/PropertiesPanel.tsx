@@ -116,7 +116,7 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
         </>
       )}
       {(ann.type === 'text' || ann.type === 'highlight') && (
-        <label htmlFor="ff-propertiespanel-border" className="flex items-center gap-2 text-[10px] text-rmpg-300 pt-1">
+        <label className="flex items-center gap-2 text-[10px] text-rmpg-300 pt-1">
           <input id="ff-propertiespanel-border" type="checkbox" checked={ann.showBorder ?? false} onChange={e => onChange({ ...ann, showBorder: e.target.checked })} />
           Show border around box
         </label>
@@ -181,7 +181,7 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
               <input id="ff-propertiespanel-ff1" value={ann.defaultValue ?? ''} onChange={e => onChange({ ...ann, defaultValue: e.target.value })} placeholder="(empty)" className={inputCls} />
             </>
           ) : (
-            <label htmlFor="ff-propertiespanel-ff2" className="flex items-center gap-2 text-[10px] text-rmpg-300 pt-1">
+            <label className="flex items-center gap-2 text-[10px] text-rmpg-300 pt-1">
               <input id="ff-propertiespanel-ff2" type="checkbox" checked={ann.defaultChecked ?? false} onChange={e => onChange({ ...ann, defaultChecked: e.target.checked })} />
               Checked by default
             </label>
@@ -328,7 +328,7 @@ function BatesEditor({ bates, onChange }: { bates: BatesConfig | null; onChange:
   const cfg: BatesConfig = bates ?? { prefix: 'RMPG-2026-', startNumber: 1, padding: 5, position: 'br', fontSize: 9 };
   return (
     <>
-      <label htmlFor="ff-propertiespanel-6" className="flex items-center gap-2 text-[10px] text-rmpg-300">
+      <label className="flex items-center gap-2 text-[10px] text-rmpg-300">
         <input id="ff-propertiespanel-6" type="checkbox" checked={enabled} onChange={e => onChange(e.target.checked ? cfg : null)} />
         Enable Bates numbering
       </label>
@@ -356,7 +356,7 @@ function WatermarkEditor({ wm, onChange }: { wm: WatermarkConfig | null; onChang
   const cfg: WatermarkConfig = wm ?? { text: 'CONFIDENTIAL', opacity: 0.18, fontSize: 96, rotation: 45 };
   return (
     <>
-      <label htmlFor="ff-propertiespanel-11" className="flex items-center gap-2 text-[10px] text-rmpg-300">
+      <label className="flex items-center gap-2 text-[10px] text-rmpg-300">
         <input id="ff-propertiespanel-11" type="checkbox" checked={enabled} onChange={e => onChange(e.target.checked ? cfg : null)} />
         Enable watermark
       </label>
@@ -381,7 +381,7 @@ function WatermarkEditor({ wm, onChange }: { wm: WatermarkConfig | null; onChang
               <button type="button" onClick={() => onChange({ ...wm, imageData: undefined })} className="text-[10px] text-red-300 hover:text-red-200">Remove</button>
             </div>
           ) : (
-            <label htmlFor="ff-propertiespanel-pn1" className="block text-[10px] text-rmpg-400 border border-border-default rounded-sm px-2 py-1 cursor-pointer hover:text-rmpg-100 text-center">
+            <label className="block text-[10px] text-rmpg-400 border border-border-default rounded-sm px-2 py-1 cursor-pointer hover:text-rmpg-100 text-center">
               Choose image…
               <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={e => {
                 const f = e.target.files?.[0]; e.target.value = '';
@@ -403,7 +403,7 @@ function PageNumbersEditor({ cfg, onChange }: { cfg: PageNumbersConfig | null; o
   const current: PageNumbersConfig = cfg ?? { position: 'bc', fontSize: 9, format: 'Page {n} of {total}' };
   return (
     <>
-      <label htmlFor="ff-propertiespanel-pn0" className="flex items-center gap-2 text-[10px] text-rmpg-300">
+      <label className="flex items-center gap-2 text-[10px] text-rmpg-300">
         <input id="ff-propertiespanel-pn0" type="checkbox" checked={enabled} onChange={e => onChange(e.target.checked ? current : null)} />
         Stamp “Page N of M” footer
       </label>

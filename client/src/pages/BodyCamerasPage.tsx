@@ -174,12 +174,15 @@ export default function BodyCamerasPage() {
   // row that IS gone, modal kept the just-deleted video on screen).
   // Now the delete result is reported truthfully even when refresh
   // fails; refresh failure surfaces as a non-blocking info toast.
-  const confirmCameraDelete = async () => {
+  const confirmCameraDelete = async (opts?: { force?: boolean }) => {
     if (!cameraToDelete) return;
     const camId = cameraToDelete.id;
     setDeleting(true);
+    const path = opts?.force
+      ? `/personnel/body-cameras/${camId}?force=true`
+      : `/personnel/body-cameras/${camId}`;
     try {
-      await apiFetch(`/personnel/body-cameras/${camId}`, { method: 'DELETE' });
+      await apiFetch(path, { method: 'DELETE' });
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete body camera', 'error');
       setDeleting(false);
@@ -187,17 +190,20 @@ export default function BodyCamerasPage() {
     }
     setCameraToDelete(null);
     setDeleting(false);
-    addToast('Body camera deleted', 'success');
+    addToast(opts?.force ? 'Body camera destroyed (admin override)' : 'Body camera deleted', 'success');
     try { await refreshBodyCameras(); }
     catch { addToast('Camera list could not refresh — pull-to-refresh to retry', 'info'); }
   };
 
-  const confirmVideoDelete = async () => {
+  const confirmVideoDelete = async (opts?: { force?: boolean }) => {
     if (!videoToDelete) return;
     const vidId = videoToDelete.id;
     setDeleting(true);
+    const path = opts?.force
+      ? `/personnel/bodycam-videos/${vidId}?force=true`
+      : `/personnel/bodycam-videos/${vidId}`;
     try {
-      await apiFetch(`/personnel/bodycam-videos/${vidId}`, { method: 'DELETE' });
+      await apiFetch(path, { method: 'DELETE' });
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete video', 'error');
       setDeleting(false);
@@ -205,7 +211,7 @@ export default function BodyCamerasPage() {
     }
     setVideoToDelete(null);
     setDeleting(false);
-    addToast('Video deleted', 'success');
+    addToast(opts?.force ? 'Video destroyed (admin override)' : 'Video deleted', 'success');
     try { await refreshBodyCameras(); }
     catch { addToast('Video list could not refresh — pull-to-refresh to retry', 'info'); }
   };

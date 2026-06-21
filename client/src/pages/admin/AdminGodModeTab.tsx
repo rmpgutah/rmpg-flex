@@ -483,7 +483,7 @@ export default function AdminGodModeTab() {
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-rmpg-500">Target:</span>
             {['officer', 'dispatcher', 'supervisor', 'manager'].map(role => (
-              <label htmlFor="ff-admingodmodetab-2" key={role} className="flex items-center gap-1 text-[10px] text-rmpg-400">
+              <label key={role} className="flex items-center gap-1 text-[10px] text-rmpg-400">
                 <input id="ff-admingodmodetab-2"
                   type="checkbox"
                   checked={broadcastRoles.includes(role)}
@@ -720,7 +720,7 @@ export default function AdminGodModeTab() {
               placeholder="Lockdown message..."
               className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500"
             />
-            <label htmlFor="ff-admingodmodetab-8" className="flex items-center gap-2 text-[10px] text-rmpg-400">
+            <label className="flex items-center gap-2 text-[10px] text-rmpg-400">
               <input id="ff-admingodmodetab-8"
                 type="checkbox"
                 checked={lockdownKickSessions}

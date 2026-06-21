@@ -140,7 +140,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
             className="flex-1 max-w-xs"
           />
         </div>
-        <label htmlFor="ff-aiproviderspanel-0" className="flex items-center gap-2 cursor-pointer">
+        <label className="flex items-center gap-2 cursor-pointer">
           <input id="ff-aiproviderspanel-0"
             type="checkbox"
             checked={config.autoFallback}

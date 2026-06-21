@@ -532,7 +532,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
               <label className="field-label mb-1 block">
                 File {!isEdit && '*'}
               </label>
-              <label htmlFor="ff-trainingdocspage-3" className="flex items-center gap-2 p-3 border border-dashed border-rmpg-600 bg-rmpg-900/30 cursor-pointer hover:border-brand-500/50 transition-colors">
+              <label className="flex items-center gap-2 p-3 border border-dashed border-rmpg-600 bg-rmpg-900/30 cursor-pointer hover:border-brand-500/50 transition-colors">
                 <Upload className="w-4 h-4 text-rmpg-400" />
                 <span className="text-[11px] text-rmpg-400">
                   {file ? file.name : (doc?.file_name || 'Click to select file...')}
@@ -562,7 +562,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
 
           {/* Toggles */}
           <div className="flex items-center gap-4">
-            <label htmlFor="ff-trainingdocspage-5" className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input id="ff-trainingdocspage-5"
                 type="checkbox"
                 checked={isRequired}
@@ -571,7 +571,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
               />
               <span className="text-[11px] text-rmpg-300">Required Reading</span>
             </label>
-            <label htmlFor="ff-trainingdocspage-6" className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input id="ff-trainingdocspage-6"
                 type="checkbox"
                 checked={published}

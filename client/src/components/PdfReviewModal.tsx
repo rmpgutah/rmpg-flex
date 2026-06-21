@@ -269,7 +269,7 @@ function LabeledEditor<T extends Record<string, any>>({
   const value = String(field.accessor(data) ?? '');
   const disabled = field.editable === false;
   return (
-    <label htmlFor="ff-pdfreviewmodal-0" className="block mb-2 text-xs">
+    <label className="block mb-2 text-xs">
       <span className="block text-rmpg-400 uppercase mb-1">
         {field.label}
         {disabled && field.readOnlyReason && (
@@ -296,7 +296,7 @@ function CheckboxEditor<T extends Record<string, any>>({
   const checked = Boolean(field.accessor(data));
   const disabled = field.editable === false;
   return (
-    <label htmlFor="ff-pdfreviewmodal-1" className="flex items-center gap-2 mb-2 text-xs">
+    <label className="flex items-center gap-2 mb-2 text-xs">
       <input id="ff-pdfreviewmodal-1"
         type="checkbox"
         aria-label={field.label}
@@ -323,7 +323,7 @@ function NarrativeEditor<T extends Record<string, any>>({
   const value = String(field.accessor(data) ?? '');
   const disabled = field.editable === false;
   return (
-    <label htmlFor="ff-pdfreviewmodal-2" className="block mb-2 text-xs">
+    <label className="block mb-2 text-xs">
       <span className="block text-rmpg-400 uppercase mb-1">
         {field.label}
         {disabled && field.readOnlyReason && (

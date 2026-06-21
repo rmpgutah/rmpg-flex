@@ -869,7 +869,7 @@ export default function ConnectionsPage() {
         >
           <div className="text-[#d4a017] text-xs uppercase font-semibold mb-2">Filter by Type</div>
           {availableTypes.map(t => (
-            <label htmlFor="ff-connectionspage-1"
+            <label
               key={t}
               className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer hover:text-[#d4a017]"
             >
@@ -978,7 +978,7 @@ export default function ConnectionsPage() {
           >
             <h2 className="text-[#d4a017] text-sm uppercase font-semibold">Save Investigation</h2>
 
-            <label htmlFor="ff-connectionspage-2" className="block text-xs text-rmpg-300">
+            <label className="block text-xs text-rmpg-300">
               Name
               <input id="ff-connectionspage-2"
                 type="text"

@@ -821,13 +821,19 @@ fleet.delete('/dashcam-videos/:id{[0-9]+}', requireRole('admin', 'manager'), asy
     );
     if (!existing) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
 
-    // Server-side evidence-lock — see commentary in bodyCameras.ts:507.
-    // The v1009 client guard was bypassable with one curl DELETE; this
-    // makes the hold-list authoritative on the server.
-    if (isEvidenceLocked(existing.retention_status)) {
+    // Server-side evidence-lock with admin override. See bodyCameras.ts
+    // for the matching pattern. Non-admin (manager only on this route)
+    // still gets 409; admin can pass ?force=true with audit_log entry.
+    const user = c.get('user') as { role?: string; id?: number } | undefined;
+    const force = c.req.query('force') === 'true';
+    const canForce = force && user?.role === 'admin';
+    const locked = isEvidenceLocked(existing.retention_status);
+    if (locked && !canForce) {
       return c.json({
         error: 'Video under hold',
-        detail: `Retention status "${existing.retention_status}" indicates an active hold. Release the hold before deleting.`,
+        detail: `Retention status "${existing.retention_status}" indicates an active hold. Release the hold before deleting, OR pass ?force=true as admin.`,
+        canOverride: user?.role === 'admin',
+        retention_status: existing.retention_status,
       }, 409);
     }
 
@@ -841,10 +847,12 @@ fleet.delete('/dashcam-videos/:id{[0-9]+}', requireRole('admin', 'manager'), asy
 
     try {
       await recordAudit(c, {
-        action: 'dashcam_video_deleted',
+        action: locked && canForce ? 'dashcam_video_force_deleted' : 'dashcam_video_deleted',
         entityType: 'dashcam_video',
         entityId: id,
-        details: `Classification=${existing.classification ?? 'n/a'}; case=${existing.case_number ?? 'n/a'}; retention=${existing.retention_status ?? 'n/a'}`,
+        details: locked && canForce
+          ? `ADMIN OVERRIDE: held video destroyed (retention=${existing.retention_status}; classification=${existing.classification ?? 'n/a'}; case=${existing.case_number ?? 'n/a'})`
+          : `Classification=${existing.classification ?? 'n/a'}; case=${existing.case_number ?? 'n/a'}; retention=${existing.retention_status ?? 'n/a'}`,
       });
     } catch { /* best-effort audit */ }
 

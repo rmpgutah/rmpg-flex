@@ -1693,7 +1693,7 @@ export default function FleetPage() {
                 { key: 'interior_ok', label: 'Interior Condition' },
                 { key: 'emergency_equipment_ok', label: 'Emergency Equipment' },
               ].map(item => (
-                <label htmlFor="ff-fleetpage-2" key={item.key} className="flex items-center gap-3 p-2 min-h-[44px] bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
+                <label key={item.key} className="flex items-center gap-3 p-2 min-h-[44px] bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
                   <input id="ff-fleetpage-2"
                     type="checkbox"
                     checked={(pretripForm as any)[item.key]}

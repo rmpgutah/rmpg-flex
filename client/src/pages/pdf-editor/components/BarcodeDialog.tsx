@@ -153,7 +153,7 @@ export default function BarcodeDialog({ open, onClose, onConfirm }: Props) {
               </div>
             )}
             {format !== 'qrcode' && (
-              <label htmlFor="ff-barcodedialog-3" className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
+              <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
                 <input id="ff-barcodedialog-3" type="checkbox" checked={showLabel} onChange={(e) => setShowLabel(e.target.checked)} />
                 Show readable text below
               </label>

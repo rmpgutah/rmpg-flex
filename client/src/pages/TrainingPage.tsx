@@ -389,7 +389,7 @@ export default function TrainingPage() {
                 </label>
                 <div className="max-h-[150px] overflow-y-auto mt-1 border border-rmpg-700 rounded-sm bg-surface-sunken p-1 space-y-0.5">
                   {officers.map(o => (
-                    <label htmlFor="ff-trainingpage-4" key={o.id} className="flex items-center gap-2 px-2 py-1 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 cursor-pointer">
+                    <label key={o.id} className="flex items-center gap-2 px-2 py-1 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 cursor-pointer">
                       <input id="ff-trainingpage-4" type="checkbox"
                         checked={bulkOfficerIds.includes(o.id)}
                         onChange={e => setBulkOfficerIds(e.target.checked ? [...bulkOfficerIds, o.id] : bulkOfficerIds.filter(id => id !== o.id))}
@@ -1555,7 +1555,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
 
             {/* Mandatory */}
             <div className="flex items-end pb-1">
-              <label htmlFor="ff-trainingpage-21" className="flex items-center gap-2 cursor-pointer">
+              <label className="flex items-center gap-2 cursor-pointer">
                 <input id="ff-trainingpage-21"
                   type="checkbox"
                   checked={form.is_mandatory}
