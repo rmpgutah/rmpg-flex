@@ -65,4 +65,9 @@ describe('normalizeWindow', () => {
     expect(() => normalizeWindow('hello', '14:00')).toThrow(/invalid window/i);
     expect(() => normalizeWindow('14:00', '99:99')).toThrow(/invalid window/i);
   });
+
+  it('rejects a reversed window (end <= start) by throwing', () => {
+    expect(() => normalizeWindow('17:00', '10:00')).toThrow(/end must be after start/i);
+    expect(() => normalizeWindow('14:00', '14:00')).toThrow(/end must be after start/i);
+  });
 });

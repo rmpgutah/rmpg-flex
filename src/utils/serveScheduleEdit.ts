@@ -63,5 +63,9 @@ export function normalizeWindow(
     if (h < 0 || h > 23 || min < 0 || min > 59) throw new Error(`invalid window time: ${s}`);
     return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
   };
-  return { window_start: padded(start), window_end: padded(end) };
+  const result = { window_start: padded(start), window_end: padded(end) };
+  if (result.window_start >= result.window_end) {
+    throw new Error(`invalid window time: end must be after start (${result.window_start} → ${result.window_end})`);
+  }
+  return result;
 }

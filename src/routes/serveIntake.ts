@@ -1229,7 +1229,15 @@ si.patch('/schedule/:slotId', async (c) => {
   const candidateDate = typeof body.scheduled_date === 'string' && body.scheduled_date
     ? body.scheduled_date
     : current.scheduled_date;
-  const candidateOfficer = body.officer_id === undefined ? current.officer_id : body.officer_id;
+  // Coerce officer_id: undefined → current; null → null (unassign);
+  // numeric string → number; otherwise fall back to current to avoid silent string-vs-number mismatch.
+  const candidateOfficer = body.officer_id === undefined
+    ? current.officer_id
+    : body.officer_id === null
+    ? null
+    : Number.isFinite(Number(body.officer_id))
+    ? Number(body.officer_id)
+    : current.officer_id;
 
   if (!force) {
     // Pull all other slots on the candidate (officer, date) for overlap detection.
