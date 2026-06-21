@@ -8,6 +8,7 @@ import { applyParcelToRecord } from './autofill';
 import { cacheKeyParcel, getCached, putCached } from './cache';
 import type { ParcelSummary } from './types';
 import type { Env } from '../../types';
+import { ensureAssessorColumns } from '../db';
 
 export const BACKFILL_RATE_PER_MIN = 30;
 const PER_TICK_BUDGET = 5;            // ≤5 jobs per scheduled minute = 300/hr; safely under the 30/min spec cap
@@ -37,6 +38,13 @@ export function decideOutcome(matches: ParcelSummary[]): Outcome {
 }
 
 export async function processBackfillTick(env: Env['Bindings']): Promise<number> {
+  // Self-heal: the cron handler runs in fresh isolates before any /api/assessor
+  // request might. Without this, a "no such table" gets swallowed by the
+  // scheduled() handler's catch and the backfill quietly stalls forever
+  // until an admin hits a /api/assessor/* route (CLAUDE.md rule #5 — deploy
+  // applies migrations with continue-on-error: true). The flag is self-caching
+  // so subsequent ticks in the same isolate short-circuit.
+  await ensureAssessorColumns(env.DB);
   const started = Date.now();
   let processed = 0;
   while (processed < PER_TICK_BUDGET && Date.now() - started < TICK_WALL_CLOCK_MS) {
