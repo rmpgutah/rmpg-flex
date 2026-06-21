@@ -15,8 +15,10 @@ const TIER_CLASSES: Record<string, string> = {
 
 function surnameOf(name: string | null): string {
   if (!name) return '—';
-  const parts = name.trim().split(/\s+/);
-  return (parts[parts.length - 1] ?? name).toUpperCase();
+  const trimmed = name.trim();
+  if (!trimmed) return '—';
+  const parts = trimmed.split(/\s+/);
+  return (parts[parts.length - 1] ?? trimmed).toUpperCase();
 }
 
 export default function AttemptChip({ slot, onClick, onDragStart }: Props) {
