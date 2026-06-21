@@ -115,10 +115,11 @@ export async function fleetioFetch<T>(input: FleetioFetchInput): Promise<T> {
       });
       clearTimeout(timer);
 
-      // 429 — read Retry-After; throw a typed error the caller can wait on.
+      // 429 → throw immediately (NO in-band retry). Caller re-schedules using
+      // retryAfterSeconds; in-band retry would block the Worker for the wait.
       if (resp.status === 429) {
         const ra = Number(resp.headers.get('retry-after'));
-        const seconds = Number.isFinite(ra) && ra > 0 ? ra : Math.ceil(backoffBaseMs * Math.pow(2, attempt) / 1000);
+        const seconds = Number.isFinite(ra) && ra > 0 ? ra : Math.ceil(backoffBaseMs * (2 ** attempt) / 1000);
         throw new FleetioRateLimitError(seconds, await safeReadJson(resp));
       }
 
@@ -132,7 +133,7 @@ export async function fleetioFetch<T>(input: FleetioFetchInput): Promise<T> {
       const detail = await safeReadJson(resp);
       if (resp.status >= 500 && attempt < maxRetries) {
         lastErr = new FleetioHttpError(`Fleet.io ${resp.status}`, resp.status, detail);
-        await sleep(backoffBaseMs * Math.pow(2, attempt));
+        await sleep(backoffBaseMs * 2 ** attempt);
         attempt += 1;
         continue;
       }
@@ -146,7 +147,7 @@ export async function fleetioFetch<T>(input: FleetioFetchInput): Promise<T> {
       if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'AbortError') {
         if (attempt < maxRetries) {
           lastErr = new FleetioTimeoutError(`Fleet.io request timed out after ${timeoutMs}ms`);
-          await sleep(backoffBaseMs * Math.pow(2, attempt));
+          await sleep(backoffBaseMs * 2 ** attempt);
           attempt += 1;
           continue;
         }
@@ -155,7 +156,7 @@ export async function fleetioFetch<T>(input: FleetioFetchInput): Promise<T> {
       // Network/other — retry if budget remains; otherwise rethrow.
       if (attempt < maxRetries) {
         lastErr = err;
-        await sleep(backoffBaseMs * Math.pow(2, attempt));
+        await sleep(backoffBaseMs * 2 ** attempt);
         attempt += 1;
         continue;
       }
