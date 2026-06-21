@@ -11,6 +11,10 @@ import { FuelEntriesRoute } from './routes/FuelEntriesRoute';
 import { ServiceRoute } from './routes/ServiceRoute';
 import { InspectionsRoute } from './routes/InspectionsRoute';
 import { VendorsRoute } from './routes/VendorsRoute';
+import { PersonnelRoute } from './routes/PersonnelRoute';
+import { DashCamerasRoute } from './routes/DashCamerasRoute';
+import { GpsTrackingRoute } from './routes/GpsTrackingRoute';
+import { AnalysisFormsRoute } from './routes/AnalysisFormsRoute';
 import { EmptyStateCard } from './shell/EmptyStateCard';
 
 export default function FleetShell() {
@@ -55,8 +59,12 @@ export default function FleetShell() {
           <Route path="service" element={<ServiceRoute />} />
           <Route path="inspections" element={<InspectionsRoute />} />
           <Route path="vendors" element={<VendorsRoute />} />
+          <Route path="personnel" element={<PersonnelRoute />} />
+          <Route path="dash-cameras" element={<DashCamerasRoute />} />
+          <Route path="gps" element={<GpsTrackingRoute />} />
+          <Route path="analysis" element={<AnalysisFormsRoute />} />
           {SIDEBAR_SECTIONS
-            .filter((s) => !['dashboard', 'vehicles', 'fuel', 'service', 'inspections', 'vendors'].includes(s.id))
+            .filter((s) => !['dashboard', 'vehicles', 'fuel', 'service', 'inspections', 'vendors', 'personnel', 'dash-cameras', 'gps', 'analysis'].includes(s.id))
             .map((s) => {
               const sub = s.path.replace(/^\/fleet\/v2\/?/, '') || '';
               const e = emptyFor(s.id);
