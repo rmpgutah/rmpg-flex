@@ -55,10 +55,20 @@ describe('<VehicleDetailRoute>', () => {
     expect(screen.getAllByText(/1HGBH41JXMN109186/).length).toBeGreaterThan(0);
   });
 
-  it("clicking Service tab shows the EmptyStateCard for 7'b", async () => {
+  it("clicking Service tab swaps to the ServiceTab content (no empty-state)", async () => {
     renderAt('/fleet/v2/vehicles/1');
     await screen.findByText('Unit 12', {}, { timeout: 3000 });
     fireEvent.click(screen.getByRole('tab', { name: /^service/i }));
-    expect(screen.getByText(/coming in pr 7'b/i)).toBeInTheDocument();
+    // After clicking Service, the overview-only "VIN" Row label disappears and
+    // the ServiceTab's empty state (or loading) appears. Both are valid;
+    // assert we're NOT showing the "coming in PR 7'b.2" empty state.
+    expect(screen.queryByText(/coming in pr 7'b\.2/i)).toBeNull();
+  });
+
+  it("clicking Costs tab shows the EmptyStateCard for 7'b.2", async () => {
+    renderAt('/fleet/v2/vehicles/1');
+    await screen.findByText('Unit 12', {}, { timeout: 3000 });
+    fireEvent.click(screen.getByRole('tab', { name: /^costs/i }));
+    expect(screen.getByText(/coming in pr 7'b\.2/i)).toBeInTheDocument();
   });
 });
