@@ -9,6 +9,7 @@ import { cacheKeyParcel, getCached, putCached } from './cache';
 import type { ParcelSummary } from './types';
 import type { Env } from '../../types';
 import { ensureAssessorColumns } from '../db';
+import { recordAuditCore } from '../auditLog';
 
 export const BACKFILL_RATE_PER_MIN = 30;
 const PER_TICK_BUDGET = 5;            // ≤5 jobs per scheduled minute = 300/hr; safely under the 30/min spec cap
@@ -97,6 +98,7 @@ async function processOneJob(env: Env['Bindings']): Promise<boolean> {
       try { parcel = await getParcel(env, parcelNo); }
       catch { /* detail fetch failed — still mark parcel_number to prevent requeue */ }
     }
+    let fieldsSet: string[] = [];
     if (parcel) {
       await putCached({ KV: env.KV }, cacheKeyParcel(parcelNo), parcel);
       const fullRec = await db.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(row.record_id).first<Record<string, unknown>>() ?? {};
@@ -109,10 +111,33 @@ async function processOneJob(env: Env['Bindings']): Promise<boolean> {
       if (setSql.length) {
         await db.prepare(`UPDATE ${table} SET ${setSql.join(', ')} WHERE id = ?`).bind(...setBind, row.record_id).run();
       }
+      fieldsSet = Object.keys(patch).filter(
+        (k) => k !== 'assessor_source_url' && k !== 'assessor_last_synced_at',
+      );
     } else {
       await db.prepare(`UPDATE ${table} SET parcel_number = ? WHERE id = ?`).bind(parcelNo, row.record_id).run();
+      fieldsSet = ['parcel_number'];
     }
     await db.prepare(`UPDATE assessor_backfill_jobs SET status='applied', applied_parcel_number=?, completed_at=datetime('now') WHERE id=?`).bind(parcelNo, row.id).run();
+    // Audit AFTER the writes — a failed write must not log a success. Wrapped
+    // in try/catch even though recordAuditCore is documented never-throws,
+    // because the contract here is: audit must NEVER break the work it
+    // describes (matching the comment in src/utils/auditLog.ts).
+    try {
+      await recordAuditCore(env, {
+        action: 'ASSESSOR_BACKFILL_APPLIED',
+        entityType: row.record_type,
+        entityId: row.record_id,
+        details: {
+          parcel_number: parcelNo,
+          fields_set: fieldsSet,
+          source: 'backfill_cron',
+        },
+        actorId: null,
+      });
+    } catch (err) {
+      console.warn('[assessor-backfill] audit failed:', err instanceof Error ? err.message : String(err));
+    }
   } else if (outcome.status === 'ambiguous') {
     await db.prepare(`UPDATE assessor_backfill_jobs SET status='ambiguous', matches_json=?, completed_at=datetime('now') WHERE id=?`).bind(outcome.matches_json, row.id).run();
   } else {
