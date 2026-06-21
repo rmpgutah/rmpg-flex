@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../../../hooks/useApi';
 import { FleetListShell } from '../shell/FleetListShell';
+import { LegacyActionLink } from '../shell/LegacyActionLink';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 import { safeDateStr } from '../../../../utils/dateUtils';
 
@@ -45,6 +46,7 @@ export function VendorsRoute() {
       title="Vendors"
       searchPlaceholder="Search by name, brand, or location…"
       onSearchChange={setSearch}
+      actions={<LegacyActionLink label="New Vendor" legacyPath="/fleet" />}
     >
       {loading ? (
         <div className="p-4 text-sm text-rmpg-400">Loading vendors…</div>

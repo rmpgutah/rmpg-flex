@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FleetListShell } from '../shell/FleetListShell';
+import { LegacyActionLink } from '../shell/LegacyActionLink';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 import { useFleetWideFanOut, vehicleLabel } from '../shell/useFleetWideFanOut';
 import { safeDateStr } from '../../../../utils/dateUtils';
@@ -40,6 +41,7 @@ export function ServiceRoute() {
       title="Service"
       searchPlaceholder="Search by vehicle, service type, or vendor…"
       onSearchChange={setSearch}
+      actions={<LegacyActionLink label="New Service Entry" legacyPath="/fleet" />}
     >
       {loading ? (
         <div className="p-4 text-sm text-rmpg-400">

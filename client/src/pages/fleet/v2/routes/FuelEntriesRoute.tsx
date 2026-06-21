@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FleetListShell } from '../shell/FleetListShell';
+import { LegacyActionLink } from '../shell/LegacyActionLink';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 import { useFleetWideFanOut, vehicleLabel } from '../shell/useFleetWideFanOut';
 import { safeDateStr } from '../../../../utils/dateUtils';
@@ -42,6 +43,7 @@ export function FuelEntriesRoute() {
       title="Fuel Entries"
       searchPlaceholder="Search by vehicle, station, or date…"
       onSearchChange={setSearch}
+      actions={<LegacyActionLink label="New Fuel Entry" legacyPath="/fleet" />}
     >
       {loading ? (
         <div className="p-4 text-sm text-rmpg-400">
