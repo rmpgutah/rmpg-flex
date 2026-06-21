@@ -10,6 +10,20 @@
 
 **Spec:** [`docs/superpowers/specs/2026-06-21-fleetio-integration-design.md`](../specs/2026-06-21-fleetio-integration-design.md)
 
+## 🔒 Secret-hygiene invariants (enforced by Task 5.5)
+
+The `FLEETIO_API_KEY` and `FLEETIO_ACCOUNT_TOKEN` values must NEVER appear in:
+- Any `console.log` / `console.warn` / `console.error` call.
+- Any HTTP response body returned to a client (including error responses).
+- Any `audit_log` row, `flex_events` payload, or other persistent log.
+- Any error message thrown by `client.ts` (even when wrapping Fleet.io's own response body).
+- Any test fixture, vitest snapshot, PR title or PR body.
+- Any committed file under any path (the `.dev.vars` file is gitignored; `wrangler secret put` keeps prod values out of git entirely).
+
+Task 5.5 ships a vitest case that asserts: given a Fleet.io 5xx response body that contains the API key as a substring (the worst-case scenario — Fleet.io echoing the request back in their error body), the thrown `FleetioHttpError.message` and `.detail` do NOT contain the key value. If a future change regresses this, the test goes red.
+
+Two NEVER-LOG comments are also inserted at the brittle spots in `client.ts` (the catch arms in `fleetioFetch`) so future contributors don't accidentally add a `console.error(err, headers)` that leaks credentials.
+
 ---
 
 ## File Structure
@@ -807,6 +821,138 @@ git commit -m "feat(fleetio): fleetioFetch wrapper — retry, 429, timeout, type
 
 ---
 
+## Task 5.5: Secret-hygiene invariants — never-leak tests + NEVER-LOG comments
+
+**Why:** The credentials must never leak via logs, error messages, or response bodies. The current `fleetioFetch` design doesn't leak by construction (error messages are `Fleet.io ${status}` and detail comes from `safeReadJson`), BUT: (a) Fleet.io might one day echo the request back in an error body, and (b) a future contributor might add a `console.error(err, headers)` thinking it's harmless. This task ships a defensive test that locks the invariant in, plus comments at the brittle spots.
+
+**Files:**
+- Modify: `src/utils/fleetio/client.ts` (add NEVER-LOG comments)
+- Modify: `tests/fleetioClient.test.ts` (add defensive cases)
+
+- [ ] **Step 5.5.1: Add the failing leak test**
+
+Append to `tests/fleetioClient.test.ts`:
+
+```ts
+describe('secret-hygiene invariants', () => {
+  const cfg: FleetioConfig = {
+    apiKey: 'tok_supersecret_1234567890',
+    accountToken: 'acct_alsosecret_xyz',
+    apiBase: 'https://secure.fleetio.com/api/v1',
+  };
+
+  it('a 5xx body that echoes the API key does NOT leak it via error.message', async () => {
+    // Worst case: Fleet.io's error body literally contains our key as a
+    // substring (e.g. an "echo back of headers received" debugging response).
+    const stub = vi.fn().mockResolvedValue(new Response(
+      `{"error":"internal","echoed_auth":"Token tok_supersecret_1234567890"}`,
+      { status: 503, headers: { 'content-type': 'application/json' } },
+    ));
+    try {
+      await fleetioFetch({
+        method: 'GET', path: '/vehicles', config: cfg, fetchImpl: stub,
+        maxRetries: 0, backoffBaseMs: 0,
+      });
+      throw new Error('expected fleetioFetch to throw');
+    } catch (err) {
+      const e = err as { name: string; message: string; detail?: unknown };
+      // The error MESSAGE must never contain the key. (We control the message
+      // template — `Fleet.io ${status}`. This test pins that contract.)
+      expect(e.message).not.toContain('tok_supersecret');
+      expect(e.message).not.toContain('acct_alsosecret');
+      // Detail MAY contain the key (it's the raw response body) — that's why
+      // routes must NEVER return err.detail to the client. Tasks 9/10 only
+      // surface err.message + err.name.
+      expect(e.name).toBe('FleetioHttpError');
+    }
+  });
+
+  it('FleetioConfigError message names the env var, not the value', async () => {
+    const stub = vi.fn();
+    await expect(fleetioFetch({
+      method: 'GET', path: '/vehicles',
+      config: { ...cfg, apiKey: '' }, fetchImpl: stub,
+    })).rejects.toMatchObject({ message: 'FLEETIO_API_KEY is unset' });
+    // Message must NOT include the (empty) value or expose the accountToken.
+    expect(stub).not.toHaveBeenCalled();
+  });
+
+  it('FleetioRateLimitError message contains the retry-after seconds, NOT the key', async () => {
+    const stub = vi.fn().mockResolvedValue(new Response('429', {
+      status: 429, headers: { 'retry-after': '12' },
+    }));
+    await expect(fleetioFetch({
+      method: 'GET', path: '/vehicles', config: cfg, fetchImpl: stub, maxRetries: 0,
+    })).rejects.toMatchObject({
+      name: 'FleetioRateLimitError',
+      retryAfterSeconds: 12,
+    });
+    // Defensive: the constructed message must not embed the API key.
+    await expect(fleetioFetch({
+      method: 'GET', path: '/vehicles', config: cfg, fetchImpl: stub, maxRetries: 0,
+    })).rejects.toMatchObject({ message: expect.not.stringContaining('tok_supersecret') });
+  });
+});
+```
+
+- [ ] **Step 5.5.2: Run — expect PASS (the existing implementation already honors these invariants)**
+
+Run: `npx vitest run tests/fleetioClient.test.ts`
+Expected: all tests in the file pass (the three new invariant tests + the 12 prior ones = 15 total).
+
+If any FAIL, the implementation regressed during Task 5 — fix `fleetioFetch` before continuing. The fix is: ensure `FleetioHttpError` is constructed with a fixed-format message that never interpolates the input config; the existing `Fleet.io ${resp.status}` template is correct.
+
+- [ ] **Step 5.5.3: Add NEVER-LOG comments to client.ts**
+
+Open `src/utils/fleetio/client.ts`. Find the start of the `fleetioFetch` function (the line `export async function fleetioFetch<T>(input: FleetioFetchInput): Promise<T> {`). Insert a NEVER-LOG comment block IMMEDIATELY above it:
+
+```ts
+// ⚠️ NEVER LOG OR RETURN CREDENTIALS ⚠️
+// `input.config.apiKey` and `input.config.accountToken` are secrets. They are
+// passed to fetch() via headers and must never appear in:
+//   • console.{log,warn,error} calls — not even during debugging
+//   • error messages thrown from here (use fixed templates like `Fleet.io ${status}`)
+//   • response bodies returned to clients (routes echo only err.name + err.message)
+//   • audit_log rows or flex_events payloads
+//
+// FleetioHttpError carries a `detail` field that is Fleet.io's raw response body.
+// That body CAN contain credentials if Fleet.io echoes the request back in an
+// error. Routes MUST NOT return err.detail to clients — only err.message and
+// err.name. Tests in `tests/fleetioClient.test.ts` ("secret-hygiene invariants")
+// pin the message-side guarantee; the route-side guarantee is by code review.
+```
+
+Also, inside the `catch (err)` block at the bottom of `fleetioFetch`, find the comment `// Network/other — retry if budget remains; otherwise rethrow.` and prepend:
+
+```ts
+      // NEVER add `console.error(err, built.headers)` here. Headers contain credentials.
+      // If you need to debug, log built.url and err.message ONLY.
+```
+
+- [ ] **Step 5.5.4: Run tests + typecheck to confirm clean**
+
+Run: `npx vitest run tests/fleetioClient.test.ts`
+Expected: 15 tests pass.
+
+Run: `npm run typecheck`
+Expected: zero errors.
+
+- [ ] **Step 5.5.5: Grep-check no credential value sneaked into any committed file**
+
+Run: `git grep -nE '(tok_|acct_|FLEETIO_API_KEY=|FLEETIO_ACCOUNT_TOKEN=)[A-Za-z0-9]{6,}' || echo "(clean: no credential-shaped strings committed)"`
+Expected: only matches inside `tests/fleetioClient.test.ts` (which uses the test-marker prefixes `tok_supersecret`, `tok_test_abc`, `acct_xyz`, `acct_alsosecret` — these are NOT real credentials and start with `tok_`/`acct_` so they're clearly test markers).
+
+If you see a match in any source file (anything outside `tests/`), STOP — a real credential value made it into source. Remove before committing.
+
+- [ ] **Step 5.5.6: Commit**
+
+```bash
+git add src/utils/fleetio/client.ts tests/fleetioClient.test.ts
+git commit -m "feat(fleetio): secret-hygiene invariants — never-leak tests + NEVER-LOG comments"
+```
+
+---
+
 ## Task 6: Typed resource methods — `ping`, `listVehicles`, `createVehicle`
 
 **Why:** Thin wrappers over `fleetioFetch` for type-safety at call sites. Cheap to write, cheap to test, prevents `as any` everywhere downstream.
@@ -1327,7 +1473,16 @@ fleetio.post('/seed', requireRole('admin'), async (c) => {
     limit,
   );
 
+  // Rate-limit pacing: Fleet.io's account limit is 50 req/min (confirmed
+  // 2026-06-21 against the Token-scope settings page). Space POSTs at 1.2 s
+  // so we hit the 50 req/min ceiling exactly — never trigger a 429, and
+  // leave headroom if another sync runs concurrently. For 18 vehicles this
+  // takes ~22 s (well under the Worker 30 s response deadline). If `limit`
+  // is set high (200 max), the caller should run `/seed` repeatedly rather
+  // than one long call — each invocation auto-skips already-linked rows.
+  const PACE_MS = 1200;
   const outcomes: SeedOutcome[] = [];
+  let firstWrite = true;
   for (const row of rows) {
     const payload = buildVehiclePayload(row);
     if (!payload) {
@@ -1336,10 +1491,12 @@ fleetio.post('/seed', requireRole('admin'), async (c) => {
     }
     if (dryRun) {
       // Pretend it would have created with id=0; dry_run is for previewing
-      // payloads only.
+      // payloads only. No Fleet.io call → no pacing needed.
       outcomes.push({ rmpg_id: row.id, status: 'created', fleetio_id: 0 });
       continue;
     }
+    if (!firstWrite) await new Promise((r) => setTimeout(r, PACE_MS));
+    firstWrite = false;
     try {
       const created = await createVehicle({ config, payload });
       await execute(
@@ -1350,6 +1507,10 @@ fleetio.post('/seed', requireRole('admin'), async (c) => {
       );
       outcomes.push({ rmpg_id: row.id, status: 'created', fleetio_id: created.id });
     } catch (err) {
+      // err.message is safe (fixed-format `Fleet.io ${status}` or
+      // `FLEETIO_* is unset` — pinned by Task 5.5 tests). NEVER append
+      // err.detail here — it can contain Fleet.io's raw response body
+      // which may echo the request and leak credentials.
       const message = err instanceof FleetioError
         ? `${err.name}: ${err.message}`
         : err instanceof Error ? err.message : String(err);
@@ -1647,6 +1808,8 @@ Print the PR URL and stop. The user reviews + merges. After merge, the user (or 
 | Migration `0133_fleetio_sync_tables.sql` (links, events, conflicts, sync_state) | Task 1 |
 | 30-min reconciliation cron wired (stub OK for PR 1) | Tasks 8 (wrangler), 11 (handler dispatch) |
 | Vitest harness for adapter | Tasks 2, 5, 6, 7 |
+| Secret-hygiene invariants (NEVER log/return/leak credentials) | Task 5.5 (test + NEVER-LOG comments); Task 10 (route never returns `err.detail`) |
+| Rate-limit pacing within 50 req/min | Task 10 (1.2 s spacing between Fleet.io POSTs) |
 | `recordAudit()` on admin actions | Task 10 (`FLEETIO_SEED` audit row + flex_events emit) |
 | Route registered in `routesConfig.ts` | Task 9 |
 | Post-merge live D1 verification documented | Tasks 12 (CLAUDE.md), 14 (PR body) |
