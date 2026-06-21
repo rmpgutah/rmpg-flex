@@ -41,6 +41,23 @@ function norm(pt: Record<string, unknown>): { latitude: number; longitude: numbe
 // shape) 500'd with "NOT NULL constraint failed: gps_breadcrumbs.latitude".
 export { norm as _normalizePointForTest };
 
+// Canonical "officer is off the clock" status set. Mirrors the set used by
+// the on-duty aggregates (aggregates.ts:392) and the unit availability
+// queries (gps.ts:515, geography.ts:368). VALID_UNIT_STATUSES is declared in
+// extensions.ts:651 — keep these two in sync.
+const OFF_DUTY_UNIT_STATUSES = new Set<string>(['off_duty', 'out_of_service']);
+
+// Pure status classifier — null/undefined/empty means "not known to be off
+// duty" so the caller's take-home / no-unit branches stay in control. The
+// canonical set is lowercase; we lowercase here so a future `OFF_DUTY` typo
+// downstream doesn't smuggle stale pings through.
+function isUnitOffDuty(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return OFF_DUTY_UNIT_STATUSES.has(status.toLowerCase());
+}
+
+export { isUnitOffDuty as _isUnitOffDutyForTest };
+
 gps.post('/', async (c) => {
   try {
     const db = getDb(c.env);
@@ -91,6 +108,23 @@ gps.post('/', async (c) => {
       'SELECT id, call_sign, status, gps_source, vehicle_id, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId);
 
     if (!unit && !isTakeHome) return c.json({ error: 'No assigned unit' }, 400);
+
+    // Privacy + data-integrity guard: drop pings from a non-take-home officer
+    // whose unit is off-duty. iOS keeps the GpsTracker running until the user
+    // backgrounds the app, so post-shift pings can leak into mileage, trip
+    // logs, and the AVL map if persisted. Take-home officers (vehicle audit
+    // trail) and units in active patrol statuses pass through unchanged.
+    // 200 (not 4xx) so the offline queue clears its buffer instead of
+    // retrying — repeated rejection would re-drain the same poisoned batch.
+    if (unit && !isTakeHome && isUnitOffDuty(unit.status)) {
+      console.log(`[gps] dropped ${points.length} fix(es) from off-duty unit ${unit.call_sign ?? unit.id} (status=${unit.status}) user=${userId}`);
+      return c.json({
+        accepted: 0,
+        dropped: points.length,
+        reason: 'unit_off_duty',
+        unit_status: unit.status,
+      }, 200);
+    }
 
     const unitId = unit?.id ?? null;
     const callSign = unit?.call_sign ?? (isTakeHome ? 'take-home' : null);
