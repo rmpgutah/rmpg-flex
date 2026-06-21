@@ -7,6 +7,10 @@ import { Sidebar, SIDEBAR_SECTIONS } from './Sidebar';
 import { DashboardRoute } from './routes/DashboardRoute';
 import { VehiclesListRoute } from './routes/VehiclesListRoute';
 import { VehicleDetailRoute } from './routes/VehicleDetailRoute';
+import { FuelEntriesRoute } from './routes/FuelEntriesRoute';
+import { ServiceRoute } from './routes/ServiceRoute';
+import { InspectionsRoute } from './routes/InspectionsRoute';
+import { VendorsRoute } from './routes/VendorsRoute';
 import { EmptyStateCard } from './shell/EmptyStateCard';
 
 export default function FleetShell() {
@@ -47,8 +51,12 @@ export default function FleetShell() {
           <Route index element={<DashboardRoute />} />
           <Route path="vehicles" element={<VehiclesListRoute />} />
           <Route path="vehicles/:id/*" element={<VehicleDetailRoute />} />
+          <Route path="fuel" element={<FuelEntriesRoute />} />
+          <Route path="service" element={<ServiceRoute />} />
+          <Route path="inspections" element={<InspectionsRoute />} />
+          <Route path="vendors" element={<VendorsRoute />} />
           {SIDEBAR_SECTIONS
-            .filter((s) => !['dashboard', 'vehicles'].includes(s.id))
+            .filter((s) => !['dashboard', 'vehicles', 'fuel', 'service', 'inspections', 'vendors'].includes(s.id))
             .map((s) => {
               const sub = s.path.replace(/^\/fleet\/v2\/?/, '') || '';
               const e = emptyFor(s.id);
