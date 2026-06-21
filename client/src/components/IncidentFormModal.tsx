@@ -996,7 +996,7 @@ export default function IncidentFormModal({
       {activeSection === 'trespass' && (
         <>
           <div className="flex items-center gap-3 p-3 bg-rmpg-800/50 border border-rmpg-600">
-            <label htmlFor="ff-incidentformmodal-22" className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input id="ff-incidentformmodal-22"
                 type="checkbox"
                 checked={formData.trespass_warning_issued}
@@ -1194,7 +1194,7 @@ export default function IncidentFormModal({
                 ['gang_related', 'Gang Related'],
                 ['hazmat', 'HAZMAT'],
               ] as [keyof IncidentFormData, string][]).map(([key, label]) => (
-                <label htmlFor="ff-incidentformmodal-40" key={key} className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
+                <label key={key} className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
                   <input id="ff-incidentformmodal-40" type="checkbox" checked={!!formData[key]} onChange={(e) => update(key, e.target.checked)} className="w-4 h-4 accent-red-500" />
                   <span className="text-xs text-rmpg-200">{label}</span>
                 </label>
@@ -1219,7 +1219,7 @@ export default function IncidentFormModal({
                 ['le_notified', 'LE Notified'],
                 ['supervisor_notified', 'Supervisor Notified'],
               ] as [keyof IncidentFormData, string][]).map(([key, label]) => (
-                <label htmlFor="ff-incidentformmodal-41" key={key} className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
+                <label key={key} className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
                   <input id="ff-incidentformmodal-41" type="checkbox" checked={!!formData[key]} onChange={(e) => update(key, e.target.checked)} className="w-4 h-4 accent-amber-500" />
                   <span className="text-xs text-rmpg-200">{label}</span>
                 </label>

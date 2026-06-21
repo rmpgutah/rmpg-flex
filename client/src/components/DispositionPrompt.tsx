@@ -105,7 +105,7 @@ function DispositionPrompt({
       </div>
 
       {/* Create Incident Report checkbox — Spillman Flex call promotion */}
-      <label htmlFor="ff-dispositionprompt-1" className="flex items-center gap-1.5 mt-2 cursor-pointer group">
+      <label className="flex items-center gap-1.5 mt-2 cursor-pointer group">
         <input id="ff-dispositionprompt-1"
           type="checkbox"
           checked={createIncident}

@@ -121,15 +121,15 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
               </select>
             </div>
             <div className="space-y-1 pt-1">
-              <label htmlFor="ff-encryptiondialog-5" className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
+              <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
                 <input id="ff-encryptiondialog-5" type="checkbox" checked={cfg.permissions.extract} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, extract: e.target.checked } })} />
                 Allow text/image copy and extraction
               </label>
-              <label htmlFor="ff-encryptiondialog-6" className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
+              <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
                 <input id="ff-encryptiondialog-6" type="checkbox" checked={cfg.permissions.fillForms} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, fillForms: e.target.checked } })} />
                 Allow form field filling
               </label>
-              <label htmlFor="ff-encryptiondialog-7" className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
+              <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
                 <input id="ff-encryptiondialog-7" type="checkbox" checked={cfg.permissions.accessibility} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, accessibility: e.target.checked } })} />
                 Allow accessibility tools (screen readers)
               </label>

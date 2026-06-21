@@ -498,7 +498,7 @@ export default function TrespassOrdersPage() {
             <option value="lifted">Lifted</option>
             <option value="violated">Violated</option>
           </select>
-          <label htmlFor="ff-trespassorderspage-4" className={`flex items-center gap-1 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400 cursor-pointer`} style={isMobile ? { minHeight: 44 } : undefined}>
+          <label className={`flex items-center gap-1 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400 cursor-pointer`} style={isMobile ? { minHeight: 44 } : undefined}>
             <input id="ff-trespassorderspage-4" type="checkbox" checked={showArchived} onChange={e => { setShowArchived(e.target.checked); setPage(1); }} className="accent-brand-500" style={isMobile ? { width: 20, height: 20 } : undefined} /> Archived
           </label>
         </div>

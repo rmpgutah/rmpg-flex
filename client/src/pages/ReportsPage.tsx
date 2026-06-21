@@ -1560,7 +1560,7 @@ function PatrolTrackingCard() {
           </>
         )}
 
-        <label htmlFor="ff-reportspage-7" className="flex items-center gap-1.5 text-[10px] text-rmpg-400 cursor-pointer">
+        <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400 cursor-pointer">
           <input id="ff-reportspage-7"
             type="checkbox"
             checked={includeGeocode}

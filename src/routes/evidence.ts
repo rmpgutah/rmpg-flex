@@ -43,13 +43,16 @@ async function ensureTable(db: ReturnType<typeof getDb>): Promise<void> {
 }
 
 // Role allow-list for filing a manifest. Audit 2026-06-21 caught that
-// the previous version accepted manifests from ANY authenticated user
-// — client_viewer / human_resources / dispatcher / contract_manager
-// could forge entries with arbitrary sha256 / officer_name / badge /
-// case_ref, and the /verify endpoint then "verified" the forged hash.
-// Chain-of-custody is only meaningful if the filer holds the role to
-// be PRESENT at the evidence event.
-const EVIDENCE_FILE_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer']);
+// ANY authenticated user could forge manifests with arbitrary sha256
+// + officer_name + badge + case_ref. Restricted to roles that can
+// legitimately be present at an evidence event.
+// 2026-06-22 softened: dispatcher is added — during an in-progress
+// CAD call, the dispatcher commonly files on-behalf-of when a unit's
+// iOS app is offline or the field officer is mid-pursuit. The
+// officer_id is still forced from the JWT (dispatchers can't claim to
+// BE the field officer), so a dispatcher manifest will carry
+// officer_id=<dispatcher's id> in the audit trail.
+const EVIDENCE_FILE_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
 
 // POST / — file a manifest.
 evidence.post('/', async (c): Promise<Response> => {

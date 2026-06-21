@@ -691,6 +691,60 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1011: Soften the v1010 guards so legitimate operator workflows aren't
+//        blocked. The fraud/security walls stay — but admin (the
+//        operator-owner) now has audit-logged escape hatches, and the
+//        139 redundant htmlFor= attributes from wrapping-pattern labels
+//        come back out.
+//
+//        ADMIN OVERRIDES (audit-logged in every case):
+//        • /api/personnel/bodycam-videos/:id?force=true  → bypass hold
+//          → recordAudit action=bodycam_video_force_deleted
+//        • /api/personnel/body-cameras/:id?force=true     → bypass cascade
+//          → recordAudit action=body_camera_force_deleted
+//        • /api/fleet/dashcam-videos/:id?force=true       → bypass hold
+//          → recordAudit action=dashcam_video_force_deleted
+//        • /api/billing/expenses/:id self-approval by admin
+//          → recordAudit action=expense_self_approved_admin
+//        • /api/billing/expenses/:id post-lock edit by admin
+//          → recordAudit action=expense_locked_edited_admin
+//        • /api/billing/invoices/:id status='paid'?force=true (admin)
+//          (returns the canOverride flag in the 409 body so the client
+//          can offer the override checkbox to admin-role sessions).
+//        Non-admin roles still get the 403/409 walls — the
+//        segregation-of-duties guarantees the audit was about stay
+//        intact for manager/supervisor/officer/dispatcher/etc.
+//
+//        ROLE ADDITIONS:
+//        • Evidence manifest POST allow-list adds 'dispatcher' — they
+//          file on-behalf-of during in-progress CAD calls when the
+//          field officer is mid-pursuit or offline. The officer_id is
+//          still forced from the JWT so the manifest carries the
+//          dispatcher's id (not a forged field-officer id).
+//
+//        DeleteRecordModal:
+//        • When evidenceLocked=true AND the current user is admin, a
+//          new checkbox renders: "Admin override — destroy held
+//          evidence (audit-logged)". Checking it activates the
+//          confirm button and sends ?force=true on the DELETE. The
+//          button copy changes to "Override & Delete" so the
+//          admin sees what they're about to do.
+//
+//        REVERTS:
+//        • ConfirmDialog danger-variant backdrop-click no longer
+//          requires explicit Cancel/Escape — backdrop closes again.
+//          The safer Cancel-pre-focus + no global Enter behavior
+//          already prevents accidental destruction.
+//
+//        htmlFor SWEEP CORRECTION:
+//        • The PR #1476 Python sweep added htmlFor to 1,304 labels.
+//          139 of those were wrapping labels (input as a child of
+//          the label tag), where the explicit htmlFor was redundant
+//          AND could mis-target inputs with mismatched ids. Removed
+//          on 50 files via a wrapping-pattern audit script.
+//
+//        Tests: 1524 vitests still pass. Worker typecheck clean.
+//
 // v1010: Adversarial follow-up — fix the regressions PR #1476 introduced
 //        and ship the 8-finding next-bug-class audit at the same time.
 //

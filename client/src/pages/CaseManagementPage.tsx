@@ -1449,7 +1449,7 @@ export default function CaseManagementPage() {
                     <div className="text-[10px] font-mono text-rmpg-500 uppercase mb-3">Solvability Factors</div>
                     <div className="space-y-2">
                       {SOLVABILITY_FACTORS.map(f => (
-                        <label htmlFor="ff-casemanagementpage-4" key={f.key} className="flex items-center gap-3 cursor-pointer">
+                        <label key={f.key} className="flex items-center gap-3 cursor-pointer">
                           <input id="ff-casemanagementpage-4"
                             type="checkbox"
                             checked={!!solvFactors[f.key]}

@@ -476,7 +476,7 @@ export default function AdminClientsTab({
                       <input id="ff-adminclientstab-8" type="date" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_end || ''} onChange={(e) => setClientField('contract_end', e.target.value)} />
                     </div>
                     <div className="flex items-end gap-3">
-                      <label htmlFor="ff-adminclientstab-9" className="flex items-center gap-2 p-1.5 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
+                      <label className="flex items-center gap-2 p-1.5 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
                         <input id="ff-adminclientstab-9" type="checkbox" checked={!!clientEdit.auto_renew} onChange={(e) => setClientField('auto_renew', e.target.checked)} className="w-3.5 h-3.5 accent-red-500" />
                         <span className="text-[10px] text-rmpg-200">Auto-Renew</span>
                       </label>

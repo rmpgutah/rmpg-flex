@@ -143,11 +143,13 @@ export default function ConfirmDialog({
       aria-labelledby={titleId}
       aria-describedby={descId}
       ref={dialogRef}
-      // Per WAI-ARIA, alertdialog should require explicit acknowledgement
-      // — a backdrop click is too easy to fire by accident next to a
-      // destructive prompt. For danger we drop the click-to-dismiss; the
-      // X button, Cancel button, and Escape all still close.
-      onClick={confirmVariant === 'danger' ? undefined : onClose}
+      // Backdrop click closes the dialog. The earlier v1010 change to
+      // gate this on confirmVariant was reverted 2026-06-22 — operators
+      // expected click-outside-to-dismiss everywhere, and the safer
+      // focus behavior (Cancel pre-focused, no global Enter handler)
+      // already neutralizes the accidental-destructive-action risk
+      // that WAI-ARIA's alertdialog guidance worries about.
+      onClick={onClose}
       style={{ touchAction: 'manipulation' }}
     >
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />

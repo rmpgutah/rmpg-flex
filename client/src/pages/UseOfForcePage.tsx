@@ -385,11 +385,11 @@ export default function UseOfForcePage() {
                 </div>
               </div>
               <div className="flex items-center gap-6">
-                <label htmlFor="ff-useofforcepage-10" className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
+                <label className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
                   <input id="ff-useofforcepage-10" type="checkbox" checked={form.de_escalation_attempted} onChange={e => setForm(f => ({ ...f, de_escalation_attempted: e.target.checked }))} className="w-4 h-4" />
                   De-escalation Attempted
                 </label>
-                <label htmlFor="ff-useofforcepage-11" className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
+                <label className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
                   <input id="ff-useofforcepage-11" type="checkbox" checked={form.body_camera_active} onChange={e => setForm(f => ({ ...f, body_camera_active: e.target.checked }))} className="w-4 h-4" />
                   Body Camera Active
                 </label>

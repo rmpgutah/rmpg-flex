@@ -5164,7 +5164,7 @@ export default function MapPage() {
                                   <div className="text-[7px] text-rmpg-500 uppercase mb-0.5">Officers</div>
                                   <div className="max-h-[60px] overflow-y-auto space-y-0.5">
                                     {shiftPlanning.officers.slice(0, 30).map((officer) => (
-                                      <label htmlFor="ff-mappage-9"
+                                      <label
                                         key={officer.id}
                                         className={`flex items-center gap-1.5 px-1.5 py-0.5 cursor-pointer transition-colors ${
                                           assignOfficerIds.includes(officer.id)
@@ -5199,7 +5199,7 @@ export default function MapPage() {
                                     <div className="text-[7px] text-rmpg-500 uppercase mb-0.5">Units</div>
                                     <div className="max-h-[50px] overflow-y-auto space-y-0.5">
                                       {shiftPlanning.units.map((unit) => (
-                                        <label htmlFor="ff-mappage-10"
+                                        <label
                                           key={unit.id}
                                           className={`flex items-center gap-1.5 px-1.5 py-0.5 cursor-pointer transition-colors ${
                                             assignUnitIds.includes(unit.id)

@@ -317,7 +317,7 @@ export default function NotificationsPage() {
               <h2 className="text-sm font-bold text-rmpg-100 mb-4">Notification Preferences</h2>
               <div className="space-y-3">
                 {Object.entries(prefs).filter(([k]) => typeof (prefs as any)[k] === 'boolean').map(([key, value]) => (
-                  <label htmlFor="ff-notificationspage-0" key={key} className="flex items-center gap-3 text-xs text-rmpg-200 cursor-pointer">
+                  <label key={key} className="flex items-center gap-3 text-xs text-rmpg-200 cursor-pointer">
                     <input id="ff-notificationspage-0"
                       type="checkbox"
                       checked={value as boolean}

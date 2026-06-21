@@ -184,7 +184,7 @@ export function SettingRow({ label, children }: { label: string; children: React
 
 export function SettingCheckbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label htmlFor="ff-components-0" className="flex items-center gap-2 justify-between cursor-pointer">
+    <label className="flex items-center gap-2 justify-between cursor-pointer">
       <span className="text-[10px] tracking-wider" style={{ color: 'var(--rt-muted)' }}>{label}</span>
       <input id="ff-components-0" type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="cursor-pointer" style={{ accentColor: 'var(--rt-accent)' }} />
     </label>

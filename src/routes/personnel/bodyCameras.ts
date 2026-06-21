@@ -276,11 +276,13 @@ bodyCamerasRouter.delete('/:id', async (c) => {
     );
     if (!existing) return c.json({ error: 'Body camera not found' }, 404);
 
-    // Cascade hold check — the v1009 client modal only checked the
-    // single-video DELETE. A camera DELETE cascades into every video
-    // assigned to it; the 2026-06-21 follow-up audit caught that an
-    // operator (or a curl attacker) could destroy held evidence by
-    // going through the camera-delete path. Block it here.
+    // Cascade hold check — block destruction of held evidence via
+    // the camera-delete path. ADMIN can opt out with ?force=true; the
+    // override is recorded in audit_log so the chain-of-custody story
+    // is "admin <id> force-deleted N held video(s) at <ts>", not
+    // "evidence disappeared." Non-admin roles cannot override.
+    const force = c.req.query('force') === 'true';
+    const canForce = force && actor.role === 'admin';
     const holdList = Array.from(EVIDENCE_HOLD_VALUES);
     const placeholders = holdList.map(() => '?').join(',');
     const held = await queryFirst<{ n: number }>(
@@ -288,10 +290,13 @@ bodyCamerasRouter.delete('/:id', async (c) => {
       `SELECT COUNT(*) AS n FROM bodycam_videos WHERE camera_id = ? AND retention_status IN (${placeholders})`,
       id, ...holdList,
     );
-    if ((held?.n || 0) > 0) {
+    const heldCount = held?.n || 0;
+    if (heldCount > 0 && !canForce) {
       return c.json({
         error: 'Camera has video on hold',
-        detail: `${held?.n} video(s) under legal/IA/court hold. Release the hold before retiring this camera.`,
+        detail: `${heldCount} video(s) under legal/IA/court hold. Release the hold before retiring this camera, OR pass ?force=true as admin to override.`,
+        canOverride: actor.role === 'admin',
+        heldCount,
       }, 409);
     }
 
@@ -305,10 +310,12 @@ bodyCamerasRouter.delete('/:id', async (c) => {
     // is a SOX/chain-of-custody gap the audit flagged separately.
     try {
       await recordAudit(c, {
-        action: 'body_camera_deleted',
+        action: canForce && heldCount > 0 ? 'body_camera_force_deleted' : 'body_camera_deleted',
         entityType: 'body_camera',
         entityId: id,
-        details: `Body camera ${id} and all assigned videos destroyed by ${actor.role} ${actor.id}`,
+        details: canForce && heldCount > 0
+          ? `ADMIN OVERRIDE: body camera ${id} destroyed despite ${heldCount} held video(s)`
+          : `Body camera ${id} and all assigned videos destroyed by ${actor.role} ${actor.id}`,
         actorId: actor.id,
       });
     } catch { /* audit best-effort, don't 500 a successful destruction */ }
@@ -504,15 +511,18 @@ bodycamVideosRouter.delete('/:id', async (c) => {
     );
     if (!row) return c.json({ error: 'Video not found' }, 404);
 
-    // Server-side evidence-lock — the v1009 client guard was bypassable
-    // with one curl DELETE. The 2026-06-21 follow-up audit caught this.
-    // Positive hold-list check (utils/evidenceLock.ts) blocks only true
-    // legal/IA/court holds, NOT 'expired' (which means retention period
-    // elapsed and lawful destruction is allowed/mandated).
-    if (isEvidenceLocked(row.retention_status)) {
+    // Server-side evidence-lock with admin override. Non-admin roles
+    // (manager/supervisor/officer) still get 409; only admin can
+    // ?force=true past a hold, and the override is loud in audit_log.
+    const force = c.req.query('force') === 'true';
+    const canForce = force && actor.role === 'admin';
+    const locked = isEvidenceLocked(row.retention_status);
+    if (locked && !canForce) {
       return c.json({
         error: 'Video under hold',
-        detail: `Retention status "${row.retention_status}" indicates an active hold. Release the hold before deleting.`,
+        detail: `Retention status "${row.retention_status}" indicates an active hold. Release the hold before deleting, OR pass ?force=true as admin.`,
+        canOverride: actor.role === 'admin',
+        retention_status: row.retention_status,
       }, 409);
     }
 
@@ -525,10 +535,12 @@ bodycamVideosRouter.delete('/:id', async (c) => {
 
     try {
       await recordAudit(c, {
-        action: 'bodycam_video_deleted',
+        action: locked && canForce ? 'bodycam_video_force_deleted' : 'bodycam_video_deleted',
         entityType: 'bodycam_video',
         entityId: id,
-        details: `Classification=${row.classification ?? 'n/a'}; case=${row.case_number ?? 'n/a'}; retention=${row.retention_status ?? 'n/a'}`,
+        details: locked && canForce
+          ? `ADMIN OVERRIDE: held video destroyed (retention=${row.retention_status}; classification=${row.classification ?? 'n/a'}; case=${row.case_number ?? 'n/a'})`
+          : `Classification=${row.classification ?? 'n/a'}; case=${row.case_number ?? 'n/a'}; retention=${row.retention_status ?? 'n/a'}`,
         actorId: actor.id,
       });
     } catch { /* best-effort audit */ }

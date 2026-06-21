@@ -164,7 +164,7 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
                 odometer span; we record it but exclude it from MPG. */}
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Fill Type</label>
-              <label htmlFor="ff-fuellogmodal-6" className="flex items-center gap-2 input-dark w-full text-[11px] min-h-[36px] px-2 cursor-pointer select-none">
+              <label className="flex items-center gap-2 input-dark w-full text-[11px] min-h-[36px] px-2 cursor-pointer select-none">
                 <input id="ff-fuellogmodal-6" type="checkbox" className="accent-brand-500" checked={form.is_full_tank}
                   onChange={(e) => onChange({ ...form, is_full_tank: e.target.checked })} />
                 <span className={form.is_full_tank ? 'text-rmpg-200' : 'text-amber-400'}>

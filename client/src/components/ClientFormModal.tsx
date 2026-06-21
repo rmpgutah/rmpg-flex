@@ -470,7 +470,7 @@ export default function ClientFormModal({
               <input id="ff-clientformmodal-17" type="number" min="1" className="input-dark text-xs w-full" value={form.sla_response_minutes} onChange={(e) => set('sla_response_minutes', e.target.value)} placeholder="e.g. 15" />
             </div>
             <div className="flex items-end">
-              <label htmlFor="ff-clientformmodal-18" className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors w-full">
+              <label className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors w-full">
                 <input id="ff-clientformmodal-18"
                   type="checkbox"
                   checked={form.auto_renew}
@@ -517,7 +517,7 @@ export default function ClientFormModal({
 
           {/* Priority Client Toggle */}
           <div>
-            <label htmlFor="ff-clientformmodal-23" className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors w-fit">
+            <label className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors w-fit">
               <input id="ff-clientformmodal-23"
                 type="checkbox"
                 checked={form.priority_client}

@@ -1014,7 +1014,7 @@ export default function ForensicLabPage() {
                       <div className="text-[10px] text-rmpg-400 font-semibold mb-1.5">Digital Forensic Steps</div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                         {DIGITAL_FORENSIC_STEPS.map(step => (
-                          <label htmlFor="ff-forensiclabpage-7" key={step} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-surface-base transition-colors cursor-pointer">
+                          <label key={step} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-surface-base transition-colors cursor-pointer">
                             <input id="ff-forensiclabpage-7"
                               type="checkbox"
                               checked={!!steps[step]}
@@ -1455,10 +1455,10 @@ export default function ForensicLabPage() {
                     className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 h-16 resize-none"
                     placeholder="Reviewer notes..." />
                   <div className="flex items-center gap-4">
-                    <label htmlFor="ff-forensiclabpage-16" className="flex items-center gap-1.5 text-xs text-green-400 cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-xs text-green-400 cursor-pointer">
                       <input id="ff-forensiclabpage-16" type="radio" checked={qcForm.pass} onChange={() => setQcForm(f => ({ ...f, pass: true }))} className="accent-green-400" /> Pass
                     </label>
-                    <label htmlFor="ff-forensiclabpage-17" className="flex items-center gap-1.5 text-xs text-red-400 cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-xs text-red-400 cursor-pointer">
                       <input id="ff-forensiclabpage-17" type="radio" checked={!qcForm.pass} onChange={() => setQcForm(f => ({ ...f, pass: false }))} className="accent-red-400" /> Fail
                     </label>
                   </div>

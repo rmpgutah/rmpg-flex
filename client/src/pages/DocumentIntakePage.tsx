@@ -99,7 +99,7 @@ export default function DocumentIntakePage() {
           <Upload className="w-10 h-10 mx-auto mb-3" style={{ color: dragActive ? '#d4a017' : '#666' }} />
           <div className="text-[14px] font-semibold mb-1">
             Drop a PDF here, or
-            <label htmlFor="ff-documentintakepage-0" className="ml-2 px-3 py-1 text-[11px] border border-[#d4a017] text-[#d4a017] hover:bg-[#d4a017] hover:text-black cursor-pointer inline-block uppercase" style={{ borderRadius: 2 }}>
+            <label className="ml-2 px-3 py-1 text-[11px] border border-[#d4a017] text-[#d4a017] hover:bg-[#d4a017] hover:text-black cursor-pointer inline-block uppercase" style={{ borderRadius: 2 }}>
               <input id="ff-documentintakepage-0" type="file" accept="application/pdf" className="hidden" onChange={handlePick} />
               Choose File
             </label>

@@ -151,7 +151,7 @@ export default function AdminSettingsTab(_props: Props) {
                   </div>
                   <div className="flex-shrink-0" style={{ minWidth: '200px' }}>
                     {setting.type === 'boolean' ? (
-                      <label htmlFor="ff-adminsettingstab-1" className="flex items-center gap-2 cursor-pointer">
+                      <label className="flex items-center gap-2 cursor-pointer">
                         <input id="ff-adminsettingstab-1"
                           type="checkbox"
                           checked={editValues[setting.key] === 'true'}

@@ -31,12 +31,14 @@
 // fixes for free: Enter no longer fires from the X close button,
 // focus lands on Cancel for `danger` variants, etc.
 
+import React from 'react';
 import ConfirmDialog from './ConfirmDialog';
+import { useAuth } from '../context/AuthContext';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (opts?: { force?: boolean }) => void;
   /** Short type name surfaced in the title — "victim", "complaint",
    *  "case", etc. Capitalized in the rendered title. */
   recordType: string;
@@ -65,8 +67,19 @@ export default function DeleteRecordModal({
   evidenceLocked = false,
   evidenceLockReason,
 }: Props) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const label = recordLabel?.trim() || 'the selected record';
   const titleCased = recordType.charAt(0).toUpperCase() + recordType.slice(1);
+  // Admin can force-delete a held row. Confirm button activates when
+  // the admin checks "Override hold" — this lands as ?force=true on
+  // the server, which records an audit_log row tagged ADMIN OVERRIDE.
+  // Non-admin users see no override checkbox and the button stays
+  // disabled, preserving the v1010 lock behavior for them.
+  const [adminOverride, setAdminOverride] = React.useState(false);
+  React.useEffect(() => { if (!isOpen) setAdminOverride(false); }, [isOpen]);
+  const canConfirm = !evidenceLocked || (isAdmin && adminOverride);
+  const handleConfirm = () => onConfirm(canConfirm && evidenceLocked && isAdmin && adminOverride ? { force: true } : undefined);
   return (
     // The follow-up audit (2026-06-21) caught two bugs in the v1009
     // version of this guard:
@@ -87,8 +100,8 @@ export default function DeleteRecordModal({
     <ConfirmDialog
       isOpen={isOpen}
       onClose={onClose}
-      onConfirm={onConfirm}
-      confirmDisabled={evidenceLocked}
+      onConfirm={handleConfirm}
+      confirmDisabled={!canConfirm}
       title={`Delete ${titleCased}`}
       message={`Permanently delete ${label}? This cannot be undone.`}
       details={
@@ -98,11 +111,28 @@ export default function DeleteRecordModal({
             <div className="mt-2 px-2 py-1 bg-red-900/30 border border-red-700/50 text-[11px] text-red-300">
               <span className="font-bold uppercase tracking-wider">Locked: </span>
               {evidenceLockReason || 'This record is in an active evidence chain and cannot be deleted from here.'}
+              {isAdmin && (
+                <label className="flex items-center gap-2 mt-2 text-rmpg-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={adminOverride}
+                    onChange={(e) => setAdminOverride(e.target.checked)}
+                    className="w-3 h-3"
+                  />
+                  <span className="text-[10px] uppercase tracking-wider font-bold text-amber-300">
+                    Admin override — destroy held evidence (audit-logged)
+                  </span>
+                </label>
+              )}
             </div>
           )}
         </>
       }
-      confirmLabel={evidenceLocked ? 'Locked — cannot delete' : 'Delete'}
+      confirmLabel={
+        evidenceLocked
+          ? (isAdmin && adminOverride ? 'Override & Delete' : 'Locked — cannot delete')
+          : 'Delete'
+      }
       cancelLabel="Cancel"
       confirmVariant="danger"
       isLoading={isDeleting}

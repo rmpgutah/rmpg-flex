@@ -126,14 +126,14 @@ export default function TypedSignatureDialog({ open, mode, defaultName, onClose,
         />
 
         <div className="flex items-center gap-2 mb-3">
-          <label htmlFor="ff-typedsig-font" className="inline-flex items-center gap-1 text-[10px] text-rmpg-400">
+          <label className="inline-flex items-center gap-1 text-[10px] text-rmpg-400">
             Style
             <select id="ff-typedsig-font" value={fontId} onChange={e => setFontId(e.target.value)}
               className="bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1.5 py-1 rounded-sm">
               {FONTS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
             </select>
           </label>
-          <label htmlFor="ff-typedsig-color" className="inline-flex items-center gap-1 text-[10px] text-rmpg-400">
+          <label className="inline-flex items-center gap-1 text-[10px] text-rmpg-400">
             Ink
             <input id="ff-typedsig-color" type="color" aria-label="Signature ink color" value={color} onChange={e => setColor(e.target.value)}
               className="w-7 h-7 bg-transparent border border-border-default rounded-sm cursor-pointer" />

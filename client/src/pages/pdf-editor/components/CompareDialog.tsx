@@ -58,7 +58,7 @@ export default function CompareDialog({ open, onClose, pageCount, onCompare }: P
         </div>
 
         <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <label htmlFor="ff-compare-page" className="text-[10px] text-rmpg-300 border border-border-default rounded-sm px-2 py-1 cursor-pointer hover:text-rmpg-100">
+          <label className="text-[10px] text-rmpg-300 border border-border-default rounded-sm px-2 py-1 cursor-pointer hover:text-rmpg-100">
             {otherName ? `2nd PDF: ${otherName}` : 'Choose 2nd PDF…'}
             <input type="file" accept="application/pdf,.pdf" className="hidden" onChange={e => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
           </label>

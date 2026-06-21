@@ -200,7 +200,7 @@ export default function ReviewFormModal({
           <div className="overflow-y-auto p-4 space-y-4">
             {/* Officer + Type */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label htmlFor="ff-reviewformmodal-0" className="block">
+              <label className="block">
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Officer <span className="text-red-400">*</span>
                 </span>
@@ -219,7 +219,7 @@ export default function ReviewFormModal({
                 </select>
               </label>
 
-              <label htmlFor="ff-reviewformmodal-1" className="block">
+              <label className="block">
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Review Type
                 </span>
@@ -239,7 +239,7 @@ export default function ReviewFormModal({
 
             {/* Dates */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label htmlFor="ff-reviewformmodal-2" className="block">
+              <label className="block">
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Period Start <span className="text-red-400">*</span>
                 </span>
@@ -251,7 +251,7 @@ export default function ReviewFormModal({
                   className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-rmpg-100 focus:border-brand-500 focus:outline-none"
                 />
               </label>
-              <label htmlFor="ff-reviewformmodal-3" className="block">
+              <label className="block">
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Period End <span className="text-red-400">*</span>
                 </span>
@@ -265,7 +265,7 @@ export default function ReviewFormModal({
               </label>
             </div>
 
-            <label htmlFor="ff-reviewformmodal-4" className="block">
+            <label className="block">
               <span className="text-xs text-rmpg-400 mb-1 block">
                 Review Date
               </span>
@@ -327,7 +327,7 @@ export default function ReviewFormModal({
 
             {/* Narrative fields */}
             <div className="space-y-3">
-              <label htmlFor="ff-reviewformmodal-5" className="block">
+              <label className="block">
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Strengths
                 </span>
@@ -339,7 +339,7 @@ export default function ReviewFormModal({
                   placeholder="Notable strengths observed during this review period..."
                 />
               </label>
-              <label htmlFor="ff-reviewformmodal-6" className="block">
+              <label className="block">
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Areas for Improvement
                 </span>
@@ -351,7 +351,7 @@ export default function ReviewFormModal({
                   placeholder="Areas where improvement is expected..."
                 />
               </label>
-              <label htmlFor="ff-reviewformmodal-7" className="block">
+              <label className="block">
                 <span className="text-xs text-rmpg-400 mb-1 block">Goals</span>
                 <textarea id="ff-reviewformmodal-7"
                   value={form.goals}

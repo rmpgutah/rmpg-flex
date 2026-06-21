@@ -448,7 +448,7 @@ export default function ServeAttemptModal({
             {/* Camera input */}
             <div className="space-y-2">
               <label className="block text-xs font-semibold text-rmpg-300 uppercase">Photos ({photos.length}/5)</label>
-              <label htmlFor="ff-serveattemptmodal-1" className={`flex items-center justify-center gap-2 px-4 py-3 rounded-sm border-2 border-dashed cursor-pointer transition-colors ${
+              <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-sm border-2 border-dashed cursor-pointer transition-colors ${
                 photos.length >= 5
                   ? 'border-rmpg-700 text-rmpg-600 cursor-not-allowed'
                   : 'border-rmpg-500 text-rmpg-300 hover:border-brand-500 hover:text-brand-300'
