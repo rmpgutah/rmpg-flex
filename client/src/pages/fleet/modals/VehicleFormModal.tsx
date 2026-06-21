@@ -1,4 +1,4 @@
-import React, { useId, useEffect } from 'react';
+import React, { useId, useEffect, useRef, useState } from 'react';
 import { Car, Clock } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import type { FleetVehicleStatus } from '../../../types';
@@ -49,6 +49,27 @@ interface Props {
 
 export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave, onClose, saving, isDirty, draftRestored, onDiscardDraft }: Props) {
   const titleId = useId();
+  const vehicleNumberRef = useRef<HTMLInputElement | null>(null);
+  // Surface a missing-required error inline next to the field — without it,
+  // the previous silent-disabled-button state made "I clicked Save and
+  // nothing happened" the only feedback the operator got.
+  const [showRequired, setShowRequired] = useState(false);
+  useEffect(() => {
+    if (form.vehicle_number.trim()) setShowRequired(false);
+  }, [form.vehicle_number]);
+  useEffect(() => {
+    if (isOpen) setShowRequired(false);
+  }, [isOpen]);
+
+  const handleSaveClick = () => {
+    if (!form.vehicle_number.trim()) {
+      setShowRequired(true);
+      vehicleNumberRef.current?.focus();
+      vehicleNumberRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+    onSave();
+  };
 
   // Escape to close (guarded when dirty)
   useEffect(() => {
@@ -104,9 +125,23 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label htmlFor="ff-vehicleformmodal-0" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Vehicle Number *</label>
-              <input id="ff-vehicleformmodal-0" className="input-dark w-full text-[11px] font-mono min-h-[36px]" value={form.vehicle_number}
-                onChange={(e) => setField('vehicle_number', e.target.value)} />
+              <label htmlFor="ff-vehicleformmodal-0" className={`text-[9px] uppercase font-semibold block mb-0.5 ${showRequired ? 'text-red-400' : 'text-rmpg-500'}`}>
+                Vehicle Number *
+              </label>
+              <input
+                id="ff-vehicleformmodal-0"
+                ref={vehicleNumberRef}
+                className={`input-dark w-full text-[11px] font-mono min-h-[36px] ${showRequired ? 'border-red-500' : ''}`}
+                value={form.vehicle_number}
+                onChange={(e) => setField('vehicle_number', e.target.value)}
+                aria-invalid={showRequired || undefined}
+                aria-describedby={showRequired ? 'ff-vehicleformmodal-0-err' : undefined}
+              />
+              {showRequired ? (
+                <span id="ff-vehicleformmodal-0-err" className="text-[9px] mt-0.5 block text-red-400">
+                  Vehicle number is required.
+                </span>
+              ) : null}
             </div>
             <div>
               <label htmlFor="ff-vehicleformmodal-1" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Status</label>
@@ -196,7 +231,13 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
         </div>
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
           <button type="button" className="toolbar-btn" onClick={guardedClose} disabled={saving}>Cancel</button>
-          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onSave} disabled={saving || !form.vehicle_number.trim()}>
+          <button
+            type="button"
+            className="toolbar-btn toolbar-btn-primary print:hidden"
+            onClick={handleSaveClick}
+            disabled={saving}
+            aria-disabled={saving || !form.vehicle_number.trim() || undefined}
+          >
             {saving ? 'Saving...' : mode === 'new_vehicle' ? 'Create Vehicle' : 'Save Changes'}
           </button>
         </div>
