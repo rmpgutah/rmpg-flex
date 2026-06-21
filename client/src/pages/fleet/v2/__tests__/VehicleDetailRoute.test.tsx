@@ -65,10 +65,10 @@ describe('<VehicleDetailRoute>', () => {
     expect(screen.queryByText(/coming in pr 7'b\.2/i)).toBeNull();
   });
 
-  it("clicking Costs tab shows the EmptyStateCard for 7'b.2", async () => {
+  it("clicking Work Orders tab still shows the EmptyStateCard (deferred to PR 5)", async () => {
     renderAt('/fleet/v2/vehicles/1');
     await screen.findByText('Unit 12', {}, { timeout: 3000 });
-    fireEvent.click(screen.getByRole('tab', { name: /^costs/i }));
-    expect(screen.getByText(/coming in pr 7'b\.2/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /^work orders/i }));
+    expect(screen.getByText(/coming in pr 5/i)).toBeInTheDocument();
   });
 });

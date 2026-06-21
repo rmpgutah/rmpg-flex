@@ -7,6 +7,11 @@ import { ServiceTab } from '../vehicleDetail/ServiceTab';
 import { InspectionsTab } from '../vehicleDetail/InspectionsTab';
 import { FuelTab } from '../vehicleDetail/FuelTab';
 import { ActivityTab } from '../vehicleDetail/ActivityTab';
+import { CostsTab } from '../vehicleDetail/CostsTab';
+import { RecallsTab } from '../vehicleDetail/RecallsTab';
+import { DamageTab } from '../vehicleDetail/DamageTab';
+import { TiresTab } from '../vehicleDetail/TiresTab';
+import { AssignmentsTab } from '../vehicleDetail/AssignmentsTab';
 import { EmptyStateCard } from '../shell/EmptyStateCard';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 
@@ -97,17 +102,21 @@ export function VehicleDetailRoute() {
          activeTab === 'service'     ? <ServiceTab vehicleId={vehicle.id} /> :
          activeTab === 'inspections' ? <InspectionsTab vehicleId={vehicle.id} /> :
          activeTab === 'fuel'        ? <FuelTab vehicleId={vehicle.id} /> :
-         activeTab === 'activity'    ? <ActivityTab vehicleId={vehicle.id} /> : (
+         activeTab === 'activity'    ? <ActivityTab vehicleId={vehicle.id} /> :
+         activeTab === 'costs'       ? <CostsTab vehicleId={vehicle.id} /> :
+         activeTab === 'recalls'     ? <RecallsTab vehicleId={vehicle.id} /> :
+         activeTab === 'damage'      ? <DamageTab vehicleId={vehicle.id} /> :
+         activeTab === 'tires'       ? <TiresTab vehicleId={vehicle.id} /> :
+         activeTab === 'assignments' ? <AssignmentsTab vehicleId={vehicle.id} /> : (
           <div className="p-4">
             <EmptyStateCard
               title={TABS.find((t) => t.id === activeTab)?.label ?? ''}
               plannedPr={
                 activeTab === 'work-orders' ? 'PR 5' :
                 activeTab === 'issues' ? 'PR 6' :
-                activeTab === 'documents' ? 'Phase 2' :
-                "PR 7'b.2"
+                'Phase 2'
               }
-              description="This tab will land in the next PR of the Fleet Manager UI program."
+              description="This tab will land in a future PR of the Fleet Manager UI program."
               fleetioUrl={activeTab === 'work-orders' ? `https://secure.fleetio.com/vehicles/${vehicle.id}/work_orders` : undefined}
             />
           </div>
