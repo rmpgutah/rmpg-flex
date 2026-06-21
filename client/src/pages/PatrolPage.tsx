@@ -763,9 +763,13 @@ const PatrolPage: React.FC = () => {
         )}
       </PanelTitleBar>)}
 
-      {/* Tabs */}
+      {/* Tabs — sticky so the section nav stays visible while tab content
+          (esp. the Mileage Audit chain, which can run to hundreds of rows)
+          scrolls underneath. Without this the user loses the way out of
+          MILEAGE AUDIT as soon as they scroll down the chain. */}
       <TabBar
         spillman
+        className="sticky top-0 z-30 bg-surface-base"
         tabs={patrolTabs}
         activeTab={activeTab}
         onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance' | 'map' | 'summary' | 'mileage' | 'pricing' | 'contracts' | 'billing')}
