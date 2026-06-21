@@ -16,7 +16,8 @@
 // scatter, V4 cost-per-mile stack, V5 WO Sankey, V6 fuel anomalies,
 // V8 PM-upcoming table — same pattern, each on its own card here.
 // ============================================================
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import mapboxgl from 'mapbox-gl';
 import {
   ResponsiveContainer, ScatterChart, Scatter,
   XAxis, YAxis, ZAxis, Tooltip, CartesianGrid,
@@ -312,6 +313,7 @@ export function InsightsRoute() {
       />
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <KpiRibbonFleetIo period={period} />
+        <FleetMapCard />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <ReadinessCard />
           <CallsPerGallonCard period={period} />
@@ -327,7 +329,7 @@ export function InsightsRoute() {
         </div>
         <PmTimelineCard />
         <p className="text-[10px] text-rmpg-500 pt-2">
-          Backed by <code>/api/fleet-viz/*</code> aggregates (PR 7-9 backend #1500). V1 Fleet Map (Mapbox) lands in PR 8c. Period selection persisted to localStorage (`{PERIOD_STORAGE_KEY}`).
+          Backed by <code>/api/fleet-viz/*</code> aggregates (PR 7-9 backend #1500). Period persisted to localStorage (<code>{PERIOD_STORAGE_KEY}</code>).
         </p>
       </div>
     </div>
@@ -747,4 +749,186 @@ function PmTimelineCard() {
        )}
     </Card>
   );
+}
+
+// ─── V1: Fleet Map (Mapbox) ───────────────────────────────
+
+interface FleetMapResp {
+  count: number;
+  data: {
+    id: number;
+    vehicle_name: string | null;
+    vehicle_number: string | null;
+    status: string | null;
+    current_mileage: number | null;
+    next_service_mileage: number | null;
+    miles_to_pm: number | null;
+    assigned_unit_id: number | null;
+    lat: number | null;
+    lng: number | null;
+    gps_ts: string | null;
+    readiness: 'ready' | 'attention' | 'unavailable';
+  }[];
+}
+
+const READINESS_COLORS: Record<string, string> = {
+  ready: '#10b981',       // emerald-500
+  attention: '#f59e0b',   // amber-500
+  unavailable: '#64748b', // slate-500
+};
+
+// Salt Lake City defaults — the operator base. Mapbox falls back to a wider
+// fit if any markers land outside this view.
+const DEFAULT_CENTER: [number, number] = [-111.89, 40.76];
+const DEFAULT_ZOOM = 11;
+
+function FleetMapCard() {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const [data, setData] = useState<FleetMapResp | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Fetch once on mount. The endpoint is cheap (single fleet_vehicles scan +
+  // a correlated subquery per row to grab the freshest breadcrumb), so a
+  // single 30 s polling refresh keeps the marker positions live without
+  // pounding the GPS table.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      apiFetch<FleetMapResp>('/fleet-viz/fleet-map')
+        .then((r) => { if (!cancelled) { setData(r); setErr(null); } })
+        .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
+    };
+    load();
+    const t = setInterval(load, 30_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
+  // Initialize the Mapbox instance once the container is mounted.
+  // Re-initializing on every data change would be wasteful — instead we keep
+  // the map alive and only rebuild markers below when `data` changes.
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    // If the token wasn't injected at build time the Mapbox constructor will
+    // throw "An API access token is required to use Mapbox GL." — fail soft
+    // by surfacing the error in the card rather than crashing the dashboard.
+    try {
+      const map = new mapboxgl.Map({
+        container: containerRef.current,
+        style: 'mapbox://styles/mapbox/dark-v11',
+        center: DEFAULT_CENTER,
+        zoom: DEFAULT_ZOOM,
+        attributionControl: false,
+      });
+      map.addControl(new mapboxgl.AttributionControl({ compact: true }));
+      map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+      mapRef.current = map;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Mapbox initialization failed');
+    }
+    return () => {
+      // Tear down on unmount only (when the card itself goes away).
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+      mapRef.current?.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // Rebuild markers whenever fleet data lands. Drops the prior batch so we
+  // don't pile dot-marker DOM nodes on every 30 s refresh.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !data) return;
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+
+    const located = data.data.filter(
+      (v) => typeof v.lat === 'number' && typeof v.lng === 'number',
+    );
+    if (located.length === 0) return;
+
+    const bounds = new mapboxgl.LngLatBounds();
+    for (const v of located) {
+      const el = document.createElement('div');
+      el.style.cssText = `
+        width: 14px; height: 14px; border-radius: 50%;
+        background: ${READINESS_COLORS[v.readiness] ?? '#64748b'};
+        border: 2px solid #0d1722; cursor: pointer;
+        box-shadow: 0 0 4px rgba(0,0,0,0.6);
+      `;
+      const label = v.vehicle_number ?? v.vehicle_name ?? `#${v.id}`;
+      const popup = new mapboxgl.Popup({ offset: 12, closeButton: false }).setHTML(`
+        <div style="font: 11px monospace; color: #0d1722;">
+          <div style="font-weight: 600;">${escapeHtml(label)}</div>
+          <div>readiness: <strong>${v.readiness}</strong></div>
+          ${v.miles_to_pm != null ? `<div>miles to PM: ${v.miles_to_pm.toLocaleString()}</div>` : ''}
+          ${v.gps_ts ? `<div style="opacity: .7;">last seen ${escapeHtml(v.gps_ts)}</div>` : ''}
+        </div>
+      `);
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat([v.lng as number, v.lat as number])
+        .setPopup(popup)
+        .addTo(map);
+      markersRef.current.push(marker);
+      bounds.extend([v.lng as number, v.lat as number]);
+    }
+    if (located.length > 1) {
+      map.fitBounds(bounds, { padding: 40, maxZoom: 13, duration: 0 });
+    } else {
+      map.setCenter([located[0].lng as number, located[0].lat as number]);
+      map.setZoom(13);
+    }
+  }, [data]);
+
+  const located = data?.data?.filter((v) => typeof v.lat === 'number' && typeof v.lng === 'number') ?? [];
+  const counts = { ready: 0, attention: 0, unavailable: 0 };
+  for (const v of located) counts[v.readiness] = (counts[v.readiness] ?? 0) + 1;
+
+  return (
+    <Card
+      title="Fleet map"
+      hint={
+        err
+          ? 'mapbox unavailable'
+          : data
+          ? `${located.length} located · ${counts.ready} ready · ${counts.attention} attention · ${counts.unavailable} offline`
+          : 'loading…'
+      }
+    >
+      {err ? (
+        <div className="text-xs text-amber-300 px-3 py-2 border border-amber-500/40 rounded-sm bg-amber-500/10">
+          {err}
+          {err.includes('access token') ? (
+            <div className="mt-1 text-[10px] text-amber-200/70">
+              Set <code>VITE_MAPBOX_ACCESS_TOKEN</code> in <code>client/.env</code> or Cloudflare Pages env vars.
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div
+          ref={containerRef}
+          className="w-full rounded-sm border border-rmpg-700 overflow-hidden"
+          style={{ height: 320 }}
+          aria-label="Fleet vehicle map"
+        />
+      )}
+      {data && located.length === 0 && !err ? (
+        <div className="mt-2 text-[10px] text-rmpg-400">
+          No vehicles have a recent GPS breadcrumb (vehicles need <code>assigned_unit_id</code> + a row in <code>gps_breadcrumbs</code> to plot).
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+function escapeHtml(s: string | null | undefined): string {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
