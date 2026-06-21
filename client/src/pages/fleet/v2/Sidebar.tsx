@@ -26,7 +26,7 @@ export const SIDEBAR_SECTIONS: readonly SidebarItem[] = [
   { id: 'vehicles',    label: 'Vehicles',     path: '/fleet/v2/vehicles',     icon: Car,             scope: 'fleetio' },
   { id: 'fuel',        label: 'Fuel Entries', path: '/fleet/v2/fuel',         icon: Fuel,            scope: 'fleetio' },
   { id: 'service',     label: 'Service',      path: '/fleet/v2/service',      icon: Wrench,          scope: 'fleetio' },
-  { id: 'work-orders', label: 'Work Orders',  path: '/fleet/v2/work-orders',  icon: ClipboardList,   scope: 'fleetio', empty: true, fleetioUrl: 'https://secure.fleetio.com/work_orders' },
+  { id: 'work-orders', label: 'Work Orders',  path: '/fleet/v2/work-orders',  icon: ClipboardList,   scope: 'fleetio' },
   { id: 'inspections', label: 'Inspections',  path: '/fleet/v2/inspections',  icon: CheckSquare,     scope: 'fleetio' },
   { id: 'issues',      label: 'Issues',       path: '/fleet/v2/issues',       icon: AlertTriangle,   scope: 'fleetio', empty: true, fleetioUrl: 'https://secure.fleetio.com/issues' },
   { id: 'documents',   label: 'Documents',    path: '/fleet/v2/documents',    icon: FileText,        scope: 'fleetio', empty: true, fleetioUrl: 'https://secure.fleetio.com/documents' },
