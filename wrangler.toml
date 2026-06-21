@@ -259,8 +259,11 @@ FLEETIO_API_BASE = "https://secure.fleetio.com/api/v1"
 # Utah warrant smoke poll runs every 4h, matching the legacy server's
 # scheduleUtahWarrantSync interval. Workers cron uses UTC; "0 */4 * * *"
 # means every 4 hours on the hour (00:00, 04:00, 08:00, ... UTC).
+# "0 3 1 * *" — Fleet.io PR 2: monthly NHTSA vPIC bulk-export refresh of
+# ref_vehicle_makes / ref_vehicle_models / xref_model_year_to_specs. PR 2
+# wires the trigger with a stub handler; the real bulk-import lands in PR 2b.
 [triggers]
-crons = ["0 */4 * * *", "* * * * *", "*/30 * * * *"]
+crons = ["0 */4 * * *", "* * * * *", "*/30 * * * *", "0 3 1 * *"]
 
 # (Removed obsolete deleted_classes migration. The class is now properly
 # defined upstream (commit ccb3881b on main added src/durable-objects/
