@@ -1129,42 +1129,57 @@ si.get('/schedule', async (c) => {
   if (!tableExists?.n) return c.json({ schedule: [], generated_at: '' });
   const { denverNow } = await import('../utils/serveAttemptScheduler');
   const now = denverNow();
-  // "14 days out" in the same local-time string format
-  const cutoff = (() => {
-    const d = new Date(Date.now() + 14 * 86_400_000);
-    return new Intl.DateTimeFormat('sv-SE', {
-      timeZone: 'America/Denver',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit',
-      hour12: false,
-    }).format(d).replace(' ', 'T');
-  })();
+
+  // Client may request a specific date range + per-slot enrichment.
+  // ?start_date=YYYY-MM-DD (default: today Denver)
+  // ?end_date=YYYY-MM-DD   (default: start + 14 days)
+  // ?include=tier,cluster  (comma list — tier joins urgency_tier; cluster joins geo_cluster_id)
+  const YMD = /^\d{4}-\d{2}-\d{2}$/;
+  const startParam = c.req.query('start_date');
+  const endParam = c.req.query('end_date');
+  const startDate = startParam && YMD.test(startParam) ? startParam : now.slice(0, 10);
+  const endDate = endParam && YMD.test(endParam)
+    ? endParam
+    : (() => {
+        const d = new Date(Date.parse(`${startDate}T12:00:00Z`) + 14 * 86_400_000);
+        return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Denver' }).format(d);
+      })();
+  const include = new Set((c.req.query('include') ?? '').split(',').map((s) => s.trim()).filter(Boolean));
+  const withTier = include.has('tier');
+  const withCluster = include.has('cluster');
+
+  const tierProj = withTier ? `, q.urgency_tier` : '';
+  const clusterProj = withCluster ? `, q.geo_cluster_id` : '';
 
   const rows = await query<{
     id: number; queue_id: number; attempt_number: number;
     scheduled_date: string; window_start: string; window_end: string;
     window_label: string; notify_at: string; notify_before_secs: number;
     notified: number; dismissed: number;
+    officer_id: number | null; manually_moved: number;
+    auto_replan_source: number | null;
     recipient_name: string | null; recipient_address: string | null;
     recipient_city: string | null; recipient_state: string | null;
     case_number: string | null; priority: string; deadline: string | null;
     status: string;
+    urgency_tier?: string | null; geo_cluster_id?: string | null;
   }>(
     db,
     `SELECT s.id, s.queue_id, s.attempt_number, s.scheduled_date,
             s.window_start, s.window_end, s.window_label, s.notify_at,
             s.notify_before_secs, s.notified, s.dismissed,
+            s.officer_id, s.manually_moved, s.auto_replan_source,
             q.recipient_name, q.recipient_address, q.recipient_city, q.recipient_state,
-            q.case_number, q.priority, q.deadline, q.status
+            q.case_number, q.priority, q.deadline, q.status${tierProj}${clusterProj}
      FROM serve_attempt_schedules s
      JOIN serve_queue q ON q.id = s.queue_id
      WHERE s.dismissed = 0
        AND s.scheduled_date >= ?
-       AND (s.queue_id || 'T' || s.window_start) <= ?
+       AND s.scheduled_date <= ?
        AND q.status NOT IN ('served','cancelled','failed')
      ORDER BY s.scheduled_date ASC, s.window_start ASC`,
-    now.slice(0, 10),
-    cutoff,
+    startDate,
+    endDate,
   );
 
   // Group by date
