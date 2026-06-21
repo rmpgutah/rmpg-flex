@@ -9,6 +9,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { recordAudit } from '../utils/auditLog';
 
 const billing = new Hono<Env>();
 
@@ -69,16 +70,35 @@ billing.post('/contracts', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
+    const userId = c.get('userId') as number;
     const b = await c.req.json<Record<string, unknown>>();
     if (!b.client_id) return c.json({ error: 'client_id required' }, 400);
     if (typeof b.start_date !== 'string') return c.json({ error: 'start_date required' }, 400);
+    // Audit 2026-06-21: rate_amount was bound raw — '500.001abc' or
+    // negative values landed as strings and broke later SUM/AVG. The
+    // companion line-items POST had a typeof guard; contracts did not.
+    let rate: number | null = null;
+    if (b.rate_amount != null && b.rate_amount !== '') {
+      const r = Number(b.rate_amount);
+      if (!Number.isFinite(r) || r < 0) return c.json({ error: 'rate_amount must be a non-negative number' }, 400);
+      rate = r;
+    }
     const result = await execute(db,
       `INSERT INTO client_contracts (client_id, contract_number, contract_type, start_date, end_date, billing_cycle, rate_amount, rate_type, status, auto_renew, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       b.client_id, b.contract_number ?? null, b.contract_type ?? null, b.start_date, b.end_date ?? null,
-      b.billing_cycle ?? 'monthly', b.rate_amount ?? null, b.rate_type ?? 'flat', b.status ?? 'active', b.auto_renew ?? 0, b.notes ?? null);
+      b.billing_cycle ?? 'monthly', rate, b.rate_type ?? 'flat', b.status ?? 'active', b.auto_renew ?? 0, b.notes ?? null);
     const newId = Number(result.meta.last_row_id);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM client_contracts WHERE id = ?', newId);
+    try {
+      await recordAudit(c, {
+        action: 'contract_created',
+        entityType: 'client_contract',
+        entityId: newId,
+        details: `client=${b.client_id} type=${b.contract_type ?? 'n/a'} rate=${rate ?? 'n/a'}`,
+        actorId: userId,
+      });
+    } catch { /* best-effort */ }
     return c.json({ data: created }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to create contract' }, 500);
@@ -133,13 +153,37 @@ billing.post('/invoices', async (c) => {
   }
 });
 
+// Audit 2026-06-21: PUT /invoices accepted any string for `status`,
+// so a typo like 'Paid' (capital P) left the invoice as outstanding in
+// stats (status IN ('draft'...)) but invisible to collection workflows.
+// Downgrading from 'paid' to 'draft' was also allowed with no
+// paid_amount recalc.
+const VALID_INVOICE_STATUSES = new Set(['draft','sent','partial','paid','overdue','void','cancelled']);
+
 billing.put('/invoices/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'contract_manager');
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
+    const userId = c.get('userId') as number;
     const id = parseInt(c.req.param('id'), 10);
     const b = await c.req.json<Record<string, unknown>>();
+
+    if ('status' in b) {
+      const s = String(b.status);
+      if (!VALID_INVOICE_STATUSES.has(s)) {
+        return c.json({ error: `invalid status: ${s}`, valid: Array.from(VALID_INVOICE_STATUSES) }, 400);
+      }
+      if (s === 'paid') {
+        // Reject status='paid' unless paid_amount >= total_amount.
+        const inv = await queryFirst<{ paid_amount: number | null; total_amount: number | null }>(
+          db, 'SELECT paid_amount, total_amount FROM invoices WHERE id = ?', id);
+        const paid = Number(inv?.paid_amount || 0);
+        const total = Number(inv?.total_amount || 0);
+        if (paid < total) return c.json({ error: `Cannot mark paid: ${paid} of ${total} received` }, 409);
+      }
+    }
+
     const updatable = new Set(['client_id','contract_id','due_date','tax_rate','status','notes']);
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
@@ -147,6 +191,15 @@ billing.put('/invoices/:id', async (c) => {
     sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
     await execute(db, `UPDATE invoices SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', id);
+    try {
+      await recordAudit(c, {
+        action: 'invoice_updated',
+        entityType: 'invoice',
+        entityId: id,
+        details: `changed=${Object.keys(b).filter(k => updatable.has(k)).join(',')}`,
+        actorId: userId,
+      });
+    } catch { /* best-effort */ }
     return c.json({ data: updated });
   } catch (err) {
     return c.json({ error: 'Failed to update invoice' }, 500);
@@ -257,12 +310,21 @@ billing.post('/payments', async (c) => {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
     const b = await c.req.json<Record<string, unknown>>();
-    if (!b.amount || Number(b.amount) <= 0) return c.json({ error: 'amount required' }, 400);
+    // Audit 2026-06-21: the prior `!b.amount || Number(b.amount) <= 0`
+    // guard was bypassed by 'NaN <= 0 is false' for strings like
+    // '100abc' — the raw string landed in INSERT INTO payments,
+    // SUM(amount) silently dropped it, and the invoice never flipped
+    // to 'paid'. Use Number.isFinite + positive check, and bind the
+    // coerced number (not the raw body field).
+    const amt = Number(b.amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return c.json({ error: 'amount must be a positive number' }, 400);
+    }
     const clientId = b.client_id ?? (await queryFirst<{ client_id: number }>(db, 'SELECT client_id FROM invoices WHERE id = ?', b.invoice_id))?.client_id;
     const result = await execute(db,
       `INSERT INTO payments (invoice_id, client_id, payment_date, amount, payment_method, reference_number, notes, recorded_by)
        VALUES (?, ?, COALESCE(?, date('now')), ?, ?, ?, ?, ?)`,
-      b.invoice_id ?? null, clientId ?? null, b.payment_date ?? null, b.amount, b.payment_method ?? 'check', b.reference_number ?? null, b.notes ?? null, userId);
+      b.invoice_id ?? null, clientId ?? null, b.payment_date ?? null, amt, b.payment_method ?? 'check', b.reference_number ?? null, b.notes ?? null, userId);
     // Update invoice paid_amount
     if (b.invoice_id) {
       const total = await queryFirst<{ amt: number }>(db, 'SELECT COALESCE(SUM(amount),0) as amt FROM payments WHERE invoice_id = ?', b.invoice_id);
@@ -275,6 +337,15 @@ billing.post('/payments', async (c) => {
     }
     const newId = Number(result.meta.last_row_id);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM payments WHERE id = ?', newId);
+    try {
+      await recordAudit(c, {
+        action: 'payment_recorded',
+        entityType: 'payment',
+        entityId: newId,
+        details: `invoice=${b.invoice_id ?? 'n/a'} amount=${amt} method=${b.payment_method ?? 'check'}`,
+        actorId: userId,
+      });
+    } catch { /* best-effort */ }
     return c.json({ data: created }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to record payment' }, 500);
@@ -301,6 +372,11 @@ billing.get('/expenses', async (c) => {
   }
 });
 
+// Statuses where the row's financial fields are LOCKED — once approved
+// or paid, neither the amount nor the category can be changed without
+// rolling back through the audit trail.
+const EXPENSE_LOCKED_STATUSES = new Set(['approved', 'paid', 'reimbursed']);
+
 billing.post('/expenses', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer');
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
@@ -308,14 +384,30 @@ billing.post('/expenses', async (c) => {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
     const b = await c.req.json<Record<string, unknown>>();
-    if (!b.amount || Number(b.amount) <= 0) return c.json({ error: 'amount required' }, 400);
+    // Numeric validation that 'NaN <= 0 is false' doesn't subvert —
+    // the previous guard accepted '100abc' because the string was
+    // truthy. Audit 2026-06-21 caught this on /payments and it
+    // applied here too.
+    const amt = Number(b.amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return c.json({ error: 'amount must be a positive number' }, 400);
+    }
     const reportNumber = `EXP-${Date.now()}`;
     const result = await execute(db,
       `INSERT INTO expense_reports (report_number, submitter_id, category, description, amount, expense_date, receipt_url, status)
        VALUES (?, ?, ?, ?, ?, COALESCE(?, date('now')), ?, ?)`,
-      reportNumber, userId, b.category ?? null, b.description ?? null, b.amount, b.expense_date ?? null, b.receipt_url ?? null, 'submitted');
+      reportNumber, userId, b.category ?? null, b.description ?? null, amt, b.expense_date ?? null, b.receipt_url ?? null, 'submitted');
     const newId = Number(result.meta.last_row_id);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM expense_reports WHERE id = ?', newId);
+    try {
+      await recordAudit(c, {
+        action: 'expense_submitted',
+        entityType: 'expense_report',
+        entityId: newId,
+        details: `${reportNumber} amount=${amt}`,
+        actorId: userId,
+      });
+    } catch { /* best-effort */ }
     return c.json({ data: created, report_number: reportNumber }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to submit expense' }, 500);
@@ -327,15 +419,82 @@ billing.put('/expenses/:id', async (c) => {
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
+    const userId = c.get('userId') as number;
     const id = parseInt(c.req.param('id'), 10);
     const b = await c.req.json<Record<string, unknown>>();
-    const updatable = new Set(['category','description','amount','expense_date','receipt_url','status','approved_by','approved_at','notes']);
+
+    // Fraud surface caught by the 2026-06-21 audit: this route used
+    // to accept `approved_by` and `approved_at` directly from the body
+    // with no check that the actor wasn't approving their OWN expense.
+    // Also let `amount`/`category` be raised AFTER the fake approval
+    // landed. Three fixes below: strip approver-stamp fields from the
+    // updatable set; block self-approval; lock financial fields once
+    // the row has been approved/paid/reimbursed.
+
+    const existing = await queryFirst<{ submitter_id: number; status: string | null; amount: number; category: string | null }>(
+      db, 'SELECT submitter_id, status, amount, category FROM expense_reports WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Expense not found' }, 404);
+
+    // Note: approved_by + approved_at are NOT in the updatable set —
+    // they're stamped server-side from the JWT below.
+    const updatable = new Set(['category','description','amount','expense_date','receipt_url','status','notes']);
+
+    // Self-approval block. An admin/manager can approve OTHERS' expenses
+    // — never their own. This applies whether status is being set
+    // directly to 'approved' or to any other downstream locked status.
+    const newStatus = typeof b.status === 'string' ? b.status : undefined;
+    if (newStatus && EXPENSE_LOCKED_STATUSES.has(newStatus) && existing.submitter_id === userId) {
+      return c.json({ error: 'Cannot approve your own expense report' }, 403);
+    }
+
+    // Once locked, financial fields freeze. Status can still move
+    // forward (e.g. approved → paid) but amount/category/expense_date
+    // do not. The audit log captures the post-lock transitions.
+    const isLocked = EXPENSE_LOCKED_STATUSES.has(existing.status || '');
+    if (isLocked) {
+      const lockedFields = ['amount','category','expense_date'];
+      for (const f of lockedFields) {
+        if (f in b) return c.json({ error: `Cannot modify ${f} on a ${existing.status} expense` }, 409);
+      }
+    }
+
+    if ('amount' in b) {
+      const amt = Number(b.amount);
+      if (!Number.isFinite(amt) || amt <= 0) {
+        return c.json({ error: 'amount must be a positive number' }, 400);
+      }
+      b.amount = amt;
+    }
+
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
+
+    // Server-side approver stamp. If the actor is moving status into
+    // a locked state, the approver fields are set from the JWT — body
+    // values for approved_by/approved_at are ignored entirely above.
+    if (newStatus && EXPENSE_LOCKED_STATUSES.has(newStatus) && !isLocked) {
+      sets.push('approved_by = ?'); vals.push(userId);
+      sets.push("approved_at = datetime('now')");
+    }
+
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
     vals.push(id);
     await execute(db, `UPDATE expense_reports SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM expense_reports WHERE id = ?', id);
+
+    try {
+      const action = newStatus && EXPENSE_LOCKED_STATUSES.has(newStatus) && !isLocked
+        ? 'expense_approved'
+        : 'expense_updated';
+      await recordAudit(c, {
+        action,
+        entityType: 'expense_report',
+        entityId: id,
+        details: `status=${newStatus ?? existing.status}; changed=${Object.keys(b).join(',')}`,
+        actorId: userId,
+      });
+    } catch { /* best-effort */ }
+
     return c.json({ data: updated });
   } catch (err) {
     return c.json({ error: 'Failed to update expense' }, 500);

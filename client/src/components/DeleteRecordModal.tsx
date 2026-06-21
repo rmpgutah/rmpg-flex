@@ -68,10 +68,27 @@ export default function DeleteRecordModal({
   const label = recordLabel?.trim() || 'the selected record';
   const titleCased = recordType.charAt(0).toUpperCase() + recordType.slice(1);
   return (
+    // The follow-up audit (2026-06-21) caught two bugs in the v1009
+    // version of this guard:
+    //   (1) the locked Delete button looked fully active but did
+    //       nothing on click — exactly the "thinks-deleted-but-didn't"
+    //       failure mode this PR was supposed to PREVENT. Fixed by
+    //       passing confirmDisabled through ConfirmDialog so the
+    //       button gets real disabled / aria-disabled / not-allowed
+    //       cursor treatment. We keep the real onConfirm in place so a
+    //       parent that forgets evidenceLocked doesn't silently swallow
+    //       clicks via a no-op.
+    //   (2) the server's retention vocabulary is active/expired/purged
+    //       and the dashboard treats `expired` as eligible_for_purge —
+    //       so a NEGATIVE check ("anything != active is locked") blocks
+    //       the lawful retention-completion workflow. Callers now pass
+    //       evidenceLocked via the positive hold-list helper in
+    //       `utils/evidenceLock.ts`, not a status-not-active check.
     <ConfirmDialog
       isOpen={isOpen}
       onClose={onClose}
-      onConfirm={evidenceLocked ? () => {} : onConfirm}
+      onConfirm={onConfirm}
+      confirmDisabled={evidenceLocked}
       title={`Delete ${titleCased}`}
       message={`Permanently delete ${label}? This cannot be undone.`}
       details={

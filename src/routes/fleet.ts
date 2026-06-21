@@ -4,6 +4,8 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { verifySignedResource } from '../utils/signedAccess';
 import { summarizeInspection } from '../utils/vehicleInspection';
+import { isEvidenceLocked } from '../utils/evidenceLock';
+import { recordAudit } from '../utils/auditLog';
 
 const fleet = new Hono<Env>();
 
@@ -812,8 +814,23 @@ fleet.delete('/dashcam-videos/:id{[0-9]+}', requireRole('admin', 'manager'), asy
   try {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
-    const existing = await queryFirst<{ id: number; file_path?: string | null }>(db, 'SELECT id, file_path FROM dashcam_videos WHERE id = ?', id);
+    const existing = await queryFirst<{ id: number; file_path?: string | null; retention_status?: string | null; classification?: string | null; case_number?: string | null }>(
+      db,
+      'SELECT id, file_path, retention_status, classification, case_number FROM dashcam_videos WHERE id = ?',
+      id,
+    );
     if (!existing) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+
+    // Server-side evidence-lock — see commentary in bodyCameras.ts:507.
+    // The v1009 client guard was bypassable with one curl DELETE; this
+    // makes the hold-list authoritative on the server.
+    if (isEvidenceLocked(existing.retention_status)) {
+      return c.json({
+        error: 'Video under hold',
+        detail: `Retention status "${existing.retention_status}" indicates an active hold. Release the hold before deleting.`,
+      }, 409);
+    }
+
     try { await execute(db, 'DELETE FROM dashcam_video_links WHERE video_id = ?', id); } catch { /* links table may be absent */ }
     await execute(db, 'DELETE FROM dashcam_videos WHERE id = ?', id);
     if (existing.file_path) {
@@ -821,6 +838,16 @@ fleet.delete('/dashcam-videos/:id{[0-9]+}', requireRole('admin', 'manager'), asy
       // is preferable to a 500 after a successful delete.
       await c.env.UPLOADS.delete(existing.file_path).catch(() => undefined);
     }
+
+    try {
+      await recordAudit(c, {
+        action: 'dashcam_video_deleted',
+        entityType: 'dashcam_video',
+        entityId: id,
+        details: `Classification=${existing.classification ?? 'n/a'}; case=${existing.case_number ?? 'n/a'}; retention=${existing.retention_status ?? 'n/a'}`,
+      });
+    } catch { /* best-effort audit */ }
+
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /fleet/dashcam-videos/:id failed:', err);

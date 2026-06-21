@@ -32,6 +32,8 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { EVIDENCE_HOLD_VALUES, isEvidenceLocked } from '../../utils/evidenceLock';
+import { recordAudit } from '../../utils/auditLog';
 
 // Roles that can see every officer's cameras/videos. Officers (and any
 // other role not in this set) are scoped to officer_id = self. The
@@ -274,10 +276,42 @@ bodyCamerasRouter.delete('/:id', async (c) => {
     );
     if (!existing) return c.json({ error: 'Body camera not found' }, 404);
 
+    // Cascade hold check — the v1009 client modal only checked the
+    // single-video DELETE. A camera DELETE cascades into every video
+    // assigned to it; the 2026-06-21 follow-up audit caught that an
+    // operator (or a curl attacker) could destroy held evidence by
+    // going through the camera-delete path. Block it here.
+    const holdList = Array.from(EVIDENCE_HOLD_VALUES);
+    const placeholders = holdList.map(() => '?').join(',');
+    const held = await queryFirst<{ n: number }>(
+      db,
+      `SELECT COUNT(*) AS n FROM bodycam_videos WHERE camera_id = ? AND retention_status IN (${placeholders})`,
+      id, ...holdList,
+    );
+    if ((held?.n || 0) > 0) {
+      return c.json({
+        error: 'Camera has video on hold',
+        detail: `${held?.n} video(s) under legal/IA/court hold. Release the hold before retiring this camera.`,
+      }, 409);
+    }
+
     await db.batch([
       db.prepare('DELETE FROM bodycam_videos WHERE camera_id = ?').bind(id),
       db.prepare('DELETE FROM body_cameras WHERE id = ?').bind(id),
     ]);
+
+    // Append-only audit trail on evidence destruction — currently zero
+    // entries are written when evidentiary footage is destroyed, which
+    // is a SOX/chain-of-custody gap the audit flagged separately.
+    try {
+      await recordAudit(c, {
+        action: 'body_camera_deleted',
+        entityType: 'body_camera',
+        entityId: id,
+        details: `Body camera ${id} and all assigned videos destroyed by ${actor.role} ${actor.id}`,
+        actorId: actor.id,
+      });
+    } catch { /* audit best-effort, don't 500 a successful destruction */ }
 
     return c.json({ ok: true, id });
   } catch (err) {
@@ -463,14 +497,42 @@ bodycamVideosRouter.delete('/:id', async (c) => {
     const id = Number(c.req.param('id'));
     if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const db = getDb(c.env);
-    const row = await queryFirst<{ id: number; file_path: string | null }>(db, 'SELECT id, file_path FROM bodycam_videos WHERE id = ?', id);
+    const row = await queryFirst<{ id: number; file_path: string | null; retention_status: string | null; classification: string | null; case_number: string | null }>(
+      db,
+      'SELECT id, file_path, retention_status, classification, case_number FROM bodycam_videos WHERE id = ?',
+      id,
+    );
     if (!row) return c.json({ error: 'Video not found' }, 404);
+
+    // Server-side evidence-lock — the v1009 client guard was bypassable
+    // with one curl DELETE. The 2026-06-21 follow-up audit caught this.
+    // Positive hold-list check (utils/evidenceLock.ts) blocks only true
+    // legal/IA/court holds, NOT 'expired' (which means retention period
+    // elapsed and lawful destruction is allowed/mandated).
+    if (isEvidenceLocked(row.retention_status)) {
+      return c.json({
+        error: 'Video under hold',
+        detail: `Retention status "${row.retention_status}" indicates an active hold. Release the hold before deleting.`,
+      }, 409);
+    }
+
     // Storage failure must not block the metadata delete.
     if (row.file_path && (c.env as { UPLOADS?: R2Bucket }).UPLOADS) {
       try { await (c.env as { UPLOADS: R2Bucket }).UPLOADS.delete(row.file_path); }
       catch (e) { console.warn('bodycam R2 delete failed (non-fatal):', e); }
     }
     await execute(db, 'DELETE FROM bodycam_videos WHERE id = ?', id);
+
+    try {
+      await recordAudit(c, {
+        action: 'bodycam_video_deleted',
+        entityType: 'bodycam_video',
+        entityId: id,
+        details: `Classification=${row.classification ?? 'n/a'}; case=${row.case_number ?? 'n/a'}; retention=${row.retention_status ?? 'n/a'}`,
+        actorId: actor.id,
+      });
+    } catch { /* best-effort audit */ }
+
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /personnel/bodycam-videos/:id failed:', err);

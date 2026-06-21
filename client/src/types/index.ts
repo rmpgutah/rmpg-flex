@@ -946,7 +946,24 @@ export interface TrainingRequirement {
 
 export type CameraStatus = 'available' | 'assigned' | 'maintenance' | 'retired' | 'lost';
 export type VideoClassification = 'routine' | 'evidence' | 'flagged' | 'restricted';
-export type VideoRetention = 'active' | 'archived' | 'pending_deletion';
+// The retention vocabulary spans BOTH the original client union
+// (`active`/`archived`/`pending_deletion`) AND the server-side retention
+// dashboard values (`active`/`expired`/`purged`) AND the hold-list
+// values from `utils/evidenceLock.ts`. The 2026-06-21 audit caught
+// that the two vocabularies were silently disagreeing — see
+// utils/evidenceLock.ts for the canonical hold check.
+export type VideoRetention =
+  | 'active'
+  | 'archived'
+  | 'pending_deletion'
+  | 'expired'
+  | 'purged'
+  | 'legal_hold'
+  | 'court_hold'
+  | 'litigation_hold'
+  | 'subpoena_hold'
+  | 'ia_review'
+  | 'open_case';
 
 export interface BodyCamera {
   id: number;
@@ -1043,6 +1060,10 @@ export interface DashCamVideo {
   recorded_at?: string;
   case_number?: string;
   classification: VideoClassification;
+  // Server returns this via SELECT v.* on /api/fleet/dashcam-videos —
+  // declared explicitly so the evidence-lock guard doesn't silently
+  // degrade if anyone later narrows the SELECT to a column list.
+  retention_status?: VideoRetention;
   speed_mph?: number;
   latitude?: number;
   longitude?: number;

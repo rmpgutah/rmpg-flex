@@ -28,6 +28,7 @@ import { isValidTaskStatus, isValidTaskPriority, completedAtFor } from '../utils
 import { evaluateCompleteness } from '../utils/caseCompleteness';
 import { pickTemplate } from '../utils/caseTaskTemplates';
 import { broadcastAll } from './ws';
+import { recordAudit } from '../utils/auditLog';
 
 const cases = new Hono<Env>();
 
@@ -604,12 +605,26 @@ cases.delete('/:id', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
-    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM cases WHERE id = ?', id);
+    // Pull identifying fields BEFORE destruction — audit 2026-06-21
+    // caught that case deletion (cascading case_notes + case_person_links)
+    // wrote zero audit_log entries while case-task delete at line 1316
+    // logs via logCaseActivity. The first thing a prosecutor will ask
+    // is "who deleted this case?" — record the answer.
+    const existing = await queryFirst<{ id: number; case_number: string | null; case_type: string | null; status: string | null }>(
+      db, 'SELECT id, case_number, case_type, status FROM cases WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
     // CASCADE deletes case_notes + case_person_links via FK
     await execute(db, 'DELETE FROM case_notes WHERE case_id = ?', id);
     await execute(db, 'DELETE FROM case_person_links WHERE case_id = ?', id);
     await execute(db, 'DELETE FROM cases WHERE id = ?', id);
+    try {
+      await recordAudit(c, {
+        action: 'case_deleted',
+        entityType: 'case',
+        entityId: id,
+        details: `Deleted case ${existing.case_number ?? id} (${existing.case_type ?? 'unknown_type'}, status=${existing.status ?? 'unknown'})`,
+      });
+    } catch { /* best-effort */ }
     return c.json({ success: true });
   } catch (err) {
     return c.json({ error: 'Failed to delete case', code: 'DELETE_ERROR' }, 500);
