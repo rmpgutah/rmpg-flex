@@ -57,6 +57,12 @@ import {
   type CreateNoteInput,
 } from '../utils/serveLocationNotes';
 import { LIST_VIEW_COLUMNS } from './dispatch/calls';
+import {
+  replanAfterFailedAttempt,
+  applyUrgencyTier,
+  type AttemptWindow,
+} from '../utils/serveDiligencePlanner';
+import { persistAttemptSchedule } from '../utils/serveAttemptScheduler';
 
 const si = new Hono<Env>();
 
@@ -1363,7 +1369,101 @@ si.post('/:id/attempts', async (c) => {
     await generateServeCharges(db, id).catch(() => null);
   }
 
-  return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum, queue_status: newStatus });
+  // Auto-replan on failure (PR 1) — spawn next slot, recompute tier
+  const REPLAN_RESULTS = new Set(['no_answer', 'refused', 'bad_address', 'moved']);
+  let replanSummary: { slot_id: number; scheduled_date: string; window: string } | null = null;
+  const attemptId = ins.meta.last_row_id as number;
+
+  if (REPLAN_RESULTS.has(String(body.result ?? ''))) {
+    // Re-read the queue row to get the post-increment attempt_count + recipient details.
+    const q = await queryFirst<{
+      id: number; deadline: string | null; max_attempts: number;
+      attempt_count: number; recipient_lat: number | null;
+      recipient_lng: number | null; document_type: string | null;
+    }>(
+      db,
+      `SELECT id, deadline, max_attempts, attempt_count, recipient_lat,
+              recipient_lng, document_type
+         FROM serve_queue WHERE id = ?`,
+      id,
+    );
+
+    if (q && q.attempt_count < q.max_attempts) {
+      const isBusiness = (q.document_type ?? '').toLowerCase().includes('corporate')
+        || (q.document_type ?? '').toLowerCase().includes('business');
+
+      const next = replanAfterFailedAttempt(
+        {
+          attempt_at: new Date().toISOString(),
+          result: String(body.result),
+          window: typeof body.window === 'string' ? body.window : null,
+        },
+        {
+          deadline: q.deadline,
+          max_attempts: q.max_attempts,
+          attempt_count: q.attempt_count,
+          recipient_lat: q.recipient_lat,
+          recipient_lng: q.recipient_lng,
+          isBusiness,
+        },
+      );
+
+      if (next) {
+        // Persist as a single-window schedule (re-uses the existing helper).
+        await persistAttemptSchedule(db, id, [next], new Date().toISOString());
+
+        // Look up the newly-inserted slot for the response payload.
+        const slot = await queryFirst<{ id: number; scheduled_date: string; window_start: string; window_end: string }>(
+          db,
+          `SELECT id, scheduled_date, window_start, window_end
+             FROM serve_attempt_schedules
+            WHERE queue_id = ? AND scheduled_date = ?
+            ORDER BY id DESC LIMIT 1`,
+          id, next.date,
+        );
+        if (slot) {
+          // Stamp the auto_replan_source FK to the attempt we just inserted.
+          await execute(
+            db,
+            `UPDATE serve_attempt_schedules SET auto_replan_source = ? WHERE id = ?`,
+            attemptId, slot.id,
+          ).catch(() => null); // column may not exist on live yet (mig 0140 pending Task 7)
+          replanSummary = {
+            slot_id: slot.id,
+            scheduled_date: slot.scheduled_date,
+            window: `${slot.window_start}–${slot.window_end}`,
+          };
+        }
+
+        // Recompute tier; bump priority to 'rush' on flip-to-critical (one-way ratchet).
+        const tier = applyUrgencyTier(q.deadline, q.attempt_count, q.max_attempts, new Date().toISOString());
+        const priorityClause = tier === 'critical'
+          ? `, priority = CASE WHEN priority IN ('urgent') THEN priority ELSE 'rush' END`
+          : '';
+        await execute(
+          db,
+          `UPDATE serve_queue SET urgency_tier = ?, urgency_computed_at = datetime('now') ${priorityClause}
+             WHERE id = ?`,
+          tier, id,
+        ).catch(() => null); // urgency_tier column may not exist on live yet (mig 0140 pending Task 7)
+      } else {
+        // replanAfterFailedAttempt returned null (no viable window) — mark failed.
+        await execute(
+          db,
+          `UPDATE serve_queue SET status = 'failed', updated_at = datetime('now') WHERE id = ?`,
+          id,
+        );
+      }
+    }
+  }
+
+  return c.json({
+    success: true,
+    id: attemptId,
+    attempt_number: nextNum,
+    queue_status: newStatus,
+    ...(replanSummary ? { replan: replanSummary } : {}),
+  });
 });
 
 // ── POST /:id/skip-trace ────────────────────────────────────
