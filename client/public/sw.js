@@ -691,6 +691,20 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1002: Patrol Mileage Audit gap auto-fixer — new POST /mileage/auto-fix-gaps
+//        endpoint walks the unified CFS+PATROL chain and closes remaining
+//        +/- gaps left after Rebuild has aligned PATROL forward. Per pair:
+//        (a) gap >0 with intervening PATROL → re-stamp last patrol's
+//        end_mileage up to next CFS's starting_mileage; (b) gap >0 with
+//        no PATROL between → synthesize ONE patrol row (close_reason
+//        'gap_fill_auto'), capped at 100 mi single-gap synthesis;
+//        (c) gap <0 with intervening PATROL → contract last patrol's
+//        end_mileage down to CFS observation; (d) gap <0 with no PATROL
+//        between → reported for manual review (requires /mileage/fix on
+//        one of the two CFS rows). CFS row mileages NEVER auto-edited.
+//        New "Auto-fix gaps" toolbar button + post-run review panel
+//        showing unbridgeable CFS-to-CFS negative gaps. Every change
+//        audited via auditTripChange.
 // v1001: Patrol noise filter widened — operator request after seeing both
 //        literal-zero AND 0.1/0.3 mi micro-shuffle rows on the chain side-
 //        by-side. tripStore now discards any closed PATROL trip with

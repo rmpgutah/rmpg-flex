@@ -41,6 +41,7 @@ import {
   RefreshCw,
   Save,
   ShieldAlert,
+  Sparkles,
   Trash2,
   Wand2,
   Wrench,
@@ -206,6 +207,17 @@ export default function MileageAuditTab() {
   const [discardOpen, setDiscardOpen] = useState(false);
   const [discardReason, setDiscardReason] = useState('');
   const [discardSubmitting, setDiscardSubmitting] = useState(false);
+  // Auto-fix gaps: bridges remaining +/- gaps after Rebuild has aligned
+  // PATROL forward. Surfaces unbridgeable cases (CFS-to-CFS negative gaps)
+  // in the toast so the operator knows what still needs manual /mileage/fix.
+  const [autoFixOpen, setAutoFixOpen] = useState(false);
+  const [autoFixReason, setAutoFixReason] = useState('');
+  const [autoFixSubmitting, setAutoFixSubmitting] = useState(false);
+  const [autoFixLastResult, setAutoFixLastResult] = useState<null | {
+    bridged_existing: number; synthesized: number; contracted_negative: number;
+    unbridgeable_negative: number; oversized_positive: number;
+    unbridgeable: Array<{ scope: string; between_cfs_ids: [number, number]; gap_mi: number }>;
+  }>(null);
 
   // ── Load reference data once ──
   useEffect(() => {
@@ -402,6 +414,50 @@ export default function MileageAuditTab() {
       addToast(err?.message || 'Backfill failed', 'error');
     } finally {
       setBackfillSubmitting(false);
+    }
+  };
+
+  const submitAutoFix = async () => {
+    if (!autoFixReason.trim()) {
+      addToast('Reason is required for the audit trail', 'error');
+      return;
+    }
+    setAutoFixSubmitting(true);
+    try {
+      const body: Record<string, unknown> = { reason: autoFixReason.trim() };
+      if (officerId !== '') body.officer_id = Number(officerId);
+      if (unitId !== '') body.unit_id = unitId;
+      if (from) body.from = from;
+      if (to) body.to = to;
+      const res = await apiFetch<{
+        bridged_existing: number; synthesized: number; contracted_negative: number;
+        unbridgeable_negative: number; oversized_positive: number;
+        unbridgeable: Array<{ scope: string; between_cfs_ids: [number, number]; gap_mi: number }>;
+        errors: string[];
+      }>('/patrol/mileage/auto-fix-gaps', { method: 'POST', body: JSON.stringify(body) });
+
+      const totalFixed = res.bridged_existing + res.synthesized + res.contracted_negative;
+      const flags = res.unbridgeable_negative + res.oversized_positive;
+      addToast(
+        `Auto-fix: ${res.bridged_existing} bridged existing PATROL, ${res.synthesized} synthesized, ` +
+        `${res.contracted_negative} contracted (-gaps). ${flags > 0 ? `${flags} flagged for review.` : ''}`,
+        totalFixed > 0 ? 'success' : 'info',
+      );
+      setAutoFixLastResult({
+        bridged_existing: res.bridged_existing,
+        synthesized: res.synthesized,
+        contracted_negative: res.contracted_negative,
+        unbridgeable_negative: res.unbridgeable_negative,
+        oversized_positive: res.oversized_positive,
+        unbridgeable: res.unbridgeable,
+      });
+      setAutoFixOpen(false);
+      setAutoFixReason('');
+      refresh();
+    } catch (err: any) {
+      addToast(err?.message || 'Auto-fix failed', 'error');
+    } finally {
+      setAutoFixSubmitting(false);
     }
   };
 
@@ -628,7 +684,7 @@ export default function MileageAuditTab() {
             {canFix && (
               <button
                 type="button"
-                onClick={() => { setBackfillOpen((v) => !v); setDiscardOpen(false); }}
+                onClick={() => { setBackfillOpen((v) => !v); setDiscardOpen(false); setAutoFixOpen(false); }}
                 className="toolbar-btn text-[10px]"
                 disabled={backfillSubmitting}
                 title="Walk the unified CFS+PATROL chain and re-stamp PATROL odometer to align with CFS observations in this scope/window"
@@ -640,13 +696,25 @@ export default function MileageAuditTab() {
             {canFix && (
               <button
                 type="button"
-                onClick={() => { setDiscardOpen((v) => !v); setBackfillOpen(false); }}
+                onClick={() => { setDiscardOpen((v) => !v); setBackfillOpen(false); setAutoFixOpen(false); }}
                 className="toolbar-btn text-[10px]"
                 disabled={discardSubmitting}
                 title="Delete sub-0.5-mile PATROL trips (parking-lot shuffle, engine-on-while-parked, single-fix sweep noise) from this scope/window"
               >
                 <Trash2 className="w-3 h-3" />
                 Discard ≤0.5 mi
+              </button>
+            )}
+            {canFix && (
+              <button
+                type="button"
+                onClick={() => { setAutoFixOpen((v) => !v); setBackfillOpen(false); setDiscardOpen(false); }}
+                className="toolbar-btn text-[10px]"
+                disabled={autoFixSubmitting}
+                title="Close remaining +/- gaps: chain existing PATROL trips between CFS rows, synthesize gap-fill trips where no PATROL exists, contract PATROL ends down to CFS observations. CFS rows never auto-edited."
+              >
+                <Sparkles className="w-3 h-3" />
+                Auto-fix gaps
               </button>
             )}
             <button
@@ -691,6 +759,74 @@ export default function MileageAuditTab() {
             >
               <X className="w-3.5 h-3.5" />
             </IconButton>
+          </div>
+        )}
+        {autoFixOpen && canFix && (
+          <div className="mt-2 px-2 py-2 bg-surface-sunken border border-purple-700/40 flex items-center gap-2">
+            <span className="text-[10px] text-purple-300 font-mono uppercase tracking-wider">
+              Auto-fix
+            </span>
+            <input
+              type="text"
+              autoFocus
+              value={autoFixReason}
+              onChange={(e) => setAutoFixReason(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submitAutoFix(); }}
+              placeholder="Reason (e.g. close residual gaps after Rebuild — synthesize missing PATROL records)"
+              className="input-dark flex-1 min-h-[28px] text-xs"
+            />
+            <button
+              type="button"
+              onClick={submitAutoFix}
+              disabled={autoFixSubmitting || !autoFixReason.trim()}
+              className="toolbar-btn toolbar-btn-primary text-[10px]"
+            >
+              {autoFixSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+              Auto-fix on current scope/window
+            </button>
+            <IconButton
+              aria-label="Cancel auto-fix"
+              onClick={() => { setAutoFixOpen(false); setAutoFixReason(''); }}
+              className="text-rmpg-400 hover:text-rmpg-100"
+            >
+              <X className="w-3.5 h-3.5" />
+            </IconButton>
+          </div>
+        )}
+        {autoFixLastResult && (autoFixLastResult.unbridgeable.length > 0 || autoFixLastResult.oversized_positive > 0) && (
+          <div className="mt-2 px-2 py-2 bg-surface-sunken border border-amber-700/40">
+            <div className="flex items-center gap-2 mb-1">
+              <AlertTriangle className="w-3 h-3 text-amber-400" />
+              <span className="text-[10px] text-amber-300 font-mono uppercase tracking-wider">
+                Auto-fix flagged for manual review
+              </span>
+              <IconButton
+                aria-label="Dismiss review panel"
+                onClick={() => setAutoFixLastResult(null)}
+                className="ml-auto text-rmpg-400 hover:text-rmpg-100"
+              >
+                <X className="w-3.5 h-3.5" />
+              </IconButton>
+            </div>
+            {autoFixLastResult.oversized_positive > 0 && (
+              <div className="text-[10px] text-amber-300 mb-1">
+                {autoFixLastResult.oversized_positive} gap(s) over 100 mi — too large to safely synthesize, likely data corruption. Use the per-row Fix tool.
+              </div>
+            )}
+            {autoFixLastResult.unbridgeable.length > 0 && (
+              <div>
+                <div className="text-[10px] text-amber-300 mb-0.5">
+                  CFS-to-CFS negative gaps (odometer entered lower than prior call's end — needs human judgment about which row is wrong):
+                </div>
+                <ul className="text-[10px] font-mono text-rmpg-200 space-y-0.5 max-h-32 overflow-y-auto">
+                  {autoFixLastResult.unbridgeable.map((u, i) => (
+                    <li key={i}>
+                      between CFS {u.between_cfs_ids[0]} and CFS {u.between_cfs_ids[1]}: {u.gap_mi.toFixed(1)} mi
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
         {discardOpen && canFix && (

@@ -1569,6 +1569,280 @@ pm.post('/mileage/backfill-patrol-trips', async (c) => {
   }
 });
 
+// POST /mileage/auto-fix-gaps — close remaining +/- gaps in the unified
+// chain after Rebuild has already aligned existing PATROL rows. Rebuild
+// guarantees PATROL chains forward from its prior event; it does NOT
+// guarantee the LAST PATROL in a span ends exactly at the NEXT CFS's
+// starting_mileage — so gaps persist when an officer drove farther than
+// their patrol GPS captured (positive gap) or the CFS row's odometer was
+// entered lower than the patrol chain expected (negative gap).
+//
+// Strategy per consecutive event pair (A, B):
+//   • |gap| < TOL_MI (0.1)         : skip — rounding noise.
+//   • gap > 0, PATROL between(A,B) : chain them forward + stretch the
+//                                     LAST patrol's end_mileage up to
+//                                     B's starting_mileage. The residual
+//                                     becomes part of that last patrol's
+//                                     recorded distance.
+//   • gap > 0, NO PATROL between   : synthesize ONE patrol row spanning
+//                                     A.end → B.start with
+//                                     close_reason='gap_fill_auto', so
+//                                     the chain is continuous. Capped at
+//                                     SYNTH_CAP_MI (100 mi) — anything
+//                                     bigger is corrupted data and gets
+//                                     reported instead of fabricated.
+//   • gap < 0, PATROL between(A,B) : contract the LAST patrol's end down
+//                                     to B's starting_mileage. CFS
+//                                     observation wins; patrol GPS
+//                                     over-recorded.
+//   • gap < 0, NO PATROL between   : unbridgeable — requires a manual
+//                                     /mileage/fix on one of the two
+//                                     CFS rows. Reported, not fixed.
+//
+// CFS row mileages are NEVER auto-edited (same authority rule as
+// Rebuild). Every change writes through auditTripChange.
+//
+// Body: { officer_id?, unit_id?, from?, to?, reason }
+pm.post('/mileage/auto-fix-gaps', async (c) => {
+  try {
+    const user = requireTripEditor(c);
+    if (!user) return c.json({ error: 'Admin / manager / supervisor only', code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+    if (!body.reason || !String(body.reason).trim()) {
+      return c.json({ error: 'reason required for the audit trail' }, 400);
+    }
+    const reason = String(body.reason).trim();
+    const officerId = body.officer_id != null ? Number(body.officer_id) : null;
+    const unitId = body.unit_id != null ? Number(body.unit_id) : null;
+    const from = typeof body.from === 'string' ? body.from : null;
+    const to = typeof body.to === 'string' ? body.to : null;
+
+    const TOL_MI = 0.1;
+    const SYNTH_CAP_MI = 100;
+
+    // ── 1. Pull PATROL trips + CFS rows in scope ───────────────────
+    const trWhere: string[] = [
+      "status = 'closed'", "trip_type = 'patrol'",
+      'officer_id IS NOT NULL', 'unit_id IS NOT NULL',
+    ];
+    const trParams: unknown[] = [];
+    if (officerId != null && Number.isFinite(officerId)) { trWhere.push('officer_id = ?'); trParams.push(officerId); }
+    if (unitId != null && Number.isFinite(unitId)) { trWhere.push('unit_id = ?'); trParams.push(unitId); }
+    if (from) { trWhere.push('date(start_time) >= date(?)'); trParams.push(from); }
+    if (to) { trWhere.push('date(start_time) <= date(?)'); trParams.push(to); }
+    const patrolRows = await query<{
+      id: number; officer_id: number; unit_id: number; vehicle_id: number | null;
+      start_time: string; end_time: string | null;
+      start_mileage: number | null; end_mileage: number | null;
+      distance_m: number | null;
+    }>(db, `
+      SELECT id, officer_id, unit_id, vehicle_id, start_time, end_time,
+             start_mileage, end_mileage, distance_m
+        FROM unit_trips WHERE ${trWhere.join(' AND ')}
+       ORDER BY officer_id, unit_id, start_time ASC
+       LIMIT 2000
+    `, ...trParams);
+
+    const cfWhere: string[] = [
+      '(c.starting_mileage IS NOT NULL OR c.ending_mileage IS NOT NULL)',
+    ];
+    const cfParams: unknown[] = [];
+    if (unitId != null && Number.isFinite(unitId)) {
+      cfWhere.push("(SELECT COUNT(*) FROM json_each(c.assigned_unit_ids) WHERE CAST(value AS TEXT) = ?) > 0");
+      cfParams.push(String(unitId));
+    }
+    if (from) { cfWhere.push("COALESCE(c.cleared_at, c.closed_at, c.dispatched_at) >= ?"); cfParams.push(from); }
+    if (to) { cfWhere.push("COALESCE(c.cleared_at, c.closed_at, c.dispatched_at) <= ?"); cfParams.push(to + ' 23:59:59'); }
+    const cfsRows = await query<{
+      id: number; starting_mileage: number | null; ending_mileage: number | null;
+      enroute_at: string | null; onscene_at: string | null;
+      cleared_at: string | null; closed_at: string | null; dispatched_at: string | null;
+      assigned_unit_ids: string | null;
+    }>(db, `
+      SELECT c.id, c.starting_mileage, c.ending_mileage,
+             c.enroute_at, c.onscene_at, c.cleared_at, c.closed_at, c.dispatched_at,
+             c.assigned_unit_ids
+        FROM calls_for_service c WHERE ${cfWhere.join(' AND ')}
+       ORDER BY COALESCE(c.dispatched_at, c.enroute_at) ASC
+       LIMIT 2000
+    `, ...cfParams);
+
+    // ── 2. Bucket by (officer, unit) + sort by time ────────────────
+    type Event =
+      | { kind: 'patrol'; id: number; officer_id: number; unit_id: number;
+          start: string; end: string; start_mileage: number | null;
+          end_mileage: number | null; distance_m: number | null }
+      | { kind: 'cfs'; id: number; officer_id: number; unit_id: number;
+          start: string; end: string; starting_mileage: number | null;
+          ending_mileage: number | null };
+    const unitOfficerCache = new Map<number, number | null>();
+    const resolveOfficer = async (uId: number): Promise<number | null> => {
+      if (unitOfficerCache.has(uId)) return unitOfficerCache.get(uId)!;
+      const row = await queryFirst<{ officer_id: number | null }>(db, 'SELECT officer_id FROM units WHERE id = ?', uId);
+      const v = row?.officer_id ?? null;
+      unitOfficerCache.set(uId, v);
+      return v;
+    };
+    const buckets = new Map<string, Event[]>();
+    const bucketPush = (key: string, ev: Event) => {
+      const arr = buckets.get(key) ?? [];
+      arr.push(ev);
+      buckets.set(key, arr);
+    };
+
+    for (const p of patrolRows) {
+      bucketPush(`${p.officer_id}:${p.unit_id}`, {
+        kind: 'patrol', id: p.id, officer_id: p.officer_id, unit_id: p.unit_id,
+        start: p.start_time, end: p.end_time ?? p.start_time,
+        start_mileage: p.start_mileage, end_mileage: p.end_mileage,
+        distance_m: p.distance_m,
+      });
+    }
+    for (const r of cfsRows) {
+      let assigned: number[] = [];
+      try { assigned = JSON.parse(r.assigned_unit_ids || '[]'); } catch { /* skip */ }
+      if (!assigned.length) continue;
+      const uId = assigned[0];
+      if (unitId != null && Number.isFinite(unitId) && uId !== unitId) continue;
+      const oId = await resolveOfficer(uId);
+      if (oId == null) continue;
+      if (officerId != null && Number.isFinite(officerId) && oId !== officerId) continue;
+      const t = r.enroute_at || r.dispatched_at || r.onscene_at || r.cleared_at || r.closed_at;
+      if (!t) continue;
+      bucketPush(`${oId}:${uId}`, {
+        kind: 'cfs', id: r.id, officer_id: oId, unit_id: uId,
+        start: t, end: r.cleared_at || r.closed_at || t,
+        starting_mileage: r.starting_mileage, ending_mileage: r.ending_mileage,
+      });
+    }
+
+    // ── 3. Walk pairs, build fix proposals ─────────────────────────
+    let bridgedExisting = 0, synthesized = 0, contractedNegative = 0;
+    let unbridgeableNegative = 0, oversizedPositive = 0;
+    const errors: string[] = [];
+    const unbridgeable: Array<{ scope: string; between_cfs_ids: [number, number]; gap_mi: number }> = [];
+
+    for (const [scope, events] of buckets) {
+      events.sort((a, b) => a.start.localeCompare(b.start));
+
+      for (let i = 1; i < events.length; i++) {
+        const prev = events[i - 1];
+        const cur = events[i];
+
+        const prevEnd = prev.kind === 'cfs' ? prev.ending_mileage : prev.end_mileage;
+        const curStart = cur.kind === 'cfs' ? cur.starting_mileage : cur.start_mileage;
+        if (prevEnd == null || curStart == null) continue;
+
+        const gap = Number(curStart) - Number(prevEnd);
+        if (Math.abs(gap) < TOL_MI) continue;
+
+        const closingAtCfs = cur.kind === 'cfs';
+        const startingFromCfs = prev.kind === 'cfs';
+
+        if (gap > 0) {
+          if (cur.kind === 'patrol') {
+            // The current row IS a patrol — re-stamp it forward.
+            const newStart = Math.round(Number(prevEnd) * 10) / 10;
+            const distanceMi = cur.distance_m != null && cur.distance_m > 0
+              ? (cur.distance_m / 1609.344) : gap;
+            const newEnd = Math.round((newStart + Math.max(distanceMi, gap)) * 10) / 10;
+            try {
+              await db.prepare(
+                `UPDATE unit_trips SET start_mileage = ?, end_mileage = ?, updated_at = datetime('now') WHERE id = ?`,
+              ).bind(newStart, newEnd, cur.id).run();
+              await auditTripChange(db, {
+                table: 'unit_trips', entryId: cur.id, field: 'start_mileage',
+                before: cur.start_mileage, after: newStart, reason: `auto-fix-gap (+${gap.toFixed(1)} mi): ${reason}`,
+                userId: user.id, officerId: cur.officer_id, unitId: cur.unit_id,
+              });
+              if (cur.end_mileage !== newEnd) {
+                await auditTripChange(db, {
+                  table: 'unit_trips', entryId: cur.id, field: 'end_mileage',
+                  before: cur.end_mileage, after: newEnd, reason: `auto-fix-gap (stretched +${(newEnd - newStart - (distanceMi)).toFixed(1)} mi to bridge): ${reason}`,
+                  userId: user.id, officerId: cur.officer_id, unitId: cur.unit_id,
+                });
+              }
+              cur.start_mileage = newStart;
+              cur.end_mileage = newEnd;
+              bridgedExisting++;
+            } catch (e) { errors.push(`patrol ${cur.id}: ${(e as Error)?.message}`); }
+          } else if (closingAtCfs && startingFromCfs) {
+            // Two CFS rows back-to-back with no PATROL between — synthesize one
+            if (gap > SYNTH_CAP_MI) {
+              oversizedPositive++;
+              continue;
+            }
+            const synthStart = new Date(Date.parse(prev.end.replace(' ', 'T') + 'Z') + 60_000).toISOString().slice(0, 19).replace('T', ' ');
+            const synthEnd = new Date(Date.parse(cur.start.replace(' ', 'T') + 'Z') - 60_000).toISOString().slice(0, 19).replace('T', ' ');
+            const startMi = Math.round(Number(prevEnd) * 10) / 10;
+            const endMi = Math.round(Number(curStart) * 10) / 10;
+            try {
+              const ins = await db.prepare(
+                `INSERT INTO unit_trips (unit_id, officer_id, trip_type, status,
+                    start_time, end_time, start_mileage, end_mileage,
+                    distance_m, close_reason, created_at, updated_at)
+                  VALUES (?, ?, 'patrol', 'closed', ?, ?, ?, ?, ?, 'gap_fill_auto', datetime('now'), datetime('now'))`,
+              ).bind(
+                cur.unit_id, cur.officer_id,
+                synthStart, synthEnd, startMi, endMi,
+                Math.round(gap * 1609.344),
+              ).run();
+              const newId = (ins.meta as { last_row_id?: number })?.last_row_id ?? 0;
+              await auditTripChange(db, {
+                table: 'unit_trips', entryId: newId, field: 'created',
+                before: null, after: `gap_fill_auto patrol ${synthStart}→${synthEnd} (${gap.toFixed(1)} mi between CFS ${prev.id} and CFS ${cur.id})`,
+                reason: `auto-fix-gap synthesis: ${reason}`,
+                userId: user.id, officerId: cur.officer_id, unitId: cur.unit_id,
+              });
+              synthesized++;
+            } catch (e) { errors.push(`synth gap ${prev.id}->${cur.id}: ${(e as Error)?.message}`); }
+          }
+        } else {
+          // Negative gap: odometer went backward
+          if (prev.kind === 'patrol') {
+            // Contract the prior patrol's end_mileage to match cur's start
+            const newEnd = Math.round(Number(curStart) * 10) / 10;
+            try {
+              await db.prepare(
+                `UPDATE unit_trips SET end_mileage = ?, updated_at = datetime('now') WHERE id = ?`,
+              ).bind(newEnd, prev.id).run();
+              await auditTripChange(db, {
+                table: 'unit_trips', entryId: prev.id, field: 'end_mileage',
+                before: prev.end_mileage, after: newEnd,
+                reason: `auto-fix-gap (contracted ${gap.toFixed(1)} mi to match CFS observation): ${reason}`,
+                userId: user.id, officerId: prev.officer_id, unitId: prev.unit_id,
+              });
+              prev.end_mileage = newEnd;
+              contractedNegative++;
+            } catch (e) { errors.push(`patrol ${prev.id}: ${(e as Error)?.message}`); }
+          } else {
+            // CFS-to-CFS negative gap: unbridgeable without human judgment.
+            unbridgeableNegative++;
+            unbridgeable.push({ scope, between_cfs_ids: [prev.id, cur.id], gap_mi: Math.round(gap * 10) / 10 });
+          }
+        }
+      }
+    }
+
+    return c.json({
+      success: true,
+      bridged_existing: bridgedExisting,
+      synthesized,
+      contracted_negative: contractedNegative,
+      unbridgeable_negative: unbridgeableNegative,
+      oversized_positive: oversizedPositive,
+      tolerance_mi: TOL_MI,
+      synthesis_cap_mi: SYNTH_CAP_MI,
+      unbridgeable: unbridgeable.slice(0, 20),
+      errors: errors.slice(0, 20),
+    });
+  } catch (err) {
+    console.error('POST /patrol/mileage/auto-fix-gaps failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
 // POST /trips/discard-zero-mile — admin sweep that deletes closed PATROL
 // trips whose recorded distance is below the noise threshold (≤ 0.5 mi,
 // matching the live tripStore filter). Catches both literal-zero rows AND
