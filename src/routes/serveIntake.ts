@@ -1333,6 +1333,69 @@ si.patch('/schedule/:slotId', async (c) => {
   return c.json({ slot: updated });
 });
 
+// ── POST /schedule/rebalance — dry-run preview or apply ───────
+si.post('/schedule/rebalance', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+
+  const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
+
+  const body = await c.req.json<any>().catch(() => ({}));
+  const dry = body.dry_run !== false; // default true — preview unless explicitly set false
+
+  const { previewRangeRebalance } = await import('../utils/rebalancePreview');
+
+  const rows = await query<{
+    id: number; deadline: string | null; max_attempts: number;
+    attempt_count: number; priority: string; urgency_tier: string | null;
+  }>(
+    db,
+    `SELECT id, deadline, max_attempts, attempt_count, priority, urgency_tier
+       FROM serve_queue
+      WHERE status IN ('pending', 'assigned', 'in_progress', 'attempted')`,
+  );
+
+  const nowIso = new Date().toISOString();
+  const preview = previewRangeRebalance(rows, nowIso);
+
+  if (dry) {
+    return c.json({ dry_run: true, ...preview });
+  }
+
+  // Apply: one UPDATE per changed row. Low volume; in-loop is acceptable.
+  for (const change of preview.changes) {
+    const priorityClause = change.to_priority === 'rush' ? `, priority = 'rush'` : '';
+    await execute(
+      db,
+      `UPDATE serve_queue
+          SET urgency_tier = ?, urgency_computed_at = datetime('now') ${priorityClause}
+        WHERE id = ?`,
+      change.to_tier, change.queue_id,
+    );
+  }
+
+  await recordAudit(c, {
+    action: 'serve_schedule.rebalance_applied',
+    entityType: 'serve_queue',
+    entityId: null,
+    details: {
+      changes: preview.changes.length,
+      tiers_promoted_critical: preview.tiers_promoted_critical,
+      priority_escalated: preview.priority_escalated,
+    },
+  });
+
+  broadcastAll('data_changed', {
+    module: 'serve-schedule',
+    entity: 'queue',
+    action: 'rebalanced',
+    count: preview.changes.length,
+  });
+
+  return c.json({ dry_run: false, ...preview });
+});
+
 // ── DELETE /schedule/:slotId — dismiss a slot ────────────────
 si.delete('/schedule/:slotId', async (c) => {
   const slotId = parseInt(c.req.param('slotId'), 10);
