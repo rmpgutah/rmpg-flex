@@ -38,6 +38,9 @@ describe('<InsightsRoute>', () => {
       },
       '/fleet-viz/readiness': { count: 0, data: [] },
       '/fleet-viz/calls-per-gallon': { period: 'Last 90 days', count: 0, data: [] },
+      '/fleet-viz/mpg-by-officer': { period: 'x', samples: [], by_officer: [] },
+      '/fleet-viz/cost-per-mile': { period: 'x', count: 0, data: [] },
+      '/fleet-viz/fuel-anomalies': { period: 'x', count: 0, data: [] },
     });
     render(<MemoryRouter><InsightsRoute /></MemoryRouter>);
     await waitFor(() => expect(screen.getByText('12')).toBeInTheDocument()); // in-service
@@ -50,6 +53,9 @@ describe('<InsightsRoute>', () => {
   it('renders the readiness board with vehicle rows', async () => {
     stubApi({
       '/fleet-viz/kpi': { period: 'x', in_service: 0, in_shop: 0, overdue_pms: 0, avg_mpg: 0, cost_per_mile: null, total_cost: 0, miles_driven: 0 },
+      '/fleet-viz/mpg-by-officer': { period: 'x', samples: [], by_officer: [] },
+      '/fleet-viz/cost-per-mile': { period: 'x', count: 0, data: [] },
+      '/fleet-viz/fuel-anomalies': { period: 'x', count: 0, data: [] },
       '/fleet-viz/readiness': {
         count: 2,
         data: [
@@ -67,9 +73,27 @@ describe('<InsightsRoute>', () => {
     expect(screen.getByText('PASS')).toBeInTheDocument();
   });
 
+  it('renders the new V3/V4/V6 cards (PR 8b)', async () => {
+    stubApi({
+      '/fleet-viz/kpi': { period: 'x', in_service: 0, in_shop: 0, overdue_pms: 0, avg_mpg: 0, cost_per_mile: null, total_cost: 0, miles_driven: 0 },
+      '/fleet-viz/readiness': { count: 0, data: [] },
+      '/fleet-viz/calls-per-gallon': { period: 'x', count: 0, data: [] },
+      '/fleet-viz/mpg-by-officer': { period: 'x', samples: [], by_officer: [] },
+      '/fleet-viz/cost-per-mile': { period: 'x', count: 0, data: [] },
+      '/fleet-viz/fuel-anomalies': { period: 'x', count: 0, data: [] },
+    });
+    render(<MemoryRouter><InsightsRoute /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText(/mpg by officer/i)).toBeInTheDocument());
+    expect(screen.getByText(/cost per mile/i)).toBeInTheDocument();
+    expect(screen.getByText(/fuel anomalies/i)).toBeInTheDocument();
+  });
+
   it('renders the calls-per-gallon moat with officer rows ranked by ratio', async () => {
     stubApi({
       '/fleet-viz/kpi': { period: 'x', in_service: 0, in_shop: 0, overdue_pms: 0, avg_mpg: 0, cost_per_mile: null, total_cost: 0, miles_driven: 0 },
+      '/fleet-viz/mpg-by-officer': { period: 'x', samples: [], by_officer: [] },
+      '/fleet-viz/cost-per-mile': { period: 'x', count: 0, data: [] },
+      '/fleet-viz/fuel-anomalies': { period: 'x', count: 0, data: [] },
       '/fleet-viz/readiness': { count: 0, data: [] },
       '/fleet-viz/calls-per-gallon': {
         period: 'Last 90 days',

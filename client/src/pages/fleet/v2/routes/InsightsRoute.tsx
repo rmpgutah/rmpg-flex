@@ -17,6 +17,11 @@
 // V8 PM-upcoming table — same pattern, each on its own card here.
 // ============================================================
 import { useEffect, useState } from 'react';
+import {
+  ResponsiveContainer, ScatterChart, Scatter,
+  XAxis, YAxis, ZAxis, Tooltip, CartesianGrid,
+  BarChart, Bar, Legend,
+} from 'recharts';
 import { apiFetch } from '../../../../hooks/useApi';
 import { SectionHeader } from '../shell/SectionHeader';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
@@ -291,10 +296,204 @@ export function InsightsRoute() {
           <ReadinessCard />
           <CallsPerGallonCard period={period} />
         </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <MpgByOfficerScatterCard period={period} />
+          <CostPerMileStackCard period={period} />
+        </div>
+        <FuelAnomaliesCard period={period} />
         <p className="text-[10px] text-rmpg-500 pt-2">
-          Backed by <code>/api/fleet-viz/*</code> aggregates landed in PR 7-9 backend (#1500). Additional charts (V1 Fleet Map, V3 MPG-by-officer, V4 cost-per-mile, V6 fuel anomalies) land in follow-up PRs.
+          Backed by <code>/api/fleet-viz/*</code> aggregates landed in PR 7-9 backend (#1500). V1 Fleet Map (Mapbox) lands in PR 8c; V2/V5/V8 in PR 9b.
         </p>
       </div>
     </div>
+  );
+}
+
+// ─── V3: MPG by officer (scatter) ─────────────────────────
+
+interface MpgByOfficerResp {
+  period: string;
+  samples: { officer_id: number; officer_name: string; mpg: number; gallons: number; fuel_date: string }[];
+  by_officer: { officer_id: number; officer_name: string; samples: number; mean_mpg: number; total_gallons: number; total_cost: number }[];
+}
+
+function MpgByOfficerScatterCard({ period }: { period: Period }) {
+  const [data, setData] = useState<MpgByOfficerResp | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setData(null); setErr(null);
+    apiFetch<MpgByOfficerResp>(`/fleet-viz/mpg-by-officer?period=${period}`)
+      .then((r) => { if (!cancelled) setData(r); })
+      .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
+    return () => { cancelled = true; };
+  }, [period]);
+  return (
+    <Card
+      title="MPG by officer"
+      hint="RMPG exclusive — joins fuel + officers"
+      tone="moat"
+    >
+      {err ? <div className="text-xs text-red-400">{err}</div> :
+       data == null ? <Skeleton lines={6} /> :
+       !Array.isArray(data.by_officer) || data.by_officer.length === 0 ? <div className="text-xs text-rmpg-400">No officer-tagged fuel entries this period.</div> :
+       (
+        <div style={{ width: '100%', height: 220 }}>
+          <ResponsiveContainer>
+            <ScatterChart margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
+              <CartesianGrid stroke="#1e293b" />
+              <XAxis
+                type="number"
+                dataKey="total_gallons"
+                name="Gallons"
+                tick={{ fill: 'var(--text-muted, #94a3b8)', fontSize: 9 }}
+                label={{ value: 'Total gallons', position: 'insideBottom', offset: -4, fill: 'var(--text-muted, #94a3b8)', fontSize: 9 }}
+              />
+              <YAxis
+                type="number"
+                dataKey="mean_mpg"
+                name="Mean MPG"
+                tick={{ fill: 'var(--text-muted, #94a3b8)', fontSize: 9 }}
+                label={{ value: 'Mean MPG', angle: -90, position: 'insideLeft', fill: 'var(--text-muted, #94a3b8)', fontSize: 9 }}
+              />
+              <ZAxis type="number" dataKey="samples" range={[40, 240]} name="Sample count" />
+              <Tooltip
+                cursor={{ strokeDasharray: '3 3' }}
+                contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                formatter={(value, name) => [typeof value === 'number' ? value.toFixed(1) : value, name]}
+                labelFormatter={() => ''}
+              />
+              <Scatter data={data.by_officer} fill="#d4a017" />
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
+       )}
+    </Card>
+  );
+}
+
+// ─── V4: Cost per mile stack ──────────────────────────────
+
+interface CostPerMileResp {
+  period: string;
+  count: number;
+  data: { vehicle_id: number; vehicle_number: string | null; vehicle_name: string | null; miles: number; fuel: number; maintenance: number; parts: number; total: number; cost_per_mile: number | null }[];
+}
+
+function CostPerMileStackCard({ period }: { period: Period }) {
+  const [data, setData] = useState<CostPerMileResp | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setData(null); setErr(null);
+    apiFetch<CostPerMileResp>(`/fleet-viz/cost-per-mile?period=${period}`)
+      .then((r) => { if (!cancelled) setData(r); })
+      .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
+    return () => { cancelled = true; };
+  }, [period]);
+  const topRows = (Array.isArray(data?.data) ? data!.data : [])
+    .filter((r) => r.miles > 0)
+    .sort((a, b) => (b.cost_per_mile ?? 0) - (a.cost_per_mile ?? 0))
+    .slice(0, 10)
+    .map((r) => ({
+      name: r.vehicle_number ?? r.vehicle_name ?? `#${r.vehicle_id}`,
+      fuel: r.fuel,
+      maintenance: r.maintenance,
+      parts: r.parts,
+      total: r.total,
+      cpm: r.cost_per_mile ?? 0,
+    }));
+  return (
+    <Card title="Cost per mile — top 10" hint={`${data?.count ?? '—'} vehicles`}>
+      {err ? <div className="text-xs text-red-400">{err}</div> :
+       data == null ? <Skeleton lines={6} /> :
+       topRows.length === 0 ? <div className="text-xs text-rmpg-400">No vehicles with mileage this period.</div> :
+       (
+        <div style={{ width: '100%', height: 240 }}>
+          <ResponsiveContainer>
+            <BarChart data={topRows} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
+              <CartesianGrid stroke="#1e293b" />
+              <XAxis dataKey="name" tick={{ fill: 'var(--text-muted, #94a3b8)', fontSize: 9 }} interval={0} angle={-30} textAnchor="end" height={48} />
+              <YAxis tick={{ fill: 'var(--text-muted, #94a3b8)', fontSize: 9 }} tickFormatter={(v) => `$${v}`} />
+              <Tooltip
+                contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                formatter={(value, name) => [typeof value === 'number' ? `$${value.toFixed(2)}` : value, name]}
+              />
+              <Legend wrapperStyle={{ fontSize: 10 }} />
+              <Bar dataKey="fuel" stackId="a" fill="#3b82f6" />
+              <Bar dataKey="maintenance" stackId="a" fill="#d4a017" />
+              <Bar dataKey="parts" stackId="a" fill="#10b981" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+       )}
+    </Card>
+  );
+}
+
+// ─── V6: Fuel anomalies ───────────────────────────────────
+
+interface FuelAnomalyEntry {
+  id: number; fuel_date: string; gallons: number; total_cost: number;
+  driver_id: number | null; vehicle_id: number;
+  cost_per_gallon: number; z_gallons: number; z_cost_per_gallon: number;
+  flagged: boolean;
+}
+
+interface FuelAnomaliesResp { period: string; count: number; data: FuelAnomalyEntry[]; }
+
+function FuelAnomaliesCard({ period }: { period: Period }) {
+  const [data, setData] = useState<FuelAnomaliesResp | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setData(null); setErr(null);
+    apiFetch<FuelAnomaliesResp>(`/fleet-viz/fuel-anomalies?period=${period}`)
+      .then((r) => { if (!cancelled) setData(r); })
+      .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
+    return () => { cancelled = true; };
+  }, [period]);
+  const flagged = (Array.isArray(data?.data) ? data!.data : []).filter((e) => e.flagged);
+  return (
+    <Card title="Fuel anomalies" hint={`${flagged.length} flagged (|z|>2)`}>
+      {err ? <div className="text-xs text-red-400">{err}</div> :
+       data == null ? <Skeleton lines={6} /> :
+       flagged.length === 0 ? (
+         <div className="text-[10px] text-emerald-400 px-2 py-1 border border-emerald-500/40 rounded-sm bg-emerald-500/10">
+           ✓ No anomalies this period.
+         </div>
+       ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="text-left text-rmpg-400 border-b border-rmpg-700">
+                <th className="py-1 pr-2">Date</th>
+                <th className="py-1 px-2">Vehicle</th>
+                <th className="py-1 px-2 text-right">Gallons</th>
+                <th className="py-1 px-2 text-right">$/gal</th>
+                <th className="py-1 px-2 text-right">z(gal)</th>
+                <th className="py-1 pl-2 text-right">z($/gal)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {flagged.slice(0, 12).map((e) => (
+                <tr key={e.id} className="border-b border-rmpg-800/40">
+                  <td className="py-1 pr-2 font-mono text-rmpg-300">{e.fuel_date.slice(0, 10)}</td>
+                  <td className="py-1 px-2 text-rmpg-100">#{e.vehicle_id}</td>
+                  <td className="py-1 px-2 text-right text-rmpg-100">{e.gallons.toFixed(1)}</td>
+                  <td className="py-1 px-2 text-right text-rmpg-100">${e.cost_per_gallon.toFixed(2)}</td>
+                  <td className={`py-1 px-2 text-right font-mono ${Math.abs(e.z_gallons) > 2 ? 'text-amber-400' : 'text-rmpg-300'}`}>
+                    {e.z_gallons.toFixed(2)}
+                  </td>
+                  <td className={`py-1 pl-2 text-right font-mono ${Math.abs(e.z_cost_per_gallon) > 2 ? 'text-amber-400' : 'text-rmpg-300'}`}>
+                    {e.z_cost_per_gallon.toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+       )}
+    </Card>
   );
 }
