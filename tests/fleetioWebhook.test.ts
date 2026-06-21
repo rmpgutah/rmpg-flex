@@ -117,6 +117,7 @@ describe('extractEventId', () => {
 });
 
 describe('normalizeResource', () => {
+  // ─── Variant 1: event_type='resource.action' (REST-style) ──
   it('parses event_type=resource.action', () => {
     const out = normalizeResource({ event_type: 'vehicle.update', data: { id: 1234 } });
     expect(out).toEqual({ resource: 'vehicle', action: 'update', resource_id: 1234 });
@@ -127,14 +128,62 @@ describe('normalizeResource', () => {
     expect(out).toEqual({ resource: 'fuel_entry', action: 'create', resource_id: 99 });
   });
 
+  // ─── Variant 2: subject_type + verb (Rails-style — Fleet.io's actual shape) ──
+  it('parses subject_type + verb=updated → action=update (PR 4d)', () => {
+    const out = normalizeResource({ subject_type: 'vehicle', verb: 'updated', subject_id: 555 });
+    expect(out).toEqual({ resource: 'vehicle', action: 'update', resource_id: 555 });
+  });
+
+  it('parses subject_type + verb=created → action=create (PR 4d)', () => {
+    const out = normalizeResource({ subject_type: 'fuel_entry', verb: 'created', subject_id: 1 });
+    expect(out).toEqual({ resource: 'fuel_entry', action: 'create', resource_id: 1 });
+  });
+
+  it('parses subject_type + verb=destroyed → action=delete (PR 4d)', () => {
+    const out = normalizeResource({ subject_type: 'vehicle', verb: 'destroyed', subject_id: 7 });
+    expect(out).toEqual({ resource: 'vehicle', action: 'delete', resource_id: 7 });
+  });
+
+  // ─── Variant 3: name='resource.action' + payload.id (alt-REST) ──
+  it('parses name + payload.id (PR 4d)', () => {
+    const out = normalizeResource({ name: 'vehicle.updated', payload: { id: 42 } });
+    expect(out).toEqual({ resource: 'vehicle', action: 'update', resource_id: 42 });
+  });
+
   it('returns null for missing/wrong event_type', () => {
     expect(normalizeResource({})).toBeNull();
     expect(normalizeResource({ event_type: 'bogus' })).toBeNull();
     expect(normalizeResource({ event_type: 'vehicle.archive' })).toBeNull();
   });
 
-  it('returns resource_id=null when data.id is absent or unparseable', () => {
+  it('returns resource_id=null when no id field present', () => {
     const out = normalizeResource({ event_type: 'vehicle.update', data: {} });
     expect(out?.resource_id).toBeNull();
+  });
+
+  it('falls back from data.id → payload.id → subject_id → resource_id → top-level id', () => {
+    expect(normalizeResource({ event_type: 'vehicle.update', payload: { id: 11 } })?.resource_id).toBe(11);
+    expect(normalizeResource({ event_type: 'vehicle.update', subject_id: 22 })?.resource_id).toBe(22);
+    expect(normalizeResource({ event_type: 'vehicle.update', resource_id: 33 })?.resource_id).toBe(33);
+    expect(normalizeResource({ event_type: 'vehicle.update', id: 44 })?.resource_id).toBe(44);
+  });
+});
+
+describe('extractEventId fallback path (PR 4d)', () => {
+  it('returns the documented uuid / event_uuid field if present', () => {
+    expect(extractEventId({ event_uuid: 'abc-def' })).toBe('abc-def');
+    expect(extractEventId({ uuid: 'xyz' })).toBe('xyz');
+  });
+
+  it('falls back to a body-prefix marker when no id field exists', () => {
+    const body = '{"verb":"updated","subject_type":"vehicle","subject_id":7}';
+    const id = extractEventId(JSON.parse(body), body);
+    expect(id?.startsWith('body:')).toBe(true);
+    expect(id?.length).toBeGreaterThan(5);
+  });
+
+  it('still returns null if there is no id and no fallback body', () => {
+    expect(extractEventId({ subject_type: 'vehicle' })).toBeNull();
+    expect(extractEventId({ subject_type: 'vehicle' }, '')).toBeNull();
   });
 });
