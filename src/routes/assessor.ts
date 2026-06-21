@@ -50,7 +50,14 @@ function handleError(c: any, e: unknown) {
   return c.json({ code: 'unknown', message: (e as Error)?.message ?? 'unknown' }, 500);
 }
 
-app.get('/parcels', async (c) => {
+// Lookup endpoints are role-gated even though they're GETs: every cache MISS
+// triggers a paid Firecrawl scrape, so leaving them open to every auth role
+// (officer, client_viewer, …) is a quota-drain vector. Restricted to the
+// roles that legitimately need parcel data — the same set Task 12 uses for
+// /backfill and /review-queue, plus dispatcher + supervisor for field lookups.
+const LOOKUP_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'] as const;
+
+app.get('/parcels', requireRole(...LOOKUP_ROLES), async (c) => {
   const address = c.req.query('address')?.trim();
   if (!address) return c.json({ code: 'missing_address' }, 400);
   const key = cacheKeyParcels(address);
@@ -63,7 +70,7 @@ app.get('/parcels', async (c) => {
   } catch (e) { return handleError(c, e); }
 });
 
-app.get('/parcel/:parcel_no', async (c) => {
+app.get('/parcel/:parcel_no', requireRole(...LOOKUP_ROLES), async (c) => {
   const parcelNo = c.req.param('parcel_no');
   if (!parcelNo) return c.json({ code: 'missing_parcel_no' }, 400);
   const key = cacheKeyParcel(parcelNo);
