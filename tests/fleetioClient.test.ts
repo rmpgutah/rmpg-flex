@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildFleetioRequest, fleetioFetch, ping, listVehicles, createVehicle, type FleetioConfig } from '../src/utils/fleetio/client';
+import { buildFleetioRequest, fleetioFetch, ping, listVehicles, createVehicle, configFromEnv, type FleetioConfig } from '../src/utils/fleetio/client';
+import { FleetioConfigError } from '../src/utils/fleetio/errors';
 
 describe('buildFleetioRequest', () => {
   const cfg = {
@@ -246,5 +247,46 @@ describe('typed resource methods', () => {
     expect(r.id).toBe(99);
     expect(stub.mock.calls[0][1].method).toBe('POST');
     expect(stub.mock.calls[0][1].body).toBe('{"name":"Unit 12","vin":"ABC"}');
+  });
+});
+
+describe('configFromEnv', () => {
+  it('happy path — reads all three env values', () => {
+    const c = configFromEnv({
+      FLEETIO_API_KEY: 'tok_test_a',
+      FLEETIO_ACCOUNT_TOKEN: 'acct_test_b',
+      FLEETIO_API_BASE: 'https://example.test/api/v1',
+    });
+    expect(c).toEqual({
+      apiKey: 'tok_test_a',
+      accountToken: 'acct_test_b',
+      apiBase: 'https://example.test/api/v1',
+    });
+  });
+
+  it('defaults FLEETIO_API_BASE to the Fleet.io v1 endpoint when unset', () => {
+    const c = configFromEnv({
+      FLEETIO_API_KEY: 'tok_test_a',
+      FLEETIO_ACCOUNT_TOKEN: 'acct_test_b',
+    });
+    expect(c.apiBase).toBe('https://secure.fleetio.com/api/v1');
+  });
+
+  it('throws FleetioConfigError when FLEETIO_API_KEY is missing', () => {
+    expect(() => configFromEnv({
+      FLEETIO_ACCOUNT_TOKEN: 'acct_test_b',
+    })).toThrow(FleetioConfigError);
+    expect(() => configFromEnv({
+      FLEETIO_ACCOUNT_TOKEN: 'acct_test_b',
+    })).toThrow('FLEETIO_API_KEY is unset');
+  });
+
+  it('throws FleetioConfigError when FLEETIO_ACCOUNT_TOKEN is missing', () => {
+    expect(() => configFromEnv({
+      FLEETIO_API_KEY: 'tok_test_a',
+    })).toThrow(FleetioConfigError);
+    expect(() => configFromEnv({
+      FLEETIO_API_KEY: 'tok_test_a',
+    })).toThrow('FLEETIO_ACCOUNT_TOKEN is unset');
   });
 });
