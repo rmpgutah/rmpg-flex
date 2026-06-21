@@ -232,3 +232,30 @@ export function clusterByProximity(
   }
   return null;
 }
+
+// ── Court-deadline urgency tier ──────────────────────────────────
+// Pure derivation called at intake commit AND by the daily rebalance cron.
+//   critical : deadline ≤ 2 days away, already past, OR
+//              (days_remaining ≤ attempts_remaining AND attempts_remaining ≥ 4)
+//   tight    : 3–5 days away (unless escalated to critical above)
+//   standard : > 5 days, or no deadline
+//
+// Source of truth is (priority, deadline) — tier is a CACHE the calendar reads
+// to color/sort without per-query recomputation. Stays in sync via the cron.
+export type UrgencyTier = 'critical' | 'tight' | 'standard';
+
+export function applyUrgencyTier(
+  deadline: string | null,
+  attemptCount: number,
+  maxAttempts: number,
+  nowIso: string,
+): UrgencyTier {
+  const days = daysUntilDeadline(nowIso, deadline);
+  if (days === null) return 'standard';
+  if (days < 0 || days <= 2) return 'critical';
+  const remaining = Math.max(0, maxAttempts - attemptCount);
+  if (remaining > 0 && days <= remaining && remaining >= 4) return 'critical';
+  if (days <= 5) return 'tight';
+  if (remaining > 0 && days < remaining) return 'critical';
+  return 'standard';
+}

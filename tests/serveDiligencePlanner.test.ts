@@ -4,6 +4,7 @@ import {
   escalatePriorityForDeadline,
   daysUntilDeadline,
   clusterByProximity,
+  applyUrgencyTier,
 } from '../src/utils/serveDiligencePlanner';
 
 // 2026-06-11 is a Thursday. 18:00 UTC = 12:00 in America/Denver (MDT).
@@ -83,5 +84,32 @@ describe('clusterByProximity', () => {
   it('returns null when nothing is known about location', () => {
     expect(clusterByProximity(null, null, null)).toBeNull();
     expect(clusterByProximity(null, null, '')).toBeNull();
+  });
+});
+
+describe('applyUrgencyTier', () => {
+  const NOW = '2026-06-11T18:00:00.000Z'; // Thursday, noon Denver MDT
+
+  it('returns "standard" when there is no deadline', () => {
+    expect(applyUrgencyTier(null, 0, 3, NOW)).toBe('standard');
+  });
+  it('returns "standard" when deadline is more than 5 days out', () => {
+    expect(applyUrgencyTier('2026-06-20', 0, 3, NOW)).toBe('standard');
+  });
+  it('returns "tight" at exactly 5 days', () => {
+    expect(applyUrgencyTier('2026-06-16', 0, 3, NOW)).toBe('tight');
+  });
+  it('returns "tight" at 3 days', () => {
+    expect(applyUrgencyTier('2026-06-14', 0, 3, NOW)).toBe('tight');
+  });
+  it('returns "critical" at exactly 2 days', () => {
+    expect(applyUrgencyTier('2026-06-13', 0, 3, NOW)).toBe('critical');
+  });
+  it('returns "critical" when days remaining are fewer than attempts left', () => {
+    // 4 days out, 1 attempt used of 5 max → 4 attempts left in 4 days = critical
+    expect(applyUrgencyTier('2026-06-15', 1, 5, NOW)).toBe('critical');
+  });
+  it('returns "critical" when the deadline is already past', () => {
+    expect(applyUrgencyTier('2026-06-09', 0, 3, NOW)).toBe('critical');
   });
 });
