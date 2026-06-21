@@ -38,20 +38,15 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
+import {
+  getSuggestedMileage,
+  deriveEndMileage,
+  scopeKeyOfficerUnit,
+  scopeKeyOfficer,
+  scopeKeyUnit,
+} from '../utils/mileageAnchor';
 
 const pm = new Hono<Env>();
-
-// ── Scope-key helpers (canonical; one source of truth) ─────
-
-function scopeKeyOfficerUnit(officerId: number, unitId: number): string {
-  return `officer_unit:${officerId}:${unitId}`;
-}
-function scopeKeyOfficer(officerId: number): string {
-  return `officer:${officerId}`;
-}
-function scopeKeyUnit(unitId: number): string {
-  return `unit:${unitId}`;
-}
 
 /** Resolve officer_id / unit_id from a calls_for_service row by walking
  *  assigned_unit_ids → units.officer_id. Returns null when the call is
@@ -94,61 +89,12 @@ pm.get('/mileage/suggest', async (c) => {
       }, 400);
     }
 
-    const db = getDb(c.env);
-
-    // 1) officer_unit combo (most accurate)
-    if (Number.isFinite(officerId) && Number.isFinite(unitId)) {
-      const row = await queryFirst<{ current_mileage: number; offset_miles: number; last_entry_at: string | null }>(
-        db,
-        'SELECT current_mileage, offset_miles, last_entry_at FROM mileage_anchor WHERE scope_key = ?',
-        scopeKeyOfficerUnit(officerId, unitId),
-      );
-      if (row) {
-        return c.json({
-          suggested_mileage: row.current_mileage,
-          source: 'officer_unit',
-          scope_key: scopeKeyOfficerUnit(officerId, unitId),
-          offset_miles: row.offset_miles,
-          last_entry_at: row.last_entry_at,
-        });
-      }
-    }
-
-    // 2) officer-only fallback
-    if (Number.isFinite(officerId)) {
-      const row = await queryFirst<{ current_mileage: number; offset_miles: number; last_entry_at: string | null }>(
-        db,
-        'SELECT current_mileage, offset_miles, last_entry_at FROM mileage_anchor WHERE scope_key = ?',
-        scopeKeyOfficer(officerId),
-      );
-      if (row) {
-        return c.json({
-          suggested_mileage: row.current_mileage,
-          source: 'officer',
-          scope_key: scopeKeyOfficer(officerId),
-          offset_miles: row.offset_miles,
-          last_entry_at: row.last_entry_at,
-        });
-      }
-    }
-
-    // 3) unit-only fallback
-    if (Number.isFinite(unitId)) {
-      const row = await queryFirst<{ current_mileage: number; offset_miles: number; last_entry_at: string | null }>(
-        db,
-        'SELECT current_mileage, offset_miles, last_entry_at FROM mileage_anchor WHERE scope_key = ?',
-        scopeKeyUnit(unitId),
-      );
-      if (row) {
-        return c.json({
-          suggested_mileage: row.current_mileage,
-          source: 'unit',
-          scope_key: scopeKeyUnit(unitId),
-          offset_miles: row.offset_miles,
-          last_entry_at: row.last_entry_at,
-        });
-      }
-    }
+    const suggestion = await getSuggestedMileage(
+      getDb(c.env),
+      Number.isFinite(officerId) ? officerId : null,
+      Number.isFinite(unitId) ? unitId : null,
+    );
+    if (suggestion) return c.json(suggestion);
 
     return c.json({
       suggested_mileage: null,
@@ -1395,6 +1341,140 @@ pm.delete('/trips/:source/:id', async (c) => {
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /patrol/trips failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// POST /mileage/backfill-patrol-trips — one-shot historical fill for the
+// PATROL rows that pre-date the auto-stamp (tripStore now stamps on open +
+// derives end_mileage on close; this endpoint catches every closed patrol
+// trip that landed before that change). Per (officer, unit), walks the
+// rows in start_time order, fills start_mileage from the prior row's
+// end_mileage (or the mileage_anchor when there is no prior), then sets
+// end_mileage = start_mileage + distance_m/1609.34. The outlier guard
+// matches the live engine — a single trip claiming >75 mi is skipped so
+// it can't poison the chain. Every write is audited.
+//
+// Body: { officer_id?, unit_id?, from?, to?, reason }
+pm.post('/mileage/backfill-patrol-trips', async (c) => {
+  try {
+    const user = requireTripEditor(c);
+    if (!user) return c.json({ error: 'Admin / manager / supervisor only', code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+    if (!body.reason || !String(body.reason).trim()) {
+      return c.json({ error: 'reason required for the audit trail' }, 400);
+    }
+    const reason = String(body.reason).trim();
+    const officerId = body.officer_id != null ? Number(body.officer_id) : null;
+    const unitId = body.unit_id != null ? Number(body.unit_id) : null;
+    const from = typeof body.from === 'string' ? body.from : null;
+    const to = typeof body.to === 'string' ? body.to : null;
+
+    const where: string[] = [
+      "status = 'closed'", "trip_type = 'patrol'",
+      'distance_m IS NOT NULL', 'distance_m > 0',
+      'officer_id IS NOT NULL', 'unit_id IS NOT NULL',
+      '(start_mileage IS NULL OR end_mileage IS NULL)',
+    ];
+    const params: unknown[] = [];
+    if (officerId != null && Number.isFinite(officerId)) { where.push('officer_id = ?'); params.push(officerId); }
+    if (unitId != null && Number.isFinite(unitId)) { where.push('unit_id = ?'); params.push(unitId); }
+    if (from) { where.push('date(start_time) >= date(?)'); params.push(from); }
+    if (to) { where.push('date(start_time) <= date(?)'); params.push(to); }
+
+    const candidates = await query<{
+      id: number; officer_id: number; unit_id: number; vehicle_id: number | null;
+      start_time: string; end_time: string | null;
+      start_mileage: number | null; end_mileage: number | null;
+      distance_m: number;
+    }>(db, `
+      SELECT id, officer_id, unit_id, vehicle_id, start_time, end_time,
+             start_mileage, end_mileage, distance_m
+        FROM unit_trips
+       WHERE ${where.join(' AND ')}
+       ORDER BY officer_id, unit_id, start_time ASC
+       LIMIT 1000
+    `, ...params);
+
+    // Per-scope cursor: the running odometer we believe the next trip in
+    // this (officer, unit) chain starts at. Seeded from the anchor on the
+    // first row of each scope, then walked forward by each filled row's
+    // distance.
+    const cursors = new Map<string, number>();
+    let filled = 0, skipped = 0, outliers = 0;
+    const errors: string[] = [];
+
+    for (const row of candidates) {
+      const scope = `${row.officer_id}:${row.unit_id}`;
+      let startMileage = row.start_mileage;
+
+      if (startMileage == null) {
+        if (cursors.has(scope)) {
+          startMileage = cursors.get(scope)!;
+        } else {
+          const suggestion = await getSuggestedMileage(db, row.officer_id, row.unit_id);
+          if (suggestion) startMileage = suggestion.suggested_mileage;
+        }
+      }
+
+      if (startMileage == null) {
+        skipped++;
+        continue;
+      }
+
+      const derived = deriveEndMileage(startMileage, row.distance_m);
+      if (!derived) {
+        outliers++;
+        // Don't seed cursor — we can't trust the distance, so let the next
+        // row re-look-up from the anchor.
+        cursors.delete(scope);
+        continue;
+      }
+
+      const endMileage = row.end_mileage ?? derived.endMileage;
+      const startChanged = row.start_mileage !== startMileage;
+      const endChanged = row.end_mileage !== endMileage;
+      if (!startChanged && !endChanged) {
+        cursors.set(scope, endMileage);
+        continue;
+      }
+
+      try {
+        await db.prepare(
+          `UPDATE unit_trips SET start_mileage = ?, end_mileage = ?, updated_at = datetime('now') WHERE id = ?`,
+        ).bind(startMileage, endMileage, row.id).run();
+        if (startChanged) {
+          await auditTripChange(db, {
+            table: 'unit_trips', entryId: row.id, field: 'start_mileage',
+            before: row.start_mileage, after: startMileage, reason: `backfill: ${reason}`,
+            userId: user.id, officerId: row.officer_id, unitId: row.unit_id,
+          });
+        }
+        if (endChanged) {
+          await auditTripChange(db, {
+            table: 'unit_trips', entryId: row.id, field: 'end_mileage',
+            before: row.end_mileage, after: endMileage, reason: `backfill: ${reason}`,
+            userId: user.id, officerId: row.officer_id, unitId: row.unit_id,
+          });
+        }
+        filled++;
+        cursors.set(scope, endMileage);
+      } catch (e) {
+        errors.push(`trip ${row.id}: ${(e as Error)?.message}`);
+      }
+    }
+
+    return c.json({
+      success: true,
+      examined: candidates.length,
+      filled,
+      skipped,
+      outliers,
+      errors: errors.slice(0, 20),
+    });
+  } catch (err) {
+    console.error('POST /patrol/mileage/backfill-patrol-trips failed:', err);
     return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
   }
 });

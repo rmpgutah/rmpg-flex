@@ -41,6 +41,7 @@ import {
   RefreshCw,
   Save,
   ShieldAlert,
+  Wand2,
   Wrench,
   X,
 } from 'lucide-react';
@@ -191,6 +192,13 @@ export default function MileageAuditTab() {
   // Trip log PDF download state
   const [tripLog, setTripLog] = useState<TripLogData | null>(null);
   const [tripLogLoading, setTripLogLoading] = useState(false);
+
+  // Backfill state — inline reason capture so we never use window.prompt()
+  // (Electron silently returns null for prompt() — same trap that hid the
+  // delete-trip flow before TripManagerSection moved to inline confirmation).
+  const [backfillOpen, setBackfillOpen] = useState(false);
+  const [backfillReason, setBackfillReason] = useState('');
+  const [backfillSubmitting, setBackfillSubmitting] = useState(false);
 
   // ── Load reference data once ──
   useEffect(() => {
@@ -357,6 +365,36 @@ export default function MileageAuditTab() {
       addToast(err?.message || 'Trip log generation failed', 'error');
     }
     setTripLogLoading(false);
+  };
+
+  const submitBackfill = async () => {
+    if (!backfillReason.trim()) {
+      addToast('Reason is required for the audit trail', 'error');
+      return;
+    }
+    setBackfillSubmitting(true);
+    try {
+      const body: Record<string, unknown> = { reason: backfillReason.trim() };
+      if (officerId !== '') body.officer_id = Number(officerId);
+      if (unitId !== '') body.unit_id = unitId;
+      if (from) body.from = from;
+      if (to) body.to = to;
+      const res = await apiFetch<{ examined: number; filled: number; skipped: number; outliers: number; errors: string[] }>(
+        '/patrol/mileage/backfill-patrol-trips',
+        { method: 'POST', body: JSON.stringify(body) },
+      );
+      addToast(
+        `Backfill: filled ${res.filled} of ${res.examined} (skipped ${res.skipped}, outliers ${res.outliers})`,
+        res.filled > 0 ? 'success' : 'info',
+      );
+      setBackfillOpen(false);
+      setBackfillReason('');
+      refresh();
+    } catch (err: any) {
+      addToast(err?.message || 'Backfill failed', 'error');
+    } finally {
+      setBackfillSubmitting(false);
+    }
   };
 
   // Chain-continuity calculation: rows whose starting mileage doesn't pick up
@@ -530,7 +568,10 @@ export default function MileageAuditTab() {
   return (
     <div className="space-y-3">
       {/* ── Scope pickers + actions ──────────────────────────── */}
-      <div className="panel-beveled bg-surface-base p-3">
+      {/* Sticky below the patrol sub-tab nav (z-30) so changing officer/unit/
+          dates doesn't require scrolling back up past hundreds of chain rows.
+          top-9 sits the picker right under the Spillman tab strip. */}
+      <div className="panel-beveled bg-surface-base p-3 sticky top-9 z-20">
         <div className="flex items-center gap-2 mb-2">
           <Wrench className="w-4 h-4 text-brand-400" />
           <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-100">Mileage Audit</h3>
@@ -545,6 +586,18 @@ export default function MileageAuditTab() {
               {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
               Refresh
             </button>
+            {canFix && (
+              <button
+                type="button"
+                onClick={() => setBackfillOpen((v) => !v)}
+                className="toolbar-btn text-[10px]"
+                disabled={backfillSubmitting}
+                title="One-shot fill of missing odometer on closed PATROL trips in this scope/window"
+              >
+                <Wand2 className="w-3 h-3" />
+                Backfill PATROL odo
+              </button>
+            )}
             <button
               type="button"
               onClick={handleDownloadTripLog}
@@ -557,6 +610,38 @@ export default function MileageAuditTab() {
             </button>
           </div>
         </div>
+        {backfillOpen && canFix && (
+          <div className="mt-2 px-2 py-2 bg-surface-sunken border border-amber-700/40 flex items-center gap-2">
+            <span className="text-[10px] text-amber-300 font-mono uppercase tracking-wider">
+              Backfill
+            </span>
+            <input
+              type="text"
+              autoFocus
+              value={backfillReason}
+              onChange={(e) => setBackfillReason(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submitBackfill(); }}
+              placeholder="Reason (e.g. retro-stamp odometer on pre-2026-06 patrol trips)"
+              className="input-dark flex-1 min-h-[28px] text-xs"
+            />
+            <button
+              type="button"
+              onClick={submitBackfill}
+              disabled={backfillSubmitting || !backfillReason.trim()}
+              className="toolbar-btn toolbar-btn-primary text-[10px]"
+            >
+              {backfillSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+              Run on current scope/window
+            </button>
+            <IconButton
+              aria-label="Cancel backfill"
+              onClick={() => { setBackfillOpen(false); setBackfillReason(''); }}
+              className="text-rmpg-400 hover:text-rmpg-100"
+            >
+              <X className="w-3.5 h-3.5" />
+            </IconButton>
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-[11px]">
           <div>
             <label className="block text-[9px] text-rmpg-400 mb-0.5">Officer</label>

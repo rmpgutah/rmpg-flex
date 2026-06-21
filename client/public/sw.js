@@ -691,6 +691,15 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v999: Patrol Mileage Audit — pin sub-tab nav + scope picker (sticky so
+//       changing officer/unit no longer requires scrolling back past hundreds
+//       of chain rows), auto-stamp odometer on GPS-detected PATROL trips
+//       (tripStore derives end_mileage = start + distance_m/1609.34, with a
+//       75-mi outlier guard to keep one bad GPS run from poisoning the
+//       anchor), pre-fill Add-Trip form from /mileage/suggest, and add an
+//       admin-only one-shot POST /mileage/backfill-patrol-trips for the 87
+//       historical "—"-odometer rows. Shared utils/mileageAnchor.ts is the
+//       single source for both the endpoint and the trip-engine seam.
 // v998: caseActivity — replace Unicode arrow with ASCII -> in status.changed
 //       label so it renders correctly in PDF (sanitizePdfText strips U+2192).
 // v997: FlexCam capture pipeline — batch chunk INSERTs (prevents 720-row
