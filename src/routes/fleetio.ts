@@ -51,6 +51,118 @@ fleetio.get('/test-connection', async (c) => {
 });
 
 /** Counts only — no payloads. Useful as a smoke test post-deploy. */
+/** Richer Fleet.io integration health snapshot for the admin dashboard
+ *  (PR 4b). Covers what an operator needs at-a-glance:
+ *    - Queue depth (pending) + retry-attempt distribution
+ *    - Recent events timeline (last 20 across both directions)
+ *    - Unresolved conflicts list (top 20) with full payload context
+ *    - Last-received inbound timestamp (alert if > 2h during business hours)
+ *    - Per-resource breakdown so a stuck queue's resource is obvious
+ */
+fleetio.get('/health', requireRole('admin'), async (c) => {
+  const db = getDb(c.env);
+  try {
+    const [
+      links,
+      eventCounts,
+      lastInbound,
+      lastOutboundOk,
+      lastOutboundFail,
+      attemptHistogram,
+      recentEvents,
+      unresolvedConflicts,
+      byResource,
+    ] = await Promise.all([
+      queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM fleetio_links'),
+      query<{ direction: string; status: string; n: number }>(
+        db,
+        `SELECT direction, status, COUNT(*) AS n FROM fleetio_events GROUP BY direction, status`,
+      ),
+      queryFirst<{ created_at: string }>(
+        db,
+        `SELECT created_at FROM fleetio_events WHERE direction='inbound' ORDER BY id DESC LIMIT 1`,
+      ),
+      queryFirst<{ processed_at: string }>(
+        db,
+        `SELECT processed_at FROM fleetio_events WHERE direction='outbound' AND status='completed' ORDER BY id DESC LIMIT 1`,
+      ),
+      queryFirst<{ created_at: string; error: string | null }>(
+        db,
+        `SELECT created_at, error FROM fleetio_events WHERE status='failed' ORDER BY id DESC LIMIT 1`,
+      ),
+      query<{ attempts: number; n: number }>(
+        db,
+        `SELECT attempts, COUNT(*) AS n FROM fleetio_events WHERE status='pending' GROUP BY attempts ORDER BY attempts`,
+      ),
+      query<Record<string, unknown>>(
+        db,
+        `SELECT id, direction, event_id, resource, action, status, attempts, error, created_at, processed_at
+         FROM fleetio_events ORDER BY id DESC LIMIT 20`,
+      ),
+      query<Record<string, unknown>>(
+        db,
+        `SELECT id, rmpg_table, rmpg_id, field, local_value, remote_value, resolution, created_at
+         FROM fleetio_conflicts WHERE resolved_at IS NULL ORDER BY id DESC LIMIT 20`,
+      ),
+      query<{ resource: string; status: string; n: number }>(
+        db,
+        `SELECT resource, status, COUNT(*) AS n FROM fleetio_events GROUP BY resource, status`,
+      ),
+    ]);
+    // Derive "secrets configured" without leaking values — read the env keys.
+    const env = c.env as unknown as Record<string, unknown>;
+    const secrets_configured = {
+      FLEETIO_API_KEY: Boolean(env.FLEETIO_API_KEY),
+      FLEETIO_ACCOUNT_TOKEN: Boolean(env.FLEETIO_ACCOUNT_TOKEN),
+      FLEETIO_WEBHOOK_SECRET: Boolean(env.FLEETIO_WEBHOOK_SECRET),
+    };
+    return c.json({
+      links_total: links?.n ?? 0,
+      secrets_configured,
+      event_counts: eventCounts,
+      attempt_histogram: attemptHistogram,
+      last_inbound_at: lastInbound?.created_at ?? null,
+      last_outbound_completed_at: lastOutboundOk?.processed_at ?? null,
+      last_failure: lastOutboundFail ? {
+        created_at: lastOutboundFail.created_at,
+        error: lastOutboundFail.error,
+      } : null,
+      recent_events: recentEvents,
+      unresolved_conflicts: unresolvedConflicts,
+      by_resource: byResource,
+    });
+  } catch (err) {
+    console.error('[fleetio.health] failed', err);
+    return c.json({
+      error: 'Failed to load Fleet.io health',
+      detail: (err as Error)?.message,
+      links_total: 0, secrets_configured: { FLEETIO_API_KEY: false, FLEETIO_ACCOUNT_TOKEN: false, FLEETIO_WEBHOOK_SECRET: false },
+      event_counts: [], attempt_histogram: [],
+      last_inbound_at: null, last_outbound_completed_at: null, last_failure: null,
+      recent_events: [], unresolved_conflicts: [], by_resource: [],
+    }, 500);
+  }
+});
+
+/** Resolve a single conflict by id with a chosen resolution. */
+fleetio.post('/conflicts/:id{[0-9]+}/resolve', requireRole('admin'), async (c) => {
+  const id = parseInt(c.req.param('id') ?? '0', 10);
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const body = await c.req.json<{ resolution?: string }>().catch(() => ({} as { resolution?: string }));
+  const valid = new Set(['local_wins', 'remote_wins', 'manual']);
+  if (!body.resolution || !valid.has(body.resolution)) {
+    return c.json({ error: 'resolution must be one of: local_wins, remote_wins, manual', code: 'INVALID_RESOLUTION' }, 400);
+  }
+  const userId = (c.get('userId') as number | undefined) ?? null;
+  const db = getDb(c.env);
+  await execute(db,
+    `UPDATE fleetio_conflicts
+     SET resolution = ?, resolved_by = ?, resolved_at = datetime('now')
+     WHERE id = ? AND resolved_at IS NULL`,
+    body.resolution, userId, id);
+  return c.json({ success: true, id, resolution: body.resolution });
+});
+
 fleetio.get('/sync-status', requireRole('admin'), async (c) => {
   const db = getDb(c.env);
   const [links, eventsPending, eventsFailed, conflicts] = await Promise.all([
