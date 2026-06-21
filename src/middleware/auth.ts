@@ -31,7 +31,8 @@ export interface JwtPayload {
 // router's mount prefix.
 function isPublicAuthBypass(pathname: string): boolean {
   // /api/fleetio/webhook — Fleet.io POSTs here without a JWT; the route
-  // itself verifies an HMAC SHA-256 signature against FLEETIO_WEBHOOK_SECRET
+  // itself verifies the inbound 'Authorization' header equals
+  // FLEETIO_WEBHOOK_SECRET (Fleet.io's authz model — PR 4c rewrite)
   // before queueing the inbound event (see src/routes/fleetioWebhook.ts).
   return pathname === '/api/email/oauth/callback'
     || pathname.endsWith('/oauth/callback')

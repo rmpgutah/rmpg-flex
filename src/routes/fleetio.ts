@@ -31,7 +31,8 @@ const fleetio = new Hono<Env>();
 
 // Mount the PR 4 webhook subrouter at the bare /webhook path. The bypass
 // in src/middleware/auth.ts lets the request through without a JWT; the
-// route handler verifies the HMAC signature against FLEETIO_WEBHOOK_SECRET.
+// route handler verifies the inbound Authorization header equals
+// FLEETIO_WEBHOOK_SECRET (Fleet.io's actual scheme, per PR 4c rewrite).
 fleetio.route('/', fleetioWebhook);
 
 /** Lightweight reachability + auth check. Any authed user can call it (admins
