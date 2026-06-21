@@ -190,6 +190,7 @@ export default function ServePage() {
       // code is a completed service (Personal), so its attempt shouldn't
       // appear on the "non-service" notice. Same for PS/10.* (Substitute)
       // and PS/20.* (Posted, when the queue is `served`).
+      const { parseTimestamp } = await import('../utils/dateUtils');
       const attempts = (job.attempts || [])
         .filter((a) => {
           if ((a.result || '').toLowerCase() === 'served') return false;
@@ -201,8 +202,11 @@ export default function ServePage() {
           // Soft-recovery: prefer attempt_at, fall back to created_at. Legacy
           // and auto-logged attempts sometimes have a null attempt_at but
           // always have a created_at — without this the table renders blank.
+          // parseTimestamp() handles naive UTC server strings ("YYYY-MM-DD HH:MM:SS")
+          // correctly; plain new Date(str) on naive strings parses as device-LOCAL
+          // and drifts ~6-7h in Mountain Time (caught by check-new-date.js).
           const ts = a.attempt_at || a.created_at || null;
-          const at = ts ? new Date(ts) : null;
+          const at = ts ? parseTimestamp(ts) : null;
           // Structured code wins over the legacy enum — the generator's
           // serveResultLabel() prints the full PS/XX.XX — Label.
           const resultText = (a as any).disposition_code || a.result || 'other';
