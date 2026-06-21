@@ -36,8 +36,9 @@
 
 import { Hono } from 'hono';
 import { getContainer } from '@cloudflare/containers';
+import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import {
   extractFromText,
   extractFromImage,
@@ -57,6 +58,49 @@ import {
   type CreateNoteInput,
 } from '../utils/serveLocationNotes';
 import { LIST_VIEW_COLUMNS } from './dispatch/calls';
+import {
+  replanAfterFailedAttempt,
+  applyUrgencyTier,
+  type AttemptWindow,
+} from '../utils/serveDiligencePlanner';
+import { persistAttemptSchedule, appendAttemptSlot } from '../utils/serveAttemptScheduler';
+
+// ── Migration 0140 runtime reconciler ───────────────────────
+// D1 deploy apply is continue-on-error; columns may be absent on live.
+// One-shot per Worker instance (cold starts re-run, idempotent).
+let scheduleSchemaReconciled = false;
+async function reconcileScheduleSchema(db: D1Database): Promise<void> {
+  if (scheduleSchemaReconciled) return;
+  scheduleSchemaReconciled = true;
+
+  // serve_attempt_schedules columns from migration 0140
+  for (const [name, type] of [
+    ['manually_moved', 'INTEGER NOT NULL DEFAULT 0'],
+    ['moved_by_user_id', 'INTEGER'],
+    ['moved_at', 'TEXT'],
+    ['auto_replan_source', 'INTEGER'],
+    ['officer_id', 'INTEGER'],
+  ] as const) {
+    try {
+      if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
+        await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
+      }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+  }
+
+  // serve_queue columns from migration 0140
+  for (const [name, type] of [
+    ['geo_cluster_id', 'TEXT'],
+    ['urgency_tier', 'TEXT'],
+    ['urgency_computed_at', 'TEXT'],
+  ] as const) {
+    try {
+      if (!(await columnExists(db, 'serve_queue', name))) {
+        await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
+      }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+  }
+}
 
 const si = new Hono<Env>();
 
@@ -80,6 +124,7 @@ const ATTEMPT_RESULTS = new Set([
   'served', 'sub_served', 'posted', 'no_answer', 'refused',
   'bad_address', 'moved', 'deceased', 'other',
 ]);
+const REPLAN_RESULTS = new Set(['no_answer', 'refused', 'bad_address', 'moved']);
 
 // ── OCR + upload constants ──────────────────────────────────
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;   // 25 MB per file
@@ -565,6 +610,7 @@ si.post('/upload', async (c) => {
     created: { person: false, agent_person: false, business: false, property: false, call: false },
   };
   if (row.recipient_name || row.recipient_address) {
+    await reconcileScheduleSchema(db);
     commit = await commitIntake(db, {
       fields: normalizedFields,
       queueRow: row,
@@ -823,6 +869,7 @@ si.post('/intake', async (c) => {
   };
   if (row.recipient_name || row.recipient_address) {
     const db = getDb(c.env);
+    await reconcileScheduleSchema(db);
     commit = await commitIntake(db, {
       fields: normalized,
       queueRow: row,
@@ -940,6 +987,7 @@ async function reprocessDocument(
   let committedQueueId: number | null = null;
   const hasIdentity = !!(normalized.recipient_last_name?.value || normalized.recipient_business_name?.value);
   if (!doc.serve_queue_id && extraction.success && hasIdentity) {
+    await reconcileScheduleSchema(db);
     const commit = await commitIntake(db, {
       env: c.env, fields: normalized, queueRow, userId,
       documentSummary: (normalized.documents_to_serve?.value || doc.doc_type || '').trim(),
@@ -1060,6 +1108,7 @@ si.get('/', async (c) => {
 // for the next 14 days, grouped by date. Used by the dashboard calendar.
 si.get('/schedule', async (c) => {
   const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
   // Guard: table may not exist on live yet (migration pending).
   const tableExists = await queryFirst<{ n: number }>(
     db, `SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='serve_attempt_schedules'`,
@@ -1314,6 +1363,7 @@ si.post('/:id/attempts', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}));
   const user = c.get('user') as { id: number } | undefined;
   const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
 
   const queue = await queryFirst<{ attempt_count: number; max_attempts: number; status: string }>(
     db,
@@ -1363,7 +1413,109 @@ si.post('/:id/attempts', async (c) => {
     await generateServeCharges(db, id).catch(() => null);
   }
 
-  return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum, queue_status: newStatus });
+  // Auto-replan on failure (PR 1) — spawn next slot, recompute tier
+  let replanSummary: { slot_id: number; scheduled_date: string; window: string } | null = null;
+  const attemptId = ins.meta.last_row_id as number;
+
+  if (REPLAN_RESULTS.has(String(body.result ?? ''))) {
+    // Re-read the queue row to get the post-increment attempt_count + recipient details.
+    const q = await queryFirst<{
+      id: number; deadline: string | null; max_attempts: number;
+      attempt_count: number; recipient_lat: number | null;
+      recipient_lng: number | null; document_type: string | null;
+      recipient_type: string | null;
+    }>(
+      db,
+      `SELECT id, deadline, max_attempts, attempt_count, recipient_lat,
+              recipient_lng, document_type,
+              parsed_data->>'recipient_type' AS recipient_type
+         FROM serve_queue WHERE id = ?`,
+      id,
+    );
+
+    if (q && q.attempt_count < q.max_attempts) {
+      const isBusiness = (q.recipient_type ?? '').toLowerCase() === 'business';
+
+      const next = replanAfterFailedAttempt(
+        {
+          attempt_at: new Date().toISOString(),
+          result: String(body.result),
+          window: typeof body.window === 'string' ? body.window : null,
+        },
+        {
+          deadline: q.deadline,
+          max_attempts: q.max_attempts,
+          attempt_count: q.attempt_count,
+          recipient_lat: q.recipient_lat,
+          recipient_lng: q.recipient_lng,
+          isBusiness,
+        },
+      );
+
+      if (next) {
+        // Append the next slot WITHOUT deleting prior slots (appendAttemptSlot).
+        // Using persistAttemptSchedule here would DELETE all prior schedule rows
+        // including completed/notified ones, losing attempt history after attempt #1.
+        await appendAttemptSlot(db, id, next, new Date().toISOString());
+
+        // Look up the newly-inserted slot for the response payload.
+        const slot = await queryFirst<{ id: number; scheduled_date: string; window_start: string; window_end: string }>(
+          db,
+          `SELECT id, scheduled_date, window_start, window_end
+             FROM serve_attempt_schedules
+            WHERE queue_id = ? AND scheduled_date = ?
+            ORDER BY id DESC LIMIT 1`,
+          id, next.date,
+        );
+        if (slot) {
+          // Stamp the auto_replan_source FK to the attempt we just inserted.
+          await execute(
+            db,
+            `UPDATE serve_attempt_schedules SET auto_replan_source = ? WHERE id = ?`,
+            attemptId, slot.id,
+          ).catch((e) => {
+            console.warn('[serveIntake] auto_replan_source FK stamp skipped:', e instanceof Error ? e.message : e);
+            return null;
+          }); // column may not exist on live yet (mig 0140 pending Task 7)
+          replanSummary = {
+            slot_id: slot.id,
+            scheduled_date: slot.scheduled_date,
+            window: `${slot.window_start}–${slot.window_end}`,
+          };
+        }
+
+        // Recompute tier; bump priority to 'rush' on flip-to-critical (one-way ratchet).
+        const tier = applyUrgencyTier(q.deadline, q.attempt_count, q.max_attempts, new Date().toISOString());
+        const priorityClause = tier === 'critical'
+          ? `, priority = CASE WHEN priority IN ('urgent') THEN priority ELSE 'rush' END`
+          : '';
+        await execute(
+          db,
+          `UPDATE serve_queue SET urgency_tier = ?, urgency_computed_at = datetime('now') ${priorityClause}
+             WHERE id = ?`,
+          tier, id,
+        ).catch((e) => {
+          console.warn('[serveIntake] urgency_tier update skipped:', e instanceof Error ? e.message : e);
+          return null;
+        }); // urgency_tier column may not exist on live yet (mig 0140 pending Task 7)
+      } else {
+        // replanAfterFailedAttempt returned null (no viable window) — mark failed.
+        await execute(
+          db,
+          `UPDATE serve_queue SET status = 'failed', updated_at = datetime('now') WHERE id = ?`,
+          id,
+        );
+      }
+    }
+  }
+
+  return c.json({
+    success: true,
+    id: attemptId,
+    attempt_number: nextNum,
+    queue_status: newStatus,
+    ...(replanSummary ? { replan: replanSummary } : {}),
+  });
 });
 
 // ── POST /:id/skip-trace ────────────────────────────────────

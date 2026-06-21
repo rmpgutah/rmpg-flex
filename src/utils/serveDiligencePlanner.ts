@@ -207,3 +207,132 @@ export function escalatePriorityForDeadline(
   const floor: ServePriority = days <= 3 ? 'urgent' : days <= 7 ? 'rush' : priority;
   return PRIORITY_RANK[floor] > PRIORITY_RANK[priority] ? floor : priority;
 }
+
+// ── Geographic clustering ──────────────────────────────────────
+// Stable cluster id for grouping nearby attempts on the same officer's day.
+// 3-decimal lat/lng truncation = ~110 m cell — same building shares; different
+// ZIPs do not. Falls back to ZIP5 when lat/lng is missing.
+// IMPORTANT: uses Math.trunc(x * 1000) / 1000, NOT toFixed(3), because
+// toFixed rounds, which would split adjacent buildings between two cells.
+// Format: `g-{lat3}-{lng3}`. For US coordinates (always negative lng) the
+// template dash + negative sign render as `--` in the output, giving a
+// stable two-character delimiter.
+export function clusterByProximity(
+  lat: number | null,
+  lng: number | null,
+  zip: string | null,
+): string | null {
+  if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+    const lat3 = (Math.trunc(lat * 1000) / 1000).toFixed(3);
+    const lng3 = (Math.trunc(lng * 1000) / 1000).toFixed(3);
+    return `g-${lat3}-${lng3}`;
+  }
+  if (zip && /^\d{5}/.test(zip)) {
+    return `z-${zip.slice(0, 5)}`;
+  }
+  return null;
+}
+
+// ── Court-deadline urgency tier ──────────────────────────────────
+// Pure derivation called at intake commit AND by the daily rebalance cron.
+//   critical : deadline ≤ 2 days away, already past, OR
+//              days_remaining ≤ attempts_remaining (no buffer for 24h diligence gap)
+//   tight    : 3–5 days away
+//   standard : > 5 days, or no deadline
+//
+// Source of truth is (priority, deadline) — tier is a CACHE the calendar reads
+// to color/sort without per-query recomputation. Stays in sync via the cron.
+export type UrgencyTier = 'critical' | 'tight' | 'standard';
+
+export function applyUrgencyTier(
+  deadline: string | null,
+  attemptCount: number,
+  maxAttempts: number,
+  nowIso: string,
+): UrgencyTier {
+  const days = daysUntilDeadline(nowIso, deadline);
+  if (days === null) return 'standard';
+  if (days < 0 || days <= 2) return 'critical';
+  const remaining = Math.max(0, maxAttempts - attemptCount);
+  // No buffer: days remaining ≤ attempts still required (need ~24h between attempts).
+  if (remaining > 0 && days <= remaining) return 'critical';
+  if (days <= 5) return 'tight';
+  return 'standard';
+}
+
+// ── Auto-replan after a failed attempt ───────────────────────────
+// Returns the NEXT AttemptWindow to schedule when an officer logs a failed
+// attempt (no_answer | refused | bad_address | moved). The new window:
+//   1. Starts ≥ 24 h after the failed attempt (no same-day retry)
+//   2. Uses a different time-of-day band than the failed attempt
+//      (UNLESS deadline ≤ 4 days away — under tight pressure date proximity
+//       wins; the earliest slot is returned even if its band matches the fail)
+//   3. Respects deadline pressure — pulls closer when days_remaining is tight
+//   4. Respects business hours / location-note constraints via planAttemptWindows()
+//   5. Returns null if max_attempts is exhausted (caller marks status=failed)
+//
+// Implementation strategy: replan the FULL plan from `attempt_count + 1`'s
+// start time, then return the first window. This re-uses every existing
+// scheduling rule (weekend inclusion, business-hours, location-note) without
+// duplicating logic.
+export interface FailedAttemptCtx {
+  attempt_at: string;          // ISO timestamp of the failed attempt
+  result: string;              // 'no_answer' | 'refused' | 'bad_address' | 'moved'
+  window: string | null;       // e.g. '17:00–20:30' — the band that failed
+}
+
+export interface ReplanQueueCtx {
+  deadline: string | null;
+  max_attempts: number;
+  attempt_count: number;       // count BEFORE the failed attempt was recorded
+  // recipient_lat/lng are accepted for future proximity-based officer matching
+  // (PR 2/3 dashboard panel + full-page scheduler). NOT used by this replan.
+  recipient_lat: number | null;
+  recipient_lng: number | null;
+  isBusiness?: boolean;
+  locationNote?: PlanOptions['locationNote'];
+}
+
+function failedBandKind(window: string | null): 'morning' | 'midday' | 'afternoon' | 'evening' | null {
+  if (!window) return null;
+  const startH = parseInt(window.split('–')[0]?.split(':')[0] ?? '', 10);
+  if (Number.isNaN(startH)) return null;
+  if (startH < 11) return 'morning';
+  if (startH < 14) return 'midday';
+  if (startH < 17) return 'afternoon';
+  return 'evening';
+}
+
+export function replanAfterFailedAttempt(
+  failed: FailedAttemptCtx,
+  queue: ReplanQueueCtx,
+  tz = 'America/Denver',
+): AttemptWindow | null {
+  // Already at max → caller transitions queue to status='failed'.
+  if (queue.attempt_count + 1 > queue.max_attempts) return null;
+
+  // Start re-planning ≥ 24 h after the failed attempt.
+  const replanStart = new Date(Date.parse(failed.attempt_at) + DAY_MS).toISOString();
+
+  const plan = planAttemptWindows(replanStart, queue.deadline, tz, {
+    isBusiness: queue.isBusiness ?? false,
+    locationNote: queue.locationNote ?? null,
+  });
+  if (!plan.length) return null;
+
+  // Diligence rule: vary time-of-day from the failed attempt.
+  // Under deadline pressure, date proximity beats band diversity: return the
+  // earliest available date even if the band repeats rather than slip a day.
+  const failedKind = failedBandKind(failed.window);
+  const days = daysUntilDeadline(replanStart, queue.deadline);
+  const isDeadlineTight = days !== null && days <= 4;
+
+  if (failedKind && !isDeadlineTight) {
+    // Normal (non-tight) path: prefer a different time-of-day band.
+    // Override `attempt`: plan positions are 1-based within the regenerated sub-plan;
+    // the queue tracks the lifetime attempt count.
+    const differentBand = plan.find((w) => failedBandKind(w.window) !== failedKind);
+    if (differentBand) return { ...differentBand, attempt: queue.attempt_count + 1 };
+  }
+  return { ...plan[0], attempt: queue.attempt_count + 1 };
+}
