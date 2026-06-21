@@ -90,6 +90,7 @@ import crime from './routes/crime';
 import warrants from './routes/warrants';
 import workOrders from './routes/workOrders';
 import inspectionTemplates from './routes/inspectionTemplates';
+import fleetViz from './routes/fleetViz';
 import nibrs from './routes/nibrs';
 import incidentSupplements from './routes/incidentSupplements';
 import incidentSubresources from './routes/incidentSubresources';
@@ -551,6 +552,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Inspection templates — Fleet.io PR 6 subsystem ────────
   { prefix: '/api/inspection-templates', router: inspectionTemplates, auth: 'required',
     note: 'Fleet.io PR 6: inspection_templates CRUD (admin/manager). Versioned — editing an in-use template forks a new version + parent_template_id. The submit path at /api/inspections/by-token/:token (in src/routes/inspections.ts) consumes the template + emits inspection.submit + auto-creates fleet_maintenance on failed items.' },
+  // ── Fleet visualization — Fleet.io PR 7-9 backend ─────────
+  { prefix: '/api/fleet-viz', router: fleetViz, auth: 'required',
+    note: 'Fleet.io PR 7-9 backend: 11 read-only aggregate routes feeding the dashboard (F1 KPI / F2 dossier / F3 readiness / V1 fleet-map / V2 pm-timeline / V3 mpg-by-officer / V4 cost-per-mile / V5 work-order-flow / V6 fuel-anomalies / V7 calls-per-gallon / V8 pm-upcoming). React UI lands as PR 7b/8b/9b cluster.' },
 
   // ── Stub endpoints (dashboard/feature compatibility) ──────
   // All point at the same stubs router which fans out to its internal

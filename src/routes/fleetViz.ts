@@ -1,0 +1,494 @@
+// ============================================================
+// RMPG Flex — Fleet visualization routes (Fleet.io PR 7–9 backend)
+// ============================================================
+// All routes mounted at /api/fleet-viz (auth: 'required'). Read-only
+// SQL aggregates over the mirror tables (fleet_vehicles, fleet_fuel_log,
+// fleet_maintenance, work_orders, vehicle_inspections) joined against
+// RMPG operational tables (calls_for_service, cad_units, officers).
+//
+// The "why RMPG and not just Fleet.io" moats live here — particularly
+// V3 (MPG-by-officer), V6 (fuel anomaly heatmap), V7 (calls-per-gallon).
+// Fleet.io literally can't build these because they need RMPG's
+// officer + GPS joins.
+//
+// Each endpoint returns a stable JSON shape so the React dashboard can
+// switch between charts without server changes. Defensive: every query
+// is wrapped in try/catch and returns an empty-but-typed shape on D1
+// failure so a single bad query never breaks the whole dashboard load.
+//
+// Endpoint inventory:
+//   F1: GET /kpi                  — KPI ribbon (in-service, in-shop, overdue PMs, avg MPG, cost/mi)
+//   F2: GET /dossier/:id          — Vehicle dossier (timeline + fuel chart + WO/insp counts)
+//   F3: GET /readiness            — Readiness board (per-vehicle status + fuel + PM + open WOs)
+//   V1: GET /fleet-map            — Vehicle list with current_location + readiness for Mapbox
+//   V2: GET /pm-timeline          — Upcoming PM events per vehicle (Gantt-ready)
+//   V3: GET /mpg-by-officer       — MPG samples grouped by officer (scatter)
+//   V4: GET /cost-per-mile        — Cost breakdown per vehicle (stack)
+//   V5: GET /work-order-flow      — WO status transition counts (Sankey)
+//   V6: GET /fuel-anomalies       — Per-entry z-scores (heatmap)
+//   V7: GET /calls-per-gallon     — Calls handled / gallons consumed per officer (THE moat)
+//   V8: GET /pm-upcoming          — Top-N upcoming PMs sorted by miles-until-due
+// ============================================================
+
+import { Hono } from 'hono';
+import type { Env } from '../types';
+import { getDb, query, queryFirst } from '../utils/db';
+import {
+  buildDateWindow,
+  computeCostBreakdown,
+  computeMpgPoints,
+  zScores,
+  type FuelEntry,
+} from '../utils/fleetViz';
+
+const viz = new Hono<Env>();
+
+// ─── F1: KPI ribbon ────────────────────────────────────────
+
+viz.get('/kpi', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const period = c.req.query('period');
+    const fuelWin = buildDateWindow(period, 'fuel_date');
+    const mvWin = buildDateWindow(period, 'maintenance_date');
+
+    const inService = await queryFirst<{ n: number }>(
+      db, `SELECT COUNT(*) AS n FROM fleet_vehicles WHERE status = 'in_service'`,
+    );
+    const inShop = await queryFirst<{ n: number }>(
+      db, `SELECT COUNT(*) AS n FROM fleet_vehicles WHERE status IN ('in_shop','out_of_service')`,
+    );
+    // Overdue PMs: vehicles whose next_service_date is in the past, or
+    // current_mileage > next_service_mileage.
+    const overdue = await queryFirst<{ n: number }>(
+      db, `SELECT COUNT(*) AS n FROM fleet_vehicles
+           WHERE (next_service_date IS NOT NULL AND next_service_date < date('now'))
+              OR (next_service_mileage IS NOT NULL AND current_mileage IS NOT NULL
+                  AND current_mileage > next_service_mileage)`,
+    );
+    // Avg MPG and cost-per-mile use the (server-rolled) mpg on the row + period totals.
+    const fuelTotals = await queryFirst<{ gallons: number; total_cost: number; avg_mpg: number }>(
+      db, `SELECT COALESCE(SUM(gallons), 0) AS gallons,
+                  COALESCE(SUM(total_cost), 0) AS total_cost,
+                  COALESCE(AVG(mpg), 0) AS avg_mpg
+           FROM fleet_fuel_log WHERE 1=1 ${fuelWin.whereClause}`,
+    );
+    const maintTotals = await queryFirst<{ total_cost: number }>(
+      db, `SELECT COALESCE(SUM(cost), 0) AS total_cost
+           FROM fleet_maintenance WHERE 1=1 ${mvWin.whereClause}`,
+    );
+    // Miles driven in the window — best-effort: vehicle deltas in current_mileage
+    // are aggregated. For PR 7 we approximate by summing odometer deltas across
+    // fuel entries (close enough until PR 8's ClearPathGPS-derived mileage cron).
+    const miles = await queryFirst<{ miles: number }>(
+      db, `SELECT COALESCE(MAX(odometer) - MIN(odometer), 0) AS miles
+           FROM fleet_fuel_log WHERE 1=1 ${fuelWin.whereClause}`,
+    );
+    const cost = computeCostBreakdown({
+      fuel_cost: fuelTotals?.total_cost ?? 0,
+      maintenance_cost: maintTotals?.total_cost ?? 0,
+      parts_cost: 0,
+      miles_driven: miles?.miles ?? 0,
+    });
+    return c.json({
+      period: fuelWin.label,
+      in_service: inService?.n ?? 0,
+      in_shop: inShop?.n ?? 0,
+      overdue_pms: overdue?.n ?? 0,
+      avg_mpg: Math.round((fuelTotals?.avg_mpg ?? 0) * 10) / 10,
+      cost_per_mile: cost.cost_per_mile,
+      total_cost: cost.total,
+      miles_driven: miles?.miles ?? 0,
+    });
+  } catch (err) {
+    console.error('[fleetViz] /kpi failed', err);
+    return c.json({
+      period: 'unknown', in_service: 0, in_shop: 0, overdue_pms: 0,
+      avg_mpg: 0, cost_per_mile: null, total_cost: 0, miles_driven: 0,
+      error: 'aggregation failure',
+    }, 500);
+  }
+});
+
+// ─── F2: Vehicle dossier ───────────────────────────────────
+
+viz.get('/dossier/:id{[0-9]+}', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id') ?? '0', 10);
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const db = getDb(c.env);
+    const vehicle = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM fleet_vehicles WHERE id = ?', id,
+    );
+    if (!vehicle) return c.json({ error: 'Not found' }, 404);
+
+    const fuel90d = await query<Record<string, unknown>>(
+      db, `SELECT id, fuel_date, gallons, total_cost, mpg, odometer, is_full_tank, is_partial_fillup
+           FROM fleet_fuel_log
+           WHERE vehicle_id = ? AND fuel_date >= date('now','-90 days')
+           ORDER BY fuel_date`, id,
+    );
+    const maint90d = await query<Record<string, unknown>>(
+      db, `SELECT id, maintenance_date, maintenance_type, description, cost, status, work_order_id
+           FROM fleet_maintenance
+           WHERE vehicle_id = ? AND maintenance_date >= date('now','-90 days')
+           ORDER BY maintenance_date DESC`, id,
+    );
+    const openWoCount = await queryFirst<{ n: number }>(
+      db, `SELECT COUNT(*) AS n FROM work_orders WHERE vehicle_id = ?
+           AND status NOT IN ('completed','cancelled')`, id,
+    );
+    const inspCount90d = await queryFirst<{ n: number; fails: number }>(
+      db, `SELECT COUNT(*) AS n, SUM(CASE WHEN escalated_issue_id IS NOT NULL THEN 1 ELSE 0 END) AS fails
+           FROM vehicle_inspections WHERE vehicle_id = ?
+           AND created_at >= date('now','-90 days')`, id,
+    );
+    const callsHandled90d = await queryFirst<{ n: number }>(
+      db, `SELECT COUNT(*) AS n FROM calls_for_service
+           WHERE assigned_unit_ids LIKE ?
+           AND created_at >= date('now','-90 days')`, `%${id}%`,
+    );
+
+    return c.json({
+      vehicle,
+      fuel_log: fuel90d,
+      mpg_points: computeMpgPoints(fuel90d as unknown as FuelEntry[]),
+      maintenance: maint90d,
+      open_work_orders: openWoCount?.n ?? 0,
+      inspections_90d: inspCount90d?.n ?? 0,
+      failed_inspections_90d: inspCount90d?.fails ?? 0,
+      calls_handled_90d: callsHandled90d?.n ?? 0,
+    });
+  } catch (err) {
+    console.error('[fleetViz] /dossier failed', err);
+    return c.json({ error: 'Failed to load dossier', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ─── F3: Readiness board ───────────────────────────────────
+
+viz.get('/readiness', async (c) => {
+  try {
+    const db = getDb(c.env);
+    // One row per vehicle with the columns the board needs: status, last
+    // fuel %, miles-until-PM, open WO count, last inspection result.
+    const rows = await query<Record<string, unknown>>(
+      db, `
+      SELECT
+        v.id, v.vehicle_name, v.vehicle_number, v.status,
+        v.current_mileage,
+        v.next_service_mileage,
+        (v.next_service_mileage - v.current_mileage) AS miles_to_pm,
+        v.next_service_date,
+        (SELECT COUNT(*) FROM work_orders WHERE vehicle_id = v.id
+         AND status NOT IN ('completed','cancelled')) AS open_work_orders,
+        (SELECT escalated_issue_id IS NOT NULL FROM vehicle_inspections
+         WHERE vehicle_id = v.id ORDER BY created_at DESC LIMIT 1) AS last_inspection_failed,
+        (SELECT fuel_level FROM vehicle_inspections
+         WHERE vehicle_id = v.id AND fuel_level IS NOT NULL
+         ORDER BY created_at DESC LIMIT 1) AS last_fuel_level
+      FROM fleet_vehicles v
+      WHERE v.status != 'archived'
+      ORDER BY
+        CASE WHEN v.status = 'in_service' THEN 0 WHEN v.status = 'in_shop' THEN 1 ELSE 2 END,
+        v.vehicle_number`,
+    );
+    return c.json({ count: rows.length, data: rows });
+  } catch (err) {
+    console.error('[fleetViz] /readiness failed', err);
+    return c.json({ count: 0, data: [], error: 'aggregation failure' }, 500);
+  }
+});
+
+// ─── V1: Fleet map (Mapbox) ───────────────────────────────
+
+viz.get('/fleet-map', async (c) => {
+  try {
+    const db = getDb(c.env);
+    // Joined with the most recent ClearPathGPS breadcrumb when available.
+    const rows = await query<Record<string, unknown>>(
+      db, `
+      SELECT
+        v.id, v.vehicle_name, v.vehicle_number, v.status,
+        v.current_mileage, v.next_service_mileage,
+        (v.next_service_mileage - v.current_mileage) AS miles_to_pm,
+        v.assigned_unit_id,
+        (SELECT lat FROM gps_breadcrumbs WHERE unit_id = v.assigned_unit_id ORDER BY ts DESC LIMIT 1) AS lat,
+        (SELECT lng FROM gps_breadcrumbs WHERE unit_id = v.assigned_unit_id ORDER BY ts DESC LIMIT 1) AS lng,
+        (SELECT ts  FROM gps_breadcrumbs WHERE unit_id = v.assigned_unit_id ORDER BY ts DESC LIMIT 1) AS gps_ts
+      FROM fleet_vehicles v
+      WHERE v.status != 'archived'`,
+    );
+    // Mark readiness: in_service + miles_to_pm > 500 = 'ready', else 'attention'.
+    const features = rows.map((r) => {
+      const milesToPm = typeof r.miles_to_pm === 'number' ? r.miles_to_pm : null;
+      const status = r.status === 'in_service'
+        ? (milesToPm != null && milesToPm > 500 ? 'ready' : 'attention')
+        : 'unavailable';
+      return { ...r, readiness: status };
+    });
+    return c.json({ count: features.length, data: features });
+  } catch (err) {
+    console.error('[fleetViz] /fleet-map failed', err);
+    return c.json({ count: 0, data: [], error: 'aggregation failure' }, 500);
+  }
+});
+
+// ─── V2: PM timeline (Gantt) ──────────────────────────────
+
+viz.get('/pm-timeline', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const horizonDays = Math.min(parseInt(c.req.query('horizon_days') ?? '90', 10), 365);
+    const rows = await query<Record<string, unknown>>(
+      db, `
+      SELECT
+        v.id AS vehicle_id, v.vehicle_number, v.vehicle_name,
+        v.next_service_date, v.next_service_mileage, v.current_mileage,
+        CASE
+          WHEN v.next_service_date IS NOT NULL AND v.next_service_date < date('now') THEN 'overdue'
+          WHEN v.next_service_mileage IS NOT NULL AND v.current_mileage IS NOT NULL
+               AND v.current_mileage > v.next_service_mileage THEN 'overdue'
+          WHEN v.next_service_date IS NOT NULL AND v.next_service_date < date('now', ? || ' days') THEN 'upcoming'
+          ELSE 'future'
+        END AS bucket
+      FROM fleet_vehicles v
+      WHERE v.status != 'archived'
+        AND (v.next_service_date IS NOT NULL OR v.next_service_mileage IS NOT NULL)
+      ORDER BY v.next_service_date NULLS LAST, v.vehicle_number`,
+      `+${horizonDays}`,
+    );
+    return c.json({ horizon_days: horizonDays, count: rows.length, data: rows });
+  } catch (err) {
+    console.error('[fleetViz] /pm-timeline failed', err);
+    return c.json({ horizon_days: 0, count: 0, data: [], error: 'aggregation failure' }, 500);
+  }
+});
+
+// ─── V3: MPG by officer (THE moat — needs officer×fuel joins) ──
+
+viz.get('/mpg-by-officer', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const win = buildDateWindow(c.req.query('period'), 'fuel_date');
+    const rows = await query<Record<string, unknown>>(
+      db, `
+      SELECT
+        o.id AS officer_id, o.full_name AS officer_name,
+        f.vehicle_id,
+        f.fuel_date,
+        f.mpg,
+        f.gallons,
+        f.total_cost
+      FROM fleet_fuel_log f
+      LEFT JOIN officers o ON o.id = f.driver_id
+      WHERE f.mpg IS NOT NULL AND f.driver_id IS NOT NULL ${win.whereClause}
+      ORDER BY f.fuel_date DESC
+      LIMIT 5000`,
+    );
+    // Group + average per officer for the scatter aggregate.
+    const byOfficer: Record<number, { officer_id: number; officer_name: string; samples: number; mean_mpg: number; total_gallons: number; total_cost: number }> = {};
+    for (const r of rows) {
+      const id = r.officer_id as number | null;
+      if (id == null) continue;
+      const slot = byOfficer[id] ?? (byOfficer[id] = {
+        officer_id: id,
+        officer_name: (r.officer_name as string) ?? `Officer #${id}`,
+        samples: 0, mean_mpg: 0, total_gallons: 0, total_cost: 0,
+      });
+      slot.samples++;
+      slot.mean_mpg += (Number(r.mpg) - slot.mean_mpg) / slot.samples;
+      slot.total_gallons += Number(r.gallons ?? 0);
+      slot.total_cost += Number(r.total_cost ?? 0);
+    }
+    return c.json({
+      period: win.label,
+      samples: rows.slice(0, 500),
+      by_officer: Object.values(byOfficer).map((s) => ({
+        ...s,
+        mean_mpg: Math.round(s.mean_mpg * 10) / 10,
+        total_gallons: Math.round(s.total_gallons * 100) / 100,
+        total_cost: Math.round(s.total_cost * 100) / 100,
+      })),
+    });
+  } catch (err) {
+    console.error('[fleetViz] /mpg-by-officer failed', err);
+    return c.json({ period: 'unknown', samples: [], by_officer: [], error: 'aggregation failure' }, 500);
+  }
+});
+
+// ─── V4: Cost-per-mile stack ──────────────────────────────
+
+viz.get('/cost-per-mile', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const win = buildDateWindow(c.req.query('period'), 'maintenance_date');
+    const fuelWin = buildDateWindow(c.req.query('period'), 'fuel_date');
+    const rows = await query<Record<string, unknown>>(
+      db, `
+      SELECT
+        v.id AS vehicle_id, v.vehicle_number, v.vehicle_name,
+        COALESCE((SELECT SUM(total_cost) FROM fleet_fuel_log
+                  WHERE vehicle_id = v.id ${fuelWin.whereClause}), 0) AS fuel_cost,
+        COALESCE((SELECT SUM(cost) FROM fleet_maintenance
+                  WHERE vehicle_id = v.id ${win.whereClause}), 0) AS maint_cost,
+        COALESCE((SELECT MAX(odometer) - MIN(odometer) FROM fleet_fuel_log
+                  WHERE vehicle_id = v.id ${fuelWin.whereClause}), 0) AS miles
+      FROM fleet_vehicles v
+      WHERE v.status != 'archived'`,
+    );
+    const data = rows.map((r) => {
+      const cost = computeCostBreakdown({
+        fuel_cost: Number(r.fuel_cost ?? 0),
+        maintenance_cost: Number(r.maint_cost ?? 0),
+        parts_cost: 0,
+        miles_driven: Number(r.miles ?? 0),
+      });
+      return {
+        vehicle_id: r.vehicle_id, vehicle_number: r.vehicle_number, vehicle_name: r.vehicle_name,
+        miles: r.miles, ...cost,
+      };
+    });
+    return c.json({ period: win.label, count: data.length, data });
+  } catch (err) {
+    console.error('[fleetViz] /cost-per-mile failed', err);
+    return c.json({ period: 'unknown', count: 0, data: [], error: 'aggregation failure' }, 500);
+  }
+});
+
+// ─── V5: WO flow (Sankey) ─────────────────────────────────
+
+viz.get('/work-order-flow', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const win = buildDateWindow(c.req.query('period'), 'opened_at');
+    const rows = await query<{ status: string; n: number }>(
+      db, `SELECT status, COUNT(*) AS n FROM work_orders
+           WHERE 1=1 ${win.whereClause}
+           GROUP BY status`,
+    );
+    // Sankey-shape: 'open' → 'in_progress' → 'waiting_parts' → 'completed' edges with counts.
+    const byStatus: Record<string, number> = {};
+    for (const r of rows) byStatus[r.status] = r.n;
+    const nodes = ['open', 'in_progress', 'waiting_parts', 'completed', 'cancelled'].map((s) => ({
+      name: s, count: byStatus[s] ?? 0,
+    }));
+    return c.json({ period: win.label, nodes });
+  } catch (err) {
+    console.error('[fleetViz] /work-order-flow failed', err);
+    return c.json({ period: 'unknown', nodes: [], error: 'aggregation failure' }, 500);
+  }
+});
+
+// ─── V6: Fuel anomaly heatmap (z-scores) ──────────────────
+
+viz.get('/fuel-anomalies', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const win = buildDateWindow(c.req.query('period'), 'fuel_date');
+    const rows = await query<{
+      id: number; fuel_date: string; gallons: number; total_cost: number;
+      driver_id: number | null; vehicle_id: number;
+    }>(db, `
+      SELECT id, fuel_date, gallons, total_cost, driver_id, vehicle_id
+      FROM fleet_fuel_log
+      WHERE gallons IS NOT NULL AND total_cost IS NOT NULL ${win.whereClause}
+      ORDER BY fuel_date`,
+    );
+    const gallons = rows.map((r) => Number(r.gallons) || 0);
+    const costPerGal = rows.map((r) => {
+      const g = Number(r.gallons) || 0;
+      return g > 0 ? Number(r.total_cost) / g : 0;
+    });
+    const zGallons = zScores(gallons);
+    const zCost = zScores(costPerGal);
+    const flagged = rows.map((r, i) => ({
+      ...r,
+      cost_per_gallon: Math.round(costPerGal[i] * 100) / 100,
+      z_gallons: zGallons[i] ?? 0,
+      z_cost_per_gallon: zCost[i] ?? 0,
+      flagged: Math.abs(zGallons[i] ?? 0) > 2 || Math.abs(zCost[i] ?? 0) > 2,
+    }));
+    return c.json({ period: win.label, count: flagged.length, data: flagged });
+  } catch (err) {
+    console.error('[fleetViz] /fuel-anomalies failed', err);
+    return c.json({ period: 'unknown', count: 0, data: [], error: 'aggregation failure' }, 500);
+  }
+});
+
+// ─── V7: Calls per gallon (THE moat — Fleet.io can't do this) ──
+
+viz.get('/calls-per-gallon', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const win = buildDateWindow(c.req.query('period'), 'fuel_date');
+    const callWin = buildDateWindow(c.req.query('period'), 'created_at');
+
+    const gallonsByOfficer = await query<{ officer_id: number; officer_name: string; total_gallons: number }>(
+      db, `
+      SELECT o.id AS officer_id, o.full_name AS officer_name,
+             COALESCE(SUM(f.gallons), 0) AS total_gallons
+      FROM officers o
+      LEFT JOIN fleet_fuel_log f ON f.driver_id = o.id
+      WHERE 1=1 ${win.whereClause}
+      GROUP BY o.id, o.full_name`,
+    );
+    const callsByOfficer = await query<{ officer_id: number; calls: number }>(
+      db, `
+      SELECT u.officer_id, COUNT(DISTINCT c.id) AS calls
+      FROM cad_units u
+      JOIN calls_for_service c ON c.assigned_unit_ids LIKE '%' || u.id || '%'
+      WHERE u.officer_id IS NOT NULL ${callWin.whereClause}
+      GROUP BY u.officer_id`,
+    );
+    const callsMap = new Map<number, number>(callsByOfficer.map((r) => [r.officer_id, r.calls]));
+    const data = gallonsByOfficer
+      .filter((g) => g.total_gallons > 0)
+      .map((g) => {
+        const calls = callsMap.get(g.officer_id) ?? 0;
+        return {
+          officer_id: g.officer_id, officer_name: g.officer_name,
+          total_gallons: Math.round(g.total_gallons * 100) / 100,
+          calls_handled: calls,
+          calls_per_gallon: Math.round((calls / g.total_gallons) * 100) / 100,
+        };
+      })
+      .sort((a, b) => b.calls_per_gallon - a.calls_per_gallon);
+    return c.json({ period: win.label, count: data.length, data });
+  } catch (err) {
+    console.error('[fleetViz] /calls-per-gallon failed', err);
+    return c.json({ period: 'unknown', count: 0, data: [], error: 'aggregation failure' }, 500);
+  }
+});
+
+// ─── V8: PM upcoming (table + spark) ──────────────────────
+
+viz.get('/pm-upcoming', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const limit = Math.min(parseInt(c.req.query('limit') ?? '25', 10), 200);
+    const rows = await query<Record<string, unknown>>(
+      db, `
+      SELECT
+        v.id, v.vehicle_number, v.vehicle_name,
+        v.current_mileage, v.next_service_mileage, v.next_service_date,
+        (v.next_service_mileage - v.current_mileage) AS miles_to_pm
+      FROM fleet_vehicles v
+      WHERE v.status != 'archived'
+        AND (v.next_service_mileage IS NOT NULL OR v.next_service_date IS NOT NULL)
+      ORDER BY
+        CASE WHEN v.next_service_date < date('now') THEN 0
+             WHEN v.current_mileage > v.next_service_mileage THEN 0
+             ELSE 1 END,
+        miles_to_pm NULLS LAST,
+        v.next_service_date NULLS LAST
+      LIMIT ?`, limit,
+    );
+    return c.json({ count: rows.length, data: rows });
+  } catch (err) {
+    console.error('[fleetViz] /pm-upcoming failed', err);
+    return c.json({ count: 0, data: [], error: 'aggregation failure' }, 500);
+  }
+});
+
+export default viz;
