@@ -221,6 +221,14 @@ for (const m of ROUTE_REGISTRY) {
 // itself — compared constant-time. Lives outside ROUTE_REGISTRY because
 // it's an internal callback, not an API endpoint.
 app.post('/__welfare-fire', async (c) => {
+  // Surface a missing JWT_SECRET as a loud 500 instead of a silent 403:
+  // a misconfigured secret would otherwise look identical to a forged
+  // request, and ops would never realize escalations were being dropped.
+  // The 500 + log gets noticed in deploy verification + dashboards.
+  if (!c.env.JWT_SECRET) {
+    console.error('[__welfare-fire] JWT_SECRET unset — DO callbacks cannot authenticate; escalations will be lost');
+    return c.json({ error: 'misconfigured: JWT_SECRET unset' }, 500);
+  }
   const provided = c.req.header('X-DO-Secret') || '';
   const expected = await doCallbackToken(c.env.JWT_SECRET);
   if (!timingSafeEqual(provided, expected)) {
