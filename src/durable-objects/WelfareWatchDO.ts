@@ -106,6 +106,11 @@ export class WelfareWatchDO {
     s.stage = 0;
     s.fired_at = null;
     await this.setState(s);
+    // Clear any prior alarm before re-arming. Workers semantics already
+    // overwrite on setAlarm(), so this is defensive parity with handleAck()
+    // and handleStop() — keeps a reader from having to internalize the
+    // overwrite contract to be confident the activity path is safe.
+    await this.state.storage.deleteAlarm();
     await this.state.storage.setAlarm(now + PROMPT_AFTER_MS);
     return Response.json({ success: true, reset: true });
   }
