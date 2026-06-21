@@ -128,8 +128,8 @@ CREATE TABLE IF NOT EXISTS work_orders (
   odometer_at_close INTEGER,
   notes TEXT,
   created_by INTEGER,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS work_order_line_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -150,14 +150,14 @@ CREATE TABLE IF NOT EXISTS work_order_attachments (
   filename TEXT,
   mime TEXT,
   uploaded_by INTEGER,
-  uploaded_at TEXT DEFAULT (datetime('now','localtime'))
+  uploaded_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS work_order_comments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   work_order_id INTEGER NOT NULL,
   user_id INTEGER NOT NULL,
   body TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 ```
 
@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS inspection_templates (
   schema_json TEXT NOT NULL,    -- items: [{key, label, type, required, fail_creates_issue}]
   active INTEGER DEFAULT 1,
   version INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 ```
 
@@ -203,7 +203,7 @@ CREATE TABLE IF NOT EXISTS fleetio_events (
   attempts INTEGER DEFAULT 0,
   payload_json TEXT NOT NULL,
   error TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   processed_at TEXT,
   UNIQUE (direction, event_id)    -- dedup
 );
@@ -217,12 +217,12 @@ CREATE TABLE IF NOT EXISTS fleetio_conflicts (
   resolution TEXT,    -- local_wins | remote_wins | manual | unresolved
   resolved_by INTEGER,
   resolved_at TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS fleetio_sync_state (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 ```
 
