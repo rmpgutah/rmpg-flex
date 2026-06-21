@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildFleetioRequest, fleetioFetch, type FleetioConfig } from '../src/utils/fleetio/client';
+import { buildFleetioRequest, fleetioFetch, ping, listVehicles, createVehicle, type FleetioConfig } from '../src/utils/fleetio/client';
 
 describe('buildFleetioRequest', () => {
   const cfg = {
@@ -195,5 +195,56 @@ describe('secret-hygiene invariants', () => {
     await expect(fleetioFetch({
       method: 'GET', path: '/vehicles', config: cfg, fetchImpl: stub, maxRetries: 0,
     })).rejects.toMatchObject({ message: expect.not.stringContaining('tok_supersecret') });
+  });
+});
+
+describe('typed resource methods', () => {
+  const cfg: FleetioConfig = { apiKey: 'k', accountToken: 'a', apiBase: 'https://secure.fleetio.com/api/v1' };
+
+  function jsonRespTm(body: unknown, init?: ResponseInit): Response {
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      ...init,
+    });
+  }
+
+  it('ping — GET /accounts; returns { ok:true, account_id } on 200', async () => {
+    const stub = vi.fn().mockResolvedValue(jsonRespTm({ id: 42, name: 'RMPG' }));
+    const r = await ping({ config: cfg, fetchImpl: stub });
+    expect(r).toEqual({ ok: true, account_id: 42, account_name: 'RMPG' });
+    const [url, init] = stub.mock.calls[0];
+    expect(String(url)).toBe('https://secure.fleetio.com/api/v1/accounts');
+    expect(init.method).toBe('GET');
+  });
+
+  it('ping — 401 maps to { ok:false, error }', async () => {
+    const stub = vi.fn().mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+    const r = await ping({ config: cfg, fetchImpl: stub });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/401/);
+  });
+
+  it('listVehicles — passes page/per_page; returns parsed records', async () => {
+    const stub = vi.fn().mockResolvedValue(jsonRespTm({
+      records: [{ id: 1, name: 'Unit 1' }],
+      pagination: { current_page: 1, total_pages: 1, total_entries: 1, per_page: 50 },
+    }));
+    const r = await listVehicles({ config: cfg, page: 2, perPage: 25, fetchImpl: stub });
+    expect(r.records).toHaveLength(1);
+    expect(stub.mock.calls[0][0]).toBe('https://secure.fleetio.com/api/v1/vehicles?page=2&per_page=25');
+  });
+
+  it('createVehicle — POSTs JSON body, returns the created record', async () => {
+    const created = { id: 99, name: 'Unit 12', vin: 'ABC' };
+    const stub = vi.fn().mockResolvedValue(jsonRespTm(created, { status: 201 }));
+    const r = await createVehicle({
+      config: cfg,
+      payload: { name: 'Unit 12', vin: 'ABC' },
+      fetchImpl: stub,
+    });
+    expect(r.id).toBe(99);
+    expect(stub.mock.calls[0][1].method).toBe('POST');
+    expect(stub.mock.calls[0][1].body).toBe('{"name":"Unit 12","vin":"ABC"}');
   });
 });

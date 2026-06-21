@@ -194,3 +194,78 @@ async function safeReadJson(resp: Response): Promise<unknown> {
     return undefined;
   }
 }
+
+// ── Typed resource methods ───────────────────────────────────
+
+export interface PingInput {
+  config: FleetioConfig;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+}
+
+export interface PingResult {
+  ok: boolean;
+  account_id?: number;
+  account_name?: string;
+  error?: string;
+}
+
+/** Lightweight reachability + auth check. Hits `/accounts` (the only
+ *  endpoint that doesn't require Account-Token, but works fine with one).
+ *  Maps any failure to { ok:false, error } so the route doesn't have to
+ *  classify exceptions itself. */
+export async function ping(input: PingInput): Promise<PingResult> {
+  try {
+    const account = await fleetioFetch<{ id?: number; name?: string }>({
+      method: 'GET', path: '/accounts', config: input.config,
+      fetchImpl: input.fetchImpl, timeoutMs: input.timeoutMs ?? 10_000, maxRetries: 0,
+    });
+    return { ok: true, account_id: account?.id, account_name: account?.name };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export interface ListVehiclesInput {
+  config: FleetioConfig;
+  page?: number;
+  perPage?: number;
+  fetchImpl?: typeof fetch;
+}
+
+export async function listVehicles(input: ListVehiclesInput): Promise<FleetioListResponse<FleetioVehicle>> {
+  return fleetioFetch<FleetioListResponse<FleetioVehicle>>({
+    method: 'GET',
+    path: '/vehicles',
+    config: input.config,
+    query: { page: input.page ?? 1, per_page: input.perPage ?? 50 },
+    fetchImpl: input.fetchImpl,
+  });
+}
+
+export interface CreateVehicleInput {
+  config: FleetioConfig;
+  payload: FleetioVehicleCreatePayload;
+  fetchImpl?: typeof fetch;
+}
+
+export async function createVehicle(input: CreateVehicleInput): Promise<FleetioVehicle> {
+  return fleetioFetch<FleetioVehicle>({
+    method: 'POST',
+    path: '/vehicles',
+    config: input.config,
+    body: input.payload,
+    fetchImpl: input.fetchImpl,
+  });
+}
+
+/** Helper for routes: build a FleetioConfig from the env bindings, throwing
+ *  FleetioConfigError if either secret is unset. */
+export function configFromEnv(env: Record<string, unknown>): FleetioConfig {
+  const apiKey = String(env.FLEETIO_API_KEY ?? '');
+  const accountToken = String(env.FLEETIO_ACCOUNT_TOKEN ?? '');
+  const apiBase = String(env.FLEETIO_API_BASE ?? FLEETIO_API_BASE_DEFAULT);
+  if (!apiKey) throw new FleetioConfigError('FLEETIO_API_KEY is unset');
+  if (!accountToken) throw new FleetioConfigError('FLEETIO_ACCOUNT_TOKEN is unset');
+  return { apiKey, accountToken, apiBase };
+}
