@@ -74,12 +74,14 @@ export const LIST_VIEW_COLUMNS = [
   // Geography
   'sector_id', 'sector_name', 'zone_id', 'zone_name', 'zone_beat',
   'beat_id', 'beat_name', 'beat_descriptor',
-  // Safety flags (most-read by dispatcher; the rest live on the detail GET).
-  // Intentionally excluded: `pinned` and `officer_safety_caution` — both are
-  // in UPDATABLE_CALL_COLUMNS_BASE but not in any /migrations/ file (live D1
-  // patched directly per memory project-live-d1-schema-patches). Including
-  // them risks `no such column` 500s on prod if the patch was never applied.
-  // Re-add once a migration backfills them.
+  // Safety flags shown on the dispatcher's row at a glance. The rest of the
+  // safety/tactical flags load on the detail GET only — keeping the list
+  // projection lean both for screen real-estate and for staying clear of the
+  // D1 100-column SELECT cap that already constrains this query.
+  // `officer_safety_caution` (migration 0003:70) and `pinned`
+  // (migration 0003:100, read here via the cfe.pinned JOIN below) both exist
+  // in migrations and are surfaced via the detail GET / the pinned-sort key
+  // respectively — they don't need to live in the row projection.
   'weapons_involved', 'injuries_reported', 'domestic_violence',
   // Mileage + overdue
   'starting_mileage', 'ending_mileage', 'overdue_notified',
