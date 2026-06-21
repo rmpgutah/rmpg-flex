@@ -451,6 +451,18 @@ export default {
           .then((n) => { if (n) console.log(`[serve-schedule] ${n} reminder(s) dispatched`); })
           .catch((err) => console.error('[serve-schedule] sweep failed:', err)),
       );
+      // Daily 04:00 America/Denver rebalance — UTC hour=10, minute=0 (DST drift accepted).
+      const utcNow = new Date();
+      if (utcNow.getUTCHours() === 10 && utcNow.getUTCMinutes() === 0) {
+        ctx.waitUntil(
+          import('./utils/serveRebalance')
+            .then(({ runDailyRebalance }) =>
+              runDailyRebalance(env.DB, utcNow.toISOString()),
+            )
+            .then((r) => console.log('[serve-rebalance] daily:', JSON.stringify(r)))
+            .catch((err) => console.error('[serve-rebalance] daily failed:', err)),
+        );
+      }
       return;
     }
     // NHTSA vPIC monthly refresh. Runs at 03:00 UTC on day 1 of each month.
