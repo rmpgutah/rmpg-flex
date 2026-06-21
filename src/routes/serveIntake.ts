@@ -1118,6 +1118,9 @@ si.get('/', async (c) => {
 
 // ── GET /queue — list serve_queue rows with filters ──────────
 si.get('/queue', async (c) => {
+  // Exposes recipient names + addresses + case numbers — gate to operations roles.
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
+  if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   await reconcileScheduleSchema(db);
   const officerParam = c.req.query('officer_id');
@@ -1230,6 +1233,9 @@ si.get('/schedule', async (c) => {
 // Returns active users in field-facing roles so dispatchers can render
 // the swim-lane view without needing /admin/users access.
 si.get('/officers', async (c) => {
+  // Lane labels for the scheduler — same operations roles that can see /queue.
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
+  if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const rows = await query<{ id: number; name: string }>(
     db,
