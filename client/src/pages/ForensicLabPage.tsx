@@ -17,6 +17,7 @@ import {
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import FormModal from '../components/FormModal';
+import IncidentPickerInline from '../components/IncidentPickerInline';
 import { apiFetch } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
@@ -2232,13 +2233,12 @@ export default function ForensicLabPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-rmpg-400 mb-1">Linked Incident # (optional)</label>
-                  <input id="ff-forensiclabpage-33"
-                    type="text"
-                    value={wizardData.incident_id}
-                    onChange={e => setWizardData(d => ({ ...d, incident_id: e.target.value.replace(/\D/g, '') }))}
-                    className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 focus:border-brand-500 focus:outline-none"
-                    placeholder="Incident ID number"
+                  <label className="block text-[11px] text-rmpg-400 mb-1">Linked Incident (optional)</label>
+                  <IncidentPickerInline
+                    id="ff-forensiclabpage-33"
+                    value={wizardData.incident_id ? Number(wizardData.incident_id) : null}
+                    onChange={(id) => setWizardData(d => ({ ...d, incident_id: id ? String(id) : '' }))}
+                    placeholder="Search by incident # / type / location…"
                   />
                 </div>
 

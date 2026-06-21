@@ -691,6 +691,22 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1004: System-wide search-by-name picker rollout — sweep follow-up to v1003.
+//        Four new pickers (UnitPicker via /dispatch/units, CallPicker via
+//        /dispatch/calls, CasePicker via /cases, plus a polymorphic
+//        RecordPicker that switches between Person/Incident/Call/Case by a
+//        `type` prop). Wired into the remaining 5 FK-by-ID surfaces:
+//        AffairsFormModal (subject_officer_id), IncidentsPage Add-Officer
+//        modal (officer dropdown + manual_officer_id fallback replaced with
+//        a single OfficerPicker driven by a hidden FormData input),
+//        IncidentsPage cross-link modal (linked_type select + linked_id
+//        numeric input replaced with RecordPicker that hot-swaps based on
+//        the type), ForensicLabPage intake wizard (incident_id),
+//        DashcamPage device assignment (unit_id), QAPage review form
+//        (reviewed_officer_id). Same DB FKs; only the input surfaces change.
+//        Warrant/Citation/Arrest types in the cross-link modal fall back to
+//        typed numeric input for now (rare in practice; dedicated pickers
+//        can land in a follow-up when the operator hits them).
 // v1003: Search-by-name record pickers — operator can no longer be expected
 //        to know that "Camden Clark is ID 4" when linking records. Three new
 //        reusable components: PersonPicker (debounced /records/persons/search,

@@ -6,6 +6,7 @@ import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { CheckCircle, Star, ThumbsUp, Users, Plus, Pencil, Trash2 } from 'lucide-react';
+import OfficerPicker from '../components/OfficerPicker';
 
 export default function QAPage() {
   const [reviews, setReviews] = useState<Record<string, any>[]>([]);
@@ -96,8 +97,15 @@ export default function QAPage() {
                   <select id="ff-qapage-0" className="select-dark mt-1" value={formData.review_type || 'call_audit'} onChange={e => setFormData({...formData, review_type: e.target.value})}>
                     {['call_audit','report_review','bodycam_audit','investigation_review','dispatch_audit','other'].map(t=><option key={t} value={t}>{t}</option>)}
                   </select></div>
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Officer ID</label>
-                  <input id="ff-qapage-1" className="input-dark mt-1" value={formData.reviewed_officer_id || ''} onChange={e => setFormData({...formData, reviewed_officer_id: e.target.value})} /></div>
+                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Reviewed Officer</label>
+                  <div className="mt-1">
+                    <OfficerPicker
+                      id="ff-qapage-1"
+                      value={formData.reviewed_officer_id ? Number(formData.reviewed_officer_id) : null}
+                      onChange={(id) => setFormData({...formData, reviewed_officer_id: id ? String(id) : ''})}
+                      placeholder="Search officer by name, badge…"
+                    />
+                  </div></div>
               </div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Findings</label>
                 <textarea id="ff-qapage-2" rows={3} className="input-dark mt-1" value={formData.findings || ''} onChange={e => setFormData({...formData, findings: e.target.value})} /></div>

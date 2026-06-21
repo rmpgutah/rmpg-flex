@@ -4,6 +4,7 @@ import { formatEnumValue } from '../utils/formatters';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { Camera, MapPin, AlertTriangle, Radio, RefreshCw, Activity, Power, PowerOff, Search, Monitor, Smartphone } from 'lucide-react';
 import IconButton from '../components/IconButton';
+import UnitPicker from '../components/UnitPicker';
 import { parseTimestamp } from '../utils/dateUtils';
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -341,14 +342,21 @@ export default function DashcamPage() {
                     />
                   </div>
                   <div>
-                    <span className="text-text-muted">Unit ID</span>
-                    <input id="ff-dashcampage-2"
-                      className="w-full bg-surface-sunken border border-border-default px-2 py-0.5 text-text-default mt-0.5"
-                      type="number"
-                      value={deviceDetail.unit_id || ''}
-                      onChange={e => setDeviceDetail({ ...deviceDetail, unit_id: parseInt(e.target.value) || null })}
-                      onBlur={() => updateDevice(deviceDetail.id, { unit_id: deviceDetail.unit_id })}
-                    />
+                    <span className="text-text-muted">Assigned Unit</span>
+                    <div className="mt-0.5">
+                      <UnitPicker
+                        id="ff-dashcampage-2"
+                        value={deviceDetail.unit_id || null}
+                        onChange={(id) => {
+                          setDeviceDetail({ ...deviceDetail, unit_id: id });
+                          // The original input fired on blur; the picker has
+                          // no blur (it's a button), so persist immediately on
+                          // selection. Setting to null also detaches the unit.
+                          updateDevice(deviceDetail.id, { unit_id: id });
+                        }}
+                        placeholder="Search by call sign, officer, vehicle…"
+                      />
+                    </div>
                   </div>
                   <div>
                     <span className="text-text-muted">IMEI</span>

@@ -41,6 +41,8 @@ import FileAttachments from '../components/FileAttachments';
 import LinkPersonModal from '../components/LinkPersonModal';
 import LinkVehicleModal from '../components/LinkVehicleModal';
 import EvidenceFormModal from '../components/EvidenceFormModal';
+import OfficerPicker from '../components/OfficerPicker';
+import RecordPicker, { type LinkableRecordType } from '../components/RecordPicker';
 import CollapsibleSection from '../components/CollapsibleSection';
 import LinkedEmailsSection from '../components/LinkedEmailsSection';
 import SupplementFormModal from '../components/SupplementFormModal';
@@ -300,7 +302,10 @@ export default function IncidentsPage() {
   const [incidentOfficerOptionsLoading, setIncidentOfficerOptionsLoading] = useState(false);
   const [showAddOffenseModal, setShowAddOffenseModal] = useState(false);
   const [showAddOfficerModal, setShowAddOfficerModal] = useState(false);
+  const [addOfficerPickerId, setAddOfficerPickerId] = useState<number | null>(null);
   const [showAddLinkModal, setShowAddLinkModal] = useState(false);
+  const [addLinkType, setAddLinkType] = useState<LinkableRecordType | ''>('');
+  const [addLinkId, setAddLinkId] = useState<number | null>(null);
 
   // ---------- chain of custody expansion ----------
   const [expandedCustody, setExpandedCustody] = useState<Set<string>>(new Set());
@@ -2554,7 +2559,7 @@ export default function IncidentsPage() {
 
       {/* ═══ Add Officer Modal ═══ */}
       {showAddOfficerModal && selectedIncident && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowAddOfficerModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }}>
           <form
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[450px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -2581,7 +2586,7 @@ export default function IncidentsPage() {
 
               try {
                 const result = await apiFetch<any>(`/incidents/${selectedIncident.id}/officers`, { method: 'POST', body: JSON.stringify(data) });
-                setShowAddOfficerModal(false);
+                { setShowAddOfficerModal(false); setAddOfficerPickerId(null); };
                 addToast(result?.updated_existing ? 'Officer details updated on incident' : 'Officer added to incident', 'success');
                 fetchIncidentDetail(selectedIncident.id);
               } catch (err: any) {
@@ -2591,26 +2596,21 @@ export default function IncidentsPage() {
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Responding Officer</h3>
-              <IconButton onClick={() => setShowAddOfficerModal(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add officer"><X className="w-4 h-4" /></IconButton>
+              <IconButton onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add officer"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Officer *</label>
-                <select name="officer_select_id" className="input-dark w-full text-xs">
-                  <option value="">
-                    {incidentOfficerOptionsLoading
-                      ? 'Loading officers...'
-                      : incidentOfficerOptions.length > 0
-                        ? 'Select officer...'
-                        : 'No officers available'}
-                  </option>
-                  {incidentOfficerOptions.map((officer) => (
-                    <option key={officer.id} value={officer.id}>
-                      {formatIncidentOfficerOptionLabel(officer)}{isIncidentOfficerLinked(detailOfficers, officer.id) ? ' — already on incident' : ''}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[9px] text-rmpg-500 mt-0.5">Enter officer user ID if dropdown is empty. Selecting an officer already on the incident updates their role, timing, or notes.</p>
-                <input name="manual_officer_id" type="number" className="input-dark w-full text-xs mt-1" placeholder="Officer User ID" />
+                <OfficerPicker
+                  value={addOfficerPickerId}
+                  onChange={(id) => setAddOfficerPickerId(id)}
+                  placeholder="Search officer by name, badge, rank, unit…"
+                />
+                {/* Hidden inputs kept so the existing FormData submission keeps
+                    working unchanged — the FormData path reads officer_select_id
+                    OR manual_officer_id and prefers whichever is non-empty. */}
+                <input type="hidden" name="officer_select_id" value={addOfficerPickerId ?? ''} />
+                <input type="hidden" name="manual_officer_id" value="" />
+                <p className="text-[9px] text-rmpg-500 mt-0.5">Selecting an officer already on the incident updates their role, timing, or notes.</p>
               </div>
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Role</label>
                 <select name="role" className="input-dark w-full text-xs">
@@ -2631,7 +2631,7 @@ export default function IncidentsPage() {
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><RichTextArea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button type="button" onClick={() => setShowAddOfficerModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }} className="toolbar-btn">Cancel</button>
               <button type="submit" className="toolbar-btn toolbar-btn-primary flex items-center gap-1"><Plus className="w-3 h-3" /> Add Officer</button>
             </div>
           </form>
@@ -2640,7 +2640,7 @@ export default function IncidentsPage() {
 
       {/* ═══ Add Cross-Reference Link Modal ═══ */}
       {showAddLinkModal && selectedIncident && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowAddLinkModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }}>
           <form
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -2652,18 +2652,23 @@ export default function IncidentsPage() {
               fd.forEach((v, k) => { if (v) data[k] = v; });
               try {
                 await apiFetch(`/incidents/${selectedIncident.id}/links`, { method: 'POST', body: JSON.stringify(data) });
-                setShowAddLinkModal(false);
+                { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); };
                 fetchIncidentDetail(selectedIncident.id);
               } catch { /* error */ }
             }}
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Link Record</h3>
-              <IconButton onClick={() => setShowAddLinkModal(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add link"><X className="w-4 h-4" /></IconButton>
+              <IconButton onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add link"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record Type *</label>
-                <select name="linked_type" required className="input-dark w-full text-xs">
+                <select
+                  required
+                  value={addLinkType}
+                  onChange={(e) => { setAddLinkType(e.target.value as LinkableRecordType | ''); setAddLinkId(null); }}
+                  className="input-dark w-full text-xs"
+                >
                   <option value="">Select type...</option>
                   <option value="incident">Incident Report</option>
                   <option value="call">Call for Service</option>
@@ -2672,16 +2677,25 @@ export default function IncidentsPage() {
                   <option value="citation">Citation</option>
                   <option value="arrest">Arrest Record</option>
                 </select>
+                {/* Hidden form-field so the existing FormData submit picks up
+                    the picker-driven type without rewriting the submit path. */}
+                <input type="hidden" name="linked_type" value={addLinkType} />
               </div>
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record ID *</label>
-                <input name="linked_id" type="number" required className="input-dark w-full text-xs" placeholder="Enter the record ID number" />
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record *</label>
+                <RecordPicker
+                  type={addLinkType}
+                  value={addLinkId}
+                  onChange={(id) => setAddLinkId(id)}
+                  required
+                />
+                <input type="hidden" name="linked_id" value={addLinkId ?? ''} />
               </div>
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Link Reason</label>
                 <input name="link_reason" className="input-dark w-full text-xs" placeholder="e.g., Related incident, follow-up, same suspect" />
               </div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button type="button" onClick={() => setShowAddLinkModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }} className="toolbar-btn">Cancel</button>
               <button type="submit" className="toolbar-btn toolbar-btn-primary flex items-center gap-1"><Link className="w-3 h-3" /> Link Record</button>
             </div>
           </form>
