@@ -12,12 +12,12 @@ function renderSidebar() {
 }
 
 describe('SIDEBAR_SECTIONS config', () => {
-  it('has 15 items: 11 Fleet.io-mirrored + 4 RMPG-only', () => {
-    expect(SIDEBAR_SECTIONS.length).toBe(15);
+  it('has 16 items: 11 Fleet.io-mirrored + 5 RMPG-only', () => {
+    expect(SIDEBAR_SECTIONS.length).toBe(16);
     const fi = SIDEBAR_SECTIONS.filter((s) => s.scope === 'fleetio');
     const rmpg = SIDEBAR_SECTIONS.filter((s) => s.scope === 'rmpg-only');
     expect(fi.length).toBe(11);
-    expect(rmpg.length).toBe(4);
+    expect(rmpg.length).toBe(5);
   });
 
   it('has 4 empty sections (work-orders / issues / documents / parts)', () => {
@@ -35,7 +35,7 @@ describe('SIDEBAR_SECTIONS config', () => {
 });
 
 describe('<Sidebar>', () => {
-  it('renders all 15 section labels', () => {
+  it('renders all 16 section labels', () => {
     renderSidebar();
     for (const section of SIDEBAR_SECTIONS) {
       expect(screen.getByText(section.label)).toBeInTheDocument();

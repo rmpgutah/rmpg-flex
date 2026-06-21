@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Car, Fuel, Wrench, ClipboardList, CheckSquare,
   AlertTriangle, FileText, Package, Store, BarChart3,
-  Users, Camera, MapPin, FileEdit,
+  Users, Camera, MapPin, FileEdit, Sparkles,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -38,6 +38,7 @@ export const SIDEBAR_SECTIONS: readonly SidebarItem[] = [
   { id: 'dash-cameras', label: 'Dash Cameras',  path: '/fleet/v2/dash-cameras',  icon: Camera,   scope: 'rmpg-only' },
   { id: 'gps',          label: 'GPS Tracking',  path: '/fleet/v2/gps',           icon: MapPin,   scope: 'rmpg-only' },
   { id: 'analysis',     label: 'Analysis Forms',path: '/fleet/v2/analysis',      icon: FileEdit, scope: 'rmpg-only' },
+  { id: 'insights',     label: 'Insights',      path: '/fleet/v2/insights',      icon: Sparkles, scope: 'rmpg-only' },
 ];
 
 export function Sidebar() {

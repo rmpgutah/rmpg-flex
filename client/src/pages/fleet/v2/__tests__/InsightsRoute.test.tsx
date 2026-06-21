@@ -1,0 +1,89 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { InsightsRoute } from '../routes/InsightsRoute';
+
+function stubApi(handlers: Record<string, unknown>) {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : (input instanceof URL ? input.toString() : (input as Request).url);
+    for (const path of Object.keys(handlers)) {
+      if (url.includes(path)) {
+        return Promise.resolve(new Response(JSON.stringify(handlers[path]), { status: 200 }));
+      }
+    }
+    return Promise.resolve(new Response('{}', { status: 200 }));
+  }));
+}
+
+beforeEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { vi.unstubAllGlobals(); });
+
+describe('<InsightsRoute>', () => {
+  it('renders the section header + period chips', () => {
+    stubApi({});
+    render(<MemoryRouter><InsightsRoute /></MemoryRouter>);
+    expect(screen.getByRole('heading', { name: /insights/i })).toBeInTheDocument();
+    // Period chips by their labels
+    expect(screen.getByRole('button', { name: /^30d$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^90d$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^ytd$/i })).toBeInTheDocument();
+  });
+
+  it('renders the KPI ribbon with values from /fleet-viz/kpi', async () => {
+    stubApi({
+      '/fleet-viz/kpi': {
+        period: 'Last 90 days',
+        in_service: 12, in_shop: 3, overdue_pms: 2,
+        avg_mpg: 18.6, cost_per_mile: 0.42, total_cost: 9500, miles_driven: 22500,
+      },
+      '/fleet-viz/readiness': { count: 0, data: [] },
+      '/fleet-viz/calls-per-gallon': { period: 'Last 90 days', count: 0, data: [] },
+    });
+    render(<MemoryRouter><InsightsRoute /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('12')).toBeInTheDocument()); // in-service
+    expect(screen.getByText('3')).toBeInTheDocument();     // in-shop
+    expect(screen.getByText('2')).toBeInTheDocument();     // overdue
+    expect(screen.getByText('18.6')).toBeInTheDocument();  // avg mpg
+    expect(screen.getByText(/\$0\.42/)).toBeInTheDocument(); // cost/mi
+  });
+
+  it('renders the readiness board with vehicle rows', async () => {
+    stubApi({
+      '/fleet-viz/kpi': { period: 'x', in_service: 0, in_shop: 0, overdue_pms: 0, avg_mpg: 0, cost_per_mile: null, total_cost: 0, miles_driven: 0 },
+      '/fleet-viz/readiness': {
+        count: 2,
+        data: [
+          { id: 1, vehicle_name: 'Patrol 12', vehicle_number: 'P12', status: 'in_service', current_mileage: 50000, miles_to_pm: 1200, open_work_orders: 0, last_inspection_failed: 0, last_fuel_level: '7/8' },
+          { id: 2, vehicle_name: 'Patrol 14', vehicle_number: 'P14', status: 'in_shop', current_mileage: 80000, miles_to_pm: -300, open_work_orders: 2, last_inspection_failed: 1, last_fuel_level: '1/4' },
+        ],
+      },
+      '/fleet-viz/calls-per-gallon': { period: 'x', count: 0, data: [] },
+    });
+    render(<MemoryRouter><InsightsRoute /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('P12')).toBeInTheDocument());
+    expect(screen.getByText('P14')).toBeInTheDocument();
+    // The failed inspection badge should appear
+    expect(screen.getByText('FAIL')).toBeInTheDocument();
+    expect(screen.getByText('PASS')).toBeInTheDocument();
+  });
+
+  it('renders the calls-per-gallon moat with officer rows ranked by ratio', async () => {
+    stubApi({
+      '/fleet-viz/kpi': { period: 'x', in_service: 0, in_shop: 0, overdue_pms: 0, avg_mpg: 0, cost_per_mile: null, total_cost: 0, miles_driven: 0 },
+      '/fleet-viz/readiness': { count: 0, data: [] },
+      '/fleet-viz/calls-per-gallon': {
+        period: 'Last 90 days',
+        count: 2,
+        data: [
+          { officer_id: 1, officer_name: 'Officer Alpha', total_gallons: 120, calls_handled: 240, calls_per_gallon: 2.00 },
+          { officer_id: 2, officer_name: 'Officer Bravo', total_gallons: 100, calls_handled: 100, calls_per_gallon: 1.00 },
+        ],
+      },
+    });
+    render(<MemoryRouter><InsightsRoute /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText('Officer Alpha')).toBeInTheDocument());
+    expect(screen.getByText('Officer Bravo')).toBeInTheDocument();
+    // The moat headline copy should be present
+    expect(screen.getByText(/RMPG exclusive — Fleet\.io can't build this/i)).toBeInTheDocument();
+  });
+});
