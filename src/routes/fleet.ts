@@ -3967,6 +3967,64 @@ fleet.get('/daily-gps-mileage', async (c) => {
   }
 });
 
+// ── GET /:id/gps-history — breadcrumb trail + dashcam events for a vehicle ──
+// Drives FleetGpsHistoryTab. A vehicle's telematics keys off its ASSIGNED
+// UNIT (fleet_vehicles.assigned_unit_id → gps_breadcrumbs.unit_id /
+// dashcam_events.unit_id), so an unassigned vehicle has no history and we
+// return unit_id:null + a message (the tab renders a "Not assigned" empty
+// state). Response shape matches the tab's Breadcrumb / DashcamEvent
+// interfaces — columns those interfaces declare but the tables don't carry
+// (odometer/ignition/driver_name/city/state_province) are aliased NULL.
+fleet.get('/:id/gps-history', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    if (!Number.isFinite(vehicleId)) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const db = getDb(c.env);
+    const days = Math.min(90, Math.max(1, parseInt(c.req.query('days') || '7', 10)));
+    const limit = Math.min(5000, Math.max(1, parseInt(c.req.query('limit') || '1000', 10)));
+
+    const veh = await queryFirst<{ assigned_unit_id: number | null }>(db,
+      'SELECT assigned_unit_id FROM fleet_vehicles WHERE id = ?', vehicleId);
+    if (!veh) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+    if (veh.assigned_unit_id == null) {
+      return c.json({ breadcrumbs: [], dashcam_events: [], unit_id: null, message: 'Vehicle is not assigned to a unit' });
+    }
+    const unitId = veh.assigned_unit_id;
+
+    const breadcrumbs = await query<Record<string, unknown>>(db, `
+      SELECT id, latitude, longitude, accuracy, heading, speed, unit_status,
+             call_sign, officer_name, current_call_number, current_call_type,
+             recorded_at, road_name, nearest_intersection, gps_source,
+             NULL AS odometer, NULL AS ignition
+      FROM gps_breadcrumbs
+      WHERE unit_id = ? AND recorded_at >= datetime('now', ?)
+      ORDER BY recorded_at DESC, id DESC
+      LIMIT ?
+    `, unitId, `-${days} days`, limit);
+
+    // dashcam_events arrived in migration 0117; degrade to [] if absent.
+    let dashcamEvents: Record<string, unknown>[] = [];
+    try {
+      dashcamEvents = await query<Record<string, unknown>>(db, `
+        SELECT id, event_type, event_timestamp, latitude, longitude, speed_mph,
+               address, status_code_text, video_available,
+               NULL AS odometer, NULL AS driver_name, NULL AS city, NULL AS state_province
+        FROM dashcam_events
+        WHERE unit_id = ? AND event_timestamp >= datetime('now', ?)
+        ORDER BY event_timestamp DESC, id DESC
+        LIMIT ?
+      `, unitId, `-${days} days`, Math.min(1000, limit));
+    } catch (e) {
+      console.warn('GET /fleet/:id/gps-history dashcam_events unavailable:', (e as Error)?.message);
+    }
+
+    return c.json({ breadcrumbs, dashcam_events: dashcamEvents, unit_id: unitId });
+  } catch (err) {
+    console.error('GET /fleet/:id/gps-history failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
 // ── GET /:id/gps-mileage — per-vehicle GPS odometer estimate ──────
 // Drives the FleetDetailPanel "Sync odometer from GPS" panel (fetchGpsMileage).
 // Same haversine method as /daily-gps-mileage, scoped to ONE vehicle's assigned
