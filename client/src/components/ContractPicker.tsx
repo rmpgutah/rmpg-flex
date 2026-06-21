@@ -7,9 +7,10 @@
 // invoice-creation flow picks a client first, then a contract within
 // it. When clientId is null the picker shows all contracts.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Search, FileText, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useTypeaheadKeyboard } from '../hooks/useTypeaheadKeyboard';
 
 export interface ContractSummary {
   id: number;
@@ -136,6 +137,13 @@ export default function ContractPicker({
   const showClear = value != null || query.length > 0;
   const isDisabled = disabled || (clientId === null && false); // clientId optional — never disables
 
+  const idPrefix = useId();
+  const { onKeyDown, activeIndex, listboxProps, optionProps, activeDescendantId } =
+    useTypeaheadKeyboard({
+      open, items: filtered, onSelect: select,
+      onClose: () => setOpen(false), idPrefix: `ctp${idPrefix}`,
+    });
+
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
@@ -147,14 +155,18 @@ export default function ContractPicker({
           value={query}
           onChange={(e) => { setQuery(e.target.value); if (value != null) onChange(null); setOpen(true); }}
           onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
           placeholder={placeholder}
           disabled={isDisabled}
           autoComplete="off"
           className="w-full bg-surface-sunken border border-border-default pl-7 pr-7 py-1.5 text-[11px] text-rmpg-100 disabled:opacity-50"
           style={{ borderRadius: 2 }}
+          role="combobox"
           aria-label={required ? 'Search contract (required)' : 'Search contract'}
           aria-autocomplete="list"
           aria-expanded={open}
+          aria-controls={listboxProps.id}
+          aria-activedescendant={activeDescendantId ?? undefined}
         />
         {showClear && !isDisabled && (
           <button type="button" onClick={clear} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-rmpg-500 hover:text-rmpg-100" aria-label="Clear selection">
@@ -171,12 +183,14 @@ export default function ContractPicker({
               {clientId != null ? 'No contracts for this client.' : 'No matches.'}
             </div>
           )}
-          {filtered.map((k) => {
+          {filtered.map((k, i) => {
             const selected = value === k.id;
+            const active = i === activeIndex;
             const sub = [k.client_name, k.contract_type, k.rate_amount != null && `$${k.rate_amount}${k.rate_type ? '/' + k.rate_type : ''}`].filter(Boolean).join(' · ');
             return (
               <button key={k.id} type="button" onClick={() => select(k)}
-                className={`w-full text-left px-3 py-2 border-b border-border-default hover:bg-surface-raised flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''}`}
+                {...optionProps(i, selected)}
+                className={`w-full text-left px-3 py-2 border-b border-border-default  flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
                 style={{ borderLeft: selected ? '2px solid #d4a017' : '2px solid transparent' }}>
                 <FileText className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? '#d4a017' : '#666' }} />
                 <div className="flex-1 min-w-0">

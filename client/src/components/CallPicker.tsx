@@ -4,9 +4,10 @@
 // Same shape as IncidentPickerInline but pulls /dispatch/calls.
 // Searches by call_number (CFS26-…), incident_type, location_address.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Search, Phone, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useTypeaheadKeyboard } from '../hooks/useTypeaheadKeyboard';
 
 export interface CallSummary {
   id: number;
@@ -110,6 +111,13 @@ export default function CallPicker({
 
   const showClear = value != null || query.length > 0;
 
+  const idPrefix = useId();
+  const { onKeyDown, activeIndex, listboxProps, optionProps, activeDescendantId } =
+    useTypeaheadKeyboard({
+      open, items: filtered, onSelect: select,
+      onClose: () => setOpen(false), idPrefix: `cp${idPrefix}`,
+    });
+
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
@@ -121,14 +129,18 @@ export default function CallPicker({
           value={query}
           onChange={(e) => { setQuery(e.target.value); if (value != null) onChange(null); setOpen(true); }}
           onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
           className="w-full bg-surface-sunken border border-border-default pl-7 pr-7 py-1.5 text-[11px] text-rmpg-100 disabled:opacity-50"
           style={{ borderRadius: 2 }}
+          role="combobox"
           aria-label={required ? 'Search call (required)' : 'Search call'}
           aria-autocomplete="list"
           aria-expanded={open}
+          aria-controls={listboxProps.id}
+          aria-activedescendant={activeDescendantId ?? undefined}
         />
         {showClear && !disabled && (
           <button type="button" onClick={clear} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-rmpg-500 hover:text-rmpg-100" aria-label="Clear selection">
@@ -141,11 +153,13 @@ export default function CallPicker({
           {loading && <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">Loading calls…</div>}
           {error && <div className="px-3 py-2 text-[11px] text-[#ef4444]">{error}</div>}
           {!loading && !error && filtered.length === 0 && <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">No matches.</div>}
-          {filtered.map((c) => {
+          {filtered.map((c, i) => {
             const selected = value === c.id;
+            const active = i === activeIndex;
             return (
               <button key={c.id} type="button" onClick={() => select(c)}
-                className={`w-full text-left px-3 py-2 border-b border-border-default hover:bg-surface-raised flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''}`}
+                {...optionProps(i, selected)}
+                className={`w-full text-left px-3 py-2 border-b border-border-default  flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
                 style={{ borderLeft: selected ? '2px solid #d4a017' : '2px solid transparent' }}>
                 <Phone className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? '#d4a017' : '#666' }} />
                 <div className="flex-1 min-w-0">

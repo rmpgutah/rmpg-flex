@@ -7,9 +7,10 @@
 // server search needed. Filters on full_name, badge_number, rank,
 // and unit call sign.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Search, Shield, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useTypeaheadKeyboard } from '../hooks/useTypeaheadKeyboard';
 
 export interface OfficerSummary {
   id: number;
@@ -138,6 +139,13 @@ export default function OfficerPicker({
 
   const showClear = value != null || query.length > 0;
 
+  const idPrefix = useId();
+  const { onKeyDown, activeIndex, listboxProps, optionProps, activeDescendantId } =
+    useTypeaheadKeyboard({
+      open, items: filtered, onSelect: select,
+      onClose: () => setOpen(false), idPrefix: `op${idPrefix}`,
+    });
+
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
@@ -149,14 +157,18 @@ export default function OfficerPicker({
           value={query}
           onChange={(e) => { setQuery(e.target.value); if (value != null) onChange(null); setOpen(true); }}
           onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
           className="w-full bg-surface-sunken border border-border-default pl-7 pr-7 py-1.5 text-[11px] text-rmpg-100 disabled:opacity-50"
           style={{ borderRadius: 2 }}
+          role="combobox"
           aria-label={required ? 'Search officer (required)' : 'Search officer'}
           aria-autocomplete="list"
           aria-expanded={open}
+          aria-controls={listboxProps.id}
+          aria-activedescendant={activeDescendantId ?? undefined}
         />
         {showClear && !disabled && (
           <button
@@ -171,6 +183,7 @@ export default function OfficerPicker({
       </div>
       {open && (filtered.length > 0 || loading || error) && (
         <div
+          {...listboxProps}
           className="absolute left-0 right-0 mt-1 bg-surface-base border border-border-default panel-beveled z-30 max-h-[260px] overflow-y-auto scrollbar-dark"
           style={{ borderRadius: 2 }}
         >
@@ -183,8 +196,9 @@ export default function OfficerPicker({
           {!loading && !error && filtered.length === 0 && (
             <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">No matches.</div>
           )}
-          {filtered.map((o) => {
+          {filtered.map((o, i) => {
             const selected = value === o.id;
+            const active = i === activeIndex;
             const name = formatName(o);
             const tag = [o.rank, o.badge_number].filter(Boolean).join(' · ');
             return (
@@ -192,7 +206,8 @@ export default function OfficerPicker({
                 key={o.id}
                 type="button"
                 onClick={() => select(o)}
-                className={`w-full text-left px-3 py-2 border-b border-border-default hover:bg-surface-raised flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''}`}
+                {...optionProps(i, selected)}
+                className={`w-full text-left px-3 py-2 border-b border-border-default flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
                 style={{ borderLeft: selected ? '2px solid #d4a017' : '2px solid transparent' }}
               >
                 <Shield className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? '#d4a017' : '#666' }} />

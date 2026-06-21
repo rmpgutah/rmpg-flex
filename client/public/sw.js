@@ -691,6 +691,45 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1007: Picker polish + audit-driven fixes — keyboard nav, ARIA, race fix,
+//        and a load-bearing route that was orphaned.
+//
+//        Keyboard navigation (every picker, no exceptions):
+//          • Shared useTypeaheadKeyboard hook (15 unit tests) wires
+//            ArrowUp/Down + Home/End + Enter + Esc into all 11 pickers.
+//            Enter on a fresh dropdown picks the top hit (Chrome URL
+//            bar / Google search convention). Esc closes. Up from -1
+//            jumps to the last result; Down wraps.
+//          • Active item is visually distinct from selected (active
+//            highlights on the listbox/option ARIA shape; selected
+//            keeps its gold left border).
+//          • Full ARIA combobox pattern: role=combobox + aria-controls
+//            + aria-activedescendant + aria-expanded on the input,
+//            role=listbox on the dropdown, role=option + aria-selected
+//            on each result.
+//
+//        Race fix (self-heal hydration v2):
+//          • PersonPicker / WarrantPicker / CitationPicker use a debounced
+//            server fetch to self-heal. The .then() callback used to call
+//            setQuery(name) unconditionally, which would CLOBBER the
+//            user's typed query if they started typing before the fetch
+//            resolved. Now all three use functional setQuery((current) =>
+//            current === '' ? name : current), preserving in-flight typing.
+//
+//        Routing fix (audit caught this — PR #1471's "mobile PSO auth fix"
+//        was a no-op until now):
+//          • Added /m/cfs/:id → MobilePsoCfsPage to App.tsx. The component
+//            existed and had the OfficerPicker auth fix from v1006 wired
+//            in, but it was never imported by the router. The QR-token
+//            authed PSO call flow now actually reaches end users.
+//
+//        Tests:
+//          • 15 hook tests for useTypeaheadKeyboard
+//          • 32 parameterized cross-picker tests for the 8 client-filter
+//            pickers (Officer/Incident/Unit/Call/Case/Client/Contract/
+//            Arrest) covering combobox ARIA, self-heal hydration, clear,
+//            listbox role on open
+//          • Existing 9 PersonPicker tests still pass through the race fix
 // v1006: Picker rollout finale — Warrant/Citation/Arrest pickers + self-healing
 //        hydration + mobile PSO auth fix + iOS FK leak. Closes the entire
 //        picker rollout work.
