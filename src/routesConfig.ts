@@ -89,6 +89,7 @@ import geocode from './routes/geocode';
 import crime from './routes/crime';
 import warrants from './routes/warrants';
 import workOrders from './routes/workOrders';
+import inspectionTemplates from './routes/inspectionTemplates';
 import nibrs from './routes/nibrs';
 import incidentSupplements from './routes/incidentSupplements';
 import incidentSubresources from './routes/incidentSubresources';
@@ -547,6 +548,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Work orders — Fleet.io PR 5 subsystem ─────────────────
   { prefix: '/api/work-orders', router: workOrders, auth: 'required',
     note: 'Fleet.io PR 5: work_orders + line_items + attachments + comments. Header CRUD + status-transition guard + close-rollup (line-items.total → work_orders.actual_cost). All mutations emit work_order.* events to fleetio_events.' },
+  // ── Inspection templates — Fleet.io PR 6 subsystem ────────
+  { prefix: '/api/inspection-templates', router: inspectionTemplates, auth: 'required',
+    note: 'Fleet.io PR 6: inspection_templates CRUD (admin/manager). Versioned — editing an in-use template forks a new version + parent_template_id. The submit path at /api/inspections/by-token/:token (in src/routes/inspections.ts) consumes the template + emits inspection.submit + auto-creates fleet_maintenance on failed items.' },
 
   // ── Stub endpoints (dashboard/feature compatibility) ──────
   // All point at the same stubs router which fans out to its internal
