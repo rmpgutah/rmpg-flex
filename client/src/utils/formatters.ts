@@ -250,9 +250,22 @@ export function toTitleCase(str: string): string {
  * for TTS output. This set remains for visual display labels only.
  */
 export const ACRONYMS = new Set([
-  'pso', 'cfs', 'dv', 'ems', 'leo', 'ncic', 'bolo', 'atl', 'mdt',
-  'sla', 'id', 'dui', 'dwi', 'hoa', 'llc', 'eta', 'rmpg', 'gps',
-  'ip', 'pdf', 'api', 'url', 'vpn', 'opr', 'le', 'sop',
+  // Communications / systems
+  'pso', 'cfs', 'cad', 'rms', 'mdt', 'mds', 'gps', 'rmpg',
+  // Domestic / personal categories
+  'dv', 'dl', 'dob', 'ssn',
+  // Emergency response
+  'ems', 'leo', 'swat', 'k9', 'sro', 'qrf',
+  // Records / intel
+  'ncic', 'bolo', 'atl', 'fbi', 'doc', 'udc', 'sor',
+  // Driving-related
+  'dui', 'dwi', 'cdl', 'dmv', 'vin', 'mva',
+  // Service / process
+  'sla', 'eta', 'sop', 'opr', 'le', 'id',
+  // Property / corporate
+  'hoa', 'llc',
+  // Tech / network
+  'ip', 'pdf', 'api', 'url', 'vpn', 'alpr',
 ]);
 
 /**

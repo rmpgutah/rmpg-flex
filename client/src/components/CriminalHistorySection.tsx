@@ -437,7 +437,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                         RECORD_TYPE_CLASSES[rec.record_type] || RECORD_TYPE_CLASSES.other
                       }`}
                     >
-                      {rec.record_type.replace(/_/g, ' ')}
+                      {toDisplayLabel(rec.record_type)}
                     </span>
                     {rec.offense_level && (
                       <span
@@ -469,7 +469,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                         <span>
                           <span className="text-rmpg-500">Disp:</span>{' '}
                           <span className={rec.disposition.toLowerCase().includes('guilty') || rec.disposition.toLowerCase().includes('convicted') ? 'text-red-400 font-semibold' : rec.disposition.toLowerCase().includes('dismiss') ? 'text-green-400' : ''}>
-                            {(rec.disposition || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                            {toDisplayLabel(rec.disposition || '')}
                           </span>
                           {rec.disposition_date && <span className="text-rmpg-500 ml-1">({formatDate(rec.disposition_date)})</span>}
                         </span>

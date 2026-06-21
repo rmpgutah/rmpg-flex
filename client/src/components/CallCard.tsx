@@ -4,6 +4,7 @@ import type { CallForService } from '../types';
 import type { DispatchCode } from '../hooks/useDispatchCodes';
 import StatusBadge from './StatusBadge';
 import { formatIncidentType } from '../utils/caseNumbers';
+import { toDisplayLabel } from '../utils/formatters';
 import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
 import { getTimerState, isActiveStatus } from '../utils/dispatchTimers';
@@ -419,7 +420,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           {formatIncidentType(call.incident_type)}
         </span>
         {call.incident_type === 'pso_client_request' && call.pso_service_type && (
-          <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{call.pso_service_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+          <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{toDisplayLabel(call.pso_service_type)}</span>
         )}
         {call.case_number && (
           <span className="text-[9px] font-mono text-rmpg-300 bg-surface-raised border border-rmpg-700 px-1">
@@ -461,7 +462,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         {/* Source icon */}
         {call.source && (() => {
           const SourceIcon = SOURCE_ICONS[call.source] || Phone;
-          return <SourceIcon className="w-3 h-3 flex-shrink-0" title={call.source?.replace(/_/g, ' ')} />;
+          return <SourceIcon className="w-3 h-3 flex-shrink-0" title={call.source ? toDisplayLabel(call.source) : undefined} />;
         })()}
         {/* Feature 3: Call duration */}
         <span ref={durationRef} className="font-mono tabular-nums">{call.created_at ? formatCallDuration(call.created_at, call.status, (call as any).archived_at || call.cleared_at || call.closed_at) : ''}</span>
@@ -549,7 +550,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           <div className="flex flex-wrap gap-0.5 mt-1">
             {tags.map((tag: string) => (
               <span key={tag} className={`text-[7px] font-bold uppercase px-1 py-0 border ${TAG_COLORS[tag] || 'bg-rmpg-800 text-rmpg-300 border-rmpg-600'}`}>
-                {tag.replace(/_/g, ' ')}
+                {toDisplayLabel(tag)}
               </span>
             ))}
           </div>
