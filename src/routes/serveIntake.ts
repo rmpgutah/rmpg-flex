@@ -1226,6 +1226,22 @@ si.get('/schedule', async (c) => {
   return c.json({ schedule, generated_at: now });
 });
 
+// ── GET /officers — minimal officer roster for the scheduler lanes ─
+// Returns active users in field-facing roles so dispatchers can render
+// the swim-lane view without needing /admin/users access.
+si.get('/officers', async (c) => {
+  const db = getDb(c.env);
+  const rows = await query<{ id: number; name: string }>(
+    db,
+    `SELECT id, COALESCE(full_name, username, 'User ' || id) AS name
+       FROM users
+      WHERE status = 'active'
+        AND role IN ('officer','dispatcher','supervisor','manager','admin')
+      ORDER BY full_name, username`,
+  );
+  return c.json(rows);
+});
+
 // ── PATCH /schedule/:slotId — manual reschedule (drag-drop or full-page edit) ─
 si.patch('/schedule/:slotId', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
