@@ -15,6 +15,7 @@ import { PersonnelRoute } from './routes/PersonnelRoute';
 import { DashCamerasRoute } from './routes/DashCamerasRoute';
 import { GpsTrackingRoute } from './routes/GpsTrackingRoute';
 import { AnalysisFormsRoute } from './routes/AnalysisFormsRoute';
+import { ReportsRoute } from './routes/ReportsRoute';
 import { EmptyStateCard } from './shell/EmptyStateCard';
 
 export default function FleetShell() {
@@ -63,8 +64,9 @@ export default function FleetShell() {
           <Route path="dash-cameras" element={<DashCamerasRoute />} />
           <Route path="gps" element={<GpsTrackingRoute />} />
           <Route path="analysis" element={<AnalysisFormsRoute />} />
+          <Route path="reports" element={<ReportsRoute />} />
           {SIDEBAR_SECTIONS
-            .filter((s) => !['dashboard', 'vehicles', 'fuel', 'service', 'inspections', 'vendors', 'personnel', 'dash-cameras', 'gps', 'analysis'].includes(s.id))
+            .filter((s) => !['dashboard', 'vehicles', 'fuel', 'service', 'inspections', 'vendors', 'personnel', 'dash-cameras', 'gps', 'analysis', 'reports'].includes(s.id))
             .map((s) => {
               const sub = s.path.replace(/^\/fleet\/v2\/?/, '') || '';
               const e = emptyFor(s.id);
