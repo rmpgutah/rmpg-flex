@@ -100,11 +100,42 @@ export const FUEL_OWNERSHIP: Record<string, OwnershipClass> = {
   // as documentation that the absence is intentional, not an oversight.)
 };
 
+// ─── Work order (PR 5) ─────────────────────────────────────
+
+export const WORK_ORDER_OWNERSHIP: Record<string, OwnershipClass> = {
+  // — RMPG-owned (operational context lives here) —
+  vehicle_id:           'rmpg',
+  category_code:        'rmpg',
+  assigned_to_user_id:  'rmpg',
+  odometer_at_open:     'rmpg',   // ClearPathGPS-fed
+  odometer_at_close:    'rmpg',
+  created_by:           'rmpg',
+
+  // — Shared (last-write-wins; either side can edit) —
+  status:               'shared',
+  number:               'shared',
+  opened_at:            'shared',
+  closed_at:            'shared',
+  summary:              'shared',
+  vendor_id:            'shared',
+  est_cost:             'shared',
+  actual_cost:          'shared',
+  vmrs_system_code:     'shared',
+  vmrs_assembly_code:   'shared',
+  vmrs_component_code:  'shared',
+  notes:                'shared',
+  custom_fields_json:   'shared',
+
+  // — Fleet.io-owned (FI's automation generates these) —
+  // (none today; PR 9 may add an inferred-priority field that's fleetio-owned.)
+};
+
 // ─── Lookup helpers (pure) ─────────────────────────────────
 
 const RESOURCE_TO_MAP: Record<string, Record<string, OwnershipClass>> = {
   vehicle:    VEHICLE_OWNERSHIP,
   fuel_entry: FUEL_OWNERSHIP,
+  work_order: WORK_ORDER_OWNERSHIP,
 };
 
 /**

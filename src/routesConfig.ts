@@ -88,6 +88,7 @@ import properties from './routes/properties';
 import geocode from './routes/geocode';
 import crime from './routes/crime';
 import warrants from './routes/warrants';
+import workOrders from './routes/workOrders';
 import nibrs from './routes/nibrs';
 import incidentSupplements from './routes/incidentSupplements';
 import incidentSubresources from './routes/incidentSubresources';
@@ -543,6 +544,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
 
   // ── Warrants — real implementation ─────────────────────────
   { prefix: '/api/warrants', router: warrants, auth: 'required' },
+  // ── Work orders — Fleet.io PR 5 subsystem ─────────────────
+  { prefix: '/api/work-orders', router: workOrders, auth: 'required',
+    note: 'Fleet.io PR 5: work_orders + line_items + attachments + comments. Header CRUD + status-transition guard + close-rollup (line-items.total → work_orders.actual_cost). All mutations emit work_order.* events to fleetio_events.' },
 
   // ── Stub endpoints (dashboard/feature compatibility) ──────
   // All point at the same stubs router which fans out to its internal
