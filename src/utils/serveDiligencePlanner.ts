@@ -265,6 +265,8 @@ export function applyUrgencyTier(
 // attempt (no_answer | refused | bad_address | moved). The new window:
 //   1. Starts ≥ 24 h after the failed attempt (no same-day retry)
 //   2. Uses a different time-of-day band than the failed attempt
+//      (UNLESS deadline ≤ 4 days away — under tight pressure date proximity
+//       wins; the earliest slot is returned even if its band matches the fail)
 //   3. Respects deadline pressure — pulls closer when days_remaining is tight
 //   4. Respects business hours / location-note constraints via planAttemptWindows()
 //   5. Returns null if max_attempts is exhausted (caller marks status=failed)
@@ -283,6 +285,8 @@ export interface ReplanQueueCtx {
   deadline: string | null;
   max_attempts: number;
   attempt_count: number;       // count BEFORE the failed attempt was recorded
+  // recipient_lat/lng are accepted for future proximity-based officer matching
+  // (PR 2/3 dashboard panel + full-page scheduler). NOT used by this replan.
   recipient_lat: number | null;
   recipient_lng: number | null;
   isBusiness?: boolean;
@@ -325,6 +329,8 @@ export function replanAfterFailedAttempt(
 
   if (failedKind && !isDeadlineTight) {
     // Normal (non-tight) path: prefer a different time-of-day band.
+    // Override `attempt`: plan positions are 1-based within the regenerated sub-plan;
+    // the queue tracks the lifetime attempt count.
     const differentBand = plan.find((w) => failedBandKind(w.window) !== failedKind);
     if (differentBand) return { ...differentBand, attempt: queue.attempt_count + 1 };
   }
