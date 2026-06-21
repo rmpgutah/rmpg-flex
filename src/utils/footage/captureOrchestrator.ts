@@ -7,6 +7,7 @@ import { capChunkCount, batchLimit } from './pacing';
 import { retentionCutoffMs } from './retention';
 import { assignClipsToChunks } from './assignClips';
 import { shouldEarlyAbandon } from './earlyAbandon';
+import { validateMp4Header, isDuplicateContent, formatRejectionReason } from './integrity';
 
 const R2_PREFIX = 'flexcam/trips/';
 const MAX_DOWNLOADS_PER_RUN = 40;  // download pass cap per cron tick
@@ -57,6 +58,13 @@ export async function ensureFootageSchema(db: D1Database): Promise<void> {
   // can land on multiple consecutive segments.
   if (!(await columnExists(db, 'footage_chunks', 'source_url').catch(() => true))) {
     await execute(db, `ALTER TABLE footage_chunks ADD COLUMN source_url TEXT`).catch(() => {});
+  }
+  // sha256: hex digest of the downloaded bytes — populated inline during
+  // download so we can reject duplicate content (re-signed URLs that point
+  // at the same underlying file) BEFORE the chunk goes live. The evidence
+  // / court-package path also reads this; if absent there it lazy-fills.
+  if (!(await columnExists(db, 'footage_chunks', 'sha256').catch(() => true))) {
+    await execute(db, `ALTER TABLE footage_chunks ADD COLUMN sha256 TEXT`).catch(() => {});
   }
   schemaReady = true;
 }
@@ -249,13 +257,64 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
       if (assigned) {
         const key = `${R2_PREFIX}${ch.asset_id}/${ch.request_id}/${ch.seq}_${ch.channel}.mp4`;
         const resp = await fetch(assigned.accessUrl, { signal: AbortSignal.timeout(5 * 60_000) });
-        if (resp.ok && resp.body) {
+        if (resp.ok) {
+          // Plan D — buffer the response so we can validate, hash, and dedup
+          // BEFORE writing to R2. Memory: one ~6MB chunk in flight at a time
+          // (sequential loop) → well under the 128MB isolate budget.
+          const ab = await resp.arrayBuffer().catch(() => null);
+          if (!ab || ab.byteLength === 0) {
+            if (ch.attempts + 1 >= maxAttempts) {
+              await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
+              missing++;
+            } else {
+              await execute(db, `UPDATE footage_chunks SET attempts = attempts + 1, updated_at=datetime('now') WHERE id=?`, ch.id);
+            }
+            continue;
+          }
+          const byteArr = new Uint8Array(ab);
+
+          // Integrity check 1 — must look like a real MP4 (ftyp at offset 4).
+          // Catches JSON/HTML error bodies served as binary, truncated heads,
+          // anything that wouldn't decode in <video>.
+          if (!validateMp4Header(byteArr)) {
+            console.log(`[flexcam-integrity] req=${ch.request_id} seq=${ch.seq} rejected: ${formatRejectionReason('not_mp4')}`);
+            // Treat as a failed download attempt — don't store, bump or expire.
+            if (ch.attempts + 1 >= maxAttempts) {
+              await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
+              missing++;
+            } else {
+              await execute(db, `UPDATE footage_chunks SET attempts = attempts + 1, updated_at=datetime('now') WHERE id=?`, ch.id);
+            }
+            continue;
+          }
+
+          // Integrity check 2 — sha256 content dedup. URL-level dedup misses
+          // re-signed signed-URLs that point at the same underlying file;
+          // content-hash catches them. We compare against all other downloaded
+          // chunks IN THIS REQUEST — cross-request dedup would corrupt the
+          // legitimate case of two trips through the same intersection.
+          const digest = await crypto.subtle.digest('SHA-256', ab);
+          const sha = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+          const existingShaRows = await query<{ sha256: string }>(db,
+            `SELECT sha256 FROM footage_chunks WHERE request_id=? AND status='downloaded' AND sha256 IS NOT NULL`,
+            ch.request_id).catch(() => [] as Array<{ sha256: string }>);
+          const existingShas = existingShaRows.map((r) => r.sha256);
+          if (isDuplicateContent(sha, existingShas)) {
+            console.log(`[flexcam-integrity] req=${ch.request_id} seq=${ch.seq} rejected: ${formatRejectionReason('duplicate_content')}`);
+            // Mark missing — the content is already stored under another seq.
+            // Don't touch R2 (the kept chunk owns the bytes).
+            await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
+            missing++;
+            continue;
+          }
+
+          // Validated + unique → persist.
           const ct = 'video/mp4';
-          const put = await env.UPLOADS.put(key, resp.body, { httpMetadata: { contentType: ct } });
-          const bytes = put?.size ?? parseInt(resp.headers.get('content-length') || '0', 10);
+          const put = await env.UPLOADS.put(key, byteArr, { httpMetadata: { contentType: ct } });
+          const bytes = put?.size ?? byteArr.length;
           const alpr = ch.channel === 'inside' ? 'skipped' : 'pending';
-          await execute(db, `UPDATE footage_chunks SET status='downloaded', r2_key=?, source_url=?, content_type=?, bytes=?, alpr_status=?, updated_at=datetime('now') WHERE id=?`,
-            key, assigned.accessUrl, ct, bytes, alpr, ch.id);
+          await execute(db, `UPDATE footage_chunks SET status='downloaded', r2_key=?, source_url=?, content_type=?, bytes=?, sha256=?, alpr_status=?, updated_at=datetime('now') WHERE id=?`,
+            key, assigned.accessUrl, ct, bytes, sha, alpr, ch.id);
           // NOTE: stateless-cron two-step write — a Worker eviction between R2 put and this update can re-download + double-count chunks_done (informational only; R2 put is idempotent by key). Accepted, same as clearpathSync.
           await execute(db, `UPDATE footage_requests SET chunks_done = chunks_done + 1, bytes = bytes + ?, updated_at=datetime('now') WHERE id=?`, bytes, ch.request_id);
           downloaded++;

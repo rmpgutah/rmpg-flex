@@ -691,6 +691,27 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1016: FlexCam download integrity (Plan D — ensures every chunk
+//        that lands in 'downloaded' state is proper, in order, and
+//        not repeated/corrupted bytes). Every download now buffers
+//        the response bytes, then:
+//          • validateMp4Header — checks for the ftyp box at offset 4;
+//            rejects JSON/HTML error bodies served as binary,
+//            truncated heads, anything that wouldn't decode in <video>.
+//          • crypto.subtle.digest sha256 of the bytes.
+//          • Compare sha256 vs other 'downloaded' chunks in this
+//            request; if duplicate (re-signed signed-URL pointing at
+//            the same underlying file → URL-level dedup misses it),
+//            mark this chunk 'missing' and don't write to R2.
+//          • Only validated + unique bytes get put to R2 + persisted
+//            with sha256 alongside.
+//        New base column footage_chunks.sha256 (was previously evidence-
+//        path-only; now populated on every download). The player's
+//        existing seq-sorted timeline + status='downloaded' filter
+//        already enforce "in order" + "skip duplicates", so no client
+//        change needed. shouldDuplicateContent + validateMp4Header
+//        unit-tested in tests/footageIntegrity.test.ts.
+//
 // v1015: FlexCam honest-failure path (Plan C — addresses the cap and
 //        counter fragilities left after Plan A + B). Three small
 //        orthogonal fixes:
