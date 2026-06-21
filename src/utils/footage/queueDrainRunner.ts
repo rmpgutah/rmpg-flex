@@ -82,31 +82,14 @@ export async function runQueueDrain(env: Bindings, opts: DrainOptions = {}): Pro
   let duplicatesPruned = 0;
 
   for (const r of reqs) {
-    // SQLite datetime('now') strings are 'YYYY-MM-DD HH:MM:SS' UTC; Date.parse
-    // accepts that form (treated as local on some hosts; append Z for UTC).
-    const updatedAtMs = Date.parse(r.updated_at.replace(' ', 'T') + 'Z');
-    const verdict = evaluateStaleRequest({
-      status: r.status, updatedAtMs,
-      chunkCount: r.chunk_count, downloadedCount: r.chunks_done,
-    }, nowMs, staleThresholdMs);
-    if (verdict) {
-      if (!dryRun) {
-        await execute(db,
-          `UPDATE footage_requests SET status=?, updated_at=datetime('now') WHERE id=? AND COALESCE(evidence_locked,0)=0`,
-          verdict.next, r.id).catch(() => null);
-        // Any leftover non-terminal chunks → missing so the per-tick poll
-        // budget stops being burned on them.
-        const upd = await execute(db,
-          `UPDATE footage_chunks SET status='missing', updated_at=datetime('now')
-             WHERE request_id=? AND status IN ('pending_request','requested')`, r.id).catch(() => null);
-        chunksToMissing += upd?.meta?.changes ?? 0;
-      }
-      if (verdict.next === 'failed') requestsFailed++; else requestsPartialed++;
-      console.log(`[flexcam-drain] req=${r.id} ${verdict.next} (${verdict.reason})`);
-      continue; // a stale request's dupes don't matter; we just nuked its chunks
-    }
-
-    // Duplicate prune — only for requests that have downloaded clips.
+    // Plan C — dup-prune runs FIRST (was second, after `continue`). Prior
+    // ordering meant a request that was BOTH stale AND had duplicate
+    // downloads (e.g. req 93 in live data) got its chunks marked failed
+    // by the stale branch but its dup-counters never decremented — leaving
+    // chunks_done > chunk_count over-counted indefinitely. Running prune
+    // first ensures every request's counter is correct before any
+    // staleness decision uses chunks_done.
+    let chunksDoneAfterPrune = r.chunks_done;
     if (r.chunks_done > 1) {
       const chs = await query<ChunkRow>(db,
         `SELECT id, seq, source_url, status, r2_key FROM footage_chunks WHERE request_id=? ORDER BY seq`, r.id,
@@ -132,9 +115,36 @@ export async function runQueueDrain(env: Bindings, opts: DrainOptions = {}): Pro
                 SET chunks_done = MAX(0, chunks_done - ?),
                     updated_at=datetime('now')
               WHERE id=?`, prune.length, r.id).catch(() => null);
+          chunksDoneAfterPrune = Math.max(0, r.chunks_done - prune.length);
         }
         console.log(`[flexcam-drain] req=${r.id} pruned ${prune.length} duplicate chunk(s)`);
       }
+    }
+
+    // Stale-request bail-out — uses the post-prune chunks_done so a request
+    // whose ONLY "downloads" were all duplicates can correctly transition to
+    // 'failed' instead of being mis-classified as 'partial'.
+    // SQLite datetime('now') strings are 'YYYY-MM-DD HH:MM:SS' UTC; Date.parse
+    // accepts that form (treated as local on some hosts; append Z for UTC).
+    const updatedAtMs = Date.parse(r.updated_at.replace(' ', 'T') + 'Z');
+    const verdict = evaluateStaleRequest({
+      status: r.status, updatedAtMs,
+      chunkCount: r.chunk_count, downloadedCount: chunksDoneAfterPrune,
+    }, nowMs, staleThresholdMs);
+    if (verdict) {
+      if (!dryRun) {
+        await execute(db,
+          `UPDATE footage_requests SET status=?, updated_at=datetime('now') WHERE id=? AND COALESCE(evidence_locked,0)=0`,
+          verdict.next, r.id).catch(() => null);
+        // Any leftover non-terminal chunks → missing so the per-tick poll
+        // budget stops being burned on them.
+        const upd = await execute(db,
+          `UPDATE footage_chunks SET status='missing', updated_at=datetime('now')
+             WHERE request_id=? AND status IN ('pending_request','requested')`, r.id).catch(() => null);
+        chunksToMissing += upd?.meta?.changes ?? 0;
+      }
+      if (verdict.next === 'failed') requestsFailed++; else requestsPartialed++;
+      console.log(`[flexcam-drain] req=${r.id} ${verdict.next} (${verdict.reason})`);
     }
   }
 

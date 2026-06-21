@@ -6,12 +6,21 @@ import { splitWindow } from './splitWindow';
 import { capChunkCount, batchLimit } from './pacing';
 import { retentionCutoffMs } from './retention';
 import { assignClipsToChunks } from './assignClips';
+import { shouldEarlyAbandon } from './earlyAbandon';
 
 const R2_PREFIX = 'flexcam/trips/';
 const MAX_DOWNLOADS_PER_RUN = 40;  // download pass cap per cron tick
 const MAX_REQUESTS_PER_RUN = 10;   // request pass cap per cron tick — ClearPath rate-limits above ~10/min
 const MAX_POLL_ATTEMPTS = 30;      // ~30 cron minutes before an event/auto chunk expires
-const MAX_POLL_ATTEMPTS_ON_DEMAND = 720; // ~12 hours for historical footage the camera must upload
+// Plan C — 720 was a fiction: with the per-chunk poll path it actually meant
+// ~75 days of real time (queue starvation throttled each chunk to one poll
+// every 2.5 hours). Post-Plan-B + drained queue, polls land roughly per cron
+// tick, so 60 attempts ≈ 1 hour of real time — enough for a camera that's
+// genuinely uploading to deliver. Combined with the early-abandon guard in
+// pollAndDownload (zero clips + ≥10 attempts → fail the whole request fast)
+// this is the honest failure-path budget.
+const MAX_POLL_ATTEMPTS_ON_DEMAND = 60;
+const EARLY_ABANDON_ATTEMPTS = 10; // zero-clips guard threshold
 // requestChunk 500s mean ClearPath rejected the request outright (footage unavailable,
 // camera offline, etc). Stop after 5 tries — not 720 — so the queue clears fast.
 const MAX_REQUEST_ATTEMPTS = 5;
@@ -212,6 +221,21 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
       return [];
     });
     const candidates = all.filter((c) => !claimedSet.has(c.accessUrl));
+
+    // Early-abandon — if the vendor returned ZERO clips for this request's
+    // window AND any chunk has been polling long enough to credibly conclude
+    // the camera isn't going to deliver, fail-fast all remaining chunks.
+    // Saves the cron's per-tick poll budget from grinding on chronic
+    // no-uploads for the full MAX_POLL_ATTEMPTS_ON_DEMAND × N chunks.
+    const maxChunkAttempts = Math.max(0, ...chunks.map((c) => c.attempts ?? 0));
+    if (shouldEarlyAbandon({ clipCount: all.length, maxChunkAttempts, threshold: EARLY_ABANDON_ATTEMPTS })) {
+      for (const ch of chunks) {
+        await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id).catch(() => null);
+        missing++;
+      }
+      console.log(`[flexcam-poll] req=${requestId} early-abandon: 0 clips after ${maxChunkAttempts} attempts (${chunks.length} chunk(s) → missing)`);
+      continue;
+    }
 
     // Greedy-assign — one clip → one chunk, closest by midpoint, channel-aware.
     const assignments = assignClipsToChunks(

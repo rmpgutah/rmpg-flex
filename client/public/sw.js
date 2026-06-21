@@ -691,6 +691,25 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1015: FlexCam honest-failure path (Plan C — addresses the cap and
+//        counter fragilities left after Plan A + B). Three small
+//        orthogonal fixes:
+//          • MAX_POLL_ATTEMPTS_ON_DEMAND 720 → 60. The old cap meant
+//            ~75 days of real-time wait per chunk under the broken
+//            per-chunk poll cadence; post-Plan-B that translates to
+//            ~1 hour of honest polling before giving up.
+//          • Per-request early-abandon: if source.listRequestWindow
+//            returns ZERO clips AND any chunk has already polled
+//            ≥10 times, fail-fast the WHOLE request's remaining
+//            chunks. Stops the cron from grinding for an hour on a
+//            request whose camera clearly isn't uploading.
+//          • Drain dup-prune now runs BEFORE the stale-check (was
+//            skipped via `continue` for stale-with-downloads). Fixes
+//            the chunks_done over-count (e.g. req 93 stayed at 31
+//            vs chunk_count 27 after the original drain).
+//        No new migration. No client change. Same shouldEarlyAbandon
+//        unit-tested in tests/footageEarlyAbandon.test.ts.
+//
 // v1014: FlexCam per-request poll rewrite (Plan B — addresses the
 //        architecture problem the queue drain only swept around).
 //        captureOrchestrator.pollAndDownload now groups pending chunks
