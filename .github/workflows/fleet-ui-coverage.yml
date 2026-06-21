@@ -19,15 +19,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - name: Block any new migrations file
+      - name: Block any new migrations file IF this is a fleet-UI PR
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          # Fail if this PR introduces any new file under migrations/.
-          # SHAs are quoted via env vars (not directly interpolated) per the
-          # GitHub Actions injection-hardening guideline, even though SHAs
-          # are not user-controlled free-form input.
+          # The workflow trigger fires on changes to client/src/pages/fleet/**,
+          # src/routes/fleet.ts, OR migrations/**. The guard's intent is to keep
+          # Fleet-UI redesign PRs (7'a/b/c) from sneaking DDL in — NOT to block
+          # legitimate backend migration PRs that happen to also live under
+          # migrations/. So scope the guard: it only fails when the PR also
+          # touches fleet-UI files. A pure backend mig PR (e.g. fleet-ref,
+          # fleetio PR 2) gets a green pass-through.
+          touches_fleet_ui=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- \
+            'client/src/pages/fleet/**' 'src/routes/fleet.ts' | head -1 | tr -d '[:space:]')
+          if [ -z "$touches_fleet_ui" ]; then
+            echo "OK: PR does not touch fleet-UI files; DDL guard does not apply."
+            exit 0
+          fi
           new_migrations=$(git diff --name-only --diff-filter=A "$BASE_SHA...$HEAD_SHA" -- 'migrations/*.sql' | tr -d '[:space:]')
           if [ -n "$new_migrations" ]; then
             echo "::error::Fleet-UI PR may not add migrations. Found new files:"

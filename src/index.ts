@@ -453,6 +453,23 @@ export default {
       );
       return;
     }
+    // NHTSA vPIC monthly refresh. Runs at 03:00 UTC on day 1 of each month.
+    // PR 2 wires the trigger with a no-op stub; PR 2b drops in the bulk
+    // importer (refreshes ref_vehicle_makes / ref_vehicle_models /
+    // xref_model_year_to_specs against the public vPIC catalogue).
+    if (event.cron === '0 3 1 * *') {
+      ctx.waitUntil(
+        (async () => {
+          try {
+            // PR 2b: import('./utils/nhtsaBulkRefresh').then(m => m.run(env));
+            console.log('[nhtsa-vpic] monthly refresh tick (stub — bulk importer lands in PR 2b)');
+          } catch (err) {
+            console.error('[nhtsa-vpic] monthly refresh failed:', err);
+          }
+        })(),
+      );
+      return;
+    }
     // Fleet.io reconciliation. Runs every 30 minutes; replays missed webhooks
     // and retries failed outbound events. PR 1 ships a no-op stub so the cron
     // wiring exists; PR 4 drops in the real handler in src/utils/fleetio/reconcile.ts.

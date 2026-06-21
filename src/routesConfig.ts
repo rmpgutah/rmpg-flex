@@ -143,6 +143,7 @@ import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
 import knowledgeBase from './routes/knowledgeBase';
 import recruitment from './routes/recruitment';
+import refData from './routes/refData';
 import reports from './routes/reports';
 import statutes from './routes/statutes';
 import specialOps from './routes/specialOps';
@@ -392,6 +393,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Channels + transmissions (append-only) + per-user recordings + stats' },
   { prefix: '/api/recruitment', router: recruitment, auth: 'required',
     note: 'Recruitment & hiring: applicant pipeline, testing, oral boards, onboarding workflow' },
+  { prefix: '/api/ref-data', router: refData, auth: 'required',
+    note: 'Fleet.io PR 2: cross-reference lookups (vehicle makes/models/types, fuel, VMRS, colors, vendors, ...) + NHTSA vPIC /decode-vin/:vin with D1 cache. Read-only — admin CRUD lands with the admin UI in PR 2b.' },
   { prefix: '/api/screening', router: screening, auth: 'required' },
   { prefix: '/api/sor-sources', router: sorSources, auth: 'required' },
   { prefix: '/api/serve', router: serve, auth: 'required',
