@@ -36,6 +36,23 @@ async function ensureSentinelClient(db: D1Database, name: string, notes: string)
 const ensureScanSentinelClient = (db: D1Database) =>
   ensureSentinelClient(db, 'Field Intelligence — Scanned',
     'Auto-created for scan/field-imported property rows (DL scanner). Do not delete — used as the default client_id for those rows.');
+// Sentinel for hand-entered property rows with no parent client (the Records
+// "Add property" form sends client_id: null when the user leaves the client
+// blank). Without this, the NOT NULL properties.client_id constraint 500s the
+// create/update — the twin of the DL-scan path above.
+const ensureUnaffiliatedSentinelClient = (db: D1Database) =>
+  ensureSentinelClient(db, 'Unaffiliated — No Client',
+    'Auto-created for hand-entered property records with no parent client. Do not delete — used as the default client_id for those rows.');
+
+// Resolve a usable client_id for a properties write: the supplied positive
+// numeric id, else the reusable "Unaffiliated" sentinel. properties.client_id
+// is NOT NULL + FKs clients(id), so null/0/'' would otherwise trip the
+// constraint at write time rather than at validation time.
+async function resolvePropertyClientId(db: D1Database, raw: unknown): Promise<number> {
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return n;
+  return ensureUnaffiliatedSentinelClient(db);
+}
 
 // GET /records/properties
 records.get('/properties', async (c) => {
@@ -76,9 +93,14 @@ records.post('/properties', async (c) => {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.name) return c.json({ error: 'name is required' }, 400);
-    const cols: string[] = ['created_at']; const vals: unknown[] = [];
-    const placeholders: string[] = ["datetime('now')"];
+    // properties.client_id is NOT NULL — fall back to the Unaffiliated sentinel
+    // when no valid client is supplied so a parentless property still saves.
+    const clientId = await resolvePropertyClientId(db, body.client_id);
+    const cols: string[] = ['created_at', 'client_id'];
+    const vals: unknown[] = [clientId];
+    const placeholders: string[] = ["datetime('now')", '?'];
     for (const [key, val] of Object.entries(body)) {
+      if (key === 'client_id') continue; // resolved above
       if (PROPERTY_WRITABLE_COLUMNS.has(key)) { cols.push(key); vals.push(val ?? null); placeholders.push('?'); }
     }
     const result = await execute(db, `INSERT INTO properties (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`, ...vals);
@@ -97,7 +119,11 @@ records.put('/properties/:id', async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
     const cols: string[] = []; const params: unknown[] = [];
     for (const [key, val] of Object.entries(body)) {
-      if (PROPERTY_WRITABLE_COLUMNS.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); }
+      if (!PROPERTY_WRITABLE_COLUMNS.has(key)) continue;
+      // client_id is NOT NULL: clearing the client on edit must resolve to the
+      // Unaffiliated sentinel, not UPDATE ... SET client_id = NULL (would 500).
+      if (key === 'client_id') { cols.push('client_id = ?'); params.push(await resolvePropertyClientId(db, val)); }
+      else { cols.push(`${key} = ?`); params.push(val ?? null); }
     }
     if (cols.length === 0) return c.json({ message: 'No changes' });
     await execute(db, `UPDATE properties SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
