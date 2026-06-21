@@ -1,0 +1,65 @@
+name: fleet-ui-coverage
+
+on:
+  pull_request:
+    paths:
+      - 'client/src/pages/fleet/**'
+      - 'src/routes/fleet.ts'
+      - 'migrations/**'
+
+jobs:
+  no-ddl-guard:
+    name: No DDL in fleet-ui PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Block any new migrations file
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Fail if this PR introduces any new file under migrations/.
+          # SHAs are quoted via env vars (not directly interpolated) per the
+          # GitHub Actions injection-hardening guideline, even though SHAs
+          # are not user-controlled free-form input.
+          new_migrations=$(git diff --name-only --diff-filter=A "$BASE_SHA...$HEAD_SHA" -- 'migrations/*.sql' | tr -d '[:space:]')
+          if [ -n "$new_migrations" ]; then
+            echo "::error::Fleet-UI PR may not add migrations. Found new files:"
+            git diff --name-only --diff-filter=A "$BASE_SHA...$HEAD_SHA" -- 'migrations/*.sql'
+            exit 1
+          fi
+          echo "OK: no new migrations in this PR."
+
+  endpoint-coverage:
+    name: Endpoint coverage report (informational in 7'a, blocking in 7'c)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compute old vs new /api/fleet/* endpoint sets
+        id: cov
+        run: |
+          old_set=$(grep -rohE "/api/fleet[a-zA-Z0-9/_-]*" \
+            client/src/pages/fleet/FleetPage.tsx \
+            client/src/pages/fleet/FleetDetailPanel.tsx \
+            client/src/pages/fleet/tabs/ 2>/dev/null | sort -u || true)
+          new_set=$(grep -rohE "/api/fleet[a-zA-Z0-9/_-]*" \
+            client/src/pages/fleet/v2/ 2>/dev/null | sort -u || true)
+          echo "=== Endpoints in OLD fleet UI ==="
+          echo "$old_set"
+          echo
+          echo "=== Endpoints in NEW v2 UI ==="
+          echo "$new_set"
+          echo
+          echo "=== Missing from v2 (must be added before cutover) ==="
+          comm -23 <(echo "$old_set") <(echo "$new_set") || true
+          echo
+          echo "=== Added to v2 (acceptable; review for purpose) ==="
+          comm -13 <(echo "$old_set") <(echo "$new_set") || true
+      - name: Check coverage gating
+        run: |
+          # In 7'a/7'b: informational only — never fails.
+          # In 7'c: this step will be changed to `exit 1` if the
+          # "Missing from v2" set is non-empty. Until then, this is
+          # a status report and always passes.
+          echo "Coverage report above. Cutover PR 7'c will gate on it."
