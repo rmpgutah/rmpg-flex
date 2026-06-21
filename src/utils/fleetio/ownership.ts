@@ -130,12 +130,36 @@ export const WORK_ORDER_OWNERSHIP: Record<string, OwnershipClass> = {
   // (none today; PR 9 may add an inferred-priority field that's fleetio-owned.)
 };
 
+// ─── Inspection (PR 6) ─────────────────────────────────────
+
+export const INSPECTION_OWNERSHIP: Record<string, OwnershipClass> = {
+  // RMPG-owned: every operational column. The QR pre-trip walkthrough is
+  // a strictly RMPG concept; Fleet.io's inspection_submissions resource is
+  // different in shape and inbound updates wouldn't survive the field mismatch.
+  time_entry_id:        'rmpg',
+  officer_id:           'rmpg',
+  vehicle_id:           'rmpg',
+  phase:                'rmpg',
+  fuel_level:           'rmpg',
+  odometer:             'rmpg',
+  equipment_json:       'rmpg',
+  damage_notes:         'rmpg',
+  photo_keys_json:      'rmpg',
+  exterior_ok:          'rmpg',
+  notes:                'rmpg',
+  completed_at:         'rmpg',
+  template_id:          'rmpg',
+  items_json:           'rmpg',
+  escalated_issue_id:   'rmpg',
+};
+
 // ─── Lookup helpers (pure) ─────────────────────────────────
 
 const RESOURCE_TO_MAP: Record<string, Record<string, OwnershipClass>> = {
   vehicle:    VEHICLE_OWNERSHIP,
   fuel_entry: FUEL_OWNERSHIP,
   work_order: WORK_ORDER_OWNERSHIP,
+  inspection: INSPECTION_OWNERSHIP,
 };
 
 /**

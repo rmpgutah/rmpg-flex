@@ -168,10 +168,44 @@ both are supplied to support adjustment rows).
 
 **Index added**: `idx_fleet_maintenance_wo` (partial `WHERE work_order_id IS NOT NULL`).
 
-## vehicle_inspections (deferred to PR 6)
+## inspection_templates (PR 6)
 
-PR 6 adds 3 columns (`template_id`, `items_json`, `escalated_issue_id`)
-+ `inspection_templates` table. Same pattern: this doc gets appended by PR 6.
+Introduced fresh by mig 0139. Versioned — editing an in-use template forks
+a new row with `version + 1` and `parent_template_id` pointing back at the
+prior version. Historical inspections continue to read against the schema
+they were taken under (immutable post-use).
+
+| Column | Type | Default | Priority | Why |
+|---|---|---|---|---|
+| `name` | TEXT NOT NULL | — | must | Display label ("Patrol Pre-Trip"). |
+| `description` | TEXT | NULL | nice | Free-text help for the admin who chose this template. |
+| `schema_json` | TEXT NOT NULL | — | must | Canonical item list (validated by `parseTemplateSchema`). |
+| `active` | INTEGER NOT NULL | 1 | should | 0/1 flag; deactivating leaves the row in place. |
+| `version` | INTEGER NOT NULL | 1 | must | Monotonic per fork chain. |
+| `parent_template_id` | INTEGER | NULL | should | Soft FK; NULL on v1. |
+| `vehicle_type_code` | TEXT | NULL | should | Soft FK → `ref_vehicle_types(code)`. Default-applies to one vehicle-type. |
+
+Templates are NOT mirrored to/from Fleet.io directly — `inspection_templates`
+is an RMPG-owned concept (Fleet.io's `inspection_form` resource has a
+different shape; mapping is Phase 2). Submitted answers DO emit `inspection.submit`
+events outbound.
+
+## vehicle_inspections — PR 6 additions
+
+| Column | Type | Default | Priority | Why |
+|---|---|---|---|---|
+| `template_id` | INTEGER | NULL | must | Soft FK → `inspection_templates(id)`. Records which template version was used. |
+| `items_json` | TEXT | NULL | must | `{[item_key]: {answer, photo_key, notes}}`. The per-item answers from the QR pre-trip walkthrough. |
+| `escalated_issue_id` | INTEGER | NULL | should | Soft FK → `fleet_maintenance(id)`. Populated when a `fail_creates_issue=true` item failed and the route auto-created a maintenance row. |
+
+**Indexes added (PR 6)**: `idx_vehicle_inspections_template` (partial), `idx_vehicle_inspections_escalated` (partial).
+
+### Ownership map
+
+`INSPECTION_OWNERSHIP` — every column is `'rmpg'`. The QR pre-trip
+walkthrough is a strictly RMPG-internal concept; inbound Fleet.io
+inspection events don't map cleanly to this row shape and would be
+silently logged as conflicts if received.
 
 ---
 
