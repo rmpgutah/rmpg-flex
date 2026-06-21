@@ -10,7 +10,10 @@
 //   GET  /sync-status       Admin. Returns counts from fleetio_links / fleetio_events / fleetio_conflicts.
 //   POST /seed              Admin. Pushes every fleet_vehicles row that lacks a fleetio_links entry into Fleet.io.
 //
-// PR 4 will add POST /webhook (HMAC-verified inbound).
+// PR 4 adds:
+//   POST /webhook           Fleet.io webhook receiver (HMAC-verified inbound).
+//                           Auth bypass for this exact path lives in
+//                           src/middleware/auth.ts (isPublicAuthBypass).
 // ============================================================
 
 import { Hono } from 'hono';
@@ -22,8 +25,14 @@ import { FleetioConfigError, FleetioError } from '../utils/fleetio/errors';
 import { buildVehiclePayload } from '../utils/fleetio/seed';
 import type { RmpgFleetVehicleRow, SeedOutcome, SeedSummary } from '../utils/fleetio/types';
 import { recordAudit } from '../utils/auditLog';
+import fleetioWebhook from './fleetioWebhook';
 
 const fleetio = new Hono<Env>();
+
+// Mount the PR 4 webhook subrouter at the bare /webhook path. The bypass
+// in src/middleware/auth.ts lets the request through without a JWT; the
+// route handler verifies the HMAC signature against FLEETIO_WEBHOOK_SECRET.
+fleetio.route('/', fleetioWebhook);
 
 /** Lightweight reachability + auth check. Any authed user can call it (admins
  *  need it during setup; ops staff need it for troubleshooting). */

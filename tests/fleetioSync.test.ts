@@ -1,0 +1,380 @@
+import { describe, it, expect } from 'vitest';
+import {
+  applyOutbound,
+  applyInbound,
+  nextAttemptDelaySeconds,
+  maxAttempts,
+  BACKOFF_SECONDS,
+} from '../src/utils/fleetio/sync';
+import {
+  FleetioRateLimitError,
+  FleetioConfigError,
+  FleetioHttpError,
+} from '../src/utils/fleetio/errors';
+
+// ─── In-memory D1 stub ──────────────────────────────────────
+// Models the four prepare patterns the sync engine uses:
+//   1. SELECT … FROM fleetio_events WHERE direction='outbound' AND status='pending' AND attempts < ?
+//   2. SELECT … FROM fleetio_events WHERE direction='inbound' AND event_id = ?
+//   3. SELECT fleetio_id FROM fleetio_links …
+//   4. SELECT updated_at FROM <table> WHERE id = ?
+//   5. UPDATE fleetio_events SET status=…, attempts=… WHERE id = ?
+//   6. UPDATE <table> SET … WHERE id = ?
+//   7. INSERT INTO fleetio_conflicts …
+
+interface EventRow {
+  id: number; direction: 'inbound' | 'outbound'; event_id: string; resource: string;
+  resource_id: number | null; action: 'create' | 'update' | 'delete'; status: string;
+  attempts: number; payload_json: string; error: string | null;
+  created_at: string; processed_at: string | null;
+}
+
+interface FleetTables {
+  events: EventRow[];
+  links: { rmpg_table: string; rmpg_id: number; fleetio_id: number }[];
+  fleet_vehicles: Record<number, Record<string, unknown>>;
+  fleet_fuel_log: Record<number, Record<string, unknown>>;
+  conflicts: { rmpg_table: string; rmpg_id: number; field: string; remote_value: string; resolution: string }[];
+}
+
+function makeDb(state: FleetTables) {
+  const calls: { sql: string; bindings: unknown[] }[] = [];
+  const db = {
+    prepare(sql: string) {
+      const ctx = { sql, bindings: [] as unknown[] };
+      const stmt = {
+        bind(...args: unknown[]) { ctx.bindings = args; return stmt; },
+        async all<T>(): Promise<{ results: T[] }> {
+          calls.push(ctx);
+          if (/FROM fleetio_events\s+WHERE direction = 'outbound'/i.test(sql)) {
+            const [maxAttempts, limit] = ctx.bindings as [number, number];
+            const rows = state.events.filter(e =>
+              e.direction === 'outbound' && e.status === 'pending' && e.attempts < maxAttempts,
+            ).slice(0, limit);
+            return { results: rows as unknown as T[] };
+          }
+          return { results: [] };
+        },
+        async first<T>(): Promise<T | null> {
+          calls.push(ctx);
+          if (/FROM fleetio_events\s+WHERE direction = 'inbound'/i.test(sql)) {
+            const [eventId] = ctx.bindings as [string];
+            const found = state.events.find(e => e.direction === 'inbound' && e.event_id === eventId);
+            return (found ?? null) as T | null;
+          }
+          if (/FROM fleetio_links/i.test(sql)) {
+            const [rmpgTable, rmpgId] = ctx.bindings as [string, number];
+            const found = state.links.find(l => l.rmpg_table === rmpgTable && l.rmpg_id === rmpgId);
+            return found ? ({ fleetio_id: found.fleetio_id } as unknown as T) : null;
+          }
+          if (/SELECT updated_at FROM/i.test(sql)) {
+            const tableMatch = sql.match(/FROM\s+(\w+)/i);
+            const table = tableMatch?.[1];
+            const [id] = ctx.bindings as [number];
+            const target = table === 'fleet_vehicles' ? state.fleet_vehicles : state.fleet_fuel_log;
+            const row = target[id];
+            if (!row) return null;
+            return { updated_at: row.updated_at ?? null } as unknown as T;
+          }
+          return null;
+        },
+        async run() {
+          calls.push(ctx);
+          if (/^UPDATE fleetio_events/i.test(sql)) {
+            const last = ctx.bindings[ctx.bindings.length - 1] as number;
+            const ev = state.events.find(e => e.id === last);
+            if (!ev) return { meta: { changes: 0, last_row_id: 0 } };
+            // Two shapes:
+            //   "SET status='completed', processed_at=…, attempts=attempts+1 WHERE id = ?"
+            //   "SET status = CASE WHEN attempts+1 >= ? THEN 'failed' ELSE 'pending' END, attempts = attempts+1, error = ? WHERE id = ?"
+            if (/status='completed'/.test(sql)) {
+              ev.status = 'completed';
+              ev.processed_at = new Date().toISOString();
+              ev.attempts += 1;
+            } else if (/CASE/.test(sql)) {
+              const [maxAttempts_, error_msg] = ctx.bindings as [number, string, number];
+              ev.attempts += 1;
+              ev.status = ev.attempts >= maxAttempts_ ? 'failed' : 'pending';
+              ev.error = error_msg;
+            } else if (/status='completed'/.test(sql) || /processed_at=datetime/.test(sql)) {
+              ev.status = 'completed';
+              ev.processed_at = new Date().toISOString();
+            }
+            return { meta: { changes: 1, last_row_id: ev.id } };
+          }
+          if (/INSERT INTO fleetio_conflicts/i.test(sql)) {
+            const [rmpgTable, rmpgId, field, remote, resolution] =
+              [ctx.bindings[0] as string, ctx.bindings[1] as number, ctx.bindings[2] as string, ctx.bindings[3] as string, /'unresolved'/.test(sql) ? 'unresolved' : 'local_wins'];
+            state.conflicts.push({ rmpg_table: rmpgTable, rmpg_id: rmpgId, field, remote_value: remote, resolution });
+            return { meta: { changes: 1, last_row_id: state.conflicts.length } };
+          }
+          if (/^UPDATE\s+fleet_vehicles\s+SET/i.test(sql)) {
+            const id = ctx.bindings[ctx.bindings.length - 1] as number;
+            state.fleet_vehicles[id] = state.fleet_vehicles[id] ?? {};
+            // Roughly apply SET assignments from the bindings (test doesn't care
+            // about exact column names — only that an UPDATE was issued).
+            state.fleet_vehicles[id].__last_update_bindings = ctx.bindings;
+            return { meta: { changes: 1, last_row_id: id } };
+          }
+          if (/^UPDATE\s+fleet_fuel_log\s+SET/i.test(sql)) {
+            const id = ctx.bindings[ctx.bindings.length - 1] as number;
+            state.fleet_fuel_log[id] = state.fleet_fuel_log[id] ?? {};
+            state.fleet_fuel_log[id].__last_update_bindings = ctx.bindings;
+            return { meta: { changes: 1, last_row_id: id } };
+          }
+          return { meta: { changes: 0, last_row_id: 0 } };
+        },
+      };
+      return stmt;
+    },
+  } as unknown as Parameters<typeof applyOutbound>[0]['db'];
+  return { db, calls };
+}
+
+const stubConfig = { apiKey: 'k', accountToken: 'a', apiBase: 'https://example.test/api/v1' };
+
+// ─── Backoff schedule ────────────────────────────────────
+
+describe('backoff schedule', () => {
+  it('exposes 7 steps: 1s, 4s, 16s, 60s, 5m, 30m, 2h', () => {
+    expect(BACKOFF_SECONDS).toEqual([1, 4, 16, 60, 300, 1800, 7200]);
+    expect(maxAttempts()).toBe(7);
+  });
+
+  it('nextAttemptDelaySeconds clamps below 0 and above max', () => {
+    expect(nextAttemptDelaySeconds(-1)).toBe(0);
+    expect(nextAttemptDelaySeconds(0)).toBe(1);
+    expect(nextAttemptDelaySeconds(6)).toBe(7200);
+    expect(nextAttemptDelaySeconds(20)).toBe(7200);
+  });
+});
+
+// ─── applyOutbound ────────────────────────────────────────
+
+describe('applyOutbound', () => {
+  const baseEvent = (overrides: Partial<EventRow>): EventRow => ({
+    id: 1,
+    direction: 'outbound',
+    event_id: 'evt-1',
+    resource: 'vehicle',
+    resource_id: 42,
+    action: 'update',
+    status: 'pending',
+    attempts: 0,
+    payload_json: JSON.stringify({ vehicle_name: 'Patrol 12' }),
+    error: null,
+    created_at: '2026-06-21T00:00:00Z',
+    processed_at: null,
+    ...overrides,
+  });
+
+  it('happy path — adapter call succeeds, row marked completed', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({})],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    let updateCalls = 0;
+    const adapter = {
+      async updateVehicle(args: { fleetioId: number; payload: Record<string, unknown> }): Promise<unknown> {
+        updateCalls++;
+        expect(args.fleetioId).toBe(999);
+        expect(args.payload.vehicle_name).toBe('Patrol 12');
+        return { id: args.fleetioId, name: 'Patrol 12' };
+      },
+      async createFuelEntry() { throw new Error('not used'); },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(result.attempted).toBe(1);
+    expect(result.completed).toBe(1);
+    expect(updateCalls).toBe(1);
+    expect(state.events[0].status).toBe('completed');
+    expect(state.events[0].attempts).toBe(1);
+  });
+
+  it('adapter throws non-rate-limit — row stays pending, attempts++', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({})],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    const adapter = {
+      async updateVehicle() { throw new FleetioHttpError('Bad Request', 400, 'invalid payload'); },
+      async createFuelEntry() { throw new Error('not used'); },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(result.attempted).toBe(1);
+    expect(result.completed).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(state.events[0].status).toBe('pending');
+    expect(state.events[0].attempts).toBe(1);
+  });
+
+  it('after maxAttempts failures, row transitions to failed', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ attempts: maxAttempts() - 1 })],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    const adapter = {
+      async updateVehicle() { throw new FleetioHttpError('Internal', 500, 'down'); },
+      async createFuelEntry() { throw new Error('not used'); },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(result.failed).toBe(1);
+    expect(state.events[0].status).toBe('failed');
+    expect(state.events[0].attempts).toBe(maxAttempts());
+  });
+
+  it('rate-limit error stops the drain early (skip remainder)', async () => {
+    const state: FleetTables = {
+      events: [
+        baseEvent({ id: 1, event_id: 'a' }),
+        baseEvent({ id: 2, event_id: 'b' }),
+        baseEvent({ id: 3, event_id: 'c' }),
+      ],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    const adapter = {
+      async updateVehicle() { throw new FleetioRateLimitError(60); },
+      async createFuelEntry() { throw new Error('not used'); },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(result.attempted).toBe(1);    // bail after the first failure
+    expect(result.skipped).toBe(2);
+  });
+
+  it('config error halts the drain immediately', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ id: 1 }), baseEvent({ id: 2, event_id: 'evt-2' })],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 42, fleetio_id: 999 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    const adapter = {
+      async updateVehicle() { throw new FleetioConfigError('FLEETIO_API_KEY is unset'); },
+      async createFuelEntry() { throw new Error('not used'); },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(result.attempted).toBe(1);
+    expect(result.skipped).toBe(1);
+  });
+
+  it('unsupported (resource, action) records a failure and moves on', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ resource: 'work_order', action: 'update' })],
+      links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    const adapter = {
+      async updateVehicle() { throw new Error('should not be called'); },
+      async createFuelEntry() { throw new Error('should not be called'); },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].error).toMatch(/Unsupported outbound/);
+  });
+
+  it('no link → returns no-op (does not throw) and marks completed', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({})],
+      links: [], // no fleetio_links row → no fleetio_id
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    let updateCalled = false;
+    const adapter = {
+      async updateVehicle() { updateCalled = true; return {} as never; },
+      async createFuelEntry() { throw new Error('not used'); },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(updateCalled).toBe(false);
+    expect(result.completed).toBe(1);
+    expect(state.events[0].status).toBe('completed');
+  });
+});
+
+// ─── applyInbound ─────────────────────────────────────────
+
+describe('applyInbound', () => {
+  const inboundEvent = (overrides: Partial<EventRow>): EventRow => ({
+    id: 100,
+    direction: 'inbound',
+    event_id: 'fleetio-evt-1',
+    resource: 'vehicle',
+    resource_id: 42,
+    action: 'update',
+    status: 'pending',
+    attempts: 0,
+    payload_json: '{}',
+    error: null,
+    created_at: '2026-06-21T00:00:00Z',
+    processed_at: null,
+    ...overrides,
+  });
+
+  it('returns unknown_event for an unknown event_id', async () => {
+    const state: FleetTables = { events: [], links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [] };
+    const { db } = makeDb(state);
+    const result = await applyInbound({ db }, 'nope');
+    expect(result.status).toBe('unknown_event');
+  });
+
+  it('applies fleetio-owned fields and marks event completed', async () => {
+    const payload = { next_service_mileage: 50000, next_service_date: '2026-12-31' };
+    const state: FleetTables = {
+      events: [inboundEvent({ payload_json: JSON.stringify(payload) })],
+      links: [],
+      fleet_vehicles: { 42: { id: 42, updated_at: '2026-06-20T00:00:00Z' } },
+      fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    const result = await applyInbound({ db }, 'fleetio-evt-1');
+    expect(result.status).toBe('applied');
+    expect(result.applied_fields.sort()).toEqual(['next_service_date', 'next_service_mileage']);
+    expect(result.conflict_fields).toEqual([]);
+    expect(state.events[0].status).toBe('completed');
+  });
+
+  it('logs a conflict for an rmpg-owned field and does not apply it', async () => {
+    const payload = { vehicle_name: 'Imposter' };
+    const state: FleetTables = {
+      events: [inboundEvent({ payload_json: JSON.stringify(payload) })],
+      links: [],
+      fleet_vehicles: { 42: { id: 42, updated_at: '2026-06-20T00:00:00Z' } },
+      fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    const result = await applyInbound({ db }, 'fleetio-evt-1');
+    expect(result.conflict_fields).toEqual(['vehicle_name']);
+    expect(result.applied_fields).toEqual([]);
+    expect(state.conflicts).toHaveLength(1);
+    expect(state.conflicts[0].field).toBe('vehicle_name');
+  });
+
+  it('routes unmapped fields to unknown_fields', async () => {
+    const payload = { mystery_col: 'x' };
+    const state: FleetTables = {
+      events: [inboundEvent({ payload_json: JSON.stringify(payload) })],
+      links: [], fleet_vehicles: { 42: { id: 42 } }, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    const result = await applyInbound({ db }, 'fleetio-evt-1');
+    expect(result.unknown_fields).toEqual(['mystery_col']);
+  });
+
+  it('marks already-completed events as no_op', async () => {
+    const state: FleetTables = {
+      events: [inboundEvent({ status: 'completed', payload_json: '{}' })],
+      links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    const result = await applyInbound({ db }, 'fleetio-evt-1');
+    expect(result.status).toBe('no_op');
+  });
+});
