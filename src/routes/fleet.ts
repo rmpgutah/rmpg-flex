@@ -6,6 +6,7 @@ import { verifySignedResource } from '../utils/signedAccess';
 import { summarizeInspection } from '../utils/vehicleInspection';
 import { isEvidenceLocked } from '../utils/evidenceLock';
 import { recordAudit } from '../utils/auditLog';
+import { emitFleetioEvent } from '../utils/fleetio/events';
 
 const fleet = new Hono<Env>();
 
@@ -1178,6 +1179,23 @@ fleet.put('/:id{[0-9]+}', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM fleet_vehicles WHERE id = ?', id,
     );
+
+    // Fleet.io outbound queue (PR 3). One call site per write path; the
+    // 30-min reconciliation cron (today a stub from PR 1, real consumer
+    // in PR 4) drains pending events into Fleet.io. We pass the row's
+    // updated_at as the versionToken so a second identical PUT in the
+    // same tick dedupes via the UNIQUE (direction, event_id) constraint.
+    // waitUntil keeps the request reply fast (<no network on the hot path).
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'vehicle.update', updated, {
+          rmpgTable: 'fleet_vehicles',
+          rmpgId: id,
+          versionToken: String(updated?.updated_at ?? new Date().toISOString()),
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests — emit is best-effort */ }
+
     return c.json(updated);
   } catch (err) {
     console.error('PUT /fleet/:id failed:', err);
@@ -1366,6 +1384,21 @@ fleet.post('/:id/fuel', async (c) => {
     const isFullTank = body.is_full_tank == null ? 1 : (body.is_full_tank ? 1 : 0);
     const result = await execute(db, `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, fuel_type, station, odometer, notes, is_full_tank, payment_method, driver_name, location, mpg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, vehicleId, body.fuel_date, body.gallons ?? null, body.total_cost ?? null, body.cost_per_gallon ?? null, body.fuel_type ?? null, body.station ?? null, odometer, body.notes ?? null, isFullTank, body.payment_method ?? null, body.driver_name ?? null, body.location ?? null, body.mpg ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_fuel_log WHERE id = ?', result.meta.last_row_id);
+
+    // Fleet.io outbound queue (PR 3) — see the equivalent emit on PUT /:id
+    // (vehicle update) for the rationale. Token = last_row_id (immutable for
+    // this fuel row) so a second POST that lands with the same id (would
+    // only happen if a write got replayed at the framework level) dedupes.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'fuel.create', created, {
+          rmpgTable: 'fleet_fuel_log',
+          rmpgId: Number(result.meta.last_row_id),
+          versionToken: `create:${result.meta.last_row_id}`,
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests */ }
+
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/fuel failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
