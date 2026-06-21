@@ -20,7 +20,7 @@
 // ============================================================
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
-import { CheckCircle2, XCircle, AlertTriangle, RotateCw, Clock } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertTriangle, RotateCw, Clock, Upload } from 'lucide-react';
 
 interface HealthResponse {
   links_total: number;
@@ -58,6 +58,8 @@ export default function AdminFleetioHealthTab() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [resolving, setResolving] = useState<number | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [seedResult, setSeedResult] = useState<string | null>(null);
 
   const fetchHealth = useCallback(() => {
     setErr(null);
@@ -73,6 +75,29 @@ export default function AdminFleetioHealthTab() {
     const t = setInterval(fetchHealth, 30_000);
     return () => clearInterval(t);
   }, [fetchHealth]);
+
+  const runSeed = () => {
+    if (!confirm('Push every fleet_vehicles row without a fleetio_links mapping to Fleet.io? This is idempotent — vehicles already linked are skipped.')) return;
+    setSeeding(true);
+    setSeedResult(null);
+    apiFetch<{ seeded?: number; skipped?: number; errors?: number; message?: string }>(
+      '/fleetio/seed',
+      { method: 'POST' },
+    )
+      .then((r) => {
+        setSeeding(false);
+        const parts: string[] = [];
+        if (typeof r?.seeded === 'number') parts.push(`seeded ${r.seeded}`);
+        if (typeof r?.skipped === 'number') parts.push(`skipped ${r.skipped}`);
+        if (typeof r?.errors === 'number' && r.errors > 0) parts.push(`errors ${r.errors}`);
+        setSeedResult(parts.length ? parts.join(' · ') : (r?.message ?? 'OK'));
+        fetchHealth();
+      })
+      .catch((e) => {
+        setSeeding(false);
+        setSeedResult(`failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      });
+  };
 
   const resolveConflict = (id: number, resolution: 'local_wins' | 'remote_wins' | 'manual') => {
     setResolving(id);
@@ -108,14 +133,33 @@ export default function AdminFleetioHealthTab() {
             Auto-refreshes every 30 s.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={fetchHealth}
-          className="inline-flex items-center gap-1 text-xs px-2 py-1 border border-rmpg-700 rounded-sm hover:bg-rmpg-800"
-          aria-label="Reload health snapshot"
-        >
-          <RotateCw className="w-3 h-3" /> Reload
-        </button>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={runSeed}
+              disabled={seeding}
+              className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-brand-400 text-rmpg-950 rounded-sm hover:brightness-110 disabled:opacity-50"
+              aria-label="Seed Fleet.io with all unlinked vehicles"
+              title="Push every fleet_vehicles row that lacks a fleetio_links mapping to Fleet.io (idempotent)"
+            >
+              <Upload className="w-3 h-3" /> {seeding ? 'Seeding…' : 'Seed vehicles'}
+            </button>
+            <button
+              type="button"
+              onClick={fetchHealth}
+              className="inline-flex items-center gap-1 text-xs px-2 py-1 border border-rmpg-700 rounded-sm hover:bg-rmpg-800"
+              aria-label="Reload health snapshot"
+            >
+              <RotateCw className="w-3 h-3" /> Reload
+            </button>
+          </div>
+          {seedResult ? (
+            <span className={`text-[10px] ${seedResult.startsWith('failed') ? 'text-red-400' : 'text-emerald-400'}`}>
+              {seedResult}
+            </span>
+          ) : null}
+        </div>
       </header>
 
       {/* Secrets row */}
