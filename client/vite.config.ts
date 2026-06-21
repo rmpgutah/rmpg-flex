@@ -25,7 +25,7 @@ export default defineConfig({
         try {
           const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD']).toString().trim();
           let content = readFileSync(distSw, 'utf-8');
-          content = content.replace("'rmpg-flex-BUILD'", `'rmpg-flex-${sha}'`);
+          content = content.replaceAll("'rmpg-flex-BUILD'", `'rmpg-flex-${sha}'`);
           writeFileSync(distSw, content, 'utf-8');
         } catch {
           // dist/sw.js absent during watch mode or if build failed — no-op
