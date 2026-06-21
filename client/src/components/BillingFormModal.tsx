@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { DollarSign } from 'lucide-react';
 import FormModal from '../components/FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
+import ClientPicker from '../components/ClientPicker';
+import ContractPicker from '../components/ContractPicker';
 
 export interface BillingFormData {
   client_id: string; contract_id: string; tax_rate: string;
@@ -51,11 +53,32 @@ export default function BillingFormModal({ isOpen, onClose, onSubmit, isSubmitti
     >
       {submitError && <div className="px-3 py-2 -mt-2 mb-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">{submitError}</div>}
       <div className="space-y-3">
-        <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Client ID <span className="text-red-500">*</span></label>
-          <input name="client_id" type="number" className="input-dark mt-1" value={form.client_id} onChange={handleChange} autoFocus /></div>
+        <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Client <span className="text-red-500">*</span></label>
+          <div className="mt-1">
+            <ClientPicker
+              value={form.client_id ? Number(form.client_id) : null}
+              onChange={(id) => setForm(prev => ({
+                ...prev,
+                client_id: id ? String(id) : '',
+                // Picking a different client invalidates the prior contract; the
+                // ContractPicker also clears itself via its clientId guard, but
+                // clear here too so the form state reflects reality without
+                // waiting for the child useEffect to run.
+                contract_id: '',
+              }))}
+              placeholder="Search client by name, contact, phone…"
+            />
+          </div></div>
         <div className="grid grid-cols-2 gap-3">
-          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contract ID</label>
-            <input name="contract_id" type="number" className="input-dark mt-1" value={form.contract_id} onChange={handleChange} /></div>
+          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contract</label>
+            <div className="mt-1">
+              <ContractPicker
+                value={form.contract_id ? Number(form.contract_id) : null}
+                clientId={form.client_id ? Number(form.client_id) : null}
+                onChange={(id) => setForm(prev => ({ ...prev, contract_id: id ? String(id) : '' }))}
+                placeholder={form.client_id ? 'Search contract # / type…' : 'Pick a client first…'}
+              />
+            </div></div>
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tax Rate</label>
             <input name="tax_rate" type="number" step="0.01" className="input-dark mt-1" value={form.tax_rate} onChange={handleChange} /></div>
         </div>
