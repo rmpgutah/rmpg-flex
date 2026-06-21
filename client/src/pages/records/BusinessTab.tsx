@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import RichTextArea from '../../components/RichTextArea';
 import { formatPhoneInput } from '../../utils/formatters';
 import {
@@ -22,6 +22,8 @@ import { businessIcon } from '../../components/records/recordIcons';
 import PrintRecordButton from '../../components/PrintRecordButton';
 import FormSection from '../../components/records/FormSection';
 import FormField from '../../components/records/FormField';
+import { useAssessorLookup } from '../../hooks/useAssessorLookup';
+import { AssessorSuggestionPanel } from '../../components/AssessorSuggestionPanel';
 import type { RecordEntityType } from '../../types';
 
 // ── Types ──────────────────────────────────────
@@ -496,6 +498,44 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
   });
   const set = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
 
+  // ── Salt Lake County Assessor on-blur lookup ──
+  // Panel renders below the address input. Apply is gated on `initial?.id`
+  // because the server PATCH writes to an existing row — we need the id.
+  const assessor = useAssessorLookup();
+  const recordId = initial?.id;
+  const recordSaved = !!recordId;
+  const [skippedCount, setSkippedCount] = useState(0);
+  const skippedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current); }, []);
+
+  const onApplyAssessor = useCallback(async (parcelNumber: string) => {
+    if (!recordId) return; // Apply button is disabled in this branch; defensive guard.
+    try {
+      const res = await apiFetch<{ ok: boolean; patch: Record<string, unknown>; skipped: string[]; parcel_record_id: number | null }>(
+        '/assessor/apply',
+        {
+          method: 'POST',
+          body: JSON.stringify({ record_type: 'business', record_id: recordId, parcel_number: parcelNumber }),
+          directWorker: true,
+        },
+      );
+      // Merge the server's never-clobber patch into the local form state. The
+      // patch only contains values for fields the server actually changed, so
+      // unrelated keys stay intact. Spread covers any new assessor_* columns
+      // the form doesn't currently render — they're still sent on next save.
+      setForm(prev => ({ ...prev, ...(res.patch as Record<string, string>) }));
+      const skipped = Array.isArray(res.skipped) ? res.skipped.length : 0;
+      setSkippedCount(skipped);
+      if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current);
+      if (skipped > 0) {
+        skippedTimerRef.current = setTimeout(() => setSkippedCount(0), 5000);
+      }
+      assessor.dismiss();
+    } catch (err) {
+      console.error('Assessor apply failed', err);
+    }
+  }, [recordId, assessor]);
+
   return (
     <div className="space-y-2.5">
       <FormSection title="Business Information" icon={Briefcase}>
@@ -510,7 +550,28 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
 
       <FormSection title="Contact & Address" icon={Phone}>
         <div className="grid grid-cols-1 md:grid-cols-6 gap-2.5">
-          <FormField label="Address" className="col-span-6"><input id="ff-businesstab-6" className="input-dark text-xs w-full" value={form.address} onChange={e => set('address', e.target.value)} /></FormField>
+          <FormField label="Address" className="col-span-6">
+            <input
+              id="ff-businesstab-6"
+              className="input-dark text-xs w-full"
+              value={form.address}
+              onChange={e => set('address', e.target.value)}
+              onBlur={e => assessor.lookup(e.target.value)}
+            />
+            <AssessorSuggestionPanel
+              parcels={assessor.parcels}
+              cached={assessor.cached}
+              loading={assessor.loading}
+              onApply={onApplyAssessor}
+              onDismiss={assessor.dismiss}
+            />
+            {!recordSaved && assessor.parcels && assessor.parcels.length > 0 && (
+              <div className="text-xs text-rmpg-400 mt-1">Save record first, then apply parcel.</div>
+            )}
+            {skippedCount > 0 && (
+              <div className="text-xs text-rmpg-400 mt-1">{skippedCount} field(s) skipped (already filled)</div>
+            )}
+          </FormField>
           <FormField label="City" className="col-span-3"><input id="ff-businesstab-7" className="input-dark text-xs w-full" value={form.city} onChange={e => set('city', e.target.value)} /></FormField>
           <FormField label="State" className="col-span-1"><input id="ff-businesstab-8" className="input-dark text-xs w-full" value={form.state} onChange={e => set('state', e.target.value)} /></FormField>
           <FormField label="ZIP" className="col-span-2"><input id="ff-businesstab-9" className="input-dark text-xs w-full" value={form.zip} onChange={e => set('zip', e.target.value)} /></FormField>

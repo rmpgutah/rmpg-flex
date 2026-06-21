@@ -99,6 +99,7 @@ import audit from './routes/audit';
 import auditEmit from './routes/auditEmit';
 import auditByEntity from './routes/auditByEntity';
 import arrests from './routes/arrests';
+import assessor from './routes/assessor';
 import cases from './routes/cases';
 import accreditation from './routes/accreditation';
 import alarms from './routes/alarms';
@@ -443,6 +444,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'In-video redaction custody store: persist client-redacted MP4 to R2 + video_redactions chain-of-custody row' },
   { prefix: '/api/arrests', router: arrests, auth: 'required',
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
+  { prefix: '/api/assessor', router: assessor, auth: 'required',
+    note: 'Salt Lake County Assessor lookup + apply: /parcels?address, /parcel/:no, POST /apply. KV-cached 30d; 503 when FIRECRAWL_API_KEY is unset.' },
   { prefix: '/api/assets', router: assets, auth: 'required',
     note: 'Asset/inventory management: equipment, checkouts, weapons, ammo, K9 records' },
   { prefix: '/api/audit', router: audit, auth: 'required' },

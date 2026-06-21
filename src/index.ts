@@ -36,6 +36,7 @@ import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
 import { syncAllVehicleGpsMileage } from './routes/fleet';
 import { processScheduledEmails, applyRulesToRecent } from './utils/emailProcessor';
 import { sweepTrips } from './utils/tripStore';
+import { processBackfillTick } from './utils/sl-assessor/backfill';
 import { runEmailPoll, drainEmailOutbox, drainScheduledEmails, resurfaceSnoozedEmails } from './routes/email';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
@@ -466,6 +467,14 @@ export default {
           .then(({ sweepAttemptNotifications }) => sweepAttemptNotifications(env.DB, env))
           .then((n) => { if (n) console.log(`[serve-schedule] ${n} reminder(s) dispatched`); })
           .catch((err) => console.error('[serve-schedule] sweep failed:', err)),
+      );
+      // Salt Lake County Assessor backfill — processes up to 5 queued
+      // address-lookup jobs per tick (rate-limited to 30/min internally),
+      // bounded by 22s wall-clock. No-op cheaply when queue is empty.
+      ctx.waitUntil(
+        processBackfillTick(env)
+          .then((n) => { if (n) console.log(`[assessor-backfill] processed ${n} jobs`); })
+          .catch((e) => console.error('[assessor-backfill] tick failed:', e)),
       );
       // Daily 04:00 America/Denver rebalance — UTC hour=10, minute=0 (DST drift accepted).
       const utcNow = new Date();

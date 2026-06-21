@@ -1013,6 +1013,18 @@
 //          (These need backend changes and are tracked for a follow-up PR.)
 //
 //        Tests: all 1504 client tests pass; worker typecheck clean.
+// v1009: Salt Lake County Assessor backfill UI lands on /records.
+//        AssessorBackfillButton (admin/manager-only) sits in the Businesses
+//        and Properties PanelTitleBar toolbars. It polls
+//        /assessor/backfill/status every 5s and POSTs /assessor/backfill on
+//        click to enqueue every business + property that has an address but
+//        no parcel_number. Live counter shows {done}/{total} done · {n} need
+//        review next to the button while the cron drains the queue.
+//        AssessorReviewQueueBanner sits above the tab list and renders the
+//        ambiguous-match queue from GET /assessor/review-queue — each row
+//        expands inline into the shared AssessorSuggestionPanel, and Apply
+//        POSTs /assessor/apply + reloads so the resolved row drops out.
+//        Banner self-hides when the queue is empty.
 // v1008: Critical safety + silent-failure sweep. Ultracode forward-looking
 //        audit (4 agents, 53 findings) caught 4 critical + 13 major bugs;
 //        this PR ships the safety-critical and CAD-integrity fixes.
@@ -1197,6 +1209,14 @@
 //        Warrant/Citation/Arrest types in the cross-link modal fall back to
 //        typed numeric input for now (rare in practice; dedicated pickers
 //        can land in a follow-up when the operator hits them).
+// v1004: Salt Lake County Assessor lookup wired into Business + Property
+//        records forms. Address blur (typed or picked) → /assessor/parcels;
+//        AssessorSuggestionPanel renders the 0/1/N matches below the address
+//        input. Apply posts to /assessor/apply with the record id + parcel
+//        number; server's never-clobber patch merges into the form state and
+//        a "N field(s) skipped (already filled)" hint flashes for ~5 s. Apply
+//        short-circuits when the record is unsaved (the panel still surfaces
+//        the match list; a hint asks the operator to save first).
 // v1003: Search-by-name record pickers — operator can no longer be expected
 //        to know that "Camden Clark is ID 4" when linking records. Three new
 //        reusable components: PersonPicker (debounced /records/persons/search,
