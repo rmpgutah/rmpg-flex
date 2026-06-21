@@ -138,6 +138,36 @@ audit.get('/stats', async (c) => {
   }
 });
 
+// ── GET /api/audit/count?action=X[&since=24h|7d|30d|YYYY-MM-DD] — ──
+// Lightweight COUNT(*) for a specific action over a time window. Powers
+// the FleetV2 Health tab's "Page views (24h)" / "API errors (24h)" cells
+// (PR 7'a left this endpoint as a stub; previously 404'd → console noise).
+// `since` accepts a short token (`24h`, `7d`, `30d`) or an absolute date.
+audit.get('/count', async (c) => {
+  const action = c.req.query('action');
+  if (!action || action.length > 80) {
+    return c.json({ error: 'Missing or invalid `action` query param' }, 400);
+  }
+  const since = c.req.query('since') ?? '24h';
+  let cutoffSql: string;
+  if (/^\d+h$/.test(since))      cutoffSql = `datetime('now', '-${parseInt(since)} hours')`;
+  else if (/^\d+d$/.test(since)) cutoffSql = `datetime('now', '-${parseInt(since)} days')`;
+  else if (/^\d{4}-\d{2}-\d{2}/.test(since)) cutoffSql = `'${since.slice(0,19).replace("'","")}'`;
+  else                            cutoffSql = `datetime('now', '-24 hours')`;
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<{ count: number }>(
+      db,
+      `SELECT COUNT(*) as count FROM audit_log WHERE action = ? AND created_at >= ${cutoffSql}`,
+      action,
+    );
+    c.header('Cache-Control', 'private, max-age=30');
+    return c.json({ action, since, count: row?.count ?? 0 });
+  } catch (err) {
+    return c.json({ error: 'Failed to count audit entries', code: 'AUDIT_COUNT_FAILED', detail: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
 // ── GET /api/audit/export — CSV download (capped at 1000) ──
 audit.get('/export', async (c) => {
   try {
