@@ -865,6 +865,9 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
     const queueNotes = [queueRow.notes, ocrContext?.queueLine]
       .filter(Boolean).join('\n') || null;
     const explicitClientId = input.clientId ?? null;
+    // Cache cluster id + urgency tier at intake so the dashboard scheduler
+    // can color and sort without recomputing per query. Daily cron keeps
+    // tier in sync if deadline/attempt_count drift later.
     const geoClusterId = clusterByProximity(
       coords?.lat ?? null,
       coords?.lng ?? null,
