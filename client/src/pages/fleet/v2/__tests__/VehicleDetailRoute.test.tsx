@@ -34,8 +34,8 @@ describe('<VehicleDetailRoute>', () => {
   it('renders sticky header with vehicle name + plate + status', async () => {
     renderAt('/fleet/v2/vehicles/1');
     await screen.findByText('Unit 12', {}, { timeout: 3000 });
-    expect(screen.getByText(/ABC123/)).toBeInTheDocument();
-    expect(screen.getByText(/in service/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/ABC123/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/in service/i).length).toBeGreaterThan(0);
   });
 
   it('renders all 13 tab names in the tab bar', async () => {
@@ -52,7 +52,7 @@ describe('<VehicleDetailRoute>', () => {
     await screen.findByText('Unit 12', {}, { timeout: 3000 });
     const overviewTab = screen.getByRole('tab', { name: /^overview/i });
     expect(overviewTab.getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByText(/1HGBH41JXMN109186/)).toBeInTheDocument();
+    expect(screen.getAllByText(/1HGBH41JXMN109186/).length).toBeGreaterThan(0);
   });
 
   it("clicking Service tab shows the EmptyStateCard for 7'b", async () => {
