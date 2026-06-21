@@ -353,18 +353,27 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
     }
   }
 
-  // Close any request whose chunks are all resolved (none still pending or requested).
-  // 'partial' if any chunk is 'missing', else 'complete'. Idempotent; catches
-  // requests whose last chunk resolved on an earlier tick (not just this batch).
-  // IMPORTANT: block on BOTH 'pending_request' AND 'requested' — if requestChunk
-  // failed for every chunk in a tick they stay 'pending_request', and without this
-  // guard the close query would fire immediately and mark the request 'complete'
-  // with zero clips downloaded.
+  // Close any request whose chunks are all resolved (none still pending or
+  // requested). Verdict policy (mirrors src/utils/footage/closeStatus.ts —
+  // tested in tests/footageCloseStatus.test.ts):
+  //   chunks_done == 0  AND  any missing → 'failed'   (Plan E — honest)
+  //   chunks_done > 0   AND  any missing → 'partial'
+  //   otherwise                           → 'complete'
+  // Idempotent; catches requests whose last chunk resolved on an earlier tick
+  // (not just this batch). IMPORTANT: block on BOTH 'pending_request' AND
+  // 'requested' — if requestChunk failed for every chunk in a tick they stay
+  // 'pending_request', and without this guard the close query would fire
+  // immediately and mark the request 'complete' with zero clips downloaded.
   await execute(db, `
     UPDATE footage_requests
-    SET status = CASE WHEN EXISTS (
-          SELECT 1 FROM footage_chunks WHERE request_id = footage_requests.id AND status = 'missing'
-        ) THEN 'partial' ELSE 'complete' END,
+    SET status = CASE
+          WHEN COALESCE(chunks_done,0) <= 0
+               AND EXISTS (SELECT 1 FROM footage_chunks WHERE request_id = footage_requests.id AND status = 'missing')
+            THEN 'failed'
+          WHEN EXISTS (SELECT 1 FROM footage_chunks WHERE request_id = footage_requests.id AND status = 'missing')
+            THEN 'partial'
+          ELSE 'complete'
+        END,
         updated_at = datetime('now')
     WHERE status IN ('queued','fulfilling')
       AND NOT EXISTS (
