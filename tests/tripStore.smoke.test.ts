@@ -77,19 +77,80 @@ describe('tripStore.applyTripEvent (I/O smoke)', () => {
     expect(updates.length).toBe(0); // never CLOSED — discarded as noise
   });
 
-  it('(a.2) PATROL close with real GPS distance → UPDATE to closed (not noise)', async () => {
-    // Sanity check the other branch of the new isNoise condition: a closed
-    // patrol trip that actually moved should still close normally, not get
-    // accidentally swept up by the zero-distance branch.
+  it('(a.1b) sub-0.5 mi PATROL close (parking-lot shuffle) → DELETE noise discard', async () => {
+    // Operator-requested widening (2026-06-21): 0.1/0.3 mi micro-trips
+    // landed alongside the literal-zero rows on prod (parking-lot crawl,
+    // building-to-building reposition). The HALF_MILE_METERS threshold in
+    // tripStore catches anything <= 805 m so they don't clutter the chain.
+    // last_move_at is set 30 min before ctx.now so sweep's IDLE check fires.
+    const activeRow = {
+      id: 101, trip_type: 'patrol', call_id: null,
+      anchor_lat: 40.76, anchor_lng: -111.89,
+      last_move_at: '2026-06-20 19:00:00', last_fix_ts: '2026-06-20 19:30:00',
+    };
+    const closeRow = {
+      start_time: '2026-06-20 19:00:00',
+      speed_sum: 30, fix_count: 12, trip_type: 'patrol',
+      distance_m: 480, // ~0.3 mi — parking-lot shuffle
+      vehicle_id: 7,
+    };
+    const { db, calls } = recordingDb([
+      { match: /SELECT id, trip_type, call_id, anchor_lat, anchor_lng/, rows: [activeRow] },
+      { match: /SELECT start_time, speed_sum, fix_count, trip_type, distance_m/, rows: [closeRow] },
+    ]);
+
+    await applyTripEvent({
+      db, env, unitId: 19, vehicleId: 7,
+      event: { kind: 'sweep' },
+      ctx: { now: Date.parse('2026-06-20T19:30:00Z'), curLat: 40.76, curLng: -111.89, prevLat: 40.76, prevLng: -111.89 },
+    });
+
+    expect(calls.filter((c) => /DELETE FROM unit_trips/i.test(c.sql)).length).toBe(1);
+    expect(calls.filter((c) => /UPDATE unit_trips SET status='closed'/i.test(c.sql)).length).toBe(0);
+  });
+
+  it('(a.1c) PATROL close at the 805 m threshold → DELETE (inclusive boundary)', async () => {
+    // Boundary check: distance_m == HALF_MILE_METERS must still be noise.
+    // 805 m == 0.500194 mi which displays as "0.5 mi" in the chain; an
+    // exclusive boundary would let it through as a real row.
+    const activeRow = {
+      id: 102, trip_type: 'patrol', call_id: null,
+      anchor_lat: 40.76, anchor_lng: -111.89,
+      last_move_at: '2026-06-20 19:00:00', last_fix_ts: '2026-06-20 19:30:00',
+    };
+    const closeRow = {
+      start_time: '2026-06-20 19:00:00',
+      speed_sum: 30, fix_count: 12, trip_type: 'patrol',
+      distance_m: 805, vehicle_id: 7,
+    };
+    const { db, calls } = recordingDb([
+      { match: /SELECT id, trip_type, call_id, anchor_lat, anchor_lng/, rows: [activeRow] },
+      { match: /SELECT start_time, speed_sum, fix_count, trip_type, distance_m/, rows: [closeRow] },
+    ]);
+
+    await applyTripEvent({
+      db, env, unitId: 19, vehicleId: 7,
+      event: { kind: 'sweep' },
+      ctx: { now: Date.parse('2026-06-20T19:30:00Z'), curLat: 40.76, curLng: -111.89, prevLat: 40.76, prevLng: -111.89 },
+    });
+
+    expect(calls.filter((c) => /DELETE FROM unit_trips/i.test(c.sql)).length).toBe(1);
+    expect(calls.filter((c) => /UPDATE unit_trips SET status='closed'/i.test(c.sql)).length).toBe(0);
+  });
+
+  it('(a.2) PATROL close just above the threshold (~0.6 mi) → UPDATE to closed (not noise)', async () => {
+    // Sanity check the inclusive boundary: 1000 m is just past the threshold
+    // and must close normally. Real-travel rows must not accidentally land
+    // in the discard branch.
     const activeRow = {
       id: 100, trip_type: 'patrol', call_id: null,
       anchor_lat: 40.76, anchor_lng: -111.89,
-      last_move_at: '2026-06-20 19:00:00', last_fix_ts: '2026-06-20 19:15:00',
+      last_move_at: '2026-06-20 19:00:00', last_fix_ts: '2026-06-20 19:30:00',
     };
     const closeRow = {
       start_time: '2026-06-20 19:00:00',
       speed_sum: 600, fix_count: 60, trip_type: 'patrol',
-      distance_m: 2_500, // 1.55 mi — real travel
+      distance_m: 1_000, // ~0.62 mi — past the 0.5 mi noise threshold
       vehicle_id: 7,
     };
     const { db, calls } = recordingDb([
@@ -101,7 +162,7 @@ describe('tripStore.applyTripEvent (I/O smoke)', () => {
     await applyTripEvent({
       db, env, unitId: 19, vehicleId: 7,
       event: { kind: 'sweep' },
-      ctx: { now: Date.parse('2026-06-20T19:15:00Z'), curLat: 40.76, curLng: -111.89, prevLat: 40.76, prevLng: -111.89 },
+      ctx: { now: Date.parse('2026-06-20T19:30:00Z'), curLat: 40.76, curLng: -111.89, prevLat: 40.76, prevLng: -111.89 },
     });
 
     const deletes = calls.filter((c) => /DELETE FROM unit_trips/i.test(c.sql));

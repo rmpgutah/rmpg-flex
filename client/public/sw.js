@@ -691,6 +691,14 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1001: Patrol noise filter widened — operator request after seeing both
+//        literal-zero AND 0.1/0.3 mi micro-shuffle rows on the chain side-
+//        by-side. tripStore now discards any closed PATROL trip with
+//        distance_m ≤ 805 m (== 0.5 mi) regardless of duration. The
+//        admin /trips/discard-zero-mile sweep uses the same threshold (URL
+//        kept for back-compat with the deployed Pages bundle, semantics
+//        widened). UI button renamed "Discard 0-mi" → "Discard ≤0.5 mi";
+//        result toast reports threshold from server response.
 // v1000: Patrol Mileage Audit follow-up — close the +/-60 mi gap between
 //        the CFS and PATROL chains visible on prod after v999. Two root
 //        causes: (1) tripStore was reading mileage_anchor for the PATROL

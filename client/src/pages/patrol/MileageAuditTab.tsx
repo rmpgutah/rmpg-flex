@@ -417,12 +417,13 @@ export default function MileageAuditTab() {
       if (unitId !== '') body.unit_id = unitId;
       if (from) body.from = from;
       if (to) body.to = to;
-      const res = await apiFetch<{ examined: number; deleted: number; errors: string[] }>(
+      const res = await apiFetch<{ examined: number; deleted: number; threshold_mi?: number; errors: string[] }>(
         '/patrol/trips/discard-zero-mile',
         { method: 'POST', body: JSON.stringify(body) },
       );
+      const threshold = res.threshold_mi ?? 0.5;
       addToast(
-        `Discarded ${res.deleted} zero-mile PATROL trips (examined ${res.examined})`,
+        `Discarded ${res.deleted} sub-${threshold}mi PATROL trips (examined ${res.examined})`,
         res.deleted > 0 ? 'success' : 'info',
       );
       setDiscardOpen(false);
@@ -642,10 +643,10 @@ export default function MileageAuditTab() {
                 onClick={() => { setDiscardOpen((v) => !v); setBackfillOpen(false); }}
                 className="toolbar-btn text-[10px]"
                 disabled={discardSubmitting}
-                title="Delete zero-distance PATROL trips (engine-on-while-parked noise) from this scope/window"
+                title="Delete sub-0.5-mile PATROL trips (parking-lot shuffle, engine-on-while-parked, single-fix sweep noise) from this scope/window"
               >
                 <Trash2 className="w-3 h-3" />
-                Discard 0-mi
+                Discard ≤0.5 mi
               </button>
             )}
             <button
@@ -695,7 +696,7 @@ export default function MileageAuditTab() {
         {discardOpen && canFix && (
           <div className="mt-2 px-2 py-2 bg-surface-sunken border border-red-700/40 flex items-center gap-2">
             <span className="text-[10px] text-red-300 font-mono uppercase tracking-wider">
-              Discard 0-mi
+              Discard ≤0.5 mi
             </span>
             <input
               type="text"

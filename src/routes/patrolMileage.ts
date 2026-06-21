@@ -1570,10 +1570,13 @@ pm.post('/mileage/backfill-patrol-trips', async (c) => {
 });
 
 // POST /trips/discard-zero-mile — admin sweep that deletes closed PATROL
-// trips whose recorded distance is zero (or NULL). The live noise filter
-// in tripStore now drops these at close time, but a parked-engine-running
-// session from before that fix still landed dozens of "92,957 → 92,957
-// 0.0 mi" rows that clutter the chain. Each delete is audited.
+// trips whose recorded distance is below the noise threshold (≤ 0.5 mi,
+// matching the live tripStore filter). Catches both literal-zero rows AND
+// the 0.1/0.3/0.5-mi micro-shuffles (parking-lot crawl, building-to-
+// building reposition) that aren't real patrol travel for audit/billing
+// purposes. URL kept as `discard-zero-mile` for back-compat with the
+// already-deployed Pages bundle that calls it — semantics widened to
+// match the live tripStore noise filter. Each delete is audited.
 //
 // Body: { officer_id?, unit_id?, from?, to?, reason }
 pm.post('/trips/discard-zero-mile', async (c) => {
@@ -1591,11 +1594,15 @@ pm.post('/trips/discard-zero-mile', async (c) => {
     const from = typeof body.from === 'string' ? body.from : null;
     const to = typeof body.to === 'string' ? body.to : null;
 
+    // 805 m = 0.5 mi (same constant the tripStore noise filter uses; kept
+    // inline here so the endpoint stays a single file's edit if the
+    // threshold ever changes again).
+    const HALF_MILE_METERS = 805;
     const where: string[] = [
       "status = 'closed'", "trip_type = 'patrol'",
-      '(distance_m IS NULL OR distance_m <= 0)',
+      '(distance_m IS NULL OR distance_m <= ?)',
     ];
-    const params: unknown[] = [];
+    const params: unknown[] = [HALF_MILE_METERS];
     if (officerId != null && Number.isFinite(officerId)) { where.push('officer_id = ?'); params.push(officerId); }
     if (unitId != null && Number.isFinite(unitId)) { where.push('unit_id = ?'); params.push(unitId); }
     if (from) { where.push('date(start_time) >= date(?)'); params.push(from); }
@@ -1614,7 +1621,7 @@ pm.post('/trips/discard-zero-mile', async (c) => {
         await auditTripChange(db, {
           table: 'unit_trips', entryId: row.id, field: 'deleted',
           before: `noise: patrol ${row.start_time}→${row.end_time ?? '?'} distance_m=${row.distance_m ?? 'null'}`,
-          after: null, reason: `discard-zero-mile: ${reason}`,
+          after: null, reason: `discard-≤0.5mi: ${reason}`,
           userId: user.id, officerId: row.officer_id, unitId: row.unit_id,
         });
         deleted++;
@@ -1623,7 +1630,7 @@ pm.post('/trips/discard-zero-mile', async (c) => {
       }
     }
 
-    return c.json({ success: true, examined: candidates.length, deleted, errors: errors.slice(0, 20) });
+    return c.json({ success: true, examined: candidates.length, deleted, threshold_mi: 0.5, errors: errors.slice(0, 20) });
   } catch (err) {
     console.error('POST /patrol/trips/discard-zero-mile failed:', err);
     return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
