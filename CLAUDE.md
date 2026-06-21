@@ -174,6 +174,34 @@ and wires the result into the intel plate log.
   `output_structure` is the authoritative shape; run it via the serverless REST endpoint with a key if a
   literal sample is needed.)
 
+### Fleet.io (commercial fleet management SaaS)
+
+Bidirectional sync between RMPG's in-house fleet system and Fleet.io. RMPG remains
+the operational entry surface (dispatch/MDT/patrol); Fleet.io is the downstream
+discipline layer for PM reminders, parts, vendor invoicing, and reports. Outbound
+goes live in PR 1 (this PR — seed only); bidirectional real-time + webhooks land in
+PR 4. Full spec: [`docs/superpowers/specs/2026-06-21-fleetio-integration-design.md`](docs/superpowers/specs/2026-06-21-fleetio-integration-design.md).
+
+- **Adapter**: [`src/utils/fleetio/client.ts`](src/utils/fleetio/client.ts) — Worker-safe REST client
+  for Fleet.io API v1 (`https://secure.fleetio.com/api/v1`). Dual-header auth
+  (`Authorization: Token <key>` + `Account-Token: <token>`). Typed errors
+  (`FleetioConfigError | FleetioTimeoutError | FleetioHttpError | FleetioRateLimitError`).
+  Retry/backoff/timeout. Unit-tested in [`tests/fleetioClient.test.ts`](tests/fleetioClient.test.ts).
+- **Route**: [`src/routes/fleetio.ts`](src/routes/fleetio.ts) at `/api/fleetio` (auth: required).
+  `GET /test-connection` (any user), `GET /sync-status` (admin), `POST /seed` (admin —
+  pushes every `fleet_vehicles` row that lacks a `fleetio_links` entry).
+- **Bookkeeping schema**: migration `0133_fleetio_sync_tables.sql` — `fleetio_links`
+  (RMPG↔Fleet.io id mapping), `fleetio_events` (in/outbound event queue with
+  idempotency key), `fleetio_conflicts` (field-level disagreements; PR 4),
+  `fleetio_sync_state` (cursor positions per resource).
+- **Config**: secrets `FLEETIO_API_KEY` + `FLEETIO_ACCOUNT_TOKEN` (+ `FLEETIO_WEBHOOK_SECRET`
+  in PR 4) via `npx wrangler secret put`. Var `FLEETIO_API_BASE` in `wrangler.toml`
+  `[vars]`. Unset → `/api/fleetio/*` returns 503 `{ code: 'not_configured' }`.
+- **Cron**: `*/30 * * * *` reconciliation (stub in PR 1; real handler in PR 4).
+- **🔴 After merge**: apply `0133_fleetio_sync_tables.sql` DIRECTLY to live D1
+  `785de7ae` and verify via `pragma_table_info` (deploy is `continue-on-error`).
+  Set the two secrets, then hit `POST /api/fleetio/seed` once.
+
 ## Code Patterns
 
 ### Worker route (Hono)
