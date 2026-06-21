@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { buildTimeline, offsetToSeek, type PlayChunk } from '../utils/flexcamTimeline';
+import { formatPlayerStatus } from '../utils/flexcamPlayerStatus';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ interface Marker {
 interface Request {
   id: number; title: string | null; status: string;
   from_ts: number; to_ts: number;
+  chunk_count?: number; chunks_done?: number;
   evidence_locked?: number; evidence_number?: string | null; classification?: string | null;
 }
 interface Detail {
@@ -96,6 +98,12 @@ export default function FlexCamFootagePage() {
   const posMsRef                = useRef(0);
   function setPosMs(ms: number) { posMsRef.current = ms; _setPosMs(ms); }
   const [loading, setLoading]   = useState(false);
+  // playbackErr is per-chunk (decode failed / fetch timed out). Distinct from
+  // `err` (which represents a top-level GET /flexcam/footage/:id failure and
+  // replaces the entire UI). playbackErr keeps the player visible and surfaces
+  // the failure as an inline banner so the operator knows WHY the clip won't
+  // load — versus the prior silent hang where canplay never fired.
+  const [playbackErr, setPlaybackErr] = useState<string | null>(null);
   const [lockBusy, setLockBusy] = useState(false);
   const [pkgBusy, setPkgBusy]       = useState(false);
   const [pkgMsg, setPkgMsg]         = useState<string | null>(null);
@@ -203,7 +211,13 @@ export default function FlexCamFootagePage() {
       const url = URL.createObjectURL(blob);
       urlCache.current.set(seq, url);
       return url;
-    } catch (e) { setErr((e as Error).message); return null; }
+    } catch (e) {
+      // Chunk fetch failures used to setErr(), which replaced the entire page
+      // with a top-level error and hid the working timeline. Route them to
+      // playbackErr so the player stays visible and shows the failure inline.
+      setPlaybackErr(`Clip ${seq}: ${(e as Error).message}`);
+      return null;
+    }
     finally { setLoading(false); }
   }
 
@@ -237,16 +251,36 @@ export default function FlexCamFootagePage() {
 
     if (!isPreloaded) {
       // Load segment into back buffer, wait for canplay before flipping.
+      // Race against a 15s timeout + listen for decode error so a malformed
+      // chunk (or a fetch that produces an empty blob) doesn't leave the
+      // LOADING… overlay up forever. Outcome surfaces in playbackErr so the
+      // operator sees WHY the clip won't play.
       bEl.pause();
       bEl.src = url;
       setLoading(true);
-      await new Promise<void>((resolve) => {
-        if (bEl.readyState >= 2) { resolve(); return; }
-        const fn = () => { bEl.removeEventListener('canplay', fn); resolve(); };
-        bEl.addEventListener('canplay', fn);
+      const outcome = await new Promise<'ready' | 'error' | 'timeout'>((resolve) => {
+        if (bEl.readyState >= 2) { resolve('ready'); return; }
+        let timer: number | undefined;
+        const cleanup = () => {
+          bEl.removeEventListener('canplay', onCanplay);
+          bEl.removeEventListener('error', onErr);
+          if (timer !== undefined) window.clearTimeout(timer);
+        };
+        const onCanplay = () => { cleanup(); resolve('ready'); };
+        const onErr = () => { cleanup(); resolve('error'); };
+        bEl.addEventListener('canplay', onCanplay);
+        bEl.addEventListener('error', onErr);
+        timer = window.setTimeout(() => { cleanup(); resolve('timeout'); }, 15_000);
       });
       setLoading(false);
       if (myGen !== genRef.current) return; // stale — newer call won
+      if (outcome !== 'ready') {
+        setPlaybackErr(outcome === 'timeout'
+          ? `Clip ${seg.seq} timed out loading after 15s — chunk may be malformed or network stalled`
+          : `Clip ${seg.seq} failed to decode`);
+        setPlaying(false);
+        return;
+      }
       if (withinMs > 0) { try { bEl.currentTime = withinMs / 1000; } catch { /* */ } }
     }
 
@@ -331,6 +365,7 @@ export default function FlexCamFootagePage() {
     backSeqRef.current = null;
     setFront(0);
     setIdx(0); setPosMs(0); setPlaying(false); setLoading(false); setPkgMsg(null);
+    setPlaybackErr(null);
     reload();
   }
 
@@ -663,12 +698,24 @@ export default function FlexCamFootagePage() {
   const dlBytes  = data.chunks.filter((c) => c.status === 'downloaded').reduce((s, c) => s + c.bytes, 0);
   const dlCount  = data.chunks.filter((c) => c.status === 'downloaded').length;
 
-  // Shared video-element props (same on both buffer slots).
+  // Shared video-element props (same on both buffer slots). onError surfaces
+  // codec/decode failures into playbackErr instead of failing silently — prior
+  // behavior was the LOADING… overlay sitting up forever with no indication
+  // the video element had already rejected the stream.
   const videoProps = {
     controls: false as const,
     playsInline: true,
     onEnded,
     onTimeUpdate,
+    onError: (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      const v = e.currentTarget;
+      // Ignore the noise event browsers fire when src is empty/cleared.
+      if (!v.src || v.src === window.location.href) return;
+      const code = v.error?.code;
+      const msg = v.error?.message || 'unknown';
+      setPlaybackErr(`Video decode error (code ${code ?? '?'}): ${msg}`);
+      setPlaying(false);
+    },
     style: { position: 'absolute' as const, inset: 0, width: '100%', height: '100%', objectFit: 'contain' as const, background: '#000' },
   };
 
@@ -865,13 +912,39 @@ export default function FlexCamFootagePage() {
           </div>
         )}
 
-        {/* No footage state */}
-        {!timeline.segments.length && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 gap-2 pointer-events-none" style={{ zIndex: 20 }}>
-            <Video className="w-8 h-8 text-rmpg-600" />
-            <span className="text-[10px] text-rmpg-400 font-mono uppercase tracking-wider">
-              {data.request.status === 'fulfilling' ? 'DOWNLOADING FOOTAGE…' : 'NO FOOTAGE AVAILABLE'}
-            </span>
+        {/* No footage state — driven by formatPlayerStatus so the message is
+            specific (error / partial count / no-footage / ready) instead of a
+            binary "DOWNLOADING…/NO FOOTAGE AVAILABLE". */}
+        {!timeline.segments.length && (() => {
+          const status = formatPlayerStatus({
+            err: playbackErr,
+            chunkCount: data.request.chunk_count ?? 0,
+            downloadedCount: data.request.chunks_done ?? 0,
+            requestStatus: data.request.status,
+          });
+          const labelClass = status.severity === 'error' ? 'text-red-400'
+            : status.severity === 'progress' ? 'text-blue-400'
+            : 'text-rmpg-400';
+          const iconClass = status.severity === 'error' ? 'text-red-500' : 'text-rmpg-600';
+          return (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 gap-2 pointer-events-none px-4 text-center" style={{ zIndex: 20 }}>
+              <Video className={`w-8 h-8 ${iconClass}`} />
+              <span className={`text-[10px] ${labelClass} font-mono uppercase tracking-wider`}>
+                {status.label}
+              </span>
+            </div>
+          );
+        })()}
+
+        {/* Inline playback-error banner when chunks exist but a clip failed
+            (decode error or canplay timeout). Dismissable; sits above HUD. */}
+        {!!playbackErr && timeline.segments.length > 0 && (
+          <div className="absolute top-2 left-2 right-2 flex items-start gap-2 px-2 py-1.5 bg-red-950/90 border border-red-700/60 text-red-200 text-[10px] font-mono" style={{ zIndex: 35 }}>
+            <AlertTriangle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">{playbackErr}</div>
+            <button onClick={() => setPlaybackErr(null)}
+              className="text-red-300 hover:text-red-100 pointer-events-auto"
+              aria-label="Dismiss error">×</button>
           </div>
         )}
       </div>

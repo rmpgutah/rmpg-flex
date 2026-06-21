@@ -11,6 +11,7 @@ import { buildManifest, concatToR2 } from '../utils/footage/concat';
 import { requireRole } from '../middleware/auth';
 import { footageEvidenceNumber, isUnlockable, buildCourtManifest, manifestPayloadHash, logCustody, viewSessionKey } from '../utils/footage/evidence';
 import { signTriple } from '../utils/pdfSign';
+import { runQueueDrain } from '../utils/footage/queueDrainRunner';
 
 const flexcam = new Hono<Env>();
 
@@ -240,6 +241,22 @@ flexcam.delete('/footage/:id', async (c): Promise<Response> => {
   await execute(db, 'DELETE FROM footage_chunks WHERE request_id=?', id);
   await execute(db, 'DELETE FROM footage_requests WHERE id=?', id);
   return c.json({ success: true });
+});
+
+// Drain the stuck queue: bail-out fulfilling/partial requests that haven't
+// progressed in N hours (default 6) so they stop eating the cron's per-tick
+// poll budget, and prune sibling chunks that downloaded byte-identical clips
+// off the same source URL. Admin-only; idempotent; supports dry_run.
+// Evidence-locked requests are never touched.
+flexcam.post('/queue/drain', requireRole('admin'), async (c): Promise<Response> => {
+  let body: { dry_run?: boolean; stale_hours?: number; limit?: number };
+  try { body = await c.req.json(); } catch { body = {}; }
+  const result = await runQueueDrain(c.env, {
+    dryRun: body.dry_run === true,
+    staleHours: typeof body.stale_hours === 'number' ? body.stale_hours : undefined,
+    limit: typeof body.limit === 'number' ? body.limit : undefined,
+  });
+  return c.json({ success: true, ...result });
 });
 
 // Repair a stuck/partial request: reset missing chunks → pending_request and
