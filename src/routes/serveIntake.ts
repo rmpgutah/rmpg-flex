@@ -63,7 +63,7 @@ import {
   applyUrgencyTier,
   type AttemptWindow,
 } from '../utils/serveDiligencePlanner';
-import { persistAttemptSchedule } from '../utils/serveAttemptScheduler';
+import { persistAttemptSchedule, appendAttemptSlot } from '../utils/serveAttemptScheduler';
 
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
@@ -610,6 +610,7 @@ si.post('/upload', async (c) => {
     created: { person: false, agent_person: false, business: false, property: false, call: false },
   };
   if (row.recipient_name || row.recipient_address) {
+    await reconcileScheduleSchema(db);
     commit = await commitIntake(db, {
       fields: normalizedFields,
       queueRow: row,
@@ -868,6 +869,7 @@ si.post('/intake', async (c) => {
   };
   if (row.recipient_name || row.recipient_address) {
     const db = getDb(c.env);
+    await reconcileScheduleSchema(db);
     commit = await commitIntake(db, {
       fields: normalized,
       queueRow: row,
@@ -985,6 +987,7 @@ async function reprocessDocument(
   let committedQueueId: number | null = null;
   const hasIdentity = !!(normalized.recipient_last_name?.value || normalized.recipient_business_name?.value);
   if (!doc.serve_queue_id && extraction.success && hasIdentity) {
+    await reconcileScheduleSchema(db);
     const commit = await commitIntake(db, {
       env: c.env, fields: normalized, queueRow, userId,
       documentSummary: (normalized.documents_to_serve?.value || doc.doc_type || '').trim(),
@@ -1450,8 +1453,10 @@ si.post('/:id/attempts', async (c) => {
       );
 
       if (next) {
-        // Persist as a single-window schedule (re-uses the existing helper).
-        await persistAttemptSchedule(db, id, [next], new Date().toISOString());
+        // Append the next slot WITHOUT deleting prior slots (appendAttemptSlot).
+        // Using persistAttemptSchedule here would DELETE all prior schedule rows
+        // including completed/notified ones, losing attempt history after attempt #1.
+        await appendAttemptSlot(db, id, next, new Date().toISOString());
 
         // Look up the newly-inserted slot for the response payload.
         const slot = await queryFirst<{ id: number; scheduled_date: string; window_start: string; window_end: string }>(
