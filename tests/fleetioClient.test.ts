@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildFleetioRequest, fleetioFetch, ping, listVehicles, createVehicle, configFromEnv, type FleetioConfig } from '../src/utils/fleetio/client';
+import { buildFleetioRequest, fleetioFetch, ping, listVehicles, createVehicle, archiveVehicle, createWorkOrder, configFromEnv, type FleetioConfig } from '../src/utils/fleetio/client';
 import { FleetioConfigError } from '../src/utils/fleetio/errors';
 
 describe('buildFleetioRequest', () => {
@@ -288,5 +288,41 @@ describe('configFromEnv', () => {
     expect(() => configFromEnv({
       FLEETIO_API_KEY: 'tok_test_a',
     })).toThrow('FLEETIO_ACCOUNT_TOKEN is unset');
+  });
+});
+
+// ─── PR 4 hotfix — new client methods ─────────────────────────
+
+describe('archiveVehicle', () => {
+  const cfg: FleetioConfig = { apiKey: 'tok_test_a', accountToken: 'acct_test_b', apiBase: 'https://example.test/api/v1' };
+
+  it('PATCHes /vehicles/:id with archived_at body', async () => {
+    let seen: { method?: string; url?: string; body?: string } = {};
+    const fetchImpl: typeof fetch = async (url, init) => {
+      seen = { method: init?.method, url: String(url), body: String(init?.body ?? '') };
+      return new Response(JSON.stringify({ id: 7777, archived_at: '2026-06-21T22:43:51.000Z' }), { status: 200 });
+    };
+    const result = await archiveVehicle({ config: cfg, fleetioId: 7777, archivedAtIso: '2026-06-21T22:43:51.000Z', fetchImpl });
+    expect(result.id).toBe(7777);
+    expect(seen.method).toBe('PATCH');
+    expect(seen.url).toBe('https://example.test/api/v1/vehicles/7777');
+    expect(seen.body).toBe('{"archived_at":"2026-06-21T22:43:51.000Z"}');
+  });
+});
+
+describe('createWorkOrder', () => {
+  const cfg: FleetioConfig = { apiKey: 'tok_test_a', accountToken: 'acct_test_b', apiBase: 'https://example.test/api/v1' };
+
+  it('POSTs /work_orders with the supplied payload', async () => {
+    let seen: { method?: string; url?: string; body?: string } = {};
+    const fetchImpl: typeof fetch = async (url, init) => {
+      seen = { method: init?.method, url: String(url), body: String(init?.body ?? '') };
+      return new Response(JSON.stringify({ id: 8888, vehicle_id: 7777, state: 'open' }), { status: 201 });
+    };
+    const result = await createWorkOrder({ config: cfg, payload: { vehicle_id: 7777, description: 'Brake job' }, fetchImpl });
+    expect(result.id).toBe(8888);
+    expect(seen.method).toBe('POST');
+    expect(seen.url).toBe('https://example.test/api/v1/work_orders');
+    expect(seen.body).toContain('"description":"Brake job"');
   });
 });

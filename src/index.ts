@@ -512,7 +512,7 @@ export default {
       ctx.waitUntil(
         (async () => {
           try {
-            const [{ applyOutbound }, { configFromEnv, updateVehicle, createFuelEntry }] = await Promise.all([
+            const [{ applyOutbound }, { configFromEnv, createVehicle, updateVehicle, archiveVehicle, createFuelEntry, createWorkOrder }] = await Promise.all([
               import('./utils/fleetio/sync'),
               import('./utils/fleetio/client'),
             ]);
@@ -528,8 +528,16 @@ export default {
               db: env.DB,
               config,
               adapter: {
+                // Cast: sync engine passes the ownership-filtered payload as
+                // an opaque Record. The strict FleetioVehicleCreatePayload type
+                // requires `name`; if it's missing Fleet.io will 422 and the
+                // sync engine marks the event failed — same outcome, just at
+                // the network boundary instead of compile time.
+                createVehicle: (args) => createVehicle({ config, payload: args.payload as unknown as Parameters<typeof createVehicle>[0]['payload'] }),
                 updateVehicle: (args) => updateVehicle({ config, fleetioId: args.fleetioId, payload: args.payload }),
+                archiveVehicle: (args) => archiveVehicle({ config, fleetioId: args.fleetioId, archivedAtIso: args.archivedAtIso }),
                 createFuelEntry: (args) => createFuelEntry({ config, payload: args.payload }),
+                createWorkOrder: (args) => createWorkOrder({ config, payload: args.payload }),
               },
             });
             if (result.attempted > 0) {

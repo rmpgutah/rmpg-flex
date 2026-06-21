@@ -73,8 +73,11 @@ export interface FleetioEventRow {
 /** Adapter surface the sync engine relies on. Real impl lives in client.ts;
  *  tests pass a hand-rolled object. */
 export interface FleetioAdapter {
+  createVehicle(args: { payload: Record<string, unknown> }): Promise<FleetioVehicle>;
   updateVehicle(args: { fleetioId: number; payload: Record<string, unknown> }): Promise<FleetioVehicle>;
+  archiveVehicle(args: { fleetioId: number; archivedAtIso: string }): Promise<FleetioVehicle>;
   createFuelEntry(args: { payload: Record<string, unknown> }): Promise<FleetioFuelEntry>;
+  createWorkOrder(args: { payload: Record<string, unknown> }): Promise<{ id: number; [k: string]: unknown }>;
 }
 
 /** Pure typed deps for applyOutbound — eliminates I/O coupling for tests. */
@@ -168,6 +171,16 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
   const keep = new Set(outboundFieldFilter(row.resource, Object.keys(payload)));
   for (const k of keep) filteredPayload[k] = payload[k];
 
+  if (row.resource === 'vehicle' && row.action === 'create') {
+    // Already linked? Idempotent — fall through to update path on subsequent
+    // writes. Without this guard a duplicate emit would create a 2nd remote
+    // vehicle and orphan the original.
+    const existing = await lookupFleetioId(deps.db, 'fleet_vehicles', row.resource_id);
+    if (existing) return null;
+    const created = await deps.adapter.createVehicle({ payload: filteredPayload });
+    await recordLink(deps.db, 'fleet_vehicles', row.resource_id, 'vehicle', created.id, now(deps));
+    return created;
+  }
   if (row.resource === 'vehicle' && row.action === 'update') {
     const fleetioId = await lookupFleetioId(deps.db, 'fleet_vehicles', row.resource_id);
     if (!fleetioId) {
@@ -177,14 +190,54 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     }
     return deps.adapter.updateVehicle({ fleetioId, payload: filteredPayload });
   }
+  if (row.resource === 'vehicle' && row.action === 'delete') {
+    // Fleet.io archives instead of hard-deleting — and only if the row was
+    // ever pushed in the first place. Unlinked delete = local-only soft
+    // delete, which is fine; record success and move on.
+    const fleetioId = await lookupFleetioId(deps.db, 'fleet_vehicles', row.resource_id);
+    if (!fleetioId) return null;
+    return deps.adapter.archiveVehicle({ fleetioId, archivedAtIso: now(deps).toISOString() });
+  }
   if (row.resource === 'fuel_entry' && row.action === 'create') {
     return deps.adapter.createFuelEntry({ payload: filteredPayload });
   }
-  // Unknown / unsupported (work_order, inspection) — leave for PRs 5/6.
+  if (row.resource === 'work_order' && row.action === 'create') {
+    const existing = await lookupFleetioId(deps.db, 'work_orders', row.resource_id);
+    if (existing) return null;
+    const created = await deps.adapter.createWorkOrder({ payload: filteredPayload });
+    await recordLink(deps.db, 'work_orders', row.resource_id, 'work_order', created.id, now(deps));
+    return created;
+  }
+  // Unknown / unsupported (inspection, fuel_entry update/delete) — left for
+  // a follow-up PR. Sits in queue and surfaces in /admin/fleetio-health.
   throw new FleetioHttpError(
     `Unsupported outbound (${row.resource}/${row.action}) — sync handler not yet implemented`,
     501,
   );
+}
+
+/** `INSERT OR IGNORE` — duplicate (rmpg_table, rmpg_id) shouldn't ever
+ *  happen given the existing-link guards above, but being idempotent is
+ *  cheap insurance against a concurrent emit race. */
+async function recordLink(
+  db: D1Database,
+  rmpgTable: string,
+  rmpgId: number | null,
+  fleetioResource: string,
+  fleetioId: number,
+  nowDate: Date,
+): Promise<void> {
+  if (rmpgId == null) return;
+  const iso = nowDate.toISOString();
+  await db.prepare(
+    `INSERT OR IGNORE INTO fleetio_links
+       (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(rmpgTable, rmpgId, fleetioResource, fleetioId, iso, iso, iso).run();
+}
+
+function now(deps: { now?: () => Date }): Date {
+  return deps.now ? deps.now() : new Date();
 }
 
 async function lookupFleetioId(db: D1Database, rmpgTable: string, rmpgId: number | null): Promise<number | null> {
