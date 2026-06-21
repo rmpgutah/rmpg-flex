@@ -97,6 +97,7 @@ import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId }
 import { whenStyleReady } from './utils/safeAddSource';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
 import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, buildDirectionArrow, injectKeyframes } from './utils/mapMarkerBuilders';
+import { isValidLngLat } from '../../utils/mapMarkers';
 import { roadLegendRows, propertyLegendRows } from './utils/landTypes';
 import { useMapPredictions } from './hooks/useMapPredictions';
 import { useMapIntelLayers } from './hooks/useMapIntelLayers';
@@ -1660,7 +1661,9 @@ export default function MapPage() {
     const nextUnitIds = new Set<string>();
     if (layers.units) {
       units.forEach((unit) => {
-        if (unit.latitude != null && unit.longitude != null) {
+        // isValidLngLat also rejects (0,0) — the ClearPath no-fix signature that
+        // would otherwise plot the unit on the equator off the African coast.
+        if (isValidLngLat(unit.longitude, unit.latitude)) {
           const id = String(unit.id);
           nextUnitIds.add(id);
           const statusColor = UNIT_STATUS_COLORS[unit.status];
@@ -1724,7 +1727,7 @@ export default function MapPage() {
           prevUnitStateRef.current.set(id, { lat: unit.latitude!, lng: unit.longitude!, status: unit.status, heading: unit.gps_heading ?? null, speed: unit.gps_speed ?? null });
 
           if (existing) {
-            existing.setLngLat([unit.longitude, unit.latitude]);
+            existing.setLngLat([unit.longitude!, unit.latitude!]);
             const el = existing.getElement?.();
             if (el) {
               const label = el.querySelector('[data-unit-label]') as HTMLElement | null;
@@ -1757,7 +1760,7 @@ export default function MapPage() {
             content.addEventListener('contextmenu', (ev) => openMenu(ev, buildUnitMarkerMenu(unit)));
             const marker = createMarker({
               map,
-              position: [unit.longitude, unit.latitude],
+              position: [unit.longitude!, unit.latitude!],
               content,
               zIndex: 1000,
               title: `${unit.call_sign} - ${unit.officer_name}`,
@@ -1788,14 +1791,14 @@ export default function MapPage() {
     }
     if (callsChanged && layers.incidents) {
       calls.forEach((call) => {
-        if (call.latitude != null && call.longitude != null) {
+        if (isValidLngLat(call.longitude, call.latitude)) {
           const content = buildIncidentMarkerContent(call.priority, call.incident_type, call.call_number);
           content.addEventListener('contextmenu', (ev) => openMenu(ev, buildCallMarkerMenu(call)));
           const pColor = PRIORITY_COLORS[call.priority] || '#666666';
 
           const marker = createMarker({
             map,
-            position: [call.longitude, call.latitude],
+            position: [call.longitude!, call.latitude!],
             content,
             zIndex: call.priority === 'P1' ? 2000 : 500,
             title: `${call.call_number} - ${formatIncidentType(call.incident_type)}`,

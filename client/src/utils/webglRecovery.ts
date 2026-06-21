@@ -65,15 +65,25 @@ export interface WebglRecoveryOptions {
 //   __rmpgSimulateMapLoss('MapPage') // by label
 const _recoverable = new Set<{ label: string; map: mapboxgl.Map }>();
 
+/**
+ * Resolve the live WebGL context off a canvas. On modern Mapbox (v3+) the map
+ * creates a WebGL2 context; older builds fall back to webgl. Calling
+ * `getContext(type)` for a non-matching type can return `null` *or* throw on
+ * some Safari/iOS builds, so each call is guarded — we never want a health
+ * probe to crash the surface that depends on it.
+ */
+function getMapGlContext(canvas: HTMLCanvasElement): WebGLRenderingContext | WebGL2RenderingContext | null {
+  let gl: WebGLRenderingContext | WebGL2RenderingContext | null = null;
+  try { gl = canvas.getContext('webgl2'); } catch { /* type-mismatch on a previously-bound context */ }
+  if (!gl) {
+    try { gl = canvas.getContext('webgl'); } catch { /* ditto */ }
+  }
+  return gl;
+}
+
 function isContextHealthy(map: mapboxgl.Map): boolean {
   try {
-    const canvas = map.getCanvas();
-    // getContext returns the SAME context the map created (attributes after the
-    // first call are ignored); Mapbox v3 uses WebGL2, older falls back to webgl.
-    const gl = (canvas.getContext('webgl2') || canvas.getContext('webgl')) as
-      | WebGLRenderingContext
-      | WebGL2RenderingContext
-      | null;
+    const gl = getMapGlContext(map.getCanvas());
     if (!gl) return false;
     return !gl.isContextLost();
   } catch {
@@ -187,9 +197,10 @@ export function installWebglContextRecovery(
  */
 export function simulateContextLoss(map: mapboxgl.Map): boolean {
   try {
-    const canvas = map.getCanvas();
-    const gl = (canvas.getContext('webgl2') || canvas.getContext('webgl')) as any;
-    const ext = gl?.getExtension('WEBGL_lose_context');
+    const gl = getMapGlContext(map.getCanvas()) as
+      | (WebGLRenderingContext & { getExtension: WebGLRenderingContext['getExtension'] })
+      | null;
+    const ext = gl?.getExtension('WEBGL_lose_context') as WEBGL_lose_context | null;
     if (!ext) { devWarn('[webglRecovery] WEBGL_lose_context unavailable'); return false; }
     ext.loseContext();
     devWarn('[webglRecovery] simulated WebGL context loss');

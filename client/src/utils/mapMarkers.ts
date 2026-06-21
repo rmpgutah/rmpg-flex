@@ -3,6 +3,30 @@
 // callers wrap the returned element in `new mapboxgl.Marker({ element })`.
 // Theme tokens mirror client/src/index.css :root (pure-black / gold Spillman).
 
+/**
+ * Reject coordinates that Mapbox would happily plot but a human reading the
+ * map would treat as a bug: NaN / Infinity, the exact (0, 0) no-fix signature
+ * ClearPath GPS emits before its first GPS lock, and out-of-globe values.
+ *
+ * Real Utah positions have ≥4 significant digits (lat ≈ 40.x, lng ≈ -111.x),
+ * so the exact (0, 0) rejection is safe — no legitimate fleet vehicle rounds
+ * to that coordinate. Existing breadcrumb code in MapPage.tsx already uses
+ * `Number.isFinite`; this brings unit / call / dot markers into line via one
+ * shared predicate every map surface can import.
+ */
+export function isValidLngLat(lng: unknown, lat: unknown): boolean {
+  // Plain boolean (not a type predicate) — predicates can only narrow ONE
+  // identifier in TypeScript, which would leave callers with `lng: number`
+  // but `lat: number | null` and force confusing per-arg asserts. Callers
+  // pair this guard with a `!` non-null assertion on each array slot.
+  return (
+    typeof lng === 'number' && typeof lat === 'number' &&
+    Number.isFinite(lng) && Number.isFinite(lat) &&
+    !(lng === 0 && lat === 0) &&
+    Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+  );
+}
+
 export type UnitStatus =
   | 'in_service' | 'available' | 'enroute' | 'onscene' | 'busy'
   | 'out_of_service' | string;
