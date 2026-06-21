@@ -1,7 +1,7 @@
 // src/utils/footage/clearpathSource.ts
-import { getApiConfig, listMedia, getCameraIdForAsset, API_BASE, type CpgClient } from '../clearpathGps';
+import { getApiConfig, listMedia, listAllMedia, getCameraIdForAsset, API_BASE, type CpgClient } from '../clearpathGps';
 import { classifyDrivingEvent } from '../drivingEvents';
-import type { FootageSource, FootageRequestHandle, FootageChunkStatus } from './types';
+import type { FootageSource, FootageRequestHandle, FootageChunkStatus, AvailableRequestClip } from './types';
 
 // Confirmed 2026-06-15 via HAR capture: on-demand clips use the camera-service
 // entity ID (camera.id from /v1.0/assets/ids), NOT the fleet assetId.
@@ -145,6 +145,33 @@ export class ClearPathSource implements FootageSource {
     const searchTo = handle.toTs + SLOP_MS;
     const page = await listMedia(this.env, this.client, assetId, searchFrom, searchTo, 0, 50);
     return pickBestClip(page, handle.fromTs, handle.toTs, handle.channel, SLOP_MS, handle.claimedUrls);
+  }
+
+  async listRequestWindow(assetId: number, fromTs: number, toTs: number): Promise<AvailableRequestClip[]> {
+    const SLOP_MS = 120_000; // mirror pollChunk
+    const events = await listAllMedia(this.env, this.client, assetId, fromTs - SLOP_MS, toTs + SLOP_MS).catch(() => []);
+    const chunkSec = MAX_CHUNK_SECONDS; // typical chunk size for the trigger heuristic
+    const out: AvailableRequestClip[] = [];
+    for (const ev of events) {
+      for (const mo of ev.mediaObject) {
+        if (mo.type !== 'VIDEO') continue;
+        if (isTriggerClip(mo.eventType, mo.durationSec, chunkSec)) continue;
+        const status = String(mo.status ?? '').toUpperCase();
+        if (status !== 'AVAILABLE' && status !== 'READY') continue;
+        if (!mo.accessUrl) continue;
+        // CpgMediaObject has an index signature: contentType is `unknown` —
+        // coerce defensively the same way pickBestClip's classifyChunkStatus does.
+        const ct = mo.contentType != null ? String(mo.contentType) : undefined;
+        out.push({
+          eventTimestamp: ev.eventTimestamp,
+          channel: mo.channel,
+          accessUrl: mo.accessUrl,
+          contentType: ct,
+          thumbnailUrl: mo.thumbnailUrl || undefined,
+        });
+      }
+    }
+    return out;
   }
 }
 

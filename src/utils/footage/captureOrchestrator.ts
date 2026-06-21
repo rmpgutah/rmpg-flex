@@ -5,6 +5,7 @@ import { getClearPathSource } from './clearpathSource';
 import { splitWindow } from './splitWindow';
 import { capChunkCount, batchLimit } from './pacing';
 import { retentionCutoffMs } from './retention';
+import { assignClipsToChunks } from './assignClips';
 
 const R2_PREFIX = 'flexcam/trips/';
 const MAX_DOWNLOADS_PER_RUN = 40;  // download pass cap per cron tick
@@ -149,7 +150,19 @@ export async function runRequestPass(env: Bindings): Promise<{ requested: number
   return { requested, expired };
 }
 
-/** Cron tick: poll 'requested' chunks; download 'available' ones into R2. */
+/** Cron tick: poll 'requested' chunks; download 'available' ones into R2.
+ *
+ *  Per-request flow (replaces the prior per-chunk poll): for each request that
+ *  has pending chunks in this batch, ask the source for EVERY available clip
+ *  in the request's full window ONCE, then greedy-assign clips to chunks via
+ *  assignClipsToChunks. This eliminates the dedup-starvation that left 5800+
+ *  chunks stuck — sibling chunks polling the same window used to race for the
+ *  same handful of clips, with only the first winning. Now every returned
+ *  clip lands on its best-matching unassigned chunk in one pass.
+ *
+ *  Chunks not matched THIS tick either bump attempts (will retry) or expire
+ *  to 'missing' if past the cap. Per-request URL dedup against D1 is preserved
+ *  (filter candidates by source_url) so re-pulls don't repeat past downloads. */
 export async function pollAndDownload(env: Bindings): Promise<{ downloaded: number; missing: number }> {
   const db = getDb(env);
   await ensureFootageSchema(db);
@@ -163,70 +176,97 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
      FROM footage_chunks ch JOIN footage_requests rq ON rq.id = ch.request_id
      WHERE ch.status = 'requested' ORDER BY ch.request_id DESC, ch.seq ASC LIMIT ?`, MAX_DOWNLOADS_PER_RUN).catch(() => []);
 
-  // Per-request URL claim sets: any clip already pulled by another chunk in the
-  // same request is off-limits to the rest. Seeded from the DB (older downloads
-  // in earlier ticks) and grown in-memory as we download in this tick.
-  const claimedByRequest = new Map<number, Set<string>>();
-  const requestIds = Array.from(new Set(pending.map((p) => p.request_id)));
-  for (const rid of requestIds) {
-    const rows = await query<{ source_url: string | null }>(db,
-      `SELECT source_url FROM footage_chunks WHERE request_id=? AND source_url IS NOT NULL`, rid).catch(() => []);
-    claimedByRequest.set(rid, new Set(rows.map((r) => r.source_url!).filter(Boolean)));
+  // Group pending chunks by request — one listRequestWindow call per group.
+  type PendingChunk = (typeof pending)[number];
+  const byRequest = new Map<number, PendingChunk[]>();
+  for (const ch of pending) {
+    const arr = byRequest.get(ch.request_id);
+    if (arr) arr.push(ch);
+    else byRequest.set(ch.request_id, [ch]);
   }
 
   let downloaded = 0, missing = 0;
-  for (const ch of pending) {
-    const maxAttempts = ch.reason === 'on_demand' ? MAX_POLL_ATTEMPTS_ON_DEMAND : MAX_POLL_ATTEMPTS;
-    const claimed = claimedByRequest.get(ch.request_id) ?? new Set<string>();
-    const st = await source.pollChunk(ch.asset_id, {
-      seq: ch.seq, vendorId: ch.vendor_media_id, fromTs: ch.from_ts, toTs: ch.to_ts, channel: ch.channel,
-      claimedUrls: claimed,
-    }).catch(() => ({ state: 'requested' as const }));
+  for (const [requestId, chunks] of byRequest) {
+    // Request metadata — needed for the window query + max-attempts policy.
+    // (Every chunk in the group shares these but we only need to read once.)
+    const rq = chunks[0]; // chunks all share asset_id / reason via the JOIN
+    const maxAttempts = rq.reason === 'on_demand' ? MAX_POLL_ATTEMPTS_ON_DEMAND : MAX_POLL_ATTEMPTS;
 
-    if (st.state === 'available' && st.accessUrl) {
-      const key = `${R2_PREFIX}${ch.asset_id}/${ch.request_id}/${ch.seq}_${ch.channel}.mp4`;
-      const resp = await fetch(st.accessUrl, { signal: AbortSignal.timeout(5 * 60_000) });
-      if (resp.ok && resp.body) {
-        const ct = 'video/mp4';
-        const put = await env.UPLOADS.put(key, resp.body, { httpMetadata: { contentType: ct } });
-        const bytes = put?.size ?? parseInt(resp.headers.get('content-length') || '0', 10);
-        const alpr = ch.channel === 'inside' ? 'skipped' : 'pending';
-        await execute(db, `UPDATE footage_chunks SET status='downloaded', r2_key=?, source_url=?, content_type=?, bytes=?, alpr_status=?, updated_at=datetime('now') WHERE id=?`,
-          key, st.accessUrl, ct, bytes, alpr, ch.id);
-        claimed.add(st.accessUrl);  // block this URL from being claimed by sibling chunks later in this tick
-        // NOTE: stateless-cron two-step write — a Worker eviction between R2 put and this update can re-download + double-count chunks_done (informational only; R2 put is idempotent by key). Accepted, same as clearpathSync.
-        await execute(db, `UPDATE footage_requests SET chunks_done = chunks_done + 1, bytes = bytes + ?, updated_at=datetime('now') WHERE id=?`, bytes, ch.request_id);
-        downloaded++;
-        if (alpr === 'pending') {
-          try {
-            if (st.thumbnailUrl) {
-              // Free Workers-AI ALPR on the segment's still — no Roboflow credits,
-              // no in-Worker video decode. The video chunk itself stays unscanned.
-              const tr = await fetch(st.thumbnailUrl, { signal: AbortSignal.timeout(30_000) });
-              if (tr.ok) {
-                const stillBytes = new Uint8Array(await tr.arrayBuffer());
-                const { alprFootageStillCloudflare } = await import('./footageAlpr');
-                await alprFootageStillCloudflare(env, db, ch.id, stillBytes, ch.cpg_device_id);
+    // Window bounds = min(from_ts) .. max(to_ts) over THIS request's pending
+    // chunks (which already cover the relevant slice — listRequestWindow adds
+    // its own ±SLOP_MS on top).
+    const winFrom = Math.min(...chunks.map((c) => c.from_ts));
+    const winTo   = Math.max(...chunks.map((c) => c.to_ts));
+
+    // URLs already claimed by other chunks in this request (DB-persisted from
+    // earlier ticks). Drop these from candidates so we don't re-download.
+    const claimedRows = await query<{ source_url: string | null }>(db,
+      `SELECT source_url FROM footage_chunks WHERE request_id=? AND source_url IS NOT NULL`, requestId).catch(() => []);
+    const claimedSet = new Set(claimedRows.map((r) => r.source_url!).filter(Boolean));
+
+    // One listMedia call for the whole window (vs N per chunk). On error,
+    // bump all this request's chunks' attempts and move on — don't let a
+    // transient vendor error mark every chunk missing in one tick.
+    const all = await source.listRequestWindow(rq.asset_id, winFrom, winTo).catch((e) => {
+      console.log(`[flexcam-poll] req=${requestId} listRequestWindow failed: ${(e as Error).message}`);
+      return [];
+    });
+    const candidates = all.filter((c) => !claimedSet.has(c.accessUrl));
+
+    // Greedy-assign — one clip → one chunk, closest by midpoint, channel-aware.
+    const assignments = assignClipsToChunks(
+      candidates,
+      chunks.map((c) => ({ id: c.id, from_ts: c.from_ts, to_ts: c.to_ts, channel: c.channel })),
+      { slopMs: 120_000 },
+    );
+
+    for (const ch of chunks) {
+      const assigned = assignments.get(ch.id);
+      if (assigned) {
+        const key = `${R2_PREFIX}${ch.asset_id}/${ch.request_id}/${ch.seq}_${ch.channel}.mp4`;
+        const resp = await fetch(assigned.accessUrl, { signal: AbortSignal.timeout(5 * 60_000) });
+        if (resp.ok && resp.body) {
+          const ct = 'video/mp4';
+          const put = await env.UPLOADS.put(key, resp.body, { httpMetadata: { contentType: ct } });
+          const bytes = put?.size ?? parseInt(resp.headers.get('content-length') || '0', 10);
+          const alpr = ch.channel === 'inside' ? 'skipped' : 'pending';
+          await execute(db, `UPDATE footage_chunks SET status='downloaded', r2_key=?, source_url=?, content_type=?, bytes=?, alpr_status=?, updated_at=datetime('now') WHERE id=?`,
+            key, assigned.accessUrl, ct, bytes, alpr, ch.id);
+          // NOTE: stateless-cron two-step write — a Worker eviction between R2 put and this update can re-download + double-count chunks_done (informational only; R2 put is idempotent by key). Accepted, same as clearpathSync.
+          await execute(db, `UPDATE footage_requests SET chunks_done = chunks_done + 1, bytes = bytes + ?, updated_at=datetime('now') WHERE id=?`, bytes, ch.request_id);
+          downloaded++;
+          if (alpr === 'pending') {
+            try {
+              if (assigned.thumbnailUrl) {
+                // Free Workers-AI ALPR on the segment's still — no Roboflow credits,
+                // no in-Worker video decode. The video chunk itself stays unscanned.
+                const tr = await fetch(assigned.thumbnailUrl, { signal: AbortSignal.timeout(30_000) });
+                if (tr.ok) {
+                  const stillBytes = new Uint8Array(await tr.arrayBuffer());
+                  const { alprFootageStillCloudflare } = await import('./footageAlpr');
+                  await alprFootageStillCloudflare(env, db, ch.id, stillBytes, ch.cpg_device_id);
+                }
+              } else {
+                // No still — try the chunk object (no-ops on video; reads image chunks).
+                const { alprFootageChunk } = await import('./footageAlpr');
+                await alprFootageChunk(env, db, ch.id, key, ch.cpg_device_id);
               }
-            } else {
-              // No still — try the chunk object (no-ops on video; reads image chunks).
-              const { alprFootageChunk } = await import('./footageAlpr');
-              await alprFootageChunk(env, db, ch.id, key, ch.cpg_device_id);
-            }
-            await execute(db, `UPDATE footage_chunks SET alpr_status='done' WHERE id=?`, ch.id);
-          } catch (e) { console.error('[flexcam-alpr] failed:', (e as Error).message); }
+              await execute(db, `UPDATE footage_chunks SET alpr_status='done' WHERE id=?`, ch.id);
+            } catch (e) { console.error('[flexcam-alpr] failed:', (e as Error).message); }
+          }
+        } else if (ch.attempts + 1 >= maxAttempts) {
+          await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
+          missing++;
+        } else {
+          await execute(db, `UPDATE footage_chunks SET attempts = attempts + 1, updated_at=datetime('now') WHERE id=?`, ch.id);
         }
       } else if (ch.attempts + 1 >= maxAttempts) {
+        // No clip available in this tick AND past the cap → give up.
         await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
         missing++;
       } else {
         await execute(db, `UPDATE footage_chunks SET attempts = attempts + 1, updated_at=datetime('now') WHERE id=?`, ch.id);
       }
-    } else if (st.state === 'missing' || ch.attempts + 1 >= maxAttempts) {
-      await execute(db, `UPDATE footage_chunks SET status='missing', updated_at=datetime('now') WHERE id=?`, ch.id);
-      missing++;
-    } else {
-      await execute(db, `UPDATE footage_chunks SET attempts = attempts + 1, updated_at=datetime('now') WHERE id=?`, ch.id);
     }
   }
 
