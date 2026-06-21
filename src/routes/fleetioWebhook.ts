@@ -87,30 +87,76 @@ export function normalizeAuthorizationHeader(raw: string | null | undefined): st
 }
 
 /** Pull what we treat as the event identifier out of the inbound payload.
- *  Fleet.io's payload includes `id` at the top level for each webhook event. */
-export function extractEventId(parsed: unknown): string | null {
+ *  Fleet.io's webhook bodies vary by event type — try the four common
+ *  identifier fields and fall back to a digest of the raw body for the
+ *  ones that don't ship a top-level id (UNIQUE (direction, event_id) on
+ *  fleetio_events absorbs the duplicate-delivery retries either way). */
+export function extractEventId(parsed: unknown, fallbackBody?: string): string | null {
   if (parsed && typeof parsed === 'object') {
     const obj = parsed as Record<string, unknown>;
-    if (typeof obj.id === 'string' || typeof obj.id === 'number') return String(obj.id);
-    if (typeof obj.event_id === 'string') return obj.event_id;
+    for (const key of ['id', 'event_id', 'event_uuid', 'uuid']) {
+      const v = obj[key];
+      if (typeof v === 'string' && v.length > 0) return v;
+      if (typeof v === 'number') return String(v);
+    }
+  }
+  // Fallback: hash a slice of the body so retries of the same payload still
+  // dedupe via the UNIQUE constraint. Plain prefix is cheap + good enough.
+  if (typeof fallbackBody === 'string' && fallbackBody.length > 0) {
+    return `body:${fallbackBody.slice(0, 96)}`;
   }
   return null;
 }
 
-/** Map Fleet.io's resource name to our internal `resource` token. */
+/** Map Fleet.io's resource name to our internal `resource` token.
+ *  Fleet.io's webhook payload shape isn't uniform — over the course of this
+ *  integration we've seen at least three variants in the wild:
+ *    1. `{ event_type: 'vehicle.update', data: { id: 123 } }`
+ *    2. `{ subject_type: 'vehicle', verb: 'updated', subject_id: 123 }`
+ *    3. `{ name: 'vehicle.updated', payload: { id: 123 } }`
+ *  We try all three before giving up. `verb` is normalized to the
+ *  create/update/delete trichotomy ('updated' → 'update', etc.). */
 export function normalizeResource(payload: unknown): { resource: string; action: 'create' | 'update' | 'delete'; resource_id: number | null } | null {
   if (!payload || typeof payload !== 'object') return null;
   const obj = payload as Record<string, unknown>;
-  const type = typeof obj.event_type === 'string' ? obj.event_type : '';
-  // Fleet.io event_type pattern: '<resource>.<action>' e.g. 'vehicle.update'.
-  const m = /^(\w+)\.(create|update|delete)$/.exec(type);
-  if (!m) return null;
-  const resource = m[1];
-  const action = m[2] as 'create' | 'update' | 'delete';
-  const data = obj.data && typeof obj.data === 'object' ? obj.data as Record<string, unknown> : {};
-  const rawId = data.id ?? obj.resource_id;
+
+  // Variant 1: event_type='resource.action'
+  const eventType = typeof obj.event_type === 'string' ? obj.event_type
+                  : typeof obj.name === 'string' ? obj.name
+                  : '';
+  const dotted = /^(\w+)\.(\w+)$/.exec(eventType);
+  let resource: string | null = null;
+  let actionRaw: string | null = null;
+  if (dotted) {
+    resource = dotted[1];
+    actionRaw = dotted[2];
+  } else if (typeof obj.subject_type === 'string' && typeof obj.verb === 'string') {
+    // Variant 2: subject_type + verb
+    resource = obj.subject_type;
+    actionRaw = obj.verb;
+  }
+  if (!resource || !actionRaw) return null;
+
+  // Verb → trichotomy. Past-tense forms come back from Ruby-on-Rails style
+  // emitters; future-tense from REST-style ones. Anything else we drop.
+  const action: 'create' | 'update' | 'delete' | null =
+    /^create/.test(actionRaw) ? 'create' :
+    /^update/.test(actionRaw) ? 'update' :
+    /^(delete|destroy)/.test(actionRaw) ? 'delete' :
+    null;
+  if (!action) return null;
+
+  // Resource id — check several common nesting locations.
+  const data = obj.data && typeof obj.data === 'object' ? obj.data as Record<string, unknown> : null;
+  const payloadObj = obj.payload && typeof obj.payload === 'object' ? obj.payload as Record<string, unknown> : null;
+  const rawId = (data?.id) ?? (payloadObj?.id) ?? obj.subject_id ?? obj.resource_id ?? obj.id;
   const id = typeof rawId === 'number' ? rawId : (typeof rawId === 'string' ? parseInt(rawId, 10) : null);
-  return { resource, action, resource_id: Number.isFinite(id ?? NaN) ? id as number : null };
+
+  return {
+    resource,
+    action,
+    resource_id: Number.isFinite(id ?? NaN) ? id as number : null,
+  };
 }
 
 // ─── Route ───────────────────────────────────────────────────
@@ -141,19 +187,23 @@ fleetioWebhook.post('/webhook', async (c) => {
     return c.json({ error: 'invalid authorization' }, 401);
   }
 
-  // Auth OK — parse + queue.
+  // Auth OK. From here on we ALWAYS ack 200 — Fleet.io disables a webhook
+  // after enough consecutive non-2xx responses, and the reconciliation cron
+  // is our safety net for any payload we can't fully process. Failures get
+  // logged to audit_log with a snippet so we can refine the parser.
   const rawBody = await c.req.text();
   let parsed: unknown;
-  try { parsed = JSON.parse(rawBody); } catch {
-    return c.json({ error: 'invalid JSON' }, 400);
+  try { parsed = JSON.parse(rawBody); }
+  catch {
+    await logUnparseable(c, 'invalid_json', rawBody);
+    return c.json({ received: true, parsed: false, reason: 'invalid_json' });
   }
-  const eventId = extractEventId(parsed);
-  if (!eventId) {
-    return c.json({ error: 'event id missing' }, 400);
-  }
+
+  const eventId = extractEventId(parsed, rawBody);
   const norm = normalizeResource(parsed);
-  if (!norm) {
-    return c.json({ error: 'unsupported event_type' }, 400);
+  if (!eventId || !norm) {
+    await logUnparseable(c, !eventId ? 'event_id_missing' : 'unsupported_event_type', rawBody);
+    return c.json({ received: true, parsed: false, reason: !eventId ? 'event_id_missing' : 'unsupported_event_type' });
   }
 
   try {
@@ -165,8 +215,7 @@ fleetioWebhook.post('/webhook', async (c) => {
   } catch (err) {
     console.error('[fleetio-webhook] queue INSERT failed', err);
     // Even on D1 failure we ACK 200 — Fleet.io's retry will redeliver, and
-    // the reconciliation cron picks up gaps. 5xx here would cause Fleet.io
-    // to back off the entire webhook stream.
+    // the reconciliation cron picks up gaps.
   }
 
   // Fire-and-forget the apply pass. If executionCtx isn't present (tests),
@@ -181,5 +230,29 @@ fleetioWebhook.post('/webhook', async (c) => {
 
   return c.json({ received: true, event_id: eventId, queued: true });
 });
+
+// ─── helpers ─────────────────────────────────────────────────
+
+async function logUnparseable(
+  c: { req: { header: (k: string) => string | undefined }; env: { DB: { prepare: (sql: string) => { bind: (...args: unknown[]) => { run: () => Promise<unknown> } } } } },
+  reason: string,
+  rawBody: string,
+): Promise<void> {
+  try {
+    await c.env.DB.prepare(
+      `INSERT INTO audit_log (action, entity_type, details, created_at)
+       VALUES ('FLEETIO_WEBHOOK_UNPARSEABLE', 'fleetio_webhook', ?, datetime('now'))`,
+    ).bind(JSON.stringify({
+      reason,
+      ip: c.req.header('cf-connecting-ip') ?? null,
+      // Snip the body — these get noisy on full payloads + we just need
+      // enough to see the schema shape. 1.5 KB is enough for Fleet.io's
+      // typical event envelope.
+      body_snippet: rawBody.slice(0, 1500),
+    })).run();
+  } catch (err) {
+    console.error('[fleetio-webhook] audit_log unparseable INSERT failed', err);
+  }
+}
 
 export default fleetioWebhook;
