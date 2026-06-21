@@ -35,7 +35,10 @@ import { deriveCrossStreetFromCoords } from './crossStreet';
 import { parseLocationParts } from './parseLocationParts';
 import { buildPsoBriefing, buildOcrContext } from './serveIntakeBriefing';
 import type { IntakeDocMeta, OcrContext, PropertyRecord, BusinessRecord } from './serveIntakeBriefing';
-import { planAttemptWindows, escalatePriorityForDeadline } from './serveDiligencePlanner';
+import {
+  planAttemptWindows, escalatePriorityForDeadline,
+  clusterByProximity, applyUrgencyTier,
+} from './serveDiligencePlanner';
 import type { AttemptWindow } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
 import { findLocationNote } from './serveLocationNotes';
@@ -862,6 +865,18 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
     const queueNotes = [queueRow.notes, ocrContext?.queueLine]
       .filter(Boolean).join('\n') || null;
     const explicitClientId = input.clientId ?? null;
+    const geoClusterId = clusterByProximity(
+      coords?.lat ?? null,
+      coords?.lng ?? null,
+      queueRow.recipient_zip ?? null,
+    );
+    const urgencyTier = applyUrgencyTier(
+      queueRow.deadline ?? null,
+      0,                                // intake = no attempts yet
+      3,                                // QueueRow has no max_attempts; use default
+      nowIso,
+    );
+    const urgencyComputedAt = nowIso;
     const ins = await execute(
       db,
       `INSERT INTO serve_queue (
@@ -872,8 +887,9 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
         document_type, case_number, court_name, jurisdiction,
         client_id, client_name, attorney_name, priority, deadline,
         service_instructions, notes,
-        plaintiff_name, defendant_name, court_date, parsed_data, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        plaintiff_name, defendant_name, court_date, parsed_data, status,
+        geo_cluster_id, urgency_tier, urgency_computed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
       callId, userId,
       queueRow.recipient_name, person.id || null,
       queueRow.recipient_address, queueRow.recipient_city,
@@ -886,6 +902,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       queueRow.priority, queueRow.deadline,
       queueRow.service_instructions, queueNotes,
       queueRow.plaintiff, queueRow.defendant, queueRow.court_date, parsedData,
+      geoClusterId, urgencyTier, urgencyComputedAt,
     );
     queueId = Number(ins.meta.last_row_id);
 
