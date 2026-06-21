@@ -1345,15 +1345,26 @@ pm.delete('/trips/:source/:id', async (c) => {
   }
 });
 
-// POST /mileage/backfill-patrol-trips — one-shot historical fill for the
-// PATROL rows that pre-date the auto-stamp (tripStore now stamps on open +
-// derives end_mileage on close; this endpoint catches every closed patrol
-// trip that landed before that change). Per (officer, unit), walks the
-// rows in start_time order, fills start_mileage from the prior row's
-// end_mileage (or the mileage_anchor when there is no prior), then sets
-// end_mileage = start_mileage + distance_m/1609.34. The outlier guard
-// matches the live engine — a single trip claiming >75 mi is skipped so
-// it can't poison the chain. Every write is audited.
+// POST /mileage/backfill-patrol-trips — unified-chain rebuild for the PATROL
+// rows whose odometer disagrees with the CFS chain. Walks every mileage-
+// bearing event in (officer, unit) scope (CFS calls + closed PATROL trips)
+// in time order, treating CFS rows as AUTHORITATIVE (observed odometer
+// reads, never re-stamped) and re-deriving PATROL rows from whatever event
+// came immediately before — CFS row's ending_mileage if the prior event was
+// a call, the prior PATROL row's end if patrol-on-patrol. Outlier guard
+// (>75 mi single-trip distance) leaves the row blank instead of poisoning.
+//
+// Why this replaces the first-pass per-PATROL backfill (PR #1464): that one
+// walked PATROL rows in isolation, seeded from mileage_anchor (which is only
+// written by admin /mileage/fix), so the PATROL chain ended up parallel to
+// the CFS chain instead of interleaved with it — every PATROL row showed
+// up ~60 mi behind on prod's Mileage Audit (Christopher's screenshot, the
+// trigger for this PR). The unified walk fixes that by reading the same
+// observed odometer the CFS path writes.
+//
+// CFS rows are NEVER auto-edited — a wrong CFS starting_mileage means the
+// officer mis-stamped at enroute, and that's what the per-row Fix tool +
+// /mileage/fix endpoint exist for.
 //
 // Body: { officer_id?, unit_id?, from?, to?, reason }
 pm.post('/mileage/backfill-patrol-trips', async (c) => {
@@ -1371,19 +1382,18 @@ pm.post('/mileage/backfill-patrol-trips', async (c) => {
     const from = typeof body.from === 'string' ? body.from : null;
     const to = typeof body.to === 'string' ? body.to : null;
 
-    const where: string[] = [
+    // ── 1. Pull every PATROL trip in scope/window that could be rewritten ──
+    const trWhere: string[] = [
       "status = 'closed'", "trip_type = 'patrol'",
       'distance_m IS NOT NULL', 'distance_m > 0',
       'officer_id IS NOT NULL', 'unit_id IS NOT NULL',
-      '(start_mileage IS NULL OR end_mileage IS NULL)',
     ];
-    const params: unknown[] = [];
-    if (officerId != null && Number.isFinite(officerId)) { where.push('officer_id = ?'); params.push(officerId); }
-    if (unitId != null && Number.isFinite(unitId)) { where.push('unit_id = ?'); params.push(unitId); }
-    if (from) { where.push('date(start_time) >= date(?)'); params.push(from); }
-    if (to) { where.push('date(start_time) <= date(?)'); params.push(to); }
-
-    const candidates = await query<{
+    const trParams: unknown[] = [];
+    if (officerId != null && Number.isFinite(officerId)) { trWhere.push('officer_id = ?'); trParams.push(officerId); }
+    if (unitId != null && Number.isFinite(unitId)) { trWhere.push('unit_id = ?'); trParams.push(unitId); }
+    if (from) { trWhere.push('date(start_time) >= date(?)'); trParams.push(from); }
+    if (to) { trWhere.push('date(start_time) <= date(?)'); trParams.push(to); }
+    const patrolRows = await query<{
       id: number; officer_id: number; unit_id: number; vehicle_id: number | null;
       start_time: string; end_time: string | null;
       start_mileage: number | null; end_mileage: number | null;
@@ -1391,90 +1401,231 @@ pm.post('/mileage/backfill-patrol-trips', async (c) => {
     }>(db, `
       SELECT id, officer_id, unit_id, vehicle_id, start_time, end_time,
              start_mileage, end_mileage, distance_m
-        FROM unit_trips
-       WHERE ${where.join(' AND ')}
+        FROM unit_trips WHERE ${trWhere.join(' AND ')}
        ORDER BY officer_id, unit_id, start_time ASC
-       LIMIT 1000
-    `, ...params);
+       LIMIT 2000
+    `, ...trParams);
 
-    // Per-scope cursor: the running odometer we believe the next trip in
-    // this (officer, unit) chain starts at. Seeded from the anchor on the
-    // first row of each scope, then walked forward by each filled row's
-    // distance.
-    const cursors = new Map<string, number>();
-    let filled = 0, skipped = 0, outliers = 0;
+    // ── 2. Pull every CFS row in scope/window with observed odometer ──
+    // We need these to anchor the PATROL chain: each PATROL trip's start
+    // should equal the immediately preceding event's end, and a CFS row's
+    // ending_mileage is an observed odometer reading we trust.
+    const cfWhere: string[] = [
+      '(c.starting_mileage IS NOT NULL OR c.ending_mileage IS NOT NULL)',
+    ];
+    const cfParams: unknown[] = [];
+    if (unitId != null && Number.isFinite(unitId)) {
+      cfWhere.push("(SELECT COUNT(*) FROM json_each(c.assigned_unit_ids) WHERE CAST(value AS TEXT) = ?) > 0");
+      cfParams.push(String(unitId));
+    }
+    if (from) { cfWhere.push("COALESCE(c.cleared_at, c.closed_at, c.dispatched_at) >= ?"); cfParams.push(from); }
+    if (to) { cfWhere.push("COALESCE(c.cleared_at, c.closed_at, c.dispatched_at) <= ?"); cfParams.push(to + ' 23:59:59'); }
+    const cfsRows = await query<{
+      id: number; starting_mileage: number | null; ending_mileage: number | null;
+      enroute_at: string | null; onscene_at: string | null;
+      cleared_at: string | null; closed_at: string | null; dispatched_at: string | null;
+      assigned_unit_ids: string | null;
+    }>(db, `
+      SELECT c.id, c.starting_mileage, c.ending_mileage,
+             c.enroute_at, c.onscene_at, c.cleared_at, c.closed_at, c.dispatched_at,
+             c.assigned_unit_ids
+        FROM calls_for_service c WHERE ${cfWhere.join(' AND ')}
+       ORDER BY COALESCE(c.dispatched_at, c.enroute_at) ASC
+       LIMIT 2000
+    `, ...cfParams);
+
+    // ── 3. Bucket events per (officer, unit) and merge by time ──
+    // PATROL rows carry their own officer/unit. CFS rows have unit_id buried
+    // in assigned_unit_ids; we resolve officer_id from units.officer_id.
+    type Event = (
+      | { kind: 'patrol'; id: number; officer_id: number; unit_id: number; t: string;
+          start_mileage: number | null; end_mileage: number | null; distance_m: number }
+      | { kind: 'cfs'; id: number; officer_id: number; unit_id: number; t: string;
+          starting_mileage: number | null; ending_mileage: number | null }
+    );
+    const unitOfficerCache = new Map<number, number | null>();
+    const resolveOfficer = async (uId: number): Promise<number | null> => {
+      if (unitOfficerCache.has(uId)) return unitOfficerCache.get(uId)!;
+      const row = await queryFirst<{ officer_id: number | null }>(
+        db, 'SELECT officer_id FROM units WHERE id = ?', uId);
+      const v = row?.officer_id ?? null;
+      unitOfficerCache.set(uId, v);
+      return v;
+    };
+    const buckets = new Map<string, Event[]>();
+    const bucketPush = (key: string, ev: Event) => {
+      const arr = buckets.get(key) ?? [];
+      arr.push(ev);
+      buckets.set(key, arr);
+    };
+
+    for (const p of patrolRows) {
+      bucketPush(`${p.officer_id}:${p.unit_id}`, {
+        kind: 'patrol', id: p.id, officer_id: p.officer_id, unit_id: p.unit_id,
+        t: p.start_time, start_mileage: p.start_mileage, end_mileage: p.end_mileage,
+        distance_m: p.distance_m,
+      });
+    }
+    for (const r of cfsRows) {
+      let assigned: number[] = [];
+      try { assigned = JSON.parse(r.assigned_unit_ids || '[]'); } catch { /* skip */ }
+      if (!assigned.length) continue;
+      const uId = assigned[0];
+      if (unitId != null && Number.isFinite(unitId) && uId !== unitId) continue;
+      const oId = await resolveOfficer(uId);
+      if (oId == null) continue;
+      if (officerId != null && Number.isFinite(officerId) && oId !== officerId) continue;
+      const t = r.enroute_at || r.dispatched_at || r.onscene_at || r.cleared_at || r.closed_at;
+      if (!t) continue;
+      bucketPush(`${oId}:${uId}`, {
+        kind: 'cfs', id: r.id, officer_id: oId, unit_id: uId, t,
+        starting_mileage: r.starting_mileage, ending_mileage: r.ending_mileage,
+      });
+    }
+
+    // ── 4. Walk each bucket in time order, re-stamp PATROL to match chain ──
+    let restamped = 0, skipped = 0, outliers = 0, alreadyConsistent = 0;
     const errors: string[] = [];
 
-    for (const row of candidates) {
-      const scope = `${row.officer_id}:${row.unit_id}`;
-      let startMileage = row.start_mileage;
+    for (const [, events] of buckets) {
+      events.sort((a, b) => a.t.localeCompare(b.t));
+      let prevEnd: number | null = null;
 
-      if (startMileage == null) {
-        if (cursors.has(scope)) {
-          startMileage = cursors.get(scope)!;
-        } else {
-          const suggestion = await getSuggestedMileage(db, row.officer_id, row.unit_id);
-          if (suggestion) startMileage = suggestion.suggested_mileage;
+      for (const ev of events) {
+        if (ev.kind === 'cfs') {
+          // CFS: authoritative — DO NOT REWRITE. Advance the running cursor.
+          const observed = ev.ending_mileage ?? ev.starting_mileage;
+          if (observed != null && Number.isFinite(observed)) prevEnd = observed;
+          continue;
         }
-      }
 
-      if (startMileage == null) {
-        skipped++;
-        continue;
-      }
-
-      const derived = deriveEndMileage(startMileage, row.distance_m);
-      if (!derived) {
-        outliers++;
-        // Don't seed cursor — we can't trust the distance, so let the next
-        // row re-look-up from the anchor.
-        cursors.delete(scope);
-        continue;
-      }
-
-      const endMileage = row.end_mileage ?? derived.endMileage;
-      const startChanged = row.start_mileage !== startMileage;
-      const endChanged = row.end_mileage !== endMileage;
-      if (!startChanged && !endChanged) {
-        cursors.set(scope, endMileage);
-        continue;
-      }
-
-      try {
-        await db.prepare(
-          `UPDATE unit_trips SET start_mileage = ?, end_mileage = ?, updated_at = datetime('now') WHERE id = ?`,
-        ).bind(startMileage, endMileage, row.id).run();
-        if (startChanged) {
-          await auditTripChange(db, {
-            table: 'unit_trips', entryId: row.id, field: 'start_mileage',
-            before: row.start_mileage, after: startMileage, reason: `backfill: ${reason}`,
-            userId: user.id, officerId: row.officer_id, unitId: row.unit_id,
-          });
+        // PATROL row: re-derive start + end from prevEnd. Seed from the
+        // mileage_anchor only when there is no prior chain event at all.
+        let seedStart = prevEnd;
+        if (seedStart == null) {
+          const suggestion = await getSuggestedMileage(db, ev.officer_id, ev.unit_id);
+          if (suggestion) seedStart = suggestion.suggested_mileage;
         }
-        if (endChanged) {
-          await auditTripChange(db, {
-            table: 'unit_trips', entryId: row.id, field: 'end_mileage',
-            before: row.end_mileage, after: endMileage, reason: `backfill: ${reason}`,
-            userId: user.id, officerId: row.officer_id, unitId: row.unit_id,
-          });
+        if (seedStart == null) { skipped++; continue; }
+
+        const derived = deriveEndMileage(seedStart, ev.distance_m);
+        if (!derived) {
+          outliers++;
+          // Don't advance — next row should re-anchor.
+          prevEnd = null;
+          continue;
         }
-        filled++;
-        cursors.set(scope, endMileage);
-      } catch (e) {
-        errors.push(`trip ${row.id}: ${(e as Error)?.message}`);
+
+        const newStart = Math.round(seedStart * 10) / 10;
+        const newEnd = derived.endMileage;
+        const startChanged = ev.start_mileage == null
+          ? true
+          : Math.abs(Number(ev.start_mileage) - newStart) >= 0.1;
+        const endChanged = ev.end_mileage == null
+          ? true
+          : Math.abs(Number(ev.end_mileage) - newEnd) >= 0.1;
+
+        if (!startChanged && !endChanged) { alreadyConsistent++; prevEnd = newEnd; continue; }
+
+        try {
+          await db.prepare(
+            `UPDATE unit_trips SET start_mileage = ?, end_mileage = ?, updated_at = datetime('now') WHERE id = ?`,
+          ).bind(newStart, newEnd, ev.id).run();
+          if (startChanged) {
+            await auditTripChange(db, {
+              table: 'unit_trips', entryId: ev.id, field: 'start_mileage',
+              before: ev.start_mileage, after: newStart, reason: `chain-rebuild: ${reason}`,
+              userId: user.id, officerId: ev.officer_id, unitId: ev.unit_id,
+            });
+          }
+          if (endChanged) {
+            await auditTripChange(db, {
+              table: 'unit_trips', entryId: ev.id, field: 'end_mileage',
+              before: ev.end_mileage, after: newEnd, reason: `chain-rebuild: ${reason}`,
+              userId: user.id, officerId: ev.officer_id, unitId: ev.unit_id,
+            });
+          }
+          restamped++;
+          prevEnd = newEnd;
+        } catch (e) {
+          errors.push(`trip ${ev.id}: ${(e as Error)?.message}`);
+        }
       }
     }
 
     return c.json({
       success: true,
-      examined: candidates.length,
-      filled,
+      examined_patrol: patrolRows.length,
+      examined_cfs: cfsRows.length,
+      restamped,
+      already_consistent: alreadyConsistent,
       skipped,
       outliers,
       errors: errors.slice(0, 20),
     });
   } catch (err) {
     console.error('POST /patrol/mileage/backfill-patrol-trips failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// POST /trips/discard-zero-mile — admin sweep that deletes closed PATROL
+// trips whose recorded distance is zero (or NULL). The live noise filter
+// in tripStore now drops these at close time, but a parked-engine-running
+// session from before that fix still landed dozens of "92,957 → 92,957
+// 0.0 mi" rows that clutter the chain. Each delete is audited.
+//
+// Body: { officer_id?, unit_id?, from?, to?, reason }
+pm.post('/trips/discard-zero-mile', async (c) => {
+  try {
+    const user = requireTripEditor(c);
+    if (!user) return c.json({ error: 'Admin / manager / supervisor only', code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+    if (!body.reason || !String(body.reason).trim()) {
+      return c.json({ error: 'reason required for the audit trail' }, 400);
+    }
+    const reason = String(body.reason).trim();
+    const officerId = body.officer_id != null ? Number(body.officer_id) : null;
+    const unitId = body.unit_id != null ? Number(body.unit_id) : null;
+    const from = typeof body.from === 'string' ? body.from : null;
+    const to = typeof body.to === 'string' ? body.to : null;
+
+    const where: string[] = [
+      "status = 'closed'", "trip_type = 'patrol'",
+      '(distance_m IS NULL OR distance_m <= 0)',
+    ];
+    const params: unknown[] = [];
+    if (officerId != null && Number.isFinite(officerId)) { where.push('officer_id = ?'); params.push(officerId); }
+    if (unitId != null && Number.isFinite(unitId)) { where.push('unit_id = ?'); params.push(unitId); }
+    if (from) { where.push('date(start_time) >= date(?)'); params.push(from); }
+    if (to) { where.push('date(start_time) <= date(?)'); params.push(to); }
+
+    const candidates = await query<{ id: number; officer_id: number | null; unit_id: number | null; start_time: string; end_time: string | null; distance_m: number | null }>(
+      db, `SELECT id, officer_id, unit_id, start_time, end_time, distance_m FROM unit_trips WHERE ${where.join(' AND ')} LIMIT 1000`,
+      ...params,
+    );
+
+    let deleted = 0;
+    const errors: string[] = [];
+    for (const row of candidates) {
+      try {
+        await db.prepare(`DELETE FROM unit_trips WHERE id = ?`).bind(row.id).run();
+        await auditTripChange(db, {
+          table: 'unit_trips', entryId: row.id, field: 'deleted',
+          before: `noise: patrol ${row.start_time}→${row.end_time ?? '?'} distance_m=${row.distance_m ?? 'null'}`,
+          after: null, reason: `discard-zero-mile: ${reason}`,
+          userId: user.id, officerId: row.officer_id, unitId: row.unit_id,
+        });
+        deleted++;
+      } catch (e) {
+        errors.push(`trip ${row.id}: ${(e as Error)?.message}`);
+      }
+    }
+
+    return c.json({ success: true, examined: candidates.length, deleted, errors: errors.slice(0, 20) });
+  } catch (err) {
+    console.error('POST /patrol/trips/discard-zero-mile failed:', err);
     return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
   }
 });

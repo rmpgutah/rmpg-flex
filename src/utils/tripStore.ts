@@ -7,7 +7,7 @@ import { query, queryFirst, execute } from './db';
 import { emitAlert } from './alertHub';
 import { decide, type ActiveTrip, type TripEvent, type EngineCtx } from './tripEngine';
 import { accumulate, type TripAgg, type IncomingFix } from './tripTelemetry';
-import { setFleetOdometer, accrueFleetOdometer } from './fleetOdometer';
+import { setFleetOdometer, accrueFleetOdometer, vehicleOdometerForUnit } from './fleetOdometer';
 import { getSuggestedMileage, deriveEndMileage } from './mileageAnchor';
 
 type DB = D1Database;
@@ -66,11 +66,20 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
     // trips are NEVER discarded; a 0-mile dispatch is real audit data.
     // Idle-timeout / stale closures get checked too because those reasons can
     // fire on a freshly-opened trip that never accumulated.
+    //
+    // Stricter zero-distance branch (added after the patrol mileage audit
+    // showed dozens of "92,957 → 92,957  0.0 mi" rows on prod): a closed
+    // PATROL trip that recorded zero or NULL distance is noise regardless of
+    // how long the timer ran — it's an officer parked with the engine on,
+    // not travel. Without this branch a 4-hour shift sitting at a checkpoint
+    // closes as a single 0-mile patrol trip and clutters every chain view.
     const isNoise =
       c &&
       c.trip_type === 'patrol' &&
-      (c.distance_m == null || c.distance_m < 50) &&
-      (durS == null || durS < 180);
+      (
+        (c.distance_m == null || c.distance_m <= 0) ||
+        ((c.distance_m < 50) && (durS == null || durS < 180))
+      );
 
     if (isNoise) {
       await execute(db, "DELETE FROM unit_trips WHERE id = ? AND status = 'active'", d.close.tripId);
@@ -150,17 +159,29 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
   }
 
   if (d.open) {
-    // Pull a suggested start_mileage from the (officer, unit) anchor when the
-    // caller didn't pass one. CFS routes always pass the call's starting_mileage;
-    // patrol-detected trips (gps.ts → applyTripEvent) don't have anything to
-    // pass, so the column went NULL and the PATROL row showed "—" in the trip
-    // log. Stamping start_mileage here lets d.close derive end_mileage from it,
-    // which keeps the chain self-healing across shifts.
+    // Pull a suggested start_mileage when the caller didn't pass one. CFS
+    // routes always pass the call's starting_mileage (snapshot of the live
+    // fleet_vehicles.current_mileage at enroute); patrol-detected trips have
+    // nothing to pass, so the column went NULL and PATROL rows showed "—".
+    //
+    // Source order matters here. fleet_vehicles.current_mileage is the LIVE
+    // running odometer — both calls.ts (via setFleetOdometer) and our own
+    // d.close branch keep it up to date in real time. mileage_anchor, by
+    // contrast, is only ever written by admin /mileage/fix actions, so it
+    // freezes between corrections. The first cut of this code pulled from
+    // the anchor and produced PATROL rows ~60 mi behind CFS rows in the
+    // trip log (PR #1464 → bug observed on prod). Read fleet_vehicles first,
+    // exactly like calls.ts does, and fall back to the anchor only when the
+    // unit has no assigned vehicle. Both paths now share one source of
+    // truth, so the interleaved chain stays continuous.
     let startMileage: number | null = args.startMileage != null && Number.isFinite(args.startMileage)
       ? (args.startMileage as number) : null;
     if (startMileage == null && d.open.type === 'patrol') {
-      const suggestion = await getSuggestedMileage(db, args.officerId ?? null, unitId);
-      if (suggestion) startMileage = suggestion.suggested_mileage;
+      startMileage = await vehicleOdometerForUnit(db, unitId);
+      if (startMileage == null) {
+        const suggestion = await getSuggestedMileage(db, args.officerId ?? null, unitId);
+        if (suggestion) startMileage = suggestion.suggested_mileage;
+      }
     }
     const res = await execute(db,
       `INSERT INTO unit_trips (unit_id, officer_id, vehicle_id, trip_type, status, call_id, call_number, call_type,

@@ -41,6 +41,7 @@ import {
   RefreshCw,
   Save,
   ShieldAlert,
+  Trash2,
   Wand2,
   Wrench,
   X,
@@ -199,6 +200,12 @@ export default function MileageAuditTab() {
   const [backfillOpen, setBackfillOpen] = useState(false);
   const [backfillReason, setBackfillReason] = useState('');
   const [backfillSubmitting, setBackfillSubmitting] = useState(false);
+  // Discard-zero-mile sweep: parallel to backfill, separate reason field so
+  // the audit trail explains WHY rows were deleted (a clean-up vs a chain
+  // rebuild are distinct operator intents).
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [discardReason, setDiscardReason] = useState('');
+  const [discardSubmitting, setDiscardSubmitting] = useState(false);
 
   // ── Load reference data once ──
   useEffect(() => {
@@ -379,13 +386,14 @@ export default function MileageAuditTab() {
       if (unitId !== '') body.unit_id = unitId;
       if (from) body.from = from;
       if (to) body.to = to;
-      const res = await apiFetch<{ examined: number; filled: number; skipped: number; outliers: number; errors: string[] }>(
+      const res = await apiFetch<{ examined_patrol: number; examined_cfs: number; restamped: number; already_consistent: number; skipped: number; outliers: number; errors: string[] }>(
         '/patrol/mileage/backfill-patrol-trips',
         { method: 'POST', body: JSON.stringify(body) },
       );
       addToast(
-        `Backfill: filled ${res.filled} of ${res.examined} (skipped ${res.skipped}, outliers ${res.outliers})`,
-        res.filled > 0 ? 'success' : 'info',
+        `Chain rebuild: ${res.restamped} PATROL rows re-stamped to align with ${res.examined_cfs} CFS rows ` +
+        `(${res.already_consistent} already aligned, ${res.skipped} no-anchor, ${res.outliers} outliers)`,
+        res.restamped > 0 ? 'success' : 'info',
       );
       setBackfillOpen(false);
       setBackfillReason('');
@@ -394,6 +402,36 @@ export default function MileageAuditTab() {
       addToast(err?.message || 'Backfill failed', 'error');
     } finally {
       setBackfillSubmitting(false);
+    }
+  };
+
+  const submitDiscard = async () => {
+    if (!discardReason.trim()) {
+      addToast('Reason is required for the audit trail', 'error');
+      return;
+    }
+    setDiscardSubmitting(true);
+    try {
+      const body: Record<string, unknown> = { reason: discardReason.trim() };
+      if (officerId !== '') body.officer_id = Number(officerId);
+      if (unitId !== '') body.unit_id = unitId;
+      if (from) body.from = from;
+      if (to) body.to = to;
+      const res = await apiFetch<{ examined: number; deleted: number; errors: string[] }>(
+        '/patrol/trips/discard-zero-mile',
+        { method: 'POST', body: JSON.stringify(body) },
+      );
+      addToast(
+        `Discarded ${res.deleted} zero-mile PATROL trips (examined ${res.examined})`,
+        res.deleted > 0 ? 'success' : 'info',
+      );
+      setDiscardOpen(false);
+      setDiscardReason('');
+      refresh();
+    } catch (err: any) {
+      addToast(err?.message || 'Discard failed', 'error');
+    } finally {
+      setDiscardSubmitting(false);
     }
   };
 
@@ -589,13 +627,25 @@ export default function MileageAuditTab() {
             {canFix && (
               <button
                 type="button"
-                onClick={() => setBackfillOpen((v) => !v)}
+                onClick={() => { setBackfillOpen((v) => !v); setDiscardOpen(false); }}
                 className="toolbar-btn text-[10px]"
                 disabled={backfillSubmitting}
-                title="One-shot fill of missing odometer on closed PATROL trips in this scope/window"
+                title="Walk the unified CFS+PATROL chain and re-stamp PATROL odometer to align with CFS observations in this scope/window"
               >
                 <Wand2 className="w-3 h-3" />
-                Backfill PATROL odo
+                Rebuild chain
+              </button>
+            )}
+            {canFix && (
+              <button
+                type="button"
+                onClick={() => { setDiscardOpen((v) => !v); setBackfillOpen(false); }}
+                className="toolbar-btn text-[10px]"
+                disabled={discardSubmitting}
+                title="Delete zero-distance PATROL trips (engine-on-while-parked noise) from this scope/window"
+              >
+                <Trash2 className="w-3 h-3" />
+                Discard 0-mi
               </button>
             )}
             <button
@@ -613,7 +663,7 @@ export default function MileageAuditTab() {
         {backfillOpen && canFix && (
           <div className="mt-2 px-2 py-2 bg-surface-sunken border border-amber-700/40 flex items-center gap-2">
             <span className="text-[10px] text-amber-300 font-mono uppercase tracking-wider">
-              Backfill
+              Rebuild
             </span>
             <input
               type="text"
@@ -621,7 +671,7 @@ export default function MileageAuditTab() {
               value={backfillReason}
               onChange={(e) => setBackfillReason(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') submitBackfill(); }}
-              placeholder="Reason (e.g. retro-stamp odometer on pre-2026-06 patrol trips)"
+              placeholder="Reason (e.g. align PATROL chain to CFS observations)"
               className="input-dark flex-1 min-h-[28px] text-xs"
             />
             <button
@@ -631,11 +681,43 @@ export default function MileageAuditTab() {
               className="toolbar-btn toolbar-btn-primary text-[10px]"
             >
               {backfillSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
-              Run on current scope/window
+              Rebuild on current scope/window
             </button>
             <IconButton
-              aria-label="Cancel backfill"
+              aria-label="Cancel rebuild"
               onClick={() => { setBackfillOpen(false); setBackfillReason(''); }}
+              className="text-rmpg-400 hover:text-rmpg-100"
+            >
+              <X className="w-3.5 h-3.5" />
+            </IconButton>
+          </div>
+        )}
+        {discardOpen && canFix && (
+          <div className="mt-2 px-2 py-2 bg-surface-sunken border border-red-700/40 flex items-center gap-2">
+            <span className="text-[10px] text-red-300 font-mono uppercase tracking-wider">
+              Discard 0-mi
+            </span>
+            <input
+              type="text"
+              autoFocus
+              value={discardReason}
+              onChange={(e) => setDiscardReason(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submitDiscard(); }}
+              placeholder="Reason (e.g. parked-engine-running noise from before noise-filter fix)"
+              className="input-dark flex-1 min-h-[28px] text-xs"
+            />
+            <button
+              type="button"
+              onClick={submitDiscard}
+              disabled={discardSubmitting || !discardReason.trim()}
+              className="toolbar-btn text-[10px] !text-red-300 hover:!text-red-200"
+            >
+              {discardSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+              Delete on current scope/window
+            </button>
+            <IconButton
+              aria-label="Cancel discard"
+              onClick={() => { setDiscardOpen(false); setDiscardReason(''); }}
               className="text-rmpg-400 hover:text-rmpg-100"
             >
               <X className="w-3.5 h-3.5" />
