@@ -137,3 +137,63 @@ describe('fleetioFetch', () => {
     })).rejects.toMatchObject({ name: 'FleetioConfigError' });
   });
 });
+
+describe('secret-hygiene invariants', () => {
+  const cfg: FleetioConfig = {
+    apiKey: 'tok_supersecret_1234567890',
+    accountToken: 'acct_alsosecret_xyz',
+    apiBase: 'https://secure.fleetio.com/api/v1',
+  };
+
+  it('a 5xx body that echoes the API key does NOT leak it via error.message', async () => {
+    // Worst case: Fleet.io's error body literally contains our key as a
+    // substring (e.g. an "echo back of headers received" debugging response).
+    const stub = vi.fn().mockResolvedValue(new Response(
+      `{"error":"internal","echoed_auth":"Token tok_supersecret_1234567890"}`,
+      { status: 503, headers: { 'content-type': 'application/json' } },
+    ));
+    try {
+      await fleetioFetch({
+        method: 'GET', path: '/vehicles', config: cfg, fetchImpl: stub,
+        maxRetries: 0, backoffBaseMs: 0,
+      });
+      throw new Error('expected fleetioFetch to throw');
+    } catch (err) {
+      const e = err as { name: string; message: string; detail?: unknown };
+      // The error MESSAGE must never contain the key. (We control the message
+      // template — `Fleet.io ${status}`. This test pins that contract.)
+      expect(e.message).not.toContain('tok_supersecret');
+      expect(e.message).not.toContain('acct_alsosecret');
+      // Detail MAY contain the key (it's the raw response body) — that's why
+      // routes must NEVER return err.detail to the client. Tasks 9/10 only
+      // surface err.message + err.name.
+      expect(e.name).toBe('FleetioHttpError');
+    }
+  });
+
+  it('FleetioConfigError message names the env var, not the value', async () => {
+    const stub = vi.fn();
+    await expect(fleetioFetch({
+      method: 'GET', path: '/vehicles',
+      config: { ...cfg, apiKey: '' }, fetchImpl: stub,
+    })).rejects.toMatchObject({ message: 'FLEETIO_API_KEY is unset' });
+    // Message must NOT include the (empty) value or expose the accountToken.
+    expect(stub).not.toHaveBeenCalled();
+  });
+
+  it('FleetioRateLimitError message contains the retry-after seconds, NOT the key', async () => {
+    const stub = vi.fn().mockResolvedValue(new Response('429', {
+      status: 429, headers: { 'retry-after': '12' },
+    }));
+    await expect(fleetioFetch({
+      method: 'GET', path: '/vehicles', config: cfg, fetchImpl: stub, maxRetries: 0,
+    })).rejects.toMatchObject({
+      name: 'FleetioRateLimitError',
+      retryAfterSeconds: 12,
+    });
+    // Defensive: the constructed message must not embed the API key.
+    await expect(fleetioFetch({
+      method: 'GET', path: '/vehicles', config: cfg, fetchImpl: stub, maxRetries: 0,
+    })).rejects.toMatchObject({ message: expect.not.stringContaining('tok_supersecret') });
+  });
+});

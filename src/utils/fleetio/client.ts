@@ -87,6 +87,19 @@ export interface FleetioFetchInput extends BuildRequestInput {
   fetchImpl?: typeof fetch;
 }
 
+// ⚠️ NEVER LOG OR RETURN CREDENTIALS ⚠️
+// `input.config.apiKey` and `input.config.accountToken` are secrets. They are
+// passed to fetch() via headers and must never appear in:
+//   • console.{log,warn,error} calls — not even during debugging
+//   • error messages thrown from here (use fixed templates like `Fleet.io ${status}`)
+//   • response bodies returned to clients (routes echo only err.name + err.message)
+//   • audit_log rows or flex_events payloads
+//
+// FleetioHttpError carries a `detail` field that is Fleet.io's raw response body.
+// That body CAN contain credentials if Fleet.io echoes the request back in an
+// error. Routes MUST NOT return err.detail to clients — only err.message and
+// err.name. Tests in `tests/fleetioClient.test.ts` ("secret-hygiene invariants")
+// pin the message-side guarantee; the route-side guarantee is by code review.
 /** Validates config, dispatches the HTTP call with retry/backoff/timeout,
  *  parses JSON responses, and maps failures to typed errors.
  *  NEVER logs or interpolates apiKey/accountToken into error messages. */
@@ -153,6 +166,8 @@ export async function fleetioFetch<T>(input: FleetioFetchInput): Promise<T> {
         }
         throw new FleetioTimeoutError(`Fleet.io request timed out after ${timeoutMs}ms`);
       }
+      // NEVER add `console.error(err, built.headers)` here. Headers contain credentials.
+      // If you need to debug, log built.url and err.message ONLY.
       // Network/other — retry if budget remains; otherwise rethrow.
       if (attempt < maxRetries) {
         lastErr = err;
