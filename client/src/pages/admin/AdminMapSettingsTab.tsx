@@ -72,7 +72,10 @@ const DEFAULT_VALUES: MapSettings = {
   layer_beat_stroke_opacity: 0.6,
   layer_beat_stroke_weight: 1.2,
   layer_beat_min_zoom: 10,
-  layer_county_fill: 'var(--surface-base)',
+  // Mapbox paint properties don't resolve CSS variables — they need a literal
+  // color at parse time. The night-theme value of --surface-base goes here so
+  // a fresh install hits the same dark steel-blue the rest of the chrome uses.
+  layer_county_fill: '#0d1722',
   layer_county_fill_opacity: 0.15,
   layer_county_stroke: '#444444',
   layer_county_stroke_opacity: 0.5,
