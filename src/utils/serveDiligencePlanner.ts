@@ -259,3 +259,74 @@ export function applyUrgencyTier(
   if (days <= 5) return 'tight';
   return 'standard';
 }
+
+// ── Auto-replan after a failed attempt ───────────────────────────
+// Returns the NEXT AttemptWindow to schedule when an officer logs a failed
+// attempt (no_answer | refused | bad_address | moved). The new window:
+//   1. Starts ≥ 24 h after the failed attempt (no same-day retry)
+//   2. Uses a different time-of-day band than the failed attempt
+//   3. Respects deadline pressure — pulls closer when days_remaining is tight
+//   4. Respects business hours / location-note constraints via planAttemptWindows()
+//   5. Returns null if max_attempts is exhausted (caller marks status=failed)
+//
+// Implementation strategy: replan the FULL plan from `attempt_count + 1`'s
+// start time, then return the first window. This re-uses every existing
+// scheduling rule (weekend inclusion, business-hours, location-note) without
+// duplicating logic.
+export interface FailedAttemptCtx {
+  attempt_at: string;          // ISO timestamp of the failed attempt
+  result: string;              // 'no_answer' | 'refused' | 'bad_address' | 'moved'
+  window: string | null;       // e.g. '17:00–20:30' — the band that failed
+}
+
+export interface ReplanQueueCtx {
+  deadline: string | null;
+  max_attempts: number;
+  attempt_count: number;       // count BEFORE the failed attempt was recorded
+  recipient_lat: number | null;
+  recipient_lng: number | null;
+  isBusiness?: boolean;
+  locationNote?: PlanOptions['locationNote'];
+}
+
+function failedBandKind(window: string | null): 'morning' | 'midday' | 'afternoon' | 'evening' | null {
+  if (!window) return null;
+  const startH = parseInt(window.split('–')[0]?.split(':')[0] ?? '', 10);
+  if (Number.isNaN(startH)) return null;
+  if (startH < 11) return 'morning';
+  if (startH < 14) return 'midday';
+  if (startH < 17) return 'afternoon';
+  return 'evening';
+}
+
+export function replanAfterFailedAttempt(
+  failed: FailedAttemptCtx,
+  queue: ReplanQueueCtx,
+  tz = 'America/Denver',
+): AttemptWindow | null {
+  // Already at max → caller transitions queue to status='failed'.
+  if (queue.attempt_count + 1 > queue.max_attempts) return null;
+
+  // Start re-planning ≥ 24 h after the failed attempt.
+  const replanStart = new Date(Date.parse(failed.attempt_at) + DAY_MS).toISOString();
+
+  const plan = planAttemptWindows(replanStart, queue.deadline, tz, {
+    isBusiness: queue.isBusiness ?? false,
+    locationNote: queue.locationNote ?? null,
+  });
+  if (!plan.length) return null;
+
+  // Diligence rule: vary time-of-day from the failed attempt.
+  // Under deadline pressure, date proximity beats band diversity: return the
+  // earliest available date even if the band repeats rather than slip a day.
+  const failedKind = failedBandKind(failed.window);
+  const days = daysUntilDeadline(replanStart, queue.deadline);
+  const isDeadlineTight = days !== null && days <= 4;
+
+  if (failedKind && !isDeadlineTight) {
+    // Normal (non-tight) path: prefer a different time-of-day band.
+    const differentBand = plan.find((w) => failedBandKind(w.window) !== failedKind);
+    if (differentBand) return { ...differentBand, attempt: queue.attempt_count + 1 };
+  }
+  return { ...plan[0], attempt: queue.attempt_count + 1 };
+}

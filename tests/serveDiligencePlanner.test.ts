@@ -5,6 +5,7 @@ import {
   daysUntilDeadline,
   clusterByProximity,
   applyUrgencyTier,
+  replanAfterFailedAttempt,
 } from '../src/utils/serveDiligencePlanner';
 
 // 2026-06-11 is a Thursday. 18:00 UTC = 12:00 in America/Denver (MDT).
@@ -117,5 +118,62 @@ describe('applyUrgencyTier', () => {
   });
   it('returns "critical" when the deadline is already past', () => {
     expect(applyUrgencyTier('2026-06-09', 0, 3, NOW)).toBe('critical');
+  });
+});
+
+describe('replanAfterFailedAttempt', () => {
+  const baseQueue = {
+    deadline: null as string | null,
+    max_attempts: 3,
+    attempt_count: 1,
+    recipient_lat: null as number | null,
+    recipient_lng: null as number | null,
+    isBusiness: false,
+    locationNote: null,
+  };
+
+  it('returns null when max_attempts is already exhausted', () => {
+    const failed = { attempt_at: '2026-06-11T18:00:00.000Z', result: 'no_answer', window: '17:00–20:30' };
+    expect(replanAfterFailedAttempt(failed, { ...baseQueue, attempt_count: 3 })).toBeNull();
+  });
+
+  it('schedules the next attempt at least 24 h after the failed attempt', () => {
+    const failed = { attempt_at: '2026-06-11T18:00:00.000Z', result: 'no_answer', window: '17:00–20:30' };
+    const next = replanAfterFailedAttempt(failed, baseQueue);
+    expect(next).not.toBeNull();
+    // Denver MDT: 2026-06-11 18:00 UTC = 12:00 local. +24h = 2026-06-12 12:00 local.
+    expect(next!.date >= '2026-06-12').toBe(true);
+  });
+
+  it('picks a different time-of-day band than the failed attempt (evening fail → morning/midday next)', () => {
+    const failed = { attempt_at: '2026-06-11T03:00:00.000Z', result: 'no_answer', window: '17:00–20:30' };
+    const next = replanAfterFailedAttempt(failed, baseQueue);
+    // failed window started 17:xx; next should start before 17:00
+    expect(next).not.toBeNull();
+    const startHour = parseInt(next!.window.split('–')[0].split(':')[0], 10);
+    expect(startHour).toBeLessThan(17);
+  });
+
+  it('picks a different time-of-day band when failed window was morning (next should be afternoon/evening)', () => {
+    const failed = { attempt_at: '2026-06-11T13:00:00.000Z', result: 'no_answer', window: '07:00–09:00' };
+    const next = replanAfterFailedAttempt(failed, baseQueue);
+    expect(next).not.toBeNull();
+    const startHour = parseInt(next!.window.split('–')[0].split(':')[0], 10);
+    expect(startHour).toBeGreaterThanOrEqual(11);
+  });
+
+  it('still returns a window for bad_address — caller flags skip-trace separately', () => {
+    const failed = { attempt_at: '2026-06-11T18:00:00.000Z', result: 'bad_address', window: '17:00–20:30' };
+    const next = replanAfterFailedAttempt(failed, baseQueue);
+    expect(next).not.toBeNull();
+  });
+
+  it('pulls the next attempt closer when deadline pressure is high', () => {
+    const failed = { attempt_at: '2026-06-11T18:00:00.000Z', result: 'no_answer', window: '17:00–20:30' };
+    const tight = { ...baseQueue, deadline: '2026-06-13', max_attempts: 5 };
+    const next = replanAfterFailedAttempt(failed, tight);
+    expect(next).not.toBeNull();
+    // With 2 days until deadline and 4 attempts remaining, next must be on 06-12 (tomorrow) not later.
+    expect(next!.date).toBe('2026-06-12');
   });
 });
