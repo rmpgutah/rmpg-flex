@@ -122,13 +122,51 @@ Existing RMPG columns (17, pre-PR-3): id, vehicle_id, fuel_date, gallons, total_
 
 ---
 
-## fleet_maintenance (deferred to PR 5)
+## work_orders (PR 5)
 
-PR 5 (`work-orders`) introduces a parallel `work_orders` subsystem and
-extends `fleet_maintenance` with 6 columns (`work_order_id`, `vmrs_*`,
-`attachments_json`, `custom_fields_json`). Those additions and their diff
-will be appended to this document by PR 5 — left as a forward-reference here
-so future readers know to look here for the canonical map.
+Introduced fresh by mig 0138. The full header schema is in the migration;
+the integration-relevant rows here document field ownership + priority for
+the bidirectional sync.
+
+| Column | Type | Default | Priority | Why |
+|---|---|---|---|---|
+| `vehicle_id` | INTEGER NOT NULL | — | must | RMPG-owned. The WO's parent row. |
+| `status` | TEXT NOT NULL | `'open'` | must | Shared. CHECK constraint mirrors Fleet.io's WO lifecycle (`open` / `in_progress` / `waiting_parts` / `completed` / `cancelled`). Transitions validated server-side. |
+| `number` | TEXT | NULL | should | Shared. Shop's WO number; either side may assign it first. |
+| `opened_at`, `closed_at` | TEXT | now / NULL | must | Shared. `closed_at` only stamped on the close transition. |
+| `summary` | TEXT | NULL | should | Shared. Short one-liner for the readiness board. |
+| `vendor_id` | INTEGER | NULL | should | Shared. Soft FK → `ref_vendors(id)` where `kind='shop'`. |
+| `category_code` | TEXT | NULL | should | RMPG-owned (RMPG's classification of internal vs external work). Soft FK → `ref_work_order_categories(code)`. |
+| `assigned_to_user_id` | INTEGER | NULL | should | RMPG-owned. Soft FK → `users(id)`. |
+| `est_cost`, `actual_cost` | REAL | NULL | must | Shared. `actual_cost` is rolled up server-side from line-item totals on the close transition. |
+| `odometer_at_open`, `odometer_at_close` | INTEGER | NULL | must | RMPG-owned (ClearPathGPS-fed). |
+| `vmrs_system_code`, `vmrs_assembly_code`, `vmrs_component_code` | TEXT | NULL | should | Shared. The WO header's VMRS coordinates; child line items can override per-row. |
+| `notes` | TEXT | NULL | should | Shared. |
+| `custom_fields_json` | TEXT | NULL | nice | Shared. Fleet.io custom-field passthrough (Phase 2 UI). |
+
+### work_order_line_items
+
+Per the spec, kinds are `labor` / `part` / `fee` with strict server-side
+math (`total = qty × unit_cost` when total is missing; preserved when
+both are supplied to support adjustment rows).
+
+### Fleet.io WO fields RMPG explicitly does NOT mirror
+
+| Fleet.io field | Why deferred |
+|---|---|
+| `service_reminders[]` | Fleet.io's PM-reminder engine remains the source of truth (PR 7's `next_service_*` fields on the vehicle row carry the computed dates). |
+| `purchase_order_id` | Phase 2 — no PO subsystem in RMPG yet. |
+
+## fleet_maintenance — PR 5 additions
+
+| Column | Type | Default | Priority | Why |
+|---|---|---|---|---|
+| `work_order_id` | INTEGER | NULL | must | Soft FK → `work_orders(id)`. Cross-link a maintenance entry to its formal WO. |
+| `vmrs_system_code`, `vmrs_assembly_code`, `vmrs_component_code` | TEXT | NULL | should | Same as the WO header's; lets non-WO maintenance entries carry VMRS too. |
+| `attachments_json` | TEXT | NULL | nice | Inline thumbnail list (UI shortcut). Authoritative attachment storage is `work_order_attachments`. |
+| `custom_fields_json` | TEXT | NULL | nice | Carry Fleet.io custom fields verbatim. UI deferred to Phase 2. |
+
+**Index added**: `idx_fleet_maintenance_wo` (partial `WHERE work_order_id IS NOT NULL`).
 
 ## vehicle_inspections (deferred to PR 6)
 
