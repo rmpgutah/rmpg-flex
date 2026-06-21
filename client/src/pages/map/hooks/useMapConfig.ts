@@ -129,7 +129,11 @@ const DEFAULT_MAP_SETTINGS: MapSettings = {
   layer_beat_stroke_opacity: 0.6,
   layer_beat_stroke_weight: 1.2,
   layer_beat_min_zoom: 10,
-  layer_county_fill: 'var(--surface-base)',
+  // Steel-blue tactical-dark surface (matches AdminMapSettingsTab + the night
+  // theme's --surface-base). Hardcoded hex: the map shell is .tactical-dark
+  // (always dark) so the layer doesn't re-theme; CSS var strings would crash
+  // mapbox.addLayer (`color expected, "var(--surface-base)" found`).
+  layer_county_fill: '#0d1722',
   layer_county_fill_opacity: 0.15,
   layer_county_stroke: '#444444',
   layer_county_stroke_opacity: 0.5,

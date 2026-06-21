@@ -124,7 +124,7 @@ import MultiStopRoutePanel, { type QueuedStop } from './components/MultiStopRout
 import MapExportMenu from './components/MapExportMenu';
 import { generateMapSituationReport } from '../../utils/mapSituationReportPdf';
 import { useAuth } from '../../context/AuthContext';
-import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource, upsertGeoJsonSource } from '../../utils/mapboxSafeLayer';
 import { applyRmpgBasemap, type BasemapVariant } from '../../utils/mapboxBasemap';
 
 // ============================================================
@@ -2776,26 +2776,29 @@ export default function MapPage() {
 
         // Create or update breadcrumb line source & layer via setData()
         // (same pattern as dots/arrows — avoids source-teardown blink).
+        // upsertGeoJsonSource is setStyle-race-safe: when the user switches
+        // basemap/theme the diff pipeline can preserve our source while our
+        // hasSource check sees it as absent — the helper swallows the
+        // resulting "already a source with ID" throw.
         const linesData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: lineFeatures };
         const existingLineSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, 'rmpg-breadcrumb-lines');
         if (existingLineSrc) {
           existingLineSrc.setData(linesData);
         } else if (lineFeatures.length > 0) {
           whenStyleReady(map, () => {
-            map.addSource('rmpg-breadcrumb-lines', {
-              type: 'geojson',
-              data: linesData,
-            });
-            map.addLayer({
-              id: 'rmpg-breadcrumb-lines',
-              type: 'line',
-              source: 'rmpg-breadcrumb-lines',
-              paint: {
-                'line-color': ['get', 'strokeColor'],
-                'line-opacity': ['get', 'strokeOpacity'],
-                'line-width': 3,
-              },
-            });
+            upsertGeoJsonSource(map, 'rmpg-breadcrumb-lines', linesData);
+            if (!hasLayer(map, 'rmpg-breadcrumb-lines')) {
+              map.addLayer({
+                id: 'rmpg-breadcrumb-lines',
+                type: 'line',
+                source: 'rmpg-breadcrumb-lines',
+                paint: {
+                  'line-color': ['get', 'strokeColor'],
+                  'line-opacity': ['get', 'strokeOpacity'],
+                  'line-width': 3,
+                },
+              });
+            }
           });
         }
 
@@ -2808,14 +2811,12 @@ export default function MapPage() {
           existingDotSrc.setData(dotsData);
         } else {
           whenStyleReady(map, () => {
-            // Re-check inside the deferred callback — two back-to-back refreshes
-            // both see "no source yet" and both schedule an addSource(); without
-            // this guard the second one throws
-            //   `There is already a source with ID "rmpg-breadcrumb-dots"`.
-            // Mirrors the ARROWS_SOURCE block below that already does this.
-            if (!hasSource(map, DOTS_SOURCE_ID)) {
-              map.addSource(DOTS_SOURCE_ID, { type: 'geojson', data: dotsData });
-            }
+            // upsertGeoJsonSource handles BOTH the two-back-to-back-refresh
+            // race AND the setStyle diff-preservation race (the original
+            // guard `if (!hasSource(...)) addSource(...)` was only safe for
+            // the first; setStyle can transiently hide the source from
+            // getSource while mapbox's diff has already preserved it).
+            upsertGeoJsonSource(map, DOTS_SOURCE_ID, dotsData);
             if (!hasLayer(map, DOTS_LAYER_ID)) {
               map.addLayer({
                 id: DOTS_LAYER_ID,
@@ -2861,7 +2862,7 @@ export default function MapPage() {
                 map.addImage(ARROW_IMAGE_ID, ctx.getImageData(0, 0, S, S), { sdf: true });
               }
             }
-            if (!hasSource(map, ARROWS_SOURCE_ID)) map.addSource(ARROWS_SOURCE_ID, { type: 'geojson', data: arrowsData });
+            upsertGeoJsonSource(map, ARROWS_SOURCE_ID, arrowsData);
             if (!hasLayer(map, ARROWS_LAYER_ID)) {
               map.addLayer({
                 id: ARROWS_LAYER_ID,
