@@ -57,6 +57,7 @@ import AdminTrainingTab from './admin/AdminTrainingTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
 import AdminCloudflareTab from './admin/AdminCloudflareTab';
 import { AdminFleetV2HealthTab } from './admin/AdminFleetV2HealthTab';
+import AdminFleetioHealthTab from './admin/AdminFleetioHealthTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
 import AdminWarrantScrapersTab from './admin/AdminWarrantScrapersTab';
@@ -234,7 +235,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleet_v2_health';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleet_v2_health' | 'fleetio_health';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -248,7 +249,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleet_v2_health'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleet_v2_health', 'fleetio_health'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -709,6 +710,7 @@ export default function AdminPage() {
         { id: 'audit', label: 'Audit Log', icon: ScrollText },
         { id: 'iped', label: 'IPED', icon: ClipboardList },
         { id: 'fleet_v2_health', label: 'Fleet V2 Health', icon: Activity },
+        { id: 'fleetio_health', label: 'Fleet.io Health', icon: Activity },
       ],
     },
     {
@@ -971,6 +973,10 @@ export default function AdminPage() {
 
         {activeTab === 'fleet_v2_health' && (
           <AdminFleetV2HealthTab />
+        )}
+
+        {activeTab === 'fleetio_health' && (
+          <AdminFleetioHealthTab />
         )}
 
         {activeTab === 'clearpathgps' && (
