@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../../../hooks/useApi';
+import { safeDateTimeStr } from '../../../../utils/dateUtils';
 
 interface AuditRow {
   id: number;
@@ -32,7 +33,7 @@ export function ActivityTab({ vehicleId }: { vehicleId: number }) {
           <li key={r.id} className="border border-rmpg-700 bg-surface-raised rounded-sm px-3 py-2 text-[11px]">
             <div className="flex items-baseline justify-between">
               <span className="font-semibold text-rmpg-100">{r.action}</span>
-              <time className="text-rmpg-400">{new Date(r.created_at).toLocaleString()}</time>
+              <time className="text-rmpg-400">{safeDateTimeStr(r.created_at)}</time>
             </div>
             {r.details ? (
               <pre className="mt-1 text-[10px] text-rmpg-400 whitespace-pre-wrap break-words font-mono">{tryFormatJson(r.details)}</pre>
