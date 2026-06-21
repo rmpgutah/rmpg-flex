@@ -457,7 +457,10 @@ export default function DashCamDetailPage() {
           type: 'line',
           source: 'gps-track',
           paint: {
-            'line-color': 'var(--text-muted)',
+            // Night-theme literal for --text-muted (#8fa3b8). Mapbox paint
+            // properties don't resolve CSS variables — the layer fails to
+            // add at all if we pass one, so we use the literal here.
+            'line-color': '#8fa3b8',
             'line-opacity': 0.5,
             'line-width': 2,
           },

@@ -158,8 +158,13 @@ export const navThemePresets = {
     // Layer-type → paint props to push toward black.
     background: '#0a0a0a',
     fill: '#101010',
-    water: 'var(--surface-overlay)',
-    road: 'var(--surface-raised)',
+    // Mapbox paint properties don't resolve CSS variables — these had been
+    // silently swallowed by safeSet's try/catch, leaving water + road at
+    // their stock basemap colors. Use the night-theme literals for
+    // --surface-overlay (#060b10) and --surface-raised (#15212e) so the
+    // basemap actually re-skins to RMPG steel-blue.
+    water: '#060b10',
+    road: '#15212e',
     text: '#888888',
     textHalo: '#000000',
   },
