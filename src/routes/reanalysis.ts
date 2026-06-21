@@ -239,11 +239,17 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
         }));
         await c.env.ANALYTICS.send(events);
         nextSightings = batch[batch.length - 1].id;
+        // If this UPDATE fails (e.g., schema drift on analytics_replayed_at),
+        // we MUST not swallow it: events already landed in Iceberg but the
+        // cursor never advances → next /replay duplicates the batch. Let the
+        // outer try/catch (line 207/443) mark job_runs.status='failed' + 500
+        // so the operator retries after fixing root cause instead of corrupting
+        // the dataset on every subsequent admin click.
         await execute(db,
           `UPDATE vehicle_sightings SET analytics_replayed_at=datetime('now')
            WHERE id > ? AND id <= ? AND analytics_replayed_at IS NULL`,
           curSightings, nextSightings,
-        ).catch(() => {});
+        );
         replayed += batch.length;
       }
     }
@@ -257,11 +263,13 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
     ) => {
       if (!events.length || !c.env.EVENTS) return;
       await c.env.EVENTS.send(events);
+      // See vehicle_sightings UPDATE above — swallowing this corrupts
+      // analytics by duplicating events on every subsequent replay.
       await execute(db,
         `UPDATE ${table} SET analytics_replayed_at=datetime('now')
          WHERE id > ? AND id <= ? AND analytics_replayed_at IS NULL`,
         fromCursor, lastId,
-      ).catch(() => {});
+      );
       replayed += events.length;
     };
 

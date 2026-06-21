@@ -1181,7 +1181,13 @@ si.get('/clients', async (c) => {
 });
 
 // ── GET /:id ────────────────────────────────────────────────
-si.get('/:id', async (c) => {
+// Param constrained to digits so literal single-segment GETs registered
+// later in this file (/routes, /export.csv, /map-items, /location-notes)
+// are not shadowed. Hono's SmartRouter falls back to the order-sensitive
+// TrieRouter on static-vs-param overlap; the {[0-9]+} regex narrows the
+// param-only branch to numeric ids. See properties.ts:43-45 for the
+// codebase's precedent fix for the same trap.
+si.get('/:id{[0-9]+}', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);

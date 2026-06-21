@@ -185,8 +185,43 @@ forensics.get('/', async (c) => {
   }
 });
 
-// GET /:id — single case (must come AFTER /stats since both are
-// at the route root — Hono matches static before parametric)
+// ── Static-literal single-segment routes that MUST be registered BEFORE /:id ──
+// Hono's SmartRouter falls back to the order-sensitive TrieRouter on the
+// static-vs-param overlap, so /:id (single-segment) would otherwise shadow
+// these with id='turnaround-times' / id='analysis-templates' and the
+// parseInt(id, 10) guard inside /:id would return 400 INVALID_ID. Same trap
+// is documented in src/routes/properties.ts:43-45. The originally-placed
+// blocks for these two handlers (formerly ~lines 817 + 855) have been
+// deleted below to avoid duplicate registration.
+forensics.get('/turnaround-times', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      // forensic_cases has no `completed_at` (that column lives on forensic_analyses);
+      // the completion column on this table is `completed_date`.
+      `SELECT case_type,
+              COUNT(*) AS total,
+              ROUND(AVG(CAST((julianday(COALESCE(completed_date, datetime('now'))) - julianday(created_at)) AS REAL)), 1) AS avg_days,
+              MIN(CAST((julianday(COALESCE(completed_date, datetime('now'))) - julianday(created_at)) AS REAL)) AS min_days,
+              MAX(CAST((julianday(COALESCE(completed_date, datetime('now'))) - julianday(created_at)) AS REAL)) AS max_days
+       FROM forensic_cases WHERE archived_at IS NULL
+       GROUP BY case_type ORDER BY avg_days DESC`);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+forensics.get('/analysis-templates', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      'SELECT * FROM forensic_analysis_templates WHERE active = 1 ORDER BY case_type, name');
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+// GET /:id — single case. MUST come AFTER every single-segment static literal
+// above (/stats, /turnaround-times, /analysis-templates) since Hono's
+// TrieRouter resolves overlapping static vs param routes in registration order.
 forensics.get('/:id', async (c) => {
   try {
     const db = getDb(c.env);
@@ -813,23 +848,10 @@ forensics.get('/export/csv', async (c) => {
 });
 
 // ── QC / reporting / planning endpoints (ForensicLabPage reads these) ──
-
-forensics.get('/turnaround-times', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db,
-      // forensic_cases has no `completed_at` (that column lives on forensic_analyses);
-      // the completion column on this table is `completed_date`.
-      `SELECT case_type,
-              COUNT(*) AS total,
-              ROUND(AVG(CAST((julianday(COALESCE(completed_date, datetime('now'))) - julianday(created_at)) AS REAL)), 1) AS avg_days,
-              MIN(CAST((julianday(COALESCE(completed_date, datetime('now'))) - julianday(created_at)) AS REAL)) AS min_days,
-              MAX(CAST((julianday(COALESCE(completed_date, datetime('now'))) - julianday(created_at)) AS REAL)) AS max_days
-       FROM forensic_cases WHERE archived_at IS NULL
-       GROUP BY case_type ORDER BY avg_days DESC`);
-    return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
-});
+// NOTE: /turnaround-times and /analysis-templates were originally here, but
+// the single-segment static literals were being shadowed by the /:id handler
+// registered earlier in the file. They have been moved to just before /:id —
+// see the comment block above the relocated handlers near line 188.
 
 forensics.get('/metrics/backlog', async (c) => {
   try {
@@ -852,14 +874,7 @@ forensics.get('/:id/qc-history', async (c) => {
   } catch { return c.json({ data: [] }); }
 });
 
-forensics.get('/analysis-templates', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db,
-      'SELECT * FROM forensic_analysis_templates WHERE active = 1 ORDER BY case_type, name');
-    return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
-});
+// /analysis-templates relocated to before /:id (see comment block near line 188).
 
 forensics.post('/:id/qc-check', async (c) => {
   try {

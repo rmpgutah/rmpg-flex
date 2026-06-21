@@ -434,7 +434,16 @@ drivingEvents.get('/:id/stream', async (c: Context<Env>): Promise<Response> => {
   if (ev?.cpg_device_id && ev?.cpg_media_timestamp) {
     const r2Key = `flexcam/events/${ev.cpg_device_id}/${ev.cpg_media_timestamp}.mp4`;
     try {
-      c.executionCtx.waitUntil(downloadClipToR2(c.env, accessUrl, r2Key, id));
+      c.executionCtx.waitUntil(
+        downloadClipToR2(c.env, accessUrl, r2Key, id).catch((err) => {
+          // Surface the failure in `wrangler tail` instead of silently dropping —
+          // R2 quota, ClearPath URL expiry, and D1 schema drift on clip_r2_key
+          // all manifest here and have no other observability.
+          console.error('drivingEvents downloadClipToR2 failed', {
+            eventId: id, r2Key, error: (err as Error)?.message,
+          });
+        }),
+      );
     } catch { /* executionCtx unavailable in tests */ }
   }
 
