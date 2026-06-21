@@ -9,7 +9,7 @@ import RichTextArea from '../components/RichTextArea';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
-  Search as SearchIcon, AlertTriangle, FileWarning, Users,
+  Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2,
 } from 'lucide-react';
 import AssignTab from './serve/AssignTab';
 import MyRunTab from './serve/MyRunTab';
@@ -410,6 +410,29 @@ export default function ServePage() {
     }
   }, [refreshJobs]);
 
+  const handleDeleteJob = useCallback(async (job: ServeJob) => {
+    const label = [job.recipient_name, job.case_number ? `(case ${job.case_number})` : null]
+      .filter(Boolean).join(' ') || `job #${job.id}`;
+    // eslint-disable-next-line no-alert
+    const ok = window.confirm(
+      `Delete process service job for ${label}?\n\n` +
+      `This permanently removes:\n` +
+      `  - the queue entry\n` +
+      `  - all logged attempts and skip-trace history\n` +
+      `  - any scheduled attempt windows on the calendar\n\n` +
+      `Cannot be undone.`,
+    );
+    if (!ok) return;
+    try {
+      await apiFetch(`/serve-intake/${job.id}`, { method: 'DELETE' });
+      setJobs((prev) => prev.filter((j) => j.id !== job.id));
+      setExpandedJobId((prev) => (prev === job.id ? null : prev));
+    } catch (e) {
+      // eslint-disable-next-line no-alert
+      alert(`Could not delete job: ${e instanceof Error ? e.message : 'unknown error'}`);
+    }
+  }, []);
+
   const handleAttemptSubmit = useCallback(async (data: ServeAttemptData) => {
     if (!attemptJob) return { dueDiligenceComplete: false, attemptNumber: 0, jobStatus: 'pending' };
     const result = await apiFetch<{
@@ -766,6 +789,7 @@ export default function ServePage() {
     const addr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
       .filter(Boolean).join(', ');
     const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived';
+    const canDelete = ['admin', 'manager'].includes(user?.role ?? '');
     return [
       m.action('Open / expand', () => setExpandedJobId(prev => prev === job.id ? null : job.id), { icon: <Eye size={12} /> }),
       m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> }),
@@ -778,6 +802,9 @@ export default function ServePage() {
       ...(addr ? [m.action('Navigate to address', () => handleNavigate(job.id), { icon: <Navigation size={12} /> })] : []),
       m.separator(),
       m.action('Flag bad address', () => handleFlagAddress(job.id), { icon: <AlertTriangle size={12} />, danger: true }),
+      ...(canDelete ? [
+        m.action('Delete job', () => handleDeleteJob(job), { icon: <Trash2 size={12} />, danger: true }),
+      ] : []),
     ];
   };
 
