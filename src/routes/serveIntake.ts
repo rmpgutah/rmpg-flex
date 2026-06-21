@@ -1116,6 +1116,39 @@ si.get('/', async (c) => {
   return c.json(rows);
 });
 
+// ── GET /queue — list serve_queue rows with filters ──────────
+si.get('/queue', async (c) => {
+  // Exposes recipient names + addresses + case numbers — gate to operations roles.
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
+  const officerParam = c.req.query('officer_id');
+  const statusParam = c.req.query('status') ?? 'pending,assigned';
+  const statuses = statusParam.split(',').map((s) => s.trim()).filter(Boolean);
+  if (!statuses.length) return c.json([]);
+  const placeholders = statuses.map(() => '?').join(',');
+
+  let officerClause = '';
+  const binds: unknown[] = [...statuses];
+  if (officerParam === 'null') officerClause = 'AND officer_id IS NULL';
+  else if (officerParam && /^\d+$/.test(officerParam)) {
+    officerClause = 'AND officer_id = ?';
+    binds.push(parseInt(officerParam, 10));
+  }
+
+  const rows = await query<any>(
+    db,
+    `SELECT id, recipient_name, case_number, deadline, urgency_tier, priority, document_type
+       FROM serve_queue
+      WHERE status IN (${placeholders}) ${officerClause}
+      ORDER BY (deadline IS NULL), deadline ASC, id ASC
+      LIMIT 200`,
+    ...binds,
+  );
+  return c.json(rows);
+});
+
 // ── GET /schedule — upcoming attempt windows (calendar feed) ─
 // Returns all pending/assigned/in_progress queue items' attempt windows
 // for the next 14 days, grouped by date. Used by the dashboard calendar.
@@ -1194,6 +1227,25 @@ si.get('/schedule', async (c) => {
     return { date, weekday: DAYS[dow], slots };
   });
   return c.json({ schedule, generated_at: now });
+});
+
+// ── GET /officers — minimal officer roster for the scheduler lanes ─
+// Returns active users in field-facing roles so dispatchers can render
+// the swim-lane view without needing /admin/users access.
+si.get('/officers', async (c) => {
+  // Lane labels for the scheduler — same operations roles that can see /queue.
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<{ id: number; name: string }>(
+    db,
+    `SELECT id, COALESCE(full_name, username, 'User ' || id) AS name
+       FROM users
+      WHERE status = 'active'
+        AND role IN ('officer','dispatcher','supervisor','manager','admin')
+      ORDER BY full_name, username`,
+  );
+  return c.json(rows);
 });
 
 // ── PATCH /schedule/:slotId — manual reschedule (drag-drop or full-page edit) ─
@@ -1331,6 +1383,69 @@ si.patch('/schedule/:slotId', async (c) => {
   );
 
   return c.json({ slot: updated });
+});
+
+// ── POST /schedule/rebalance — dry-run preview or apply ───────
+si.post('/schedule/rebalance', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+
+  const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
+
+  const body = await c.req.json<any>().catch(() => ({}));
+  const dry = body.dry_run !== false; // default true — preview unless explicitly set false
+
+  const { previewRangeRebalance } = await import('../utils/rebalancePreview');
+
+  const rows = await query<{
+    id: number; deadline: string | null; max_attempts: number;
+    attempt_count: number; priority: string; urgency_tier: string | null;
+  }>(
+    db,
+    `SELECT id, deadline, max_attempts, attempt_count, priority, urgency_tier
+       FROM serve_queue
+      WHERE status IN ('pending', 'assigned', 'in_progress', 'attempted')`,
+  );
+
+  const nowIso = new Date().toISOString();
+  const preview = previewRangeRebalance(rows, nowIso);
+
+  if (dry) {
+    return c.json({ dry_run: true, ...preview });
+  }
+
+  // Apply: one UPDATE per changed row. Low volume; in-loop is acceptable.
+  for (const change of preview.changes) {
+    const priorityClause = change.to_priority === 'rush' ? `, priority = 'rush'` : '';
+    await execute(
+      db,
+      `UPDATE serve_queue
+          SET urgency_tier = ?, urgency_computed_at = datetime('now') ${priorityClause}
+        WHERE id = ?`,
+      change.to_tier, change.queue_id,
+    );
+  }
+
+  await recordAudit(c, {
+    action: 'serve_schedule.rebalance_applied',
+    entityType: 'serve_queue',
+    entityId: null,
+    details: {
+      changes: preview.changes.length,
+      tiers_promoted_critical: preview.tiers_promoted_critical,
+      priority_escalated: preview.priority_escalated,
+    },
+  });
+
+  broadcastAll('data_changed', {
+    module: 'serve-schedule',
+    entity: 'queue',
+    action: 'rebalanced',
+    count: preview.changes.length,
+  });
+
+  return c.json({ dry_run: false, ...preview });
 });
 
 // ── DELETE /schedule/:slotId — dismiss a slot ────────────────
