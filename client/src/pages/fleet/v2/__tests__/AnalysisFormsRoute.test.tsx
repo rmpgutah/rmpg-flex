@@ -8,6 +8,6 @@ describe('<AnalysisFormsRoute>', () => {
     render(<MemoryRouter><AnalysisFormsRoute /></MemoryRouter>);
     expect(screen.getByRole('heading', { name: /custom analysis forms/i })).toBeInTheDocument();
     const link = screen.getByRole('link', { name: /open analysis forms in v1/i }) as HTMLAnchorElement;
-    expect(link.pathname).toBe('/fleet');
+    expect(link.pathname).toBe('/fleet-legacy');
   });
 });
