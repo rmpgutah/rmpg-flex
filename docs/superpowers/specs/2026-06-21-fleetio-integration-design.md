@@ -86,15 +86,17 @@ Additionally, RMPG ships **richer visualizations and dashboards than Fleet.io's 
 
 ### Migrations
 
-| File | Contents |
-|---|---|
-| `0130_fleetio_sync_tables.sql` | `fleetio_links`, `fleetio_events`, `fleetio_conflicts`, `fleetio_sync_state` |
-| `0131_fleet_vehicles_extend.sql` | +13 columns on `fleet_vehicles` |
-| `0132_fleet_fuel_extend.sql` | +8 columns on `fleet_fuel_log` |
-| `0133_work_orders.sql` | `work_orders`, `work_order_line_items`, `work_order_attachments`, `work_order_comments` + 6 columns on `fleet_maintenance` |
-| `0134_inspection_templates.sql` | `inspection_templates` + 3 columns on `vehicle_inspections` |
-| `0135_ref_tables.sql` | ~22 ref tables + 5 xref tables + 1 cache table (DDL only) |
-| `0136_ref_seed.sql` | Static seed data (states, colors, fuel types, units, VMRS catalogue) |
+Migrations are renumbered to land after the current high-water `0132` (collisions with `0130_serve_attempt_schedules.sql`, `0131_serve_location_notes.sql`, `0132_serve_queue_business_id.sql` made the original numbering unsafe). Each PR's plan will pick the next-free integer at authoring time in case more land in main first.
+
+| File | Contents | PR |
+|---|---|---|
+| `0133_fleetio_sync_tables.sql` | `fleetio_links`, `fleetio_events`, `fleetio_conflicts`, `fleetio_sync_state` | 1 |
+| `0134_ref_tables.sql` | ~22 ref tables + 5 xref tables + 1 cache table (DDL only) | 2 |
+| `0135_ref_seed.sql` | Static seed data (states, colors, fuel types, units, VMRS catalogue) | 2 |
+| `0136_fleet_vehicles_extend.sql` | +13 columns on `fleet_vehicles` | 3 |
+| `0137_fleet_fuel_extend.sql` | +8 columns on `fleet_fuel_log` | 3 |
+| `0138_work_orders.sql` | `work_orders`, `work_order_line_items`, `work_order_attachments`, `work_order_comments` + 6 columns on `fleet_maintenance` | 5 |
+| `0139_inspection_templates.sql` | `inspection_templates` + 3 columns on `vehicle_inspections` | 6 |
 
 Per `[[project-d1-schema-drift-audit]]` memory: **every migration must be applied directly to live D1 `785de7ae` after merge and verified via `pragma_table_info`** — `deploy.yml`'s `continue-on-error: true` on the migration step means the deploy log alone is not authoritative.
 
@@ -451,12 +453,12 @@ crons = ["*/30 * * * *"]   # Fleet.io reconciliation, every 30 min
 
 | PR | Title | Ships |
 |---|---|---|
-| **1** | `feat(fleetio): adapter + seed + admin connect` | `client.ts`, types, `/api/fleetio/test-connection`, `/api/fleetio/seed` (admin), wrangler secrets/cron, mig `0130`, vitest harness |
-| **2** | `feat(fleet-ref): cross-reference DB + VIN decoder + seed` | Migs `0135`+`0136`, NHTSA decoder util + cache, ref-table CRUD routes, `/admin/reference-data` + `/admin/vmrs-browser` + `/admin/vendors` skeletons, monthly NHTSA cron |
-| **3** | `feat(fleet): schema parity push (vehicles + fuel)` | Migs `0131`+`0132`, extended vehicle/fuel forms with "Advanced" sections backed by ref tables, `emitFleetioEvent` wired, **schema-diff report committed** at `docs/superpowers/specs/2026-06-21-fleetio-schema-diff.md` |
+| **1** | `feat(fleetio): adapter + seed + admin connect` | `client.ts`, types, `/api/fleetio/test-connection`, `/api/fleetio/seed` (admin), wrangler secrets/cron, mig `0133`, vitest harness |
+| **2** | `feat(fleet-ref): cross-reference DB + VIN decoder + seed` | Migs `0134`+`0135`, NHTSA decoder util + cache, ref-table CRUD routes, `/admin/reference-data` + `/admin/vmrs-browser` + `/admin/vendors` skeletons, monthly NHTSA cron |
+| **3** | `feat(fleet): schema parity push (vehicles + fuel)` | Migs `0136`+`0137`, extended vehicle/fuel forms with "Advanced" sections backed by ref tables, `emitFleetioEvent` wired, **schema-diff report committed** at `docs/superpowers/specs/2026-06-21-fleetio-schema-diff.md` |
 | **4** | `feat(fleetio): bidirectional sync + conflicts UI + Miniflare harness` | `/api/fleetio/webhook` (HMAC), `sync.ts`, `ownership.ts`, reconciliation cron, inline conflict badge component, Miniflare set up for `/src/` tests |
-| **5** | `feat(work-orders): full lifecycle subsystem` | Mig `0133`, `/api/work-orders/*` CRUD, list/detail/edit pages, WO sync wired |
-| **6** | `feat(inspections): templates + per-item photos + auto-issue` | Mig `0134`, template builder (admin), QR pre-trip uses templates, per-item photos, fail → auto-create issue + outbound emit |
+| **5** | `feat(work-orders): full lifecycle subsystem` | Mig `0138`, `/api/work-orders/*` CRUD, list/detail/edit pages, WO sync wired |
+| **6** | `feat(inspections): templates + per-item photos + auto-issue` | Mig `0139`, template builder (admin), QR pre-trip uses templates, per-item photos, fail → auto-create issue + outbound emit |
 | **7** | `feat(fleet-dashboard): foundations + V4 + V8` | F1 KPI ribbon, F2 vehicle dossier, F3 readiness board, V4 cost-per-mile, V8 upcoming PM list, `/api/fleet-viz/*` aggregates |
 | **8** | `feat(fleet-viz): moats — Map + MPG + anomalies + calls/gallon` | V1 Fleet Map, V3 MPG-by-officer, V6 fuel anomaly heatmap, V7 calls-per-gallon |
 | **9** | `feat(fleet-viz): PM timeline + WO Sankey` | V2 PM Gantt, V5 work-order Sankey, saved-view persistence |
