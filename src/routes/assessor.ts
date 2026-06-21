@@ -25,6 +25,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, columnExists, ensureAssessorColumns } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
+import { requireRole } from '../middleware/auth';
 import {
   cacheKeyParcels, cacheKeyParcel, getCached, putCached,
 } from '../utils/sl-assessor/cache';
@@ -190,6 +191,126 @@ app.post('/apply', async (c) => {
   });
 
   return c.json({ ok: true, patch, skipped, parcel_record_id: pr?.id ?? null });
+});
+
+// ============================================================
+// Backfill queue surface
+// ============================================================
+// Sweeps every business + property that has an address but no parcel_number
+// onto the assessor_backfill_jobs queue. A separate worker (Task 8/9) drains
+// the queue. The status endpoint feeds the UI banner; the review-queue
+// endpoint feeds the ambiguous-match picker.
+//
+// Idempotency: `INSERT OR IGNORE` relies on the
+//   UNIQUE(record_type, record_id)
+// constraint declared in migration 0142 — re-enqueuing a row that is already
+// pending/applied/etc is a no-op and is counted as `already_pending`.
+//
+// Role gating: requireRole('admin','manager') is the codebase convention
+// (see src/routes/wallet.ts / alpr.ts / jailRoster.ts). The status endpoint
+// is intentionally unprivileged so any authenticated user's dashboard can
+// surface counts.
+
+/**
+ * POST /backfill { dryRun?, limit? }
+ * Enqueues every business + property that has an address but no parcel_number.
+ * Returns {queued, already_pending, total_target}. Audits the bulk action.
+ */
+app.post('/backfill', requireRole('admin', 'manager'), async (c) => {
+  const body = await c.req.json().catch(() => ({})) as { dryRun?: boolean; limit?: number };
+  const db = getDb(c.env);
+  await ensureAssessorColumns(db);
+
+  const limit = body.limit ?? 10000;
+  const businesses = await db.prepare(`
+    SELECT id FROM businesses
+    WHERE archived_at IS NULL AND address IS NOT NULL AND TRIM(address) <> ''
+      AND parcel_number IS NULL
+    LIMIT ?
+  `).bind(limit).all<{ id: number }>();
+  const properties = await db.prepare(`
+    SELECT id FROM properties
+    WHERE address IS NOT NULL AND TRIM(address) <> '' AND parcel_number IS NULL
+    LIMIT ?
+  `).bind(limit).all<{ id: number }>();
+
+  const total = (businesses.results?.length ?? 0) + (properties.results?.length ?? 0);
+  if (body.dryRun) return c.json({ queued: 0, total_target: total, dryRun: true });
+
+  let queued = 0;
+  for (const r of businesses.results ?? []) {
+    const res = await db.prepare(`
+      INSERT OR IGNORE INTO assessor_backfill_jobs (record_type, record_id, status)
+      VALUES ('business', ?, 'pending')
+    `).bind(r.id).run();
+    if (res.meta.changes) queued++;
+  }
+  for (const r of properties.results ?? []) {
+    const res = await db.prepare(`
+      INSERT OR IGNORE INTO assessor_backfill_jobs (record_type, record_id, status)
+      VALUES ('property', ?, 'pending')
+    `).bind(r.id).run();
+    if (res.meta.changes) queued++;
+  }
+
+  await recordAudit(c, {
+    action: 'ASSESSOR_BACKFILL_ENQUEUED',
+    entityType: 'system',
+    entityId: null,
+    details: { queued, total_target: total },
+  });
+
+  return c.json({ queued, already_pending: total - queued, total_target: total });
+});
+
+/**
+ * GET /backfill/status
+ * Returns a flat object with per-status counts plus `total`. Suitable for the
+ * UI banner. Open to all authenticated roles — no privileged data leaks.
+ */
+app.get('/backfill/status', async (c) => {
+  const db = getDb(c.env);
+  await ensureAssessorColumns(db);
+  const rows = await db.prepare(`
+    SELECT status, COUNT(*) as n FROM assessor_backfill_jobs GROUP BY status
+  `).all<{ status: string; n: number }>();
+  const out = { pending: 0, applied: 0, ambiguous: 0, no_match: 0, error: 0, unfetchable: 0, total: 0 };
+  for (const r of rows.results ?? []) {
+    (out as Record<string, number>)[r.status] = r.n;
+    out.total += r.n;
+  }
+  return c.json(out);
+});
+
+/**
+ * GET /review-queue
+ * Returns the most-recent ambiguous jobs (capped at 200) with the human-
+ * readable record label and the parsed parcel matches, ready for the picker
+ * UI. matches_json is decoded server-side so the client doesn't double-parse.
+ */
+app.get('/review-queue', requireRole('admin', 'manager'), async (c) => {
+  const db = getDb(c.env);
+  await ensureAssessorColumns(db);
+  const rows = await db.prepare(`
+    SELECT j.id, j.record_type, j.record_id, j.matches_json,
+           CASE j.record_type
+             WHEN 'business' THEN (SELECT name || ' (' || address || ')' FROM businesses WHERE id = j.record_id)
+             WHEN 'property' THEN (SELECT name || ' (' || address || ')' FROM properties WHERE id = j.record_id)
+           END AS record_label
+    FROM assessor_backfill_jobs j
+    WHERE j.status = 'ambiguous'
+    ORDER BY j.id DESC
+    LIMIT 200
+  `).all<{ id: number; record_type: string; record_id: number; matches_json: string; record_label: string }>();
+  return c.json({
+    rows: (rows.results ?? []).map((r) => ({
+      id: r.id,
+      record_type: r.record_type,
+      record_id: r.record_id,
+      record_label: r.record_label,
+      matches: JSON.parse(r.matches_json ?? '[]') as ParcelSummary[],
+    })),
+  });
 });
 
 export default app;
