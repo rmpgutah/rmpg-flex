@@ -59,27 +59,30 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
     const durS = c ? Math.max(0, Math.round((d.close.endTs - (epoch(c.start_time) ?? d.close.endTs)) / 1000)) : null;
     const avg = c && c.fix_count > 0 ? c.speed_sum / c.fix_count : null;
 
-    // Noise discard: a PATROL trip that accumulated <50m AND <180s is detector
-    // noise (idle-close right after a momentary speed spike, sweep-close on a
-    // single-fix trip). Delete it instead of closing — that's what produced
-    // the "0.0 mi · 0 m" rows that flooded the TRIPS drawer. CALL_RESPONSE
-    // trips are NEVER discarded; a 0-mile dispatch is real audit data.
-    // Idle-timeout / stale closures get checked too because those reasons can
-    // fire on a freshly-opened trip that never accumulated.
+    // Noise discard: a PATROL trip that accumulated < HALF_MILE_METERS is
+    // not real travel for audit / billing purposes — it's the parking-lot
+    // shuffle, an officer pulling forward 50ft between buildings, a single-
+    // fix sweep close, or a 4-hour parked-engine session that crossed the
+    // patrol detector's accel threshold once. Below 0.5 mi the GPS jitter
+    // budget can account for the entire "distance" with no actual travel.
     //
-    // Stricter zero-distance branch (added after the patrol mileage audit
-    // showed dozens of "92,957 → 92,957  0.0 mi" rows on prod): a closed
-    // PATROL trip that recorded zero or NULL distance is noise regardless of
-    // how long the timer ran — it's an officer parked with the engine on,
-    // not travel. Without this branch a 4-hour shift sitting at a checkpoint
-    // closes as a single 0-mile patrol trip and clutters every chain view.
+    // CALL_RESPONSE trips are NEVER discarded; a 0-mile dispatch is real
+    // audit data. Idle-timeout / stale closures get checked too because
+    // those reasons can fire on a freshly-opened trip that never moved.
+    //
+    // History of the threshold:
+    //   v1 (pre-2026-06-21): <50m AND <180s — let parked-engine 4-hour
+    //     sessions through as "0.0 mi" rows that cluttered the chain.
+    //   v2 (#1465): distance_m <= 0 OR (<50m AND <180s) — caught the
+    //     literal-zero case but missed 0.1-mi/0.3-mi micro-shuffles.
+    //   v3 (this change): distance_m <= HALF_MILE_METERS, unconditional
+    //     on duration. Operator request after seeing both classes of
+    //     noise side-by-side on the live Mileage Audit chain.
+    const HALF_MILE_METERS = 805; // 0.5 mi * 1609.344 / 1000, rounded
     const isNoise =
       c &&
       c.trip_type === 'patrol' &&
-      (
-        (c.distance_m == null || c.distance_m <= 0) ||
-        ((c.distance_m < 50) && (durS == null || durS < 180))
-      );
+      (c.distance_m == null || c.distance_m <= HALF_MILE_METERS);
 
     if (isNoise) {
       await execute(db, "DELETE FROM unit_trips WHERE id = ? AND status = 'active'", d.close.tripId);
