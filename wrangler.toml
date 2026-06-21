@@ -242,17 +242,25 @@ SERVER_TIMEZONE = "America/Denver"
 # Uncomment + set once provisioned; /api/analytics 503s until then. The bearer
 # token is the R2_SQL_TOKEN secret (set via `wrangler secret put`).
 # R2_ANALYTICS_WAREHOUSE = "<account_id>_rmpg-flex-analytics"
+# Fleet.io integration (PR 1+). Base URL of the Fleet.io REST API v1.
+# Override in dev/test via .dev.vars. Set FLEETIO_API_KEY, FLEETIO_ACCOUNT_TOKEN,
+# and FLEETIO_WEBHOOK_SECRET via `npx wrangler secret put <NAME>` (PR 4 adds the
+# webhook receiver that needs the third one).
+FLEETIO_API_BASE = "https://secure.fleetio.com/api/v1"
 
 # Secrets (set via `npx wrangler secret put`)
 # JWT_SECRET (already set)
 # GOOGLE_MAPS_API_KEY
+#  - FLEETIO_API_KEY         Fleet.io API key (Token-style; app.fleetio.com/settings/api_keys)
+#  - FLEETIO_ACCOUNT_TOKEN   Fleet.io Account-Token (per-account; same settings page)
+#  - FLEETIO_WEBHOOK_SECRET  Fleet.io webhook signing secret (PR 4; set when webhooks are wired)
 
 # Scheduled cron triggers.
 # Utah warrant smoke poll runs every 4h, matching the legacy server's
 # scheduleUtahWarrantSync interval. Workers cron uses UTC; "0 */4 * * *"
 # means every 4 hours on the hour (00:00, 04:00, 08:00, ... UTC).
 [triggers]
-crons = ["0 */4 * * *", "* * * * *"]
+crons = ["0 */4 * * *", "* * * * *", "*/30 * * * *"]
 
 # (Removed obsolete deleted_classes migration. The class is now properly
 # defined upstream (commit ccb3881b on main added src/durable-objects/

@@ -453,6 +453,22 @@ export default {
       );
       return;
     }
+    // Fleet.io reconciliation. Runs every 30 minutes; replays missed webhooks
+    // and retries failed outbound events. PR 1 ships a no-op stub so the cron
+    // wiring exists; PR 4 drops in the real handler in src/utils/fleetio/reconcile.ts.
+    if (event.cron === '*/30 * * * *') {
+      ctx.waitUntil(
+        (async () => {
+          try {
+            // PR 4: import('./utils/fleetio/reconcile').then(m => m.run(env));
+            console.log('[fleetio-reconcile] cron tick (stub — real handler lands in PR 4)');
+          } catch (err) {
+            console.error('[fleetio-reconcile] cron failed:', err);
+          }
+        })(),
+      );
+      return;
+    }
     ctx.waitUntil(
       runAllSourceScans(env.DB).catch((err) => {
         console.error('Multi-source warrant scheduled scan failed:', err);
