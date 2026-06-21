@@ -30,7 +30,12 @@ export interface JwtPayload {
 // flag weren't enough in prod). Matched by suffix so it holds regardless of the
 // router's mount prefix.
 function isPublicAuthBypass(pathname: string): boolean {
-  return pathname === '/api/email/oauth/callback' || pathname.endsWith('/oauth/callback');
+  // /api/fleetio/webhook — Fleet.io POSTs here without a JWT; the route
+  // itself verifies an HMAC SHA-256 signature against FLEETIO_WEBHOOK_SECRET
+  // before queueing the inbound event (see src/routes/fleetioWebhook.ts).
+  return pathname === '/api/email/oauth/callback'
+    || pathname.endsWith('/oauth/callback')
+    || pathname === '/api/fleetio/webhook';
 }
 
 // Media endpoints that browser tags fetch without headers. Auth for these

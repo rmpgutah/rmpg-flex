@@ -259,6 +259,51 @@ export async function createVehicle(input: CreateVehicleInput): Promise<FleetioV
   });
 }
 
+// ── PR 4 outbound dispatch — additional methods the sync engine calls ──
+
+export interface UpdateVehicleInput {
+  config: FleetioConfig;
+  fleetioId: number;
+  payload: Partial<FleetioVehicleCreatePayload> & Record<string, unknown>;
+  fetchImpl?: typeof fetch;
+}
+
+export async function updateVehicle(input: UpdateVehicleInput): Promise<FleetioVehicle> {
+  return fleetioFetch<FleetioVehicle>({
+    method: 'PATCH',
+    path: `/vehicles/${input.fleetioId}`,
+    config: input.config,
+    body: input.payload,
+    fetchImpl: input.fetchImpl,
+  });
+}
+
+export interface CreateFuelEntryInput {
+  config: FleetioConfig;
+  payload: Record<string, unknown>; // Fleet.io fuel_entries shape varies; pass through
+  fetchImpl?: typeof fetch;
+}
+
+export interface FleetioFuelEntry {
+  id: number;
+  vehicle_id: number;
+  date: string;
+  liters: number | null;
+  us_gallons: number | null;
+  cost: number | null;
+  [key: string]: unknown;
+}
+
+export async function createFuelEntry(input: CreateFuelEntryInput): Promise<FleetioFuelEntry> {
+  return fleetioFetch<FleetioFuelEntry>({
+    method: 'POST',
+    path: '/fuel_entries',
+    config: input.config,
+    body: input.payload,
+    fetchImpl: input.fetchImpl,
+  });
+}
+
 /** Helper for routes: build a FleetioConfig from the env bindings, throwing
  *  FleetioConfigError if either secret is unset. */
 export function configFromEnv(env: Record<string, unknown>): FleetioConfig {

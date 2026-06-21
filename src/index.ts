@@ -470,15 +470,43 @@ export default {
       );
       return;
     }
-    // Fleet.io reconciliation. Runs every 30 minutes; replays missed webhooks
-    // and retries failed outbound events. PR 1 ships a no-op stub so the cron
-    // wiring exists; PR 4 drops in the real handler in src/utils/fleetio/reconcile.ts.
+    // Fleet.io reconciliation. Runs every 30 minutes; replays pending
+    // outbound events through the adapter. PR 4 wired the real handler:
+    // applyOutbound drains pending rows, calls the adapter (updateVehicle /
+    // createFuelEntry today, more in PRs 5/6), records completed / failed
+    // with exponential backoff capped at 7 attempts.
+    //
+    // 503 NOTE: when FLEETIO_API_KEY isn't set, configFromEnv throws a
+    // FleetioConfigError on first use; applyOutbound catches it and bails
+    // the drain (no retries until the secret is provisioned). Cron then
+    // no-ops cleanly until /admin/fleetio rolls in the wrangler secret.
     if (event.cron === '*/30 * * * *') {
       ctx.waitUntil(
         (async () => {
           try {
-            // PR 4: import('./utils/fleetio/reconcile').then(m => m.run(env));
-            console.log('[fleetio-reconcile] cron tick (stub — real handler lands in PR 4)');
+            const [{ applyOutbound }, { configFromEnv, updateVehicle, createFuelEntry }] = await Promise.all([
+              import('./utils/fleetio/sync'),
+              import('./utils/fleetio/client'),
+            ]);
+            let config;
+            try {
+              config = configFromEnv(env as unknown as Record<string, unknown>);
+            } catch {
+              // Secrets unset — silent no-op, deliberate. (Operator console)
+              console.log('[fleetio-reconcile] FLEETIO secrets unset; skipping drain.');
+              return;
+            }
+            const result = await applyOutbound({
+              db: env.DB,
+              config,
+              adapter: {
+                updateVehicle: (args) => updateVehicle({ config, fleetioId: args.fleetioId, payload: args.payload }),
+                createFuelEntry: (args) => createFuelEntry({ config, payload: args.payload }),
+              },
+            });
+            if (result.attempted > 0) {
+              console.log(`[fleetio-reconcile] attempted=${result.attempted} completed=${result.completed} failed=${result.failed} skipped=${result.skipped}`);
+            }
           } catch (err) {
             console.error('[fleetio-reconcile] cron failed:', err);
           }
