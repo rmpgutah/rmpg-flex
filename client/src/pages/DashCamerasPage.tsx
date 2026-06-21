@@ -20,6 +20,7 @@ import ExportButton from '../components/ExportButton';
 import DashCamUploadModal from '../components/DashCamUploadModal';
 import DashCamVideoPlayer from '../components/DashCamVideoPlayer';
 import DeleteRecordModal from '../components/DeleteRecordModal';
+import { isEvidenceLocked, evidenceLockReason } from '../utils/evidenceLock';
 import DashCamVideoEditModal, { type DashCamVideoEditData } from '../components/DashCamVideoEditModal';
 import DashCamLinkModal from '../components/DashCamLinkModal';
 import { apiFetch } from '../hooks/useApi';
@@ -223,23 +224,31 @@ export default function DashCamerasPage() {
 
   const handleDelete = (id: number) => {
     const v = videos.find(x => x.id === id);
-    if (v) setVideoToDelete(v);
+    if (v) { setVideoToDelete(v); return; }
+    addToast('That video is no longer available — refreshing list', 'info');
+    fetchVideos();
   };
 
+  // Same reordering as BodyCamerasPage — clear modal state + report
+  // success BEFORE the refresh, so a refresh failure surfaces as a
+  // non-blocking info toast, not a false "Failed to delete".
   const confirmDelete = async () => {
     if (!videoToDelete) return;
+    const vidId = videoToDelete.id;
     setDeleting(true);
     try {
-      await apiFetch(`/fleet/dashcam-videos/${videoToDelete.id}`, { method: 'DELETE' });
-      addToast('Video deleted', 'success');
-      if (selectedVideo?.id === videoToDelete.id) setSelectedVideo(null);
-      setVideoToDelete(null);
-      fetchVideos();
+      await apiFetch(`/fleet/dashcam-videos/${vidId}`, { method: 'DELETE' });
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete video', 'error');
-    } finally {
       setDeleting(false);
+      return;
     }
+    if (selectedVideo?.id === vidId) setSelectedVideo(null);
+    setVideoToDelete(null);
+    setDeleting(false);
+    addToast('Video deleted', 'success');
+    try { await fetchVideos(); }
+    catch { addToast('Video list could not refresh — pull-to-refresh to retry', 'info'); }
   };
 
   const handleEditSave = async (videoId: number, data: DashCamVideoEditData) => {
@@ -950,12 +959,12 @@ export default function DashCamerasPage() {
             </>
           )
         }
-        evidenceLocked={!!(videoToDelete && (videoToDelete as any).retention_status && (videoToDelete as any).retention_status !== 'active')}
-        evidenceLockReason={
-          videoToDelete && (videoToDelete as any).retention_status && (videoToDelete as any).retention_status !== 'active'
-            ? `Video retention is "${(videoToDelete as any).retention_status}" — under hold. Release the hold before deleting.`
-            : undefined
-        }
+        // Positive hold-list check — see utils/evidenceLock.ts. Cast
+        // removed in the follow-up audit; DashCamVideo now declares
+        // retention_status?: VideoRetention so a future SELECT
+        // narrowing surfaces as a type error, not a silent guard fail.
+        evidenceLocked={isEvidenceLocked(videoToDelete?.retention_status)}
+        evidenceLockReason={evidenceLockReason(videoToDelete?.retention_status)}
         isDeleting={deleting}
       />
     </div>

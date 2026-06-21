@@ -16,6 +16,13 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   confirmVariant?: 'danger' | 'warning' | 'default';
   isLoading?: boolean;
+  /** Externally-driven disable signal — used by DeleteRecordModal's
+   *  evidence-lock guard to make the Confirm button visibly inert
+   *  instead of a silent no-op. The follow-up audit caught that the
+   *  v1009 lock pattern (no-op onConfirm with a styled-active button)
+   *  produced exactly the "thinks-deleted-but-didn't" failure mode
+   *  the original PR was meant to prevent. */
+  confirmDisabled?: boolean;
 }
 
 export default function ConfirmDialog({
@@ -29,6 +36,7 @@ export default function ConfirmDialog({
   cancelLabel = 'Cancel',
   confirmVariant = 'danger',
   isLoading = false,
+  confirmDisabled = false,
 }: ConfirmDialogProps) {
   const titleId = useId();
   const descId = useId();
@@ -128,7 +136,20 @@ export default function ConfirmDialog({
   const iconColor = confirmVariant === 'danger' ? 'text-red-400' : confirmVariant === 'warning' ? 'text-amber-400' : 'text-brand-400';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId} ref={dialogRef} onClick={onClose} style={{ touchAction: 'manipulation' }}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={descId}
+      ref={dialogRef}
+      // Per WAI-ARIA, alertdialog should require explicit acknowledgement
+      // — a backdrop click is too easy to fire by accident next to a
+      // destructive prompt. For danger we drop the click-to-dismiss; the
+      // X button, Cancel button, and Escape all still close.
+      onClick={confirmVariant === 'danger' ? undefined : onClose}
+      style={{ touchAction: 'manipulation' }}
+    >
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
       <div className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
         <div
@@ -157,9 +178,10 @@ export default function ConfirmDialog({
             <button
               type="button"
               onClick={onConfirm}
-              disabled={isLoading}
+              disabled={isLoading || confirmDisabled}
+              aria-disabled={isLoading || confirmDisabled}
               data-confirm-action="true"
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm transition-colors ${confirmClass} disabled:opacity-50`}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm transition-colors ${confirmClass} disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               {confirmLabel}

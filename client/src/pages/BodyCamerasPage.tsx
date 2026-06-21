@@ -21,6 +21,7 @@ import BodyCameraFormModal from './personnel/modals/BodyCameraFormModal';
 import type { BodyCameraFormData } from './personnel/modals/BodyCameraFormModal';
 import { mapBodyCamera, mapBodyCamVideo } from './personnel/utils/personnelMappers';
 import DeleteRecordModal from '../components/DeleteRecordModal';
+import { isEvidenceLocked, evidenceLockReason } from '../utils/evidenceLock';
 
 type ModalMode = 'none' | 'new_body_camera' | 'edit_body_camera' | 'upload_video';
 
@@ -150,44 +151,63 @@ export default function BodyCamerasPage() {
   const [videoToDelete, setVideoToDelete] = useState<BodyCamVideo | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Audit caught (2026-06-21 follow-up): the previous "find by id, if
+  // found set" was silently swallowing the click when a concurrent
+  // useLiveSync removed the row between render + click. Now we toast +
+  // refresh so the operator gets a model of what happened.
   const handleDelete = (camId: number) => {
     const cam = cameras.find(c => c.id === camId);
-    if (cam) setCameraToDelete(cam);
+    if (cam) { setCameraToDelete(cam); return; }
+    addToast('That camera is no longer available — refreshing list', 'info');
+    refreshBodyCameras();
   };
 
   const handleVideoDelete = (videoId: number) => {
     const v = videos.find(x => x.id === videoId);
-    if (v) setVideoToDelete(v);
+    if (v) { setVideoToDelete(v); return; }
+    addToast('That video is no longer available — refreshing list', 'info');
+    refreshBodyCameras();
   };
 
+  // Reordered post-delete flow: the v1009 sequence reported a refresh
+  // failure as a delete failure (false 'Failed to delete' toast on a
+  // row that IS gone, modal kept the just-deleted video on screen).
+  // Now the delete result is reported truthfully even when refresh
+  // fails; refresh failure surfaces as a non-blocking info toast.
   const confirmCameraDelete = async () => {
     if (!cameraToDelete) return;
+    const camId = cameraToDelete.id;
     setDeleting(true);
     try {
-      await apiFetch(`/personnel/body-cameras/${cameraToDelete.id}`, { method: 'DELETE' });
-      await refreshBodyCameras();
-      addToast('Body camera deleted', 'success');
-      setCameraToDelete(null);
+      await apiFetch(`/personnel/body-cameras/${camId}`, { method: 'DELETE' });
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete body camera', 'error');
-    } finally {
       setDeleting(false);
+      return;
     }
+    setCameraToDelete(null);
+    setDeleting(false);
+    addToast('Body camera deleted', 'success');
+    try { await refreshBodyCameras(); }
+    catch { addToast('Camera list could not refresh — pull-to-refresh to retry', 'info'); }
   };
 
   const confirmVideoDelete = async () => {
     if (!videoToDelete) return;
+    const vidId = videoToDelete.id;
     setDeleting(true);
     try {
-      await apiFetch(`/personnel/bodycam-videos/${videoToDelete.id}`, { method: 'DELETE' });
-      await refreshBodyCameras();
-      addToast('Video deleted', 'success');
-      setVideoToDelete(null);
+      await apiFetch(`/personnel/bodycam-videos/${vidId}`, { method: 'DELETE' });
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete video', 'error');
-    } finally {
       setDeleting(false);
+      return;
     }
+    setVideoToDelete(null);
+    setDeleting(false);
+    addToast('Video deleted', 'success');
+    try { await refreshBodyCameras(); }
+    catch { addToast('Video list could not refresh — pull-to-refresh to retry', 'info'); }
   };
 
   const openAdd = () => {
@@ -403,6 +423,20 @@ export default function BodyCamerasPage() {
             </>
           )
         }
+        // Cascade hold check — the server-side DELETE on a camera
+        // CASCADEs into bodycam_videos. The follow-up audit caught
+        // that a camera delete bypassed the per-video evidence-lock
+        // entirely. We block here whenever ANY video under the camera
+        // is on a hold; the server has the same check as backup.
+        evidenceLocked={
+          !!cameraToDelete
+          && videos.some(v => v.camera_id === cameraToDelete.id && isEvidenceLocked(v.retention_status))
+        }
+        evidenceLockReason={
+          cameraToDelete
+            ? `One or more videos assigned to this camera are under hold. Release the hold from the evidence custody page before retiring the camera.`
+            : undefined
+        }
         isDeleting={deleting}
       />
 
@@ -434,18 +468,11 @@ export default function BodyCamerasPage() {
             </>
           )
         }
-        // Evidence-lock signal: any non-"normal" retention_status indicates
-        // the video is under hold (court, IA, open case). Audit caught the
-        // bare `window.confirm` had no such guard.
-        evidenceLocked={
-          !!videoToDelete?.retention_status
-          && videoToDelete.retention_status !== 'active'
-        }
-        evidenceLockReason={
-          videoToDelete?.retention_status && videoToDelete.retention_status !== 'active'
-            ? `Video retention is "${videoToDelete.retention_status}" — under hold (court, IA review, or open case). Release the hold from the evidence custody page before deleting.`
-            : undefined
-        }
+        // Positive hold-list check — see utils/evidenceLock.ts. The
+        // prior negative check blocked LAWFUL retention-purge of
+        // 'expired' videos. Now only true legal/IA/court holds block.
+        evidenceLocked={isEvidenceLocked(videoToDelete?.retention_status)}
+        evidenceLockReason={evidenceLockReason(videoToDelete?.retention_status)}
         isDeleting={deleting}
       />
     </div>

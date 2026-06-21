@@ -42,15 +42,35 @@ async function ensureTable(db: ReturnType<typeof getDb>): Promise<void> {
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_evidence_sha ON evidence_manifests(sha256)`);
 }
 
+// Role allow-list for filing a manifest. Audit 2026-06-21 caught that
+// the previous version accepted manifests from ANY authenticated user
+// — client_viewer / human_resources / dispatcher / contract_manager
+// could forge entries with arbitrary sha256 / officer_name / badge /
+// case_ref, and the /verify endpoint then "verified" the forged hash.
+// Chain-of-custody is only meaningful if the filer holds the role to
+// be PRESENT at the evidence event.
+const EVIDENCE_FILE_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer']);
+
 // POST / — file a manifest.
 evidence.post('/', async (c): Promise<Response> => {
+  // Role gate. Reject before reading the body — we don't want to even
+  // parse user-controlled payloads when the caller has no business
+  // filing custody entries.
+  const user = c.get('user') as { id?: number; role?: string } | undefined;
+  if (!user || !user.role || !EVIDENCE_FILE_ROLES.has(user.role)) {
+    return c.json({ error: 'Insufficient role to file an evidence manifest' }, 403);
+  }
+
   const db = getDb(c.env);
   await ensureTable(db);
   const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
   const check = validateManifest(body);
   if (!check.ok) return c.json({ error: check.error }, 400);
 
-  const userId = (c.get('userId') as number | undefined) ?? null;
+  // officer_id is ALWAYS the authenticated user — never the body. The
+  // previous version trusted body.officer_id which let a forged
+  // manifest claim any officer was at the scene.
+  const userId = (c.get('userId') as number | undefined) ?? user.id ?? null;
   const year = new Date().getFullYear();
   const countRow = await queryFirst<{ n: number }>(
     db,

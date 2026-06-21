@@ -691,6 +691,85 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1010: Adversarial follow-up — fix the regressions PR #1476 introduced
+//        and ship the 8-finding next-bug-class audit at the same time.
+//
+//        PR #1476 REGRESSIONS:
+//        • DeleteRecordModal evidence-lock no-op button — looked active,
+//          did nothing on click, silent. Now uses a real `confirmDisabled`
+//          prop through ConfirmDialog → button gets disabled + aria-disabled
+//          + cursor-not-allowed. The real onConfirm stays in place so a
+//          buggy parent that forgets evidenceLocked doesn't silently swallow
+//          clicks.
+//        • Evidence-lock vocabulary mismatch — client treated 'expired' as
+//          locked, which BLOCKED the lawful retention-purge workflow the
+//          server explicitly enables. Replaced with a positive hold-list
+//          check (`utils/evidenceLock.ts`): only legal_hold/court_hold/
+//          litigation_hold/subpoena_hold/ia_review/open_case lock the row.
+//          'active', 'expired', 'archived', 'purged', 'pending_deletion',
+//          undefined, unknown all stay deletable.
+//        • Evidence-lock was CLIENT-ONLY → bypassable with one curl DELETE.
+//          Added the same hold-list check on the server side:
+//          - src/routes/personnel/bodyCameras.ts DELETE /:id (video) +
+//            DELETE / (camera, with cascade hold check)
+//          - src/routes/fleet.ts DELETE /dashcam-videos/:id
+//          All three now reject with 409 when the row is on hold AND
+//          emit recordAudit on successful destruction (the old code
+//          destroyed evidentiary footage with zero audit trail).
+//        • DashCamVideo.retention_status was accessed via `(v as any)` —
+//          a future SELECT narrowing would silently break the guard.
+//          retention_status?: VideoRetention is now in the type so future
+//          regressions surface as a typecheck error.
+//        • Post-delete sequencing — refresh-after-delete failure used to
+//          report a false "Failed to delete" toast on a row that IS gone.
+//          Reordered: report delete result truthfully first, refresh as a
+//          separate try/catch that reports refresh failure as a non-blocking
+//          info toast. BodyCamerasPage + DashCamerasPage both reordered.
+//        • alertdialog backdrop click-to-close — danger variant no longer
+//          dismisses on background click. Escape, Cancel, and X still work.
+//        • Stale-row click silently swallowed — handleDelete/handleVideoDelete
+//          now toast + refresh when the row is gone from local state.
+//
+//        NEW SECURITY/INTEGRITY FINDINGS (unrelated to PR #1476):
+//        • CRITICAL — Expense self-approval fraud surface in
+//          src/routes/billing.ts:325. PUT /expenses accepted approved_by
+//          + approved_at from the body, so an admin/manager could approve
+//          their OWN expense, stamp the CEO as approver, and then raise
+//          the amount AFTER the fake approval. Fixed:
+//          (a) approved_by/approved_at stripped from the updatable set;
+//              stamped server-side from the JWT on the approval transition.
+//          (b) Reject status='approved' when submitter_id = userId.
+//          (c) Once status ∈ {approved,paid,reimbursed}, amount/category/
+//              expense_date freeze (409 on edit).
+//          (d) recordAudit on expense_submitted + expense_approved.
+//        • CRITICAL — Evidence manifest forgery in src/routes/evidence.ts:46.
+//          Any authenticated user (including client_viewer + human_resources)
+//          could file a chain-of-custody manifest with arbitrary sha256 /
+//          officer_name / badge / case_ref, and /verify/:sha256 would then
+//          "verify" the forged hash. Now POST / requires
+//          admin/manager/supervisor/officer role, and officer_id is forced
+//          from the JWT (body-supplied officer_id is ignored).
+//        • MAJOR — Case DELETE wrote zero audit_log. Now records case_deleted
+//          with case_number + case_type + status BEFORE the cascade.
+//        • MAJOR — billing.ts has ~zero recordAudit calls (SOX gap). Wired
+//          recordAudit into payment_recorded, expense_submitted,
+//          expense_approved, expense_updated, invoice_updated, contract_created.
+//        • MINOR — Incident /approve route did not log to audit, while
+//          /return did. Now both log (approve is the more consequential
+//          transition).
+//        • MINOR — Payment amount validation: 'NaN <= 0 is false' for
+//          strings like '100abc' let malformed values through. Use
+//          Number.isFinite + positive check, bind the coerced number.
+//        • MINOR — Contract rate_amount validation: same pattern.
+//        • MINOR — Invoice PUT status: validate against
+//          {draft,sent,partial,paid,overdue,void,cancelled};
+//          status='paid' requires paid_amount >= total_amount.
+//
+//        Shared seam:
+//          • client/src/utils/evidenceLock.ts (20 vitests, all pass)
+//          • src/utils/evidenceLock.ts (mirror, same hold-list)
+//        Tests: all 1524 client tests pass; worker typecheck clean.
+//
 // v1009: Audit punch-list sweep — 21 findings from the v1008 forward-looking
 //        audit landed in one PR. Highlights:
 //
