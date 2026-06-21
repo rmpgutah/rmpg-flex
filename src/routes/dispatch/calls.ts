@@ -869,6 +869,12 @@ calls.delete('/:id', requireRole(...WRITE_ROLES), async (c) => {
     await execute(db, 'DELETE FROM call_persons WHERE call_id = ?', id);
     await execute(db, 'DELETE FROM call_vehicles WHERE call_id = ?', id);
     await execute(db, 'DELETE FROM calls_for_service WHERE id = ?', id);
+    // Broadcast so peer consoles drop the deleted call from their boards
+    // immediately (without this they keep showing it until the 20s
+    // cross-device poll refreshes). Mirrors the undo-redispatch path's
+    // call_deleted broadcast at line 1632; payload is just { id } because
+    // the row is gone and the client only needs the id to remove it.
+    try { await emitAlert(c.env, 'dispatch_update', { action: 'call_deleted', call: { id: Number(id) } }); } catch { /* never block the response */ }
     return c.json({ message: 'Call deleted' });
   } catch (err) {
     // Surface the real reason (FK name, missing table) instead of an opaque 500.
@@ -893,6 +899,22 @@ calls.delete('/:id', requireRole(...WRITE_ROLES), async (c) => {
 // objects). Best-effort: a sync failure never fails the call transition.
 const CALL_ENGAGED_STATUSES = new Set(['dispatched', 'enroute', 'onscene']);
 const CALL_TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived']);
+
+// Re-fetch the merged `calls_for_service` + `calls_for_service_ext` row so a
+// broadcast carries the same shape the GET surfaces (the client's mapDbCall
+// reads ext fields like held_at). The pattern was inlined at three sites
+// (hold, resume, assign-unit) — DRY'd here so every broadcast path matches.
+// Returns null if the call no longer exists (e.g. concurrent DELETE).
+async function mergedCallRow(
+  db: ReturnType<typeof getDb>,
+  id: string | number | undefined,
+): Promise<Record<string, unknown> | null> {
+  if (id == null || id === '') return null;
+  const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+  if (!row) return null;
+  const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+  return { ...row, ...(ext || {}) };
+}
 
 async function syncUnitsWithCallStatus(
   db: D1Database,
@@ -1167,6 +1189,10 @@ calls.post('/:id/unarchive', requireRole(...WRITE_ROLES), async (c) => {
     const db = getDb(c.env);
     const id = c.req.param('id');
     await execute(db, "UPDATE calls_for_service SET status = 'closed' WHERE id = ? AND status = 'archived'", id);
+    try {
+      const merged = await mergedCallRow(db, id);
+      if (merged) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged });
+    } catch { /* never block the response */ }
     return c.json({ message: 'Unarchived' });
   } catch (err) { return c.json({ error: 'Unarchive failed' }, 500); }
 });
@@ -1193,7 +1219,11 @@ calls.post('/:id/hold', requireRole(...WRITE_ROLES), async (c) => {
     // doesn't lose them after a hold operation.
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
-    return c.json({ ...(row || {}), ...(ext || {}) });
+    const merged = { ...(row || {}), ...(ext || {}) };
+    // Broadcast so the held badge appears on peer dispatchers' queues
+    // immediately (mapDbCall derives the synthetic 'on_hold' status from held_at).
+    try { if (row) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged }); } catch { /* never block the response */ }
+    return c.json(merged);
   } catch (err) {
     return c.json({ error: 'Hold failed' }, 500);
   }
@@ -1214,7 +1244,10 @@ calls.post('/:id/resume', requireRole(...WRITE_ROLES), async (c) => {
     // doesn't lose them after a resume operation.
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
-    return c.json({ ...(row || {}), ...(ext || {}), held_at: null });
+    const merged = { ...(row || {}), ...(ext || {}), held_at: null };
+    // Broadcast so peer queues drop the held badge immediately.
+    try { if (row) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged }); } catch { /* never block the response */ }
+    return c.json(merged);
   } catch (err) {
     return c.json({ error: 'Resume failed' }, 500);
   }
@@ -1252,15 +1285,16 @@ calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
     const unit = await queryFirst<{ id: number; current_call_id: number | null; call_sign: string | null }>(
       db, 'SELECT id, current_call_id, call_sign FROM units WHERE id = ?', unit_id);
     if (!unit) return c.json({ error: `Unit ${unit_id} does not exist`, code: 'UNIT_NOT_FOUND' }, 404);
-    if (unit.current_call_id != null && unit.current_call_id !== callId) {
+    const prevCallId = unit.current_call_id != null && unit.current_call_id !== callId ? unit.current_call_id : null;
+    if (prevCallId != null) {
       // Auto-unassign from old call so dispatchers can reassign in one step.
       try {
         const oldCall = await queryFirst<{ assigned_unit_ids: string }>(
-          db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', unit.current_call_id);
+          db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', prevCallId);
         if (oldCall) {
           const oldAssigned = parseUnitIds(oldCall.assigned_unit_ids).filter((u) => u !== Number(unit_id));
           await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?',
-            canonicalUnitIdsJson(oldAssigned), unit.current_call_id);
+            canonicalUnitIdsJson(oldAssigned), prevCallId);
         }
       } catch { /* best-effort — proceed with assignment even if old-call cleanup fails */ }
     }
@@ -1315,7 +1349,28 @@ calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
     // selected call with it — a partial response yields a blank-id corrupted
     // call that wipes the call out of the dispatch UI. Mirrors /dispatch,
     // /auto-assign, and /transfer, which all return the full row.
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const updated = await mergedCallRow(db, id);
+
+    // Broadcast so peer consoles update without waiting for the 20s cross-device
+    // poll. Two frames are required:
+    //   1. call_updated for the NEW call (this one) so its assigned_unit_ids
+    //      change reaches every dispatcher's call board immediately.
+    //   2. call_updated for the OLD call if the unit was reassigned from it
+    //      (otherwise Tab A keeps showing the unit on the old call for ~20s,
+    //      which causes coordination errors during fast-moving incidents).
+    //   3. unit_status_changed for the unit itself so the unit panel shows
+    //      it on the new call.
+    try {
+      if (updated) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
+      if (prevCallId != null) {
+        const oldUpdated = await mergedCallRow(db, prevCallId);
+        if (oldUpdated) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: oldUpdated });
+      }
+      await emitAlert(c.env, 'dispatch_update', {
+        action: 'unit_status_changed',
+        unit: { id: unit.id, call_sign: unit.call_sign, status: 'dispatched', current_call_id: callId },
+      });
+    } catch { /* never block the response */ }
     return c.json({ ...(updated || {}), premise_pushed });
   } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
 });
@@ -1355,7 +1410,20 @@ calls.post('/:id/unassign-unit', requireRole(...WRITE_ROLES), async (c) => {
     // Return the full updated call row — the client (handleUnassignUnit) runs it
     // through mapDbCall() and replaces the selected call; a bare {message}
     // corrupts the call to a blank-id object. Mirrors /assign-unit.
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const updated = await mergedCallRow(db, id);
+
+    // Broadcast: call_updated so peer dispatchers see the unit drop from this
+    // call, and unit_status_changed so the unit panel shows the unit free
+    // (status=available, current_call_id=null). Mirrors the syncUnitsWithCallStatus
+    // pattern at line 920-933 for terminal-status releases.
+    try {
+      const unitRow = await queryFirst<{ call_sign: string | null }>(db, 'SELECT call_sign FROM units WHERE id = ?', unit_id);
+      if (updated) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
+      await emitAlert(c.env, 'dispatch_update', {
+        action: 'unit_status_changed',
+        unit: { id: unit_id, call_sign: unitRow?.call_sign ?? null, status: 'available', current_call_id: null, current_call_number: null },
+      });
+    } catch { /* never block the response */ }
     return c.json(updated || {});
   } catch (err) { return c.json({ error: 'Unassign failed' }, 500); }
 });

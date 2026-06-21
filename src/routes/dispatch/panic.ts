@@ -143,6 +143,27 @@ panic.post('/panic', async (c) => {
   // SQL columns/CHECKs verified against live: priority IN ('P1'..'P4'),
   // source IN (...,'panic',...), units.status 'dispatched' all valid.
   let callId: number | null = body.call_id ?? null;
+  // ── Double-press dedupe (5s window) ──────────────────────────
+  // An officer who fat-fingers the panic button, or whose UI re-fires while a
+  // request is in flight, would otherwise spawn two P1 officer_assist calls
+  // for the same emergency — dispatch sees both and may roll two units to
+  // one event. Look up a fresh panic-sourced open call for the SAME officer
+  // (dispatcher_id is set to userId on line 158 below). A genuine second
+  // emergency from the same officer after 5s still creates its own call.
+  if (callId == null) {
+    try {
+      const recent = await queryFirst<{ id: number }>(
+        db,
+        `SELECT id FROM calls_for_service
+          WHERE source = 'panic' AND dispatcher_id = ?
+            AND created_at > datetime('now', '-5 seconds')
+            AND status IN ('dispatched','enroute','onscene')
+          ORDER BY created_at DESC LIMIT 1`,
+        userId,
+      );
+      if (recent) callId = Number(recent.id);
+    } catch { /* dedupe is best-effort; fall through to INSERT */ }
+  }
   if (callId == null) {
     try {
       const callNumber = `PAN-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
@@ -229,6 +250,20 @@ panic.post('/panic', async (c) => {
     panicId,
   ).catch(() => null);
 
+  // Audit — panic activation is the most consequential officer-safety event
+  // and must always leave a paper trail in audit_log + flex_events analytics.
+  // Wrapped: recordAudit() is already best-effort internally, but a transient
+  // D1 failure must not break the fan-out below.
+  try {
+    await recordAudit(c, {
+      action: 'panic_activated',
+      entityType: 'panic_alert',
+      entityId: panicId,
+      details: `Officer panic: ${officer?.full_name ?? 'Unknown'} (badge ${officer?.badge_number ?? 'N/A'}) via ${triggerMethod}${callId ? ` — call ${callId}` : ''}`,
+      actorId: userId,
+    });
+  } catch (err) { console.error('[panic] audit failed (non-fatal)', err); }
+
   // Everything below is best-effort fan-out. The panic row is already
   // committed; a failure here must NOT surface as a 500 to the officer
   // (they'd think the alert failed and re-fire / waste seconds). Wrap it.
@@ -273,6 +308,9 @@ panic.post('/panic/:id/acknowledge', async (c) => {
     userId, id,
   );
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
+  try {
+    await recordAudit(c, { action: 'panic_acknowledged', entityType: 'panic_alert', entityId: id, details: `Panic #${id} acknowledged`, actorId: userId });
+  } catch { /* audit is non-fatal */ }
   // Ack silences the agency-wide reminder (AlertHubDO stops nagging) but the
   // unit stays emergent until a terminal transition.
   await emitAlert(c.env, 'panic_alert', { action: 'panic_acknowledged', panic: updated });
@@ -295,6 +333,9 @@ panic.post('/panic/:id/resolve', async (c) => {
   );
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   await clearUnitEmergency(db, updated as Record<string, unknown> | null);
+  try {
+    await recordAudit(c, { action: 'panic_resolved', entityType: 'panic_alert', entityId: id, details: `Panic #${id} resolved${body.notes ? `: ${body.notes}` : ''}`, actorId: userId });
+  } catch { /* audit is non-fatal */ }
   await emitAlert(c.env, 'panic_alert', { action: 'panic_resolved', panic: updated });
   return c.json(updated);
 });
@@ -322,6 +363,9 @@ panic.post('/panic/:id/cancel', async (c) => {
   );
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   await clearUnitEmergency(db, updated as Record<string, unknown> | null);
+  try {
+    await recordAudit(c, { action: 'panic_cancelled', entityType: 'panic_alert', entityId: id, details: `Panic #${id} self-cancelled by originating officer`, actorId: userId });
+  } catch { /* audit is non-fatal */ }
   await emitAlert(c.env, 'panic_alert', { action: 'panic_cancelled', panic: updated });
   return c.json(updated);
 });
@@ -341,6 +385,9 @@ panic.post('/panic/:id/false-alarm', async (c) => {
   );
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   await clearUnitEmergency(db, updated as Record<string, unknown> | null);
+  try {
+    await recordAudit(c, { action: 'panic_false_alarm', entityType: 'panic_alert', entityId: id, details: `Panic #${id} marked false alarm by supervisor`, actorId: userId });
+  } catch { /* audit is non-fatal */ }
   await emitAlert(c.env, 'panic_alert', { action: 'panic_false_alarm', panic: updated });
   return c.json(updated);
 });

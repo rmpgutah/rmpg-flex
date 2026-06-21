@@ -429,6 +429,37 @@ duty.post('/end', async (c) => {
       try { if (fresh) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: fresh }); } catch { /* never break the write */ }
     }
 
+    // 3) Tear down any armed WelfareWatchDO for this officer. Without this,
+    // a watch armed on a P1/P2 onscene that never de-escalated will keep
+    // firing alarms against an off-duty officer (phantom escalations to
+    // supervisors, dispatcher distrust of the watch system). handleStop()
+    // is idempotent (setState(null) + deleteAlarm), so it's safe to fire
+    // unconditionally — but we only broadcast the auto-clear when the DO
+    // actually had state to clear, to avoid ghost dispatch_update frames
+    // on every shift-end. Best-effort: a DO failure must NEVER block the
+    // shift transition itself.
+    try {
+      const id = c.env.WELFARE_WATCH.idFromName(`u-${officerId}`);
+      const stub = c.env.WELFARE_WATCH.get(id);
+      const stateRes = await stub.fetch('https://do/state', { method: 'GET' });
+      const prev = await stateRes.json<{ stage?: number; idle?: boolean; call_sign?: string | null; call_number?: string | null }>().catch(() => ({} as any));
+      const wasArmed = prev && !prev.idle && (prev.stage ?? 0) >= 0 && (prev.call_sign != null || prev.call_number != null);
+      await stub.fetch('https://do/stop', { method: 'POST' });
+      if (wasArmed) {
+        try {
+          await emitAlert(c.env, 'dispatch_update', {
+            action: 'welfare_auto_cleared',
+            user_id: officerId,
+            call_sign: prev.call_sign ?? null,
+            call_number: prev.call_number ?? null,
+            reason: 'shift_end',
+          });
+        } catch { /* broadcast is non-fatal */ }
+      }
+    } catch (err) {
+      console.error('[duty/end] welfare DO teardown failed (non-fatal)', { officerId, err: (err as Error)?.message });
+    }
+
     return c.json(await stateFor(db, officerId), 200);
   } catch (err) {
     console.error('POST /dispatch/duty/end failed:', err);
