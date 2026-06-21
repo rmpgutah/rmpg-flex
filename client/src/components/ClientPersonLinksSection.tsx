@@ -415,7 +415,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="text-[9px] text-rmpg-400 uppercase font-semibold">Relationship</label>
+              <label htmlFor="ff-clientpersonlinkssection-1" className="text-[9px] text-rmpg-400 uppercase font-semibold">Relationship</label>
               <select id="ff-clientpersonlinkssection-1" className="select-dark mt-0.5 text-xs" value={relationship} onChange={(e) => setRelationship(e.target.value)}>
                 {RELATIONSHIP_OPTIONS.map((r) => (
                   <option key={r.value} value={r.value}>{r.label}</option>
@@ -423,7 +423,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
               </select>
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-400 uppercase font-semibold">Title / Role</label>
+              <label htmlFor="ff-clientpersonlinkssection-2" className="text-[9px] text-rmpg-400 uppercase font-semibold">Title / Role</label>
               <input id="ff-clientpersonlinkssection-2"
                 type="text"
                 className="input-dark mt-0.5 text-xs"
@@ -434,7 +434,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
             </div>
           </div>
           <div>
-            <label className="text-[9px] text-rmpg-400 uppercase font-semibold">Notes</label>
+            <label htmlFor="ff-clientpersonlinkssection-3" className="text-[9px] text-rmpg-400 uppercase font-semibold">Notes</label>
             <input id="ff-clientpersonlinkssection-3"
               type="text"
               className="input-dark mt-0.5 text-xs"
@@ -444,7 +444,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
             />
           </div>
           <div className="flex items-center justify-between">
-            <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+            <label htmlFor="ff-clientpersonlinkssection-4" className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
               <input id="ff-clientpersonlinkssection-4"
                 type="checkbox"
                 checked={isPrimary}

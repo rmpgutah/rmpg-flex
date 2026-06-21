@@ -121,11 +121,11 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
         <div className="panel-beveled p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Title *</label>
+              <label htmlFor="ff-documentstab-2" className="field-label">Title *</label>
               <input id="ff-documentstab-2" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="input-field w-full text-xs" placeholder="Document title" maxLength={200} />
             </div>
             <div>
-              <label className="field-label">Category</label>
+              <label htmlFor="ff-documentstab-3" className="field-label">Category</label>
               <select id="ff-documentstab-3" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="input-field w-full text-xs">
                 {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
               </select>

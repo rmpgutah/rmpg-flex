@@ -191,7 +191,7 @@ export default function ServeSkipTracePanel({
           {/* Search Section */}
           <div className="space-y-3">
             <div>
-              <label className="block text-[11px] text-rmpg-400 mb-1">Name</label>
+              <label htmlFor="ff-serveskiptracepanel-0" className="block text-[11px] text-rmpg-400 mb-1">Name</label>
               <input id="ff-serveskiptracepanel-0"
                 type="text"
                 value={searchName}
@@ -201,7 +201,7 @@ export default function ServeSkipTracePanel({
               />
             </div>
             <div>
-              <label className="block text-[11px] text-rmpg-400 mb-1">Address</label>
+              <label htmlFor="ff-serveskiptracepanel-1" className="block text-[11px] text-rmpg-400 mb-1">Address</label>
               <input id="ff-serveskiptracepanel-1"
                 type="text"
                 value={searchAddress}

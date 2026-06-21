@@ -1139,7 +1139,7 @@ const PatrolPage: React.FC = () => {
               <div className="panel-beveled p-4 mb-4 bg-[var(--surface-base)]">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                    <label htmlFor="ff-patrolpage-0" className="block text-sm font-medium text-rmpg-200 mb-1">
                       Checkpoint:
                     </label>
                     <select id="ff-patrolpage-0"
@@ -1158,7 +1158,7 @@ const PatrolPage: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                    <label htmlFor="ff-patrolpage-1" className="block text-sm font-medium text-rmpg-200 mb-1">
                       Start Date:
                     </label>
                     <input id="ff-patrolpage-1"
@@ -1171,7 +1171,7 @@ const PatrolPage: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                    <label htmlFor="ff-patrolpage-2" className="block text-sm font-medium text-rmpg-200 mb-1">
                       End Date:
                     </label>
                     <input id="ff-patrolpage-2"
@@ -1487,7 +1487,7 @@ const PatrolPage: React.FC = () => {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                <label htmlFor="ff-patrolpage-3" className="block text-sm font-medium text-rmpg-200 mb-1">
                   Property: *
                 </label>
                 <select id="ff-patrolpage-3"
@@ -1506,7 +1506,7 @@ const PatrolPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                <label htmlFor="ff-patrolpage-4" className="block text-sm font-medium text-rmpg-200 mb-1">
                   Checkpoint Name: *
                 </label>
                 <input id="ff-patrolpage-4"
@@ -1533,7 +1533,7 @@ const PatrolPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                <label htmlFor="ff-patrolpage-5" className="block text-sm font-medium text-rmpg-200 mb-1">
                   Scan Interval (minutes): *
                 </label>
                 <input id="ff-patrolpage-5"
@@ -1553,7 +1553,7 @@ const PatrolPage: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                  <label htmlFor="ff-patrolpage-6" className="block text-sm font-medium text-rmpg-200 mb-1">
                     Latitude:
                   </label>
                   <input id="ff-patrolpage-6"
@@ -1566,7 +1566,7 @@ const PatrolPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                  <label htmlFor="ff-patrolpage-7" className="block text-sm font-medium text-rmpg-200 mb-1">
                     Longitude:
                   </label>
                   <input id="ff-patrolpage-7"

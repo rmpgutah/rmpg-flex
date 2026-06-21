@@ -42,13 +42,13 @@ export default function ExportRangeDialog({ open, pageCount, onClose, onExport }
         <div className="text-[10px] text-rmpg-500 mb-3">Document has {pageCount} page{pageCount === 1 ? '' : 's'}. Choose a 1-indexed range to export as a new PDF.</div>
 
         <div className="flex items-center gap-2 mb-3">
-          <label className="text-[10px] text-rmpg-300 flex-1">
+          <label htmlFor="ff-exportrange-from" className="text-[10px] text-rmpg-300 flex-1">
             <span className="block text-[9px] uppercase tracking-wider text-rmpg-500 mb-0.5">From</span>
             <input id="ff-exportrange-from" type="number" min={1} max={pageCount} value={from}
               onChange={e => setFrom(parseInt(e.target.value, 10) || 1)}
               className="w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
           </label>
-          <label className="text-[10px] text-rmpg-300 flex-1">
+          <label htmlFor="ff-exportrange-to" className="text-[10px] text-rmpg-300 flex-1">
             <span className="block text-[9px] uppercase tracking-wider text-rmpg-500 mb-0.5">To</span>
             <input id="ff-exportrange-to" type="number" min={1} max={pageCount} value={to}
               onChange={e => setTo(parseInt(e.target.value, 10) || pageCount)}

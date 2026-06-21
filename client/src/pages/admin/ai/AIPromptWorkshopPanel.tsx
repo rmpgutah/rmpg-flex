@@ -173,7 +173,7 @@ export default function AIPromptWorkshopPanel() {
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-rmpg-400 mb-1 block">System Prompt</label>
+            <label htmlFor="ff-aipromptworkshoppanel-2" className="text-xs text-rmpg-400 mb-1 block">System Prompt</label>
             <RichTextArea
               rows={4}
               value={systemPrompt}
@@ -184,7 +184,7 @@ export default function AIPromptWorkshopPanel() {
           </div>
 
           <div>
-            <label className="text-xs text-rmpg-400 mb-1 block">User Message</label>
+            <label htmlFor="ff-aipromptworkshoppanel-1" className="text-xs text-rmpg-400 mb-1 block">User Message</label>
             <RichTextArea
               rows={3}
               value={userMessage}
@@ -196,7 +196,7 @@ export default function AIPromptWorkshopPanel() {
 
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <label className="text-[10px] text-rmpg-500">Temp override:</label>
+              <label htmlFor="ff-aipromptworkshoppanel-0" className="text-[10px] text-rmpg-500">Temp override:</label>
               <input id="ff-aipromptworkshoppanel-0"
                 type="range"
                 min={0} max={2} step={0.05}

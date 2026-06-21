@@ -2010,7 +2010,7 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileTextIcon className="w-3 h-3" /> Text</button>
           <button type="button" onClick={handleExportPng} title="Export the current page as a PNG image"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><ImageDownIcon className="w-3 h-3" /> PNG</button>
-          <label className="inline-flex items-center gap-1 px-1" title="PNG export resolution">
+          <label htmlFor="ff-pdfeditorpage-pngdpi" className="inline-flex items-center gap-1 px-1" title="PNG export resolution">
             <span className="text-[9px] uppercase tracking-wider text-rmpg-500">DPI</span>
             <select id="ff-pdfeditorpage-pngdpi" value={pngDpi} onChange={e => setPngDpi(parseInt(e.target.value, 10))}
               className="bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1 py-0.5 rounded-sm">
@@ -2024,7 +2024,7 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><RotateCwIcon className="w-3 h-3" /> Rotate{selectedPages.size > 0 ? ` (${selectedPages.size})` : ''}</button>
           <button type="button" onClick={cropAllToActive} title="Apply the current page's crop box to every page"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><CropIcon className="w-3 h-3" /> Crop all</button>
-          <label className="inline-flex items-center gap-1 px-1" title="Lock the Crop tool to a fixed aspect ratio">
+          <label htmlFor="ff-pdfeditorpage-cropar" className="inline-flex items-center gap-1 px-1" title="Lock the Crop tool to a fixed aspect ratio">
             <span className="text-[9px] uppercase tracking-wider text-rmpg-500">Crop AR</span>
             <select id="ff-pdfeditorpage-cropar" value={cropAspect} onChange={e => setCropAspect(parseFloat(e.target.value))}
               className={`bg-surface-sunken border text-[10px] px-1 py-0.5 rounded-sm ${cropAspect > 0 ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-rmpg-200'}`}>
@@ -2061,7 +2061,7 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><PenLine className="w-3 h-3" /> Initials</button>
           <button type="button" onClick={() => setTypedSigMode('quicksign')} title="Quick-sign: place signature + today's date + initials together"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileSignature className="w-3 h-3" /> Quick-sign</button>
-          <label className="inline-flex items-center gap-1 px-1" title="Category applied to new sticky notes">
+          <label htmlFor="ff-pdfeditorpage-stickycat" className="inline-flex items-center gap-1 px-1" title="Category applied to new sticky notes">
             <span className="text-[9px] uppercase tracking-wider text-rmpg-500">Note</span>
             <select id="ff-pdfeditorpage-stickycat" value={stickyCategory} onChange={e => setStickyCategory(e.target.value as StickyCategory)}
               className="bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1 py-0.5 rounded-sm">

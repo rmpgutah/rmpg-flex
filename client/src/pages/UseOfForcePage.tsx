@@ -324,14 +324,14 @@ export default function UseOfForcePage() {
             <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Force Type <span className="text-red-400">*</span></label>
+                  <label htmlFor="ff-useofforcepage-2" className="text-[10px] text-rmpg-400 uppercase font-semibold">Force Type <span className="text-red-400">*</span></label>
                   <select id="ff-useofforcepage-2" className="select-dark text-xs w-full mt-1" value={form.force_type} onChange={e => setForm(f => ({ ...f, force_type: e.target.value }))} required>
                     <option value="">-- Select --</option>
                     {FORCE_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ').toUpperCase()}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Force Level</label>
+                  <label htmlFor="ff-useofforcepage-3" className="text-[10px] text-rmpg-400 uppercase font-semibold">Force Level</label>
                   <select id="ff-useofforcepage-3" className="select-dark text-xs w-full mt-1" value={form.force_level} onChange={e => setForm(f => ({ ...f, force_level: e.target.value }))}>
                     <option value="">-- Select --</option>
                     {FORCE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
@@ -366,30 +366,30 @@ export default function UseOfForcePage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Subject Injuries</label>
+                  <label htmlFor="ff-useofforcepage-6" className="text-[10px] text-rmpg-400 uppercase font-semibold">Subject Injuries</label>
                   <input id="ff-useofforcepage-6" className="input-dark text-xs w-full mt-1" value={form.subject_injuries} onChange={e => setForm(f => ({ ...f, subject_injuries: e.target.value }))} placeholder="None, or describe" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Officer Injuries</label>
+                  <label htmlFor="ff-useofforcepage-7" className="text-[10px] text-rmpg-400 uppercase font-semibold">Officer Injuries</label>
                   <input id="ff-useofforcepage-7" className="input-dark text-xs w-full mt-1" value={form.officer_injuries} onChange={e => setForm(f => ({ ...f, officer_injuries: e.target.value }))} placeholder="None, or describe" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Weapons Used</label>
+                  <label htmlFor="ff-useofforcepage-8" className="text-[10px] text-rmpg-400 uppercase font-semibold">Weapons Used</label>
                   <input id="ff-useofforcepage-8" className="input-dark text-xs w-full mt-1" value={form.weapons_used} onChange={e => setForm(f => ({ ...f, weapons_used: e.target.value }))} placeholder="None, taser, firearm, etc." />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Witness Officers</label>
+                  <label htmlFor="ff-useofforcepage-9" className="text-[10px] text-rmpg-400 uppercase font-semibold">Witness Officers</label>
                   <input id="ff-useofforcepage-9" className="input-dark text-xs w-full mt-1" value={form.witness_officers} onChange={e => setForm(f => ({ ...f, witness_officers: e.target.value }))} placeholder="Comma-separated names" />
                 </div>
               </div>
               <div className="flex items-center gap-6">
-                <label className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
+                <label htmlFor="ff-useofforcepage-10" className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
                   <input id="ff-useofforcepage-10" type="checkbox" checked={form.de_escalation_attempted} onChange={e => setForm(f => ({ ...f, de_escalation_attempted: e.target.checked }))} className="w-4 h-4" />
                   De-escalation Attempted
                 </label>
-                <label className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
+                <label htmlFor="ff-useofforcepage-11" className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
                   <input id="ff-useofforcepage-11" type="checkbox" checked={form.body_camera_active} onChange={e => setForm(f => ({ ...f, body_camera_active: e.target.checked }))} className="w-4 h-4" />
                   Body Camera Active
                 </label>

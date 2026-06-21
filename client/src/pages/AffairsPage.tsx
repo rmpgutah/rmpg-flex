@@ -9,6 +9,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import type { ContextMenuItem } from '../context/ContextMenuContext';
 import { ShieldAlert, FileText, Clock, Flag, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
+import DeleteRecordModal from '../components/DeleteRecordModal';
 interface Complaint {
   id: number; complaint_number: string; complainant_name: string;
   complaint_type: string; status: string; subject_officer_name: string; created_at: string;
@@ -22,7 +23,8 @@ export default function AffairsPage() {
   const [editingRecord, setEditingRecord] = useState<Complaint | undefined>(undefined);
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Complaint | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
   const m = useMenuActions();
@@ -61,11 +63,13 @@ export default function AffairsPage() {
   };
 
   const handleDelete = async () => {
-    if (!deleteId) return;
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await apiFetch(`/affairs/complaints/${deleteId}`, { method: 'DELETE' });
-      setDeleteId(null); fetchData(); addToast('Complaint deleted', 'success');
-    } catch (err) { addToast(err instanceof Error ? err.message : 'Delete failed', 'error'); }
+      await apiFetch(`/affairs/complaints/${deleteTarget.id}`, { method: 'DELETE' });
+      setDeleteTarget(null); fetchData();
+      addToast('Complaint deleted', 'success');
+    } catch (err) { addToast(err instanceof Error ? err.message : 'Delete failed', 'error'); } finally { setDeleting(false); }
   };
 
   const columns = [
@@ -78,7 +82,7 @@ export default function AffairsPage() {
     { key: 'actions', label: '', width: '100px', render: (row: Complaint) => (
       <div className="flex gap-2">
         <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100"><Pencil size={12} /></button>
-        <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }} className="text-red-500 hover:text-red-300"><Trash2 size={12} /></button>
+        <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(row); }} className="text-red-500 hover:text-red-300"><Trash2 size={12} /></button>
       </div>
     )},
   ];
@@ -109,23 +113,29 @@ export default function AffairsPage() {
           m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
           m.separator(),
           m.copyId(row.id),
-          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+          m.action('Delete', () => setDeleteTarget(row), { danger: true, icon: <Trash2 size={12} /> }),
         ]}
       />
       <AffairsFormModal isOpen={formOpen} onClose={() => { setFormOpen(false); setEditingRecord(undefined); }}
         onSubmit={handleSubmit} isSubmitting={formSubmitting} editingRecord={editingRecord} submitError={formError} />
-      {deleteId !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setDeleteId(null)}>
-          <div className="bg-surface-raised border border-red-800 p-6 max-w-sm w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-red-400 mb-2">Delete Complaint</h3>
-            <p className="text-xs text-rmpg-400 mb-4">This permanently removes the complaint and all investigations.</p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setDeleteId(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
-              <button onClick={handleDelete} className="toolbar-btn toolbar-btn-primary px-4" style={{ height: 28, borderColor: '#991b1b', color: '#f87171' }}>Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteRecordModal
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        recordType="IA complaint"
+        recordLabel={deleteTarget?.complaint_number || deleteTarget?.complainant_name}
+        details={
+          deleteTarget && (
+            <>
+              {deleteTarget.complainant_name && <div>Complainant: {deleteTarget.complainant_name}</div>}
+              {deleteTarget.subject_officer_name && <div>Subject officer: {deleteTarget.subject_officer_name}</div>}
+              {deleteTarget.complaint_type && <div>Type: {deleteTarget.complaint_type}</div>}
+              <div className="text-amber-400 mt-1">Removes the complaint AND all investigations.</div>
+            </>
+          )
+        }
+        isDeleting={deleting}
+      />
     </div>
   );
 }

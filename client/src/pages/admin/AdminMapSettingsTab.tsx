@@ -196,7 +196,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
     label: string; value: number | string; onChange: (v: any) => void;
     type?: string; step?: string; min?: string; max?: string; suffix?: string;
   }) => (
-    <label className="flex items-center gap-2 text-[10px] text-rmpg-400">
+    <label htmlFor="ff-adminmapsettingstab-0" className="flex items-center gap-2 text-[10px] text-rmpg-400">
       <span className="w-28 shrink-0">{label}</span>
       <div className="flex items-center gap-1">
         <input id="ff-adminmapsettingstab-0"
@@ -266,7 +266,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
         <div className="panel-beveled bg-surface-base p-4 space-y-3">
           <SectionLabel icon={Palette} label="Map Styles" />
           <div className="space-y-2">
-            <label className="text-[10px] text-rmpg-400 block mb-1">Default Style</label>
+            <label htmlFor="ff-adminmapsettingstab-1" className="text-[10px] text-rmpg-400 block mb-1">Default Style</label>
             <select id="ff-adminmapsettingstab-1"
               value={settings.default_style}
               onChange={e => updateField('default_style', e.target.value)}
@@ -298,7 +298,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
             </div>
           </div>
           <div>
-            <label className="text-[10px] text-rmpg-400 block mb-1">Custom Style URL (optional, overrides default)</label>
+            <label htmlFor="ff-adminmapsettingstab-2" className="text-[10px] text-rmpg-400 block mb-1">Custom Style URL (optional, overrides default)</label>
             <input id="ff-adminmapsettingstab-2" type="text" value={settings.custom_style_url}
               onChange={e => updateField('custom_style_url', e.target.value)}
               placeholder="mapbox://styles/..." className="input-dark text-[10px] w-full min-h-[32px] font-mono"
@@ -350,12 +350,12 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
             <ToggleField label="Cross-Source Collisions" value={settings.cross_source_collisions} onChange={v => updateField('cross_source_collisions', v)} />
             <InlineInput label="Fade Duration (ms)" value={settings.fade_duration} onChange={v => updateField('fade_duration', v)} min="0" max="5000" suffix="ms" />
             <InlineInput label="Click Tolerance (px)" value={settings.click_tolerance} onChange={v => updateField('click_tolerance', v)} min="0" max="20" suffix="px" />
-            <label className="text-[10px] text-rmpg-400 block mt-2 mb-0.5">Language (BCP 47, e.g. 'es', 'fr')</label>
+            <label htmlFor="ff-adminmapsettingstab-3" className="text-[10px] text-rmpg-400 block mt-2 mb-0.5">Language (BCP 47, e.g. 'es', 'fr')</label>
             <input id="ff-adminmapsettingstab-3" type="text" value={settings.language}
               onChange={e => updateField('language', e.target.value)}
               placeholder="en" className="input-dark text-[10px] w-full min-h-[28px] font-mono"
             />
-            <label className="text-[10px] text-rmpg-400 block mt-2 mb-0.5">Local Ideograph Font Family</label>
+            <label htmlFor="ff-adminmapsettingstab-4" className="text-[10px] text-rmpg-400 block mt-2 mb-0.5">Local Ideograph Font Family</label>
             <input id="ff-adminmapsettingstab-4" type="text" value={settings.local_ideograph_font_family}
               onChange={e => updateField('local_ideograph_font_family', e.target.value)}
               placeholder="sans-serif" className="input-dark text-[10px] w-full min-h-[28px] font-mono"
@@ -445,7 +445,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
         <div className="panel-beveled bg-surface-base p-4 space-y-3">
           <SectionLabel icon={Save} label="Map Export & Screenshot" />
           <div className="space-y-2.5">
-            <label className="text-[10px] text-rmpg-400 block mb-1">Screenshot Map Style</label>
+            <label htmlFor="ff-adminmapsettingstab-5" className="text-[10px] text-rmpg-400 block mb-1">Screenshot Map Style</label>
             <select id="ff-adminmapsettingstab-5" value={settings.screenshot_style}
               onChange={e => updateField('screenshot_style', e.target.value)}
               className="input-dark text-[10px] w-full min-h-[32px]"
@@ -482,7 +482,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
 
 function ToggleField({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="flex items-center gap-2 text-[10px] text-rmpg-400 cursor-pointer">
+    <label htmlFor="ff-adminmapsettingstab-7" className="flex items-center gap-2 text-[10px] text-rmpg-400 cursor-pointer">
       <button type="button" role="switch" aria-checked={value}
         onClick={() => onChange(!value)}
         className={`w-7 h-4 rounded-sm flex items-center transition-colors px-[2px] ${
@@ -506,7 +506,7 @@ function CheckMini(props: React.SVGProps<SVGSVGElement>) {
 
 function ColorInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
-    <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
+    <label htmlFor="ff-adminmapsettingstab-6" className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
       <span className="w-14 shrink-0">{label}</span>
       <input id="ff-adminmapsettingstab-6" type="color" value={value} onChange={e => onChange(e.target.value)}
         className="w-6 h-6 p-0 border border-border-subtle bg-transparent cursor-pointer rounded-sm"
@@ -520,7 +520,7 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
 
 function OpacitySlider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
-    <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
+    <label htmlFor="ff-adminmapsettingstab-8" className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
       <span className="w-[72px] shrink-0">{label}</span>
       <input id="ff-adminmapsettingstab-8" type="range" min="0" max="1" step="0.01" value={value}
         onChange={e => onChange(parseFloat(e.target.value))}

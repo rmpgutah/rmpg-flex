@@ -1411,7 +1411,7 @@ export default function ServePage() {
         <div className="space-y-3">
           {/* Recipient */}
           <div>
-            <label className="block text-[11px] text-rmpg-400 mb-1">
+            <label htmlFor="ff-servepage-2" className="block text-[11px] text-rmpg-400 mb-1">
               Recipient Name <span className="text-red-400">*</span>
             </label>
             <input id="ff-servepage-2"
@@ -1456,7 +1456,7 @@ export default function ServePage() {
               />
             </div>
             <div className="w-28">
-              <label className="block text-[11px] text-rmpg-400 mb-1">Apt / Unit</label>
+              <label htmlFor="ff-servepage-14" className="block text-[11px] text-rmpg-400 mb-1">Apt / Unit</label>
               <input
                 type="text"
                 value={formData.recipient_address_2}
@@ -1467,7 +1467,7 @@ export default function ServePage() {
             </div>
             </div>
             <div>
-              <label className="block text-[11px] text-rmpg-400 mb-1">City</label>
+              <label htmlFor="ff-servepage-4" className="block text-[11px] text-rmpg-400 mb-1">City</label>
               <input id="ff-servepage-4"
                 type="text"
                 value={formData.recipient_city}
@@ -1477,7 +1477,7 @@ export default function ServePage() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-[11px] text-rmpg-400 mb-1">State</label>
+                <label htmlFor="ff-servepage-5" className="block text-[11px] text-rmpg-400 mb-1">State</label>
                 <input id="ff-servepage-5"
                   type="text"
                   value={formData.recipient_state}
@@ -1487,7 +1487,7 @@ export default function ServePage() {
                 />
               </div>
               <div>
-                <label className="block text-[11px] text-rmpg-400 mb-1">ZIP</label>
+                <label htmlFor="ff-servepage-6" className="block text-[11px] text-rmpg-400 mb-1">ZIP</label>
                 <input id="ff-servepage-6"
                   type="text"
                   value={formData.recipient_zip}
@@ -1502,7 +1502,7 @@ export default function ServePage() {
           {/* Document type + priority */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] text-rmpg-400 mb-1">Document Type</label>
+              <label htmlFor="ff-servepage-7" className="block text-[11px] text-rmpg-400 mb-1">Document Type</label>
               <select id="ff-servepage-7"
                 value={formData.document_type}
                 onChange={e => handleFormChange('document_type', e.target.value)}
@@ -1512,7 +1512,7 @@ export default function ServePage() {
               </select>
             </div>
             <div>
-              <label className="block text-[11px] text-rmpg-400 mb-1">Priority</label>
+              <label htmlFor="ff-servepage-8" className="block text-[11px] text-rmpg-400 mb-1">Priority</label>
               <select id="ff-servepage-8"
                 value={formData.priority}
                 onChange={e => handleFormChange('priority', e.target.value)}
@@ -1531,7 +1531,7 @@ export default function ServePage() {
           {/* Time window + deadline */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] text-rmpg-400 mb-1">Time Window</label>
+              <label htmlFor="ff-servepage-9" className="block text-[11px] text-rmpg-400 mb-1">Time Window</label>
               <select id="ff-servepage-9"
                 value={formData.time_window}
                 onChange={e => handleFormChange('time_window', e.target.value)}
@@ -1544,7 +1544,7 @@ export default function ServePage() {
               </select>
             </div>
             <div>
-              <label className="block text-[11px] text-rmpg-400 mb-1">Deadline</label>
+              <label htmlFor="ff-servepage-10" className="block text-[11px] text-rmpg-400 mb-1">Deadline</label>
               <input id="ff-servepage-10"
                 type="date"
                 value={formData.deadline}
@@ -1557,7 +1557,7 @@ export default function ServePage() {
           {/* Case / Court / Jurisdiction */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-[11px] text-rmpg-400 mb-1">Case Number</label>
+              <label htmlFor="ff-servepage-11" className="block text-[11px] text-rmpg-400 mb-1">Case Number</label>
               <input id="ff-servepage-11"
                 type="text"
                 value={formData.case_number}
@@ -1566,7 +1566,7 @@ export default function ServePage() {
               />
             </div>
             <div>
-              <label className="block text-[11px] text-rmpg-400 mb-1">Court</label>
+              <label htmlFor="ff-servepage-12" className="block text-[11px] text-rmpg-400 mb-1">Court</label>
               <input id="ff-servepage-12"
                 type="text"
                 value={formData.court_name}
@@ -1575,7 +1575,7 @@ export default function ServePage() {
               />
             </div>
             <div>
-              <label className="block text-[11px] text-rmpg-400 mb-1">Jurisdiction</label>
+              <label htmlFor="ff-servepage-13" className="block text-[11px] text-rmpg-400 mb-1">Jurisdiction</label>
               <input id="ff-servepage-13"
                 type="text"
                 value={formData.jurisdiction}
@@ -1588,7 +1588,7 @@ export default function ServePage() {
           {/* Client + Attorney */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] text-rmpg-400 mb-1">Client Name</label>
+              <label htmlFor="ff-servepage-client" className="block text-[11px] text-rmpg-400 mb-1">Client Name</label>
               {/* Hiring-party selector — picking a known client fills the
                   free-text field below (which stays editable for ad-hoc names). */}
               {clientsList.length > 0 && (
@@ -1614,7 +1614,7 @@ export default function ServePage() {
               />
             </div>
             <div>
-              <label className="block text-[11px] text-rmpg-400 mb-1">Attorney Name</label>
+              <label htmlFor="ff-servepage-15" className="block text-[11px] text-rmpg-400 mb-1">Attorney Name</label>
               <input id="ff-servepage-15"
                 type="text"
                 value={formData.attorney_name}
@@ -1627,7 +1627,7 @@ export default function ServePage() {
           {/* Max attempts */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] text-rmpg-400 mb-1">Max Attempts</label>
+              <label htmlFor="ff-servepage-16" className="block text-[11px] text-rmpg-400 mb-1">Max Attempts</label>
               <input id="ff-servepage-16"
                 type="number"
                 min={1}

@@ -682,7 +682,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           <div className="p-4 space-y-4">
             {/* URL */}
             <div>
-              <label className="block text-xs text-rmpg-500 mb-1">Portal URL</label>
+              <label htmlFor="ff-adminintegrationstab-1" className="block text-xs text-rmpg-500 mb-1">Portal URL</label>
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded-sm">
                   <Link2 className="w-3.5 h-3.5 text-rmpg-500" />
@@ -699,7 +699,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
 
             {/* API Key */}
             <div>
-              <label className="block text-xs text-rmpg-500 mb-1">
+              <label htmlFor="ff-adminintegrationstab-2" className="block text-xs text-rmpg-500 mb-1">
                 API Key {svcConfigured && svcKeyPreview && <span className="text-rmpg-600 ml-1">(current: {svcKeyPreview})</span>}
               </label>
               <div className="flex items-center gap-2">
@@ -994,7 +994,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
               {!createdKey ? (
                 <>
                   <div>
-                    <label className="block text-xs text-rmpg-500 mb-1">Key Name</label>
+                    <label htmlFor="ff-adminintegrationstab-3" className="block text-xs text-rmpg-500 mb-1">Key Name</label>
                     <input id="ff-adminintegrationstab-3"
                       type="text"
                       value={newKeyName}

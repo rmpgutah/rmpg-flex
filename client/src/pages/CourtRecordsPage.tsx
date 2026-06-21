@@ -576,7 +576,7 @@ export default function CourtRecordsPage() {
               {/* Event type + date */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Event Type *</label>
+                  <label htmlFor="ff-courtrecordspage-5" className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Event Type *</label>
                   <select id="ff-courtrecordspage-5"
                     value={formData.event_type}
                     onChange={e => setFormData(p => ({ ...p, event_type: e.target.value }))}
@@ -589,7 +589,7 @@ export default function CourtRecordsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Event Date *</label>
+                  <label htmlFor="ff-courtrecordspage-6" className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Event Date *</label>
                   <input id="ff-courtrecordspage-6"
                     type="date"
                     value={formData.event_date}
@@ -602,7 +602,7 @@ export default function CourtRecordsPage() {
               {/* Time + courtroom */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Event Time</label>
+                  <label htmlFor="ff-courtrecordspage-7" className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Event Time</label>
                   <input id="ff-courtrecordspage-7"
                     type="time"
                     value={formData.event_time}
@@ -611,7 +611,7 @@ export default function CourtRecordsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Courtroom</label>
+                  <label htmlFor="ff-courtrecordspage-8" className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Courtroom</label>
                   <input id="ff-courtrecordspage-8"
                     type="text"
                     value={formData.courtroom}
@@ -625,7 +625,7 @@ export default function CourtRecordsPage() {
               {/* Court name + judge */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Court Name</label>
+                  <label htmlFor="ff-courtrecordspage-9" className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Court Name</label>
                   <input id="ff-courtrecordspage-9"
                     type="text"
                     value={formData.court_name}
@@ -635,7 +635,7 @@ export default function CourtRecordsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Judge</label>
+                  <label htmlFor="ff-courtrecordspage-10" className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Judge</label>
                   <input id="ff-courtrecordspage-10"
                     type="text"
                     value={formData.judge_name}
@@ -649,7 +649,7 @@ export default function CourtRecordsPage() {
               {/* Case # + defendant */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Court Case #</label>
+                  <label htmlFor="ff-courtrecordspage-11" className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Court Case #</label>
                   <input id="ff-courtrecordspage-11"
                     type="text"
                     value={formData.court_case_number}
@@ -659,7 +659,7 @@ export default function CourtRecordsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Defendant Name</label>
+                  <label htmlFor="ff-courtrecordspage-12" className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Defendant Name</label>
                   <input id="ff-courtrecordspage-12"
                     type="text"
                     value={formData.defendant_name}
@@ -673,7 +673,7 @@ export default function CourtRecordsPage() {
               {/* Prosecutor + defense attorney */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Prosecutor</label>
+                  <label htmlFor="ff-courtrecordspage-13" className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Prosecutor</label>
                   <input id="ff-courtrecordspage-13"
                     type="text"
                     value={formData.prosecutor}
@@ -683,7 +683,7 @@ export default function CourtRecordsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Defense Attorney</label>
+                  <label htmlFor="ff-courtrecordspage-14" className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Defense Attorney</label>
                   <input id="ff-courtrecordspage-14"
                     type="text"
                     value={formData.defense_attorney}
@@ -738,7 +738,7 @@ export default function CourtRecordsPage() {
 
             <div className="p-4 space-y-3">
               <div>
-                <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Outcome *</label>
+                <label htmlFor="ff-courtrecordspage-15" className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Outcome *</label>
                 <select id="ff-courtrecordspage-15"
                   value={outcomeData.outcome}
                   onChange={e => setOutcomeData(p => ({ ...p, outcome: e.target.value }))}
@@ -752,7 +752,7 @@ export default function CourtRecordsPage() {
               </div>
 
               <div>
-                <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Sentence</label>
+                <label htmlFor="ff-courtrecordspage-16" className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Sentence</label>
                 <input id="ff-courtrecordspage-16"
                   type="text"
                   value={outcomeData.sentence}
@@ -763,7 +763,7 @@ export default function CourtRecordsPage() {
               </div>
 
               <div>
-                <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Fine Amount ($)</label>
+                <label htmlFor="ff-courtrecordspage-17" className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Fine Amount ($)</label>
                 <input id="ff-courtrecordspage-17"
                   type="number"
                   step="0.01"

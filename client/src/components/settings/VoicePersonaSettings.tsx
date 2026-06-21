@@ -39,7 +39,7 @@ export default function VoicePersonaSettings() {
         style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '10px 12px' }}
       >
         {/* Voice picker */}
-        <label className="block">
+        <label htmlFor="ff-voicepersonasettings-0" className="block">
           <span className="text-[11px]" style={{ color: '#888888' }}>
             Dispatcher voice
           </span>
@@ -91,7 +91,7 @@ export default function VoicePersonaSettings() {
         </div>
 
         {/* Rate slider */}
-        <label className="block">
+        <label htmlFor="ff-voicepersonasettings-1" className="block">
           <span className="text-[11px]" style={{ color: '#888888' }}>
             Rate: {persona.rate.toFixed(2)}x
           </span>
@@ -107,7 +107,7 @@ export default function VoicePersonaSettings() {
         </label>
 
         {/* Pitch slider */}
-        <label className="block">
+        <label htmlFor="ff-voicepersonasettings-2" className="block">
           <span className="text-[11px]" style={{ color: '#888888' }}>
             Pitch: {persona.pitch > 0 ? '+' : ''}{persona.pitch}
           </span>

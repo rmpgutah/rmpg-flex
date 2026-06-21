@@ -177,7 +177,7 @@ export default function GrievancesTab() {
         <div className="panel-beveled p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Type</label>
+              <label htmlFor="ff-grievancestab-2" className="field-label">Type</label>
               <select id="ff-grievancestab-2" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="input-field w-full text-xs">
                 <option value="general">General</option>
                 <option value="workplace">Workplace</option>
@@ -188,7 +188,7 @@ export default function GrievancesTab() {
               </select>
             </div>
             <div>
-              <label className="field-label">Priority</label>
+              <label htmlFor="ff-grievancestab-3" className="field-label">Priority</label>
               <select id="ff-grievancestab-3" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className="input-field w-full text-xs">
                 <option value="low">Low</option>
                 <option value="normal">Normal</option>
@@ -198,7 +198,7 @@ export default function GrievancesTab() {
             </div>
           </div>
           <div>
-            <label className="field-label">Subject *</label>
+            <label htmlFor="ff-grievancestab-4" className="field-label">Subject *</label>
             <input id="ff-grievancestab-4" value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} className="input-field w-full text-xs" placeholder="Brief subject line" maxLength={200} required autoComplete="off" onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} />
           </div>
           <div>

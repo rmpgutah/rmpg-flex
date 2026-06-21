@@ -19,7 +19,7 @@ export function PdfEmailDialog({ onSend, onCancel, defaultSubject = '' }: Props)
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center">
       <div className="bg-surface-base border border-rmpg-700 w-[480px] p-4">
         <h3 className="text-[#d4a017] font-bold text-sm mb-3">Email PDF</h3>
-        <label className="block mb-2 text-xs">
+        <label htmlFor="ff-pdfemaildialog-0" className="block mb-2 text-xs">
           <span className="block text-rmpg-400 uppercase mb-1">To (comma-separated)</span>
           <input id="ff-pdfemaildialog-0"
             aria-label="To"
@@ -27,7 +27,7 @@ export function PdfEmailDialog({ onSend, onCancel, defaultSubject = '' }: Props)
             value={to} onChange={(e) => setTo(e.target.value)}
           />
         </label>
-        <label className="block mb-2 text-xs">
+        <label htmlFor="ff-pdfemaildialog-1" className="block mb-2 text-xs">
           <span className="block text-rmpg-400 uppercase mb-1">Cc (optional)</span>
           <input id="ff-pdfemaildialog-1"
             aria-label="Cc"
@@ -35,7 +35,7 @@ export function PdfEmailDialog({ onSend, onCancel, defaultSubject = '' }: Props)
             value={cc} onChange={(e) => setCc(e.target.value)}
           />
         </label>
-        <label className="block mb-2 text-xs">
+        <label htmlFor="ff-pdfemaildialog-2" className="block mb-2 text-xs">
           <span className="block text-rmpg-400 uppercase mb-1">Subject</span>
           <input id="ff-pdfemaildialog-2"
             aria-label="Subject"

@@ -20,6 +20,7 @@ import BodyCameraTab from './personnel/tabs/BodyCameraTab';
 import BodyCameraFormModal from './personnel/modals/BodyCameraFormModal';
 import type { BodyCameraFormData } from './personnel/modals/BodyCameraFormModal';
 import { mapBodyCamera, mapBodyCamVideo } from './personnel/utils/personnelMappers';
+import DeleteRecordModal from '../components/DeleteRecordModal';
 
 type ModalMode = 'none' | 'new_body_camera' | 'edit_body_camera' | 'upload_video';
 
@@ -139,25 +140,53 @@ export default function BodyCamerasPage() {
     }
   };
 
-  const handleDelete = async (camId: number) => {
-    if (!window.confirm('Delete this body camera and all associated videos? This cannot be undone.')) return;
+  // Track the full row of the camera / video being deleted so the
+  // destructive modal can surface officer name, capture date, linked
+  // incident, and evidence-lock status. The previous `window.confirm`
+  // showed "Delete this video? This cannot be undone." with no
+  // identifying info — evidentiary footage was being destroyed with
+  // zero identity check. Audit caught (2026-06-21).
+  const [cameraToDelete, setCameraToDelete] = useState<BodyCamera | null>(null);
+  const [videoToDelete, setVideoToDelete] = useState<BodyCamVideo | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = (camId: number) => {
+    const cam = cameras.find(c => c.id === camId);
+    if (cam) setCameraToDelete(cam);
+  };
+
+  const handleVideoDelete = (videoId: number) => {
+    const v = videos.find(x => x.id === videoId);
+    if (v) setVideoToDelete(v);
+  };
+
+  const confirmCameraDelete = async () => {
+    if (!cameraToDelete) return;
+    setDeleting(true);
     try {
-      await apiFetch(`/personnel/body-cameras/${camId}`, { method: 'DELETE' });
+      await apiFetch(`/personnel/body-cameras/${cameraToDelete.id}`, { method: 'DELETE' });
       await refreshBodyCameras();
       addToast('Body camera deleted', 'success');
-    } catch {
-      addToast('Failed to delete body camera', 'error');
+      setCameraToDelete(null);
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to delete body camera', 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
-  const handleVideoDelete = async (videoId: number) => {
-    if (!window.confirm('Delete this video? This cannot be undone.')) return;
+  const confirmVideoDelete = async () => {
+    if (!videoToDelete) return;
+    setDeleting(true);
     try {
-      await apiFetch(`/personnel/bodycam-videos/${videoId}`, { method: 'DELETE' });
+      await apiFetch(`/personnel/bodycam-videos/${videoToDelete.id}`, { method: 'DELETE' });
       await refreshBodyCameras();
       addToast('Video deleted', 'success');
-    } catch {
-      addToast('Failed to delete video', 'error');
+      setVideoToDelete(null);
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to delete video', 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -354,6 +383,70 @@ export default function BodyCamerasPage() {
             addToast('Failed to reclassify video', 'error');
           }
         } : undefined}
+      />
+
+      <DeleteRecordModal
+        isOpen={cameraToDelete !== null}
+        onClose={() => setCameraToDelete(null)}
+        onConfirm={confirmCameraDelete}
+        recordType="body camera"
+        recordLabel={cameraToDelete?.camera_id || cameraToDelete?.make}
+        details={
+          cameraToDelete && (
+            <>
+              {cameraToDelete.officer_name && <div>Assigned to: {cameraToDelete.officer_name}</div>}
+              {cameraToDelete.camera_id && <div>ID: {cameraToDelete.camera_id}</div>}
+              {(cameraToDelete.make || cameraToDelete.model) && (
+                <div className="text-rmpg-500">{[cameraToDelete.make, cameraToDelete.model].filter(Boolean).join(' ')}</div>
+              )}
+              <div className="text-amber-400 mt-1">Removes the camera AND all associated videos.</div>
+            </>
+          )
+        }
+        isDeleting={deleting}
+      />
+
+      <DeleteRecordModal
+        isOpen={videoToDelete !== null}
+        onClose={() => setVideoToDelete(null)}
+        onConfirm={confirmVideoDelete}
+        recordType="body-cam video"
+        recordLabel={
+          videoToDelete?.title
+          || (videoToDelete?.recorded_at && new Date(videoToDelete.recorded_at).toLocaleString())
+          || (videoToDelete ? `Video #${videoToDelete.id}` : undefined)
+        }
+        details={
+          videoToDelete && (
+            <>
+              {videoToDelete.officer_name && <div>Officer: {videoToDelete.officer_name}</div>}
+              {videoToDelete.classification && <div>Classification: {videoToDelete.classification}</div>}
+              {videoToDelete.case_number && <div>Case {videoToDelete.case_number}</div>}
+              {videoToDelete.recorded_at && (
+                <div className="text-rmpg-500">Recorded {new Date(videoToDelete.recorded_at).toLocaleString()}</div>
+              )}
+              {videoToDelete.duration_seconds != null && (
+                <div className="text-rmpg-500">{Math.round(videoToDelete.duration_seconds)}s</div>
+              )}
+              {videoToDelete.retention_status && (
+                <div className="text-rmpg-500">Retention: {videoToDelete.retention_status}</div>
+              )}
+            </>
+          )
+        }
+        // Evidence-lock signal: any non-"normal" retention_status indicates
+        // the video is under hold (court, IA, open case). Audit caught the
+        // bare `window.confirm` had no such guard.
+        evidenceLocked={
+          !!videoToDelete?.retention_status
+          && videoToDelete.retention_status !== 'active'
+        }
+        evidenceLockReason={
+          videoToDelete?.retention_status && videoToDelete.retention_status !== 'active'
+            ? `Video retention is "${videoToDelete.retention_status}" — under hold (court, IA review, or open case). Release the hold from the evidence custody page before deleting.`
+            : undefined
+        }
+        isDeleting={deleting}
       />
     </div>
   );

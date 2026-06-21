@@ -118,7 +118,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
     <div className="flex flex-col gap-3 p-4 max-w-[1100px] mx-auto print:p-0 print:max-w-none">
       {/* ── Controls (hidden in print) ── */}
       <div className="flex items-center gap-3 flex-wrap print:hidden">
-        <label className="text-rmpg-300 text-xs font-mono">
+        <label htmlFor="ff-shifthandoffreport-0" className="text-rmpg-300 text-xs font-mono">
           Shift Start
           <input id="ff-shifthandoffreport-0"
             type="datetime-local"
@@ -127,7 +127,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
             className="ml-1 bg-surface-overlay border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1 rounded-[2px] font-mono"
           />
         </label>
-        <label className="text-rmpg-300 text-xs font-mono">
+        <label htmlFor="ff-shifthandoffreport-1" className="text-rmpg-300 text-xs font-mono">
           Shift End
           <input id="ff-shifthandoffreport-1"
             type="datetime-local"

@@ -1210,7 +1210,12 @@ export default function DispatchPage() {
         const callId = selectedCallRef.current!.id;
         apiFetch(`/dispatch/calls/${callId}/serve-link`).then((res: any) => {
           if (res) setServeLink(res);
-        }).catch(() => {});
+        }).catch((err: any) => {
+          // Audit caught: silent .catch here left serve-queue panel stale
+          // after a serve attempt → dispatcher could re-dispatch the same
+          // officer to the same call thinking it was still pending.
+          addToast(err?.message || 'Serve link out of sync — refresh the call', 'error');
+        });
       }
       // Voice alert: announce serve completion
       if (data?.result && data?.served_to && data?.call_number) {
@@ -1333,8 +1338,16 @@ export default function DispatchPage() {
         setLinkedIncidents(Array.isArray(incidents) ? incidents : []);
         const activity = res?.activity ?? [];
         setActivityEntries(Array.isArray(activity) ? activity : []);
-      } catch {
-        if (!cancelled) { setLinkedIncidents([]); setActivityEntries([]); }
+      } catch (err: any) {
+        // Audit caught (2026-06-21): silent failure here showed the operator
+        // the LIST-version of selectedCall (no _ext columns), so PSO fields
+        // read "No PSO details entered" even when they existed on disk. The
+        // operator could re-enter and double-write. Surface the failure now.
+        if (!cancelled) {
+          setLinkedIncidents([]);
+          setActivityEntries([]);
+          addToast(err?.message || 'Could not load full call details — showing partial data', 'error');
+        }
       }
       try {
         const warnings = await apiFetch<WarningTag[]>(`/dispatch/calls/${selectedCall.id}/warnings`);

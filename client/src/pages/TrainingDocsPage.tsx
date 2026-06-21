@@ -462,7 +462,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
 
           {/* Title */}
           <div>
-            <label className="field-label mb-1 block">Title *</label>
+            <label htmlFor="ff-trainingdocspage-1" className="field-label mb-1 block">Title *</label>
             <input id="ff-trainingdocspage-1"
               type="text"
               value={title}
@@ -485,7 +485,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
 
           {/* Category */}
           <div>
-            <label className="field-label mb-1 block">Category</label>
+            <label htmlFor="ff-trainingdocspage-2" className="field-label mb-1 block">Category</label>
             <select id="ff-trainingdocspage-2"
               value={category}
               onChange={(e) => setCategory(e.target.value as CompanyDocCategory)}
@@ -532,7 +532,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
               <label className="field-label mb-1 block">
                 File {!isEdit && '*'}
               </label>
-              <label className="flex items-center gap-2 p-3 border border-dashed border-rmpg-600 bg-rmpg-900/30 cursor-pointer hover:border-brand-500/50 transition-colors">
+              <label htmlFor="ff-trainingdocspage-3" className="flex items-center gap-2 p-3 border border-dashed border-rmpg-600 bg-rmpg-900/30 cursor-pointer hover:border-brand-500/50 transition-colors">
                 <Upload className="w-4 h-4 text-rmpg-400" />
                 <span className="text-[11px] text-rmpg-400">
                   {file ? file.name : (doc?.file_name || 'Click to select file...')}
@@ -549,7 +549,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
             </div>
           ) : (
             <div>
-              <label className="field-label mb-1 block">URL *</label>
+              <label htmlFor="ff-trainingdocspage-4" className="field-label mb-1 block">URL *</label>
               <input id="ff-trainingdocspage-4"
                 type="url"
                 value={externalUrl}
@@ -562,7 +562,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
 
           {/* Toggles */}
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label htmlFor="ff-trainingdocspage-5" className="flex items-center gap-2 cursor-pointer">
               <input id="ff-trainingdocspage-5"
                 type="checkbox"
                 checked={isRequired}
@@ -571,7 +571,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
               />
               <span className="text-[11px] text-rmpg-300">Required Reading</span>
             </label>
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label htmlFor="ff-trainingdocspage-6" className="flex items-center gap-2 cursor-pointer">
               <input id="ff-trainingdocspage-6"
                 type="checkbox"
                 checked={published}

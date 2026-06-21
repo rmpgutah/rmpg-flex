@@ -536,18 +536,18 @@ export default function CrmPage() {
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="field-label">Title</label>
+                <label htmlFor="ff-crmpage-0" className="field-label">Title</label>
                 <input id="ff-crmpage-0" className="input-dark w-full min-h-[36px]" value={taskForm.title || ''} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Type</label>
+                  <label htmlFor="ff-crmpage-1" className="field-label">Type</label>
                   <select id="ff-crmpage-1" className="input-dark w-full min-h-[36px]" value={taskForm.task_type || 'follow_up'} onChange={e => setTaskForm(p => ({ ...p, task_type: e.target.value as any }))}>
                     {TASK_TYPES.map(t => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Priority</label>
+                  <label htmlFor="ff-crmpage-2" className="field-label">Priority</label>
                   <select id="ff-crmpage-2" className="input-dark w-full min-h-[36px]" value={taskForm.priority || 'normal'} onChange={e => setTaskForm(p => ({ ...p, priority: e.target.value as any }))}>
                     {TASK_PRIORITIES.map(p => <option key={p} value={p}>{toDisplayLabel(p)}</option>)}
                   </select>
@@ -555,11 +555,11 @@ export default function CrmPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Due Date</label>
+                  <label htmlFor="ff-crmpage-3" className="field-label">Due Date</label>
                   <input id="ff-crmpage-3" type="date" className="input-dark w-full min-h-[36px]" value={taskForm.due_date || ''} onChange={e => setTaskForm(p => ({ ...p, due_date: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="field-label">Assign To</label>
+                  <label htmlFor="ff-crmpage-4" className="field-label">Assign To</label>
                   <select id="ff-crmpage-4" className="input-dark w-full min-h-[36px]" value={taskForm.assigned_to || ''} onChange={e => setTaskForm(p => ({ ...p, assigned_to: e.target.value }))}>
                     <option value="">Unassigned</option>
                     {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
@@ -567,19 +567,19 @@ export default function CrmPage() {
                 </div>
               </div>
               <div>
-                <label className="field-label">Client</label>
+                <label htmlFor="ff-crmpage-5" className="field-label">Client</label>
                 <select id="ff-crmpage-5" className="input-dark w-full min-h-[36px]" value={String(taskForm.client_id || '')} onChange={e => setTaskForm(p => ({ ...p, client_id: e.target.value ? Number(e.target.value) as any : undefined }))}>
                   <option value="">No client</option>
                   {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="field-label">Description</label>
+                <label htmlFor="ff-crmpage-11" className="field-label">Description</label>
                 <RichTextArea className="input-dark w-full min-h-[36px]" rows={3} value={taskForm.description || ''} onChange={e => setTaskForm(p => ({ ...p, description: e.target.value }))} />
               </div>
               {editingTask && (
                 <div>
-                  <label className="field-label">Status</label>
+                  <label htmlFor="ff-crmpage-6" className="field-label">Status</label>
                   <select id="ff-crmpage-6" className="input-dark w-full min-h-[36px]" value={taskForm.status || 'pending'} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value as any }))}>
                     {TASK_STATUSES.map(s => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
                   </select>
@@ -606,24 +606,24 @@ export default function CrmPage() {
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="field-label">Client</label>
+                <label htmlFor="ff-crmpage-7" className="field-label">Client</label>
                 <select id="ff-crmpage-7" className="input-dark w-full min-h-[36px]" value={activityForm.client_id} onChange={e => setActivityForm(p => ({ ...p, client_id: e.target.value }))}>
                   <option value="">Select client...</option>
                   {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="field-label">Type</label>
+                <label htmlFor="ff-crmpage-8" className="field-label">Type</label>
                 <select id="ff-crmpage-8" className="input-dark w-full min-h-[36px]" value={activityForm.activity_type} onChange={e => setActivityForm(p => ({ ...p, activity_type: e.target.value }))}>
                   {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
                 </select>
               </div>
               <div>
-                <label className="field-label">Subject</label>
+                <label htmlFor="ff-crmpage-9" className="field-label">Subject</label>
                 <input id="ff-crmpage-9" className="input-dark w-full min-h-[36px]" value={activityForm.subject} onChange={e => setActivityForm(p => ({ ...p, subject: e.target.value }))} />
               </div>
               <div>
-                <label className="field-label">Details</label>
+                <label htmlFor="ff-crmpage-10" className="field-label">Details</label>
                 <RichTextArea className="input-dark w-full min-h-[36px]" rows={3} value={activityForm.details} onChange={e => setActivityForm(p => ({ ...p, details: e.target.value }))} />
               </div>
             </div>

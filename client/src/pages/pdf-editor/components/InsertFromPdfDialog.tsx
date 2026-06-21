@@ -67,7 +67,7 @@ export default function InsertFromPdfDialog({ open, pageCount, activePage, busy,
           </div>
 
           <div>
-            <label className={labelCls}>Insert position</label>
+            <label htmlFor="ff-insertfrompdf-where" className={labelCls}>Insert position</label>
             <select id="ff-insertfrompdf-where" value={where} onChange={e => setWhere(e.target.value as typeof where)} className={inputCls}>
               <option value="after">After current page ({activePage})</option>
               <option value="before">Before current page ({activePage})</option>

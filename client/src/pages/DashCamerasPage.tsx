@@ -19,6 +19,7 @@ import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
 import DashCamUploadModal from '../components/DashCamUploadModal';
 import DashCamVideoPlayer from '../components/DashCamVideoPlayer';
+import DeleteRecordModal from '../components/DeleteRecordModal';
 import DashCamVideoEditModal, { type DashCamVideoEditData } from '../components/DashCamVideoEditModal';
 import DashCamLinkModal from '../components/DashCamLinkModal';
 import { apiFetch } from '../hooks/useApi';
@@ -212,14 +213,33 @@ export default function DashCamerasPage() {
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this video permanently? This cannot be undone.')) return;
+  // Audit caught (2026-06-21): native confirm("Delete this video permanently?")
+  // showed no unit, capture window, officer, or trip context — yet destroyed
+  // evidentiary dashcam footage. Also no evidence-lock check. Replaced with
+  // a DeleteRecordModal that surfaces full context AND blocks delete when
+  // the video is under retention hold.
+  const [videoToDelete, setVideoToDelete] = useState<DashCamVideo | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = (id: number) => {
+    const v = videos.find(x => x.id === id);
+    if (v) setVideoToDelete(v);
+  };
+
+  const confirmDelete = async () => {
+    if (!videoToDelete) return;
+    setDeleting(true);
     try {
-      await apiFetch(`/fleet/dashcam-videos/${id}`, { method: 'DELETE' });
+      await apiFetch(`/fleet/dashcam-videos/${videoToDelete.id}`, { method: 'DELETE' });
       addToast('Video deleted', 'success');
-      if (selectedVideo?.id === id) setSelectedVideo(null);
+      if (selectedVideo?.id === videoToDelete.id) setSelectedVideo(null);
+      setVideoToDelete(null);
       fetchVideos();
-    } catch { addToast('Failed to delete video', 'error'); }
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to delete video', 'error');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleEditSave = async (videoId: number, data: DashCamVideoEditData) => {
@@ -903,6 +923,40 @@ export default function DashCamerasPage() {
         videoId={linkingVideo?.id || 0}
         videoTitle={linkingVideo?.title || ''}
         canManage={canManage}
+      />
+
+      <DeleteRecordModal
+        isOpen={videoToDelete !== null}
+        onClose={() => setVideoToDelete(null)}
+        onConfirm={confirmDelete}
+        recordType="dashcam video"
+        recordLabel={
+          videoToDelete?.title
+          || (videoToDelete?.recorded_at && new Date(videoToDelete.recorded_at).toLocaleString())
+          || (videoToDelete ? `Video #${videoToDelete.id}` : undefined)
+        }
+        details={
+          videoToDelete && (
+            <>
+              {videoToDelete.unit_call_sign && <div>Unit {videoToDelete.unit_call_sign}</div>}
+              {videoToDelete.officer_name && <div>Officer: {videoToDelete.officer_name}</div>}
+              {videoToDelete.vehicle_number && <div>Vehicle #{videoToDelete.vehicle_number}</div>}
+              {videoToDelete.recorded_at && (
+                <div className="text-rmpg-500">Recorded {new Date(videoToDelete.recorded_at).toLocaleString()}</div>
+              )}
+              {videoToDelete.case_number && <div>Case {videoToDelete.case_number}</div>}
+              {videoToDelete.classification && <div>Classification: {videoToDelete.classification}</div>}
+              {videoToDelete.address && <div className="text-rmpg-500">{videoToDelete.address}</div>}
+            </>
+          )
+        }
+        evidenceLocked={!!(videoToDelete && (videoToDelete as any).retention_status && (videoToDelete as any).retention_status !== 'active')}
+        evidenceLockReason={
+          videoToDelete && (videoToDelete as any).retention_status && (videoToDelete as any).retention_status !== 'active'
+            ? `Video retention is "${(videoToDelete as any).retention_status}" — under hold. Release the hold before deleting.`
+            : undefined
+        }
+        isDeleting={deleting}
       />
     </div>
   );

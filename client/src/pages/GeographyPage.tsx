@@ -795,7 +795,7 @@ function DetailPane({
             // Parent FK fields shown as read-only labels with the parent name
             if (k === 'active') {
               return (
-                <label key={k} className="flex items-center gap-2 text-[11px]">
+                <label htmlFor="ff-geographypage-0" key={k} className="flex items-center gap-2 text-[11px]">
                   <input id="ff-geographypage-0"
                     type="checkbox"
                     checked={v == null ? true : Boolean(v)}

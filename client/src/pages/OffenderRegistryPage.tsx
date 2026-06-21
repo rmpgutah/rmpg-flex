@@ -652,7 +652,7 @@ export default function OffenderRegistryPage() {
               )}
               {/* Person search */}
               <div>
-                <label className="field-label">Person *</label>
+                <label htmlFor="ff-offenderregistrypage-5" className="field-label">Person *</label>
                 {selectedPerson ? (
                   <div className="mt-1 flex items-center gap-2 px-2 py-1.5 bg-surface-sunken border border-rmpg-700">
                     <User style={{ width: 12, height: 12 }} className="text-rmpg-500" />
@@ -684,13 +684,13 @@ export default function OffenderRegistryPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Alert Type</label>
+                  <label htmlFor="ff-offenderregistrypage-6" className="field-label">Alert Type</label>
                   <select id="ff-offenderregistrypage-6" value={formData.alert_type} onChange={e => setFormData(p => ({ ...p, alert_type: e.target.value as OffenderAlertType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">
                     {ALERT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Severity</label>
+                  <label htmlFor="ff-offenderregistrypage-7" className="field-label">Severity</label>
                   <select id="ff-offenderregistrypage-7" value={formData.severity} onChange={e => setFormData(p => ({ ...p, severity: e.target.value as AlertSeverity }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">
                     <option value="info">Info</option><option value="caution">Caution</option><option value="warning">Warning</option><option value="danger">Danger</option>
                   </select>
@@ -698,13 +698,13 @@ export default function OffenderRegistryPage() {
               </div>
 
               <div>
-                <label className="field-label">Description *</label>
+                <label htmlFor="ff-offenderregistrypage-8" className="field-label">Description *</label>
                 <textarea id="ff-offenderregistrypage-8" value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none resize-none ${formErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {formErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.description}</p>}
               </div>
 
               <div>
-                <label className="field-label">Expiration Date</label>
+                <label htmlFor="ff-offenderregistrypage-9" className="field-label">Expiration Date</label>
                 <input id="ff-offenderregistrypage-9" type="date" value={formData.expiration_date} onChange={e => setFormData(p => ({ ...p, expiration_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
               </div>
 

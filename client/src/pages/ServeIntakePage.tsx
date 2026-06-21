@@ -278,9 +278,16 @@ export default function ServeIntakePage() {
   // Active clients for the client selector dropdown.
   const [clients, setClients] = useState<{id: number; name: string; contact_name: string | null; contact_phone: string | null}[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  // Audit caught (2026-06-21): bare .catch(() => {}) left the clients
+  // dropdown empty when the load failed. Operator couldn't tell whether
+  // there were no clients or whether the load broke — they then created
+  // intakes with no client attached, breaking downstream billing
+  // auto-assign. Surface the failure and block submit.
+  const [clientLoadError, setClientLoadError] = useState<string | null>(null);
   useEffect(() => {
     apiFetch<{id:number;name:string;contact_name:string|null;contact_phone:string|null}[]>('/serve-intake/clients')
-      .then(setClients).catch(() => {});
+      .then((data) => { setClients(data); setClientLoadError(null); })
+      .catch((err: any) => setClientLoadError(err?.message || 'Failed to load clients — refresh to retry'));
   }, []);
   const [dragActive, setDragActive] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -920,7 +927,7 @@ export default function ServeIntakePage() {
                 { key: 'recipient_zip',   label: 'Zip' },
               ].map(({ key, label }) => (
                 <div key={key}>
-                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <label htmlFor="ff-intake-client" className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
                   <input
                     id={`ff-intake-override-${key}`}
                     type="text"
@@ -985,7 +992,7 @@ export default function ServeIntakePage() {
                 { key: 'service_windows', label: 'Service Windows' },
               ].map(({ key, label }) => (
                 <div key={key}>
-                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <label htmlFor="ff-serveintakepage-2" className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
                   <input
                     id={`ff-intake-override-${key}`}
                     type="text"

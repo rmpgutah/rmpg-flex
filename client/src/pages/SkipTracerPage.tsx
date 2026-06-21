@@ -261,7 +261,7 @@ export default function SkipTracerPage() {
             <div className="space-y-2 pt-2">
               {(mode === 'name' || mode === 'nameaddress') && (
                 <div>
-                  <label className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
+                  <label htmlFor="ff-skiptracerpage-0" className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
                     Full Name
                   </label>
                   <input id="ff-skiptracerpage-0"
@@ -278,7 +278,7 @@ export default function SkipTracerPage() {
 
               {(mode === 'address' || mode === 'nameaddress') && (
                 <div>
-                  <label className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
+                  <label htmlFor="ff-skiptracerpage-1" className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
                     Address
                   </label>
                   <input id="ff-skiptracerpage-1"
@@ -295,7 +295,7 @@ export default function SkipTracerPage() {
 
               {mode === 'phone' && (
                 <div>
-                  <label className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
+                  <label htmlFor="ff-skiptracerpage-2" className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
                     Phone Number
                   </label>
                   <input id="ff-skiptracerpage-2"
@@ -312,7 +312,7 @@ export default function SkipTracerPage() {
 
               {mode === 'email' && (
                 <div>
-                  <label className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
+                  <label htmlFor="ff-skiptracerpage-3" className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
                     Email Address
                   </label>
                   <input id="ff-skiptracerpage-3"
