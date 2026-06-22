@@ -209,7 +209,7 @@ Ordered by what unblocks what.
 
 8. **Verify functions/_middleware.ts CSP actually applies post-cutover** — currently overridden by `rmpg-flex`'s own CSP injection. Once `rmpg-flex` is unbound, the Pages middleware takes over.
 
-9. **Bump `client/public/sw.js` `CACHE_NAME`** to flush all stale SW caches in case any UI code paths depend on `x-request-id` (search the client codebase first).
+9. ~~**Bump `client/public/sw.js` `CACHE_NAME`**~~ — no longer a manual step. `CACHE_NAME` is the literal placeholder `'rmpg-flex-BUILD'` in source; the `stamp-sw-version` plugin in `client/vite.config.ts` rewrites it to `'rmpg-flex-<git-short-sha>'` in `dist/sw.js` on every production build, so any commit that ships will already get a fresh cache name. (Search the client codebase first if you want to know whether UI code paths depend on `x-request-id`.)
 
 10. **Delete `rmpg-flex`, `rmpgflex`, `rmpg-flex-production`, `rmpg-flex-api-production`** after a 7-day grace period.
 
