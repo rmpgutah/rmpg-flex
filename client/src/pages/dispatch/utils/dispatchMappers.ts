@@ -177,6 +177,7 @@ export function mapDbCall(row: any): CallForService {
     process_attempts: row.process_attempts != null ? Number(row.process_attempts) : undefined,
     process_served_at: row.process_served_at || undefined,
     process_service_result: row.process_service_result || undefined,
+    court_name: row.court_name || undefined,
     // Damage
     damage_estimate: row.damage_estimate ?? undefined,
     damage_description: row.damage_description || undefined,

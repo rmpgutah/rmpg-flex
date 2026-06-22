@@ -1886,6 +1886,8 @@ export default function DispatchPage() {
       process_attempts: ed.process_attempts ? Number(ed.process_attempts) : 0,
       process_served_at: ed.process_served_at || null,
       process_service_result: ed.process_service_result || null,
+      court_name: ed.court_name || null,
+      case_number: ed.case_number || null,
     };
   };
 
@@ -1965,6 +1967,8 @@ export default function DispatchPage() {
       process_attempts: selectedCallForEdit.process_attempts ?? 0,
       process_served_at: selectedCallForEdit.process_served_at || '',
       process_service_result: selectedCallForEdit.process_service_result || '',
+      court_name: selectedCallForEdit.court_name || '',
+      case_number: selectedCallForEdit.case_number || '',
     });
     setIsEditing(true);
   };
@@ -5564,8 +5568,8 @@ export default function DispatchPage() {
                               type="text"
                               className="input-dark text-xs w-full"
                               placeholder="e.g., Third District Court — Salt Lake County"
-                              value={(editData as any).court_name || ''}
-                              onChange={(e) => updateEditField('court_name' as any, e.target.value)}
+                              value={editData.court_name || ''}
+                              onChange={(e) => updateEditField('court_name', e.target.value)}
                             />
                           </div>
                           <div>
