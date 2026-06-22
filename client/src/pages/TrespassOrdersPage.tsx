@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, ShieldBan, MapPin, User, Clock, Ban, Calendar,
-  Archive, RotateCcw, X, Save, Loader2, CheckCircle, AlertTriangle,
-  Eye, Pencil, Trash2,
+  RotateCcw, X, Save, Loader2, CheckCircle, AlertTriangle,
+  Eye, Pencil, Trash2, Printer,
 } from 'lucide-react';
-import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../types';
+import type { TrespassOrder, TrespassOrderType } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import EmptyState from '../components/EmptyState';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -23,6 +25,7 @@ import { safeDateStr, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils
 import { formatAddressDisplay } from '../utils/statusLabels';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { openTrespassOrderPdf } from '../utils/trespassOrderPdf';
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
   { value: 'trespass_warning', label: 'Trespass Warning' },
@@ -343,14 +346,25 @@ export default function TrespassOrdersPage() {
     }));
   };
 
-  const handleDeleteOrder = async (order: TrespassOrder) => {
-    if (!confirm(`Admin God Mode: Delete trespass order ${order.order_number}?`)) return;
+  // Admin hard-delete — routes through ConfirmDialog instead of the
+  // native confirm(). The native dialog had no a11y, no keyboard polish,
+  // and rendered identically whether the operator was about to delete
+  // an active order on a violator or an old expired warning — see the
+  // pattern shipped in Field Interviews (#1597) and Cases (#1604).
+  const [orderToDelete, setOrderToDelete] = useState<TrespassOrder | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const handleDeleteOrder = (order: TrespassOrder) => { setOrderToDelete(order); };
+  const confirmDeleteOrder = async () => {
+    const order = orderToDelete;
+    if (!order) return;
+    setDeleting(true);
     try {
       await apiFetch(`/trespass-orders/${order.id}`, { method: 'DELETE' });
       addToast(`Order ${order.order_number} deleted`, 'success');
       if (selectedOrder?.id === order.id) setSelectedOrder(null);
-      fetchOrders();
+      await fetchOrders();
     } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+    finally { setDeleting(false); setOrderToDelete(null); }
   };
 
   // ── Right-click context menu ──
@@ -361,6 +375,7 @@ export default function TrespassOrdersPage() {
     return [
       m.action('Open order', () => setSelectedOrder(order), { icon: <Eye size={12} /> }),
       m.action('Edit order', () => handleEdit(order), { icon: <Pencil size={12} /> }),
+      m.action('Print court PDF', () => openTrespassOrderPdf(order), { icon: <Printer size={12} /> }),
       m.separator(),
       m.copy('Copy subject name', subject),
       m.copy('Copy order #', order.order_number),
@@ -385,14 +400,83 @@ export default function TrespassOrdersPage() {
   // Set document title
   useEffect(() => { document.title = 'Trespass Orders \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // Keyboard shortcuts:
+  //   Escape \u2014 smart-cascade close (smallest-open-first). Previous
+  //            version hard-closed the form on every Esc, even when
+  //            the operator's intent was to dismiss the expiration
+  //            calendar / bulk panel / delete-confirm sitting on top
+  //            of nothing \u2014 losing form-draft work as a side effect.
+  //   N      \u2014 open a new order from anywhere on the page (mirrors
+  //            Dispatch / Patrol / FI / Evidence muscle memory).
+  //            Suppressed when typing into an input / textarea /
+  //            contenteditable so it doesn't fire mid-typing.
   useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setFormOpen(false); setEditingOrder(null); }
+      if (e.key === 'Escape') {
+        // Close-smallest-open-first cascade. Each branch returns after
+        // closing so a single Esc doesn't blast multiple open layers.
+        if (orderToDelete) { setOrderToDelete(null); return; }
+        if (expirationCalendar) { setExpirationCalendar(null); return; }
+        if (bulkMode) { setBulkMode(false); setBulkPersons([]); return; }
+        if (formOpen) { setFormOpen(false); setEditingOrder(null); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        handleOpenNew();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderToDelete, expirationCalendar, bulkMode, formOpen]);
+
+  // \u2500\u2500 /trespass-orders?order_id=<id> URL deep-link auto-select \u2500\u2500
+  // Honors the Dashboard-emit / page-consume contract used across the
+  // other audited pages (Cases, FI, Evidence, Citations, Warrants).
+  // Once `orders` hydrates, find by id and select; strip the query so a
+  // refresh doesn't re-select. Direct-fetch fallback for ids not in the
+  // current filter view (e.g. an expired order linked from a case file).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingOrderIdRef = useRef<string | null>(searchParams.get('order_id'));
+  useEffect(() => {
+    const target = pendingOrderIdRef.current;
+    if (!target || loading) return;
+    pendingOrderIdRef.current = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const hit = orders.find((o) => String(o.id) === String(target));
+        if (hit) {
+          if (!cancelled) setSelectedOrder(hit);
+        } else {
+          // Not in the current paged/filtered view \u2014 fetch by id directly
+          // so the deep-link works regardless of archive / status filter.
+          const item = await apiFetch<TrespassOrder>(`/trespass-orders/${target}`);
+          if (cancelled) return;
+          if (item && item.id != null) setSelectedOrder(item);
+          else addToast(`Order ${target} not found`, 'warning');
+        }
+      } catch {
+        if (!cancelled) addToast(`Failed to load order ${target}`, 'error');
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('order_id');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, loading]);
 
   return (
     <div className="flex flex-col h-full">
@@ -511,12 +595,32 @@ export default function TrespassOrdersPage() {
           {loading && orders.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-rmpg-400"><Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading...</div>
           ) : orders.length === 0 ? (
-            <EmptyState
-              icon={Ban}
-              title="No trespass orders found"
-              description="Create a new trespass order to get started."
-              action={{ label: 'New Order', onClick: handleOpenNew }}
-            />
+            // 3-way empty state distinguishes archive vs filtered-zero vs
+            // genuine "no orders ever created" — without it, an operator
+            // who set Status=Lifted on an org with zero lifted orders saw
+            // the same screen as an op with no records at all, prompting
+            // confused "did everything disappear?" pings.
+            showArchived ? (
+              <EmptyState
+                icon={Ban}
+                title="No archived trespass orders"
+                description="Lifted or expired orders that have been archived appear here."
+              />
+            ) : (searchQuery || (filterStatus && filterStatus !== 'active')) ? (
+              <EmptyState
+                icon={Search}
+                title="No matches in current view"
+                description="Adjust the search or status filter to see other orders."
+                action={{ label: 'Clear filters', onClick: () => { setSearchQuery(''); setFilterStatus('active'); setShowActiveOnly(true); setPage(1); } }}
+              />
+            ) : (
+              <EmptyState
+                icon={Ban}
+                title="No trespass orders found"
+                description="Create a new trespass order to get started."
+                action={{ label: 'New Order', onClick: handleOpenNew }}
+              />
+            )
           ) : (
             orders.map(order => (
               <div key={order.id} onClick={() => setSelectedOrder(order)}
@@ -573,14 +677,27 @@ export default function TrespassOrdersPage() {
                 <span className="text-[10px] text-rmpg-400">Issued {safeDateTimeStr(selectedOrder.created_at)}</span>
               </div>
               <div className={`flex items-center ${isMobile ? 'gap-2 flex-wrap' : 'gap-1'}`}>
+                {/* Print — court-ready single-order PDF. The trespass
+                    order IS a court document; before this button the only
+                    print path was bulk CSV, so operators had to screenshot
+                    the detail panel for a case file or supervisor review. */}
+                <button
+                  type="button"
+                  onClick={() => openTrespassOrderPdf(selectedOrder)}
+                  className="toolbar-btn"
+                  style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}
+                  title="Print court-ready PDF"
+                >
+                  <Printer style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Print
+                </button>
                 <button type="button" onClick={() => handleEdit(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>Edit</button>
                 {selectedOrder.status === 'active' && (
                   <>
-                    <button type="button" onClick={() => handleServe(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#f59e0b', minHeight: isMobile ? 48 : undefined }}>
+                    <button type="button" onClick={() => handleServe(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'rgb(var(--sev-warn-rgb))', minHeight: isMobile ? 48 : undefined }}>
                       <CheckCircle style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Serve
                     </button>
-                    <button type="button" onClick={() => handleLift(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#22c55e', minHeight: isMobile ? 48 : undefined }}>Lift</button>
-                    <button type="button" onClick={() => handleViolate(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#a855f7', minHeight: isMobile ? 48 : undefined }}>
+                    <button type="button" onClick={() => handleLift(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'rgb(var(--sev-ok-rgb))', minHeight: isMobile ? 48 : undefined }}>Lift</button>
+                    <button type="button" onClick={() => handleViolate(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'rgb(var(--sev-special-rgb))', minHeight: isMobile ? 48 : undefined }}>
                       <AlertTriangle style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Violated
                     </button>
                     {isExpiringWithin30Days(selectedOrder) && (
@@ -641,19 +758,19 @@ export default function TrespassOrdersPage() {
 
             {selectedOrder.reason && (
               <div className="mt-3 pt-2 border-t border-rmpg-700">
-                <span className="text-[#d4a017] text-[10px] uppercase font-bold tracking-wider">Reason</span>
+                <span className="text-[var(--brand-gold)] text-[10px] uppercase font-bold tracking-wider">Reason</span>
                 <p className="text-xs text-rmpg-200 mt-1">{selectedOrder.reason}</p>
               </div>
             )}
             {selectedOrder.conditions && (
               <div className="mt-2">
-                <span className="text-[#d4a017] text-[10px] uppercase font-bold tracking-wider">Conditions</span>
+                <span className="text-[var(--brand-gold)] text-[10px] uppercase font-bold tracking-wider">Conditions</span>
                 <p className="text-xs text-rmpg-200 mt-1">{selectedOrder.conditions}</p>
               </div>
             )}
             {selectedOrder.notes && (
               <div className="mt-2">
-                <span className="text-[#d4a017] text-[10px] uppercase font-bold tracking-wider">Notes</span>
+                <span className="text-[var(--brand-gold)] text-[10px] uppercase font-bold tracking-wider">Notes</span>
                 <p className="text-xs text-rmpg-200 mt-1 whitespace-pre-wrap">{selectedOrder.notes}</p>
               </div>
             )}
@@ -667,7 +784,7 @@ export default function TrespassOrdersPage() {
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700 bg-surface-base">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-[#d4a017] uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
+                <span className="text-xs font-bold text-[var(--brand-gold)] uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
                 {formIsDirty && (
                   <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
                 )}
@@ -676,7 +793,7 @@ export default function TrespassOrdersPage() {
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               {formWasRestored && (
-                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.08)' }}>
                   <div className="flex items-center gap-2">
                     <Clock size={14} className="text-amber-400" />
                     <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
@@ -781,7 +898,7 @@ export default function TrespassOrdersPage() {
                 <textarea id="ff-trespassorderspage-19" className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
 
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
-                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(212,160,23,0.25)', borderColor: 'rgba(212,160,23,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
+                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgb(var(--brand-gold-rgb) / 0.25)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingOrder ? 'Update' : 'Create'} Order
                 </button>
@@ -799,6 +916,31 @@ export default function TrespassOrdersPage() {
         onCancel={() => { clearFormDraft(); setFormOpen(false); }}
         isSaving={submitting}
         saveLabel={editingOrder ? 'Update Order' : 'Create Order'}
+      />
+
+      {/* Admin hard-delete — ConfirmDialog replaces the native confirm()
+          that lived here before. Renders identifying context (order
+          number + subject + status) so the operator sees what they're
+          about to wipe, not a generic prompt. */}
+      <ConfirmDialog
+        isOpen={!!orderToDelete}
+        onClose={() => (deleting ? null : setOrderToDelete(null))}
+        onConfirm={confirmDeleteOrder}
+        title="Delete trespass order?"
+        message="This permanently removes the order from the records system. The action is not reversible — prefer Lift for orders that should no longer be enforced but stay on the historical record."
+        details={orderToDelete ? (
+          <>
+            <div><span className="text-rmpg-500">Order</span> <span className="font-mono text-rmpg-100">{orderToDelete.order_number}</span></div>
+            <div><span className="text-rmpg-500">Subject</span> <span className="text-rmpg-100">{orderToDelete.subject_last_name}, {orderToDelete.subject_first_name}</span></div>
+            <div><span className="text-rmpg-500">Status</span> <span className="text-rmpg-100 capitalize">{orderToDelete.status}</span></div>
+            {orderToDelete.property_name && (
+              <div><span className="text-rmpg-500">Property</span> <span className="text-rmpg-100">{orderToDelete.property_name}</span></div>
+            )}
+          </>
+        ) : undefined}
+        confirmLabel={deleting ? 'Deleting…' : 'Delete order'}
+        confirmVariant="danger"
+        isLoading={deleting}
       />
     </div>
   );
