@@ -1315,6 +1315,21 @@
 //       chunk covering the event timestamp over the short AI clip; response
 //       includes footage_request_id so ForensicDashcamPlayer can show a
 //       "▶ Full Trip" link into the FlexCam trip viewer.
+// v1001: Map crash fixes — (a) replaced two `var(--surface-base)` literals
+//       seeded into useGeoJsonLayers + useMapConfig with `#0d1722` (tactical
+//       map shell is always-dark, so hardcoded hex is correct); the CSS-var
+//       string crashed mapbox.addLayer's style-spec validator and zeroed the
+//       county fill layer. (b) New `upsertGeoJsonSource` helper makes the
+//       three breadcrumb addSource blocks setStyle-diff-race-safe (was
+//       throwing "There is already a source with ID rmpg-breadcrumb-dots"
+//       during theme/basemap switches). (c) `safeMapboxColor` guard at the
+//       addLayer boundary so any future config drift falls back gracefully
+//       instead of crashing the whole layer.
+//       (Numbered v1001 to avoid collision with the existing v995/v996
+//       entries below — the comment number is documentation only; the
+//       actual cache name is auto-stamped from the git short SHA by the
+//       stamp-sw-version Vite plugin, so collisions don't affect cache
+//       invalidation.)
 // v996: PSO ↔ Process Server unification + structured PS code library.
 //       PDF: psoNoticePdfGenerator delegates to generateNoticeOfAttempt so
 //       Dispatch-CFS close and Process-Server "Notice of Attempt" both
