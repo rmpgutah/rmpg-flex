@@ -210,15 +210,18 @@ export function HoursTrendCard({ timeEntries }: { timeEntries: TimeEntry[] }) {
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={hoursByDay} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
             <defs>
+              {/* Brand-gold gradient sourced from the theme CSS variable so
+                  light/dark/legacy palette swaps stay in sync — Recharts SVG
+                  resolves CSS custom properties via paint-attr inheritance. */}
               <linearGradient id="hoursGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#d4a017" stopOpacity={0.4} />
-                <stop offset="95%" stopColor="#d4a017" stopOpacity={0} />
+                <stop offset="5%" stopColor="var(--brand-gold)" stopOpacity={0.4} />
+                <stop offset="95%" stopColor="var(--brand-gold)" stopOpacity={0} />
               </linearGradient>
             </defs>
             <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} width={30} />
             <Tooltip content={<ChartTooltip />} />
-            <Area type="monotone" dataKey="hours" name="Hours" stroke="#d4a017" fill="url(#hoursGrad)" strokeWidth={2} />
+            <Area type="monotone" dataKey="hours" name="Hours" stroke="var(--brand-gold)" fill="url(#hoursGrad)" strokeWidth={2} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
