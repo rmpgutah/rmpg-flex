@@ -460,6 +460,108 @@ bodycamVideosRouter.get('/', async (c) => {
 // (See bodyCameraUploads.ts for handler bodies — split out so this
 // file stays readable and the edit surface stays small for review.)
 
+// GET /:id/custody — chain-of-custody timeline for a bodycam video.
+// Backed by audit_log entries with entity_type='bodycam_video' (writes
+// already emit there via recordAudit; see DELETE handler below). Same
+// shape the EvidenceItem PDF / chain-of-custody UIs consume:
+//   { at, action, by, by_name, location?, notes? }[]
+//
+// Registered BEFORE the bare /:id GET so Hono matches the longer pattern.
+// Reverse the order and /:id swallows /:id/custody as id='123/custody' → 400.
+bodycamVideosRouter.get('/:id/custody', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) {
+      return c.json({ error: 'Invalid id' }, 400);
+    }
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{ officer_id: number }>(
+      db,
+      'SELECT officer_id FROM bodycam_videos WHERE id = ?',
+      id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+    if (!READ_ALL_ROLES.has(actor.role) && Number(row.officer_id) !== actor.id) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+
+    // audit_log carries entity_id as TEXT, so cast both sides.
+    const entries = await query<{
+      created_at: string;
+      action: string;
+      details: string | null;
+      user_id: number | null;
+      actor_name: string | null;
+    }>(db, `
+      SELECT a.created_at, a.action, a.details, a.user_id,
+             u.full_name AS actor_name
+        FROM audit_log a
+        LEFT JOIN users u ON u.id = a.user_id
+       WHERE a.entity_type = 'bodycam_video' AND CAST(a.entity_id AS INTEGER) = ?
+       ORDER BY a.created_at ASC, a.id ASC
+    `, id);
+
+    return c.json({
+      entries: entries.map(e => ({
+        at: e.created_at,
+        action: e.action,
+        by: e.user_id != null ? String(e.user_id) : '',
+        by_name: e.actor_name || '',
+        notes: e.details || '',
+      })),
+    });
+  } catch (err) {
+    console.error('GET /personnel/bodycam-videos/:id/custody failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// POST /:id/view-event — log a viewing event for chain-of-custody.
+// BWC footage access is PII-sensitive and statutory court-record
+// material; recording WHO opened the player and WHEN is required to
+// reconstruct the chain even when no metadata change occurred. The
+// client fires this when VideoPlayer mounts a stream.
+bodycamVideosRouter.post('/:id/view-event', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{ officer_id: number; classification: string | null; case_number: string | null }>(
+      db,
+      'SELECT officer_id, classification, case_number FROM bodycam_videos WHERE id = ?',
+      id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+    if (!READ_ALL_ROLES.has(actor.role) && Number(row.officer_id) !== actor.id) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+
+    // Best-effort audit; never block the view on the audit row.
+    try {
+      await recordAudit(c, {
+        action: 'bodycam_video_viewed',
+        entityType: 'bodycam_video',
+        entityId: id,
+        details: `Classification=${row.classification ?? 'n/a'}; case=${row.case_number ?? 'n/a'}`,
+        actorId: actor.id,
+      });
+    } catch { /* best-effort */ }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/view-event failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
 bodycamVideosRouter.get('/:id', async (c) => {
   try {
     const actor = getActor(c);
