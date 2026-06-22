@@ -80,11 +80,19 @@ function deriveServiceType(
   return undefined;
 }
 
-/** Split a stored 'YYYY-MM-DD HH:MM:SS' (or ISO) timestamp into date + time. */
+/**
+ * Split a stored 'YYYY-MM-DD HH:MM:SS' (or ISO) timestamp into recipient-
+ * readable date + time. Date renders as MM/DD/YYYY (US legal-document
+ * convention); time stays HH:MM 24-hour (police-form convention). The
+ * raw ISO date was leaking through to the PDF as "2026-06-20" which
+ * looked wrong against the long-format notice date ("June 21, 2026").
+ */
 function splitStamp(ts?: string): { date: string; time: string } {
   if (!ts) return { date: '', time: '' };
   const norm = ts.replace('T', ' ');
-  const date = norm.slice(0, 10);
+  const iso = norm.slice(0, 10);                       // "YYYY-MM-DD"
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const date = m ? `${m[2]}/${m[3]}/${m[1]}` : iso;    // "MM/DD/YYYY"
   const time = norm.slice(11, 16);
   return { date, time };
 }
@@ -196,9 +204,14 @@ export function buildNoticeOfCommunicationFromCall(
     })
     .sort((a, b) => a.number - b.number);
 
-  const noticeDate = new Date().toLocaleDateString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric',
-  });
+  // Notice Date renders in the same MM/DD/YYYY format as the attempt
+  // dates below — having one slot read "June 21, 2026" and the table
+  // read "06/20/2026" made the document look like two different forms.
+  // toLocaleDateString('en-US') defaults to M/D/YYYY; manual zero-pad
+  // keeps the field grid columns aligned.
+  const now = new Date();
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const noticeDate = `${pad2(now.getMonth() + 1)}/${pad2(now.getDate())}/${now.getFullYear()}`;
 
   return {
     noticeDate,

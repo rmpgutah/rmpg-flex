@@ -83,6 +83,20 @@ describe('processServiceCodes — formatting', () => {
     expect(formatCodeShort('unknown')).toBe('UNKNOWN');
     expect(formatCodeFull('')).toBe('OTHER (SEE NOTES)');
   });
+
+  it('flags malformed PS codes with an "Unrecognized code" suffix', () => {
+    // "PS/085" looks like a code but doesn't match the library — the
+    // recipient should see something coherent, not a bare malformed token.
+    expect(formatCodeFull('PS/085')).toBe('PS/085 — Unrecognized code (see notes)');
+    expect(formatCodeFull('ps/99')).toBe('PS/99 — Unrecognized code (see notes)');
+  });
+
+  it('passes free-text dispositions through without the suffix', () => {
+    // Plain prose dispositions ("Cancelled", "PS Non-Service") aren't PS
+    // codes — uppercase them as-is, no "Unrecognized code" suffix.
+    expect(formatCodeFull('Cancelled')).toBe('CANCELLED');
+    expect(formatCodeFull('PS Non-Service')).toBe('PS NON-SERVICE');
+  });
 });
 
 describe('processServiceCodes — mapping helpers', () => {

@@ -210,8 +210,20 @@ export default function ServePage() {
           const resultText = (a as any).disposition_code || a.result || 'other';
           return {
             number: a.attempt_number ?? i + 1,
-            date: at && !isNaN(at.getTime()) ? at.toLocaleDateString() : '',
-            time: at && !isNaN(at.getTime()) ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+            // MM/DD/YYYY zero-padded — toLocaleDateString() default is
+            // M/D/YYYY which made the column visibly ragged when
+            // adjacent rows had single vs double-digit months/days.
+            date: at && !isNaN(at.getTime())
+              ? (() => {
+                  const p = (n: number) => String(n).padStart(2, '0');
+                  return `${p(at.getMonth() + 1)}/${p(at.getDate())}/${at.getFullYear()}`;
+                })()
+              : '',
+            // 24-hour HH:MM — police-form convention. hour12:false makes
+            // sure environments with am/pm locales don't sneak in.
+            time: at && !isNaN(at.getTime())
+              ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+              : '',
             result: resultText,
             notes: a.notes || '',
             gpsLat: a.latitude ?? null,
@@ -236,8 +248,20 @@ export default function ServePage() {
               : 'A further attempt may be made; contact our office to arrange service.');
       const { generateNoticeOfAttempt } = await import('../utils/servePdfGenerator');
       const pdf = await generateNoticeOfAttempt({
-        noticeDate: new Date().toLocaleDateString(),
-        caseNumber: job.case_number || 'N/A',
+        // MM/DD/YYYY zero-padded so it matches the attempt dates in the
+        // table below. toLocaleDateString() returns M/D/YYYY (no leading
+        // zeros) which made columns visibly uneven.
+        noticeDate: (() => {
+          const d = new Date();
+          const p = (n: number) => String(n).padStart(2, '0');
+          return `${p(d.getMonth() + 1)}/${p(d.getDate())}/${d.getFullYear()}`;
+        })(),
+        caseNumber: job.case_number || '',
+        // Internal serve-queue reference for the AGENCY REF # header slot.
+        // When a case number exists, this still surfaces so a recipient
+        // knows our internal tracking ID without confusing it with the
+        // court's case number.
+        agencyRefNumber: `JOB-${job.id}`,
         courtName: job.court_name || 'N/A',
         jurisdiction: job.jurisdiction || 'Salt Lake County, Utah',
         serverName: user?.full_name || user?.username || 'Process Server',

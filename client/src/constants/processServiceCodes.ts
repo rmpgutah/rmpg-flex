@@ -185,6 +185,15 @@ export function codeToQueueStatus(code: string | null | undefined): QueueStatus 
   return lookupPsoCode(code)?.queueOutcome ?? 'attempted';
 }
 
+/**
+ * Heuristic: does the input LOOK like a PS code (PS/XX or PS/XX.YY)? Lets
+ * the unknown-code formatter distinguish "operator typed an invalid PS
+ * code" from "result is a plain English disposition we didn't recognize".
+ */
+function looksLikePsCode(code: string): boolean {
+  return /^PS\/\d{1,3}(\.\d{1,3})?$/i.test(code.trim());
+}
+
 /** Render the code + short label for compact UI ("PS/15.05 EVASIVE (DEPARTED)"). */
 export function formatCodeShort(code: string | null | undefined): string {
   const c = lookupPsoCode(code);
@@ -192,11 +201,23 @@ export function formatCodeShort(code: string | null | undefined): string {
   return `${c.code} ${c.short.toUpperCase()}`;
 }
 
-/** Render the code + full label for a Notice of Attempt cell or summary line. */
+/**
+ * Render the code + full label for a Notice of Attempt cell or summary line.
+ *
+ * - Known code   → "PS/15.05 — Concealment by Co-Resident"
+ * - Unknown PS/  → "PS/085 — Unrecognized code (see notes)" so a recipient
+ *                   sees something coherent instead of a bare malformed token
+ * - Free text    → upper-case the original, no suffix (it's already prose)
+ * - Empty        → "OTHER (SEE NOTES)"
+ */
 export function formatCodeFull(code: string | null | undefined): string {
   const c = lookupPsoCode(code);
-  if (!c) return code ? code.toUpperCase() : 'OTHER (SEE NOTES)';
-  return `${c.code} — ${c.label}`;
+  if (c) return `${c.code} — ${c.label}`;
+  if (!code) return 'OTHER (SEE NOTES)';
+  const raw = code.trim();
+  return looksLikePsCode(raw)
+    ? `${raw.toUpperCase()} — Unrecognized code (see notes)`
+    : raw.toUpperCase();
 }
 
 /**
