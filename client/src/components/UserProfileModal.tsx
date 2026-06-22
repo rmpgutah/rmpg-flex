@@ -30,12 +30,51 @@ import TotpCodeInput from './TotpCodeInput';
 import SignaturePad from './SignaturePad';
 import TrustedDevicesList from './security/TrustedDevicesList';
 import LoginHistoryTable from './security/LoginHistoryTable';
+import { isNotificationSoundEnabled, setNotificationSoundEnabled } from '../utils/notificationTones';
 import VoicePersonaSettings from './settings/VoicePersonaSettings';
 import SecurityKeyManager from './security/SecurityKeyManager';
 import BackupCodesDisplay from './security/BackupCodesDisplay';
 import SecurityStatusCard from './security/SecurityStatusCard';
 import TwoFactorSetupWizard from './security/TwoFactorSetupWizard';
 import { applyThemePreference, normalizeThemePreference, writeThemeOverride, resolveCurrentTheme, readThemeOverride } from '../utils/theme';
+
+/**
+ * Per-user notification-sound toggle. Reads the current state via the
+ * per-user helper (which falls back to the legacy global key) and writes
+ * back through the helper so a shared MDT doesn't leak a former
+ * operator's "off" pref into the next login.
+ *
+ * Kept inline (single use site) to avoid a separate file for what is
+ * effectively a stateful wrapper around two existing utility calls.
+ */
+function NotificationSoundToggle() {
+  const [enabled, setEnabled] = useState(() => isNotificationSoundEnabled());
+  const onChange = (next: boolean) => {
+    setEnabled(next);
+    setNotificationSoundEnabled(next);
+  };
+  return (
+    <div className="mt-3" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '8px 10px' }}>
+      <label className="flex items-center justify-between cursor-pointer">
+        <span className="text-[11px] text-rmpg-200">Enable Notification Sounds</span>
+        <div className="flex items-center gap-2">
+          <input
+            id="ff-userprofilemodal-10"
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => onChange(e.target.checked)}
+            className="w-4 h-4 accent-green-500"
+          />
+          <span
+            className={`text-[9px] font-mono ${enabled ? 'text-green-400' : 'text-red-400'}`}
+          >
+            {enabled ? 'ON' : 'OFF'}
+          </span>
+        </div>
+      </label>
+    </div>
+  );
+}
 
 interface UserPreferences {
   notify_dispatch_email: number;
@@ -939,25 +978,12 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     </div>
                   </div>
 
-                  {/* Feature 23: Notification sound toggle */}
-                  <div className="mt-3" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '8px 10px' }}>
-                    <label className="flex items-center justify-between cursor-pointer">
-                      <span className="text-[11px] text-rmpg-200">Enable Notification Sounds</span>
-                      <div className="flex items-center gap-2">
-                        <input id="ff-userprofilemodal-10"
-                          type="checkbox"
-                          checked={localStorage.getItem('rmpg_notification_sounds') !== 'false'}
-                          onChange={(e) => {
-                            localStorage.setItem('rmpg_notification_sounds', String(e.target.checked));
-                          }}
-                          className="w-4 h-4 accent-green-500"
-                        />
-                        <span className="text-[9px] font-mono" style={{ color: localStorage.getItem('rmpg_notification_sounds') !== 'false' ? '#22c55e' : '#ef4444' }}>
-                          {localStorage.getItem('rmpg_notification_sounds') !== 'false' ? 'ON' : 'OFF'}
-                        </span>
-                      </div>
-                    </label>
-                  </div>
+                  {/* Feature 23: Notification sound toggle.
+                      v1056: routed through the per-user notificationTones
+                      helpers so a shared MDT no longer inherits the previous
+                      operator's "off" pref. */}
+                  <NotificationSoundToggle />
+
 
                   {/* Quiet Hours */}
                   <div className="mt-3">
