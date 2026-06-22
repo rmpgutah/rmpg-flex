@@ -189,7 +189,7 @@ export default function WarrantPicker({
       {open && (results.length > 0 || loading || error || query.trim().length >= 2) && (
         <div className="absolute left-0 right-0 mt-1 bg-surface-base border border-border-default panel-beveled z-30 max-h-[260px] overflow-y-auto scrollbar-dark" style={{ borderRadius: 2 }}>
           {loading && <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">Searching warrants…</div>}
-          {error && <div className="px-3 py-2 text-[11px] text-[#ef4444]">{error}</div>}
+          {error && <div className="px-3 py-2 text-[11px] text-[rgb(var(--sev-critical-rgb))]">{error}</div>}
           {!loading && !error && results.length === 0 && query.trim().length >= 2 && (
             <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">No local warrants matched.</div>
           )}
@@ -200,11 +200,11 @@ export default function WarrantPicker({
             return (
               <button key={w.id} type="button" onClick={() => select(w)}
                 {...optionProps(i, selected)}
-                className={`w-full text-left px-3 py-2 border-b border-border-default  flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
-                style={{ borderLeft: selected ? '2px solid #d4a017' : '2px solid transparent' }}>
-                <FileWarning className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? '#d4a017' : '#666' }} />
+                className={`w-full text-left px-3 py-2 border-b border-border-default  flex items-start gap-2 ${selected ? 'bg-[rgb(var(--brand-gold-rgb)/0.12)]' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
+                style={{ borderLeft: selected ? '2px solid var(--brand-gold)' : '2px solid transparent' }}>
+                <FileWarning className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? 'var(--brand-gold)' : 'var(--spm-text-muted)' }} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[11px] font-mono font-semibold text-[#d4a017]">
+                  <div className="text-[11px] font-mono font-semibold text-[var(--brand-gold)]">
                     {w.warrant_number || `Warrant #${w.id}`}
                     {w.type && <span className="ml-2 text-rmpg-500">[{w.type}]</span>}
                   </div>
