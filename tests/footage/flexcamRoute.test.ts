@@ -88,6 +88,10 @@ interface RouterDbFixture {
   }>>;
   // Plain footage_chunks SELECT keyed by request_id (no JOIN — used by /render/:id).
   chunks?: Array<{ seq: number; from_ts: number; to_ts: number; status: string; r2_key: string | null; bytes: number }>;
+  // Court-package fixtures: a single footage_requests row + its chunk/link/custody children.
+  request?: Record<string, unknown> | null;
+  links?: Array<{ entity_type: string; entity_id: number }>;
+  custody?: Array<{ action: string; actor_name: string | null; reason: string | null; created_at: string }>;
 }
 function makeRouterDb(fixture: RouterDbFixture): any {
   return {
@@ -95,6 +99,10 @@ function makeRouterDb(fixture: RouterDbFixture): any {
       const isTripLookup = /FROM\s+unit_trips/i.test(sql);
       const isChunkJoin = /FROM\s+footage_chunks/i.test(sql) && /JOIN\s+footage_requests/i.test(sql);
       const isPlainChunkSelect = /FROM\s+footage_chunks/i.test(sql) && !/JOIN/i.test(sql) && /^\s*SELECT/i.test(sql);
+      // /court-package SELECT (no JOIN, plain SELECT FROM footage_requests WHERE id=?).
+      const isRequestLookup = /^\s*SELECT[\s\S]*FROM\s+footage_requests\s+WHERE\s+id=/i.test(sql);
+      const isLinksSelect = /FROM\s+footage_evidence_links/i.test(sql) && /^\s*SELECT/i.test(sql);
+      const isCustodySelect = /FROM\s+footage_custody_log/i.test(sql) && /^\s*SELECT/i.test(sql);
       let bound: unknown[] = [];
       const stmt = {
         bind(...args: unknown[]) { bound = args; return stmt; },
@@ -102,6 +110,9 @@ function makeRouterDb(fixture: RouterDbFixture): any {
           if (isTripLookup) {
             const id = Number(bound[0]);
             return (fixture.tripsById ?? {})[id] ?? null;
+          }
+          if (isRequestLookup) {
+            return fixture.request ?? null;
           }
           return null;
         },
@@ -112,6 +123,12 @@ function makeRouterDb(fixture: RouterDbFixture): any {
           }
           if (isPlainChunkSelect) {
             return { results: fixture.chunks ?? [] };
+          }
+          if (isLinksSelect) {
+            return { results: fixture.links ?? [] };
+          }
+          if (isCustodySelect) {
+            return { results: fixture.custody ?? [] };
           }
           return { results: [] };
         },
@@ -171,5 +188,57 @@ describe('POST /api/flexcam/render/:id (MP4 enqueue path)', () => {
 
     expect(res.status).toBe(200);  // existing path returns 200, not 202
     // (don't assert body shape — existing path's response is the existing contract)
+  });
+});
+
+describe('POST /api/flexcam/footage/:id/court-package (additive enrichment)', () => {
+  it('includes merged_sha256 and merged_url in the manifest when merged_status=ready', async () => {
+    const env = {
+      DB: makeRouterDb({
+        // The /court-package SELECT pulls the row by id; provide the locked + merged-ready state.
+        request: {
+          id: 8, evidence_number: 'FL26-0001', classification: 'evidence',
+          preserved_reason: null, from_ts: 1, to_ts: 100, evidence_locked: 1,
+          merged_status: 'ready', merged_r2_key: 'flexcam/trips/merged/8.mp4',
+          merged_sha256: 'deadbeefcafebabe',
+        },
+        chunks: [{ seq: 0, from_ts: 1, to_ts: 40, status: 'downloaded', r2_key: 'k0', bytes: 100 }],
+        links: [],
+        custody: [],
+      }),
+      UPLOADS: { get: vi.fn(async () => null) },
+      PDF_SIGNING_KEY: undefined,
+      JWT_SECRET: 'test-secret-32-bytes-long-enough-for-derive',
+    } as any;
+
+    const res = await flexcam.request('/footage/8/court-package', { method: 'POST' }, env);
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.manifest.merged_sha256).toBe('deadbeefcafebabe');
+    expect(body.manifest.merged_url).toContain('/footage/8/continuous');
+  });
+
+  it('omits merged_* fields when merged_status is not ready', async () => {
+    const env = {
+      DB: makeRouterDb({
+        request: {
+          id: 9, evidence_number: 'FL26-0002', classification: 'evidence',
+          preserved_reason: null, from_ts: 1, to_ts: 100, evidence_locked: 1,
+          merged_status: 'queued', merged_r2_key: null, merged_sha256: null,
+        },
+        chunks: [{ seq: 0, from_ts: 1, to_ts: 40, status: 'downloaded', r2_key: 'k0', bytes: 100 }],
+        links: [],
+        custody: [],
+      }),
+      UPLOADS: { get: vi.fn(async () => null) },
+      PDF_SIGNING_KEY: undefined,
+      JWT_SECRET: 'test-secret-32-bytes-long-enough-for-derive',
+    } as any;
+
+    const res = await flexcam.request('/footage/9/court-package', { method: 'POST' }, env);
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.manifest.merged_sha256).toBeUndefined();
+    expect(body.manifest.merged_url).toBeUndefined();
   });
 });
