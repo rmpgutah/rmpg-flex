@@ -92,8 +92,17 @@ async function runProvider(
         max_tokens: opts.maxTokens ?? 2048,
       };
   const r: any = await env.AI.run(model as any, aiOpts);
-  const text = typeof r === 'string' ? r : (r?.response || r?.choices?.[0]?.message?.content || '');
-  return { text: String(text), model };
+  const raw = typeof r === 'string' ? r : (r?.response ?? r?.choices?.[0]?.message?.content ?? '');
+  // Workers AI auto-parses JSON responses for prompts that elicit JSON
+  // (expand/extract/verify). Downstream parsers run JSON.parse on strings,
+  // so re-serialize objects/arrays defensively instead of String()-coercing
+  // (which would join arrays with commas — the "expand crash" of [a,b]→"a,b").
+  let text: string;
+  if (typeof raw === 'string') text = raw;
+  else if (raw == null) text = '';
+  else if (typeof raw === 'object') text = JSON.stringify(raw);
+  else text = String(raw);
+  return { text, model };
 }
 
 /**
