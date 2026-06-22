@@ -794,7 +794,12 @@ function FleetMapCard() {
   // poll + manual refresh interleave can't tear down the freshly-built batch.
   const rebuildGen = useRef(0);
   const [data, setData] = useState<FleetMapResp | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  // Split error sources: a /fleet-viz/fleet-map 500 (back-end SQL) is NOT
+  // the same as a Mapbox-side failure (missing access token). They used to
+  // share one `err` so a transient API hiccup falsely flashed "MAPBOX
+  // UNAVAILABLE" — confusing operators because mapbox.com itself was fine.
+  const [dataErr, setDataErr] = useState<string | null>(null);
+  const [mapErr, setMapErr] = useState<string | null>(null);
 
   // Fetch once on mount. The endpoint is cheap (single fleet_vehicles scan +
   // a correlated subquery per row to grab the freshest breadcrumb), so a
@@ -804,8 +809,8 @@ function FleetMapCard() {
     let cancelled = false;
     const load = () => {
       apiFetchV2<FleetMapResp>('/fleet-viz/fleet-map')
-        .then((r) => { if (!cancelled) { setData(r); setErr(null); } })
-        .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
+        .then((r) => { if (!cancelled) { setData(r); setDataErr(null); } })
+        .catch((e) => { if (!cancelled) setDataErr(e?.message ?? 'Failed to load'); });
     };
     load();
     const t = setInterval(load, 30_000);
@@ -832,7 +837,7 @@ function FleetMapCard() {
           const token = await resolveMapboxAccessToken();
           if (cancelled) return;
           if (!token) {
-            setErr('An API access token is required to use Mapbox GL.');
+            setMapErr('An API access token is required to use Mapbox GL.');
             return;
           }
           initMapbox(token);
@@ -848,12 +853,12 @@ function FleetMapCard() {
         map.addControl(new mapboxgl.AttributionControl({ compact: true }));
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
         mapRef.current = map;
-        // Clear any prior err (e.g. a transient "loading…" / fetch failure) —
-        // a successful map init means Mapbox is alive. Without this, the
+        // Clear any prior mapErr (e.g. a transient init failure) — a
+        // successful map init means Mapbox is alive. Without this, the
         // "MAPBOX UNAVAILABLE" chip persists even after the map renders.
-        if (!cancelled) setErr(null);
+        if (!cancelled) setMapErr(null);
       } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : 'Mapbox initialization failed');
+        if (!cancelled) setMapErr(e instanceof Error ? e.message : 'Mapbox initialization failed');
       }
     })();
     return () => {
@@ -880,7 +885,11 @@ function FleetMapCard() {
     // isValidLngLat rejects NaN/Infinity AND the exact (0,0) no-fix signature
     // ClearPath emits before its first GPS lock, so an idle vehicle without a
     // GPS fix doesn't ghost on the African coast.
-    const located = data.data.filter((v) => isValidLngLat(v.lng, v.lat));
+    // Optional-chain `data.data` — a partial response (200 with `{}`) would
+    // otherwise crash the rebuild effect with "Cannot read properties of
+    // undefined (reading 'filter')". The /fleet-map handler always returns
+    // `{ count, data: [...] }`, but a future shape drift shouldn't be a TypeError.
+    const located = (data.data ?? []).filter((v) => isValidLngLat(v.lng, v.lat));
     if (located.length === 0) return;
 
     const bounds = new mapboxgl.LngLatBounds();
@@ -925,35 +934,41 @@ function FleetMapCard() {
   const counts = { ready: 0, attention: 0, unavailable: 0 };
   for (const v of located) counts[v.readiness] = (counts[v.readiness] ?? 0) + 1;
 
+  // Two distinct failure modes, two distinct labels.
+  const hint = mapErr
+    ? 'mapbox unavailable'
+    : dataErr
+    ? 'fleet feed unavailable'
+    : data
+    ? `${located.length} located · ${counts.ready} ready · ${counts.attention} attention · ${counts.unavailable} offline`
+    : 'loading…';
   return (
-    <Card
-      title="Fleet map"
-      hint={
-        err
-          ? 'mapbox unavailable'
-          : data
-          ? `${located.length} located · ${counts.ready} ready · ${counts.attention} attention · ${counts.unavailable} offline`
-          : 'loading…'
-      }
-    >
-      {err ? (
+    <Card title="Fleet map" hint={hint}>
+      {mapErr ? (
         <div className="text-xs text-amber-300 px-3 py-2 border border-amber-500/40 rounded-sm bg-amber-500/10">
-          {err}
-          {err.includes('access token') ? (
+          {mapErr}
+          {mapErr.includes('access token') ? (
             <div className="mt-1 text-[10px] text-amber-200/70">
               Set <code>VITE_MAPBOX_ACCESS_TOKEN</code> in <code>client/.env</code> or Cloudflare Pages env vars.
             </div>
           ) : null}
         </div>
       ) : (
-        <div
-          ref={containerRef}
-          className="w-full rounded-sm border border-rmpg-700 overflow-hidden"
-          style={{ height: 320 }}
-          aria-label="Fleet vehicle map"
-        />
+        <>
+          <div
+            ref={containerRef}
+            className="w-full rounded-sm border border-rmpg-700 overflow-hidden"
+            style={{ height: 320 }}
+            aria-label="Fleet vehicle map"
+          />
+          {dataErr ? (
+            <div className="mt-2 text-[10px] text-amber-300 px-2 py-1 border border-amber-500/40 rounded-sm bg-amber-500/10">
+              Vehicle positions are temporarily unavailable: {dataErr}
+            </div>
+          ) : null}
+        </>
       )}
-      {data && located.length === 0 && !err ? (
+      {data && located.length === 0 && !mapErr && !dataErr ? (
         <div className="mt-2 text-[10px] text-rmpg-400">
           No vehicles have a recent GPS breadcrumb (vehicles need <code>assigned_unit_id</code> + a row in <code>gps_breadcrumbs</code> to plot).
         </div>
