@@ -278,9 +278,19 @@ flexcam.get('/footage/:id/links', async (c): Promise<Response> => {
 
 flexcam.post('/footage/:id/court-package', async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureEvidenceSchema(db);
+  // Guards the SELECT against schema drift on a live D1 that hasn't had
+  // migration 0144 (merged_sha256 + remux_* columns) applied yet.
+  await ensureRemuxSchema(db);
   const id = Number(c.req.param('id'));
-  const req = await queryFirst<{ id: number; evidence_number: string | null; classification: string; preserved_reason: string | null; from_ts: number; to_ts: number; evidence_locked: number }>(
-    db, 'SELECT id, evidence_number, classification, preserved_reason, from_ts, to_ts, evidence_locked FROM footage_requests WHERE id=?', id).catch(() => null);
+  const req = await queryFirst<{
+    id: number; evidence_number: string | null; classification: string;
+    preserved_reason: string | null; from_ts: number; to_ts: number; evidence_locked: number;
+    merged_status: string | null; merged_r2_key: string | null; merged_sha256: string | null;
+  }>(
+    db,
+    `SELECT id, evidence_number, classification, preserved_reason, from_ts, to_ts, evidence_locked,
+            merged_status, merged_r2_key, merged_sha256
+       FROM footage_requests WHERE id=?`, id).catch(() => null);
   if (!req) return c.json({ error: 'Not found' }, 404);
   if (!req.evidence_locked) return c.json({ error: 'Lock this footage as evidence before generating a court package' }, 409);
   const chunks = await query<{ id: number; seq: number; from_ts: number; to_ts: number; bytes: number; sha256: string | null; status: string; r2_key: string | null }>(
