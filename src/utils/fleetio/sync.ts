@@ -161,6 +161,63 @@ export async function applyOutbound(deps: ApplyOutboundDeps): Promise<ApplyOutbo
   return result;
 }
 
+// ─── FK translation map ──────────────────────────────────
+// RMPG payloads carry LOCAL ids (vehicle_id = fleet_vehicles.id) that
+// Fleet.io can't resolve. For each outbound resource, list the FK fields
+// that reference a RMPG table — the dispatch translates them via
+// fleetio_links before sending. If a REQUIRED FK has no link, the
+// dispatch returns a no-op completion (parent isn't synced yet; sending
+// would 422). OPTIONAL FKs are silently dropped from the payload when
+// unlinked, so Fleet.io receives a clean null.
+//
+// Discovered production-side 2026-06-22: work_order/create event
+// id=3 failed with Fleet.io 422 because vehicle_id=1 (RMPG) doesn't
+// exist on Fleet.io's side (no vehicles seeded yet).
+
+interface FkRef { rmpgTable: string; required: boolean }
+
+const OUTBOUND_FK_MAP: Record<string, Record<string, FkRef>> = {
+  work_order: {
+    vehicle_id:          { rmpgTable: 'fleet_vehicles', required: true  },
+    vendor_id:           { rmpgTable: 'vendors',        required: false },
+    assigned_to_user_id: { rmpgTable: 'users',          required: false },
+  },
+  fuel_entry: {
+    vehicle_id:          { rmpgTable: 'fleet_vehicles', required: true  },
+    vendor_id:           { rmpgTable: 'vendors',        required: false },
+    driver_id:           { rmpgTable: 'users',          required: false },
+  },
+  // vehicle/create has no outbound FKs (fuel_type_id, tire_size_id etc.
+  // are Fleet.io's own reference IDs; the seed path resolves them).
+};
+
+/** Result: `null` if a required FK can't be translated (caller should
+ *  no-op the dispatch); otherwise the payload with FKs replaced. */
+async function translateOutboundFks(
+  db: D1Database,
+  resource: string,
+  payload: Record<string, unknown>,
+): Promise<Record<string, unknown> | null> {
+  const fks = OUTBOUND_FK_MAP[resource];
+  if (!fks) return payload;
+  const out: Record<string, unknown> = { ...payload };
+  for (const [field, ref] of Object.entries(fks)) {
+    const rawId = out[field];
+    if (rawId == null) continue;
+    const rmpgId = typeof rawId === 'number' ? rawId : Number(rawId);
+    if (!Number.isFinite(rmpgId)) { delete out[field]; continue; }
+    const fleetioId = await lookupFleetioId(db, ref.rmpgTable, rmpgId);
+    if (fleetioId != null) {
+      out[field] = fleetioId;
+    } else if (ref.required) {
+      return null;
+    } else {
+      delete out[field];
+    }
+  }
+  return out;
+}
+
 /** Pure dispatch — given a row + adapter, call the right method. Throws
  *  to signal failure (caller decides how to record it). */
 async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): Promise<unknown> {
@@ -199,12 +256,16 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     return deps.adapter.archiveVehicle({ fleetioId, archivedAtIso: now(deps).toISOString() });
   }
   if (row.resource === 'fuel_entry' && row.action === 'create') {
-    return deps.adapter.createFuelEntry({ payload: filteredPayload });
+    const translated = await translateOutboundFks(deps.db, 'fuel_entry', filteredPayload);
+    if (translated == null) return null;       // parent vehicle not linked yet
+    return deps.adapter.createFuelEntry({ payload: translated });
   }
   if (row.resource === 'work_order' && row.action === 'create') {
     const existing = await lookupFleetioId(deps.db, 'work_orders', row.resource_id);
     if (existing) return null;
-    const created = await deps.adapter.createWorkOrder({ payload: filteredPayload });
+    const translated = await translateOutboundFks(deps.db, 'work_order', filteredPayload);
+    if (translated == null) return null;       // parent vehicle not linked yet
+    const created = await deps.adapter.createWorkOrder({ payload: translated });
     await recordLink(deps.db, 'work_orders', row.resource_id, 'work_order', created.id, now(deps));
     return created;
   }

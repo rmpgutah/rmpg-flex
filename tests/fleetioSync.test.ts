@@ -408,7 +408,7 @@ describe('applyOutbound', () => {
     const state: FleetTables = {
       events: [baseEvent({ id: 15, event_id: 'evt-wo', resource: 'work_order', resource_id: 1, action: 'create',
         payload_json: JSON.stringify({ vehicle_id: 7777, description: 'Brake job' }) })],
-      links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 7777, fleetio_id: 99999 }], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
     };
     const { db } = makeDb(state);
     let woCalls = 0;
@@ -420,13 +420,104 @@ describe('applyOutbound', () => {
       async createWorkOrder(args: { payload: Record<string, unknown> }) {
         woCalls++;
         expect(args.payload.description).toBe('Brake job');
-        return { id: 8888, vehicle_id: 7777 } as never;
+        // vehicle_id must be translated to Fleet.io id (99999), not the RMPG id (7777).
+        expect(args.payload.vehicle_id).toBe(99999);
+        return { id: 8888, vehicle_id: 99999 } as never;
       },
     };
     const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
     expect(woCalls).toBe(1);
     expect(result.completed).toBe(1);
-    expect(state.links).toEqual([{ rmpg_table: 'work_orders', rmpg_id: 1, fleetio_id: 8888 }]);
+    expect(state.links.some(l => l.rmpg_table === 'work_orders' && l.rmpg_id === 1 && l.fleetio_id === 8888)).toBe(true);
+  });
+
+  // ─── FK translation coverage (PR-after-1544 hotfix) ────────────────
+
+  it('work_order/create — no-op completion when parent vehicle is not linked (avoids Fleet.io 422)', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ id: 16, event_id: 'evt-wo-orphan', resource: 'work_order', resource_id: 2, action: 'create',
+        payload_json: JSON.stringify({ vehicle_id: 1, summary: 'Rear collision' }) })],
+      links: [], // no fleet_vehicles link → required FK can't translate
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    let woCalls = 0;
+    const adapter = {
+      async createVehicle() { throw new Error('not used'); },
+      async updateVehicle() { throw new Error('not used'); },
+      async archiveVehicle() { throw new Error('not used'); },
+      async createFuelEntry() { throw new Error('not used'); },
+      async createWorkOrder() { woCalls++; return {} as never; },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(woCalls).toBe(0);                              // never reached Fleet.io
+    expect(result.completed).toBe(1);                     // marked completed (no-op)
+    expect(state.events[0].status).toBe('completed');
+  });
+
+  it('work_order/create — drops optional vendor_id/assigned_to_user_id when unlinked, keeps the rest', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ id: 17, event_id: 'evt-wo-opt', resource: 'work_order', resource_id: 3, action: 'create',
+        payload_json: JSON.stringify({ vehicle_id: 7777, vendor_id: 55, assigned_to_user_id: 12, summary: 'Tire rotation' }) })],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 7777, fleetio_id: 99999 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const { db } = makeDb(state);
+    let sentPayload: Record<string, unknown> | null = null;
+    const adapter = {
+      async createVehicle() { throw new Error('not used'); },
+      async updateVehicle() { throw new Error('not used'); },
+      async archiveVehicle() { throw new Error('not used'); },
+      async createFuelEntry() { throw new Error('not used'); },
+      async createWorkOrder(args: { payload: Record<string, unknown> }) {
+        sentPayload = args.payload;
+        return { id: 9000 } as never;
+      },
+    };
+    const result = await applyOutbound({ db, adapter: adapter as never, config: stubConfig });
+    expect(result.completed).toBe(1);
+    expect(sentPayload).not.toBeNull();
+    expect(sentPayload!.vehicle_id).toBe(99999);          // translated
+    expect(sentPayload!.summary).toBe('Tire rotation');   // preserved
+    expect(sentPayload!.vendor_id).toBeUndefined();            // dropped (no link)
+    expect(sentPayload!.assigned_to_user_id).toBeUndefined();  // dropped (no link)
+  });
+
+  it('fuel_entry/create — translates vehicle_id; no-op when parent unlinked', async () => {
+    const stateLinked: FleetTables = {
+      events: [baseEvent({ id: 18, event_id: 'evt-fuel-ok', resource: 'fuel_entry', resource_id: 100, action: 'create',
+        payload_json: JSON.stringify({ vehicle_id: 7777, gallons: 12.4, total_cost: 43.28 }) })],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 7777, fleetio_id: 99999 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    let sent: Record<string, unknown> | null = null;
+    const adapterOk = {
+      async createVehicle() { throw new Error('nu'); }, async updateVehicle() { throw new Error('nu'); },
+      async archiveVehicle() { throw new Error('nu'); },
+      async createFuelEntry(args: { payload: Record<string, unknown> }) { sent = args.payload; return { id: 1 } as never; },
+      async createWorkOrder() { throw new Error('nu'); },
+    };
+    const r1 = await applyOutbound({ db: makeDb(stateLinked).db, adapter: adapterOk as never, config: stubConfig });
+    expect(r1.completed).toBe(1);
+    expect(sent!.vehicle_id).toBe(99999);
+    expect(sent!.gallons).toBe(12.4);
+
+    // Orphan case
+    const stateOrphan: FleetTables = {
+      events: [baseEvent({ id: 19, event_id: 'evt-fuel-orphan', resource: 'fuel_entry', resource_id: 101, action: 'create',
+        payload_json: JSON.stringify({ vehicle_id: 1, gallons: 8.0 }) })],
+      links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    let calls = 0;
+    const adapterCount = {
+      async createVehicle() { throw new Error('nu'); }, async updateVehicle() { throw new Error('nu'); },
+      async archiveVehicle() { throw new Error('nu'); },
+      async createFuelEntry() { calls++; return {} as never; },
+      async createWorkOrder() { throw new Error('nu'); },
+    };
+    const r2 = await applyOutbound({ db: makeDb(stateOrphan).db, adapter: adapterCount as never, config: stubConfig });
+    expect(calls).toBe(0);
+    expect(r2.completed).toBe(1);
   });
 });
 
