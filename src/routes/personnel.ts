@@ -5,6 +5,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { setFleetOdometer } from '../utils/fleetOdometer';
+import { nowDualStamp } from '../utils/denverTime';
 import { bodyCamerasRouter, bodycamVideosRouter } from './personnel/bodyCameras';
 // Side-effect import: registers upload + stream handlers on
 // bodycamVideosRouter. Splits the upload/stream surface (PR 2) into
@@ -742,10 +743,10 @@ personnel.post('/time/clock-in', async (c) => {
       `SELECT id FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
     if (existing) return c.json({ error: 'Already clocked in', entry_id: existing.id }, 409);
 
-    const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00');
+    const stamp = nowDualStamp();
     const result = await execute(db,
-      `INSERT INTO time_entries (officer_id, clock_in, status, created_at) VALUES (?, ?, 'active', datetime('now','localtime'))`,
-      officerId, stamp);
+      `INSERT INTO time_entries (officer_id, clock_in, clock_in_local, status, created_at) VALUES (?, ?, ?, 'active', datetime('now','localtime'))`,
+      officerId, stamp.utc, stamp.local);
     const entry = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(entry, 201);
   } catch (err) {
@@ -767,14 +768,14 @@ personnel.post('/time/clock-out', async (c) => {
       `SELECT id, clock_in, break_minutes FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
     if (!entry) return c.json({ error: 'No active clock-in found' }, 404);
 
-    const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00');
+    const stamp = nowDualStamp();
     const a = new Date(entry.clock_in).getTime();
-    const b = new Date(stamp).getTime();
+    const b = new Date(stamp.utc).getTime();
     const hrs = Number.isFinite(a) && Number.isFinite(b) && b > a
       ? Math.round(((b - a) / 3_600_000 - (entry.break_minutes || 0) / 60) * 100) / 100
       : 0;
 
-    await execute(db, `UPDATE time_entries SET clock_out = ?, total_hours = ?, status = 'completed' WHERE id = ?`, stamp, hrs, entry.id);
+    await execute(db, `UPDATE time_entries SET clock_out = ?, clock_out_local = ?, total_hours = ?, status = 'completed' WHERE id = ?`, stamp.utc, stamp.local, hrs, entry.id);
     const updated = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entry.id);
     return c.json(updated);
   } catch (err) {
@@ -797,7 +798,8 @@ personnel.post('/time/start-break', async (c) => {
     if (!entry) return c.json({ error: 'No active clock-in found' }, 404);
     if (entry.status === 'on_break') return c.json({ error: 'Already on break' }, 409);
 
-    await execute(db, `UPDATE time_entries SET status = 'on_break', break_start = datetime('now','localtime') WHERE id = ?`, entry.id);
+    const stamp = nowDualStamp();
+    await execute(db, `UPDATE time_entries SET status = 'on_break', break_start = ?, break_start_local = ? WHERE id = ?`, stamp.utc, stamp.local, entry.id);
     const updated = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entry.id);
     return c.json(updated);
   } catch (err) {

@@ -879,6 +879,12 @@ export interface TimeEntry {
   officer_name: string;
   clock_in: string;
   clock_out?: string;
+  /** Denver wall-clock string mirror of clock_in written by nowDualStamp(). */
+  clock_in_local?: string | null;
+  /** Denver wall-clock string mirror of clock_out written by nowDualStamp(). */
+  clock_out_local?: string | null;
+  /** Denver wall-clock string mirror of break_start written by nowDualStamp(). */
+  break_start_local?: string | null;
   scheduled_start?: string;
   scheduled_end?: string;
   break_start?: string;
