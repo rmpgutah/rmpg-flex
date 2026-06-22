@@ -2577,86 +2577,6 @@ interface IncidentData {
   }[];
 }
 
-// ── GPS Activity Log Section (shared across report templates) ──
-
-function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, priority: string): number {
-  const lx = getLeftX();
-  const trail = data.breadcrumb_trail;
-
-  y = checkPageBreak(doc, y, 30, priority);
-  const sec = openAutoSection(doc, 'GPS Activity Log', y); y = sec.contentY;
-
-  if (trail && trail.points.length > 0) {
-    const stats = trail.stats;
-    if (stats) {
-      y = addThreeColumnFields(doc, [
-        { label: 'Total Distance', value: `${stats.total_distance_miles} mi` },
-        { label: 'Duration', value: `${stats.duration_minutes} min` },
-        { label: 'Avg Speed', value: `${stats.avg_speed_mph} mph` },
-        { label: 'Max Speed', value: `${stats.max_speed_mph} mph` },
-        { label: 'Breadcrumb Points', value: String(stats.total_points) },
-        { label: 'Sources', value: stats.source_breakdown
-          ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
-          : '' },
-      ], y);
-      y += SPACING.SM;
-    }
-
-    // Sampled breadcrumb table — max 50 rows for readability
-    const maxRows = 50;
-    const step = trail.points.length > maxRows ? Math.ceil(trail.points.length / maxRows) : 1;
-    const sampled = trail.points.filter((_, i) => i % step === 0 || i === trail.points.length - 1);
-
-    const colPositions = [lx, LAYOUT.PAGE_MARGIN + 38, LAYOUT.PAGE_MARGIN + 100, LAYOUT.PAGE_MARGIN + 130];
-    const tableHeaders = [
-      { label: 'TIME', x: colPositions[0] },
-      { label: 'LOCATION / ROAD', x: colPositions[1] },
-      { label: 'SPEED', x: colPositions[2] },
-      { label: 'SOURCE', x: colPositions[3] },
-    ];
-    const tableRows = sampled.map(p => {
-      let timeStr = '';
-      try {
-        timeStr = parseTimestamp(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-      } catch { timeStr = p.time; }
-      // Prefer road name + intersection, fall back to raw coordinates.
-      // Guard coords so a single non-numeric point can't crash the whole PDF.
-      const latN = toNum(p.lat), lngN = toNum(p.lng);
-      let locationStr = (latN != null && lngN != null) ? `${latN.toFixed(5)}, ${lngN.toFixed(5)}` : '—';
-      if (p.road_name) {
-        locationStr = p.road_name;
-        if (p.intersection) locationStr += ` / ${p.intersection}`;
-      }
-      const speedMph = p.speed != null ? Math.round(p.speed * 2.237) : null;
-      return [
-        timeStr,
-        locationStr,
-        speedMph != null ? `${speedMph} mph` : '-',
-        (p.status || p.call_type || 'unknown').toUpperCase(),
-      ];
-    });
-
-    y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
-
-    if (step > 1) {
-      doc.setFontSize(5);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      y += SPACING.MD;
-    }
-  } else {
-    doc.setFontSize(FONT.SIZE_TABLE_BODY);
-    doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('No GPS breadcrumb data available', lx, y);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    y += SPACING.XL;
-  }
-
-  y = closeAutoSection(doc, sec.sectionY, y);
-  return y;
-}
-
 type IncidentOverviewField = {
   label: string;
   value?: string | number | null;
@@ -3453,9 +3373,6 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // GPS Activity Log
-  y = addGpsActivityLogSection(doc, data, y, data.priority);
-
   // Narrative
   y = addNarrativeSection(doc, 'Officer Notes', data.narrative || '', y, data.priority);
   y = addSupplementsSection(doc, data, y);
@@ -3585,8 +3502,7 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // GPS, Narrative, Attachments, Signatures
-  y = addGpsActivityLogSection(doc, data, y, data.priority);
+  // Narrative, Attachments, Signatures
   y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
   y = addSupplementsSection(doc, data, y);
 
@@ -3672,7 +3588,6 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
   // Free-form sections
   y = addNarrativeSection(doc, 'Vitals / Condition', data.patient_vitals || '', y, data.priority);
   y = addNarrativeSection(doc, 'Treatment Rendered', data.treatment_rendered || '', y, data.priority);
-  y = addGpsActivityLogSection(doc, data, y, data.priority);
   y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
   y = addSupplementsSection(doc, data, y);
 
@@ -3879,8 +3794,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // GPS, Narrative, Attachments, Signatures
-  y = addGpsActivityLogSection(doc, data, y, data.priority);
+  // Narrative, Attachments, Signatures
   y = addNarrativeSection(doc, 'Summary / Notes', data.narrative || '', y, data.priority);
   y = addSupplementsSection(doc, data, y);
 
@@ -4010,10 +3924,9 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
 
 
   // ═══════════════════════════════════════════════════════════
-  // FREE-FORM — GPS, Narrative, Attachments, Signatures
+  // FREE-FORM — Narrative, Attachments, Signatures
   // ═══════════════════════════════════════════════════════════
 
-  y = addGpsActivityLogSection(doc, data, y, data.priority);
   y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
   y = addSupplementsSection(doc, data, y);
 

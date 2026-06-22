@@ -3045,75 +3045,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // FREE-FORM — GPS, Notes, Narrative, Attachments, Signatures
+  // FREE-FORM — Notes, Narrative, Attachments, Signatures
   // ═══════════════════════════════════════════════════════════
-
-  // GPS Activity Log — only render when breadcrumb data exists
-  const trail = data.breadcrumb_trail;
-  if (trail && trail.points && trail.points.length > 0) {
-    y = checkPageBreak(doc, y, 30, prio);
-    const sec = openAutoSection(doc, 'GPS Activity Log', y); y = sec.contentY;
-    const stats = trail.stats;
-    if (stats) {
-      y = addThreeColumnFields(doc, [
-        { label: 'Total Distance', value: `${stats.total_distance_miles} mi` },
-        { label: 'Duration', value: `${stats.duration_minutes} min` },
-        { label: 'Avg Speed', value: `${stats.avg_speed_mph} mph` },
-        { label: 'Max Speed', value: `${stats.max_speed_mph} mph` },
-        { label: 'Breadcrumb Points', value: String(stats.total_points) },
-        { label: 'Sources', value: stats.source_breakdown
-          ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
-          : '' },
-      ], y);
-      y += SPACING.SM;
-    }
-
-    const maxRows = 50;
-    const step = trail.points.length > maxRows ? Math.ceil(trail.points.length / maxRows) : 1;
-    const sampled = trail.points.filter((_, i) => i % step === 0 || i === trail.points.length - 1);
-
-    const colPositions = [lx, LAYOUT.PAGE_MARGIN + 38, LAYOUT.PAGE_MARGIN + 100, LAYOUT.PAGE_MARGIN + 130, LAYOUT.PAGE_MARGIN + 155];
-    const tableHeaders = [
-      { label: 'TIME', x: colPositions[0] },
-      { label: 'LOCATION / ROAD', x: colPositions[1] },
-      { label: 'SPEED', x: colPositions[2] },
-      { label: 'SOURCE', x: colPositions[3] },
-      { label: 'UNIT', x: colPositions[4] },
-    ];
-    const tableRows = sampled.map((p) => {
-      let timeStr = '';
-      try {
-        timeStr = parseTimestamp(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-      } catch { timeStr = p.time; }
-      // Guard against non-numeric / missing coords — a single bad breadcrumb
-      // point must not crash the entire record PDF.
-      const latN = toNum(p.lat), lngN = toNum(p.lng);
-      let locationStr = (latN != null && lngN != null) ? `${latN.toFixed(5)}, ${lngN.toFixed(5)}` : '—';
-      if (p.road_name) {
-        locationStr = p.road_name;
-        if (p.intersection) locationStr += ` / ${p.intersection}`;
-      }
-      const speedMph = p.speed != null ? Math.round(p.speed * 2.237) : null;
-      return [
-        timeStr,
-        locationStr,
-        speedMph != null ? `${speedMph} mph` : '-',
-        (p.status || p.call_type || 'unknown').toUpperCase(),
-        p.call_sign || '',
-      ];
-    });
-
-    y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
-
-    if (step > 1) {
-      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      y += SPACING.MD;
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
 
   // Notes — police-report entry-log style.
   // Each note becomes a numbered "ENTRY N OF M" block with a charcoal
