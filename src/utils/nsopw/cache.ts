@@ -53,7 +53,10 @@ export async function readCache(
   if (!row) return null;
 
   let hitIds: number[] = [];
-  let rawResponse: NsopwSearchResponse = { offenders: [], jurisdictionCoverage: {}, raw: null };
+  let rawResponse: NsopwSearchResponse = {
+    offenders: [], jurisdictionCoverage: {},
+    jurisdictionRecordCounts: {}, jurisdictionResponseTime: {}, raw: null,
+  };
   try {
     hitIds = JSON.parse(row.hit_offender_ids ?? '[]');
   } catch { /* ignore */ }

@@ -1,127 +1,265 @@
 // ============================================================
 // RMPG Flex — NSOPW federated response parser.
 // ------------------------------------------------------------
-// Schema-tolerant — parses the documented public envelope but
-// tolerates field-name drift. The literal MOU response shape may
-// differ slightly (NSOPW versions its envelope); the parser
-// classifies each field by likely role and pulls what it finds.
-// Pure function, no I/O. Unit-tested against fixture.
+// Ground truth: tests/fixtures/nsopw/john-smith-search.real.json
+// (captured 2026-06-22 against the live DOJ endpoint).
+//
+// Real wire shape:
+//   {
+//     "statusCode": 201,
+//     "jurisdictionStatus": [{jurisdictionId, statusCode, records, responseTime}, ...],
+//     "query": { ... echo ... },
+//     "offenders": [{
+//       "name": { givenName, middleName, surName },
+//       "aliases": [{ givenName, middleName, surName }, ...],
+//       "gender": "M",
+//       "dob": "1972-04-28T00:00:00",     // ~73% of records
+//       "age": 54,
+//       "locations": [{
+//         "type": "RESIDENTIAL", "name": "RESIDENCE",
+//         "streetAddress", "city", "county", "state", "zipCode",
+//         "latitude", "longitude"
+//       }],
+//       "offenderUri": "https://offender.fdle.state.fl.us/...",
+//       "imageUri": "https://offender.fdle.state.fl.us/...",
+//       "absconder": false,
+//       "jurisdictionId": "FL"
+//     }]
+//   }
+//
+// Pure function, no I/O. Unit-tested at tests/nsopwParse.test.ts
+// against the real fixture.
 // ============================================================
 
 import type {
-  NsopwOffender, NsopwSearchResponse, JurisdictionCoverage, JurisdictionStatus,
+  NsopwOffender, NsopwSearchResponse, NsopwAlias, NsopwLocation,
+  JurisdictionCoverage, JurisdictionStatus,
 } from './types';
+import { JURISDICTION_LABELS } from './jurisdictions';
 
 type Bag = Record<string, unknown>;
 
-function pickString(b: Bag, ...keys: string[]): string | null {
-  for (const k of keys) {
-    const v = b[k];
-    if (typeof v === 'string' && v.trim().length) return v.trim();
-    if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+function str(v: unknown): string | null {
+  if (typeof v === 'string' && v.trim().length) return v.trim();
+  if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  return null;
+}
+
+function num(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') {
+    const n = parseFloat(v);
+    if (Number.isFinite(n)) return n;
   }
   return null;
 }
 
-function pickArray(b: Bag, ...keys: string[]): unknown[] {
-  for (const k of keys) {
-    const v = b[k];
-    if (Array.isArray(v)) return v;
-  }
-  return [];
+function bool(v: unknown): boolean {
+  return v === true || v === 'true' || v === 1 || v === '1';
 }
 
-function pickInt(b: Bag, ...keys: string[]): number | null {
-  for (const k of keys) {
-    const v = b[k];
-    if (typeof v === 'number' && Number.isFinite(v)) return v;
-    if (typeof v === 'string') {
-      const n = parseInt(v, 10);
-      if (Number.isFinite(n)) return n;
-    }
-  }
-  return null;
+/** Strip the time portion off NSOPW's ISO datetime DOB: '1972-04-28T00:00:00' → '1972-04-28' */
+export function normalizeDob(dob: string | null): string | null {
+  if (!dob) return null;
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(dob);
+  return m ? m[1] : null;
+}
+
+function parseAlias(raw: unknown): NsopwAlias | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const b = raw as Bag;
+  const first = str(b.givenName);
+  const last = str(b.surName);
+  if (!first && !last) return null;
+  return {
+    firstName: first,
+    middleName: str(b.middleName),
+    lastName: last,
+  };
+}
+
+function parseLocation(raw: unknown): NsopwLocation | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const b = raw as Bag;
+  // Drop locations that are completely empty (some states return placeholder rows).
+  const street = str(b.streetAddress);
+  const city = str(b.city);
+  if (!street && !city) return null;
+  // Treat lat/long === 0 as "unknown" (NSOPW uses 0 as a sentinel for "no coords").
+  const lat = num(b.latitude);
+  const lon = num(b.longitude);
+  return {
+    type: str(b.type) ?? 'UNKNOWN',
+    name: str(b.name),
+    streetAddress: street,
+    city,
+    county: str(b.county),
+    state: str(b.state),
+    zipCode: str(b.zipCode) ?? str(b.zip),
+    latitude: lat === 0 ? null : lat,
+    longitude: lon === 0 ? null : lon,
+  };
 }
 
 /**
- * Parse one offender record into RMPG canonical shape.
- * The NSOPW envelope groups fields under `OffenderDetails` / `Offender` /
- * `Provider`; we accept all three (older versions vs newer versions) plus
- * flat-field fallbacks.
+ * Synthesize a stable per-offender ID. NSOPW's federated response
+ * doesn't expose a unified ID; we derive one from `offenderUri`
+ * (the most stable signal — a deep-link the jurisdiction maintains).
+ * Falls back to a name+jurisdiction+DOB hash when URI is missing.
  */
+function deriveOffenderId(b: Bag, jurisdiction: string): string {
+  const uri = str(b.offenderUri);
+  if (uri) {
+    // Strip query string variation — same offender across replays should map
+    // to the same id. We keep host + path + the first id-looking query param.
+    try {
+      const u = new URL(uri);
+      // Look for common id params: OfndrID, personId, sid, id, offenderId
+      const idParam = ['OfndrID', 'personId', 'sid', 'id', 'offenderId', 'sexOffenderId']
+        .map((p) => u.searchParams.get(p))
+        .find((v) => v && v.trim().length);
+      if (idParam) return `${u.host}:${idParam}`;
+      // Hash-fragment links (Arkansas style): use the fragment
+      if (u.hash) return `${u.host}:${u.hash.slice(1)}`;
+      // Fallback: path tail
+      const tail = u.pathname.split('/').filter(Boolean).pop();
+      return tail ? `${u.host}:${tail}` : u.host;
+    } catch { /* fall through */ }
+  }
+  // No URI — synthesize from name + jurisdiction + DOB.
+  const name = b.name as Bag | undefined;
+  const surName = str(name?.surName) ?? '';
+  const givenName = str(name?.givenName) ?? '';
+  const dob = normalizeDob(str(b.dob)) ?? '';
+  return `${jurisdiction}:${surName}:${givenName}:${dob}`.toUpperCase();
+}
+
+/** Parse one offender from the federated response. */
 export function parseOffender(raw: unknown): NsopwOffender | null {
   if (!raw || typeof raw !== 'object') return null;
   const b = raw as Bag;
-  const details = (b.OffenderDetails ?? b.offenderDetails ?? b.Offender ?? b.offender ?? b) as Bag;
-  const provider = (b.Provider ?? b.provider ?? b.Source ?? b.source ?? b) as Bag;
+  const name = (b.name ?? {}) as Bag;
+  const firstName = str(name.givenName) ?? '';
+  const lastName = str(name.surName) ?? '';
+  if (!firstName && !lastName) return null;
 
-  const jurisdiction =
-    pickString(provider, 'ProviderName', 'providerName', 'Jurisdiction', 'jurisdiction', 'state', 'stateAbbreviation') ?? '';
-  const jurisdictionLabel =
-    pickString(provider, 'ProviderLabel', 'providerLabel', 'ProviderFullName', 'providerFullName') ?? jurisdiction;
+  const jurisdiction = (str(b.jurisdictionId) ?? '').toUpperCase().slice(0, 32);
+  const jurisdictionLabel = JURISDICTION_LABELS[jurisdiction] ?? jurisdiction;
 
-  const firstName = pickString(details, 'FirstName', 'firstName', 'GivenName') ?? '';
-  const middleName = pickString(details, 'MiddleName', 'middleName');
-  const lastName = pickString(details, 'LastName', 'lastName', 'Surname', 'FamilyName') ?? '';
-  const suffix = pickString(details, 'Suffix', 'suffix', 'NameSuffix');
-  const nsopwOffenderId =
-    pickString(details, 'OffenderId', 'offenderId', 'OffenderURI', 'offenderUri',
-      'PersonId', 'personId', 'RegistryId', 'registryId') ?? '';
+  const aliasesRaw = Array.isArray(b.aliases) ? (b.aliases as unknown[]) : [];
+  const aliases: NsopwAlias[] = aliasesRaw.map(parseAlias).filter((a): a is NsopwAlias => a !== null);
 
-  // Aliases — sometimes an array of strings, sometimes an array of {AliasName}.
-  const rawAliases = pickArray(details, 'Aliases', 'aliases', 'AlsoKnownAs');
-  const aliases: string[] = rawAliases
-    .map((a) => {
-      if (typeof a === 'string') return a.trim();
-      if (a && typeof a === 'object') {
-        const ab = a as Bag;
-        return pickString(ab, 'AliasName', 'aliasName', 'name', 'Name') ?? '';
-      }
-      return '';
-    })
-    .filter((s) => s.length > 0);
+  const locationsRaw = Array.isArray(b.locations) ? (b.locations as unknown[]) : [];
+  const locations: NsopwLocation[] = locationsRaw
+    .map(parseLocation)
+    .filter((l): l is NsopwLocation => l !== null);
+
+  // Promote locations[0] to the flat columns for index-friendly queries.
+  const primary = locations[0] ?? null;
 
   return {
-    nsopwOffenderId,
-    jurisdiction: (jurisdiction || '').toUpperCase().slice(0, 8),
+    nsopwOffenderId: deriveOffenderId(b, jurisdiction),
+    jurisdiction,
     jurisdictionLabel,
     firstName,
-    middleName,
+    middleName: str(name.middleName),
     lastName,
-    suffix,
+    suffix: null,                           // NSOPW federated response has no separate suffix field
     aliases,
-    dateOfBirth: pickString(details, 'DateOfBirth', 'dateOfBirth', 'DOB', 'BirthDate'),
-    sex: pickString(details, 'Sex', 'sex', 'Gender', 'gender'),
-    race: pickString(details, 'Race', 'race'),
-    height: pickString(details, 'Height', 'height'),
-    weight: pickString(details, 'Weight', 'weight'),
-    hairColor: pickString(details, 'HairColor', 'hairColor', 'Hair'),
-    eyeColor: pickString(details, 'EyeColor', 'eyeColor', 'Eyes'),
-    scarsMarks: pickString(details, 'ScarsMarks', 'scarsMarks', 'Marks'),
-    address: pickString(details, 'Address1', 'Address', 'address', 'StreetAddress'),
-    city: pickString(details, 'City', 'city'),
-    state: pickString(details, 'State', 'state', 'StateAbbreviation'),
-    zip: pickString(details, 'Zip', 'zip', 'PostalCode', 'ZipCode'),
-    offense: pickString(details, 'Offense', 'offense', 'CrimeDescription', 'CrimeDetails',
-      'OffenseDescription'),
-    riskLevel: pickString(details, 'RiskLevel', 'riskLevel', 'Tier', 'tier'),
-    tier: deriveTier(pickString(details, 'Tier', 'tier', 'RiskLevel', 'riskLevel')),
-    registrationStatus: pickString(details, 'RegistrationStatus', 'registrationStatus',
-      'Status', 'status'),
-    complianceStatus: pickString(details, 'ComplianceStatus', 'complianceStatus'),
-    photoUrl: pickString(details, 'ImageUrl', 'imageUrl', 'PhotoUrl', 'photoUrl', 'ImageURI'),
-    detailUrl: pickString(details, 'DetailsUrl', 'detailsUrl', 'OffenderUri', 'offenderUri',
-      'OffenderURI', 'JurisdictionUrl'),
+    dateOfBirth: normalizeDob(str(b.dob)),
+    age: num(b.age),
+    sex: str(b.gender),
+    race: null,
+    height: null,
+    weight: null,
+    hairColor: null,
+    eyeColor: null,
+    scarsMarks: null,
+    address: primary?.streetAddress ?? null,
+    city: primary?.city ?? null,
+    county: primary?.county ?? null,
+    state: primary?.state ?? null,
+    zip: primary?.zipCode ?? null,
+    latitude: primary?.latitude ?? null,
+    longitude: primary?.longitude ?? null,
+    locations,
+    absconder: bool(b.absconder),
+    offense: null,
+    riskLevel: null,
+    tier: null,
+    registrationStatus: null,
+    complianceStatus: null,
+    photoUrl: str(b.imageUri),
+    detailUrl: str(b.offenderUri),
     raw,
   };
 }
 
 /**
+ * Parse a full NSOPW federated search response.
+ * Tolerates the v1.0 shape (current) and is defensive against
+ * field-name drift on future API revisions.
+ */
+export function parseSearchResponse(raw: unknown): NsopwSearchResponse {
+  if (!raw || typeof raw !== 'object') {
+    return {
+      offenders: [], jurisdictionCoverage: {},
+      jurisdictionRecordCounts: {}, jurisdictionResponseTime: {}, raw,
+    };
+  }
+  const env = raw as Bag;
+
+  const rawOffenders = Array.isArray(env.offenders) ? env.offenders as unknown[] : [];
+  const offenders: NsopwOffender[] = [];
+  for (const r of rawOffenders) {
+    const o = parseOffender(r);
+    if (o) offenders.push(o);
+  }
+
+  const jurisdictionCoverage: JurisdictionCoverage = {};
+  const jurisdictionRecordCounts: Record<string, number> = {};
+  const jurisdictionResponseTime: Record<string, number> = {};
+  const jurStatus = Array.isArray(env.jurisdictionStatus)
+    ? env.jurisdictionStatus as unknown[]
+    : [];
+  for (const j of jurStatus) {
+    if (!j || typeof j !== 'object') continue;
+    const jb = j as Bag;
+    const code = (str(jb.jurisdictionId) ?? '').toUpperCase().slice(0, 32);
+    if (!code) continue;
+    const httpStatus = str(jb.statusCode);
+    jurisdictionCoverage[code] = httpStatusToCoverage(httpStatus);
+    const records = num(jb.records);
+    if (records != null) jurisdictionRecordCounts[code] = records;
+    const rt = num(jb.responseTime);
+    if (rt != null) jurisdictionResponseTime[code] = rt;
+  }
+
+  return {
+    offenders,
+    jurisdictionCoverage,
+    jurisdictionRecordCounts,
+    jurisdictionResponseTime,
+    raw,
+  };
+}
+
+/**
+ * NSOPW returns HTTP-style codes per jurisdiction ('200' / '500' / '408').
+ * Map those to our coarse coverage status enum.
+ */
+function httpStatusToCoverage(httpStatus: string | null): JurisdictionStatus {
+  if (!httpStatus) return 'no_data';
+  if (httpStatus === '200' || httpStatus === '201') return 'ok';
+  if (httpStatus === '408' || httpStatus === '504') return 'timeout';
+  return 'error';
+}
+
+/**
  * Derive a normalized 1/2/3 tier from a free-form jurisdiction label.
- * 'Tier 3', 'Level 3', 'SVP', 'Sexually Violent Predator', 'High' → 3
- * 'Tier 2', 'Level 2', 'Moderate', 'Medium' → 2
- * 'Tier 1', 'Level 1', 'Low' → 1
- * Anything else → null (don't guess).
+ * Kept as a utility — NSOPW's federated response doesn't carry tier
+ * data, but a per-state detail-page enrichment scraper (future work)
+ * will produce labels that this can normalize.
  */
 export function deriveTier(label: string | null): number | null {
   if (!label) return null;
@@ -132,51 +270,4 @@ export function deriveTier(label: string | null): number | null {
       /\bmedium\b/.test(s)) return 2;
   if (/\b(tier|level)\s*(1|i)\b/.test(s) || /\blow\b/.test(s)) return 1;
   return null;
-}
-
-/**
- * Parse a full NSOPW federated search response.
- * The MOU envelope wraps offenders under `Offenders` / `Results` / `Records`;
- * jurisdiction status comes from `SearchResponse.SearchResponseJurisdiction`
- * (older) or `Jurisdictions` / `Coverage` (newer). We accept either.
- */
-export function parseSearchResponse(raw: unknown): NsopwSearchResponse {
-  if (!raw || typeof raw !== 'object') {
-    return { offenders: [], jurisdictionCoverage: {}, raw };
-  }
-  const env = raw as Bag;
-  const inner = (env.SearchResponse ?? env.searchResponse ?? env) as Bag;
-
-  const rawOffenders =
-    pickArray(inner, 'Offenders', 'offenders', 'Results', 'results',
-      'Records', 'records', 'Items', 'items');
-  const offenders: NsopwOffender[] = [];
-  for (const r of rawOffenders) {
-    const o = parseOffender(r);
-    if (o && (o.lastName || o.firstName)) offenders.push(o);
-  }
-
-  const jurisdictionCoverage: JurisdictionCoverage = {};
-  const jurArray = pickArray(inner, 'SearchResponseJurisdiction', 'searchResponseJurisdiction',
-    'Jurisdictions', 'jurisdictions', 'Coverage', 'coverage');
-  for (const j of jurArray) {
-    if (!j || typeof j !== 'object') continue;
-    const jb = j as Bag;
-    const code = (pickString(jb, 'Jurisdiction', 'jurisdiction', 'Code', 'code',
-      'ProviderName', 'providerName') ?? '').toUpperCase().slice(0, 8);
-    if (!code) continue;
-    const status = pickString(jb, 'Status', 'status', 'SearchStatusType', 'searchStatusType');
-    jurisdictionCoverage[code] = toStatus(status);
-  }
-
-  return { offenders, jurisdictionCoverage, raw };
-}
-
-function toStatus(s: string | null): JurisdictionStatus {
-  if (!s) return 'no_data';
-  const v = s.toLowerCase();
-  if (v.includes('ok') || v.includes('success')) return 'ok';
-  if (v.includes('timeout') || v.includes('timed')) return 'timeout';
-  if (v.includes('error') || v.includes('fail')) return 'error';
-  return 'no_data';
 }

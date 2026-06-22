@@ -52,9 +52,12 @@ export function classifyCandidate(query: NsopwQuery, candidate: NsopwOffender): 
   // Aliases get a single retry shot — if the surname matches an alias,
   // we treat that as a half-strength surname hit (possible, not confirmed).
   const surnameMatchesPrimary = !!qSurname && qSurname === cSurname;
+  // Aliases are structured {firstName, middleName, lastName} per the real
+  // wire format (NsopwAlias). Surname-alias matches when the canonical
+  // alias surname equals (or contains) the query surname.
   const surnameMatchesAlias =
     !surnameMatchesPrimary && qSurname.length > 0 &&
-    candidate.aliases.some((a) => canonName(a).includes(qSurname));
+    candidate.aliases.some((a) => canonName(a.lastName ?? '').includes(qSurname));
 
   if (!surnameMatchesPrimary && !surnameMatchesAlias) {
     return {

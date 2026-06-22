@@ -1,8 +1,42 @@
 # Nationwide SOR Cross-Reference via NSOPW
 
-**Status:** Implemented (this PR). Awaiting DOJ NSOPW Web Service MOU + `NSOPW_API_KEY` to go live.
-**Date:** 2026-06-22
+**Status:** Implemented + reconnaissance follow-up done. Set `NSOPW_ENABLED=1` to go live (no MOU required).
+**Date:** 2026-06-22 (initial design + recon)
 **Author:** Christopher Zamora + Claude
+
+## Reconnaissance update (2026-06-22)
+
+The initial design assumed an MOU-gated endpoint at `api.nsopw.gov`. **Live reconnaissance against the
+public nsopw.gov form showed the real federated search endpoint is `POST https://nsopw-api.ojp.gov/nsopw/v1/v1.0/search`,
+public-CORS-restricted (no auth), with a completely different request/response shape.** All findings are
+captured in `tests/fixtures/nsopw/john-smith-search.real.json` (399 offenders, 317 KB).
+
+Key changes from the initial design (now reflected in the code):
+
+- **Endpoint** → `https://nsopw-api.ojp.gov/nsopw/v1/v1.0/search`
+- **Auth** → none (public). MOU key still accepted as Bearer for sanctioned higher rate limits.
+- **Request body** → `firstName/lastName/city/county/zips/jurisdictions[]/clientIp` JSON sent with
+  `Content-Type: application/x-www-form-urlencoded`. **NO `dob` field accepted.** Jurisdictions array
+  must be the literal full list of 183 codes (`src/utils/nsopw/jurisdictions.ts`).
+- **Response shape** → `{statusCode, jurisdictionStatus[], query, offenders[]}` at top level. Each
+  offender is `{name:{givenName,middleName,surName}, aliases:[{...}], gender, dob, age, locations[], offenderUri, imageUri, absconder, jurisdictionId}`.
+- **DOB IS in the response** on ~73% of records as ISO datetime (`"1972-04-28T00:00:00"`). The strict-match
+  policy in `match.ts` works against the real data unchanged — name search, DOB post-filter.
+- **Offense / tier / risk are NOT in the federated response.** They require a per-state detail-URL
+  enrichment scrape (future work). The database columns remain (filled by future enrichment).
+- **`absconder` boolean is new** (94% coverage). Captured by mig 0147.
+- **Multi-location**: `locations[]` carries RESIDENCE + WORK + INCARCERATED for offenders with multiple.
+  Flat columns hold `locations[0]`; the full array goes into `locations_json` (mig 0147).
+
+The integration is gated by `NSOPW_ENABLED=1` env flag — opt-in switch acknowledging the ToU posture
+(the public endpoint's Conditions of Use page likely prohibits programmatic access regardless of CORS
+permitting it technically). Without the flag, the framework reports `configured: false` and the
+false-clear guard surfaces it as a coverage gap.
+
+Ground-truth fixture-driven tests: 44 unit tests across normalize/match/parse, all driven by the real
+317 KB capture. Any future API drift will be caught by these tests against future fixture replacements.
+
+
 
 ## Problem
 

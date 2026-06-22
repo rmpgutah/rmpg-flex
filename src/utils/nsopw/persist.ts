@@ -81,6 +81,9 @@ export async function upsertOffender(db: D1Database, o: NsopwOffender): Promise<
          photo_url = COALESCE(NULLIF(?, ''), photo_url),
          detail_url = COALESCE(NULLIF(?, ''), detail_url),
          detail_json = ?,
+         absconder = ?,
+         age = COALESCE(?, age),
+         locations_json = ?,
          last_seen_at = datetime('now'),
          updated_at = datetime('now')
        WHERE id = ?`,
@@ -94,6 +97,7 @@ export async function upsertOffender(db: D1Database, o: NsopwOffender): Promise<
       o.registrationStatus ?? '', o.complianceStatus ?? '',
       o.photoUrl ?? '', o.detailUrl ?? '',
       JSON.stringify(o.raw ?? null),
+      o.absconder ? 1 : 0, o.age, JSON.stringify(o.locations),
       existing.id,
     );
     return existing.id;
@@ -108,11 +112,13 @@ export async function upsertOffender(db: D1Database, o: NsopwOffender): Promise<
        hair_color, eye_color, scars_marks,
        address, city, state, zip,
        offense, risk_level, tier, registration_status, compliance_status,
-       photo_url, detail_url, detail_json, last_seen_at
+       photo_url, detail_url, detail_json, last_seen_at,
+       absconder, age, locations_json
      ) VALUES (?, ?, ?,  ?, ?, ?, ?, ?,
               ?, ?, ?, ?, ?,  ?, ?, ?,
               ?, ?, ?, ?,  ?, ?, ?, ?, ?,
-              ?, ?, ?, datetime('now'))`,
+              ?, ?, ?, datetime('now'),
+              ?, ?, ?)`,
     o.nsopwOffenderId, o.jurisdiction, o.jurisdictionLabel,
     o.firstName, o.middleName, o.lastName, o.suffix, JSON.stringify(o.aliases),
     o.dateOfBirth, o.sex, o.race, o.height, o.weight,
@@ -120,6 +126,7 @@ export async function upsertOffender(db: D1Database, o: NsopwOffender): Promise<
     o.address, o.city, o.state, o.zip,
     o.offense, o.riskLevel, o.tier, o.registrationStatus, o.complianceStatus,
     o.photoUrl, o.detailUrl, JSON.stringify(o.raw ?? null),
+    o.absconder ? 1 : 0, o.age, JSON.stringify(o.locations),
   );
   const meta = (ins as { meta?: { last_row_id?: number } }).meta;
   return meta?.last_row_id ?? 0;
