@@ -59,6 +59,72 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1050: Admin (/admin) — Page 33 of the full-app frontend pass, applied to
+//        the load-bearing AdminPage hub (1145 lines, 30+ tabs) plus its
+//        two most-used destructive sub-tabs (Users + Cloudflare). AdminPage
+//        is the privileged-access surface — every confirm bypassed our
+//        keyboard trap / day-night surface, and the previous Esc handler
+//        only closed one of the four open dialogs.
+//        - URL deep-link contract: /admin?tab=<id> now ROUND-TRIPS — the
+//          existing init-time read stayed, but clicking a tab also writes
+//          the URL via setSearchParams({replace:true}). Bookmark, copy-
+//          paste, and back-button all resolve to the right section now.
+//          /admin?user_id=<id> auto-selects a user on the Users tab once
+//          the roster hydrates (warning toast on miss + param strip);
+//          /admin?client_id=<id> the same on Clients. wallet_ids was
+//          missing from VALID_TABS — added so legitimate deep-links no
+//          longer silently fall back to localStorage.
+//        - Kill native dialogs: AdminUsersTab's four window.confirm()
+//          calls (Suspend / Reactivate / Reset 2FA / Revoke Sessions)
+//          and AdminCloudflareTab's one (Purge Zone Cache) all route
+//          through ConfirmDialog with explicit confirmVariant (warning
+//          for state-change, danger for revoke / purge). Each message
+//          now NAMES the side effect ("sessions will be terminated",
+//          "every visitor will re-fetch", "this action is audited")
+//          instead of the generic "are you sure?" the operators had been
+//          dismissing reflexively. AdminClientsTab + AdminAuditTab were
+//          already ConfirmDialog-clean (verified) — no churn there.
+//        - Esc smart-cascade: AdminPage's hard-coded
+//          "Esc closes editingUser only" replaced with a cascade:
+//          user-delete confirm → client-delete confirm → user modal →
+//          client modal → selected user → selected client. The two
+//          tab-local ConfirmDialogs (AdminUsersTab's, AdminCloudflareTab's)
+//          handle their own Esc via the dialog's built-in escape handler,
+//          so the cascade stays consistent regardless of which dialog
+//          surface is in front. Mirrors the contract shipped in v1040
+//          (Personnel) and v1048 (Process Server).
+//        - N keyboard shortcut: opens Add User on the Users tab or Add
+//          Client on the Clients tab. Typing-suppressed (INPUT, TEXTAREA,
+//          SELECT, contentEditable) so an admin filtering the user list
+//          with a name containing "n" doesn't pop the new-user dialog
+//          mid-type. Suppressed entirely when any modal already owns
+//          the page — admin's destructive flows must not be racing the
+//          N shortcut.
+//        - Verified already-shipped (not re-implemented):
+//          * AdminAuditTab already exports CSV with date filters +
+//            empty-state distinction ("matching filters" vs no entries).
+//          * AdminPage already uses ConfirmDialog for the two delete
+//            flows (client + user) — only their open-state was missing
+//            from the Esc cascade.
+//          * AdminClientsTab uses no native dialogs.
+//        Deferred:
+//          * 30+ remaining admin sub-tabs (System / Integrations /
+//            ClearPathGPS / Microbilt / IPED / Fleet.io / AI Settings /
+//            Email / Sessions / Departments / NotifRules / WalletId /
+//            etc.) — each is its own surface with its own confirm/deep-
+//            link/keyboard contract. This PR touches the hub +
+//            load-bearing two; future passes will sweep them.
+//          * The 200px sidebar still uses hardcoded `#888888` / `#ffffff` /
+//            `rgba(136,136,136,…)` for the active-tab border + neutral
+//            chrome (1145-line file). These are the intentional neutral
+//            gray that renders identically in both themes, but a strict
+//            token sweep would replace them with `--text-*` / `--border-*`.
+//            Left as-is to keep the diff scoped to behavior fixes; theme
+//            audit baseline tracks this in docs/theme-hex-audit-baseline.txt.
+//          * `setActiveTab` writes to localStorage AND the URL — these can
+//            drift if the URL is stripped by an outer redirect; the URL
+//            wins on next mount but the LS key lingers. Acceptable for
+//            now (LS is fallback only).
 // v1049: Email (/email) — Page 32 of the full-app frontend pass. The
 //        Outlook-style EmailPage.tsx (3220 LOC) was deferred from the
 //        Communications PR #1625 because the chrome + state surface is the
