@@ -707,6 +707,22 @@
 //        new --brand-gold-rgb / --sev-*-rgb tokens in theme-palettes.css
 //        let opacity-tinted backgrounds use the canonical palette; 30+
 //        inline #d4a017 / rgba(220,38,38,…) literals lifted accordingly.
+// v1018: Dashboard truth-up — /reports/dashboard now returns
+//        activeWarrants/pendingServe/openCases/totalPersons (previously
+//        the page read these but the endpoint never returned them, so 3
+//        of 4 Status Summary cards permanently showed 0). New
+//        /reports/calls-near geo endpoint powers the patrol "Calls Near
+//        Me" panel with real distance-sorted active calls (was a fake
+//        duplicate of the global priority grid). Title-bar LED now
+//        tracks data-sync health (red=error, amber=stale>5min, green=ok)
+//        with a "Synced HH:MM" chip. Toolbar gained Quick Capture /
+//        Field Camera / Patrol Scan / Tasks (previously unreachable from
+//        the dashboard). Deep-link cards now pass ?status=active|pending|
+//        open so receiving pages land pre-filtered. BOLO nav corrected
+//        to /intel/bolos. Theme + a11y nits: lifted hardcoded
+//        rgba(136,136,136,…) values to rgb(var(--spm-text-muted-rgb)/α)
+//        (new token in theme-palettes.css for all 3 palette blocks);
+//        weather widget emoji 💧/💨 → Lucide <Droplets>/<Wind>.
 // v1017: FlexCam close-query honesty (Plan E — surface 'failed' on
 //        the request the moment the cron concludes a 0-downloaded
 //        trip instead of marking it 'partial' and waiting 6h for the
