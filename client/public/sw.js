@@ -59,6 +59,79 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1047: Intel Portal (/intel/*) — Page 30 of the full-app frontend pass,
+//        applied to the multi-route command-center shell (IntelPortalLayout
+//        + IntelDashboard + BoloBoard + IntelSearch + the supporting widgets).
+//        Same v1024–v1038 court-ready / native-dialog / deep-link contract
+//        applied so the most-used intel surfaces match the rest of the app.
+//
+//        What changed:
+//          • IntelSearch — `/intel/search?q=…` URL deep-link hydrates the
+//            input on mount and mirrors the live query into the URL (replace,
+//            no history spam). Lets dispatch paste a link to a unit's MDT
+//            and have it land pre-filtered. Esc smart-cascade clears facet
+//            filters first (smallest-open), then the query — matches the
+//            Court Tracker / Cases / Trespass cascade. Distinct empty
+//            states ("typed nothing" vs "no matches" vs "no matches with
+//            active facets"); audit caught operators staring at "no
+//            results" without having typed.
+//          • SearchBar — replaced `window.prompt('Name this search:')`
+//            (the last native dialog on the page) with an inline themed
+//            popover (Star button toggles it). Native prompts can't be
+//            themed, can't be Esc-cascaded, and tank the dashcam HUD on
+//            iPad/MDT (same finding as v1024–v1037 across other pages).
+//          • BoloBoard — Cancel BOLO (admin-only, removes the row) now
+//            goes through ConfirmDialog with row context (number, title,
+//            priority, subject/vehicle). Previously fired DELETE on click
+//            with zero confirmation — a misclick erased an active critical
+//            alert. New `/intel/bolos?bolo_id=<id>` deep-link direct-fetches
+//            (uses existing GET /comms/bolos/:id), highlights the card, and
+//            surfaces a banner card for resolved/expired BOLOs so a court-
+//            attached link doesn't dead-end. "N" keyboard shortcut opens
+//            New BOLO (typing-suppressed). Esc smart-cascade for the
+//            confirm + create modals. Distinct empty state — was a flat
+//            "No active BOLOs." line indistinguishable from a server error.
+//          • IntelDashboard — `/intel?entity_id=42&entity_type=person&label=…`
+//            deep-link auto-selects the entity in the right context panel
+//            (opens dossier peek). LIVE indicator now flips amber + STALE
+//            label if the shared overview poll has gone >60s without an
+//            update — was previously a static green dot regardless.
+//          • IntelPortalLayout — `bg-black` literal → `bg-surface-base`
+//            token so the shell re-themes with day/night palette.
+//          • IntelContext — panel-collapsed flag is now scoped per-user
+//            via the new `rmpg-intel-panel-collapsed-<id>` key. Intel
+//            data is the most sensitive surface in the app; a shared-
+//            device login inheriting the prior user's portal layout
+//            state was a small but real privacy leak. AuthContext now
+//            exports the raw context so optional consumers can read it
+//            without forcing an AuthProvider wrapper in unit tests.
+//          • Emoji → Lucide on the dashboard chrome: 🚗 in BoloCard's
+//            TYPE_ICON (→ Car/User/Flag Lucide), 🚗 in PlateSightingsWidget
+//            title (→ Car), and the Cancel-BOLO action gets a real red-
+//            400 token instead of a hand-rolled hex.
+//          • WidgetFrame `title` widened from `string` → `ReactNode` so
+//            widgets can lead with an icon + label without smuggling a
+//            glyph into the string.
+//          • 18 hardcoded hex literals across the in-scope files lifted
+//            to tokens — #888 → text-rmpg-400/500, #d4a017 → text-brand-
+//            400/600, #ff6b5e → text-red-400, #f0c050 → text-amber-300,
+//            #040404 → bg-surface-base.
+//          • Tests: BoloBoard test expanded with the confirm-dialog
+//            interaction + empty-state assertion (3 cases vs the prior 1).
+//
+//        Out of scope (deferred — the multi-route portal is too large
+//        for one PR):
+//          • IntelReportDetailPage still has 4 native prompts (share /
+//            recall / reject) and is intentionally NOT touched in this PR.
+//          • IntelMapPage, IntelAiAnalyst, AlertsSection, WatchlistSection,
+//            ReviewQueues, IntelReportsPage, NewIntelReportPage, IntelSources
+//            — fix-in-place when their dedicated audit page lands.
+//          • IntelRail / IntelContextPanel still use dingbat-style glyphs
+//            (◈, ◉, ⚑, ⌕, ▦, ▲, ⛓, ◎, ✦, ▤, ⚐, ✨, ☆, ★). These are
+//            monochrome BMP characters, not full-color emoji — they render
+//            consistently with the steel-blue theme. Replacing them with
+//            Lucide would require a layout-affecting size pass on every
+//            row, deferred until the rail itself is up for review.
 // v1034: Law Book — add cross-page URL deep-link contract (13th page in
 //        the sweep): /law-book?statute_id=<id> | /law-book?citation=76-5-102
 //        direct-fetches the statute via /statutes/section/:citation (with
