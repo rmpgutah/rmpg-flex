@@ -740,6 +740,56 @@
 //            Lucide would require a layout-affecting size pass on every
 //            row, deferred until the rail itself is up for review.
 //
+// v1058: FlexCam — Page 41 of the full-app frontend pass. FlexCamPage
+//        (327 lines, request list) + FlexCamFootagePage (1225 lines,
+//        MDT-style chunk player with evidence lock / court package /
+//        burn-clip workflow) + TripPlaybackPage (full-trip stitched
+//        playback) are the operator surfaces for the source-agnostic
+//        full-trip dashcam program (project-flexcam-footage-program).
+//        Custody-on-view was already emitted server-side at
+//        /chunk/:seq/stream → logCustody({action:'viewed'}) with a
+//        per-hour viewSessionKey dedup — no client-side mirror needed
+//        (verified in src/utils/footage/evidence.ts + flexcam.ts).
+//        Court-package signing (Ed25519 in signTriple) ships from PR
+//        #1261; the page already wires it to the COURT PACKAGE button
+//        on both list and detail views.
+//        - URL deep-link: /flexcam?request_id=<n> auto-scrolls to that
+//          row, highlights it for 4s, and opens its custody panel.
+//          /flexcam/:id?event_id=<idx> jumps the playhead to that marker
+//          on hydrate; /flexcam/:id?t=<ms> opens at an absolute offset.
+//          Both are one-shot and stripped after consumption.
+//        - Esc smart-cascade: FlexCamPage closes custody errors first,
+//          then result banners, then any open custody dropdown.
+//          FlexCamFootagePage closes the shortcuts panel, exits
+//          fullscreen, dismisses the inline playback-error banner, then
+//          pauses playback. TripPlaybackPage exits fullscreen, else
+//          navigates back to /flexcam — previously a deep-linked landing
+//          on a still-downloading trip was a browser-back-only dead-end.
+//        - Inline error surfaces: the native window.alert() on the
+//          custody-fetch failure path now renders as a dismissable
+//          inline banner under the row (the alert blocked the UI thread
+//          and escaped the steel-blue theme); the lockEvidence failure
+//          path now writes into the EVIDENCE action-bar message strip
+//          instead of setErr(), which had blanked the whole player.
+//        - Overlay-mode persistence: 'classic' / 'minimal' / 'none' HUD
+//          choice is now stored in localStorage under
+//          rmpg_flexcam_overlay_mode so officers don't have to re-set
+//          their preferred HUD every time they open a different request.
+//        - Distinct empty states on TripPlaybackPage: loading vs hard
+//          error vs no-manifest vs manifest-exists-but-zero-clips-yet
+//          (uses manifest.stillDownloading to message "X chunks pending,
+//          auto-refresh every 10s") — collapsing the latter two into
+//          one string left operators unsure whether to wait or escalate.
+//        - Lucide replacement: the row-level "▶ Play whole trip" link
+//          (the page's only emoji) is now the Lucide Play glyph in a
+//          proper styled button matching the PLAY / REPAIR / CUSTODY
+//          / COURT PKG row.
+//        - Shared header on every TripPlaybackPage state (loading /
+//          error / pending / ready) so the back-to-/flexcam affordance
+//          and the channel switcher stay reachable regardless of fetch
+//          status.
+//        - No migration; no server route changes; no SW behavior changes
+//          (this version is a content bump only).
 // v1056: Notifications — Page 39 of the full-app frontend pass. The
 //        /notifications page (NotificationsPage.tsx, 452 lines) plus the
 //        global NotificationCenter dropdown (NotificationCenter.tsx, 567

@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle, CheckCircle2, Clock, Download, FileText, Lock, Play, RefreshCw, Shield, Video, Wrench,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 
@@ -63,12 +63,15 @@ export default function FlexCamPage() {
   const [lastFetch, setLastFetch] = useState(0);
   const [custodyOpen, setCustodyOpen]     = useState<Record<number, CustodyResult | null>>({});
   const [custodyLoading, setCustodyLoading] = useState<Record<number, boolean>>({});
+  const [custodyErr, setCustodyErr]       = useState<Record<number, string>>({});
   const [pkgResult, setPkgResult] = useState<Record<number, string>>({});
   const [pkgLoading, setPkgLoading] = useState<Record<number, boolean>>({});
   const [repairResult, setRepairResult] = useState<Record<number, string>>({});
   const [repairLoading, setRepairLoading] = useState<Record<number, boolean>>({});
+  const [highlightId, setHighlightId] = useState<number | null>(null);
   const refsReqs = useRef(reqs);
   refsReqs.current = reqs;
+  const rowRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
 
   const fetchReqs = useCallback((quiet = false) => {
     if (!quiet) setLoading(true);
@@ -91,17 +94,106 @@ export default function FlexCamPage() {
     return () => clearInterval(timer);
   }, [fetchReqs]);
 
-  function toggleCustody(id: number) {
+  // ── URL deep-link: /flexcam?request_id=<n> auto-scrolls + highlights ────
+  // Cross-page contract: dispatch / cases / Body / Dash cameras can link
+  // "view FlexCam request" → /flexcam?request_id=42 and the operator lands on
+  // the row already in the auto-refresh table with its custody panel primed.
+  // One-shot per page load; the param is stripped after applying. Falls back
+  // to a direct GET when the target is outside the current list (e.g. archived
+  // or a different account scope). Mirrors the DashCamerasPage pattern.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingRequestIdRef = useRef<string | null>(searchParams.get('request_id'));
+  useEffect(() => {
+    const target = pendingRequestIdRef.current;
+    if (!target || loading) return;
+    pendingRequestIdRef.current = null;
+    const numericId = Number(target);
+    if (!Number.isFinite(numericId) || numericId <= 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const hit = reqs.find((r) => r.id === numericId);
+        if (!hit) {
+          // Not in the current list; reload once in case it just appeared.
+          await Promise.resolve(fetchReqs(true));
+        }
+        if (cancelled) return;
+        setHighlightId(numericId);
+        // Wait one tick for the row to render, then scroll into view.
+        requestAnimationFrame(() => {
+          const el = rowRefs.current.get(numericId);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+        // Auto-open custody panel for the deep-linked row.
+        if (custodyOpen[numericId] === undefined) toggleCustody(numericId);
+        // Decay the highlight after 4s.
+        setTimeout(() => setHighlightId((h) => (h === numericId ? null : h)), 4000);
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('request_id');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reqs, loading]);
+
+  // ── Esc smart-cascade: close-newest-open-first ─────────────────────────
+  // The card has no modals, but stacked-open custody dropdowns and inline
+  // result banners need a uniform "press Esc to dismiss" affordance for
+  // parity with the rest of the page audit. Skip while typing in any field.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (isTypingInField(e.target)) return;
+      // 1) Inline custody error banners
+      const errIds = Object.keys(custodyErr).map(Number);
+      if (errIds.length > 0) {
+        setCustodyErr({});
+        return;
+      }
+      // 2) Inline repair / package result banners
+      if (Object.keys(repairResult).length > 0 || Object.keys(pkgResult).length > 0) {
+        setRepairResult({});
+        setPkgResult({});
+        return;
+      }
+      // 3) Any open custody dropdown
+      const openIds = Object.keys(custodyOpen).map(Number);
+      if (openIds.length > 0) {
+        setCustodyOpen({});
+        return;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [custodyErr, repairResult, pkgResult, custodyOpen]);
+
+  const toggleCustody = useCallback((id: number) => {
     if (custodyOpen[id] !== undefined) {
       setCustodyOpen((p) => { const n = { ...p }; delete n[id]; return n; });
+      setCustodyErr((p) => { const n = { ...p }; delete n[id]; return n; });
       return;
     }
     setCustodyLoading((p) => ({ ...p, [id]: true }));
+    setCustodyErr((p) => { const n = { ...p }; delete n[id]; return n; });
     apiFetch<CustodyResult>(`/flexcam/footage/${id}/custody`)
       .then((res) => setCustodyOpen((p) => ({ ...p, [id]: res })))
-      .catch((e: Error) => { setCustodyOpen((p) => ({ ...p, [id]: null })); alert(`Custody: ${e.message}`); })
+      .catch((e: Error) => {
+        // Inline error display — the prior native alert() blocked the UI
+        // thread, escaped the surrounding theme, and bypassed Esc/click-out.
+        setCustodyOpen((p) => { const n = { ...p }; delete n[id]; return n; });
+        setCustodyErr((p) => ({ ...p, [id]: e.message }));
+      })
       .finally(() => setCustodyLoading((p) => ({ ...p, [id]: false })));
-  }
+  }, [custodyOpen]);
 
   function requestCourtPkg(req: Req) {
     if (pkgLoading[req.id]) return;
@@ -192,9 +284,13 @@ export default function FlexCamPage() {
           const p    = pct(r);
           const pc   = pctColor(r);
 
+          const isHighlit = highlightId === r.id;
           return (
             <Fragment key={r.id}>
-              <div className="bg-surface-raised border border-border-default p-3 space-y-2">
+              <div
+                ref={(el) => { rowRefs.current.set(r.id, el); }}
+                className={`bg-surface-raised border p-3 space-y-2 transition-colors ${isHighlit ? 'border-brand-500 ring-1 ring-brand-500/40' : 'border-border-default'}`}
+              >
                 {/* Row 1: title + date + status badge */}
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
@@ -229,8 +325,11 @@ export default function FlexCamPage() {
                     <Play className="w-2.5 h-2.5" />PLAY
                   </a>
                   {r.trip_id ? (
-                    <Link to={`/flexcam/trip/${r.trip_id}`} className="text-xs text-brand-400 hover:underline">
-                      ▶ Play whole trip
+                    <Link
+                      to={`/flexcam/trip/${r.trip_id}`}
+                      className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2.5 py-1.5 border border-brand-700/60 text-brand-300 hover:bg-brand-900/20 transition-colors"
+                    >
+                      <Play className="w-2.5 h-2.5" />PLAY TRIP
                     </Link>
                   ) : null}
                   {/* REPAIR — visible on partial trips or stuck fulfilling */}
@@ -289,6 +388,17 @@ export default function FlexCamPage() {
                   <div className={`text-[9px] font-mono px-2 py-1 border ${
                     pkgResult[r.id].startsWith('✓') ? 'text-emerald-400 border-emerald-900 bg-emerald-900/10' : 'text-amber-400 border-amber-900 bg-amber-900/10'}`}>
                     {pkgResult[r.id]}
+                  </div>
+                )}
+                {custodyErr[r.id] && (
+                  <div className="text-[9px] font-mono px-2 py-1 border border-red-900 bg-red-900/10 text-red-400 flex items-start gap-1.5">
+                    <AlertTriangle className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />
+                    <span className="flex-1">Custody load failed: {custodyErr[r.id]}</span>
+                    <button
+                      onClick={() => setCustodyErr((p) => { const n = { ...p }; delete n[r.id]; return n; })}
+                      className="text-red-300 hover:text-red-100"
+                      aria-label="Dismiss custody error"
+                    >×</button>
                   </div>
                 )}
               </div>

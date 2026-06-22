@@ -7,7 +7,7 @@
 // flip which element is "front" (z-10) — the browser never needs to re-parse,
 // giving near-zero gap between segments.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle, Camera, CheckCircle2, ChevronLeft, Clock, Download,
   FileText, Film, Keyboard, Lock, Maximize2, Pause, Play, RotateCcw,
@@ -16,6 +16,7 @@ import {
 import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { buildTimeline, offsetToSeek, type PlayChunk } from '../utils/flexcamTimeline';
 import { formatPlayerStatus } from '../utils/flexcamPlayerStatus';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -113,8 +114,15 @@ export default function FlexCamFootagePage() {
   const [capturing, setCapturing]     = useState(false);
   const [capMsg, setCapMsg]           = useState<string | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  // 'classic' = full police dashcam bars; 'minimal' = subtle corner HUD; 'none' = off
-  const [overlayMode, setOverlayMode] = useState<'classic' | 'minimal' | 'none'>('classic');
+  // 'classic' = full police dashcam bars; 'minimal' = subtle corner HUD; 'none' = off.
+  // Persist per-browser so officers don't have to re-set their preferred HUD
+  // every time they open a different request — matches the per-user UX
+  // operators expect from the rest of the app.
+  const [overlayMode, setOverlayMode] = usePersistedState<'classic' | 'minimal' | 'none'>(
+    'rmpg_flexcam_overlay_mode',
+    'classic',
+    (v) => v === 'classic' || v === 'minimal' || v === 'none',
+  );
   const overlayModeRef = useRef<'classic' | 'minimal' | 'none'>('classic');
   const [repairBusy, setRepairBusy]   = useState(false);
   const [repairMsg, setRepairMsg]     = useState<string | null>(null);
@@ -157,6 +165,44 @@ export default function FlexCamFootagePage() {
     urlCache.current.clear();
   }, []);
 
+  // ── URL deep-link: /flexcam/:id?event_id=<n> | ?t=<ms> ─────────────────
+  // Cross-page contract: case / incident / activity-feed rows link to the
+  // marker that triggered the entry, and the supervisor lands with the
+  // playhead already on that event. `event_id` takes precedence over `t=`
+  // when both are present. The param is stripped after consumption so a
+  // refresh does not re-seek (the operator may have scrubbed elsewhere).
+  // One-shot per page load; gated on `data` so the timeline / markers
+  // arrays are populated before we try to look up the offset.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingEventIdRef = useRef<string | null>(searchParams.get('event_id'));
+  const pendingTimeRef    = useRef<string | null>(searchParams.get('t'));
+  useEffect(() => {
+    if (!data) return;
+    const eventTarget = pendingEventIdRef.current;
+    const timeTarget  = pendingTimeRef.current;
+    if (!eventTarget && !timeTarget) return;
+    pendingEventIdRef.current = null;
+    pendingTimeRef.current = null;
+    let offsetMs: number | null = null;
+    if (eventTarget) {
+      const idx = Number(eventTarget);
+      // Allow both 1-based event_id (operator-friendly URL form) and
+      // matching by ts_ms when the entry didn't have a stable index.
+      const m = data.markers[idx - 1] ?? data.markers.find((mm) => mm.ts_ms === idx);
+      if (m && m.offset_ms != null) offsetMs = m.offset_ms;
+    }
+    if (offsetMs == null && timeTarget) {
+      const t = Number(timeTarget);
+      if (Number.isFinite(t) && t >= 0) offsetMs = t;
+    }
+    if (offsetMs != null) seekToOffset(offsetMs);
+    const next = new URLSearchParams(searchParams);
+    next.delete('event_id');
+    next.delete('t');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
   // Keep overlayModeRef in sync so the burn rAF closure reads the live value.
   useEffect(() => { overlayModeRef.current = overlayMode; }, [overlayMode]);
 
@@ -180,10 +226,33 @@ export default function FlexCamFootagePage() {
   const pct   = total ? Math.min(100, (posMs / total) * 100) : 0;
 
   // Keyboard shortcuts — must be declared before early returns (Rules of Hooks).
-  // Space/K=play, J/L=skip10s, Shift+skip=30s, ,/.=speed, ?=shortcuts.
+  // Space/K=play, J/L=skip10s, Shift+skip=30s, ,/.=speed, ?=shortcuts, Esc=cascade.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      if (typing) return;
+      // ── Escape smart-cascade (close-newest-first) ─────────────────────
+      // The page has no modal layer, but it does have an open shortcuts
+      // panel, a fullscreen video container, and a dismissable inline
+      // playback-error banner. Without an Esc handler the operator had no
+      // keyboard exit other than the browser's own fullscreen toggle.
+      if (e.key === 'Escape') {
+        if (shortcutsOpen) { setShortcutsOpen(false); return; }
+        if (document.fullscreenElement) {
+          // exitFullscreen is async; suppress rejection on platforms
+          // (e.g. iOS Safari) that resolve via webkit prefix instead.
+          document.exitFullscreen().catch(() => {});
+          return;
+        }
+        if (playbackErr) { setPlaybackErr(null); return; }
+        if (playing) {
+          const v = getFrontEl();
+          if (v) { v.pause(); setPlaying(false); }
+          return;
+        }
+        return;
+      }
       switch (e.key) {
         case ' ': case 'k': e.preventDefault(); togglePlay(); break;
         case 'ArrowLeft': case 'j':
@@ -200,7 +269,7 @@ export default function FlexCamFootagePage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posMs, total]);
+  }, [posMs, total, shortcutsOpen, playbackErr, playing]);
 
   async function loadSeq(seq: number): Promise<string | null> {
     const cached = urlCache.current.get(seq);
@@ -347,7 +416,12 @@ export default function FlexCamFootagePage() {
     try {
       await apiFetch(`/flexcam/footage/${data.request.id}/lock`, { method: 'POST' });
       reload();
-    } catch (e) { setErr((e as Error).message); }
+    } catch (e) {
+      // Surface the failure into pkgMsg (the evidence-action-bar banner)
+      // rather than setErr(), which replaced the whole page with a fatal
+      // error and hid the otherwise-working timeline + scrubber.
+      setPkgMsg(`⚠ Lock failed: ${(e as Error).message}`);
+    }
     finally { setLockBusy(false); }
   }
 
