@@ -5,13 +5,16 @@
 // storage tracking, disposition pipeline, and BWC footage view.
 // ============================================================
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import {
   Package, Search, Plus, MapPin, Clock, User, ArrowRightLeft, CheckCircle,
   AlertTriangle, X, Save, Loader2, Box, Warehouse, Tag, FileText, Video,
   PackageOpen, PackagePlus, RefreshCw, FlaskConical, Trash2, Play, Shield, Camera, Eye,
+  Printer,
 } from 'lucide-react';
+import { openEvidenceItemPdf } from '../utils/evidenceItemPdf';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import StatusBadge from '../components/StatusBadge';
@@ -418,6 +421,12 @@ export default function EvidencePropertyPage() {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
+  // VideoPlayer requires a function it can call to build Authorization
+  // headers for the signed-URL handshake on the BWC stream endpoint. This
+  // mirrors the centralized token source in apiFetch (also reads
+  // 'rmpg_token' from localStorage). Kept inline because VideoPlayer's
+  // prop shape expects `() => Record<string, string>` — not a refactor
+  // target until VideoPlayer's signed-URL flow is extracted into a hook.
   const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem('rmpg_token');
     const headers: Record<string, string> = {};
@@ -429,14 +438,82 @@ export default function EvidencePropertyPage() {
   // Set document title
   useEffect(() => { document.title = 'Evidence & Property \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // Keyboard shortcuts:
+  //   Escape — smart-cascade close (smallest-open-first: any of the four
+  //            modals; previously only chainModalOpen was honored, the
+  //            other three ignored Escape entirely).
+  //   N      — open the New Evidence modal (mirrors Dispatch / FI / Patrol
+  //            N-binding for operator muscle memory). Suppressed when
+  //            typing into an input / textarea / contenteditable.
   useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setChainModalOpen(false); }
+      if (e.key === 'Escape') {
+        // Close-smallest-open-first cascade. Each modal returns after
+        // closing so a single Esc doesn't blast multiple open modals.
+        if (releaseOpen) { setReleaseOpen(false); return; }
+        if (dispositionOpen) { setDispositionOpen(false); return; }
+        if (newEvidenceOpen) { setNewEvidenceOpen(false); return; }
+        if (chainModalOpen) { setChainModalOpen(false); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        setNewEvidenceOpen(true);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [releaseOpen, dispositionOpen, newEvidenceOpen, chainModalOpen]);
+
+  // ── /evidence?evidence_id=<id> URL deep-link auto-select ──
+  // Tenth consecutive page-pass implementing the cross-page contract. Court
+  // case + incident references → "view this evidence" land directly on the
+  // item. One-shot per page load; param is stripped after applying.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingEvidenceIdRef = useRef<string | null>(searchParams.get('evidence_id'));
+  useEffect(() => {
+    const target = pendingEvidenceIdRef.current;
+    if (!target || loading) return;
+    pendingEvidenceIdRef.current = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const hit = items.find((it) => String(it.id) === String(target));
+        if (hit) {
+          if (!cancelled) { setSelected(hit); setDetailTab('info'); }
+        } else {
+          // Not in the current paged list — fetch by id directly so the
+          // deep-link works regardless of filters / pagination.
+          const res = await apiFetch<any>(`/records/evidence/${target}`);
+          if (cancelled) return;
+          const item = res?.data ?? res;
+          if (item && item.id != null) {
+            setSelected(item);
+            setDetailTab('info');
+          } else {
+            addToast(`Evidence ${target} not found`, 'warning');
+          }
+        }
+      } catch {
+        if (!cancelled) addToast(`Failed to load evidence ${target}`, 'error');
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('evidence_id');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, loading]);
 
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
@@ -646,6 +723,24 @@ export default function EvidencePropertyPage() {
         {selected ? (
           <>
             <PanelTitleBar title={selected.evidence_number || `Evidence #${selected.id}`} icon={Box}>
+              {/* Court-ready PDF — item card + disposition-overdue alert
+                  + chain-of-custody timeline + supervisor signature line.
+                  Evidence + chain of custody is statutory court-record
+                  material; supervisors and custodians previously had no
+                  print path at all. */}
+              <button type="button"
+                onClick={() => openEvidenceItemPdf({
+                  item: selected,
+                  preparedBy: user
+                    ? (`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username)
+                    : undefined,
+                })}
+                className="toolbar-btn print:hidden"
+                title="Open a printable chain-of-custody PDF for this item"
+              >
+                <Printer style={{ width: 11, height: 11 }} />
+                <span className="hidden sm:inline">Print</span>
+              </button>
               <button type="button"
                 onClick={() => { setChainAction('check_in'); setChainLocation(''); setChainNotes(''); setChainModalOpen(true); }}
                 className="toolbar-btn toolbar-btn-primary print:hidden"
