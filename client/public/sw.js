@@ -691,6 +691,22 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1019: Dispatch deep-link + cleanup — /dispatch now honors ?call_id=
+//        from Dashboard "Calls Near Me" (and any other source), auto-
+//        selecting the target call and switching the filter tab so the
+//        call is visible in the left rail (cleared calls land on Cleared,
+//        archived on Archive, etc.). dispatch_sort preference now hydrates
+//        from /api/user/preferences (was localStorage-only, lost across
+//        devices). Supervisors get a "Print Cleared" button on the
+//        Cleared tab — one-click PDF of every cleared call inside today's
+//        Mountain-Time window, with disposition/units/duration. WS-dedup
+//        Set capped at 500 entries (was unbounded — leaked for the life
+//        of the dispatcher session). Quick Flags chip "off" state now
+//        renders correctly (was falling back to '#888' because the
+//        var(--color-rmpg-*) tokens it referenced don't exist). Theme:
+//        new --brand-gold-rgb / --sev-*-rgb tokens in theme-palettes.css
+//        let opacity-tinted backgrounds use the canonical palette; 30+
+//        inline #d4a017 / rgba(220,38,38,…) literals lifted accordingly.
 // v1017: FlexCam close-query honesty (Plan E — surface 'failed' on
 //        the request the moment the cron concludes a 0-downloaded
 //        trip instead of marking it 'partial' and waiting 6h for the
