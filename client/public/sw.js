@@ -59,6 +59,109 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1054: Training Management (/training) — Page 37 of the full-app frontend
+//        pass. TrainingPage.tsx (1641 lines) holds the dashboard /
+//        records / requirements / calendar tabs and is the supervisor's
+//        compliance surface. Officer training jackets are court-record-
+//        adjacent — defense counsel routinely subpoenas POST, firearms-
+//        qual, and UoF / first-aid records to challenge credibility or
+//        arrest authority. Before this PR there was no court-ready print
+//        path, two destructive flows used un-themeable window.confirm()
+//        prompts, Esc only closed the record modal, and there was no
+//        deep-link contract so cross-page "view this cert" links from
+//        personnel detail / dashboard couldn't land on the right row.
+//
+//        Court-ready Training Record PDF
+//        - New client/src/utils/trainingCertificatePdf.ts — RMPG-gold
+//          banner, audit alert when a "completed" row is missing BOTH
+//          certificate # and completion date (court-discovery artifact
+//          would leave the building with no documentary backing),
+//          sub-minimum-hours warn banner when an hours-logged value
+//          falls below the matched requirement's minimum_hours, expiry
+//          urgency banner (EXPIRED / EXPIRING SOON within 30 days),
+//          officer block, course block, documentation block (cert #,
+//          completed, expires, hours, score, record id), regulatory
+//          requirement block when a matching requirement row is found
+//          (minimum hours, renewal cadence, required-for roles,
+//          mandatory flag, description), notes block (HTML-stripped),
+//          provenance block (created / updated), two-signature block.
+//          Pure helpers (prettyCategory, prettyStatus, formatScore,
+//          formatRenewal, expiryStatus, needsAuditAlert,
+//          isSubMinimumHours) covered by 25 unit tests.
+//        - Printer button on each row in the Records tab (admin tier)
+//          opens the PDF in a new tab. Finds the matching requirement
+//          row by course_name and threads it through so the discovery
+//          printout shows the regulatory cadence alongside the actual
+//          completion.
+//
+//        URL deep-link contract
+//        - /training?tab=<dashboard|records|requirements|calendar>
+//          switches the active tab on mount AND on every tab click
+//          (replace-history, no spam) — refresh / browser-back / paste-
+//          into-MDT lands on the same view.
+//        - /training?cert_id=<id> opens the Edit Record modal for that
+//          training row (and switches to Records tab when invoked from
+//          the Dashboard).
+//        - /training?course_id=<reqId> opens the Edit Requirement modal.
+//        - /training?officer_id=<id> pre-filters Records to one officer
+//          (passed through to RecordsTab's officerFilter; previously
+//          there was no way for a personnel-detail deep-link to land on
+//          one officer's training jacket).
+//        - /training?status=<completed|in_progress|scheduled|overdue|
+//          expired|expiring_soon> pre-filters Records by status.
+//        - Each param is one-shot (stripped after applying) so refresh
+//          doesn't re-pop the modal; a not-found id surfaces a toast
+//          warning instead of silently ignoring the link.
+//
+//        Esc smart-cascade — was a single setShowRecordModal(false) +
+//        setEditRecord(null) so the Requirement modal, the Bulk Assign
+//        modal, and the two confirm dialogs all ignored Esc. Now
+//        smallest-open-first: delete-record confirm → delete-
+//        requirement confirm → Bulk Assign modal → Requirement modal →
+//        Record modal. Each branch returns so one Esc never blasts
+//        multiple layers.
+//
+//        N keyboard shortcut — press N (admin tier) opens New Training
+//        Record. Mirrors the New-X binding on Dispatch / FI / Patrol /
+//        Evidence / Dash Cameras / Records. Suppressed inside any
+//        input/textarea/select/contenteditable; ctrl/meta/alt-modified
+//        N is ignored so the browser-print binding still works.
+//
+//        ConfirmDialog × 2 — killed both window.confirm() calls:
+//        - handleDeleteRecord — now ConfirmDialog with course name,
+//          officer, completion/expiry dates, cert #, and status as the
+//          identifying context so a misclick on a similar-named row
+//          can't quietly destroy a court-discoverable record.
+//        - handleDeleteRequirement — ConfirmDialog with course name,
+//          category, mandatory flag (loudly red when mandatory — losing
+//          it drops the compliance gate for an entire role), and the
+//          minimum-hours requirement so the supervisor sees what the
+//          dashboard will stop tracking.
+//
+//        Empty-state distinction — RecordsTab's "No training records
+//        found." now disambiguates: zero records in the DB → "No
+//        training records yet" + Add CTA (admin); records exist but
+//        all filtered out → "No records match your filters" + Clear
+//        filters button that resets search / status / category /
+//        officer. Same pattern as v1043 dash-cameras + v1048 serve.
+//
+//        Theme sweep — lifted ~12 inline hex literals (#22c55e, #ef4444,
+//        #f59e0b, #8b5cf6, #888888, #6b8aad, etc.) on the dashboard
+//        stat cards / progress bars / compliance bars to Tailwind
+//        semantic-color tokens (text-green-400, bg-amber-500, etc.) so
+//        the cards re-color between night and day automatically. The
+//        StatCard component prop shape changed from { color,
+//        borderColor } to { tone } with seven semantic tones (brand /
+//        green / amber / red / orange / purple / neutral).
+//        Replaced the ⚠ / ✕ emoji glyphs in the fetch-error banner
+//        with Lucide AlertTriangle / X icons.
+//
+//        Dead code — removed the `trainingCompletion` state +
+//        accompanying apiFetch('/personnel/training-completion') call
+//        that fired on every records change and was never rendered.
+//        The dashboard derives the same numbers from records +
+//        requirements in-page. Removed the unused `isGodMode` variable
+//        (audit already shipped role-based gating via isAdmin).
 // v1053: Shift Plans (/shift-plans) — Page 36 of the full-app frontend
 //        pass. The supervisor's deployment board got the same court-ready
 //        / native-dialog / deep-link contract every other audited page
