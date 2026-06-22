@@ -937,6 +937,78 @@
 //        Dispatch). Theme: warrant-banner ⚠️ emoji → Lucide
 //        AlertTriangle; restored-draft #1a1500 → rgb(var(--sev-warn-rgb)
 //        / 0.08) (same lift as Patrol PR #1595).
+// v1044: Communications — Page 27 of the full-app frontend pass. The
+//        Communications Center (/communications, threaded inbox + BOLOs +
+//        activity feed) lacked the cross-page contract the recent court-
+//        record pages (Field Interviews #1597, Evidence #1603, Cases
+//        #1604, Warrants #1608, Trespass Orders #1610, Court Tracker
+//        #1613, Offender Registry #1614) all honor.
+//        - New client/src/utils/conversationTranscriptPdf.ts —
+//          "Conversation Transcript" PDF with RMPG-gold banner,
+//          priority-aware alert bar (emergency=red, urgent=amber, normal=
+//          no bar), conversation-summary block (subject/participants/
+//          channel/message-count/first/last timestamps), per-message
+//          chronological block (sender→recipient, priority, read state,
+//          word-wrapped body), and a two-signature block (exporting
+//          officer + supervisor). Pure helpers (wrapText, highestPriority,
+//          participantsOf) covered by 14 new vitest cases plus 5 jsPDF
+//          smoke tests (empty thread, very-long-word body, 60-message
+//          page-break exercise, broadcast emergency). Same Arial idiom
+//          as fiCardPdf / courtAppearancePdf / evidenceItemPdf. "Print"
+//          button now sits in the thread-detail toolbar AND the right-
+//          click context menu — operators preparing IA or court packages
+//          no longer need to screenshot the bubble view.
+//        - Native dialogs killed:
+//            (a) `window.confirm('Delete this message?')` in the per-
+//                message delete button → themed ConfirmDialog with the
+//                two-stage requestDeleteMessage / confirmDeleteMessage
+//                split landed in #1608, so loading state shows on the
+//                button itself instead of a frozen UI behind a blocking
+//                modal.
+//            (b) `prompt('Emergency broadcast message to ALL units:')`
+//                on the toolbar → FormModal with a red audit-warning
+//                banner ("This message will go to every active unit. It
+//                is logged as an EMERGENCY-priority broadcast and
+//                audited."). The previous native prompt() lost the
+//                message text on a misclick outside the prompt and gave
+//                no way to revise.
+//        - URL deep-link contract — /communications?thread_id=<id> auto-
+//          opens the thread once messages hydrate and marks it read;
+//          ?message_id=<id> finds the containing thread and scrolls the
+//          specific message into view; ?bolo_id=<id> switches to the
+//          BOLOs panel and pulses a ring around the row; ?tab=
+//          messages|bolos|activity forces a panel on mount. Every query
+//          param is stripped after consumption (window.history.replace
+//          via the existing newBolo idiom) so a refresh doesn't re-
+//          trigger. The pre-existing ?newBolo=1 contract is preserved.
+//          22nd consecutive page-pass on the deep-link contract.
+//        - Right-click context menu on conversations gained "Print
+//          transcript" (top, with Printer icon) and "Copy deep-link"
+//          (so a dispatcher can paste a thread URL into another chat /
+//          incident note).
+//        - Esc smart-cascade — closes the top-of-stack layer first
+//          (emergency-broadcast modal → delete-message confirm → cancel-
+//          BOLO confirm → compose modal → new-BOLO form → selected
+//          thread → search query). Previously there was NO Esc binding
+//          at all on this page — the only escape was clicking the X on
+//          each modal individually.
+//        - `N` shortcut — opens Compose on the messages tab and the New
+//          BOLO form on the BOLOs tab. Typing-suppressed (input/textarea/
+//          select/contenteditable) and modal-suppressed (any open modal
+//          eats the keystroke). Mirrors the Warrants / FI / Dispatch
+//          shortcut from #1597 / #1608.
+//        - Empty-state distinction — "No messages yet" (with Compose CTA
+//          and an `N` hint) is now distinct from "No conversations match
+//          '<query>'" (which surfaces the total thread count + a Clear-
+//          search CTA, no Compose). Stops the inbox-onboarding CTA from
+//          ambushing an operator who only over-filtered. Same lift as
+//          Warrants #1608 and Trespass Orders #1610.
+//        - Dead UI removed — the BOLO row rendered `bolo.subject_name`
+//          and `bolo.last_known_location` conditionally, but the live
+//          `bolos` table schema (verified against migrations/baseline/
+//          schema.sql) has no such columns and the worker route SELECTs
+//          `b.*` — so those branches NEVER rendered. Removed (kept
+//          vehicle_description + subject_description, which do exist).
 // v1041: Fleet (/fleet, v2 shell) — Page 24 of the full-app frontend pass.
 //        Honors the cross-page URL deep-link contract and seals six
 //        recon gaps the FleetShell v2 ship missed:
