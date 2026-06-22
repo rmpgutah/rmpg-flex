@@ -116,7 +116,13 @@ npm run migrate:prod      # apply migrations to remote D1
 2. Write idempotent DDL — `CREATE TABLE IF NOT EXISTS`. D1 does **not** support `IF NOT EXISTS` on `ADD COLUMN`, so either accept the failure on re-apply or wrap the `ALTER` in a check via the Worker boot reconciler.
 3. Test locally: `npm run migrate:local`.
 4. Merge to main — `deploy.yml` applies it to remote D1 (and continues on error, as documented above).
-5. **⚠️ Migrations routinely fail to reach live D1 silently** (deploy step is `continue-on-error`; migration tracking historically targeted the abandoned DB). After merging, ALSO apply the DDL directly to live `rmpg-flex` (`785de7ae-…`) via the Cloudflare D1 API and verify with `pragma_table_info('<table>')`. A runtime "no such column/table" error is almost always a migration that never landed — check `pragma_table_info` before debugging route code. (Full drift sweep 2026-06-10: `0093_schema_drift_sweep.sql` reconciled all drift to date.)
+5. **⚠️ Migrations routinely fail to reach live D1 silently** (deploy step is `continue-on-error`; migration tracking historically targeted the abandoned DB). After merging, apply the DDL **AND** mark it tracked in one shot via [`scripts/apply-migration.sh`](scripts/apply-migration.sh):
+
+   ```bash
+   scripts/apply-migration.sh 0147_my_new_migration.sql
+   ```
+
+   The helper runs `wrangler d1 execute --remote --file` then `INSERT OR IGNORE INTO d1_migrations`. Skipping the tracker insert is what caused the 19-row drift sweep on 2026-06-22 — wrangler then retries those files forever, hiding any real failure under swallowed "duplicate column name" noise. Verify the change landed with `pragma_table_info('<table>')`. A runtime "no such column/table" error is almost always a migration that never landed.
 6. **All `db.prepare(...).first() / .all() / .run()` are async** on D1 — always `await`.
 
 ## Security
