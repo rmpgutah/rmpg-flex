@@ -43,6 +43,12 @@ function isFallbackable(provider: AiProvider, err: unknown): boolean {
   if (status === null) return false;
   if (status === 401 || status === 403) return true;
   if (status === 402) return true;
+  // Anthropic returns HTTP 400 (not 402) for low-credit accounts in some
+  // tiers, with the credit hint in the body. OpenAI's 400 is always a real
+  // request bug. So gate 400-fallback on the credit hint.
+  if (status === 400) {
+    return /(credit|balance|fund|billing|quota|exceeded)/i.test(msg);
+  }
   if (status === 429) {
     return /(credit|balance|fund|billing|quota|exceeded)/i.test(msg);
   }

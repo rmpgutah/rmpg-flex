@@ -108,11 +108,25 @@ describe('callAi router', () => {
     expect(result.fellBack).toBe(true);
   });
 
-  it('does NOT fall back on Claude 400 (bad request — propagates)', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('Bad request', { status: 400 }));
+  it('does NOT fall back on Claude 400 (bad request, no credit hint — propagates)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('invalid prompt format', { status: 400 }));
     const env = makeEnv({ keys: { anthropic_api_key: 'sk-ant-test', openai_api_key: 'sk-test' } });
 
     await expect(callAi(env, { text: 'hi' })).rejects.toThrow(/Anthropic 400/);
+  });
+
+  it('DOES fall back on Claude 400 with credit-balance hint (Anthropic returns 400 for low credit)', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockResolvedValueOnce(new Response('{"error":"credit balance too low"}', { status: 400 }));
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ choices: [{ message: { content: 'openai-rescue' } }] }),
+      { status: 200 },
+    ));
+    const env = makeEnv({ keys: { anthropic_api_key: 'sk-ant-broke', openai_api_key: 'sk-test' } });
+
+    const result = await callAi(env, { text: 'hi' });
+    expect(result.provider).toBe('openai');
+    expect(result.text).toBe('openai-rescue');
   });
 
   it('respects an explicit providers list', async () => {
