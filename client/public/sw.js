@@ -59,6 +59,71 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1051: Settings (/settings) — Page 34 of the full-app frontend pass.
+//        SettingsPage is the per-user prefs hub (voice persona, voice
+//        alerts, Motorola tones, PTT, map view/overlays/GPS/markers) — it
+//        was missing the systemwide day/night theme picker entirely; the
+//        only place to flip themes was UserProfileModal (modal nested in
+//        the personnel detail tab) + the Layout topbar quick toggle.
+//        Operators looking for "Settings" reasonably expected the picker
+//        there, found nothing, and dropped to the modal.
+//        - New "DISPLAY & THEME" SectionCard: Day / Night / Auto (shift)
+//          segmented control writes through writeThemeOverride() — same
+//          source of truth Layout + UserProfileModal already use — and
+//          best-effort syncs theme_preference to /api/user/preferences
+//          for cross-device follow-along. Font-scale slider mirrors the
+//          UserProfileModal control (0.8–1.4, step 0.05) and live-applies
+//          via the --user-font-scale CSS variable + html.fontSize the
+//          UserPreferencesContext already drives. Legacy pure-black
+//          kill-switch toggle exposes the documented rmpg_theme_legacy=1
+//          escape hatch (per memory [[project-systemwide-daynight-theme]]).
+//        - URL deep-link contract: /settings?section=<id> scroll-into-
+//          views the named SectionCard on mount, strips the param so a
+//          hard refresh doesn't re-pin. Whitelisted IDs:
+//          display | voice | alerts | tones | ptt | map | overlays | gps
+//          | markers. Lets MenuBar / docs / support tickets paste a deep
+//          link to "this one toggle" rather than "scroll the page".
+//        - Theme-token sweep: 9 hardcoded literals lifted off the page —
+//          #d4a017 → var(--brand-gold) (5 sites: toggle on-state, segmented
+//          on-state, Test-voice button, org-defaults button, status text);
+//          #000 → var(--surface-overlay) (toggle knob + segmented on-state
+//          text); #888 → var(--text-muted) (segmented off-state text);
+//          #222 → var(--border-default) (segmented off-state border); the
+//          PTT capturing-key state's #3a0d0d/#ef4444/#fca5a5 trio →
+//          rgb(var(--sev-critical-rgb)/0.15) + var(--sev-critical) +
+//          var(--sev-critical-soft). The page now re-themes cleanly
+//          between night and day instead of pinning a steel-blue surface
+//          under day-mode gold accents.
+//        - Emoji chrome: "Published to all users ✓" → CheckCircle2 from
+//          lucide-react, with the badge color flipping to var(--sev-
+//          critical) on save-failure (was a flat brand-gold regardless).
+//        - Esc cascade: PTT key-capture description now reads "Press any
+//          key to bind, or Esc to cancel" so the existing Esc-cancels-
+//          binding behavior is discoverable (the cancel path was always
+//          there — it was just invisible).
+//        - Hydrate from server: font_scale reads from UserPreferences-
+//          Context on mount (was effectively a write-only control before;
+//          the underlying value already lived on /user/preferences via
+//          UserProfileModal but Settings never pulled it back).
+//        - 5 vitest cases covering: render of the new section, manual
+//          theme persists to localStorage + hits /user/preferences,
+//          Auto clears the active flag, legacy-black kill-switch flip,
+//          ?section= scroll + param-strip, and the unknown-section
+//          no-op + param-retain.
+//        Out of scope (deferred):
+//          • Compact mode + show_map_labels + default_map_style server-
+//            side prefs are still UserProfileModal-only. Map default
+//            style is already on the page as a localStorage pref (not the
+//            same key) — unifying the two requires the SETTINGS_KEYS ↔
+//            user_preferences columns reconciliation that's tracked
+//            separately.
+//          • Password change / 2FA / WebAuthn enrollment — the legacy
+//            VPS TOTP stack (per memory [[project-vps-decommissioned]])
+//            has not been ported to the Worker yet; there's no endpoint
+//            to call. Surface a placeholder section here when the
+//            backend lands.
+//        No D1 migration, no worker change.
+//
 // v1047: Intel Portal (/intel/*) — Page 30 of the full-app frontend pass,
 //        applied to the multi-route command-center shell (IntelPortalLayout
 //        + IntelDashboard + BoloBoard + IntelSearch + the supporting widgets).
