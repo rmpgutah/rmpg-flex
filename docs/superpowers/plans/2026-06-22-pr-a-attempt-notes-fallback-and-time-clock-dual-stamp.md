@@ -15,11 +15,11 @@
 **Created:**
 - `src/utils/denverTime.ts` — `nowDualStamp(date?: Date)` helper + pure formatter
 - `tests/denverTime.test.ts` — unit tests for the helper (Node env)
-- `migrations/0150_time_entries_local_stamps.sql` — idempotent ALTER TABLE
+- `migrations/0150_time_entries_local_stamps.sql` — idempotent ALTER TABLE (adds `clock_in_local`, `clock_out_local`, `break_start_local`; no `break_end_local` because `time_entries` has no `break_end` UTC column — `end-break` clears `break_start` and adds to the `break_minutes` duration)
 - `scripts/backfill-time-entries-denver.js` — one-shot Node script that converts UTC rows to Denver wall-clock and writes to the `_local` columns
 
 **Modified:**
-- `src/routes/personnel.ts` — every `new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00')` site swaps to `nowDualStamp()`; INSERT/UPDATE statements gain `_local` columns. Four touch points: clock-in (line 745), clock-out (line 770), start-break, end-break.
+- `src/routes/personnel.ts` — every `new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00')` site swaps to `nowDualStamp()`; INSERT/UPDATE statements gain `_local` columns. Three timestamp-write touch points: clock-in (line ~745) → `clock_in_local`, clock-out (line ~770) → `clock_out_local`, start-break (line ~787) → `break_start_local`. The end-break route writes `break_minutes` (a duration) and clears `break_start` — no new column for it.
 - `client/src/components/serve/ServeJobCard.tsx` — add `formatCodeShort` import; rewrite the attempt-row notes span at line 333 to use the fallback hierarchy.
 - `client/src/pages/personnel/tabs/TimeAttendanceTab.tsx` — read `clock_in_local ?? clock_in` for display.
 - `client/src/pages/mobile/cards/ShiftCard.tsx` — same display swap.
@@ -246,6 +246,10 @@ Expected: `0149_nsopw_records_links.sql` is the high-water mark. If anything ≥
 -- columns so display layers can read a string that matches the operator's
 -- physical wall clock without parsing & converting on every render.
 --
+-- `time_entries` stores break end as a CLEARED `break_start` plus accumulated
+-- `break_minutes` duration — there is no `break_end` UTC column, so no
+-- `break_end_local` either.
+--
 -- Backfill of historical rows happens via scripts/backfill-time-entries-denver.js
 -- (D1/SQLite has no IANA-aware datetime function; a Node script does the
 -- DST-aware conversion per row).
@@ -254,7 +258,6 @@ Expected: `0149_nsopw_records_links.sql` is the high-water mark. If anything ≥
 ALTER TABLE time_entries ADD COLUMN clock_in_local TEXT;
 ALTER TABLE time_entries ADD COLUMN clock_out_local TEXT;
 ALTER TABLE time_entries ADD COLUMN break_start_local TEXT;
-ALTER TABLE time_entries ADD COLUMN break_end_local TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_time_entries_clock_in_local
   ON time_entries (clock_in_local);
@@ -371,14 +374,26 @@ with:
     await execute(db, `UPDATE time_entries SET clock_out = ?, clock_out_local = ?, total_hours = ?, status = 'completed' WHERE id = ?`, stamp.utc, stamp.local, hrs, entry.id);
 ```
 
-- [ ] **Step 3.5: Rewrite start-break and end-break the same way**
+- [ ] **Step 3.5: Rewrite start-break for dual-stamp**
 
-Locate `personnel.post('/time/start-break', ...)` and `personnel.post('/time/end-break', ...)` (if present — the routes mirror clock-in/out). For each:
-- Replace the `new Date().toISOString().replace(...)` line with `const stamp = nowDualStamp();`.
-- Add the corresponding `_local` column to the UPDATE SET clause.
-- Pass `stamp.utc, stamp.local` instead of the single `stamp`.
+The current `personnel.post('/time/start-break', ...)` route writes
+`break_start = datetime('now','localtime')` — which on Workers resolves to
+UTC despite the `'localtime'` modifier. Replace that UPDATE statement:
 
-If the route writes a column other than `break_start` / `break_end` (e.g., it uses `break_minutes`), DO NOT add a `_local` column for it — minutes are durations, not timestamps. Only timestamp columns get a `_local` twin.
+```typescript
+// before
+await execute(db, `UPDATE time_entries SET status = 'on_break', break_start = datetime('now','localtime') WHERE id = ?`, entry.id);
+
+// after
+const stamp = nowDualStamp();
+await execute(db, `UPDATE time_entries SET status = 'on_break', break_start = ?, break_start_local = ? WHERE id = ?`, stamp.utc, stamp.local, entry.id);
+```
+
+The `personnel.post('/time/end-break', ...)` route writes
+`break_start = NULL, break_minutes = <total>` — i.e., it CLEARS `break_start`
+and accumulates a duration. There is no `break_end` UTC column on
+`time_entries`, so do NOT add a `_local` write to this route. Leave it
+unchanged.
 
 - [ ] **Step 3.6: Typecheck**
 
@@ -485,7 +500,6 @@ const COLUMN_PAIRS = [
   ['clock_in', 'clock_in_local'],
   ['clock_out', 'clock_out_local'],
   ['break_start', 'break_start_local'],
-  ['break_end', 'break_end_local'],
 ];
 
 function escapeSqlValue(v) {
@@ -699,6 +713,13 @@ For each match: if the value flows into a `<time>` element, a formatter (`new Da
 
 Pattern: `entry.clock_in` becomes `entry.clock_in_local ?? entry.clock_in`. The fallback to the legacy UTC string keeps ancient rows displayable until the backfill runs.
 
+Apply the same swap to `clock_out` → `clock_out_local ?? clock_out` and
+`break_start` → `break_start_local ?? break_start`. There is **no**
+`break_end` column on `time_entries`; if a display site is showing "break
+end" it's computing it from `break_start + break_minutes` (a duration),
+which doesn't need a `_local` twin — the math result is already wall-clock
+when both inputs are wall-clock.
+
 Example (TimeAttendanceTab.tsx):
 
 ```tsx
@@ -725,13 +746,12 @@ If `safeDateStr` calls `new Date(s)` on a `YYYY-MM-DDTHH:MM:SS` string (no offse
 grep -n "interface TimeEntry\|type TimeEntry" client/src/types/index.ts client/src/pages/personnel 2>/dev/null
 ```
 
-Wherever `TimeEntry` (or similar) is defined, add the four optional fields:
+Wherever `TimeEntry` (or similar) is defined, add the three optional fields:
 
 ```typescript
   clock_in_local?: string | null;
   clock_out_local?: string | null;
   break_start_local?: string | null;
-  break_end_local?: string | null;
 ```
 
 (Optional, not required — historical rows have null until the backfill runs.)
