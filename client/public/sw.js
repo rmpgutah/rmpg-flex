@@ -810,6 +810,83 @@
 //        Dispatch). Theme: warrant-banner ⚠️ emoji → Lucide
 //        AlertTriangle; restored-draft #1a1500 → rgb(var(--sev-warn-rgb)
 //        / 0.08) (same lift as Patrol PR #1595).
+// v1042: Body Cameras (BWC) — Page 25 of the full-app frontend pass.
+//        BWC footage is statutory court-record material AND highly
+//        PII-sensitive; the page already had per-row delete modals
+//        (PR #1009 / 2026-06-21) but lacked a court-record artifact, a
+//        deep-link, an Esc cascade across modals, and the chain-of-
+//        custody view-event emit every other audited evidence surface
+//        now has.
+//          • Court-ready PDF: new client/src/utils/bodycamVideoCustodyPdf.ts
+//            ("BWC Video — chain of custody") with RMPG-gold banner +
+//            evidence-hold alert bar (red, fires on legal_hold / ia_hold
+//            / court_hold / preserved) + 6-pair video field grid + notes
+//            block + chain-of-custody table with alt-row shading + two-
+//            signature block + footer. Pure helpers (fmtDate, fmtDateTime,
+//            fmtDuration, fmtFileSize, prettyAction, chainEntryActor,
+//            isEvidenceHold) covered by 23 new unit tests + jsPDF smoke
+//            tests that confirm the generator doesn't throw on null-
+//            everything rows or 500-char title overflows. Same Arial +
+//            signature-block idiom as evidenceItemPdf, fiCardPdf,
+//            criminalHistoryPdf, offenderRegistrationCardPdf.
+//          • Server-side chain-of-custody endpoint:
+//            GET /api/personnel/bodycam-videos/:id/custody returns
+//            audit_log entries with entity_type='bodycam_video' as a
+//            normalized { at, action, by, by_name, notes }[] timeline.
+//            Registered BEFORE the bare /:id GET so Hono picks the
+//            longer pattern (reverse and :id swallows /:id/custody as
+//            id='123/custody' → 400). READ_ALL_ROLES gate identical to
+//            the rest of the bodycam surface.
+//          • Chain-of-custody view-event emit: new
+//            POST /api/personnel/bodycam-videos/:id/view-event records
+//            a `bodycam_video_viewed` audit row when VideoPlayer mounts
+//            a stream. Previously a supervisor could open + re-watch
+//            any officer's footage and leave no trace; required for
+//            court chain reconstruction. Best-effort fire-and-forget
+//            from the client so a transient 5xx never blocks playback.
+//          • URL deep-link: /body-cameras?video_id=<id> (with
+//            ?clip_id= / ?recording_id= aliases) auto-opens the player
+//            on a specific clip. Falls through to a direct
+//            /personnel/bodycam-videos/:id fetch when the row is
+//            paginated out (officer-scope, classification filter).
+//            Param is stripped after applying so a hard refresh
+//            doesn't loop. 22nd consecutive page-pass on the
+//            cross-page deep-link contract.
+//          • Esc smart-cascade: centralized at the page level (the
+//            player on its own already self-closes via role="dialog"
+//            but the upload modal, form modal, and BOTH delete dialogs
+//            had no Esc binding). Closes top-most-first:
+//            camera-delete → video-delete → player → upload → form.
+//            Suppressed for the camera form when typing in an input
+//            so native form-clear semantics survive.
+//          • Native confirm() → ConfirmDialog: BodyCameraTab had TWO
+//            window.confirm() calls (bulk delete cameras + bulk
+//            delete videos). The rest of the app has migrated off
+//            native confirm (Cases #1604, Evidence #1603, Citations
+//            #1606, Court #1613); routed through the shared
+//            ConfirmDialog with row-count + held-video warning so the
+//            destructive-flow polish is consistent.
+//          • Player Print button: VideoPlayer toolbar gained a Printer
+//            icon button that fetches /custody fresh + opens the PDF
+//            in a new tab. Best-effort — falls through to an empty
+//            timeline if the custody endpoint 5xxs, since the
+//            metadata + signature block is still court-useful.
+//          • Player header dedupe: the toolbar had TWO separate flex
+//            clusters both rendering a Close button, producing a
+//            double-X. Consolidated into one cluster.
+//          • Dead imports cleanup: VideoHudOverlay (referenced 0
+//            times — HUD is rendered inline) and VideoClassification
+//            (type-only, not used) removed from VideoPlayer.tsx.
+//          • Theme-token sweep: 5 raw-hex literals in
+//            personnel/tabs/BodyCameraTab.tsx — bg-[#0a1a0a] /
+//            bg-[#1a150a] / bg-[#1a0a0a] / bg-[#0f0f0f] (summary
+//            cards) and bg-[#1a0a0a] (lost/retired banner) — lifted
+//            to rgb(var(--sev-ok/warn/critical-rgb) / 0.08) alpha-
+//            tints so the cards re-skin between night and day
+//            instead of staying near-black on a light-grey surface.
+//          • Verified: npm run typecheck (worker) clean, cd client
+//            && npx tsc --noEmit clean, the new
+//            bodycamVideoCustodyPdf.test.ts file (23 tests) passes.
 // v1038: Offender Registry (/nsopw, /offender-registry redirect) —
 //        court-ready PDF + deep-link + photo embed. 21st consecutive
 //        page-pass for the cross-page contract; NSOPW data is now the

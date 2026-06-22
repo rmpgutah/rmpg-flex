@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Video, Loader2, AlertTriangle } from 'lucide-react';
 import type { BodyCamera, BodyCamVideo, VideoClassification } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -53,6 +54,15 @@ export default function BodyCamerasPage() {
   const [retentionStats, setRetentionStats] = useState<{ total_expired: number; total_storage_gb: number } | null>(null);
   const [pendingReviews, setPendingReviews] = useState(0);
   const [pendingRedactions, setPendingRedactions] = useState(0);
+
+  // Destructive-modal state lifted from below so the deep-link +
+  // Esc-cascade effects (declared next) can read it. The previous
+  // ordering put these declarations AFTER the effects that referenced
+  // them — TS catches it, but lifting also makes the page's state
+  // shape easier to scan.
+  const [cameraToDelete, setCameraToDelete] = useState<BodyCamera | null>(null);
+  const [videoToDelete, setVideoToDelete] = useState<BodyCamVideo | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // ----------------------------------------------------------
   // Data Fetching
@@ -106,6 +116,88 @@ export default function BodyCamerasPage() {
   useLiveSync('body_cameras', fetchData);
   useLiveSync('bodycam_videos', fetchData);
 
+  // ── /body-cameras?video_id=<id> URL deep-link auto-open ──
+  // 22nd consecutive page-pass on the cross-page contract. Court-package
+  // links, evidence cross-refs, and the dashcam ↔ BWC sibling lookup all
+  // need to open the player directly on a specific clip. Falls through
+  // to a direct fetch when the row is paginated out of the current list
+  // (officer filter, retention narrow). Param is stripped after applying
+  // so a hard refresh doesn't loop. The aliases `clip_id` and
+  // `recording_id` mirror the mission brief — older bookmarks generated
+  // before the canonical param was named survive.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingVideoIdRef = useRef<string | null>(
+    searchParams.get('video_id')
+    || searchParams.get('clip_id')
+    || searchParams.get('recording_id'),
+  );
+  useEffect(() => {
+    const target = pendingVideoIdRef.current;
+    if (!target || loading) return;
+    pendingVideoIdRef.current = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const hit = videos.find((v) => String(v.id) === String(target));
+        if (hit) {
+          if (!cancelled) setPlayingVideo(hit);
+        } else {
+          const row = await apiFetch<any>(`/personnel/bodycam-videos/${target}`);
+          if (cancelled) return;
+          if (row && row.id != null) {
+            setPlayingVideo(mapBodyCamVideo(row));
+          } else {
+            addToast(`Video ${target} not found`, 'warning');
+          }
+        }
+      } catch {
+        if (!cancelled) addToast(`Failed to load video ${target}`, 'error');
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('video_id');
+          next.delete('clip_id');
+          next.delete('recording_id');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videos, loading]);
+
+  // ── Esc smart-cascade ──
+  // Closes the smallest-open-first of the five modals BodyCamerasPage
+  // owns (player → upload → camera form → camera-delete → video-delete).
+  // The player on its own already self-closes on Esc via React-Router /
+  // the role="dialog" handler, but pressing Esc while typing in the
+  // upload modal previously did nothing — and ConfirmDialog's Esc
+  // listener only fires when ConfirmDialog itself owns focus. Centralised
+  // here so every owner-controlled modal in the page behaves the same.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Top-most-first cascade: any open destructive dialog wins,
+      // then the player, then the upload modal, then the camera form.
+      if (cameraToDelete) { setCameraToDelete(null); return; }
+      if (videoToDelete) { setVideoToDelete(null); return; }
+      if (playingVideo) { setPlayingVideo(null); return; }
+      if (modal === 'upload_video') { setModal('none'); return; }
+      if (modal === 'new_body_camera' || modal === 'edit_body_camera') {
+        // Don't ambush an operator mid-typing in the form.
+        if (isTypingInField(e.target)) return;
+        setModal('none'); setEditData(undefined); return;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [cameraToDelete, videoToDelete, playingVideo, modal]);
+
   // ----------------------------------------------------------
   // Refresh (cameras + videos only, skip officers)
   // ----------------------------------------------------------
@@ -146,10 +238,9 @@ export default function BodyCamerasPage() {
   // incident, and evidence-lock status. The previous `window.confirm`
   // showed "Delete this video? This cannot be undone." with no
   // identifying info — evidentiary footage was being destroyed with
-  // zero identity check. Audit caught (2026-06-21).
-  const [cameraToDelete, setCameraToDelete] = useState<BodyCamera | null>(null);
-  const [videoToDelete, setVideoToDelete] = useState<BodyCamVideo | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  // zero identity check. Audit caught (2026-06-21). State declarations
+  // were lifted above the deep-link / Esc-cascade effects (which read
+  // them) — see top of component.
 
   // Audit caught (2026-06-21 follow-up): the previous "find by id, if
   // found set" was silently swallowing the click when a concurrent
@@ -389,6 +480,9 @@ export default function BodyCamerasPage() {
         onClose={() => setPlayingVideo(null)}
         video={playingVideo}
         apiBase={window.location.origin + '/api'}
+        preparedBy={user
+          ? ((`${user.first_name || ''} ${user.last_name || ''}`.trim()) || user.full_name || user.username)
+          : undefined}
         getAuthHeaders={() => {
           const token = localStorage.getItem('rmpg_token');
           const headers: Record<string, string> = {};

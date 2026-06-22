@@ -17,6 +17,7 @@ import {
 import PrintButton from '../../../components/PrintButton';
 import ExportButton from '../../../components/ExportButton';
 import RmpgLogo from '../../../components/RmpgLogo';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
@@ -84,6 +85,18 @@ export default function BodyCameraTab({
   const [selectedCameraIds, setSelectedCameraIds] = useState<Set<number>>(new Set());
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [bulkClassification, setBulkClassification] = useState<VideoClassification>('routine');
+
+  // ── Bulk-confirm dialog state ─────────────────────────────
+  // Page-25 audit caught: bulk delete buttons used `window.confirm()`,
+  // which the rest of the app has migrated off (Cases #1604, Evidence
+  // #1603, Citations #1606, Court #1613). Native confirm() bypasses the
+  // app's theme, focus management, and tab-trap. Routed through the
+  // shared ConfirmDialog so the destructive-flow polish is consistent.
+  const [bulkConfirm, setBulkConfirm] = useState<
+    | { kind: 'cameras'; count: number }
+    | { kind: 'videos'; count: number }
+    | null
+  >(null);
 
   // ── Stats ────────────────────────────────────────────────
 
@@ -174,14 +187,20 @@ export default function BodyCameraTab({
 
   // ── Summary Cards ────────────────────────────────────────
 
+  // Theme: prior pure-black/very-dark hex literals (#0a1a0a, #1a150a,
+  // #1a0a0a, #0f0f0f) ignored the day/night palette swap and rendered as
+  // near-black bars on a light-grey surface. Lifted to the semantic
+  // --sev-*-rgb tokens (same alpha-tinted approach as the warning banner
+  // in PR #1595/#1606/#1610) so the cards re-skin between night and day
+  // without losing the green/amber/red tonal language.
   const SUMMARY_CARDS = [
-    { label: 'Total', value: stats.total, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
-    { label: 'Assigned', value: stats.assigned, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-border-subtle/30', topBorder: 'border-t-rmpg-500' },
-    { label: 'Available', value: stats.available, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
-    { label: 'Maintenance', value: stats.maintenance, color: 'text-amber-400', bgClass: 'bg-[#1a150a]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
-    { label: 'Lost / Retired', value: stats.lostRetired, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
-    { label: 'Videos', value: stats.videoCount, color: 'text-purple-400', bgClass: 'bg-[#0f0f0f]', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },
-  ];
+    { label: 'Total', value: stats.total, color: 'text-rmpg-300', bgStyle: undefined, bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
+    { label: 'Assigned', value: stats.assigned, color: 'text-rmpg-400', bgStyle: undefined, bgClass: 'bg-surface-base', border: 'border-border-subtle/30', topBorder: 'border-t-rmpg-500' },
+    { label: 'Available', value: stats.available, color: 'text-green-400', bgStyle: { background: 'rgb(var(--sev-ok-rgb) / 0.08)' }, bgClass: '', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
+    { label: 'Maintenance', value: stats.maintenance, color: 'text-amber-400', bgStyle: { background: 'rgb(var(--sev-warn-rgb) / 0.08)' }, bgClass: '', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
+    { label: 'Lost / Retired', value: stats.lostRetired, color: 'text-red-400', bgStyle: { background: 'rgb(var(--sev-critical-rgb) / 0.08)' }, bgClass: '', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
+    { label: 'Videos', value: stats.videoCount, color: 'text-purple-400', bgStyle: undefined, bgClass: 'bg-surface-sunken', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },
+  ] as const;
 
   // ── Selection helpers ──────────────────────────────────
 
@@ -281,7 +300,10 @@ export default function BodyCameraTab({
 
       {/* ── Alert Banner ── */}
       {stats.lostRetired > 0 && (
-        <div className="panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
+        <div
+          className="panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500"
+          style={{ background: 'rgb(var(--sev-critical-rgb) / 0.08)' }}
+        >
           <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
           <span className="text-xs text-red-400 font-semibold">
             {stats.lostRetired} camera{stats.lostRetired !== 1 ? 's' : ''} lost or retired
@@ -295,6 +317,7 @@ export default function BodyCameraTab({
           <div
             key={card.label}
             className={`panel-beveled p-2.5 text-center border border-t-2 ${card.border} ${card.bgClass} ${card.topBorder}`}
+            style={card.bgStyle}
           >
             <div className={`text-sm font-bold font-mono ${card.color}`}>{card.value}</div>
             <div className="text-[7px] text-rmpg-500 uppercase">{card.label}</div>
@@ -417,10 +440,7 @@ export default function BodyCameraTab({
           <span className="text-rmpg-600">|</span>
           {onBulkDeleteCameras && (
             <button type="button"
-              onClick={async () => {
-                if (!confirm(`Delete ${selectedCameraIds.size} camera(s) and all their videos?`)) return;
-                try { await onBulkDeleteCameras(Array.from(selectedCameraIds)); setSelectedCameraIds(new Set()); } catch { /* handled by parent */ }
-              }}
+              onClick={() => setBulkConfirm({ kind: 'cameras', count: selectedCameraIds.size })}
               disabled={bulkLoading}
               className="toolbar-btn toolbar-btn-danger text-[10px] px-2.5 py-1 flex items-center gap-1"
             >
@@ -446,10 +466,7 @@ export default function BodyCameraTab({
           <span className="text-rmpg-600">|</span>
           {onBulkDeleteVideos && (
             <button type="button"
-              onClick={async () => {
-                if (!confirm(`Delete ${selectedVideoIds.size} video(s)? This cannot be undone.`)) return;
-                try { await onBulkDeleteVideos(Array.from(selectedVideoIds)); setSelectedVideoIds(new Set()); } catch { /* handled by parent */ }
-              }}
+              onClick={() => setBulkConfirm({ kind: 'videos', count: selectedVideoIds.size })}
               disabled={bulkLoading}
               className="toolbar-btn toolbar-btn-danger text-[10px] px-2.5 py-1 flex items-center gap-1"
             >
@@ -733,6 +750,36 @@ export default function BodyCameraTab({
           </div>
         </>
       )}
+
+      {/* ── Bulk-delete confirm (replaces native window.confirm) ── */}
+      <ConfirmDialog
+        isOpen={bulkConfirm !== null}
+        onClose={() => setBulkConfirm(null)}
+        onConfirm={async () => {
+          if (!bulkConfirm) return;
+          try {
+            if (bulkConfirm.kind === 'cameras' && onBulkDeleteCameras) {
+              await onBulkDeleteCameras(Array.from(selectedCameraIds));
+              setSelectedCameraIds(new Set());
+            } else if (bulkConfirm.kind === 'videos' && onBulkDeleteVideos) {
+              await onBulkDeleteVideos(Array.from(selectedVideoIds));
+              setSelectedVideoIds(new Set());
+            }
+          } catch { /* parent toasts the error */ }
+          setBulkConfirm(null);
+        }}
+        title={bulkConfirm?.kind === 'cameras' ? 'Delete cameras?' : 'Delete videos?'}
+        message={
+          bulkConfirm?.kind === 'cameras'
+            ? `Delete ${bulkConfirm.count} camera${bulkConfirm.count !== 1 ? 's' : ''} and ALL videos assigned to them? This cannot be undone.`
+            : bulkConfirm?.kind === 'videos'
+              ? `Delete ${bulkConfirm.count} body-cam video${bulkConfirm.count !== 1 ? 's' : ''}? This cannot be undone — held videos will refuse to delete and stay on the list.`
+              : ''
+        }
+        confirmLabel={bulkConfirm?.kind === 'cameras' ? 'Delete Cameras' : 'Delete Videos'}
+        confirmVariant="danger"
+        isLoading={bulkLoading}
+      />
     </div>
   );
 }
