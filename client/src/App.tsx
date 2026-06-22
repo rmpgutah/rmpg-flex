@@ -97,6 +97,7 @@ const CourtTrackerPage = lazyRetry(() => import('./pages/CourtTrackerPage'));
 const DailyActivityReportsPage = lazyRetry(() => import('./pages/DailyActivityReportsPage'));
 const OffenderRegistryPage = lazyRetry(() => import('./pages/OffenderRegistryPage'));
 const SexOffenderRegistryPage = lazyRetry(() => import('./pages/SexOffenderRegistryPage'));
+const NsopwLookupPage = lazyRetry(() => import('./pages/NsopwLookupPage'));
 const NcicPage = lazyRetry(() => import('./pages/NcicPage'));
 const DlSearchPage = lazyRetry(() => import('./pages/DlSearchPage'));
 const BodyCamerasPage = lazyRetry(() => import('./pages/BodyCamerasPage'));
@@ -529,6 +530,7 @@ function AppRoutes() {
             <Route path="/dar" element={<RouteErrorBoundary><DailyActivityReportsPage /></RouteErrorBoundary>} />
             <Route path="/offender-registry" element={<RouteErrorBoundary><OffenderRegistryPage /></RouteErrorBoundary>} />
             <Route path="/sex-offender-registry" element={<RouteErrorBoundary><SexOffenderRegistryPage /></RouteErrorBoundary>} />
+            <Route path="/nsopw" element={<RouteErrorBoundary><NsopwLookupPage /></RouteErrorBoundary>} />
             <Route path="/ncic" element={<RouteErrorBoundary><NcicPage /></RouteErrorBoundary>} />
             <Route path="/dl-search" element={<RouteErrorBoundary><DlSearchPage /></RouteErrorBoundary>} />
             <Route path="/audit" element={<AdminRoute><RouteErrorBoundary><AuditLogPage /></RouteErrorBoundary></AdminRoute>} />

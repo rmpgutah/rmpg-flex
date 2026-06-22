@@ -141,6 +141,7 @@ import dlRecords from './routes/dlRecords';
 import microbilt from './routes/microbilt';
 import screening from './routes/screening';
 import sorSources from './routes/sorSources';
+import nsopw from './routes/nsopw';
 import serve from './routes/serve';
 
 import settings from './routes/settings';
@@ -405,6 +406,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Fleet.io PR 2: cross-reference lookups (vehicle makes/models/types, fuel, VMRS, colors, vendors, ...) + NHTSA vPIC /decode-vin/:vin with D1 cache. Read-only — admin CRUD lands with the admin UI in PR 2b.' },
   { prefix: '/api/screening', router: screening, auth: 'required' },
   { prefix: '/api/sor-sources', router: sorSources, auth: 'required' },
+  { prefix: '/api/nsopw', router: nsopw, auth: 'required',
+    note: 'NSOPW nationwide SOR cross-reference. Name+DOB search, ' +
+      'per-person re-screen, run/cache audit. See migration 0146 + ' +
+      'docs/superpowers/specs/2026-06-22-nationwide-sor-nsopw-design.md.' },
   { prefix: '/api/serve', router: serve, auth: 'required',
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
   // Alias — ServePage calls /api/process-server/* but the handlers live
