@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Users, Search, X, Clock, AlertTriangle, Loader2, Plus, Archive, Eye, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { useAuth } from '../../context/AuthContext';
 import type {
   Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement,
   Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera,
@@ -96,14 +98,36 @@ function asArray(raw: any): any[] {
 export default function PersonnelPage() {
   const { addToast } = useToast();
   const isMobile = useIsMobile();
+  const { user } = useAuth();
 
   // Right-click context menu
   const { openMenu } = useContextMenu();
   const cm = useMenuActions();
 
-  // Tab state
+  // ── URL deep-link contract ──
+  // /personnel?officer_id=<id> | ?personnel_id=<id> | ?employee_id=<id>
+  // The same id surfaces under three names because operators link in from
+  // different surfaces (warrants/incidents use officer_id, HR exports use
+  // personnel_id, payroll uses employee_id) — accept all three so external
+  // bookmarks survive without forcing the linker to know which we prefer.
+  // The list endpoint returns the full row, so deep-link selection only
+  // needs to wait for hydration; if the target isn't in the active/archived
+  // view we surface a toast and clear the param. Strip the query after
+  // resolving so a hard refresh doesn't re-trigger the lookup.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingOfficerIdRef = useRef<string | null>(
+    searchParams.get('officer_id')
+      || searchParams.get('personnel_id')
+      || searchParams.get('employee_id'),
+  );
+
+  // Tab state — user-scoped so the tab a supervisor lands on doesn't leak
+  // to a shared workstation's next officer (was the only per-page key with
+  // no user suffix; the modal form-draft keys are auto-discarded on
+  // submit so they don't carry the same privacy footprint).
+  const tabKey = user?.id ? `rmpg_personnel_tab_${user.id}` : 'rmpg_personnel_tab';
   const [activeTab, setActiveTab] = usePersistedTab(
-    'rmpg_personnel_tab',
+    tabKey,
     'command' as MainTab,
     ['command', 'roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'deployment'] as const,
   );
@@ -181,6 +205,29 @@ export default function PersonnelPage() {
   // Archive state
   const [showArchived, setShowArchived] = useState(false);
 
+  // Centralized destructive-action ConfirmDialog state — replaces the six
+  // window.confirm() prompts that scattered through the delete handlers.
+  // Each row that the user picks "delete" on stores its onConfirm here;
+  // the dialog renders once at the bottom of the page. Single state →
+  // single Esc target, single overlay, single audit point.
+  interface DeleteConfirm {
+    title: string;
+    message: string;
+    onConfirm: () => Promise<void> | void;
+  }
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null);
+  const [deleteConfirmLoading, setDeleteConfirmLoading] = useState(false);
+  const runDeleteConfirm = async () => {
+    if (!deleteConfirm) return;
+    setDeleteConfirmLoading(true);
+    try {
+      await deleteConfirm.onConfirm();
+    } finally {
+      setDeleteConfirmLoading(false);
+      setDeleteConfirm(null);
+    }
+  };
+
   // ----------------------------------------------------------
   // Data Fetching
   // ----------------------------------------------------------
@@ -233,6 +280,47 @@ export default function PersonnelPage() {
   // Live sync — silent refresh to avoid unmounting content and stealing input focus
   const silentRefresh = useCallback(() => fetchCoreData({ silent: true }), [fetchCoreData]);
   useLiveSync('personnel', silentRefresh);
+
+  // ── /personnel?officer_id=<id> deep-link auto-select ──
+  // Once the officer roster hydrates, find the target by id and select it.
+  // If the row isn't in the active view (e.g. archived) flip to the
+  // archives view and let the next hydration pass resolve. Strip the
+  // param either way so a refresh doesn't re-trigger the lookup.
+  useEffect(() => {
+    const target = pendingOfficerIdRef.current;
+    if (!target || loading) return;
+    const hit = officers.find(o => String(o.id) === String(target));
+    if (hit) {
+      pendingOfficerIdRef.current = null;
+      setActiveTab('roster');
+      setSelectedOfficer(hit);
+      setDetailTab('profile');
+      const next = new URLSearchParams(searchParams);
+      next.delete('officer_id');
+      next.delete('personnel_id');
+      next.delete('employee_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    // Wait for hydration before deciding it's missing.
+    if (officers.length === 0) return;
+    // Not in the current (active or archived) view — flip the toggle
+    // and let the next fetch carry the archived rows. If it's already
+    // showing archives, the target genuinely doesn't exist.
+    if (!showArchived) {
+      setShowArchived(true);
+      // Keep the ref so the next render with archived officers can match.
+      return;
+    }
+    pendingOfficerIdRef.current = null;
+    addToast(`Officer ${target} not found`, 'warning');
+    const next = new URLSearchParams(searchParams);
+    next.delete('officer_id');
+    next.delete('personnel_id');
+    next.delete('employee_id');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [officers, loading, showArchived]);
 
   // Lazy-load tab data
   useEffect(() => {
@@ -449,16 +537,21 @@ export default function PersonnelPage() {
     }
   };
 
-  const handleScheduleDelete = async (scheduleId: string) => {
-    if (!window.confirm('Delete this schedule? This cannot be undone.')) return;
-    try {
-      await apiFetch(`/personnel/schedules/${scheduleId}`, { method: 'DELETE' });
-      const raw = await apiFetch<any[]>('/personnel/schedules');
-      setSchedules((Array.isArray(raw) ? raw : []).map(mapSchedule));
-      addToast('Schedule deleted', 'success');
-    } catch {
-      addToast('Failed to delete schedule', 'error');
-    }
+  const handleScheduleDelete = (scheduleId: string) => {
+    setDeleteConfirm({
+      title: 'Delete Schedule',
+      message: 'Delete this schedule? This cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await apiFetch(`/personnel/schedules/${scheduleId}`, { method: 'DELETE' });
+          const raw = await apiFetch<any[]>('/personnel/schedules');
+          setSchedules((Array.isArray(raw) ? raw : []).map(mapSchedule));
+          addToast('Schedule deleted', 'success');
+        } catch {
+          addToast('Failed to delete schedule', 'error');
+        }
+      },
+    });
   };
 
   const handleCredentialSubmit = async (data: CredentialFormData) => {
@@ -481,16 +574,21 @@ export default function PersonnelPage() {
     }
   };
 
-  const handleCredentialDelete = async (credId: string) => {
-    if (!window.confirm('Delete this credential? This cannot be undone.')) return;
-    try {
-      await apiFetch(`/personnel/credentials/${credId}`, { method: 'DELETE' });
-      const raw = await apiFetch<any[]>('/personnel/credentials');
-      setCredentials((Array.isArray(raw) ? raw : []).map(mapCredential));
-      addToast('Credential deleted', 'success');
-    } catch {
-      addToast('Failed to delete credential', 'error');
-    }
+  const handleCredentialDelete = (credId: string) => {
+    setDeleteConfirm({
+      title: 'Delete Credential',
+      message: 'Delete this credential? This cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await apiFetch(`/personnel/credentials/${credId}`, { method: 'DELETE' });
+          const raw = await apiFetch<any[]>('/personnel/credentials');
+          setCredentials((Array.isArray(raw) ? raw : []).map(mapCredential));
+          addToast('Credential deleted', 'success');
+        } catch {
+          addToast('Failed to delete credential', 'error');
+        }
+      },
+    });
   };
 
   const openEditCredential = (cred: Credential) => {
@@ -560,16 +658,21 @@ export default function PersonnelPage() {
     }
   };
 
-  const handleEquipmentDelete = async (equipId: string) => {
-    if (!window.confirm('Delete this equipment record? This cannot be undone.')) return;
-    try {
-      await apiFetch(`/personnel/equipment/${equipId}`, { method: 'DELETE' });
-      const raw = await apiFetch<any[]>('/personnel/equipment');
-      setEquipment(Array.isArray(raw) ? raw : []);
-      addToast('Equipment deleted', 'success');
-    } catch {
-      addToast('Failed to delete equipment', 'error');
-    }
+  const handleEquipmentDelete = (equipId: string) => {
+    setDeleteConfirm({
+      title: 'Delete Equipment',
+      message: 'Delete this equipment record? This cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await apiFetch(`/personnel/equipment/${equipId}`, { method: 'DELETE' });
+          const raw = await apiFetch<any[]>('/personnel/equipment');
+          setEquipment(Array.isArray(raw) ? raw : []);
+          addToast('Equipment deleted', 'success');
+        } catch {
+          addToast('Failed to delete equipment', 'error');
+        }
+      },
+    });
   };
 
   const openEditEquipment = (eq: OfficerEquipment) => {
@@ -638,15 +741,20 @@ export default function PersonnelPage() {
     }
   };
 
-  const handleBodyCameraDelete = async (camId: number) => {
-    if (!window.confirm('Delete this body camera record? This cannot be undone.')) return;
-    try {
-      await apiFetch(`/personnel/body-cameras/${camId}`, { method: 'DELETE' });
-      await refreshBodyCameras();
-      addToast('Body camera deleted', 'success');
-    } catch {
-      addToast('Failed to delete body camera', 'error');
-    }
+  const handleBodyCameraDelete = (camId: number) => {
+    setDeleteConfirm({
+      title: 'Delete Body Camera',
+      message: 'Delete this body camera record? This cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await apiFetch(`/personnel/body-cameras/${camId}`, { method: 'DELETE' });
+          await refreshBodyCameras();
+          addToast('Body camera deleted', 'success');
+        } catch {
+          addToast('Failed to delete body camera', 'error');
+        }
+      },
+    });
   };
 
   const openEditBodyCamera = (cam: BodyCamera) => {
@@ -667,15 +775,20 @@ export default function PersonnelPage() {
     setModal('new_body_camera');
   };
 
-  const handleVideoDelete = async (videoId: number) => {
-    if (!window.confirm('Delete this video? This cannot be undone.')) return;
-    try {
-      await apiFetch(`/personnel/bodycam-videos/${videoId}`, { method: 'DELETE' });
-      await refreshBodyCameras();
-      addToast('Video deleted', 'success');
-    } catch {
-      addToast('Failed to delete video', 'error');
-    }
+  const handleVideoDelete = (videoId: number) => {
+    setDeleteConfirm({
+      title: 'Delete Video',
+      message: 'Delete this body-cam video? This cannot be undone — chain-of-custody record will note the deletion.',
+      onConfirm: async () => {
+        try {
+          await apiFetch(`/personnel/bodycam-videos/${videoId}`, { method: 'DELETE' });
+          await refreshBodyCameras();
+          addToast('Video deleted', 'success');
+        } catch {
+          addToast('Failed to delete video', 'error');
+        }
+      },
+    });
   };
 
   const handleVideoEdit = async (videoId: number, data: BodyCamVideoEditData) => {
@@ -923,16 +1036,21 @@ export default function PersonnelPage() {
     }
   };
 
-  const handleDeleteTimeEntry = async (entryId: string) => {
-    if (!window.confirm('Delete this time entry? This cannot be undone.')) return;
-    try {
-      await apiFetch(`/personnel/time/${entryId}`, { method: 'DELETE' });
-      const raw = await apiFetch<any[]>('/personnel/time');
-      setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
-      addToast('Time entry deleted', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to delete time entry', 'error');
-    }
+  const handleDeleteTimeEntry = (entryId: string) => {
+    setDeleteConfirm({
+      title: 'Delete Time Entry',
+      message: 'Delete this time entry? This cannot be undone. Payroll exports will recalculate.',
+      onConfirm: async () => {
+        try {
+          await apiFetch(`/personnel/time/${entryId}`, { method: 'DELETE' });
+          const raw = await apiFetch<any[]>('/personnel/time');
+          setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
+          addToast('Time entry deleted', 'success');
+        } catch (err: any) {
+          addToast(err?.message || 'Failed to delete time entry', 'error');
+        }
+      },
+    });
   };
 
   // ----------------------------------------------------------
@@ -1206,14 +1324,58 @@ export default function PersonnelPage() {
   // Render
   // ----------------------------------------------------------
 
-  // Keyboard shortcut: Escape to close modals
+  // ── Keyboard: Esc smart-cascade + N → New Officer ──
+  // Esc closes the smallest-open thing first (so a video preview opened
+  // ON TOP of a credential modal doesn't dismiss both at once and reset
+  // the form draft). Order: playing video → editing video → delete-
+  // confirm → terminate-confirm → primary modal → selection. The old
+  // hard-coded "Esc closes editingVideo only" left every other modal
+  // captive to its own close button.
+  // N opens the New Officer modal from the roster tab; typing-suppressed
+  // so a search input doesn't swallow the letter as a shortcut. Mirrors
+  // FI / Court / Citations / Dispatch.
   useEffect(() => {
+    const isTypingTarget = (el: EventTarget | null): boolean => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setEditingVideo(null); }
+      // Esc smart-cascade
+      if (e.key === 'Escape') {
+        if (playingVideo) { setPlayingVideo(null); return; }
+        if (editingVideo) { setEditingVideo(null); return; }
+        if (deleteConfirm) { setDeleteConfirm(null); return; }
+        if (deleteTarget) { setDeleteTarget(null); return; }
+        if (modal !== 'none') {
+          setModal('none');
+          setCredentialEditData(undefined);
+          setTrainingEditData(undefined);
+          setEquipmentEditData(undefined);
+          setDeploymentEditData(undefined);
+          setBodyCameraEditData(undefined);
+          setOfficerEditData(undefined);
+          setEditingTimeEntry(null);
+          return;
+        }
+        if (selectedOfficer) { setSelectedOfficer(null); return; }
+        return;
+      }
+      // N → New Officer (typing-suppressed; only on Roster tab)
+      if ((e.key === 'n' || e.key === 'N')
+          && !e.ctrlKey && !e.metaKey && !e.altKey
+          && !isTypingTarget(e.target)) {
+        if (activeTab === 'roster') {
+          e.preventDefault();
+          setOfficerEditData(undefined);
+          setOfficerModalMode('create');
+          setModal('new_officer');
+        }
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [playingVideo, editingVideo, deleteConfirm, deleteTarget, modal, selectedOfficer, activeTab]);
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
@@ -1543,6 +1705,18 @@ export default function PersonnelPage() {
         confirmLabel="Terminate"
         confirmVariant="danger"
         isLoading={deleting}
+      />
+
+      {/* Centralized destructive-action confirm — replaces 6 native window.confirm() */}
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={runDeleteConfirm}
+        title={deleteConfirm?.title || 'Confirm'}
+        message={deleteConfirm?.message || ''}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={deleteConfirmLoading}
       />
     </div>
   );
