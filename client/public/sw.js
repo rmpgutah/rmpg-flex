@@ -691,6 +691,25 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1033: National Warrant Search — court-ready single-result PDF
+//        (Arial banner, active-warrant alert bar, subject + warrant +
+//        charges blocks, verification URL block, two-signature block);
+//        replaces "right-click → Copy charges" as the path to a hand-off
+//        / extradition package. Adds a Print button on each result row +
+//        an "Open court-ready PDF" item at the top of the row context
+//        menu (so it's the first action, ahead of Copy). New
+//        /national-warrants?last_name=&first_name=&dob=&state=&
+//        offense_level=&warrant_type=&charge_keyword=&auto=1 URL deep-
+//        link (13th consecutive page to honor the contract) — params
+//        hydrate the form and `auto=1` fires the search on mount, then
+//        every deep-link param is stripped via setSearchParams(replace)
+//        so the URL is portable + doesn't leak the subject's PII into
+//        copy-pasted links. Theme: 8 hardcoded coverage-map hex values
+//        (#166534/#22c55e/#15803d/#86efac for active, #78350f/#f59e0b/
+//        #92400e/#fcd34d for pending) → semantic --sev-ok-*/--sev-warn-*
+//        tokens via new coverageTextColor() helper, so the day/night
+//        skin re-themes both the SVG cells AND the legend AND the
+//        tooltip-status text in lockstep. No new migration.
 // v1028: Cases — kill the last 4 native window.prompt / window.confirm
 //        calls in the page (save-view name, delete-note, close-readiness
 //        gate, submit-for-review gate). Readiness gates now render the
