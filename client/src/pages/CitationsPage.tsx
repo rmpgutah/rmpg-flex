@@ -7,8 +7,10 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import { useToast } from '../components/ToastProvider';
+import ConfirmDialog from '../components/ConfirmDialog';
 import {
   FileWarning,
   Plus,
@@ -32,6 +34,9 @@ import {
   Eye,
   Pencil,
   Copy,
+  Zap,
+  Lock,
+  Gavel,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
@@ -821,16 +826,29 @@ export default function CitationsPage() {
   };
 
   // ── Void ─────────────────────────────────────────────────
+  // Native window.confirm() removed — replaced with the in-app ConfirmDialog
+  // for a11y, keyboard polish, and visual consistency with every other
+  // destructive flow (Field Interviews #1597, Evidence #1603, Cases #1604).
+  const [voidTarget, setVoidTarget] = useState<Citation | null>(null);
+  const [voiding, setVoiding] = useState(false);
 
-  const handleVoid = async (c: Citation) => {
-    if (!confirm(`Void citation ${c.citation_number}? This cannot be undone.`)) return;
+  const handleVoid = (c: Citation) => {
+    setVoidTarget(c);
+  };
+
+  const confirmVoid = async () => {
+    if (!voidTarget) return;
+    setVoiding(true);
     try {
-      await apiFetch(`/citations/${c.id}`, { method: 'DELETE' });
+      await apiFetch(`/citations/${voidTarget.id}`, { method: 'DELETE' });
       fetchCitations({ silent: true });
       fetchStats();
-      if (selectedCitation?.id === c.id) setSelectedCitation(null);
+      if (selectedCitation?.id === voidTarget.id) setSelectedCitation(null);
+      setVoidTarget(null);
     } catch (err: any) {
       addToast(err.message || 'Failed to void citation', 'error');
+    } finally {
+      setVoiding(false);
     }
   };
 
@@ -978,11 +996,29 @@ export default function CitationsPage() {
             <AlertTriangle size={14} /> {error}
           </div>
         ) : citations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
-            <FileWarning size={28} className="mb-2 opacity-40" />
-            <p className="text-xs font-medium">No citations found</p>
-            <p className="text-[10px] text-rmpg-600 mt-1">Adjust filters or create a new citation</p>
-          </div>
+          // Empty-state distinction: "search/filter returned zero" vs
+          // "nothing on file at all". Operators were confused on a clean
+          // install with no citations whether the page was broken or just
+          // empty.
+          (() => {
+            const isFiltered = !!(searchQuery.trim() || filterType || filterStatus);
+            return (
+              <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
+                <FileWarning size={28} className="mb-2 opacity-40" />
+                {isFiltered ? (
+                  <>
+                    <p className="text-xs font-medium">No citations match your filters</p>
+                    <p className="text-[10px] text-rmpg-600 mt-1">Try adjusting the search or status filter</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-medium">No citations on file</p>
+                    <p className="text-[10px] text-rmpg-600 mt-1">Press N or click New to create the first one</p>
+                  </>
+                )}
+              </div>
+            );
+          })()
         ) : (
           citations.map(c => (
             <button type="button"
@@ -1102,8 +1138,8 @@ export default function CitationsPage() {
         <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
           {/* Violation */}
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
-              <Scale size={10} className="text-[#d4a017]" /> Violation
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
+              <Scale size={10} className="text-[var(--brand-gold)]" /> Violation
             </h3>
             <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
               {c.statute_citation && (
@@ -1131,8 +1167,8 @@ export default function CitationsPage() {
           {/* Payment Plan Tracking */}
           {c.fine_amount != null && c.fine_amount > 0 && paymentData && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
-                <DollarSign size={10} className="text-[#d4a017]" /> Payment Tracking
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
+                <DollarSign size={10} className="text-[var(--brand-gold)]" /> Payment Tracking
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-2">
                 <div className="flex items-center gap-4 text-xs">
@@ -1217,7 +1253,7 @@ export default function CitationsPage() {
 
           {/* Subject */}
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
               <User size={10} /> Subject
             </h3>
             <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
@@ -1231,7 +1267,7 @@ export default function CitationsPage() {
           {/* Vehicle */}
           {(c.vehicle_description || c.vehicle_plate) && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
                 <Car size={10} /> Vehicle
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
@@ -1253,8 +1289,8 @@ export default function CitationsPage() {
           {/* Traffic / Speed Details */}
           {(c.type === 'traffic' || (c as any).speed_recorded || (c as any).bac_level || (c as any).dui_related) && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
-                ⚡ Traffic Details
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
+                <Zap size={10} className="text-[var(--brand-gold)]" /> Traffic Details
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {(c as any).speed_recorded && (
@@ -1290,8 +1326,8 @@ export default function CitationsPage() {
           {/* Bond / Bail */}
           {((c as any).bond_amount > 0 || (c as any).appearance_required) && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
-                🔒 Bond / Bail
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
+                <Lock size={10} className="text-[var(--brand-gold)]" /> Bond / Bail
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {(c as any).bond_amount > 0 && <div><span className="text-rmpg-400">Bond Amount:</span> <span className="text-green-400 font-bold font-mono">${Number((c as any).bond_amount).toLocaleString()}</span></div>}
@@ -1304,8 +1340,8 @@ export default function CitationsPage() {
           {/* Case Disposition */}
           {((c as any).plea || (c as any).verdict || (c as any).sentence) && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
-                ⚖ Case Disposition
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
+                <Gavel size={10} className="text-[var(--brand-gold)]" /> Case Disposition
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {(c as any).plea && <div><span className="text-rmpg-400">Plea:</span> <span className="text-rmpg-200 capitalize">{(c as any).plea}</span></div>}
@@ -1318,7 +1354,7 @@ export default function CitationsPage() {
 
           {/* Location & Time */}
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
               <MapPin size={10} /> Location & Time
             </h3>
             <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
@@ -1333,7 +1369,7 @@ export default function CitationsPage() {
 
           {/* Officer */}
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
               <User size={10} /> Issuing Officer
             </h3>
             <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
@@ -1345,13 +1381,21 @@ export default function CitationsPage() {
           {/* Court */}
           {(c.court_date || c.court_name) && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
                 <Scale size={10} /> Court Information
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {c.court_date && (() => {
                   const daysUntil = Math.ceil((parseTimestamp(c.court_date).getTime() - Date.now()) / 86400000);
-                  const cdColor = daysUntil < 0 ? '#ef4444' : daysUntil <= 7 ? '#f97316' : daysUntil <= 30 ? '#eab308' : '#22c55e';
+                  // Semantic severity tokens — re-themes between day/night
+                  // automatically (was raw #ef4444 / #f97316 / #eab308 / #22c55e).
+                  const cdColor = daysUntil < 0
+                    ? 'rgb(var(--sev-critical-rgb))'
+                    : daysUntil <= 7
+                      ? 'rgb(var(--sev-high-rgb))'
+                      : daysUntil <= 30
+                        ? 'rgb(var(--sev-caution-rgb))'
+                        : 'rgb(var(--sev-ok-rgb))';
                   const cdLabel = daysUntil < 0 ? `${Math.abs(daysUntil)}d overdue` : daysUntil === 0 ? 'TODAY' : `${daysUntil}d away`;
                   return (
                     <div className="flex items-center gap-2">
@@ -1365,7 +1409,11 @@ export default function CitationsPage() {
                 {(c as any).court_time && <div><span className="text-rmpg-400">Time:</span> <span className="text-rmpg-200">{(c as any).court_time}</span></div>}
                 {(c as any).court_room && <div><span className="text-rmpg-400">Courtroom:</span> <span className="text-rmpg-200">{(c as any).court_room}</span></div>}
                 {c.court_address && <div><span className="text-rmpg-400">Address:</span> <span className="text-rmpg-200">{c.court_address}</span></div>}
-                {(c as any).appearance_required ? <span className="text-[9px] font-bold text-red-400 mt-1 inline-block">⚠ APPEARANCE REQUIRED</span> : null}
+                {(c as any).appearance_required ? (
+                  <span className="text-[9px] font-bold text-red-400 mt-1 inline-flex items-center gap-1">
+                    <AlertTriangle size={9} /> APPEARANCE REQUIRED
+                  </span>
+                ) : null}
               </div>
             </section>
           )}
@@ -1373,7 +1421,7 @@ export default function CitationsPage() {
           {/* Notes */}
           {c.notes && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Notes</h3>
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2">Notes</h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 text-xs text-rmpg-200 whitespace-pre-wrap">{c.notes}</div>
             </section>
           )}
@@ -1432,7 +1480,7 @@ export default function CitationsPage() {
           </div>
         )}
         {formWasRestored && (
-          <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+          <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.08)' }}>
             <div className="flex items-center gap-2">
               <Clock size={14} className="text-amber-400" />
               <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
@@ -1450,7 +1498,7 @@ export default function CitationsPage() {
 
         {/* Type selector */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Citation Type</h3>
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2">Citation Type</h3>
           <div className={`flex ${isMobile ? 'flex-col' : 'flex-wrap'} gap-2`}>
             {CITATION_TYPES.map(t => (
               <button
@@ -1473,7 +1521,7 @@ export default function CitationsPage() {
         {/* Status (edit only) */}
         {isEdit && (
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Status</h3>
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2">Status</h3>
             <Combobox<{ value: CitationStatus; label: string }>
               value={CITATION_STATUSES.find(s => s.value === form.status) ?? null}
               onChange={(opt) => updateField('status', opt?.value || 'issued')}
@@ -1487,7 +1535,7 @@ export default function CitationsPage() {
 
         {/* Violations — multi-violation authoring */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1.5">
             <Scale size={12} /> Violations
           </h3>
           <div className="space-y-3">
@@ -1551,7 +1599,7 @@ export default function CitationsPage() {
 
         {/* Subject */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1.5">
             <User size={12} /> Subject
           </h3>
           <div className="space-y-3">
@@ -1650,7 +1698,7 @@ export default function CitationsPage() {
         {/* Vehicle (traffic/parking only) */}
         {showVehicleSection && (
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1.5">
               <Car size={12} /> Vehicle Information
             </h3>
             <div className="space-y-3">
@@ -1681,7 +1729,7 @@ export default function CitationsPage() {
 
         {/* Location & Time */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1.5">
             <Calendar size={12} /> Location & Time
           </h3>
           <div className="space-y-3">
@@ -1761,7 +1809,7 @@ export default function CitationsPage() {
 
         {/* Officer */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1.5">
             <User size={12} /> Issuing Officer
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1778,7 +1826,7 @@ export default function CitationsPage() {
 
         {/* Court */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1.5">
             <Scale size={12} /> Court Information
           </h3>
           <div className="space-y-3">
@@ -1809,7 +1857,7 @@ export default function CitationsPage() {
 
         {/* Notes */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Notes</h3>
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2">Notes</h3>
           <RichTextArea
             value={form.notes}
             onChange={e => updateField('notes', e.target.value)}
@@ -1883,6 +1931,85 @@ export default function CitationsPage() {
   // Set document title
   useEffect(() => { document.title = 'Citations \u2014 RMPG Flex'; }, []);
 
+  // \u2500\u2500 /citations?citation_id=<id> deep-link auto-select \u2500\u2500
+  // Same contract every audited page (1-13) now honors. Once the list
+  // hydrates, find by id and set as selectedCitation; if it's not in
+  // the current page (filtered out, on another page), fall through to
+  // a direct fetch by id. Strip the query so refresh doesn't re-select.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingCitationIdRef = useRef<string | null>(searchParams.get('citation_id'));
+  useEffect(() => {
+    const target = pendingCitationIdRef.current;
+    if (!target || loading) return;
+    const stripQuery = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete('citation_id');
+      setSearchParams(next, { replace: true });
+    };
+    const hit = citations.find((c) => String(c.id) === String(target));
+    if (hit) {
+      pendingCitationIdRef.current = null;
+      setSelectedCitation(hit);
+      stripQuery();
+      return;
+    }
+    // Wait until the list has at least attempted to hydrate before we
+    // fall through to the direct-fetch path.
+    if (citations.length === 0) return;
+    // Direct fetch by id \u2014 works when the citation is filtered out
+    // by the current type/status/search but the deep-link still resolves.
+    pendingCitationIdRef.current = null;
+    (async () => {
+      try {
+        const res = await apiFetch<{ data: Citation }>(`/citations/${target}`);
+        if (res?.data) {
+          setSelectedCitation(res.data);
+        } else {
+          addToast(`Citation ${target} not found`, 'warning');
+        }
+      } catch {
+        addToast(`Citation ${target} not found`, 'warning');
+      } finally {
+        stripQuery();
+      }
+    })();
+  }, [citations, loading, searchParams, setSearchParams, addToast]);
+
+  // Keyboard shortcuts: Esc smart-cascade (smallest modal first), and `N`
+  // opens a new citation from anywhere on the page (mirrors Field Interviews
+  // / Dispatch for operator muscle memory). Suppressed while typing into an
+  // input/textarea/contenteditable so "N" doesn't fire mid-form-fill.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Smallest modal first. ConfirmDialog handles its own Esc via its
+        // overlay, but we also close the inline payment form and the
+        // person-search dropdown before falling through to the form panel.
+        if (voidTarget) { setVoidTarget(null); return; }
+        if (showPaymentForm) { setShowPaymentForm(false); return; }
+        if (showPersonDropdown) { setShowPersonDropdown(false); return; }
+        if (mode !== 'list') { handleCancelForm(); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if (e.key === 'n' || e.key === 'N') {
+        // Don't fire while a destructive confirm is open
+        if (voidTarget || mode !== 'list') return;
+        e.preventDefault();
+        handleNewCitation();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voidTarget, showPaymentForm, showPersonDropdown, mode]);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <UnsavedChangesGuard hasUnsavedChanges={mode !== 'list' && (formIsDirty || violationsDirty)} />
@@ -1933,6 +2060,34 @@ export default function CitationsPage() {
           <Plus size={24} />
         </button>
       )}
+
+      {/* Void-citation confirmation — replaces the native window.confirm()
+          for a11y + keyboard polish + visual consistency with every other
+          destructive flow in the app. */}
+      <ConfirmDialog
+        isOpen={voidTarget !== null}
+        onClose={() => { if (!voiding) setVoidTarget(null); }}
+        onConfirm={confirmVoid}
+        title="Void citation"
+        message="Voiding a citation marks it inactive in the case record. This cannot be undone from the UI."
+        details={voidTarget && (
+          <div className="space-y-1">
+            <div><span className="text-rmpg-500">Citation:</span> <span className="font-mono text-rmpg-200">{voidTarget.citation_number}</span></div>
+            {voidTarget.person_name && (
+              <div><span className="text-rmpg-500">Violator:</span> <span className="text-rmpg-200">{voidTarget.person_name}</span></div>
+            )}
+            {voidTarget.violation_date && (
+              <div><span className="text-rmpg-500">Issued:</span> <span className="text-rmpg-200">{formatDate(voidTarget.violation_date)}</span></div>
+            )}
+            {voidTarget.statute_citation && (
+              <div><span className="text-rmpg-500">Statute:</span> <span className="font-mono text-rmpg-200">{voidTarget.statute_citation}</span></div>
+            )}
+          </div>
+        )}
+        confirmLabel={voiding ? 'Voiding…' : 'Void citation'}
+        confirmVariant="danger"
+        isLoading={voiding}
+      />
     </div>
   );
 }

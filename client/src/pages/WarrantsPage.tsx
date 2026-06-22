@@ -473,7 +473,7 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
     <button
       type="button"
       onClick={onClick}
-      className={`px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider border ${active ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'bg-transparent text-rmpg-300 border-rmpg-600 hover:border-rmpg-400'}`}
+      className={`px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider border ${active ? 'bg-[var(--brand-gold)] text-black border-[var(--brand-gold)]' : 'bg-transparent text-rmpg-300 border-rmpg-600 hover:border-rmpg-400'}`}
     >
       {children}
     </button>
@@ -490,14 +490,21 @@ export default function WarrantsPage() {
   const warrantFormTitleId = useId();
   const serveTitleId = useId();
 
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialPersonId = searchParams.get('personId');
+  // ?warrant_id=<id> deep-link auto-select — resolved AFTER warrants hydrate;
+  // we hold the pending id in a ref so a rerender doesn't re-attempt the lookup.
+  const pendingWarrantIdRef = useRef<string | null>(searchParams.get('warrant_id'));
 
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // ── Tab state ──
-  const [activeTab, setActiveTab] = useState<TabId>(initialPersonId ? 'warrants' : 'dashboard');
+  // If the URL deep-links to a specific warrant_id, force the warrants tab so the
+  // selection lands somewhere visible.
+  const [activeTab, setActiveTab] = useState<TabId>(
+    initialPersonId || pendingWarrantIdRef.current ? 'warrants' : 'dashboard'
+  );
   const [filterPersonId, setFilterPersonId] = useState<string | null>(initialPersonId);
 
   // ============================================================
@@ -541,6 +548,12 @@ export default function WarrantsPage() {
   const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
   const [batchStatus, setBatchStatus] = useState('');
   const [batchSubmitting, setBatchSubmitting] = useState(false);
+
+  // Bulk-action confirms — replace native window.confirm with ConfirmDialog
+  // so the operator gets a themed modal that matches the rest of the page.
+  const [bulkUpdateConfirmOpen, setBulkUpdateConfirmOpen] = useState(false);
+  const [bulkArchiveConfirmOpen, setBulkArchiveConfirmOpen] = useState(false);
+  const [bulkPrintConfirmOpen, setBulkPrintConfirmOpen] = useState(false);
 
   // Phase 1 sort + filter chips state
   const [sortKey, setSortKey] = useState<'priority' | 'age' | 'freshness' | 'alpha'>('priority');
@@ -588,7 +601,11 @@ export default function WarrantsPage() {
   };
   const handleBatchUpdate = async () => {
     if (batchSelected.size === 0 || !batchStatus) return;
-    if (!confirm(`Update ${batchSelected.size} warrants to "${batchStatus}"?`)) return;
+    setBulkUpdateConfirmOpen(true);
+  };
+  const performBatchUpdate = async () => {
+    setBulkUpdateConfirmOpen(false);
+    if (batchSelected.size === 0 || !batchStatus) return;
     setBatchSubmitting(true);
     try {
       await apiFetch('/warrants/batch-update', {
@@ -605,7 +622,11 @@ export default function WarrantsPage() {
   // Phase 1 bulk handlers — Archive / Mark Reviewed / Print Packet
   const handleBulkArchive = async () => {
     if (!batchSelected.size) return;
-    if (!window.confirm(`Archive ${batchSelected.size} warrant(s)?`)) return;
+    setBulkArchiveConfirmOpen(true);
+  };
+  const performBulkArchive = async () => {
+    setBulkArchiveConfirmOpen(false);
+    if (!batchSelected.size) return;
     try {
       const res = await apiFetch<{ archived: number; skipped: number }>('/warrants/bulk-archive', {
         method: 'POST',
@@ -637,7 +658,15 @@ export default function WarrantsPage() {
   const handleBulkPrintPacket = async () => {
     if (!batchSelected.size) return;
     if (batchSelected.size > 200) { addToast('Packet print limited to 200 warrants', 'error'); return; }
-    if (batchSelected.size > 50 && !window.confirm(`Print ${batchSelected.size} warrants as a single packet? This may take 30+ seconds.`)) return;
+    if (batchSelected.size > 50) {
+      setBulkPrintConfirmOpen(true);
+      return;
+    }
+    await performBulkPrintPacket();
+  };
+  const performBulkPrintPacket = async () => {
+    setBulkPrintConfirmOpen(false);
+    if (!batchSelected.size) return;
     const ids = Array.from(batchSelected);
     try {
       await buildWarrantPacketPdf(ids, {
@@ -712,6 +741,18 @@ export default function WarrantsPage() {
     statute_id: null as number | null,
     statute_citation: '',
   };
+  // User-scoped form-draft key (PII safety on shared workstations) — keeps
+  // each officer's in-progress draft private even when two badges share a
+  // browser session. Pre-auth render uses the legacy key so the hook gets
+  // a stable string; once user.id is known the next render switches to the
+  // scoped key. (Same pattern DlSearchPage.tsx ships.) A one-shot effect
+  // removes the legacy unscoped key on hydrate so stale per-machine drafts
+  // can't leak into the next officer's New-Warrant flow.
+  const warrantFormStorageKey = user?.id ? `rmpg_warrant_form:${user.id}` : 'rmpg_warrant_form';
+  useEffect(() => {
+    if (!user?.id) return;
+    try { localStorage.removeItem('rmpg_warrant_form'); } catch { /* storage unavailable */ }
+  }, [user?.id]);
   const {
     form: formData,
     setForm: setFormData,
@@ -720,7 +761,7 @@ export default function WarrantsPage() {
     clearDraft: clearFormDraft,
     snapshot: snapshotForm,
   } = useFormDraft<typeof EMPTY_FORM>({
-    storageKey: 'rmpg_warrant_form',
+    storageKey: warrantFormStorageKey,
     defaultValue: EMPTY_FORM,
     isActive: formOpen,
   });
@@ -934,6 +975,48 @@ export default function WarrantsPage() {
       setSelectedWarrant(detail);
     } catch { /* keep existing */ }
   }, []);
+
+  // ── /warrants?warrant_id=<id> deep-link auto-select ──
+  // Once the warrants list hydrates, find the target by id and select it. If
+  // the row is not in the current paged view, fall through to a direct fetch
+  // by id (so deep-links to archived or off-page warrants still land). Strip
+  // the query after so a refresh doesn't re-trigger the lookup.
+  useEffect(() => {
+    const target = pendingWarrantIdRef.current;
+    if (!target || activeTab !== 'warrants') return;
+    if (loading) return;
+    const hit = warrants.find((w) => String(w.id) === String(target));
+    if (hit) {
+      pendingWarrantIdRef.current = null;
+      fetchWarrantDetail(hit.id);
+      const next = new URLSearchParams(searchParams);
+      next.delete('warrant_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    // Wait until the list has actually hydrated before trying the fallback.
+    if (warrants.length === 0) return;
+    // Not in the paged list — try a direct fetch by id (handles archived /
+    // off-page targets).
+    pendingWarrantIdRef.current = null;
+    const numeric = Number(target);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      addToast(`Warrant ${target} not found`, 'warning');
+    } else {
+      (async () => {
+        try {
+          const detail = await apiFetch<Warrant>(`/warrants/${numeric}`);
+          setSelectedWarrant(detail);
+        } catch {
+          addToast(`Warrant ${target} not in the current view (try clearing filters or unarchiving)`, 'warning');
+        }
+      })();
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('warrant_id');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warrants, loading, activeTab]);
 
   // Person search for form — uses the dedicated search endpoint
   useEffect(() => {
@@ -1439,14 +1522,52 @@ export default function WarrantsPage() {
   // Set document title
   useEffect(() => { document.title = 'Warrants \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // Keyboard shortcut: Escape — smart cascade. Closes the smallest open
+  // modal first (top of stack), not all at once. Order: bulk confirms →
+  // delete confirm → Utah detail → person profile → serve → form modal.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setServeModalOpen(false); setFormOpen(false); setEditingWarrant(null); }
+      if (e.key !== 'Escape') return;
+      if (bulkUpdateConfirmOpen) { setBulkUpdateConfirmOpen(false); return; }
+      if (bulkArchiveConfirmOpen) { setBulkArchiveConfirmOpen(false); return; }
+      if (bulkPrintConfirmOpen) { setBulkPrintConfirmOpen(false); return; }
+      if (deletingWarrant) { setDeletingWarrant(null); return; }
+      if (utahDetailWarrant) { setUtahDetailWarrant(null); return; }
+      if (personProfileOpen) { setPersonProfileOpen(false); return; }
+      if (serveModalOpen) { setServeModalOpen(false); return; }
+      if (formOpen) { setFormOpen(false); setEditingWarrant(null); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [
+    bulkUpdateConfirmOpen, bulkArchiveConfirmOpen, bulkPrintConfirmOpen,
+    deletingWarrant, utahDetailWarrant, personProfileOpen,
+    serveModalOpen, formOpen,
+  ]);
+
+  // Keyboard shortcut: N → open "New Warrant" form (mirrors Dispatch / FI).
+  // Suppressed while typing in an input/textarea/contenteditable, while any
+  // modal is open, and when role lacks admin/manager (the same gate the
+  // existing toolbar button uses).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (t.isContentEditable) return;
+      }
+      if (formOpen || serveModalOpen || personProfileOpen || utahDetailWarrant || deletingWarrant) return;
+      if (activeTab !== 'warrants') return;
+      e.preventDefault();
+      openNewForm();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formOpen, serveModalOpen, personProfileOpen, utahDetailWarrant, deletingWarrant, activeTab]);
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface-deep">
@@ -2004,12 +2125,43 @@ export default function WarrantsPage() {
                   <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading warrants...
                 </div>
               ) : warrants.length === 0 ? (
-                <EmptyState
-                  icon={Gavel}
-                  title={showArchived ? 'No archived warrants' : 'No warrants found'}
-                  description={!showArchived ? 'Create a new warrant to get started' : undefined}
-                  action={!showArchived ? { label: 'New Warrant', onClick: openNewForm } : undefined}
-                />
+                (() => {
+                  // Differentiate "no data yet" from "filter/search returned
+                  // nothing" — the operator needs to know whether to broaden
+                  // the search or to create the first record.
+                  const hasActiveFilter =
+                    !!searchQuery || !!filterStatus || !!filterType ||
+                    !!filterSource || !!filterCourt || !!filterSeverity ||
+                    !!filterPersonId || filterPriority || filterSinceWeek ||
+                    filterMatches || !!filterStateChip || filterFederal ||
+                    filterArchivedChip;
+                  if (showArchived) {
+                    return (
+                      <EmptyState
+                        icon={Gavel}
+                        title="No archived warrants"
+                        description={hasActiveFilter ? 'Try clearing filters to see all archived warrants.' : 'Nothing has been archived yet.'}
+                      />
+                    );
+                  }
+                  if (hasActiveFilter) {
+                    return (
+                      <EmptyState
+                        icon={Search}
+                        title="No warrants match your filters"
+                        description="Try clearing filters or broadening the search."
+                      />
+                    );
+                  }
+                  return (
+                    <EmptyState
+                      icon={Gavel}
+                      title="No warrants on file"
+                      description="Create a new warrant to get started."
+                      action={{ label: 'New Warrant', onClick: openNewForm }}
+                    />
+                  );
+                })()
               ) : isMobile ? (
                 <div>
                   {warrants.map((w) => (
@@ -2183,7 +2335,7 @@ export default function WarrantsPage() {
           <div className={`${isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
             <div className={`flex ${isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-rmpg-700 bg-[var(--grid-header-bg)]`}>
               <Gavel className="w-3 h-3 text-brand-400" />
-              <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest">Warrant Detail</span>
+              <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest">Warrant Detail</span>
               <span className="flex-1" />
               {isMobile && selectedWarrant && (
                 <button type="button" onClick={() => setSelectedWarrant(null)} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 44 } : undefined}>&larr; Back</button>
@@ -2260,7 +2412,7 @@ export default function WarrantsPage() {
                   {/* Statute + Charge */}
                   {(selectedWarrant as any).statute_citation && (
                     <div className="mb-2">
-                      <span className="text-[10px] text-[#d4a017] uppercase font-bold tracking-wider">Statute</span>
+                      <span className="text-[10px] text-[var(--brand-gold)] uppercase font-bold tracking-wider">Statute</span>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-brand-900/30 text-brand-300 border border-brand-700/40 text-xs font-mono font-bold">
                           <Scale className="w-3 h-3" />
@@ -2270,7 +2422,7 @@ export default function WarrantsPage() {
                     </div>
                   )}
                   <div className="mb-3">
-                    <span className="text-[10px] text-[#d4a017] uppercase font-bold tracking-wider">Charge Description</span>
+                    <span className="text-[10px] text-[var(--brand-gold)] uppercase font-bold tracking-wider">Charge Description</span>
                     <p className="text-sm text-rmpg-100 mt-0.5">{chargesFromJson(selectedWarrant.charge_description)}</p>
                   </div>
 
@@ -2305,8 +2457,8 @@ export default function WarrantsPage() {
                 {/* Subject Info */}
                 {selectedWarrant.subject_name && (
                   <div className="panel-beveled p-4">
-                    <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-2 mb-3">
-                      <User className="w-4 h-4 text-[#d4a017]" /> Subject Information
+                    <h3 className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest flex items-center gap-2 mb-3">
+                      <User className="w-4 h-4 text-[var(--brand-gold)]" /> Subject Information
                     </h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                       <div>
@@ -2386,8 +2538,8 @@ export default function WarrantsPage() {
                 {/* Court Info */}
                 {(selectedWarrant.issuing_court || selectedWarrant.issuing_judge) && (
                   <div className="panel-beveled p-4">
-                    <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-2 mb-3">
-                      <Gavel className="w-4 h-4 text-[#d4a017]" /> Court Information
+                    <h3 className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest flex items-center gap-2 mb-3">
+                      <Gavel className="w-4 h-4 text-[var(--brand-gold)]" /> Court Information
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                       {selectedWarrant.issuing_court && (
@@ -2409,7 +2561,7 @@ export default function WarrantsPage() {
                 {/* Notes */}
                 {selectedWarrant.notes && (
                   <div className="panel-beveled p-4">
-                    <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest mb-2">Notes</h3>
+                    <h3 className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest mb-2">Notes</h3>
                     <p className="text-xs text-rmpg-200 whitespace-pre-wrap">{selectedWarrant.notes}</p>
                   </div>
                 )}
@@ -2417,8 +2569,8 @@ export default function WarrantsPage() {
                 {/* Activity Log */}
                 {selectedWarrant.activity && selectedWarrant.activity.length > 0 && (
                   <div className="panel-beveled p-4">
-                    <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-2 mb-3">
-                      <Clock className="w-4 h-4 text-[#d4a017]" /> Activity Log
+                    <h3 className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest flex items-center gap-2 mb-3">
+                      <Clock className="w-4 h-4 text-[var(--brand-gold)]" /> Activity Log
                     </h3>
                     <div className="space-y-2">
                       {selectedWarrant.activity.map((a) => (
@@ -3812,7 +3964,7 @@ export default function WarrantsPage() {
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
               {formWasRestored && (
-                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.08)' }}>
                   <div className="flex items-center gap-2">
                     <Clock size={14} className="text-amber-400" />
                     <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
@@ -4036,6 +4188,37 @@ export default function WarrantsPage() {
         isLoading={deleteLoading}
       />
 
+      {/* BULK STATUS-UPDATE CONFIRM (replaces native confirm) */}
+      <ConfirmDialog
+        isOpen={bulkUpdateConfirmOpen}
+        onClose={() => setBulkUpdateConfirmOpen(false)}
+        onConfirm={performBatchUpdate}
+        title="Update Warrant Status"
+        message={`Update ${batchSelected.size} warrant${batchSelected.size === 1 ? '' : 's'} to "${batchStatus}"?`}
+        confirmLabel="Update"
+        isLoading={batchSubmitting}
+      />
+
+      {/* BULK ARCHIVE CONFIRM (replaces native confirm) */}
+      <ConfirmDialog
+        isOpen={bulkArchiveConfirmOpen}
+        onClose={() => setBulkArchiveConfirmOpen(false)}
+        onConfirm={performBulkArchive}
+        title="Archive Warrants"
+        message={`Archive ${batchSelected.size} warrant${batchSelected.size === 1 ? '' : 's'}? Archived warrants can be restored later.`}
+        confirmLabel="Archive"
+      />
+
+      {/* BULK PRINT-PACKET CONFIRM (replaces native confirm; >50 warrants) */}
+      <ConfirmDialog
+        isOpen={bulkPrintConfirmOpen}
+        onClose={() => setBulkPrintConfirmOpen(false)}
+        onConfirm={performBulkPrintPacket}
+        title="Print Warrant Packet"
+        message={`Print ${batchSelected.size} warrants as a single packet? This may take 30+ seconds.`}
+        confirmLabel="Print Packet"
+      />
+
       {/* ================================================================
           UTAH WARRANT DETAIL MODAL
          ================================================================ */}
@@ -4073,18 +4256,18 @@ export default function WarrantsPage() {
                 <div className="border border-t-0 border-rmpg-700 rounded-b-sm p-3">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                     <div>
-                      <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Full Name</span>
+                      <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Full Name</span>
                       <div className="font-mono text-rmpg-100 mt-0.5">{utahDetailWarrant.last_name}, {utahDetailWarrant.first_name} {utahDetailWarrant.middle_name || ''}</div>
                     </div>
                     {utahDetailWarrant.age != null && (
                       <div>
-                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Age</span>
+                        <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Age</span>
                         <div className="font-mono text-rmpg-100 mt-0.5">{utahDetailWarrant.age}</div>
                       </div>
                     )}
                     {utahDetailWarrant.city && (
                       <div>
-                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">City</span>
+                        <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">City</span>
                         <div className="font-mono text-rmpg-100 mt-0.5">{utahDetailWarrant.city}</div>
                       </div>
                     )}
@@ -4101,18 +4284,18 @@ export default function WarrantsPage() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                     {(utahDetailWarrant.warrant_id || utahDetailWarrant.utah_warrant_id) && (
                       <div>
-                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Warrant ID</span>
+                        <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Warrant ID</span>
                         <div className="font-mono text-rmpg-100 mt-0.5">{utahDetailWarrant.warrant_id || utahDetailWarrant.utah_warrant_id}</div>
                       </div>
                     )}
                     {utahDetailWarrant.warrant_type && (
                       <div>
-                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Type</span>
+                        <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Type</span>
                         <div className="font-mono text-rmpg-100 mt-0.5 uppercase">{utahDetailWarrant.warrant_type}</div>
                       </div>
                     )}
                     <div>
-                      <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Status</span>
+                      <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Status</span>
                       <div className="mt-0.5">
                         <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border ${
                           (utahDetailWarrant.status || 'active') === 'active' ? 'bg-red-900/50 text-red-400 border-red-700/50' : 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
@@ -4121,7 +4304,7 @@ export default function WarrantsPage() {
                     </div>
                     {utahDetailWarrant.offense_level && (
                       <div>
-                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Offense Level</span>
+                        <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Offense Level</span>
                         <div className="mt-0.5">
                           <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border ${
                             utahDetailWarrant.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
@@ -4133,7 +4316,7 @@ export default function WarrantsPage() {
                     )}
                     {utahDetailWarrant.bail_amount != null && utahDetailWarrant.bail_amount > 0 && (
                       <div>
-                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Bail Amount</span>
+                        <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Bail Amount</span>
                         <div className="font-mono text-amber-400 font-bold mt-0.5 tabular-nums">${Number(utahDetailWarrant.bail_amount).toLocaleString()}</div>
                       </div>
                     )}
@@ -4141,7 +4324,7 @@ export default function WarrantsPage() {
                   {/* Charges - full width */}
                   {(utahDetailWarrant.charges || utahDetailWarrant.charge_description) && (
                     <div className="mt-3">
-                      <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Offense / Charges</span>
+                      <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Offense / Charges</span>
                       <div className="font-mono text-rmpg-100 mt-0.5 text-xs whitespace-pre-wrap">{chargesFromJson(utahDetailWarrant.charges || utahDetailWarrant.charge_description) || '—'}</div>
                     </div>
                   )}
@@ -4158,24 +4341,24 @@ export default function WarrantsPage() {
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                       {utahDetailWarrant.court_name && (
                         <div>
-                          <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Issuing Court</span>
+                          <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Issuing Court</span>
                           <div className="font-mono text-rmpg-100 mt-0.5">{utahDetailWarrant.court_name}</div>
                         </div>
                       )}
                       {utahDetailWarrant.case_id && (
                         <div>
-                          <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Case Number</span>
+                          <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Case Number</span>
                           <div className="font-mono text-rmpg-100 mt-0.5">{utahDetailWarrant.case_id}</div>
                         </div>
                       )}
                       {utahDetailWarrant.issue_date && (
                         <div>
-                          <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Issue Date</span>
+                          <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Issue Date</span>
                           <div className="font-mono text-rmpg-100 mt-0.5">{utahDetailWarrant.issue_date}</div>
                         </div>
                       )}
                       <div>
-                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">State</span>
+                        <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">State</span>
                         <div className="font-mono text-rmpg-100 mt-0.5">UTAH</div>
                       </div>
                     </div>
@@ -4191,7 +4374,7 @@ export default function WarrantsPage() {
                 <div className="border border-t-0 border-rmpg-700 rounded-b-sm p-3">
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
-                      <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Data Source</span>
+                      <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Data Source</span>
                       <div className="font-mono text-rmpg-100 mt-0.5">
                         {utahDetailWarrant._source === 'utah' ? 'Utah State Warrants API' :
                          utahDetailWarrant._source === 'local' ? 'RMPG Local System' :
@@ -4199,12 +4382,12 @@ export default function WarrantsPage() {
                       </div>
                     </div>
                     <div>
-                      <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Search Date</span>
+                      <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Search Date</span>
                       <div className="font-mono text-rmpg-100 mt-0.5">{new Date().toLocaleString()}</div>
                     </div>
                     {utahDetailWarrant.fetched_at && (
                       <div>
-                        <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Fetched At</span>
+                        <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Fetched At</span>
                         <div className="font-mono text-rmpg-100 mt-0.5">{formatDateTime(utahDetailWarrant.fetched_at)}</div>
                       </div>
                     )}
@@ -4219,7 +4402,7 @@ export default function WarrantsPage() {
                 <button
                   type="button"
                   onClick={handleUtahPrint}
-                  className="toolbar-btn text-xs bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]/40 hover:bg-[#d4a017]/30"
+                  className="toolbar-btn text-xs bg-[rgb(var(--brand-gold-rgb)/0.2)] text-[var(--brand-gold)] border-[rgb(var(--brand-gold-rgb)/0.4)] hover:bg-[rgb(var(--brand-gold-rgb)/0.3)]"
                 >
                   <Printer className="w-3 h-3" />
                   <span className="ml-1">PRINT WARRANT</span>
