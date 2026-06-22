@@ -65,27 +65,45 @@ export default function RecordsPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
-  const [urlParams] = useSearchParams();
+  const [urlParams, setUrlParams] = useSearchParams();
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'businesses', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
 
-  // Handle cross-module navigation params (?tab=persons&personId=X&q=smith).
-  // `q` pre-fills the search box (used by the Cmd+K command palette to land on
-  // a specific record's filtered list); `personId` is the legacy param.
+  // ── Cross-module URL deep-link contract ──
+  // Accepts: ?tab=<persons|vehicles|properties|businesses|evidence>
+  //          &person_id= | &vehicle_id= | &property_id= | &business_id= | &evidence_id=
+  //          (legacy camelCase: personId, vehicleId, propertyId, businessId, evidenceId
+  //           and `id` when paired with a `tab`)
+  //          &q=<search box pre-fill>
+  // On mount: pick the tab and remember the target id; once the hydrated list
+  // contains it we auto-select that record and strip the params so a refresh
+  // doesn't re-trigger. Pending id sits in pendingIdRef across re-renders.
+  const pendingIdRef = useRef<{ tab: TabId; id: string } | null>(null);
   useEffect(() => {
     const tab = urlParams.get('tab');
-    const personId = urlParams.get('personId');
     const q = urlParams.get('q');
-    if (tab && ['persons', 'vehicles', 'properties', 'businesses', 'evidence'].includes(tab)) {
-      setActiveTab(tab as TabId);
+    const validTab = tab && (['persons', 'vehicles', 'properties', 'businesses', 'evidence'] as const).includes(tab as TabId)
+      ? (tab as TabId) : null;
+    // Infer target tab from whichever *_id is present, even if tab= is omitted.
+    const idByTab: Record<TabId, string | null> = {
+      persons:    urlParams.get('person_id')   || urlParams.get('personId')   || (validTab === 'persons'    ? urlParams.get('id') : null),
+      vehicles:   urlParams.get('vehicle_id')  || urlParams.get('vehicleId')  || (validTab === 'vehicles'   ? urlParams.get('id') : null),
+      properties: urlParams.get('property_id') || urlParams.get('propertyId') || (validTab === 'properties' ? urlParams.get('id') : null),
+      businesses: urlParams.get('business_id') || urlParams.get('businessId') || (validTab === 'businesses' ? urlParams.get('id') : null),
+      evidence:   urlParams.get('evidence_id') || urlParams.get('evidenceId') || (validTab === 'evidence'   ? urlParams.get('id') : null),
+    };
+    // Pick the tab to land on: explicit tab=, else the first *_id that's set.
+    const tabsOrder: TabId[] = ['persons', 'vehicles', 'properties', 'businesses', 'evidence'];
+    const inferredTab: TabId | null = validTab ?? tabsOrder.find((t) => idByTab[t]) ?? null;
+    if (inferredTab) {
+      setActiveTab(inferredTab);
+      const targetId = idByTab[inferredTab];
+      if (targetId) pendingIdRef.current = { tab: inferredTab, id: String(targetId) };
     }
-    if (q) {
-      setSearchQuery(q);
-    } else if (personId && tab === 'persons') {
-      setSearchQuery(personId);
-    }
+    if (q) setSearchQuery(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only on mount
 
   // Data state
@@ -320,6 +338,117 @@ export default function RecordsPage() {
     setDeleteTarget, linkRefreshKey,
     openLinkModal, handleArchiveRecord, handleUnarchiveRecord,
   });
+
+  // ── Deep-link auto-select ──────────────────────────────
+  // Once the active tab's list hydrates, find pendingIdRef and select that
+  // record. Falls back to a direct fetch by id if the list doesn't contain
+  // it (archived, paged-out, or fresh from a sibling page). Strips the
+  // params on success so a refresh doesn't re-trigger; surfaces a toast
+  // when the id truly misses everywhere.
+  useEffect(() => {
+    const pending = pendingIdRef.current;
+    if (!pending || pending.tab !== activeTab) return;
+    const stripParams = () => {
+      const next = new URLSearchParams(urlParams);
+      ['person_id', 'personId', 'vehicle_id', 'vehicleId', 'property_id', 'propertyId',
+       'business_id', 'businessId', 'evidence_id', 'evidenceId', 'id'].forEach((k) => next.delete(k));
+      setUrlParams(next, { replace: true });
+    };
+    const handleMissing = (label: string) => {
+      pendingIdRef.current = null;
+      addToast(`${label} not in the current view (try unarchiving or clearing filters)`, 'warning');
+      stripParams();
+    };
+
+    if (pending.tab === 'persons') {
+      if (loadingPersons) return;
+      const hit = persons.find(p => String(p.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        personsState.setSelectedPerson(hit);
+        stripParams();
+        return;
+      }
+      // Direct-fetch fallback for archived/foreign/paged-out records.
+      // Claim the slot immediately so this effect doesn't loop while
+      // the fetch is in flight.
+      pendingIdRef.current = null;
+      (async () => {
+        try {
+          const full = await apiFetch<Record<string, unknown>>(`/records/persons/${pending.id}`);
+          if (full && (full as any).id) {
+            personsState.setSelectedPerson(mapDbPerson(full));
+            stripParams();
+            return;
+          }
+          handleMissing(`Person ${pending.id}`);
+        } catch {
+          handleMissing(`Person ${pending.id}`);
+        }
+      })();
+    } else if (pending.tab === 'vehicles') {
+      if (loadingVehicles) return;
+      const hit = vehicles.find(v => String(v.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        vehiclesState.setSelectedVehicle(hit);
+        stripParams();
+        return;
+      }
+      handleMissing(`Vehicle ${pending.id}`);
+    } else if (pending.tab === 'properties') {
+      if (loadingProperties) return;
+      const hit = properties.find(p => String(p.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        propertiesState.setSelectedProperty(hit);
+        stripParams();
+        return;
+      }
+      pendingIdRef.current = null;
+      (async () => {
+        try {
+          const full = await apiFetch<Record<string, unknown>>(`/records/properties/${pending.id}`);
+          if (full && (full as any).id) {
+            propertiesState.setSelectedProperty(mapDbProperty(full));
+            stripParams();
+            return;
+          }
+          handleMissing(`Property ${pending.id}`);
+        } catch {
+          handleMissing(`Property ${pending.id}`);
+        }
+      })();
+    } else if (pending.tab === 'businesses') {
+      if (businessState.loading) return;
+      const hit = businessState.businesses.find(b => String(b.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        businessState.setSelectedBusiness(hit);
+        stripParams();
+        return;
+      }
+      handleMissing(`Business ${pending.id}`);
+    } else if (pending.tab === 'evidence') {
+      if (loadingEvidence) return;
+      const hit = evidence.find((e: any) => String(e.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        evidenceState.setSelectedEvidence(hit);
+        stripParams();
+        return;
+      }
+      handleMissing(`Evidence ${pending.id}`);
+    }
+  }, [
+    activeTab,
+    persons, loadingPersons, personsState,
+    vehicles, loadingVehicles, vehiclesState,
+    properties, loadingProperties, propertiesState,
+    businessState,
+    evidence, loadingEvidence, evidenceState,
+    urlParams, setUrlParams, addToast,
+  ]);
 
   // ── Derived ──────────────────────────────────────────
 
@@ -693,14 +822,50 @@ export default function RecordsPage() {
   // Set document title
   useEffect(() => { document.title = 'Records Management \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // Esc smart-cascade — closes the smallest-open-first overlay so a single
+  // tap doesn't blow away the open record while a nested modal is showing.
+  // Order: delete-confirm → duplicates modal → business form modal →
+  // link-record modal → selected record (closes the right detail panel).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setLinkModalOpen(false); }
+      if (e.key !== 'Escape') return;
+      if (deleteTarget !== null) { setDeleteTarget(null); return; }
+      if (showDuplicatesModal) { setShowDuplicatesModal(false); return; }
+      if (businessState.showFormModal) { businessState.setShowFormModal(false); return; }
+      if (linkModalOpen) { setLinkModalOpen(false); setLinkSource(null); return; }
+      if (hasSelection) { closeSelection(); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [deleteTarget, showDuplicatesModal, businessState, linkModalOpen, hasSelection]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "N" keyboard shortcut → opens the active tab's New record flow.
+  // Typing-suppressed (skipped while focus is in any input/textarea/
+  // contenteditable). Skipped while any modal/overlay is open so it
+  // doesn't fight focus traps. Same contract used across MDT / Patrol /
+  // Field Interviews / Cases / Court Tracker.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
+      }
+      // Don't open New on top of an already-open modal/picker.
+      if (deleteTarget !== null || showDuplicatesModal || linkModalOpen || businessState.showFormModal) return;
+      if (showArchived) return; // archives mode is read-only
+      e.preventDefault();
+      if (activeTab === 'persons') setNewPersonTrigger(n => n + 1);
+      else if (activeTab === 'vehicles') setNewVehicleTrigger(n => n + 1);
+      else if (activeTab === 'properties') setNewPropertyTrigger(n => n + 1);
+      else if (activeTab === 'businesses') businessState.setShowFormModal(true);
+      else if (activeTab === 'evidence') setNewEvidenceTrigger(n => n + 1);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [activeTab, deleteTarget, showDuplicatesModal, linkModalOpen, businessState, showArchived]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="records-page flex flex-col h-full animate-fade-in">

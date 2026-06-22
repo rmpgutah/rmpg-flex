@@ -59,6 +59,160 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1047: Intel Portal (/intel/*) — Page 30 of the full-app frontend pass,
+//        applied to the multi-route command-center shell (IntelPortalLayout
+//        + IntelDashboard + BoloBoard + IntelSearch + the supporting widgets).
+//        Same v1024–v1038 court-ready / native-dialog / deep-link contract
+//        applied so the most-used intel surfaces match the rest of the app.
+//
+//        What changed:
+//          • IntelSearch — `/intel/search?q=…` URL deep-link hydrates the
+//            input on mount and mirrors the live query into the URL (replace,
+//            no history spam). Lets dispatch paste a link to a unit's MDT
+//            and have it land pre-filtered. Esc smart-cascade clears facet
+//            filters first (smallest-open), then the query — matches the
+//            Court Tracker / Cases / Trespass cascade. Distinct empty
+//            states ("typed nothing" vs "no matches" vs "no matches with
+//            active facets"); audit caught operators staring at "no
+//            results" without having typed.
+//          • SearchBar — replaced `window.prompt('Name this search:')`
+//            (the last native dialog on the page) with an inline themed
+//            popover (Star button toggles it). Native prompts can't be
+//            themed, can't be Esc-cascaded, and tank the dashcam HUD on
+//            iPad/MDT (same finding as v1024–v1037 across other pages).
+//          • BoloBoard — Cancel BOLO (admin-only, removes the row) now
+//            goes through ConfirmDialog with row context (number, title,
+//            priority, subject/vehicle). Previously fired DELETE on click
+//            with zero confirmation — a misclick erased an active critical
+//            alert. New `/intel/bolos?bolo_id=<id>` deep-link direct-fetches
+//            (uses existing GET /comms/bolos/:id), highlights the card, and
+//            surfaces a banner card for resolved/expired BOLOs so a court-
+//            attached link doesn't dead-end. "N" keyboard shortcut opens
+//            New BOLO (typing-suppressed). Esc smart-cascade for the
+//            confirm + create modals. Distinct empty state — was a flat
+//            "No active BOLOs." line indistinguishable from a server error.
+//          • IntelDashboard — `/intel?entity_id=42&entity_type=person&label=…`
+//            deep-link auto-selects the entity in the right context panel
+//            (opens dossier peek). LIVE indicator now flips amber + STALE
+//            label if the shared overview poll has gone >60s without an
+//            update — was previously a static green dot regardless.
+//          • IntelPortalLayout — `bg-black` literal → `bg-surface-base`
+//            token so the shell re-themes with day/night palette.
+//          • IntelContext — panel-collapsed flag is now scoped per-user
+//            via the new `rmpg-intel-panel-collapsed-<id>` key. Intel
+//            data is the most sensitive surface in the app; a shared-
+//            device login inheriting the prior user's portal layout
+//            state was a small but real privacy leak. AuthContext now
+//            exports the raw context so optional consumers can read it
+//            without forcing an AuthProvider wrapper in unit tests.
+//          • Emoji → Lucide on the dashboard chrome: 🚗 in BoloCard's
+//            TYPE_ICON (→ Car/User/Flag Lucide), 🚗 in PlateSightingsWidget
+//            title (→ Car), and the Cancel-BOLO action gets a real red-
+//            400 token instead of a hand-rolled hex.
+//          • WidgetFrame `title` widened from `string` → `ReactNode` so
+//            widgets can lead with an icon + label without smuggling a
+//            glyph into the string.
+//          • 18 hardcoded hex literals across the in-scope files lifted
+//            to tokens — #888 → text-rmpg-400/500, #d4a017 → text-brand-
+//            400/600, #ff6b5e → text-red-400, #f0c050 → text-amber-300,
+//            #040404 → bg-surface-base.
+//          • Tests: BoloBoard test expanded with the confirm-dialog
+//            interaction + empty-state assertion (3 cases vs the prior 1).
+//
+//        Out of scope (deferred — the multi-route portal is too large
+//        for one PR):
+//          • IntelReportDetailPage still has 4 native prompts (share /
+//            recall / reject) and is intentionally NOT touched in this PR.
+//          • IntelMapPage, IntelAiAnalyst, AlertsSection, WatchlistSection,
+//            ReviewQueues, IntelReportsPage, NewIntelReportPage, IntelSources
+//            — fix-in-place when their dedicated audit page lands.
+//          • IntelRail / IntelContextPanel still use dingbat-style glyphs
+//            (◈, ◉, ⚑, ⌕, ▦, ▲, ⛓, ◎, ✦, ▤, ⚐, ✨, ☆, ★). These are
+//            monochrome BMP characters, not full-color emoji — they render
+//            consistently with the steel-blue theme. Replacing them with
+//            Lucide would require a layout-affecting size pass on every
+//            row, deferred until the rail itself is up for review.
+//
+// v1048: Process Server / Serve Scheduler — Page 31 of the full-app
+//        frontend pass. ServePage.tsx (1801 lines) is the operational
+//        hub (Queue + Route + Map + Stats + Assign + My Run tabs) and
+//        ServeSchedulerPage.tsx is the swim-lane scheduler; both are
+//        court-critical because every attempt row feeds the
+//        Affidavit-of-Non-Service / Notice-of-Attempt PDFs.
+//        - URL deep-link contract: /serve?job_id=<n> expands a card on
+//          the Queue tab (with a "not in this view" toast + filter hint
+//          on miss); /serve?status=<filter> applies a status filter;
+//          /serve?tab=<Queue|Route|Map|Stats|Assign|My Run> preselects
+//          a tab; /serve?date=YYYY-MM-DD preselects the date picker.
+//          All four params are consumed once and stripped (replace:true)
+//          so a manual refresh doesn't re-pin the operator to a stale
+//          deep-link.
+//        - Kill native dialogs: replace window.confirm + window.alert in
+//          handleDeleteJob (court-record delete — destructive, was using
+//          a raw browser confirm that bypassed our keyboard-trap / a11y
+//          model and broke the day/night surface) with ConfirmDialog +
+//          useToast. ServeSchedulerPage's two drag-drop error alerts
+//          become toasts (a modal would steal focus from the next drop
+//          the operator queued up).
+//        - Esc smart-cascade: delete confirm → log-attempt modal →
+//          edit-attempt modal → skip-trace panel → route planner →
+//          create/edit job. Previous handler only closed the
+//          create form. The scheduler gains its own Esc → close the
+//          Rebalance preview.
+//        - N shortcut: open Add Job from anywhere on the Queue (or
+//          any non-modal surface). Suppressed when typing into an
+//          INPUT/TEXTAREA/SELECT/contentEditable (a recipient name
+//          with "n" in it must not pop the dialog mid-type) AND when
+//          any modal already owns the page. Title hint added to the
+//          Add Job button ("Add Job (N)").
+//        - Emoji chrome → Lucide: error banner ⚠/✕ → AlertTriangle/X;
+//          priority-sort toggle ⚡/↕ → Zap/ArrowUpDown.
+//        - Empty-state distinction: when jobs.length > 0 but
+//          filteredJobs.length === 0, render "No <filter> jobs match
+//          this filter" + a "Show all N jobs for this date" reset
+//          button. Before, both "queue truly empty" and "filter hiding
+//          everything" rendered the same generic copy and an operator
+//          with a stale ?status=failed deep-link could not tell which.
+//        Memory checks confirmed already-shipped:
+//          * GPS + photo capture on attempts (ServeAttemptModal lines
+//            172-186, 698-740): present and court-grade.
+//          * Affidavit + Notice-of-Attempt PDFs (handleGenerateAffidavit
+//            + handleNoticeOfAttempt): present; we did NOT re-implement
+//            them (memory [[project-serve-intake-upgrades]] flags the
+//            5-prior-PR duplication trap).
+//        Deferred: useFormDraft storage key `rmpg_serve_job_form` is
+//        unscoped (no user-id suffix), so on a shared device any draft
+//        with PII leaks across operators. Same pattern across 8 other
+//        pages — needs a system-wide useFormDraft scoping change, not a
+//        Page-31 fix. No D1 migration, no worker change.
+//
+// v1034: Law Book — add cross-page URL deep-link contract (13th page in
+//        the sweep): /law-book?statute_id=<id> | /law-book?citation=76-5-102
+//        direct-fetches the statute via /statutes/section/:citation (with
+//        a /statutes/search?id= fallback when only the internal id is
+//        known), loads its containing chapter so siblings are visible,
+//        auto-opens the section, and strips the param so a hard refresh
+//        doesn't re-trigger. Worker side: /statutes/search gains an `id`
+//        query short-circuit. New per-user "Recent Statutes" card on the
+//        landing overview (`rmpg_lawbook_recent_<user.id>`, capped at 8,
+//        with a Clear button) — operators re-read the same handful of
+//        statutes constantly (DUI, assault, trespass) and the prior
+//        landing forced a fresh category click every time. Esc smart-
+//        cascade: open section → clear search → reset to browse
+//        (suppressed while typing in an input so native form-clear
+//        semantics stay intact). Empty-state distinction: search-with-
+//        nothing-matching now shows the actual query/severity in the
+//        message ("No statutes match \"foo\"") instead of the generic
+//        "No statutes match" that read the same as the chapter-empty
+//        state. Theme: 14 hardcoded hex literals lifted to tokens —
+//        #d4a017 → var(--brand-gold) (4 sites), #888888 → var(--spm-
+//        text-muted) (4 sites), 4 stats-ribbon accents → --sev-* tokens,
+//        Criminal Procedure category accent → var(--brand-gold). Kept
+//        #0a0a0a as a non-theme contrast literal on the active gold
+//        button (text-on-gold legibility, same convention as Cases v1028
+//        keeping #fff on filled chips). No new PDF — statutePdfGenerator
+//        already covers section + chapter prints (recon confirmed; would
+//        have been the 5th PDF-duplication trap if blindly added).
 // v601: auth-refresh fix — apiFetch + offlineSync now send sessionId on
 //       /api/auth/refresh (legacy handler requires session_id); was causing
 //       silent logout at every 15-min token expiry + the [SYNC] Refresh-failed
@@ -691,6 +845,72 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1035: Trespass Orders — Page 18 of the full-app frontend pass. The
+//        trespass order IS a court document (it's what gets handed to
+//        the subject AND what gets attached to the case file when the
+//        order is violated and arrest follows), so the operator-artifact
+//        upgrade matters more here than on most pages.
+//        - New client/src/utils/trespassOrderPdf.ts — pure-client jsPDF
+//          generator using the same Arial + RMPG-gold banner idiom as
+//          fiCardPdf (#1597), clearedSummaryPdf (#1583), shiftReportPdf
+//          (#1587), and the chain-of-custody PDF (#1603). Status-aware
+//          banner color (red ACTIVE/VIOLATED, amber SERVED, gray
+//          EXPIRED/LIFTED), expiration callout with "(N days remaining)"
+//          for active orders within 30d, signature block that swaps the
+//          right-hand line between subject-acknowledgement (active/
+//          served) and supervisor-review (closed). Pure helpers
+//          (wrapText / expirationLine / bannerStyleFor) covered by 16
+//          new vitest cases. "Print" lands on the detail-panel toolbar
+//          AND the right-click context menu.
+//        - Native confirm() → ConfirmDialog. Admin hard-delete used the
+//          browser confirm() — no a11y, no keyboard polish, no way to
+//          show the operator WHAT they were about to wipe. Renders
+//          order number + subject + status + property as `details` so
+//          the row context is visible at decision time.
+//        - /trespass-orders?order_id=<id> URL deep-link with auto-select
+//          on hydrate, query strip on apply, and direct-fetch fallback
+//          for ids outside the current archive / status filter view
+//          (e.g. an expired order linked from a case file). 13th
+//          consecutive page to honor the Dashboard-emit / page-consume
+//          contract.
+//        - Esc smart-cascade: orderToDelete → expirationCalendar →
+//          bulkMode → formOpen. Previous handler hard-closed the form
+//          on every Esc, so an operator dismissing the expiration
+//          calendar above the form lost their draft as a side effect.
+//        - `N` opens a new order from anywhere on the page (mirrors
+//          Dispatch / Patrol / FI / Evidence). Suppressed while typing
+//          into input / textarea / contenteditable.
+//        - 3-way empty state distinction: "no archived orders" vs
+//          "no matches in current view" (with Clear-filters CTA) vs
+//          "no orders ever — create one". Same lift as Warrants #1608.
+//        - Theme tokens: text-[#d4a017] (4 sites) → text-[var(--brand-
+//          gold)]; rgba(212,160,23,0.25/0.5) submit-button background
+//          → rgb(var(--brand-gold-rgb) / 0.25); rgb hex inline colors
+//          (#f59e0b/#22c55e/#a855f7 on Serve/Lift/Violated buttons) →
+//          --sev-warn/--sev-ok/--sev-special tokens; #1a1500 restored-
+//          draft banner → rgb(var(--sev-warn-rgb) / 0.08) (same lift as
+//          Patrol PR #1595 + Field Interviews PR #1597).
+//        - Dead-import cleanup: Archive icon imported but never used;
+//          TrespassOrderStatus type imported but never referenced.
+// v1033: National Warrant Search — court-ready single-result PDF
+//        (Arial banner, active-warrant alert bar, subject + warrant +
+//        charges blocks, verification URL block, two-signature block);
+//        replaces "right-click → Copy charges" as the path to a hand-off
+//        / extradition package. Adds a Print button on each result row +
+//        an "Open court-ready PDF" item at the top of the row context
+//        menu (so it's the first action, ahead of Copy). New
+//        /national-warrants?last_name=&first_name=&dob=&state=&
+//        offense_level=&warrant_type=&charge_keyword=&auto=1 URL deep-
+//        link (13th consecutive page to honor the contract) — params
+//        hydrate the form and `auto=1` fires the search on mount, then
+//        every deep-link param is stripped via setSearchParams(replace)
+//        so the URL is portable + doesn't leak the subject's PII into
+//        copy-pasted links. Theme: 8 hardcoded coverage-map hex values
+//        (#166534/#22c55e/#15803d/#86efac for active, #78350f/#f59e0b/
+//        #92400e/#fcd34d for pending) → semantic --sev-ok-*/--sev-warn-*
+//        tokens via new coverageTextColor() helper, so the day/night
+//        skin re-themes both the SVG cells AND the legend AND the
+//        tooltip-status text in lockstep. No new migration.
 // v1028: Cases — kill the last 4 native window.prompt / window.confirm
 //        calls in the page (save-view name, delete-note, close-readiness
 //        gate, submit-for-review gate). Readiness gates now render the
@@ -717,6 +937,170 @@
 //        Dispatch). Theme: warrant-banner ⚠️ emoji → Lucide
 //        AlertTriangle; restored-draft #1a1500 → rgb(var(--sev-warn-rgb)
 //        / 0.08) (same lift as Patrol PR #1595).
+// v1040: Personnel (/personnel) — kill 6 native window.confirm() prompts
+//        + cross-page URL deep-link contract + Esc smart-cascade +
+//        `N` keyboard shortcut + theme sweep + user-scoped tab key.
+//        23rd consecutive page-pass on the deep-link contract.
+//          • Six destructive flows (delete schedule / credential /
+//            equipment / body camera / video / time entry) routed
+//            through a single shared ConfirmDialog instead of the
+//            blocking native modal. Each handler now publishes a
+//            { title, message, onConfirm } record to a centralized
+//            deleteConfirm state — one dialog instance, one Esc
+//            target, one audit point. The body-cam video confirm
+//            message also names the chain-of-custody side-effect
+//            ("custody record will note the deletion") instead of
+//            the generic "this cannot be undone" — operators were
+//            unaware deletion was logged, leading them to hesitate
+//            on routine purges of duplicate uploads.
+//          • Deep-link: /personnel?officer_id=<id> | ?personnel_id=
+//            <id> | ?employee_id=<id> all auto-select. Linker
+//            surfaces use different names (warrants/incidents use
+//            officer_id, HR exports use personnel_id, payroll uses
+//            employee_id) — accepting all three means external
+//            bookmarks survive without knowing our internal
+//            preference. If the target is not in the active view,
+//            the page auto-flips to archives and retries (so a
+//            terminated officer's link still resolves) before
+//            surfacing "not found". Params stripped after select
+//            so a hard refresh doesn't re-trigger.
+//          • Esc smart-cascade: closes the smallest-open thing
+//            first (playing video → editing video → delete confirm
+//            → terminate confirm → primary modal → selected
+//            officer). The old hard-coded "Esc closes editingVideo
+//            only" left every other modal captive to its own close
+//            button; opening a credential form on top of an
+//            officer selection and pressing Esc dismissed the
+//            video preview that wasn't even on screen.
+//          • `N` shortcut → New Officer on the Roster tab (mirrors
+//            Dispatch / FI / Court / Citations). Typing-suppressed
+//            via input/textarea/select/contentEditable check so a
+//            "Norman" search query doesn't open the form.
+//          • Theme: 3 `#d4a017` literals in DashboardWidgets
+//            (HoursTrendCard linearGradient stops + AreaChart
+//            stroke) → `var(--brand-gold)` so the Last-7-Days hours
+//            chart re-themes between night/day/legacy without code
+//            changes. (Recharts SVG resolves CSS custom properties
+//            via paint-attr inheritance, verified by render in
+//            both palettes.)
+//          • Privacy: `rmpg_personnel_tab` localStorage key now
+//            suffixed with the user id (DlSearch #1601 / Warrants
+//            #1608 pattern). Was the only personnel localStorage
+//            key without a per-user suffix — the seven modal form-
+//            draft keys auto-discard on submit so they don't carry
+//            the same shared-workstation leak, but the last-active
+//            tab persisted across users on the same browser
+//            (supervisor leaving "Credentials" tab open → next
+//            officer's first land on a tab they don't normally
+//            use).
+//          • False-positive lessons:
+//            - Court-ready PDF — DEFERRED on purpose. The page
+//              already ships PrintRecordButton in PersonnelDetailPanel
+//              (5 server-side report types: Full / Credentials /
+//              Training / Equipment / Time). Adding a client-side
+//              court-ready PDF here would duplicate that surface
+//              and confuse the print menu. The HR-file print path
+//              is well-covered.
+//            - "Hydrate UI state from server on mount" — already
+//              fully wired (fetchCoreData + useLiveSync 'personnel'
+//              + per-tab lazy loads). No action.
+//            - Personnel-specific completeness checks (certification
+//              expiry indicators, training reminders, on-duty roster
+//              sync) — already wired: credential alert chip on
+//              roster row, expiringCreds count on Credentials tab,
+//              roster row LED + Duty Board tab. No gap.
+// v1038: Offender Registry (/nsopw, /offender-registry redirect) —
+//        court-ready PDF + deep-link + photo embed. 21st consecutive
+//        page-pass for the cross-page contract; NSOPW data is now the
+//        canonical Sex Offender Registry surface after PR #1599's
+//        consolidation, so the page needed parity with the other court-
+//        record pages (FI, Evidence, Criminal History, Cases).
+//          • New client/src/utils/offenderRegistrationCardPdf.ts —
+//            "NSOPW Offender Identification Card" PDF with RMPG-gold
+//            banner, classification banner (red CONFIRMED / amber
+//            POSSIBLE), photo + subject grid, registered address,
+//            offense block, cross-reference metadata + RMPG records
+//            linkage, mandatory point-in-time advisory caveat, and
+//            two-signature block. Pure helpers (formatSubjectName,
+//            formatAddress, classificationBanner, wrapText) covered
+//            by 21 new unit tests. Same Arial + signature-block idiom
+//            as fiCardPdf / evidenceItemPdf.
+//          • Print button on every offender row (search results + new
+//            deep-link card) — opens the PDF in a new tab. Best-effort
+//            photo embed via fetch→base64 with 5s timeout; failure
+//            falls back to a "no photo on file" placeholder.
+//          • Deep-link contract: /nsopw?offender_id=<row> loads a
+//            single offender straight from /api/nsopw/offender/:id
+//            (renders as an "OFFENDER (DEEP LINK)" amber card so the
+//            operator knows no name+DOB cross-check was performed).
+//            /nsopw?surname=&forename=&dob= pre-fills + auto-runs the
+//            cross-reference. The legacy /offender-registry and
+//            /sex-offender-registry routes now use a new
+//            RedirectKeepQuery wrapper in App.tsx — plain
+//            <Navigate to="/nsopw" /> was dropping the search part,
+//            silently breaking any old bookmarks with query params.
+//          • Empty-state distinction: a "no search yet" hint card now
+//            renders when the panel first loads — the existing zero-
+//            matches green card was indistinguishable from the never-
+//            searched state.
+//          • Coverage warning: ⚠ emoji → Lucide AlertTriangle (last
+//            emoji on the page).
+//          • Dead-imports cleanup: Link2 + IconButton were imported
+//            but never referenced. Removed.
+// v1037: Court Tracker — court-ready appearance prep PDF (Arial banner +
+//        countdown/imminence alert + judge notes + witnesses + bail +
+//        continuance history + signature block; same idiom as the v1024
+//        FI / v1025 CH / v1026 evidence chain PDFs). Replaces the
+//        page's last native dialog (`window.prompt()` in
+//        handleCloneEvent) with a styled ConfirmDialog + date input.
+//        Adds /court?event_id= (and court_event_id=) URL deep-link
+//        with direct-fetch fallback + URL param strip — 12th
+//        consecutive page-pass on the contract. Esc smart-cascade
+//        (closes the smallest-open-first of 10 modals, replacing
+//        the old hard-coded "Esc closes form only"). `N` keyboard
+//        shortcut → New Event, typing-suppressed. Empty state now
+//        distinguishes filter/search-empty vs upcoming-empty vs
+//        truly-empty so the "New Event" CTA doesn't ambush a stale
+//        filter. Theme: 14 `text-[#d4a017]` → `text-[var(--brand-gold)]`
+//        and the restored-draft `#1a1500` → `bg-amber-950/40`.
+//        Bugfixes: duplicate `id` attrs across mapped witness rows
+//        (HTML5 unique-id violation, breaks form-tab navigation);
+//        court-fee total string-concat ("50"+"25"="5025") → numeric
+//        coercion with .toFixed(2); conflicts state now resets on
+//        every selection change so a prior event's red conflict
+//        banner doesn't ghost over a clean selection.
+// v1031: Citations — kill the last native window.confirm() in handleVoid
+//        and route it through the in-app ConfirmDialog (same destructive-
+//        flow polish every other audited page now uses; FI #1597, Evidence
+//        #1603, Cases #1604). Adds /citations?citation_id=<id> URL deep-
+//        link (14th consecutive page-pass). Falls through to a direct
+//        /citations/:id fetch when the row isn't in the current filtered
+//        page (so a deep-link from another module resolves even when the
+//        list is filtered to "Issued" but the target is "Voided"). Adds
+//        `N` keyboard shortcut for opening a new citation (mirrors FI /
+//        Dispatch / Patrol). Esc smart-cascade now closes void-confirm
+//        first, then the inline payment form, then the person-search
+//        dropdown, then the form panel. Empty-state copy distinguishes
+//        "filtered to zero" from "nothing on file" — operators on a
+//        clean install were uncertain whether the page was broken or
+//        just empty. Theme: 22 `[#d4a017]` Tailwind arbitraries lifted
+//        to `[var(--brand-gold)]`; restored-draft `#1a1500` background →
+//        `rgb(var(--sev-warn-rgb) / 0.08)` (same lift as Patrol PR
+//        #1595 + FI PR #1597); court-date overdue/soon/upcoming color
+//        ramp (`#ef4444`/`#f97316`/`#eab308`/`#22c55e`) → semantic
+//        `--sev-critical/high/caution/ok` so day-mode legibility tracks
+//        the rest of the palette. Operator-chrome emoji sweep: ⚡ →
+//        Zap, 🔒 → Lock, ⚖ → Gavel, ⚠ → AlertTriangle (lucide). The
+//        Citations page already ships TWO citation PDFs (the Spillman
+//        3-copy ticket via CitationPdfPreview/useCitationPreview, AND a
+//        generic record print via PrintRecordButton/recordPdfGenerator)
+//        — same trap Cases PR #1604 flagged, so no new PDF utility was
+//        added; the 3-copy ticket IS the court-record form. The form-
+//        draft localStorage key (`rmpg_citation_form`) was reviewed
+//        against the user-scoped-storage rule and intentionally left
+//        unscoped — `useFormDraft` is page-singleton everywhere in the
+//        app, and the draft only contains the field operator's own
+//        in-progress citation (not other officers' data).
 // v1029: Connections graph — fix 3 entity-color collisions that
 //        silently rendered DIFFERENT entity types as the same dot
 //        color (person+case both brand-gold; evidence+arrest both red;
@@ -727,12 +1111,32 @@
 //        to [var(--brand-gold)]. The 13 categorical chart palette
 //        entries stay as raw hex (legitimate use — semantic --sev-*
 //        tokens can't distinguish 16 entity types).
-// v1030: AI Trinity PR1 — callAi() smart fallback (Claude → OpenAI →
-//        Workers AI) wired into 4 consumers: Deep Research, Intel AI,
-//        serve-intake OCR, vision OCR. New openai.ts provider module.
-//        Admin "Test" button on openai_api_key (mirrors Claude probe).
-//        mapbox_username D1 fix (was wrangler-command junk, now
-//        'chzamo7'). 14 new vitest tests; 1477/1478 passing total.
+// v1036: Code Enforcement — court-ready notice + tow-order PDFs
+//        (codeEnforcementPdf.ts, Arial banner, gold strap, critical-
+//        violation alert bar, compliance-deadline reminder bar,
+//        property/violator/description/resolution blocks, dual-
+//        signature footer). Code-enforcement notices ARE the
+//        operator artifact (handed to the property owner / driver) —
+//        the only print path was previously bulk CSV. Two open*
+//        entry points wired from new "Notice PDF" / "Tow Order PDF"
+//        buttons on each detail panel; 18 unit tests cover the pure
+//        fmt/wrap/classify helpers. Adds /code-enforcement?
+//        violation_id=…&tow_id=… URL deep-link (auto-selects + tab-
+//        switches + strips the query). Esc cascade extended to
+//        smallest-open-first: reinspection inline → tow form →
+//        violation form (was hard-coded to only the violation form,
+//        silently ignoring tow form + reinspection date picker).
+//        Adds `N` keyboard shortcut for new violation/tow, typing-
+//        suppressed. Removes 5 declared-but-never-rendered state +
+//        handler blocks (severityScore, compTimeline, fineCalc,
+//        compDashboard, geoClusters) — dead since this page was
+//        stubbed. Distinct empty-state copy for filtered-empty vs
+//        truly-empty. Fixes the tow-form draft storage key typo
+//        (rmpg_code_template_form → rmpg_code_tow_form). Theme: 6
+//        text-[#d4a017] sites lifted to text-[var(--brand-gold)] +
+//        2 rgba(212,160,23,…) sites lifted to rgb(var(--brand-gold-
+//        rgb) / 0.NN) + fetch-error banner ⚠/✕ ASCII glyphs → Lucide
+//        AlertTriangle/X.
 // v1023: Patrol — hydrate isOnBreak from /patrol/breaks on mount (was
 //        local-state-only; operator on break who refreshed the page saw
 //        "Start Break" + a fresh click raced into a 2nd break). Adds a

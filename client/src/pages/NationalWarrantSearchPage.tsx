@@ -3,14 +3,17 @@
 // Multi-state warrant search with US coverage map
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Globe, Search, User, AlertTriangle, MapPin, Loader2, X, Shield, Gavel, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Globe, Search, User, AlertTriangle, MapPin, Loader2, X, Shield, Gavel, ChevronDown, Printer } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { openNationalWarrantPdf, type NationalWarrantHit } from '../utils/nationalWarrantPdf';
 
 // ── US States List ──────────────────────────────────────────
 const US_STATES = [
@@ -151,26 +154,37 @@ const STATE_GRID: { code: string; label: string; col: number; row: number }[] = 
 ];
 
 // ── Coverage status colors ──────────────────────────────────
+// All semantic — `active` reads ok/green, `pending` reads warn/amber via the
+// theme palette so they re-skin between night and day. Pre-PR-1033 the hex
+// values were hardcoded green-800/amber-900/15803d/92400e which froze the
+// coverage map at night-only saturation even when the day skin was active.
 type CoverageStatus = 'active' | 'pending' | 'disabled';
 function coverageFill(status: CoverageStatus | undefined): string {
   switch (status) {
-    case 'active': return '#166534'; // green-800
-    case 'pending': return '#78350f'; // amber-900
+    case 'active': return 'rgb(var(--sev-ok-rgb) / 0.35)';
+    case 'pending': return 'rgb(var(--sev-warn-rgb) / 0.30)';
     default: return 'var(--border-subtle)';
   }
 }
 function coverageStroke(status: CoverageStatus | undefined): string {
   switch (status) {
-    case 'active': return '#22c55e';
-    case 'pending': return '#f59e0b';
+    case 'active': return 'var(--sev-ok)';
+    case 'pending': return 'var(--sev-warn)';
     default: return 'var(--rmpg-600)';
   }
 }
 function coverageHoverFill(status: CoverageStatus | undefined): string {
   switch (status) {
-    case 'active': return '#15803d';
-    case 'pending': return '#92400e';
+    case 'active': return 'rgb(var(--sev-ok-rgb) / 0.55)';
+    case 'pending': return 'rgb(var(--sev-warn-rgb) / 0.50)';
     default: return 'var(--border-default)';
+  }
+}
+function coverageTextColor(status: CoverageStatus | undefined): string {
+  switch (status) {
+    case 'active': return 'var(--sev-ok-soft)';
+    case 'pending': return 'var(--sev-warn-soft)';
+    default: return 'var(--rmpg-400)';
   }
 }
 
@@ -210,15 +224,38 @@ function typeBadge(type: string) {
 
 export default function NationalWarrantSearchPage() {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
 
-  // Search form state
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [dob, setDob] = useState('');
-  const [stateFilter, setStateFilter] = useState('');
-  const [offenseLevel, setOffenseLevel] = useState('');
-  const [warrantType, setWarrantType] = useState('');
-  const [chargeKeyword, setChargeKeyword] = useState('');
+  // URL deep-link contract — operators land here from /persons, /warrants,
+  // dispatch, NCIC, etc. with the subject's name + DOB. Honored params:
+  //   ?last_name= ?first_name= ?dob= ?state= ?offense_level=
+  //   ?warrant_type= ?charge_keyword= ?auto=1
+  // `auto=1` triggers a search on mount once we've hydrated. Mirrors the
+  // pattern used by Cases / FI / Citations / Patrol (12+ prior pages).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initial = useMemo(() => ({
+    last_name: searchParams.get('last_name') ?? '',
+    first_name: searchParams.get('first_name') ?? '',
+    dob: searchParams.get('dob') ?? '',
+    state: searchParams.get('state') ?? '',
+    offense_level: searchParams.get('offense_level') ?? '',
+    warrant_type: searchParams.get('warrant_type') ?? '',
+    charge_keyword: searchParams.get('charge_keyword') ?? '',
+    auto: searchParams.get('auto') === '1',
+  // The ref-equality of `searchParams` only matters for the first paint;
+  // we strip the params after consuming them so this memo never re-runs
+  // with a different shape. Disable react-hooks/exhaustive-deps lint.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), []);
+
+  // Search form state — hydrated from the URL when present.
+  const [firstName, setFirstName] = useState(initial.first_name);
+  const [lastName, setLastName] = useState(initial.last_name);
+  const [dob, setDob] = useState(initial.dob);
+  const [stateFilter, setStateFilter] = useState(initial.state.toUpperCase());
+  const [offenseLevel, setOffenseLevel] = useState(initial.offense_level);
+  const [warrantType, setWarrantType] = useState(initial.warrant_type);
+  const [chargeKeyword, setChargeKeyword] = useState(initial.charge_keyword);
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [coverage, setCoverage] = useState<any>(null);
@@ -241,9 +278,24 @@ export default function NationalWarrantSearchPage() {
   }, []);
 
   // ── Search Handler ────────────────────────────────────────
-  const handleSearch = useCallback(async (e?: React.FormEvent) => {
+  // Accepts an optional `override` so the deep-link `auto=1` effect can fire
+  // a search with the URL-derived fields without waiting for React state to
+  // settle (the prior version of this closure was racing).
+  const handleSearch = useCallback(async (e?: React.FormEvent, override?: Partial<{
+    first_name: string; last_name: string; dob: string; state: string;
+    offense_level: string; warrant_type: string; charge_keyword: string;
+  }>) => {
     if (e) e.preventDefault();
-    if (!firstName && !lastName && !dob && !stateFilter && !chargeKeyword) return;
+    const body = {
+      first_name: override?.first_name ?? firstName,
+      last_name: override?.last_name ?? lastName,
+      dob: (override?.dob ?? dob) || undefined,
+      state: (override?.state ?? stateFilter) || undefined,
+      offense_level: (override?.offense_level ?? offenseLevel) || undefined,
+      warrant_type: (override?.warrant_type ?? warrantType) || undefined,
+      charge_keyword: (override?.charge_keyword ?? chargeKeyword) || undefined,
+    };
+    if (!body.first_name && !body.last_name && !body.dob && !body.state && !body.charge_keyword) return;
 
     setSearching(true);
     setResults(null);
@@ -251,15 +303,7 @@ export default function NationalWarrantSearchPage() {
       const data = await apiFetch<any>('/api/warrants/national-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          first_name: firstName,
-          last_name: lastName,
-          dob: dob || undefined,
-          state: stateFilter || undefined,
-          offense_level: offenseLevel || undefined,
-          warrant_type: warrantType || undefined,
-          charge_keyword: chargeKeyword || undefined,
-        }),
+        body: JSON.stringify(body),
       });
       setResults(data);
     } catch {
@@ -268,6 +312,37 @@ export default function NationalWarrantSearchPage() {
       setSearching(false);
     }
   }, [firstName, lastName, dob, stateFilter, offenseLevel, warrantType, chargeKeyword]);
+
+  // ── Deep-link auto-search + URL strip ─────────────────────
+  // On first mount only, if the URL carries enough to search AND ?auto=1,
+  // fire one POST then clear ALL deep-link params so a refresh isn't a
+  // second hit and so the URL doesn't leak the subject's PII into copy-
+  // pasted links. Honored even without `auto=1` to the extent of
+  // pre-filling the form (initial state above).
+  useEffect(() => {
+    if (initial.auto && (initial.last_name || initial.first_name || initial.dob || initial.state || initial.charge_keyword)) {
+      void handleSearch(undefined, {
+        first_name: initial.first_name,
+        last_name: initial.last_name,
+        dob: initial.dob,
+        state: initial.state.toUpperCase(),
+        offense_level: initial.offense_level,
+        warrant_type: initial.warrant_type,
+        charge_keyword: initial.charge_keyword,
+      });
+    }
+    // Strip deep-link params unconditionally so the URL is portable.
+    if (Array.from(searchParams.keys()).some(k =>
+      ['last_name', 'first_name', 'dob', 'state', 'offense_level', 'warrant_type', 'charge_keyword', 'auto'].includes(k)
+    )) {
+      const next = new URLSearchParams(searchParams);
+      ['last_name', 'first_name', 'dob', 'state', 'offense_level', 'warrant_type', 'charge_keyword', 'auto']
+        .forEach(k => next.delete(k));
+      setSearchParams(next, { replace: true });
+    }
+  // Run exactly once on mount with the captured `initial` snapshot.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const clearSearch = () => {
     setFirstName('');
@@ -304,6 +379,14 @@ export default function NationalWarrantSearchPage() {
   const stateGroups: Record<string, any[]> = results?.by_state ?? {};
   const localResults: any[] = results?.local ?? [];
   const stateGroupKeys = Object.keys(stateGroups).sort();
+
+  // Officer signature line for every PDF pulled from this page — same
+  // resolution rule the criminal-history + FI PDFs use.
+  const preparedBy = useMemo(() => (
+    user
+      ? (`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username)
+      : undefined
+  ), [user]);
 
   // ── Render ────────────────────────────────────────────────
   return (
@@ -426,14 +509,21 @@ export default function NationalWarrantSearchPage() {
             <span className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">
               US Coverage Map
             </span>
-            {/* Legend */}
+            {/* Legend — uses the same semantic tokens as the SVG cells so
+                the day/night skin re-themes both in lockstep. */}
             <div className="ml-auto flex items-center gap-3 text-[10px]">
               <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#166534', border: '1px solid #22c55e' }} />
+                <span
+                  className="w-2.5 h-2.5 rounded-sm"
+                  style={{ background: 'rgb(var(--sev-ok-rgb) / 0.35)', border: '1px solid var(--sev-ok)' }}
+                />
                 <span className="text-rmpg-400">Active</span>
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#78350f', border: '1px solid #f59e0b' }} />
+                <span
+                  className="w-2.5 h-2.5 rounded-sm"
+                  style={{ background: 'rgb(var(--sev-warn-rgb) / 0.30)', border: '1px solid var(--sev-warn)' }}
+                />
                 <span className="text-rmpg-400">Pending</span>
               </span>
               <span className="flex items-center gap-1">
@@ -499,7 +589,7 @@ export default function NationalWarrantSearchPage() {
                           fontSize: 11,
                           fontWeight: 600,
                           fontFamily: 'JetBrains Mono, monospace',
-                          fill: isSelected ? 'var(--rmpg-400)' : status === 'active' ? '#86efac' : status === 'pending' ? '#fcd34d' : 'var(--rmpg-400)',
+                          fill: isSelected ? 'var(--rmpg-400)' : coverageTextColor(status),
                         }}
                       >
                         {st.label}
@@ -523,11 +613,7 @@ export default function NationalWarrantSearchPage() {
                     {US_STATES.find(s => s.code === hoveredState)?.label ?? hoveredState}
                   </div>
                   <div className="text-[10px] text-rmpg-400">
-                    Status: <span className={
-                      stateCoverage[hoveredState] === 'active' ? 'text-green-400' :
-                      stateCoverage[hoveredState] === 'pending' ? 'text-amber-400' :
-                      'text-rmpg-500'
-                    }>
+                    Status: <span style={{ color: coverageTextColor(stateCoverage[hoveredState]) }}>
                       {stateCoverage[hoveredState] ?? 'No source'}
                     </span>
                   </div>
@@ -594,7 +680,7 @@ export default function NationalWarrantSearchPage() {
                 {!collapsedGroups.has('LOCAL') && (
                   <div className="divide-y divide-[var(--border-subtle)]">
                     {localResults.map((w: any, i: number) => (
-                      <WarrantRow key={`local-${i}`} warrant={w} />
+                      <WarrantRow key={`local-${i}`} warrant={w} preparedBy={preparedBy} />
                     ))}
                   </div>
                 )}
@@ -625,7 +711,7 @@ export default function NationalWarrantSearchPage() {
                   {!isCollapsed && (
                     <div className="divide-y divide-[var(--border-subtle)]">
                       {warrants.map((w: any, i: number) => (
-                        <WarrantRow key={`${stateCode}-${i}`} warrant={w} />
+                        <WarrantRow key={`${stateCode}-${i}`} warrant={w} preparedBy={preparedBy} />
                       ))}
                     </div>
                   )}
@@ -668,13 +754,22 @@ const warrantName = (w: any): string =>
     : (w.full_name ? String(w.full_name).toUpperCase() : 'UNKNOWN');
 
 // ── Warrant Result Row ──────────────────────────────────────
-function WarrantRow({ warrant }: { warrant: any }) {
+function WarrantRow({ warrant, preparedBy }: { warrant: any; preparedBy?: string }) {
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
+
+  const openPdf = useCallback(() => {
+    openNationalWarrantPdf({ warrant: warrant as NationalWarrantHit, preparedBy });
+  }, [warrant, preparedBy]);
 
   const buildWarrantMenu = (): ContextMenuItem[] => {
     const fullName = warrantName(warrant);
     return [
+      {
+        label: 'Open court-ready PDF',
+        icon: <Printer size={12} />,
+        onClick: openPdf,
+      },
       m.copy('Copy name', fullName),
       ...(warrant.charges ? [m.copy('Copy charges', warrant.charges)] : []),
       ...(warrant.court ? [m.copy('Copy court', warrant.court, <Gavel size={12} />)] : []),
@@ -769,6 +864,20 @@ function WarrantRow({ warrant }: { warrant: any }) {
             Bond: ${Number(warrant.bond_amount).toLocaleString()}
           </span>
         )}
+        {/* Court-ready PDF for the result row — same path as the
+            right-click "Open court-ready PDF" menu item; pulling officer
+            on the signature line from useAuth. Pre-PR-1033 there was
+            no print path off this page (only "Copy charges"). */}
+        <button
+          type="button"
+          onClick={openPdf}
+          className="toolbar-btn text-rmpg-400 hover:text-brand-400 px-1.5 py-0.5 text-[10px] flex items-center gap-1"
+          title="Open a court-ready PDF for this warrant hit"
+          aria-label={`Open court-ready PDF for ${warrantName(warrant)}`}
+        >
+          <Printer className="w-3 h-3" />
+          PDF
+        </button>
       </div>
     </div>
   );

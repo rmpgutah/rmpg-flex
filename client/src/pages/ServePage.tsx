@@ -5,12 +5,15 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
-  Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2,
+  Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
 } from 'lucide-react';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../components/ToastProvider';
 import AssignTab from './serve/AssignTab';
 import MyRunTab from './serve/MyRunTab';
 import { apiFetch } from '../hooks/useApi';
@@ -116,13 +119,38 @@ interface StatsSummary {
 export default function ServePage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
+  const { addToast } = useToast();
   // ── Right-click context menu ──────────────────────────────────────────
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
+  // ── URL deep-link contract ──
+  // /serve?job_id=<n>            — auto-expand that job's card (Queue tab)
+  // /serve?status=<filter>       — apply a status filter (pending|in_progress|served|failed|all)
+  // /serve?tab=<Queue|Route|Map|Stats|Assign|My%20Run>  — preselect a tab
+  // /serve?date=YYYY-MM-DD       — preselect the date picker
+  // Honored once on mount; the param is stripped so a manual refresh does
+  // not re-select. A miss for ?job_id raises a toast pointing at the
+  // current filter (a job served yesterday won't be in today's queue).
+  const [searchParams, setSearchParams] = useSearchParams();
   // ── Core state ──────────────────────────────────────────────────────
-  const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
-  const [activeTab, setActiveTab] = useState<Tab>('Queue');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const initialDateParam = searchParams.get('date');
+  const initialTabParam = searchParams.get('tab') as Tab | null;
+  const initialStatusParam = searchParams.get('status') as StatusFilter | null;
+  const validTab = initialTabParam && (TABS as readonly string[]).includes(initialTabParam)
+    ? (initialTabParam as Tab)
+    : 'Queue';
+  const validStatus: StatusFilter = initialStatusParam && ['all', 'pending', 'in_progress', 'served', 'failed'].includes(initialStatusParam)
+    ? initialStatusParam
+    : 'all';
+  const [selectedDate, setSelectedDate] = useState(() => initialDateParam || formatDate(new Date()));
+  const [activeTab, setActiveTab] = useState<Tab>(validTab);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(validStatus);
+  // Pending deep-link target — resolved once jobs hydrate.
+  const pendingJobIdRef = useRef<string | null>(searchParams.get('job_id'));
+  // Delete-job confirm replaces the v480 window.confirm(). Carries the
+  // job so the dialog body can show "for {name} (case {n})" detail.
+  const [deleteJob, setDeleteJob] = useState<ServeJob | null>(null);
+  const [deleting, setDeleting] = useState(false);
   // ── Officers for route planner ──────────────────────────────────────
   const [officers, setOfficers] = useState<{ id: number; name: string }[]>([]);
   // ── Clients (hiring parties) for the Add Job form selector ──────────
@@ -473,28 +501,28 @@ export default function ServePage() {
     }
   }, [refreshJobs]);
 
-  const handleDeleteJob = useCallback(async (job: ServeJob) => {
-    const label = [job.recipient_name, job.case_number ? `(case ${job.case_number})` : null]
-      .filter(Boolean).join(' ') || `job #${job.id}`;
-    // eslint-disable-next-line no-alert
-    const ok = window.confirm(
-      `Delete process service job for ${label}?\n\n` +
-      `This permanently removes:\n` +
-      `  - the queue entry\n` +
-      `  - all logged attempts and skip-trace history\n` +
-      `  - any scheduled attempt windows on the calendar\n\n` +
-      `Cannot be undone.`,
-    );
-    if (!ok) return;
-    try {
-      await apiFetch(`/serve-intake/${job.id}`, { method: 'DELETE' });
-      setJobs((prev) => prev.filter((j) => j.id !== job.id));
-      setExpandedJobId((prev) => (prev === job.id ? null : prev));
-    } catch (e) {
-      // eslint-disable-next-line no-alert
-      alert(`Could not delete job: ${e instanceof Error ? e.message : 'unknown error'}`);
-    }
+  // Opens the in-page ConfirmDialog (replaces the v480 native window.confirm
+  // and its window.alert on failure — both broke the day/night surface and
+  // bypassed our keyboard-trap / a11y model).
+  const handleDeleteJob = useCallback((job: ServeJob) => {
+    setDeleteJob(job);
   }, []);
+
+  const confirmDeleteJob = useCallback(async () => {
+    if (!deleteJob) return;
+    setDeleting(true);
+    try {
+      await apiFetch(`/serve-intake/${deleteJob.id}`, { method: 'DELETE' });
+      setJobs((prev) => prev.filter((j) => j.id !== deleteJob.id));
+      setExpandedJobId((prev) => (prev === deleteJob.id ? null : prev));
+      addToast('Process-service job deleted', 'success');
+      setDeleteJob(null);
+    } catch (e) {
+      addToast(`Could not delete job: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteJob, addToast]);
 
   const handleAttemptSubmit = useCallback(async (data: ServeAttemptData) => {
     if (!attemptJob) return { dueDiligenceComplete: false, attemptNumber: 0, jobStatus: 'pending' };
@@ -838,13 +866,77 @@ export default function ServePage() {
   // Set document title
   useEffect(() => { document.title = 'Process Server \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // Keyboard shortcuts:
+  //   Esc \u2014 smart cascade: close the smallest open thing first so a single
+  //         tap does not punch through every overlay. Order picks the most
+  //         recently opened layer the operator is interacting with:
+  //           delete confirm \u2192 log-attempt modal \u2192 edit-attempt modal \u2192
+  //           skip-trace panel \u2192 route planner \u2192 create/edit job form.
+  //   N   \u2014 open a new Add-Job form from anywhere on the page; suppressed
+  //         when the user is actually typing into a field so a recipient
+  //         name with "n" in it doesn't pop the dialog mid-type.
   useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setCreateJobOpen(false); setEditJob(null); clearFormDraft(); }
+      if (e.key === 'Escape') {
+        if (deleteJob)       { setDeleteJob(null); return; }
+        if (attemptJob)      { setAttemptJob(null); return; }
+        if (editAttempt)     { setEditAttempt(null); return; }
+        if (skipTraceJob)    { setSkipTraceJob(null); return; }
+        if (routePlannerOpen){ setRoutePlannerOpen(false); return; }
+        if (createJobOpen)   { setCreateJobOpen(false); setEditJob(null); clearFormDraft(); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if (e.key === 'n' || e.key === 'N') {
+        // Suppress N when any modal is already open \u2014 the in-modal Tab/Enter
+        // contract owns the focused element.
+        if (deleteJob || attemptJob || editAttempt || skipTraceJob || routePlannerOpen || createJobOpen) return;
+        e.preventDefault();
+        openCreate();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
+  }, [deleteJob, attemptJob, editAttempt, skipTraceJob, routePlannerOpen, createJobOpen, clearFormDraft, openCreate]);
+
+  // \u2500\u2500 Deep-link resolver \u2014 runs once jobs hydrate, then strips the param \u2500\u2500
+  useEffect(() => {
+    const target = pendingJobIdRef.current;
+    if (!target || loading) return;
+    if (jobs.length === 0) return; // wait one more cycle for hydration
+    const hit = jobs.find((j) => String(j.id) === String(target));
+    pendingJobIdRef.current = null;
+    if (!hit) {
+      addToast(`Serve job ${target} not in the current view (try clearing the date filter)`, 'warning');
+    } else {
+      setActiveTab('Queue');
+      setExpandedJobId(hit.id);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('job_id');
+    setSearchParams(next, { replace: true });
+  }, [jobs, loading, searchParams, setSearchParams, addToast]);
+
+  // Strip ?tab / ?status / ?date once consumed so a manual refresh does not
+  // re-pin the operator to a stale filter.
+  const consumedInitialParamsRef = useRef(false);
+  useEffect(() => {
+    if (consumedInitialParamsRef.current) return;
+    consumedInitialParamsRef.current = true;
+    if (!initialTabParam && !initialStatusParam && !initialDateParam) return;
+    const next = new URLSearchParams(searchParams);
+    if (initialTabParam) next.delete('tab');
+    if (initialStatusParam) next.delete('status');
+    if (initialDateParam) next.delete('date');
+    setSearchParams(next, { replace: true });
+    // We intentionally don't depend on the param refs \u2014 this is a one-shot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Build a serve-job row context menu ──
@@ -875,8 +967,11 @@ export default function ServePage() {
     <div className="flex flex-col h-full bg-surface-base" role="main">
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-[2px] text-red-400 text-xs flex items-center gap-2 animate-in fade-in duration-200">
-          <span>⚠ {fetchError}</span>
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 transition-colors" aria-label="Dismiss error">✕</button>
+          <AlertTriangle size={12} className="flex-shrink-0" aria-hidden="true" />
+          <span>{fetchError}</span>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 transition-colors" aria-label="Dismiss error">
+            <X size={12} aria-hidden="true" />
+          </button>
         </div>
       )}
       {/* ─── Header Bar ────────────────────────────────────────────── */}
@@ -943,7 +1038,7 @@ export default function ServePage() {
           <button type="button"
             onClick={openCreate}
             className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(34,197,94,0.15)] focus:outline-none focus:ring-1 focus:ring-green-500/50"
-            title="Add Job"
+            title="Add Job (N)"
             aria-label="Add serve job"
           >
             <Plus size={12} />
@@ -1015,7 +1110,11 @@ export default function ServePage() {
                 }`}
                 title="Sort by deadline urgency"
               >
-                {sortByUrgency ? '⚡ Urgent First' : '↕ Priority Sort'}
+                <span className="inline-flex items-center gap-1">
+                  {sortByUrgency
+                    ? (<><Zap size={11} aria-hidden="true" /> Urgent First</>)
+                    : (<><ArrowUpDown size={11} aria-hidden="true" /> Priority Sort</>)}
+                </span>
               </button>
             </div>
 
@@ -1042,12 +1141,28 @@ export default function ServePage() {
                   <div className="w-12 h-12 rounded-full bg-surface-sunken flex items-center justify-center mb-3">
                     <Briefcase size={20} className="text-rmpg-500" />
                   </div>
-                  <p className="text-sm text-rmpg-400 font-medium">
-                    {statusFilter !== 'all'
-                      ? `No ${statusFilter.replace(/_/g, ' ')} jobs for this date.`
-                      : 'No jobs for today. Sync from ServeManager or add manually.'
-                    }
-                  </p>
+                  {/* Distinguish "filter is hiding rows" from "queue is truly empty" — */}
+                  {/* before this, both rendered the same generic empty state and an */}
+                  {/* operator with a stale ?status=failed could not tell whether the */}
+                  {/* day was clean or whether they were looking through a filter. */}
+                  {jobs.length > 0 ? (
+                    <>
+                      <p className="text-sm text-rmpg-400 font-medium">
+                        No {statusFilter.replace(/_/g, ' ')} jobs match this filter.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setStatusFilter('all')}
+                        className="mt-2 text-[11px] text-brand-400 hover:text-brand-300 underline underline-offset-2"
+                      >
+                        Show all {jobs.length} job{jobs.length === 1 ? '' : 's'} for this date
+                      </button>
+                    </>
+                  ) : (
+                    <p className="text-sm text-rmpg-400 font-medium">
+                      No jobs for {selectedDate}. Sync from ServeManager, press <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">N</kbd>, or add manually.
+                    </p>
+                  )}
                 </div>
               ) : (
                 filteredJobs.map(job => (
@@ -1764,6 +1879,35 @@ export default function ServePage() {
           </div>
         </div>
       </FormModal>
+
+      {/* Delete-job confirm — replaces the v480 window.confirm + window.alert. */}
+      {/* Same destructive-action contract as Code Enforcement / Cases: pre-     */}
+      {/* focuses Cancel, blocks Enter-anywhere-confirms, scoped Esc cascade.    */}
+      <ConfirmDialog
+        isOpen={!!deleteJob}
+        onClose={() => deleteJob && !deleting && setDeleteJob(null)}
+        onConfirm={confirmDeleteJob}
+        title="Delete Process Service Job"
+        message={
+          deleteJob
+            ? `Delete process service job for ${deleteJob.recipient_name}${deleteJob.case_number ? ` (case ${deleteJob.case_number})` : ''}? This permanently removes the queue entry, all logged attempts and skip-trace history, and any scheduled attempt windows. Cannot be undone.`
+            : ''
+        }
+        details={deleteJob ? (
+          <>
+            <div>Job ID: <span className="font-mono">{deleteJob.id}</span></div>
+            {deleteJob.attempt_count > 0 && (
+              <div>Logged attempts: <span className="font-mono">{deleteJob.attempt_count}</span></div>
+            )}
+            {deleteJob.document_type && (
+              <div>Document: {deleteJob.document_type}</div>
+            )}
+          </>
+        ) : undefined}
+        confirmLabel={deleting ? 'Deleting…' : 'Delete Job'}
+        confirmVariant="danger"
+        isLoading={deleting}
+      />
 
       <UnsavedChangesGuard hasUnsavedChanges={createJobOpen && formIsDirty} />
       <FloatingSaveBar
