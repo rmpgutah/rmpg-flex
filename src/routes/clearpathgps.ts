@@ -246,6 +246,113 @@ cpg.get('/devices', async (c) => {
   }
 });
 
+// ── Vehicles (active mappings + live position) ───────────────
+// Returned in BOTH legacy (`last_lat`/`last_lon`/`last_reported_at`) and v2
+// (`latitude`/`longitude`/`last_seen`) shapes so FleetGpsTab.tsx and
+// GpsTrackingRoute.tsx can both consume the same handler without a
+// client-side rename. Empty array (200) when nothing is mapped — callers
+// treat 404 here as a hard error.
+cpg.get('/vehicles', async (c) => {
+  const db = getDb(c.env);
+  await ensureCpgSchema(db);
+  let rows: Record<string, unknown>[] = [];
+  try {
+    rows = await query<Record<string, unknown>>(db, `
+      SELECT
+        m.id,
+        m.unit_id,
+        m.cpg_device_id           AS device_id,
+        m.cpg_serial_number       AS device_serial,
+        m.cpg_display_name        AS display_name,
+        m.vehicle_make,
+        m.vehicle_model,
+        m.vehicle_vin             AS vin,
+        m.last_odometer           AS odometer,
+        m.last_synced_at          AS synced_at,
+        m.last_media_synced_at    AS media_synced_at,
+        m.driver_name,
+        fv.id                     AS vehicle_id,
+        fv.vehicle_number,
+        fv.vehicle_name,
+        un.latitude               AS latitude,
+        un.longitude              AS longitude,
+        un.gps_speed              AS speed,
+        un.gps_heading            AS heading,
+        un.gps_updated_at         AS last_seen,
+        un.call_sign              AS unit_call_sign
+      FROM cpg_device_mappings m
+      LEFT JOIN units un          ON un.id = m.unit_id
+      LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = m.unit_id
+      WHERE m.is_active = 1
+      ORDER BY m.id DESC
+    `);
+  } catch {
+    // If the joined view fails (e.g. units schema drift), fall back to a
+    // mappings-only read so the page degrades to "no position" rather than
+    // 500. Same defensive pattern used by /mappings above.
+    try {
+      rows = await query<Record<string, unknown>>(
+        db, 'SELECT * FROM cpg_device_mappings WHERE is_active = 1 ORDER BY id DESC',
+      );
+    } catch {
+      rows = [];
+    }
+  }
+
+  const vehicles = rows.map((r) => {
+    const lat = r.latitude == null ? null : Number(r.latitude);
+    const lon = r.longitude == null ? null : Number(r.longitude);
+    const speed = r.speed == null ? null : Number(r.speed);
+    const heading = r.heading == null ? null : Number(r.heading);
+    const lastSeen = (r.last_seen as string | null) ?? null;
+    const label = (r.vehicle_number as string | null)
+      ?? (r.vehicle_name as string | null)
+      ?? (r.display_name as string | null)
+      ?? (r.unit_call_sign as string | null)
+      ?? (r.device_id as string | null)
+      ?? `#${r.id}`;
+    return {
+      // Legacy CpgpsVehicle shape (FleetGpsTab):
+      id: r.id,
+      vehicle_id: r.vehicle_id ?? null,
+      name: label,
+      device_serial: r.device_serial ?? null,
+      vin: r.vin ?? null,
+      odometer: r.odometer ?? null,
+      last_lat: lat,
+      last_lon: lon,
+      last_speed: speed,
+      last_heading: heading,
+      last_reported_at: lastSeen,
+      synced_at: r.synced_at ?? null,
+      // GpsVehicle shape (GpsTrackingRoute):
+      device_id: r.device_id ?? null,
+      rmpg_vehicle_id: r.vehicle_id ?? null,
+      vehicle_name: label,
+      latitude: lat,
+      longitude: lon,
+      speed_mph: speed,
+      speed,
+      heading,
+      last_seen: lastSeen,
+      last_update: lastSeen,
+      // Extras handy in the UI without an extra round-trip:
+      unit_id: r.unit_id ?? null,
+      call_sign: r.unit_call_sign ?? null,
+      driver_name: r.driver_name ?? null,
+    };
+  });
+  return c.json(vehicles);
+});
+
+// Per-vehicle trips + alerts — placeholders until ClearPath's per-device
+// trip/alert endpoints are wired into utils/clearpathGps.ts. Returning
+// `[]` (200) is intentional: FleetGpsTab already `.catch(() => [])` and
+// distinguishes "linked but no trips" from "404 — broken backend". A 404
+// here would falsely flip the tab into the "not linked" state.
+cpg.get('/vehicles/:id{[0-9]+}/trips', async (_c) => _c.json([]));
+cpg.get('/vehicles/:id{[0-9]+}/alerts', async (_c) => _c.json([]));
+
 // ── Mappings (camera ↔ dispatch unit) ────────────────────────
 
 cpg.get('/mappings', async (c) => {

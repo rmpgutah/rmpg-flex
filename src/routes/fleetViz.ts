@@ -50,7 +50,9 @@ viz.get('/kpi', async (c) => {
     const db = getDb(c.env);
     const period = c.req.query('period');
     const fuelWin = buildDateWindow(period, 'fuel_date');
-    const mvWin = buildDateWindow(period, 'maintenance_date');
+    // fleet_maintenance uses `service_date` on live D1 (no `maintenance_date`
+    // column ever shipped). Same drift fixed in /cost-per-mile.
+    const mvWin = buildDateWindow(period, 'service_date');
 
     const inService = await queryFirst<{ n: number }>(
       db, `SELECT COUNT(*) AS n FROM fleet_vehicles WHERE status = 'in_service'`,
@@ -128,11 +130,18 @@ viz.get('/dossier/:id{[0-9]+}', async (c) => {
            WHERE vehicle_id = ? AND fuel_date >= date('now','-90 days')
            ORDER BY fuel_date`, id,
     );
+    // fleet_maintenance columns on live: service_date, service_type (no
+    // `maintenance_date`/`maintenance_type`); there is no `status` column.
+    // Alias service_* back to maintenance_* so the dossier UI keeps its
+    // current JSON shape without a client edit.
     const maint90d = await query<Record<string, unknown>>(
-      db, `SELECT id, maintenance_date, maintenance_type, description, cost, status, work_order_id
+      db, `SELECT id,
+                  service_date AS maintenance_date,
+                  service_type AS maintenance_type,
+                  description, cost, work_order_id
            FROM fleet_maintenance
-           WHERE vehicle_id = ? AND maintenance_date >= date('now','-90 days')
-           ORDER BY maintenance_date DESC`, id,
+           WHERE vehicle_id = ? AND service_date >= date('now','-90 days')
+           ORDER BY service_date DESC`, id,
     );
     const openWoCount = await queryFirst<{ n: number }>(
       db, `SELECT COUNT(*) AS n FROM work_orders WHERE vehicle_id = ?
@@ -206,6 +215,10 @@ viz.get('/fleet-map', async (c) => {
   try {
     const db = getDb(c.env);
     // Joined with the most recent ClearPathGPS breadcrumb when available.
+    // gps_breadcrumbs uses `latitude`/`longitude`/`recorded_at` (the
+    // canonical pattern used in src/routes/fleet.ts) — there are no
+    // `lat`/`lng`/`ts` columns. Alias back to the historical names so the
+    // FleetMapCard contract stays stable.
     const rows = await query<Record<string, unknown>>(
       db, `
       SELECT
@@ -213,9 +226,9 @@ viz.get('/fleet-map', async (c) => {
         v.current_mileage, v.next_service_mileage,
         (v.next_service_mileage - v.current_mileage) AS miles_to_pm,
         v.assigned_unit_id,
-        (SELECT lat FROM gps_breadcrumbs WHERE unit_id = v.assigned_unit_id ORDER BY ts DESC LIMIT 1) AS lat,
-        (SELECT lng FROM gps_breadcrumbs WHERE unit_id = v.assigned_unit_id ORDER BY ts DESC LIMIT 1) AS lng,
-        (SELECT ts  FROM gps_breadcrumbs WHERE unit_id = v.assigned_unit_id ORDER BY ts DESC LIMIT 1) AS gps_ts
+        (SELECT latitude    FROM gps_breadcrumbs WHERE unit_id = v.assigned_unit_id ORDER BY recorded_at DESC LIMIT 1) AS lat,
+        (SELECT longitude   FROM gps_breadcrumbs WHERE unit_id = v.assigned_unit_id ORDER BY recorded_at DESC LIMIT 1) AS lng,
+        (SELECT recorded_at FROM gps_breadcrumbs WHERE unit_id = v.assigned_unit_id ORDER BY recorded_at DESC LIMIT 1) AS gps_ts
       FROM fleet_vehicles v
       WHERE v.status != 'archived'`,
     );
@@ -452,30 +465,46 @@ viz.get('/calls-per-gallon', async (c) => {
     const win = buildDateWindow(c.req.query('period'), 'fuel_date');
     const callWin = buildDateWindow(c.req.query('period'), 'created_at');
 
-    const gallonsByOfficer = await query<{ officer_id: number; officer_name: string; total_gallons: number }>(
+    // Live schema reality: there is no `officers` table and
+    // `fleet_fuel_log` has no `driver_id` FK — only `driver_name TEXT`.
+    // The moat join therefore runs in two halves and gets stitched in
+    // JS on the case-folded name. The "officer" entity is `users`; the
+    // dispatch unit table is `units`, not `cad_units`.
+    const fuelRows = await query<{ driver_name: string; total_gallons: number }>(
       db, `
-      SELECT o.id AS officer_id, o.full_name AS officer_name,
-             COALESCE(SUM(f.gallons), 0) AS total_gallons
-      FROM officers o
-      LEFT JOIN fleet_fuel_log f ON f.driver_id = o.id
-      WHERE 1=1 ${win.whereClause}
-      GROUP BY o.id, o.full_name`,
+      SELECT TRIM(driver_name) AS driver_name,
+             COALESCE(SUM(gallons), 0) AS total_gallons
+      FROM fleet_fuel_log
+      WHERE driver_name IS NOT NULL
+        AND TRIM(driver_name) != '' ${win.whereClause}
+      GROUP BY TRIM(driver_name)`,
     );
-    const callsByOfficer = await query<{ officer_id: number; calls: number }>(
+    const callRows = await query<{ officer_id: number; full_name: string; calls: number }>(
       db, `
-      SELECT u.officer_id, COUNT(DISTINCT c.id) AS calls
-      FROM cad_units u
-      JOIN calls_for_service c ON c.assigned_unit_ids LIKE '%' || u.id || '%'
-      WHERE u.officer_id IS NOT NULL ${callWin.whereClause}
-      GROUP BY u.officer_id`,
+      SELECT u.id AS officer_id, u.full_name, COUNT(DISTINCT c.id) AS calls
+      FROM units un
+      JOIN users u ON u.id = un.officer_id
+      JOIN calls_for_service c ON c.assigned_unit_ids LIKE '%' || un.id || '%'
+      WHERE un.officer_id IS NOT NULL ${callWin.whereClause}
+      GROUP BY u.id, u.full_name`,
     );
-    const callsMap = new Map<number, number>(callsByOfficer.map((r) => [r.officer_id, r.calls]));
-    const data = gallonsByOfficer
+
+    const callsByName = new Map<string, { officer_id: number; full_name: string; calls: number }>();
+    for (const row of callRows) {
+      if (!row.full_name) continue;
+      callsByName.set(row.full_name.trim().toLowerCase(), row);
+    }
+
+    const data = fuelRows
       .filter((g) => g.total_gallons > 0)
       .map((g) => {
-        const calls = callsMap.get(g.officer_id) ?? 0;
+        const match = callsByName.get(g.driver_name.toLowerCase());
+        const calls = match?.calls ?? 0;
         return {
-          officer_id: g.officer_id, officer_name: g.officer_name,
+          // Prefer the real users.id when the name matched; otherwise a
+          // deterministic hash so the React key stays stable across reloads.
+          officer_id: match?.officer_id ?? stableHash(g.driver_name),
+          officer_name: match?.full_name ?? g.driver_name,
           total_gallons: Math.round(g.total_gallons * 100) / 100,
           calls_handled: calls,
           calls_per_gallon: Math.round((calls / g.total_gallons) * 100) / 100,

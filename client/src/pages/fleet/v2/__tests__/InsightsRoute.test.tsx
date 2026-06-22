@@ -3,6 +3,49 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { InsightsRoute, readSavedPeriod } from '../routes/InsightsRoute';
 
+// Mapbox GL needs canvas + WebGL, which jsdom doesn't provide. Without
+// this mock `new mapboxgl.Map(...)` throws and the FleetMapCard renders
+// the "mapbox unavailable" failure chip instead of the success path the
+// PR-8c assertions check. The mock returns a no-op stub with the minimum
+// surface area FleetMapCard touches: addControl, fitBounds, setCenter,
+// setZoom, remove + the LngLatBounds/Marker/Popup classes.
+vi.mock('mapbox-gl', () => {
+  class FakeMap {
+    addControl() { return this; }
+    fitBounds() { return this; }
+    setCenter() { return this; }
+    setZoom() { return this; }
+    remove() { /* noop */ }
+  }
+  class FakeMarker {
+    setLngLat() { return this; }
+    setPopup() { return this; }
+    addTo() { return this; }
+    remove() { /* noop */ }
+  }
+  class FakePopup { setHTML() { return this; } }
+  class FakeBounds { extend() { return this; } }
+  return {
+    default: {
+      Map: FakeMap,
+      Marker: FakeMarker,
+      Popup: FakePopup,
+      LngLatBounds: FakeBounds,
+      AttributionControl: class { },
+      NavigationControl: class { },
+      accessToken: 'pk.test',
+    },
+  };
+});
+
+// Make the access-token resolver return synchronously so FleetMapCard
+// doesn't get stuck on `await resolveMapboxAccessToken()`.
+vi.mock('../../../../utils/mapboxLoader', () => ({
+  resolveMapboxAccessToken: vi.fn().mockResolvedValue('pk.test'),
+  initMapbox: vi.fn(),
+  isMapboxReady: vi.fn().mockReturnValue(true),
+}));
+
 function stubApi(handlers: Record<string, unknown>) {
   vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : (input instanceof URL ? input.toString() : (input as Request).url);
