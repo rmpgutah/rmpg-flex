@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { query, queryFirst, execute } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
+import { notConfigured } from '../utils/notConfigured';
 
 const deepResearch = new Hono<Env>();
 
@@ -19,7 +20,8 @@ deepResearch.get('/health', (c) => c.json({ configured: !!(c.env.FIRECRAWL_API_K
 
 deepResearch.post('/', async (c): Promise<Response> => {
   if (!(c.env.FIRECRAWL_API_KEY || '').trim()) {
-    return c.json({ error: 'Firecrawl not configured' }, 503);
+    // 200 + skipped:true — config gap, not an outage. See notConfigured docstring.
+    return notConfigured(c, 'firecrawl_api_key_unset', { error: 'Firecrawl not configured' });
   }
   const body = await c.req.json().catch(() => ({} as any));
   const subject = String(body.subject || '').trim();

@@ -32,6 +32,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { applyInbound } from '../utils/fleetio/sync';
+import { notConfigured } from '../utils/notConfigured';
 
 const fleetioWebhook = new Hono<Env>();
 
@@ -182,7 +183,12 @@ export function normalizeResource(payload: unknown): { resource: string; action:
 fleetioWebhook.post('/webhook', async (c) => {
   const secret = (c.env as Record<string, unknown>).FLEETIO_WEBHOOK_SECRET;
   if (typeof secret !== 'string' || !secret) {
-    return c.json({ error: 'webhook_not_configured', code: 'FLEETIO_WEBHOOK_SECRET_UNSET' }, 503);
+    // 200 + skipped:true so Fleet.io doesn't retry-storm us with the same
+    // webhook every minute. The webhook receiver is an external POST target
+    // — Fleet.io will back off after ~5 retries on 5xx but stops immediately
+    // on a 2xx body that signals acceptance. Until the operator sets
+    // FLEETIO_WEBHOOK_SECRET, drop on the floor cleanly.
+    return notConfigured(c, 'fleetio_webhook_secret_unset', { error: 'webhook_not_configured', code: 'FLEETIO_WEBHOOK_SECRET_UNSET' });
   }
   const authHeader = normalizeAuthorizationHeader(c.req.header('authorization'));
   if (!authHeader) {
