@@ -1290,6 +1290,23 @@
 //       duplicated hardcoded strings); handleReload clears the guard key so
 //       a manual "Reload Page" click resets the anti-loop timer, allowing
 //       auto-retry on the fresh load during CF Pages propagation windows.
+// v996: AdminPage CRUD + AI provider testing — closes the remaining 404s
+//       from the 2026-06-21 prod console dump that PR #1541 didn't cover.
+//       New server routes:
+//         - POST   /api/admin/config       (insert system_config row)
+//         - PUT    /api/admin/config/:id   (validates id is numeric>0, so
+//           the prod `PUT /admin/config/undefined` URL returns 400
+//           INVALID_ID instead of cascading from a cached bad id)
+//         - DELETE /api/admin/config/:id   (admin only)
+//         - GET    /api/admin/config-items (grouped Record<category,
+//           ConfigItem[]> shape AdminSystemTab needs for inline editing —
+//           sibling to flat /admin/config which stays as-is for
+//           DispatchPage/IncidentsPage backwards compat)
+//         - GET    /api/ai/test/:provider  (real HTTP probe to groq/gemini/
+//           openai /models endpoints; ollama short-circuits with a clear
+//           "private/local address unreachable from CF Worker" error)
+//       Client: AdminSystemTab fetches /admin/config-items and guards
+//       against undefined ids interpolating into PUT/DELETE URLs.
 // v995: FlexCam chunk stream — force Content-Type video/mp4 (was
 //       application/octet-stream from ClearPath, breaking video playback).
 // v994: Dashcam AI full-footage upgrade — event clips always download to R2

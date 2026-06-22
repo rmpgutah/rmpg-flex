@@ -127,6 +127,174 @@ admin.get('/config', async (c) => {
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
+// ============================================================
+// /admin/config-items — grouped Record<category, ConfigItem[]>
+// ============================================================
+// AdminSystemTab.tsx fetches the FULL editable system_config row
+// set grouped by category (incident_types, dispositions, priority_config,
+// call_sources, unit_types, zones_beats, evidence_types, security_config,
+// branding, system_settings). The legacy /admin/config GET above returns
+// a FLAT key/value map for DispatchPage / IncidentsPage consumers, which
+// the admin tab can't use to edit individual rows (no ids, no category
+// grouping). This sibling endpoint preserves backwards compat: the flat
+// route stays untouched; the admin tab calls THIS one and gets the row
+// shape it needs for inline Add / Edit / Delete against POST /admin/config,
+// PUT /admin/config/:id, DELETE /admin/config/:id below.
+admin.get('/config-items', async (c) => {
+  const actor = c.get('user') as { role: string } | undefined;
+  if (!actor || !new Set(['admin', 'manager', 'supervisor']).has(actor.role)) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{
+      id: number; config_key: string; config_value: string;
+      category: string; sort_order: number; is_active: number;
+      created_at: string; updated_at: string;
+    }>(db,
+      `SELECT id, config_key, config_value, category, sort_order, is_active, created_at, updated_at
+       FROM system_config
+       WHERE is_active = 1
+       ORDER BY category, sort_order, config_key`);
+    const grouped: Record<string, typeof rows> = {};
+    for (const row of rows) {
+      const cat = row.category || 'general';
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(row);
+    }
+    return c.json(grouped);
+  } catch (err) {
+    return c.json({ error: 'Failed to fetch config items', detail: (err as Error).message }, 500);
+  }
+});
+
+// ============================================================
+// POST /admin/config — insert a system_config row
+// ============================================================
+// Body: { config_key, config_value, category?, sort_order? }
+// Returns the inserted row including its new auto-incremented id, so the
+// client can cache the id for subsequent PUT/DELETE without a roundtrip.
+// admin + manager only. Rejects duplicate (config_key, config_value) with
+// 409 — the live D1 unique index enforces this and we surface the conflict
+// honestly instead of letting it leak as a generic 500.
+admin.post('/config', async (c) => {
+  const guard = requireRole(c, 'admin', 'manager');
+  if (guard) return c.json({ error: guard }, 403);
+  try {
+    const body = await c.req.json().catch(() => ({} as any));
+    const { config_key, config_value, category, sort_order } = body ?? {};
+    if (typeof config_key !== 'string' || !config_key.trim()) {
+      return c.json({ error: 'config_key (non-empty string) is required' }, 400);
+    }
+    if (typeof config_value !== 'string') {
+      return c.json({ error: 'config_value (string) is required' }, 400);
+    }
+    const cat = typeof category === 'string' && category.trim() ? category.trim() : 'general';
+    const sort = Number.isFinite(sort_order) ? Number(sort_order) : 0;
+    const db = getDb(c.env);
+    const result = await execute(db,
+      `INSERT INTO system_config (config_key, config_value, category, sort_order)
+       VALUES (?, ?, ?, ?)`,
+      config_key.trim(), config_value, cat, sort);
+    const id = Number(result.meta.last_row_id);
+    const row = await queryFirst<{
+      id: number; config_key: string; config_value: string;
+      category: string; sort_order: number; is_active: number;
+      created_at: string; updated_at: string;
+    }>(db,
+      `SELECT id, config_key, config_value, category, sort_order, is_active, created_at, updated_at
+       FROM system_config WHERE id = ?`, id);
+    return c.json(row);
+  } catch (err) {
+    const msg = (err as Error).message || '';
+    // Live D1 has UNIQUE(config_key, config_value); surface duplicates clearly.
+    if (/UNIQUE constraint failed/i.test(msg)) {
+      return c.json({ error: 'A row with this config_key + config_value already exists', code: 'DUPLICATE' }, 409);
+    }
+    return c.json({ error: 'Failed to insert config', detail: msg }, 500);
+  }
+});
+
+// ============================================================
+// PUT /admin/config/:id — update config_value by id
+// ============================================================
+// Body: { config_value: string, category?: string, sort_order?: number,
+//         is_active?: 0|1 }. The client only sends config_value today;
+// the other fields are accepted for future use without breaking existing
+// callers. Bounces missing/non-numeric id with 400 — that was the cause
+// of `PUT /api/admin/config/undefined` 404 spam in prod when the client
+// cached an `undefined` id from a previous 404'd POST.
+admin.put('/config/:id', async (c) => {
+  const guard = requireRole(c, 'admin', 'manager');
+  if (guard) return c.json({ error: guard }, 403);
+  const idStr = c.req.param('id');
+  const id = parseInt(idStr, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return c.json({ error: `Invalid id "${idStr}"`, code: 'INVALID_ID' }, 400);
+  }
+  try {
+    const body = await c.req.json().catch(() => ({} as any));
+    const { config_value, category, sort_order, is_active } = body ?? {};
+    if (typeof config_value !== 'string') {
+      return c.json({ error: 'config_value (string) is required' }, 400);
+    }
+    const db = getDb(c.env);
+    const sets: string[] = ['config_value = ?'];
+    const args: unknown[] = [config_value];
+    if (typeof category === 'string' && category.trim()) { sets.push('category = ?'); args.push(category.trim()); }
+    if (Number.isFinite(sort_order)) { sets.push('sort_order = ?'); args.push(Number(sort_order)); }
+    if (is_active === 0 || is_active === 1) { sets.push('is_active = ?'); args.push(is_active); }
+    sets.push("updated_at = datetime('now','localtime')");
+    args.push(id);
+    const result = await execute(db,
+      `UPDATE system_config SET ${sets.join(', ')} WHERE id = ?`, ...args);
+    if ((result.meta.changes ?? 0) === 0) {
+      return c.json({ error: `No config row with id ${id}` }, 404);
+    }
+    const row = await queryFirst<{
+      id: number; config_key: string; config_value: string;
+      category: string; sort_order: number; is_active: number;
+      created_at: string; updated_at: string;
+    }>(db,
+      `SELECT id, config_key, config_value, category, sort_order, is_active, created_at, updated_at
+       FROM system_config WHERE id = ?`, id);
+    return c.json(row);
+  } catch (err) {
+    const msg = (err as Error).message || '';
+    if (/UNIQUE constraint failed/i.test(msg)) {
+      return c.json({ error: 'Update would produce a duplicate config_key + config_value', code: 'DUPLICATE' }, 409);
+    }
+    return c.json({ error: 'Failed to update config', detail: msg }, 500);
+  }
+});
+
+// ============================================================
+// DELETE /admin/config/:id — hard delete by id (admin only)
+// ============================================================
+// Hard delete matches the AdminSystemTab UX: clicking the trash icon
+// next to an incident type / disposition / etc. should remove the row.
+// Soft-delete via is_active=0 is available via PUT if a future flow
+// needs it (also filtered out by GET /admin/config-items above).
+admin.delete('/config/:id', async (c) => {
+  const guard = requireRole(c, 'admin');
+  if (guard) return c.json({ error: guard }, 403);
+  const idStr = c.req.param('id');
+  const id = parseInt(idStr, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return c.json({ error: `Invalid id "${idStr}"`, code: 'INVALID_ID' }, 400);
+  }
+  try {
+    const db = getDb(c.env);
+    const result = await execute(db, 'DELETE FROM system_config WHERE id = ?', id);
+    if ((result.meta.changes ?? 0) === 0) {
+      return c.json({ error: `No config row with id ${id}` }, 404);
+    }
+    return c.json({ success: true, id });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete config', detail: (err as Error).message }, 500);
+  }
+});
+
 // GET /admin/call-templates
 admin.get('/call-templates', async (c) => {
   try {
