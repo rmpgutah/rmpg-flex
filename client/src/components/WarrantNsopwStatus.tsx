@@ -14,6 +14,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Shield, ShieldAlert, ShieldCheck, Loader2, RefreshCw, ExternalLink } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { safeDateStr } from '../utils/dateUtils';
 
 interface NsopwHit {
   id: number;
@@ -158,7 +159,7 @@ function HitRow({ hit }: { hit: NsopwHit }) {
           <span className="font-bold">{jur || '?'}</span>
           {restStr && <span className="ml-1">{restStr}</span>}
           <span className="ml-2">score {hit.match_score.toFixed(2)}</span>
-          <span className="ml-2">first seen {new Date(hit.last_seen_at).toLocaleDateString()}</span>
+          <span className="ml-2">first seen {safeDateStr(hit.last_seen_at)}</span>
         </div>
       </div>
       <a href={`/nsopw#offender/${hit.external_id}`}
