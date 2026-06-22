@@ -70,6 +70,7 @@ html.theme-dark,
   --spm-chrome: #15212e; --spm-form: #0d1722; --spm-field: #101a26;
   --spm-border: #2a3a4d; --spm-field-border: #2a3a4d; --spm-accent: #5a85b8;
   --spm-select: #316ac5; --spm-text: #e6edf5; --spm-text-muted: #8fa3b8;
+  --spm-text-rgb: 230 237 245; --spm-text-muted-rgb: 143 163 184;
   --spm-group-head: linear-gradient(#1d2d3f, #16222f);
   --spm-toolbar: linear-gradient(#1d2d3f, #16222f);
   --spm-toolbar-hover: linear-gradient(#24344a, #1a2736);
@@ -125,6 +126,7 @@ html.theme-light {
   --spm-chrome: #d6d3c8; --spm-form: #ece9dd; --spm-field: #f7f9fb;
   --spm-border: #9a958a; --spm-field-border: #c3cdd8; --spm-accent: #2e4a66;
   --spm-select: #316ac5; --spm-text: #1a1a1a; --spm-text-muted: #555555;
+  --spm-text-rgb: 26 26 26; --spm-text-muted-rgb: 85 85 85;
   /* Severity palette — DAY: darker so it reads on the light-grey surface. */
   --sev-critical: #b91c1c; --sev-critical-soft: #dc2626;
   --sev-high: #c2410c;
@@ -183,6 +185,7 @@ html.theme-legacy-black {
   --spm-chrome: #0b0b0b; --spm-form: #000000; --spm-field: #0d0d0d;
   --spm-border: #232323; --spm-field-border: #232323; --spm-accent: #9a9a9a;
   --spm-select: #316ac5; --spm-text: #f2f2f2; --spm-text-muted: #8a8a8a;
+  --spm-text-rgb: 242 242 242; --spm-text-muted-rgb: 138 138 138;
   /* Severity palette — LEGACY black: bright like night (dark background). */
   --sev-critical: #ef4444; --sev-critical-soft: #fca5a5;
   --sev-high: #f97316;

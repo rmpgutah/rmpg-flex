@@ -31,6 +31,9 @@ const ANALYTICS_ROLES = ['admin', 'manager', 'supervisor'];
 reports.use('*', async (c, next) => {
   if (c.req.path.includes('/shift-activity/')) return next();
   if (c.req.path.endsWith('/dashboard')) return next();
+  // /calls-near is the patrol-view geo filter — every officer hits it from
+  // the dashboard, not just analytics roles.
+  if (c.req.path.endsWith('/calls-near')) return next();
   return requireRole(...ANALYTICS_ROLES)(c, next);
 });
 
@@ -486,6 +489,19 @@ reports.get('/dashboard', async (c) => {
       query<Record<string, unknown>>(db, "SELECT u.id, usr.full_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.status NOT IN ('off_duty','out_of_service')"),
     ]);
     const todayCalls = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now','start of day')");
+    // Secondary stat-card metrics (added 2026-06-21 — the DashboardPage Status
+    // Summary row reads these but they were never returned, so 3 of 4 cards
+    // permanently showed 0). Tolerant of missing tables/cols on dev/empty
+    // databases so a single missing schema element can't blank the whole tile.
+    const safeCount = async (sql: string): Promise<number> => {
+      try { return (await queryFirst<{ n: number }>(db, sql))?.n ?? 0; } catch { return 0; }
+    };
+    const [activeWarrants, pendingServe, openCases, totalPersons] = await Promise.all([
+      safeCount("SELECT COUNT(*) AS n FROM warrants WHERE status='active' AND archived_at IS NULL"),
+      safeCount("SELECT COUNT(*) AS n FROM serve_queue WHERE status='pending'"),
+      safeCount("SELECT COUNT(*) AS n FROM cases WHERE status NOT LIKE 'closed%' AND archived_at IS NULL"),
+      safeCount('SELECT COUNT(*) AS n FROM persons'),
+    ]);
     return c.json({
       activeCalls: calls?.n ?? 0,
       todayCalls: todayCalls?.n ?? 0,
@@ -500,10 +516,77 @@ reports.get('/dashboard', async (c) => {
       recentActivity: [],
       officersOnDuty: officers,
       callsByHour: byHour,
+      activeWarrants,
+      pendingServe,
+      openCases,
+      totalPersons,
     });
   } catch (err) {
     console.error('[reports] GET /dashboard failed:', err);
-    return c.json({ activeCalls: 0, todayCalls: 0, unitsOnDuty: 0, totalUnits: 0, pendingReports: 0, activeBolos: 0, unreadMessages: 0, avgResponseMinutes: null, callsByPriority: [], callsByStatus: [], recentActivity: [], officersOnDuty: [], callsByHour: [] });
+    return c.json({ activeCalls: 0, todayCalls: 0, unitsOnDuty: 0, totalUnits: 0, pendingReports: 0, activeBolos: 0, unreadMessages: 0, avgResponseMinutes: null, callsByPriority: [], callsByStatus: [], recentActivity: [], officersOnDuty: [], callsByHour: [], activeWarrants: 0, pendingServe: 0, openCases: 0, totalPersons: 0 });
+  }
+});
+
+// GET /api/reports/calls-near — patrol-view geo filter for the dashboard's
+// "Calls Near Me" panel. Returns currently-active calls within `radius_mi`
+// of the supplied coordinates, ordered by distance.
+//
+// Haversine in SQLite: cheap enough for our call volume (~hundreds of open
+// rows max). Filters callers without lat/lng out (they can't be "near"
+// anything geographically). Default radius is 5 miles — enough to cover an
+// urban beat without flooding the panel.
+reports.get('/calls-near', async (c) => {
+  const latRaw = c.req.query('lat');
+  const lngRaw = c.req.query('lng');
+  const radiusRaw = c.req.query('radius_mi');
+  const lat = latRaw != null ? Number(latRaw) : NaN;
+  const lng = lngRaw != null ? Number(lngRaw) : NaN;
+  const radius = Math.max(0.25, Math.min(50, radiusRaw != null ? Number(radiusRaw) || 5 : 5));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return c.json({ error: 'lat and lng query params are required' }, 400);
+  }
+  try {
+    const db = getDb(c.env);
+    // Pre-filter in SQL with a cheap bounding box, then refine with exact
+    // haversine in JS. Avoids relying on D1's math functions (SIN/RADIANS),
+    // which aren't universally guaranteed across SQLite builds. The box
+    // overscan is tiny — N candidate rows × tiny math = negligible work.
+    const latDeg = radius / 69; // 1° latitude ≈ 69 mi
+    const cosLat = Math.cos((lat * Math.PI) / 180);
+    const lngDeg = radius / (69 * Math.max(0.0001, Math.abs(cosLat)));
+    const latMin = lat - latDeg, latMax = lat + latDeg;
+    const lngMin = lng - lngDeg, lngMax = lng + lngDeg;
+    const candidates = await query<{
+      id: number; call_number: string; priority: string; status: string;
+      location_address: string | null; description: string | null;
+      latitude: number; longitude: number; created_at: string;
+    }>(db, `
+      SELECT id, call_number, priority, status, location_address, description,
+             latitude, longitude, created_at
+      FROM calls_for_service
+      WHERE status NOT IN ('cleared','closed','cancelled')
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        AND latitude BETWEEN ? AND ?
+        AND longitude BETWEEN ? AND ?
+      LIMIT 200
+    `, latMin, latMax, lngMin, lngMax);
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const haversineMi = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+      const R = 3959;
+      const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+      const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.asin(Math.sqrt(a));
+    };
+    const calls = candidates
+      .map((r) => ({ ...r, distance_mi: haversineMi(lat, lng, r.latitude, r.longitude) }))
+      .filter((r) => r.distance_mi <= radius)
+      .sort((a, b) => a.distance_mi - b.distance_mi)
+      .slice(0, 25);
+    return c.json({ calls, origin: { lat, lng }, radius_mi: radius });
+  } catch (err) {
+    console.error('[reports] GET /calls-near failed:', err);
+    return c.json({ calls: [], origin: { lat, lng }, radius_mi: radius }, 200);
   }
 });
 

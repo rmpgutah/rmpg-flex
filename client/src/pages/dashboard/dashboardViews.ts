@@ -86,7 +86,8 @@ export function resolveDashboardView(role: string): DashboardView {
 
 export type ToolbarActionId =
   | 'newCall' | 'newIncident' | 'newCitation' | 'startPatrol'
-  | 'processServer' | 'print' | 'refresh';
+  | 'processServer' | 'quickCapture' | 'fieldCamera' | 'patrolScan'
+  | 'tasks' | 'print' | 'refresh';
 
 export interface ToolbarAction { id: ToolbarActionId; label: string; }
 
@@ -96,15 +97,24 @@ const ACTION_LABELS: Record<ToolbarActionId, string> = {
   newCitation: 'New Citation',
   startPatrol: 'Start Patrol',
   processServer: 'Process Server',
+  quickCapture: 'Quick Capture',
+  fieldCamera: 'Field Camera',
+  patrolScan: 'Patrol Scan',
+  tasks: 'Tasks',
   print: 'Print',
   refresh: 'Refresh',
 };
 
-// Toolbar action order. Patrol leads with field actions; others lead with call/incident.
+// Toolbar action order. Patrol leads with field actions (camera/scan/citation/
+// capture); admin/dispatch lead with call/incident creation. Quick Capture +
+// Field Camera + Patrol Scan + Tasks were the major recent feature waves that
+// had no path from the dashboard before — they're surfaced here.
 export function toolbarActionsForView(view: DashboardView): ToolbarAction[] {
   const lead: ToolbarActionId[] = view === 'patrol'
-    ? ['startPatrol', 'newCitation', 'processServer', 'newCall', 'newIncident']
-    : ['newCall', 'newIncident', 'newCitation', 'startPatrol', 'processServer'];
+    ? ['startPatrol', 'patrolScan', 'fieldCamera', 'newCitation', 'quickCapture',
+       'processServer', 'newCall', 'newIncident', 'tasks']
+    : ['newCall', 'newIncident', 'newCitation', 'startPatrol', 'processServer',
+       'quickCapture', 'fieldCamera', 'tasks'];
   const order: ToolbarActionId[] = [...lead, 'print', 'refresh'];
   return order.map((id) => ({ id, label: ACTION_LABELS[id] }));
 }
