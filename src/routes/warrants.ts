@@ -7,7 +7,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { evaluateNotificationRules } from './notificationEngine';
 import { requireRole } from '../middleware/auth';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
@@ -913,7 +913,10 @@ warrants.get('/scrapers', requireRole(...READ_ROLES), async (c) => {
           county: registry.county,
           source_url: registry.source_url,
           source_type: registry.source_type,
-          enabled: 1 as const,
+          // `enabled` column added in mig 0151. Older rows / pre-migration
+          // DBs return undefined → default to 1 (the prior hardcoded value)
+          // so the UI doesn't show every source as disabled.
+          enabled: (cfg.enabled === 0 ? 0 : 1) as 0 | 1,
           circuit_broken,
           priority: registry.priority,
           consecutive_errors: metrics.consecutive_errors,
@@ -1084,6 +1087,81 @@ warrants.post('/scrapers/:source_key/reset-circuit', requireRole(...SCAN_ROLES),
   } catch (err) {
     console.error('[warrants] reset-circuit error', err);
     return c.json({ error: 'Failed to reset circuit' }, 500);
+  }
+});
+
+// Bulk-action support: the `enabled` column was added in mig 0151. Because
+// deploy.yml applies migrations with `continue-on-error: true`, we reconcile
+// at runtime — same idiom as ensureAssessorColumns / clearpathAlpr.ts.
+async function ensureScraperEnabledColumn(db: D1Database): Promise<void> {
+  if (!(await columnExists(db, 'warrant_scraper_config', 'enabled'))) {
+    await execute(db, 'ALTER TABLE warrant_scraper_config ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
+  }
+}
+
+// POST /warrants/scrapers/bulk — multi-source bulk action endpoint.
+// Backs the bulk toolbar + right-click menu in AdminWarrantScrapersTab.
+// Body: { action: 'enable'|'disable'|'reset'|'set_priority', source_keys: string[], priority?: 1..4 }
+// Response: { success: boolean, affected: number }
+warrants.post('/scrapers/bulk', requireRole(...SCAN_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{
+      action?: string;
+      source_keys?: unknown;
+      priority?: unknown;
+    }>();
+
+    const action = body.action;
+    const keys = Array.isArray(body.source_keys)
+      ? body.source_keys.filter((k): k is string => typeof k === 'string' && k.length > 0)
+      : [];
+
+    if (!action || !['enable', 'disable', 'reset', 'set_priority'].includes(action)) {
+      return c.json({ error: `Invalid action '${String(action)}'` }, 400);
+    }
+    if (keys.length === 0) {
+      return c.json({ error: 'source_keys must be a non-empty string array' }, 400);
+    }
+
+    // ?,?,?... — D1 doesn't support array bindings, so expand manually.
+    const placeholders = keys.map(() => '?').join(', ');
+
+    let sql: string;
+    let bindings: unknown[];
+
+    switch (action) {
+      case 'enable':
+      case 'disable': {
+        await ensureScraperEnabledColumn(db);
+        sql = `UPDATE warrant_scraper_config SET enabled = ? WHERE source_name IN (${placeholders})`;
+        bindings = [action === 'enable' ? 1 : 0, ...keys];
+        break;
+      }
+      case 'reset': {
+        sql = `UPDATE warrant_scraper_config SET last_error = NULL WHERE source_name IN (${placeholders})`;
+        bindings = keys;
+        break;
+      }
+      case 'set_priority': {
+        const p = Number(body.priority);
+        if (!Number.isInteger(p) || p < 1 || p > 4) {
+          return c.json({ error: 'priority must be an integer in 1..4 for set_priority' }, 400);
+        }
+        sql = `UPDATE warrant_scraper_config SET priority = ? WHERE source_name IN (${placeholders})`;
+        bindings = [p, ...keys];
+        break;
+      }
+      default:
+        // Unreachable — guarded above.
+        return c.json({ error: 'unreachable' }, 500);
+    }
+
+    const result = await db.prepare(sql).bind(...bindings).run();
+    return c.json({ success: true, affected: result.meta?.changes ?? 0 });
+  } catch (err) {
+    console.error('[warrants] /scrapers/bulk error', err);
+    return c.json({ error: 'Bulk action failed' }, 500);
   }
 });
 
