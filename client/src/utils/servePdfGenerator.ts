@@ -797,26 +797,43 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
   }
 
   // ── Notice Statement ── (keep the whole block together — it must read as one unit)
-  y = checkPageBreak(doc, y, 60);
+  y = checkPageBreak(doc, y, 65);
   {
     const sec = openAutoSection(doc, 'IMPORTANT NOTICE — ATTEMPTED SERVICE OF LEGAL DOCUMENTS', y);
     // addWrappedText draws at the text BASELINE — pad past the black header band
     // so the first line's ascender doesn't clip (matches the
     // psoNoticePdfGenerator fix, commit 3c0e68f9).
-    y = sec.contentY + 3;
+    y = sec.contentY + 4;
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     const contact = data.serverPhone ? ` at ${data.serverPhone}` : ' at the number on file';
+    const pageWidth = doc.internal.pageSize.getWidth();
 
-    // Anti-simulation disclaimer (Utah Code § 76-8-712): the loudest line on the
-    // page must make clear this is NOT court-issued process.
+    // ── Anti-simulation lead (Utah Code § 76-8-712) ──
+    // The loudest line on the page — flanked by horizontal rules so the
+    // subject can't miss it, centered for impact, slightly larger than the
+    // body. Must read as an unambiguous "this is NOT court-issued process"
+    // statement, not just another paragraph.
+    const ruleY1 = y + 1;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.line(lx, ruleY1, lx + ffw, ruleY1);
+    y += 5;
     doc.setFont(PDF_VALUE_FONT, 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE + 2);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const lead = 'THIS IS NOT A COURT ORDER, A SUMMONS, OR A DEMAND FOR PAYMENT.';
-    const leadLines: string[] = doc.splitTextToSize(lead, ffw);
-    doc.text(leadLines, lx, y);
-    y += leadLines.length * 4 + 2;
+    doc.text(lead, pageWidth / 2, y, { align: 'center' });
+    y += 4;
+    doc.line(lx, y, lx + ffw, y);
+    y += SPACING.MD;
 
+    // ── Body prose in mixed case ──
+    // ALL CAPS body text reads as shouting on a notice the subject must
+    // ACTUALLY read. Police-form ALL-CAPS convention belongs on field
+    // labels and table cells; the prose paragraphs here opt out via
+    // preserveCase so the document reads as a professional legal notice
+    // rather than a 1990s warrant printout. (The "lead" line above stays
+    // caps deliberately — emphasis, not body.)
     const noticeText =
       `${company}, a private process service agency, has attempted to deliver the legal document(s) ` +
       'identified above to you in connection with the referenced case. As shown in the record of ' +
@@ -828,10 +845,27 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
       'government agency. It does not create, waive, extend, or otherwise affect any deadline, ' +
       'right, or obligation arising from the underlying legal matter. Process service is performed ' +
       'pursuant to Utah Rule of Civil Procedure 4 and Utah Code § 78B-8-302.';
-    y = addWrappedText(doc, noticeText, lx, y, ffw, FONT.SIZE_FIELD_VALUE);
-    y += SPACING.SM;
+    y = addWrappedText(doc, noticeText, lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
+    y += SPACING.MD;
+
     if (data.nextAttemptNote) {
-      y = addFieldPair(doc, 'Next Attempt', data.nextAttemptNote, lx, y, ffw);
+      // Render the next-attempt sentence as a mixed-case italic call-out
+      // below the disclaimer prose. The field-pair pattern (NEXT ATTEMPT
+      // / WILL RETURN TUESDAY...) would force the value into ALL CAPS via
+      // addFieldPair's sanitization — that conflicts with the professional
+      // mixed-case body above it. Inline italic keeps the rhythm.
+      doc.setFont(PDF_VALUE_FONT, 'bolditalic');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text('Next attempt:', lx, y);
+      const labelW = doc.getTextWidth('Next attempt: ');
+      doc.setFont(PDF_VALUE_FONT, 'italic');
+      const noteLines: string[] = doc.splitTextToSize(
+        sanitizePdfText(data.nextAttemptNote, { preserveCase: true }),
+        ffw - labelW - 2,
+      );
+      doc.text(noteLines, lx + labelW, y);
+      y += noteLines.length * 4 + 2;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
