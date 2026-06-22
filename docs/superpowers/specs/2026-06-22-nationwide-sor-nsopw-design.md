@@ -13,6 +13,39 @@
 
 Page components deleted. Navigation entries in `Sidebar.tsx`, `Layout.tsx`, and `MenuBar.tsx` collapsed to a single "Sex Offender Registry" item pointing at `/nsopw`. Old bookmarks survive via the route redirects.
 
+## Canonical records linkage (mig 0149)
+
+Every NSOPW match (confirmed OR possible) materializes into the
+canonical RMPG records:
+
+- **Persons** — find-or-create by `sor_number = "{jurisdiction}:{ext}"`
+  (when present), else by `(last_name, first_name, dob)` exact, else by
+  `(last_name, first_name)` when both sides have no DOB. The matched
+  or newly-created person gets `is_sex_offender = 1` and (when missing)
+  `sor_number` stamped. Created persons carry
+  `notes = "Auto-created from NSOPW match (<jurisdiction>)"`.
+  Linkage stored on `national_sex_offenders.person_id`.
+
+- **Properties** — one canonical `properties` row per real address
+  (TRANSIENT / INCARCERATED / UNKNOWN / blank addresses are
+  deliberately skipped — they're jurisdictional placeholders, not
+  real addresses). Dedup by normalized address; reuses the existing
+  `findOrCreateProperty` dedup heuristic. New properties land under a
+  sentinel `"NSOPW — Auto-Imported"` client (the `properties` table's
+  `client_id` NOT NULL requirement, mirrored from `serveIntakeRecords`).
+  Linkage stored on `nsopw_offender_properties` (offender × property ×
+  location_type with first/last_seen_at).
+
+- **Vehicles** — table `nsopw_offender_vehicles` provisioned for future
+  per-state detail-page enrichment (NSOPW federated response does not
+  carry vehicle data). Schema is ready; nothing populates it yet.
+
+The orchestrator awaits `materializeOffenderLinks` so the API response
+carries the linked ids back to the client immediately — `View Person Record`
+and `View Property` buttons appear on the very first response, not on a
+re-query. Failures are caught + logged; a failed link doesn't break the
+parent NSOPW result.
+
 ## Full data capture on match (photo persistence)
 
 NSOPW returns `imageUri` deep-linking the source state's image host

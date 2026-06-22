@@ -15,7 +15,7 @@
 // ============================================================
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Search, Loader2, Shield, AlertTriangle, MapPin, User, RefreshCw } from 'lucide-react';
+import { Search, Loader2, Shield, AlertTriangle, MapPin, User, RefreshCw, Building, Link2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from './PanelTitleBar';
 import IconButton from './IconButton';
@@ -43,6 +43,16 @@ interface OffenderCard {
    *  our copy, not the state SOR site. */
   localPhotoUrl: string | null;
   rowId: number | null;
+  /** Auto-created (or matched) canonical persons.id. Deep-links to the
+   *  Records UI. */
+  personId: number | null;
+  /** Auto-created (or matched) canonical properties.id per non-transient
+   *  location. The UI exposes each with a "View Property" button. */
+  linkedProperties: Array<{
+    propertyId: number;
+    locationType: string;
+    locationName: string | null;
+  }>;
   detailUrl: string | null;
   raw?: unknown;
 }
@@ -343,6 +353,29 @@ function OffenderRow({ c }: { c: Classified }) {
         <div className="text-[10px] text-rmpg-400 italic">
           Match: {c.matchedFields.join(', ') || 'none'} · score {c.score.toFixed(2)} · {c.reason}
         </div>
+        {/* Canonical records links — auto-created if missing. */}
+        {(o.personId || (o.linkedProperties && o.linkedProperties.length > 0)) && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {o.personId && (
+              <a href={`/records?tab=persons&personId=${o.personId}`}
+                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-surface-raised border border-border-subtle hover:bg-surface-sunken"
+                title="Open this person's RMPG record">
+                <User className="w-2.5 h-2.5" /> Person Record
+              </a>
+            )}
+            {(o.linkedProperties ?? []).map((p) => (
+              <a key={p.propertyId} href={`/records?tab=properties&propertyId=${p.propertyId}`}
+                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-surface-raised border border-border-subtle hover:bg-surface-sunken"
+                title={`Open property record (${p.locationType.toLowerCase()})`}>
+                <Building className="w-2.5 h-2.5" />
+                {p.locationType === 'RESIDENCE' ? 'Residence'
+                  : p.locationType === 'WORK' ? 'Work'
+                  : p.locationType === 'STUDENT' ? 'School'
+                  : 'Property'}
+              </a>
+            ))}
+          </div>
+        )}
       </div>
       <div className="text-right">
         {o.detailUrl && (
