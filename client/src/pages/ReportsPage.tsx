@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BarChart3,
   Calendar,
@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Check,
   RotateCcw,
+  X,
 } from 'lucide-react';
 import {
   BarChart,
@@ -283,6 +284,14 @@ function ReportApprovalQueue() {
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
+  // Inline return-reason modal — replaces the native window.prompt() that
+  // previously gated the supervisor return-for-revision action. The native
+  // dialog had no a11y, no keyboard polish, and gave the supervisor no
+  // visible context for WHICH report they were rejecting until they hit
+  // Cancel and re-read the row. Same pattern as Court Tracker #1607 and
+  // Cases #1604 (last big native-dialog cluster in the audit).
+  const [returnTarget, setReturnTarget] = useState<any | null>(null);
+  const [returnReason, setReturnReason] = useState('');
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
@@ -307,20 +316,47 @@ function ReportApprovalQueue() {
     finally { setProcessing(null); }
   };
 
-  const handleReturn = async (id: string) => {
-    const reason = prompt('Return reason:');
-    if (!reason) return;
+  const openReturnDialog = (r: any) => {
+    setReturnTarget(r);
+    setReturnReason('');
+  };
+
+  const submitReturn = async () => {
+    const target = returnTarget;
+    const reason = returnReason.trim();
+    if (!target || !reason) return;
+    const id = String(target.id);
     setProcessing(id);
     try {
       await apiFetch(`/records/reports/${id}/return`, { method: 'POST', body: JSON.stringify({ reason }) });
       setReports(prev => prev.filter(r => String(r.id) !== id));
     } catch { /* ignore */ }
-    finally { setProcessing(null); }
+    finally {
+      setProcessing(null);
+      setReturnTarget(null);
+      setReturnReason('');
+    }
   };
+
+  // Esc on the page level closes the return-reason modal first. Implemented
+  // inside the listed-effect below rather than via a global keydown so it
+  // doesn't fight the parent page's smart-cascade.
+  useEffect(() => {
+    if (!returnTarget) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setReturnTarget(null);
+        setReturnReason('');
+      }
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [returnTarget]);
 
   const buildReportMenu = (r: any): ContextMenuItem[] => [
     m.action('Approve', () => handleApprove(String(r.id)), { icon: <Check size={12} />, disabled: processing === String(r.id) }),
-    m.action('Return for revision', () => handleReturn(String(r.id)), { icon: <RotateCcw size={12} />, danger: true, disabled: processing === String(r.id) }),
+    m.action('Return for revision', () => openReturnDialog(r), { icon: <RotateCcw size={12} />, danger: true, disabled: processing === String(r.id) }),
     m.separator(),
     m.copy('Copy incident #', r.incident_number),
     m.copyId(r.id),
@@ -355,7 +391,7 @@ function ReportApprovalQueue() {
               Approve
             </button>
             <button type="button"
-              onClick={() => handleReturn(String(r.id))}
+              onClick={() => openReturnDialog(r)}
               disabled={processing === String(r.id)}
               className="toolbar-btn text-[9px] bg-red-900/30 text-red-400 border-red-700/30 hover:bg-red-800/40"
             >
@@ -364,6 +400,81 @@ function ReportApprovalQueue() {
           </div>
         </div>
       ))}
+
+      {/* Inline return-reason modal — replaces the native window.prompt(). */}
+      {returnTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="return-modal-title"
+          onClick={() => { setReturnTarget(null); setReturnReason(''); }}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
+          <div
+            className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
+              style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}
+            >
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-red-400" />
+                <h2 id="return-modal-title" className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Return Report for Revision</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setReturnTarget(null); setReturnReason(''); }}
+                className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-rmpg-200 leading-relaxed">
+                Tell the author what needs to change. The supervisor note attaches to the report and shows in their queue on next login.
+              </p>
+              <div className="pl-3 border-l-2 border-rmpg-600 text-[10px] text-rmpg-300 space-y-0.5">
+                <div><span className="text-rmpg-400">Incident:</span> <span className="font-mono">{returnTarget.incident_number || '—'}</span></div>
+                {returnTarget.incident_type && <div><span className="text-rmpg-400">Type:</span> {formatIncidentType(returnTarget.incident_type)}</div>}
+                {returnTarget.officer_name && <div><span className="text-rmpg-400">Author:</span> {returnTarget.officer_name}{returnTarget.badge_number ? ` #${returnTarget.badge_number}` : ''}</div>}
+              </div>
+              <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 font-bold">
+                Return reason
+                <textarea
+                  autoFocus
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  rows={4}
+                  placeholder="e.g. Add witness statements, clarify timeline of events…"
+                  className="mt-1 w-full input-dark text-xs px-2 py-1.5 font-sans normal-case"
+                />
+              </label>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setReturnTarget(null); setReturnReason(''); }}
+                  className="toolbar-btn text-xs"
+                  disabled={processing === String(returnTarget.id)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={submitReturn}
+                  disabled={!returnReason.trim() || processing === String(returnTarget.id)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm transition-colors bg-red-700 hover:bg-red-600 border-red-500 text-rmpg-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {processing === String(returnTarget.id) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Return for revision
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -517,7 +628,7 @@ function WeeklyDigestCard() {
               <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-1.5">Daily Breakdown</div>
               <ResponsiveContainer width="100%" height={120}>
                 <BarChart data={digest.byDay}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickFormatter={(d: string) => parseTimestamp(d).toLocaleDateString('en-US', { weekday: 'short' })} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
@@ -577,7 +688,7 @@ function CrimeTrendCard() {
                   <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
               <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
               <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
               <Tooltip {...CHART_TOOLTIP_STYLE} />
@@ -657,7 +768,7 @@ function CitationRevenueCard() {
         {data.monthlyRevenue?.length > 0 && (
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={data.monthlyRevenue}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
               <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
               <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
               <Tooltip {...CHART_TOOLTIP_STYLE} />
@@ -798,15 +909,93 @@ function ReportSchedulesCard() {
   );
 }
 
+// Valid date-range presets accepted by the URL deep-link. Anything outside
+// this list is silently dropped so a bad URL doesn't put the page into an
+// invalid state where the select shows nothing.
+const VALID_DATE_RANGES = new Set([
+  'today', 'last_7_days', 'last_14_days', 'last_30_days',
+  'this_month', 'last_month', 'this_quarter', 'custom',
+]);
+
+// IDs of report cards an operator can scroll-deep-link to. Used for the
+// optional `?card=` query param so a supervisor can hand a colleague a
+// URL that opens straight to the Patrol Tracking generator or Crime Trend
+// table without forcing them to scroll the long dashboard. The values are
+// matched against `data-report-card="..."` anchors on each card root.
+const SCROLLABLE_CARDS = new Set([
+  'patrol-tracking', 'crime-trends', 'beat-activity', 'citation-revenue',
+  'daily-briefing', 'weekly-digest', 'schedules-templates', 'approval-queue',
+]);
+
 export default function ReportsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const navigate = useNavigate();
-  const [dateRange, setDateRange] = useState('last_14_days');
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Hydrate date-range state from URL params on first render so a deep-link
+  // like /reports?range=last_30_days lands the operator on the right window
+  // immediately — supervisors share Reports links in Slack/email all the
+  // time, and the previous behavior (always last_14_days regardless of URL)
+  // silently swallowed those params.
+  const initialRange = (() => {
+    const r = searchParams.get('range');
+    return r && VALID_DATE_RANGES.has(r) ? r : 'last_14_days';
+  })();
+  const initialCustomStart = searchParams.get('start_date') || '';
+  const initialCustomEnd = searchParams.get('end_date') || '';
+  const [dateRange, setDateRange] = useState(initialRange);
+  const [customStartDate, setCustomStartDate] = useState(initialCustomStart);
+  const [customEndDate, setCustomEndDate] = useState(initialCustomEnd);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // ── URL deep-link: scroll-to-card ─────────────────────────────────
+  // Consumes ?card=<id> by scrolling that card into view once the page has
+  // finished its first data fetch (so the card is mounted). Honors the
+  // Dashboard-emit / page-consume contract used across the other audited
+  // pages — Reports is the natural cross-page drill-down target (a Crime
+  // Trend chip on the Dashboard, a "view full report" link from the
+  // Patrol page, etc.).
+  const pendingCardScrollRef = useRef<string | null>(searchParams.get('card'));
+  useEffect(() => {
+    const target = pendingCardScrollRef.current;
+    if (!target || loading) return;
+    if (!SCROLLABLE_CARDS.has(target)) {
+      pendingCardScrollRef.current = null;
+      return;
+    }
+    pendingCardScrollRef.current = null;
+    // requestAnimationFrame so the card's height settles before the scroll.
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-report-card="${target}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Brief highlight so the operator's eye lands on the right card —
+        // pure CSS class toggle, no layout shift.
+        el.classList.add('ring-2', 'ring-brand-400/40');
+        window.setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400/40'), 1500);
+      }
+    });
+  }, [loading]);
+
+  // Mirror state -> URL so a refresh keeps the window. Wrapped in an effect
+  // so we don't fight React's render cycle. We use replace:true to avoid
+  // polluting the back-button history with every preset change.
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (dateRange !== 'last_14_days') next.set('range', dateRange); else next.delete('range');
+    if (dateRange === 'custom' && customStartDate) next.set('start_date', customStartDate);
+    else next.delete('start_date');
+    if (dateRange === 'custom' && customEndDate) next.set('end_date', customEndDate);
+    else next.delete('end_date');
+    // Strip the one-shot card param after the scroll effect consumed it.
+    if (pendingCardScrollRef.current === null && next.has('card')) next.delete('card');
+    const cur = searchParams.toString();
+    const nxt = next.toString();
+    if (cur !== nxt) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange, customStartDate, customEndDate]);
 
   // State for all API data
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -946,6 +1135,44 @@ export default function ReportsPage() {
 
   // Set document title
   useEffect(() => { document.title = 'Reports & Analytics \u2014 RMPG Flex'; }, []);
+
+  // \u2500\u2500 Keyboard shortcuts \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // Esc smart-cascade: close error banner first, then exit custom range,
+  // then bounce back to the Dashboard. The previous Reports page had no
+  // Esc binding at all, so an operator who hit Escape after seeing an
+  // error banner couldn't dismiss it without clicking the small button.
+  //
+  // `N`: open the Custom Report Builder. Mirrors the muscle memory used
+  // on Dispatch / Patrol / FI / Evidence / Trespass / Court Tracker \u2014
+  // typing-suppressed so it doesn't fire while editing the custom-range
+  // date inputs or the return-reason modal that lives inside
+  // ReportApprovalQueue.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (error) { setError(null); return; }
+        if (dateRange === 'custom') { setDateRange('last_14_days'); return; }
+        // No more open layers on this page \u2014 let the global Esc handler
+        // (if any) catch it. We don't call navigate back to Dashboard
+        // here because the operator might be reading a chart and a stray
+        // Esc shouldn't yank them off the page.
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        navigate('/reports/custom');
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [error, dateRange, navigate]);
 
   return (
     <div className={`${isMobile ? 'p-3 space-y-3' : 'p-6 space-y-6'} animate-fade-in overflow-auto`}>
@@ -1173,7 +1400,7 @@ export default function ReportsPage() {
           )}
 
           {/* Feature 27: Report Approval Queue */}
-          <div className="panel-beveled p-4 bg-surface-base">
+          <div data-report-card="approval-queue" className="panel-beveled p-4 bg-surface-base transition-shadow">
             <div className="flex items-center gap-2 mb-3">
               <FileText className="w-4 h-4 text-purple-400" />
               <span className="text-xs font-bold text-rmpg-100 uppercase">Report Approval Queue</span>
@@ -1245,7 +1472,7 @@ export default function ReportsPage() {
               ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={priorityChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
@@ -1275,7 +1502,7 @@ export default function ReportsPage() {
               ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={responseTimeChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} domain={[0, 'auto']} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
@@ -1303,7 +1530,7 @@ export default function ReportsPage() {
               ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={officerChartData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} width={70} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
@@ -1336,7 +1563,7 @@ export default function ReportsPage() {
                       <stop offset="95%" stopColor="#888888" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
@@ -1362,7 +1589,7 @@ export default function ReportsPage() {
                   count: item.count,
                   fill: PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)',
                 }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
@@ -1379,25 +1606,25 @@ export default function ReportsPage() {
           )}
 
           {/* ── Patrol Tracking Report Generator ── */}
-          <PatrolTrackingCard />
+          <div data-report-card="patrol-tracking" className="transition-shadow"><PatrolTrackingCard /></div>
 
           {/* ═══ Feature 3: Crime Trend Analysis ═══ */}
-          <CrimeTrendCard />
+          <div data-report-card="crime-trends" className="transition-shadow"><CrimeTrendCard /></div>
 
           {/* ═══ Feature 4: Beat Activity Report ═══ */}
-          <BeatActivityCard />
+          <div data-report-card="beat-activity" className="transition-shadow"><BeatActivityCard /></div>
 
           {/* ═══ Feature 9: Citation Revenue Report ═══ */}
-          <CitationRevenueCard />
+          <div data-report-card="citation-revenue" className="transition-shadow"><CitationRevenueCard /></div>
 
           {/* ═══ Feature 11 & 12: Briefing & Digest ═══ */}
           <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-2 gap-4'}`}>
-            <DailyBriefingCard />
-            <WeeklyDigestCard />
+            <div data-report-card="daily-briefing" className="transition-shadow"><DailyBriefingCard /></div>
+            <div data-report-card="weekly-digest" className="transition-shadow"><WeeklyDigestCard /></div>
           </div>
 
           {/* ═══ Feature 14 & 15: Schedules & Templates ═══ */}
-          <ReportSchedulesCard />
+          <div data-report-card="schedules-templates" className="transition-shadow"><ReportSchedulesCard /></div>
         </>
       )}
     </div>
@@ -1451,7 +1678,10 @@ function PatrolTrackingCard() {
 
       const data = await apiFetch<any>(`/reports/patrol-tracking?${params}`);
       if (!data?.trails?.length) {
-        alert('No patrol tracking data found for the selected period.');
+        // Native alert() blocked the page on render thread and the supervisor
+        // had to click OK to dismiss before being able to change the date
+        // range. A non-blocking toast lets them adjust filters immediately.
+        addToast('No patrol tracking data found for the selected period.', 'warning');
         return;
       }
 
