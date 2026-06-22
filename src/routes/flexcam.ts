@@ -8,7 +8,7 @@ import { notConfigured } from '../utils/notConfigured';
 import { getClearPathSource } from '../utils/footage/clearpathSource';
 import { getApiConfig, listDevices, listMedia } from '../utils/clearpathGps';
 import { ensureMarkersSchema, buildFootageMarkers } from '../utils/footage/markers';
-import { buildManifest, concatToR2 } from '../utils/footage/concat';
+import { buildManifest, concatToR2, buildPlayerManifest } from '../utils/footage/concat';
 import { requireRole } from '../middleware/auth';
 import { footageEvidenceNumber, isUnlockable, buildCourtManifest, manifestPayloadHash, logCustody, viewSessionKey } from '../utils/footage/evidence';
 import { signTriple } from '../utils/pdfSign';
@@ -42,6 +42,27 @@ async function ensureEvidenceSchema(db: D1Database): Promise<void> {
   await execute(db, `CREATE TABLE IF NOT EXISTS footage_evidence_links (id INTEGER PRIMARY KEY AUTOINCREMENT, footage_request_id INTEGER NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, linked_by INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {});
   await execute(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_footage_evlink ON footage_evidence_links(footage_request_id, entity_type, entity_id)`).catch(() => {});
   evidenceSchemaReady = true;
+}
+
+// Mirrors ensureEvidenceSchema(): tolerates a live D1 that hasn't
+// yet had migration 0144 applied. Safe to call repeatedly — every
+// ALTER is guarded by columnExists().
+async function ensureRemuxSchema(db: D1Database): Promise<void> {
+  const adds: Array<[string, string]> = [
+    ['remux_state', 'TEXT'],
+    ['remux_started_at', 'INTEGER'],
+    ['remux_finished_at', 'INTEGER'],
+    ['remux_error', 'TEXT'],
+    ['remux_attempts', 'INTEGER DEFAULT 0'],
+    ['merged_sha256', 'TEXT'],
+  ];
+  for (const [col, ddl] of adds) {
+    const has = await columnExists(db, 'footage_requests', col).catch(() => false);
+    if (!has) {
+      await db.prepare(`ALTER TABLE footage_requests ADD COLUMN ${col} ${ddl}`)
+        .run().catch(() => {});
+    }
+  }
 }
 
 flexcam.get('/status', async (c): Promise<Response> => {
@@ -129,16 +150,71 @@ flexcam.get('/footage/:id/continuous', async (c): Promise<Response> => {
   return c.json({ merged_status: req.merged_status ?? 'pending', hint: 'POST /render/:id (or client ffmpeg.wasm for MP4)' }, 202);
 });
 
+// Player-oriented trip manifest. Joins unit_trips × footage_chunks
+// (via footage_requests.trip_id) and composes buildPlayerManifest()
+// so the FlexCam page can scrub a multi-request trip on one timeline.
+// Mount-level auth (`/api/flexcam` is `auth: 'required'`) gates access.
+flexcam.get('/trips/:tripId/manifest', async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  const tripId = Number(c.req.param('tripId'));
+  if (!Number.isFinite(tripId)) return c.json({ error: 'Invalid tripId' }, 400);
+  const channel = c.req.query('channel') ?? 'outside';
+
+  const trip = await queryFirst<{ id: number; start_time: number; end_time: number | null }>(
+    db, 'SELECT id, start_time, end_time FROM unit_trips WHERE id = ?', tripId,
+  ).catch(() => null);
+  if (!trip) return c.json({ error: 'Trip not found' }, 404);
+
+  // Pull every chunk attached to any request whose trip_id matches.
+  const chunks = await query<{
+    id: number; request_id: number; seq: number; channel: string;
+    from_ts: number; to_ts: number; status: string; r2_key: string | null;
+    sha256: string | null; bytes: number;
+  }>(db,
+    `SELECT fc.id, fc.request_id, fc.seq, fc.channel, fc.from_ts, fc.to_ts,
+            fc.status, fc.r2_key, fc.sha256, fc.bytes
+       FROM footage_chunks fc
+       JOIN footage_requests fr ON fr.id = fc.request_id
+      WHERE fr.trip_id = ?
+      ORDER BY fc.from_ts`, tripId,
+  ).catch(() => []);
+
+  const manifest = buildPlayerManifest(
+    { id: trip.id, start_time: trip.start_time, end_time: trip.end_time },
+    channel,
+    chunks,
+  );
+  return c.json(manifest);
+});
+
 flexcam.post('/render/:id', async (c): Promise<Response> => {
   const db = getDb(c.env);
+  await ensureRemuxSchema(db);
   const id = Number(c.req.param('id'));
+  const body = await c.req.json<{ format?: 'mp4' | 'ts' | 'fmp4' }>().catch(() => ({} as { format?: 'mp4' | 'ts' | 'fmp4' }));
+  const format = body.format ?? 'mp4';
+
   const rows = await query<{ seq: number; from_ts: number; to_ts: number; status: string; r2_key: string | null; bytes: number }>(
-    db, 'SELECT seq, from_ts, to_ts, status, r2_key, bytes FROM footage_chunks WHERE request_id=? ORDER BY seq', id).catch(() => []);
+    db, 'SELECT seq, from_ts, to_ts, status, r2_key, bytes FROM footage_chunks WHERE request_id=? ORDER BY seq', id,
+  ).catch(() => []);
   const manifest = buildManifest(id, rows);
   if (!manifest.chunks.length) return c.json({ error: 'No downloaded chunks' }, 409);
+
+  if (format === 'mp4') {
+    const stub = c.env.FLEXCAM_REMUX.get(c.env.FLEXCAM_REMUX.idFromName('rmx-' + id));
+    const resp = await stub.fetch('https://do/enqueue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId: id }),
+    });
+    const result = await resp.json<{ state: string }>();
+    await execute(db, "UPDATE footage_requests SET merged_status='queued' WHERE id=?", id);
+    return c.json({ remux_state: result.state, merged_status: 'queued' }, 202);
+  }
+
+  // Existing ts / fmp4 path (unchanged)
   const mergedKey = `flexcam/trips/merged/${id}.mp4`;
-  // Format from the discovery spike; default 'mp4' (unsupported on Worker → client renders).
-  const result = await concatToR2(c.env, mergedKey, manifest.chunks, 'mp4');
+  const result = await concatToR2(c.env, mergedKey, manifest.chunks, format);
   await execute(db, 'UPDATE footage_requests SET merged_r2_key=?, merged_status=? WHERE id=?', result === 'ready' ? mergedKey : null, result, id);
   return c.json({ merged_status: result, merged_r2_key: result === 'ready' ? mergedKey : null });
 });
@@ -202,9 +278,19 @@ flexcam.get('/footage/:id/links', async (c): Promise<Response> => {
 
 flexcam.post('/footage/:id/court-package', async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureEvidenceSchema(db);
+  // Guards the SELECT against schema drift on a live D1 that hasn't had
+  // migration 0144 (merged_sha256 + remux_* columns) applied yet.
+  await ensureRemuxSchema(db);
   const id = Number(c.req.param('id'));
-  const req = await queryFirst<{ id: number; evidence_number: string | null; classification: string; preserved_reason: string | null; from_ts: number; to_ts: number; evidence_locked: number }>(
-    db, 'SELECT id, evidence_number, classification, preserved_reason, from_ts, to_ts, evidence_locked FROM footage_requests WHERE id=?', id).catch(() => null);
+  const req = await queryFirst<{
+    id: number; evidence_number: string | null; classification: string;
+    preserved_reason: string | null; from_ts: number; to_ts: number; evidence_locked: number;
+    merged_status: string | null; merged_r2_key: string | null; merged_sha256: string | null;
+  }>(
+    db,
+    `SELECT id, evidence_number, classification, preserved_reason, from_ts, to_ts, evidence_locked,
+            merged_status, merged_r2_key, merged_sha256
+       FROM footage_requests WHERE id=?`, id).catch(() => null);
   if (!req) return c.json({ error: 'Not found' }, 404);
   if (!req.evidence_locked) return c.json({ error: 'Lock this footage as evidence before generating a court package' }, 409);
   const chunks = await query<{ id: number; seq: number; from_ts: number; to_ts: number; bytes: number; sha256: string | null; status: string; r2_key: string | null }>(

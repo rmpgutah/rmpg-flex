@@ -24,6 +24,7 @@ import { handleWebSocket } from './routes/ws';
 import { emitAlert } from './utils/alertHub';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { DeepResearchDO } from './durable-objects/DeepResearchDO';
+import { FlexCamRemuxDO } from './durable-objects/FlexCamRemuxDO';
 import { doCallbackToken, timingSafeEqual } from './utils/signedAccess';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { AlertHubDO } from './durable-objects/AlertHubDO';
@@ -44,7 +45,7 @@ import { ROUTE_REGISTRY } from './routesConfig';
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
 // [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
-export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer, DeepResearchDO };
+export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer, DeepResearchDO, FlexCamRemuxDO };
 
 // Exported so sub-routers that need to dispatch internal subrequests
 // (e.g. src/routes/offline.ts replaying queued offline writes through

@@ -5,6 +5,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle, CheckCircle2, Clock, Download, FileText, Lock, Play, RefreshCw, Shield, Video, Wrench,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 
@@ -13,6 +14,7 @@ interface Req {
   chunk_count: number; chunks_done: number;
   from_ts: number; to_ts: number;
   evidence_locked?: number; evidence_number?: string | null; classification?: string;
+  trip_id?: string | null;
 }
 
 interface CustodyEntry {
@@ -226,6 +228,11 @@ export default function FlexCamPage() {
                     className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2.5 py-1.5 bg-blue-900/40 border border-blue-700/60 text-blue-300 hover:bg-blue-800/50 transition-colors">
                     <Play className="w-2.5 h-2.5" />PLAY
                   </a>
+                  {r.trip_id ? (
+                    <Link to={`/flexcam/trip/${r.trip_id}`} className="text-xs text-brand-400 hover:underline">
+                      ▶ Play whole trip
+                    </Link>
+                  ) : null}
                   {/* REPAIR — visible on partial trips or stuck fulfilling */}
                   {(r.status === 'partial' || (r.status === 'fulfilling' && r.chunks_done < r.chunk_count)) && !r.evidence_locked && (
                     <button
