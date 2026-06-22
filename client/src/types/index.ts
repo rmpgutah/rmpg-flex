@@ -354,6 +354,7 @@ export interface CallForService {
   process_attempts?: number;
   process_served_at?: string;
   process_service_result?: string;
+  court_name?: string;
   // Damage
   damage_estimate?: number;
   damage_description?: string;
