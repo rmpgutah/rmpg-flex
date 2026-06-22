@@ -1298,6 +1298,54 @@
 //       chunk covering the event timestamp over the short AI clip; response
 //       includes footage_request_id so ForensicDashcamPlayer can show a
 //       "▶ Full Trip" link into the FlexCam trip viewer.
+// v996: PSO ↔ Process Server unification + structured PS code library.
+//       PDF: psoNoticePdfGenerator delegates to generateNoticeOfAttempt so
+//       Dispatch-CFS close and Process-Server "Notice of Attempt" both
+//       produce the same line/box NIBRS document (the historical
+//       court-paragraph layout is preserved as _legacyCourtParagraphLayout
+//       but no longer reachable from any caller).
+//       Codes: client/src/constants/processServiceCodes.ts +
+//       src/utils/processServiceCodes.ts mirror — PS/00..PS/45 hierarchy
+//       with 5-increment categories + .01/.05/.10 sub-codes. Full library:
+//       PS/00 Non-Service, PS/05 Personal, PS/10 Substitute, PS/15 Evasion,
+//       PS/20 Posting, PS/25 Mail, PS/30 Publication, PS/35 Court-Ordered,
+//       PS/40 Administrative, PS/45 Pending. codeToLegacyResult/Queue map
+//       the structured code to the existing enum surfaces.
+//       Wizard: failedReason picker REPLACED with a two-step category→
+//       sub-code PsoCodePicker (color-toned by category tone). The picker
+//       also surfaces on Personal/Substitute/Posting attempts so the
+//       operator can pick PS/05.05 (photo-ID) vs PS/05.10 (verbal) etc.
+//       "Show all 10 categories" widens the picker when needed.
+//       Server: POST /api/process-server/:id/attempt accepts disposition_code,
+//       derives the legacy `result` from it, persists both (columnExists-
+//       guarded). serve_attempts.disposition_code → migration 0143.
+//       Cross-link: NEW src/utils/psoServeCrosslink.ts — when a CFS with
+//       incident_type='pso_client_request' transitions to cleared/closed/
+//       cancelled, mirrors the close into the Process Server queue: find/
+//       create serve_queue row from the call's PSO fields, log one
+//       serve_attempts row with the disposition-mapped PS code, update
+//       queue.status + attempt_count. Wired into both POST /:id/status
+//       AND the CFS Action Bus POST /:id/action. Idempotent within a
+//       60-second window. Response includes pso_crosslink so the
+//       dispatch client can toast + jump to the queue row.
+// v995: Notice of Attempt to Serve — full PDF + data-input overhaul.
+//       PDF: CONFIDENTIAL watermark rotated 45° + wrapped in save/restore
+//       GState (was rendering inline through body text); empty Date/Time/
+//       Notes cells fall back to created_at → em-dash so the recipient
+//       notice is never blank; GPS coords + "GPS coordinates recorded
+//       on-scene" attribution line under the attempt table; hiring-party
+//       label shows "Atty (atty) for Client" when both are on record;
+//       signature image from the latest attempt now actually flows
+//       through to the notice (was unwired). Modal: failed attempts take
+//       a 3-step fast path (Location → Reason → Submit) and skip the
+//       signature step entirely (failed notices are unsworn); next-
+//       attempt picker (date + start/end time) auto-builds an editable
+//       sentence persisted on serve_queue.next_attempt_note (migration
+//       0142); "Other (specify)" free-text reason prepends to notes;
+//       notes field shows a live 90-char counter against the PDF
+//       truncation limit. Server /api/process-server/:id/attempt now
+//       persists next_attempt_note when the column exists, falls back
+//       gracefully when migration 0142 hasn't landed.
 // Stamped at build time by the stamp-sw-version Vite plugin (vite.config.ts)
 // with the git short SHA → 'rmpg-flex-<sha>'. Dev server serves 'rmpg-flex-BUILD'.
 const CACHE_NAME = 'rmpg-flex-BUILD';

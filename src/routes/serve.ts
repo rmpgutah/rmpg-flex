@@ -42,7 +42,8 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
+import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/processServiceCodes';
 import { generateServeCharges } from '../utils/serveChargeStore';
 import { geocodeAddress } from './geocode';
 import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
@@ -485,13 +486,20 @@ sv.put('/:id', async (c) => {
     'document_type', 'case_number', 'court_name', 'jurisdiction',
     'client_name', 'attorney_name', 'priority', 'time_window', 'deadline',
     'max_attempts', 'service_instructions', 'notes', 'status', 'sort_order', 'contract_id',
+    'next_attempt_note',
   ];
   const sets: string[] = [];
   const args: any[] = [];
+  // Schema-guard newly-added columns so the route doesn't 500 when callers
+  // post next_attempt_note before migration 0142 reaches live D1.
+  const hasNextAttemptCol = 'next_attempt_note' in body
+    ? await columnExists(getDb(c.env), 'serve_queue', 'next_attempt_note')
+    : true;
   for (const k of allowed) {
     if (!(k in body)) continue;
     if (k === 'status' && body[k] && !STATUSES.has(body[k])) continue;
     if (k === 'priority' && body[k] && !PRIORITIES.has(body[k])) continue; // skip invalid (CHECK enum)
+    if (k === 'next_attempt_note' && !hasNextAttemptCol) continue;
     sets.push(`${k} = ?`);
     args.push(body[k]);
   }
@@ -529,35 +537,86 @@ async function logAttempt(c: any, defaultResult: string) {
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
 
-  const result = ATTEMPT_RESULTS.has(body.result) ? body.result : defaultResult;
+  // Structured PS code (PS/15.05 etc.) is the new source of truth. When
+  // supplied, it derives both the legacy `result` enum (for the existing
+  // CHECK constraint) and the next queue status. When absent, fall back to
+  // whatever the caller passed in `result` (legacy path).
+  const psCode = typeof body.disposition_code === 'string' && lookupPsoCode(body.disposition_code)
+    ? body.disposition_code.trim().toUpperCase()
+    : null;
+  const result = psCode
+    ? codeToLegacyResult(psCode)
+    : (ATTEMPT_RESULTS.has(body.result) ? body.result : defaultResult);
   const nextNum = (queue.attempt_count ?? 0) + 1;
 
   // Live serve_attempts has no `status` column (migration 0030 drift —
   // never applied to 785de7ae). It's redundant with `result` + the
   // serve_queue.status update below, so omit it. See
   // [[feedback-verify-live-schema-before-insert]].
-  const ins = await execute(
-    db,
-    `INSERT INTO serve_attempts (
-       serve_queue_id, attempt_number, officer_id, result,
-       latitude, longitude, notes, attempt_type, photo_ids, signature_data
-     ) VALUES (?,?,?,?, ?,?,?,?, ?,?)`,
-    id, nextNum, body.officer_id ?? user?.id ?? null, result,
-    body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
-    body.attempt_type ?? null,
-    JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
-  );
+  // Guard the disposition_code write — migration 0143 may not have reached
+  // live D1 when a new client deploys (deploy step is continue-on-error).
+  const hasDispositionCol = psCode
+    ? await columnExists(db, 'serve_attempts', 'disposition_code')
+    : false;
+  const ins = hasDispositionCol
+    ? await execute(
+        db,
+        `INSERT INTO serve_attempts (
+           serve_queue_id, attempt_number, officer_id, result, disposition_code,
+           latitude, longitude, notes, attempt_type, photo_ids, signature_data
+         ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?)`,
+        id, nextNum, body.officer_id ?? user?.id ?? null, result, psCode,
+        body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
+        body.attempt_type ?? null,
+        JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
+      )
+    : await execute(
+        db,
+        `INSERT INTO serve_attempts (
+           serve_queue_id, attempt_number, officer_id, result,
+           latitude, longitude, notes, attempt_type, photo_ids, signature_data
+         ) VALUES (?,?,?,?, ?,?,?,?, ?,?)`,
+        id, nextNum, body.officer_id ?? user?.id ?? null, result,
+        body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
+        body.attempt_type ?? null,
+        JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
+      );
 
+  // Queue status: structured code wins (codeToQueueStatus knows whether a
+  // posting counts as completion, whether a sub-service flips the queue,
+  // etc.); legacy heuristic keeps the existing behavior for non-coded paths.
   let newStatus = queue.status;
-  if (result === 'served' || result === 'sub_served') newStatus = 'served';
+  if (psCode) {
+    const codeStatus = codeToQueueStatus(psCode);
+    if (codeStatus === 'served' || codeStatus === 'failed') newStatus = codeStatus;
+    else if (codeStatus === 'pending') newStatus = 'pending';
+    else newStatus = nextNum >= (queue.max_attempts ?? 3) ? 'failed' : 'attempted';
+  } else if (result === 'served' || result === 'sub_served') newStatus = 'served';
   else if (nextNum >= (queue.max_attempts ?? 3)) newStatus = 'failed';
   else newStatus = 'attempted';
 
-  await execute(
-    db,
-    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
-    nextNum, newStatus, id,
-  );
+  // Operator-set next-attempt note lives on the parent queue row so it
+  // persists across attempts and survives until the Notice of Attempt PDF
+  // reads it. Guard the column write — migration 0142 may not be applied
+  // to live D1 yet when the new client deploys (deploy step is
+  // continue-on-error per CLAUDE.md).
+  const hasNextAttemptCol =
+    typeof body.next_attempt_note === 'string'
+      ? await columnExists(db, 'serve_queue', 'next_attempt_note')
+      : false;
+  if (hasNextAttemptCol) {
+    await execute(
+      db,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, next_attempt_note = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      nextNum, newStatus, body.next_attempt_note || null, id,
+    );
+  } else {
+    await execute(
+      db,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      nextNum, newStatus, id,
+    );
+  }
   // Best-effort: bill on completion (served or non-est/failed). Must never
   // break the serve write, so failures are swallowed by generateServeCharges.
   if (newStatus === 'served' || newStatus === 'failed') {

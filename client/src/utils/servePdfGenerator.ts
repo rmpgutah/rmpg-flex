@@ -26,6 +26,7 @@ import {
   sanitizePdfText,
   finalizePoliceReport,
 } from './pdfGenerator';
+import { lookupPsoCode, formatCodeFull } from '../constants/processServiceCodes';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   PDF_VALUE_FONT,
@@ -634,8 +635,16 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
 // Template 2b: Notice of Attempt to Serve (unsuccessful attempt notice)
 // ══════════════════════════════════════════════════════════════
 
-/** Human-readable label for a serve_attempt result/reason code. */
+/**
+ * Human-readable label for a serve_attempt result/reason code. Detects
+ * structured PS codes (PS/15.05) first so the new code library wins over
+ * legacy enum mapping; falls back to the historical enum labels below for
+ * legacy attempts logged before migration 0143.
+ */
 export function serveResultLabel(result: string): string {
+  // Structured code path — accept "PS/15.05" (uppercase or lowercase).
+  const psCode = lookupPsoCode(result);
+  if (psCode) return formatCodeFull(result);
   switch ((result || '').toLowerCase()) {
     case 'no_answer': return 'No answer at address';
     case 'refused': return 'Service refused';
@@ -696,8 +705,18 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
     const fy1 = addFieldPair(doc, '4. Court', data.courtName, lx, y, hfw);
     const fy2 = addFieldPair(doc, '5. Case Number', data.caseNumber, rx, y, hfw);
     y = Math.max(fy1, fy2);
+    // Hiring Party label: when both the attorney and the client are on
+    // record, show both with role disambiguation ("Atty / Client") so the
+    // recipient can identify the originating party. Falls back to whichever
+    // single name exists, then 'N/A'.
+    const hiringPartyLabel = (() => {
+      if (data.attorneyName && data.clientName) {
+        return `${data.attorneyName} (atty) for ${data.clientName}`;
+      }
+      return data.attorneyName || data.clientName || 'N/A';
+    })();
     const gy1 = addFieldPair(doc, '6. Jurisdiction', data.jurisdiction, lx, y, hfw);
-    const gy2 = addFieldPair(doc, '7. Hiring Party', data.attorneyName || data.clientName || 'N/A', rx, y, hfw);
+    const gy2 = addFieldPair(doc, '7. Hiring Party', hiringPartyLabel, rx, y, hfw);
     y = Math.max(gy1, gy2);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -722,14 +741,34 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
     ];
     const shown = data.attempts.slice(-MAX_NOTICE_ATTEMPTS);
     const omitted = data.attempts.length - shown.length;
+    // Empty-cell convention: em-dash signals "no data captured" without
+    // looking like accidental whitespace. The bridge (ServePage.handle-
+    // NoticeOfAttempt) already falls back to created_at when attempt_at
+    // is null; if both are missing we land here with an empty string.
+    const EMPTY = '—';
+    // Inline GPS coords next to the NOTES text so the legal record carries
+    // on-scene verification without bloating the table into 6 columns
+    // (the recipient-facing notice has to stay scannable). Decimal-degrees
+    // with 4 places ≈ 11 m precision, enough to identify a parcel.
+    const fmtGps = (lat?: number | null, lng?: number | null): string => {
+      if (lat == null || lng == null) return '';
+      return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    };
+    let anyGps = false;
     const rows = shown.map(a => {
       const note = sanitizePdfText(a.notes || '');
+      const gps = fmtGps(a.gpsLat, a.gpsLng);
+      if (gps) anyGps = true;
+      const noteCore = note
+        ? (note.length > MAX_NOTE_CHARS ? `${note.slice(0, MAX_NOTE_CHARS - 1)}…` : note).toUpperCase()
+        : '';
+      const noteCell = [noteCore, gps && `GPS ${gps}`].filter(Boolean).join(' · ') || EMPTY;
       return [
         String(a.number),
-        sanitizePdfText(a.date || '').toUpperCase(),
-        sanitizePdfText(a.time || '').toUpperCase(),
+        (sanitizePdfText(a.date || '').toUpperCase() || EMPTY),
+        (sanitizePdfText(a.time || '').toUpperCase() || EMPTY),
         sanitizePdfText(serveResultLabel(a.result)).toUpperCase(),
-        (note.length > MAX_NOTE_CHARS ? `${note.slice(0, MAX_NOTE_CHARS - 1)}…` : note).toUpperCase(),
+        noteCell,
       ];
     });
     y = addTableWithShading(doc, headers, rows, y, cols);
@@ -739,6 +778,16 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       doc.text(
         `${omitted} earlier attempt(s) omitted for space — complete history available in the service log.`,
+        lx, y + 3,
+      );
+      y += 5;
+    }
+    if (anyGps) {
+      doc.setFont(PDF_VALUE_FONT, 'italic');
+      doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
+      doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      doc.text(
+        'GPS coordinates recorded on-scene for legal verification (WGS-84, decimal degrees).',
         lx, y + 3,
       );
       y += 5;

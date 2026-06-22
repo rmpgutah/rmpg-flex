@@ -15,6 +15,7 @@ import { parseUnitIds, canonicalUnitIdsJson } from './unitIds';
 import { setFleetOdometer, vehicleOdometerForUnit } from '../../utils/fleetOdometer';
 import { codedLike, escapeLike } from '../../utils/searchText';
 import { planAction, isCfsVerb } from '../../utils/cfsActions';
+import { crossLinkPsoCloseToServe } from '../../utils/psoServeCrosslink';
 
 const calls = new Hono<Env>();
 
@@ -1107,11 +1108,30 @@ calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
       }
     }
 
+    // PSO Client Request cross-link: when a PSO CFS hits a terminal status,
+    // mirror the close into the Process Server queue — find/create the linked
+    // serve_queue row + log a serve_attempts row with the structured PS code
+    // derived from the disposition. Best-effort: a failure here MUST NOT
+    // break the CFS status transition itself.
+    let psoCrosslink: Awaited<ReturnType<typeof crossLinkPsoCloseToServe>> | null = null;
+    if (id && ['cleared', 'closed', 'cancelled'].includes(status)
+        && (updated?.incident_type as string | undefined) === 'pso_client_request') {
+      try {
+        psoCrosslink = await crossLinkPsoCloseToServe(db, id, {
+          actorUserId: (c.get('userId') as number | undefined) ?? null,
+        });
+      } catch (xlErr) {
+        console.warn('[pso crosslink] non-fatal:', (xlErr as Error)?.message);
+      }
+    }
+
     // Fan the transition to every console via AlertHubDO. Previously this handler
     // emitted NO broadcast at all, so dispatched→enroute→onscene→cleared changes
     // only surfaced on the next adaptive poll — the unit board lagged reality.
     await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged });
-    return c.json(merged);
+    // psoCrosslink summary lets the dispatch client toast "Sent to Process
+    // Server queue" + jump to the queue row without an extra round-trip.
+    return c.json(psoCrosslink ? { ...merged, pso_crosslink: psoCrosslink } : merged);
   } catch (err) {
     return c.json({ error: 'Failed to update status' }, 500);
   }
@@ -1181,11 +1201,32 @@ calls.post('/:id/action', requireRole(...WRITE_ROLES), async (c): Promise<Respon
     }
 
     const updated = await queryFirst<Record<string, unknown>>(db,
-      `SELECT c.id, c.status, c.priority, c.disposition, c.unit_call_signs, e.narrative
+      `SELECT c.id, c.status, c.priority, c.disposition, c.unit_call_signs, c.incident_type, e.narrative
          FROM calls_for_service c
          LEFT JOIN calls_for_service_ext e ON e.id = c.id
         WHERE c.id = ?`, id);
-    return c.json({ success: true, action: action ?? verb, narrative: plan.narrative, call: updated });
+
+    // PSO Client Request cross-link: mirror the close into the Process
+    // Server queue when the action transitioned the call to a terminal
+    // state. Same idempotent helper as POST /:id/status. Best-effort.
+    let psoCrosslink: Awaited<ReturnType<typeof crossLinkPsoCloseToServe>> | null = null;
+    const updatedStatus = String(updated?.status ?? '');
+    if (id && ['cleared', 'closed', 'cancelled'].includes(updatedStatus)
+        && (updated?.incident_type as string | undefined) === 'pso_client_request') {
+      try {
+        psoCrosslink = await crossLinkPsoCloseToServe(db, id, { actorUserId: userId ?? null });
+      } catch (xlErr) {
+        console.warn('[pso crosslink action] non-fatal:', (xlErr as Error)?.message);
+      }
+    }
+
+    return c.json({
+      success: true,
+      action: action ?? verb,
+      narrative: plan.narrative,
+      call: updated,
+      ...(psoCrosslink ? { pso_crosslink: psoCrosslink } : {}),
+    });
   } catch (err) {
     console.error('POST /dispatch/calls/:id/action failed:', err);
     return c.json({ error: 'action failed' }, 500);

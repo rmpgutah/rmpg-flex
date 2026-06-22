@@ -467,6 +467,10 @@ export function addConfidentialWatermark(doc: jsPDF) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
+  // Wrap GState/font changes so callers don't inherit our 6 %-opacity state
+  // (the old version mutated GState globally; if a downstream draw landed
+  // before the final `opacity: 1.0` reset, body text rendered ghost-faint).
+  doc.saveGraphicsState();
   // @ts-expect-error jsPDF GState — visible on both white and dark backgrounds
   doc.setGState(new doc.GState({ opacity: 0.06 }));
   doc.setFont(PDF_VALUE_FONT, 'bold');
@@ -475,19 +479,18 @@ export function addConfidentialWatermark(doc: jsPDF) {
   const cx = pageWidth / 2;
   const cy = pageHeight / 2;
 
-  // Dark gray text — visible on white paper
+  // 45° rotation matches addDraftWatermark — without it the word sits on a
+  // line of body text instead of crossing the page diagonally as a watermark.
   doc.setTextColor(80, 80, 80);
-  doc.text('CONFIDENTIAL', cx, cy, { align: 'center' });
+  doc.text('CONFIDENTIAL', cx, cy, { align: 'center', angle: 45 });
 
-  // White text slightly offset — visible over dark section headers
+  // White ghost echo improves contrast over dark section header bands.
   doc.setTextColor(255, 255, 255);
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 0.15 }));
-  doc.text('CONFIDENTIAL', cx, cy, { align: 'center' });
+  doc.text('CONFIDENTIAL', cx, cy, { align: 'center', angle: 45 });
 
-  // Reset opacity to full
-  // @ts-expect-error jsPDF GState
-  doc.setGState(new doc.GState({ opacity: 1.0 }));
+  doc.restoreGraphicsState();
 }
 
 // Feature 34: Add "DRAFT" watermark to unapproved reports

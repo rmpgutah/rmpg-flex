@@ -6,23 +6,24 @@
 // door or handed to an occupant, so it is addressed TO the person
 // being served (the respondent) — not to the contracting client.
 //
-// FORMAT: plain-paper court-style legal notice. Deliberately does NOT
-// use the branded pdfGenerator/pdfTokens form suite (black section
-// bands, gold rules, logos, barcodes) — this document is styled like
-// something a process server would file with the court: white paper,
-// black Times text, 1" margins, centered caption, formal body
-// paragraphs, attempt record, declaration, and signature block.
-//
-// Internal dispatch details (billing codes, authorizations, client
-// contact blocks, re-dispatch call numbers, attempt notes) are
-// deliberately NOT printed — the contracting client appears only as
-// a one-line "at the request of" reference. For the sworn/affidavit
-// serve documents use servePdfGenerator.ts (generateNoticeOfAttempt).
+// FORMAT: As of 2026-06-21 this generator UNIFIES with the Process
+// Server "Notice of Attempt to Serve" — both surfaces produce the
+// same line/box NIBRS-style police-form PDF via generateNoticeOfAttempt
+// in servePdfGenerator.ts. The historical court-paragraph layout was
+// retired so Dispatch CFS-close and Process-Server "Notice of Attempt"
+// deliver one consistent document to recipients. The public function
+// signatures here are preserved (DispatchPage + psoNoticeAutofill
+// still call generateNoticeOfCommunication), but the implementation
+// is a thin adapter that maps NoticeOfCommunicationData →
+// NoticeOfAttemptData and delegates to the canonical generator.
 // ============================================================
 
 import jsPDF from 'jspdf';
 import { sanitizePdfText } from './pdfGenerator';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { generateNoticeOfAttempt } from './servePdfGenerator';
+import type { NoticeOfAttemptData } from './servePdfGenerator';
+import { lookupPsoCode, formatCodeFull } from '../constants/processServiceCodes';
 
 export interface NoticeOfCommunicationAttempt {
   number: number;
@@ -151,7 +152,71 @@ function legalDate(iso: string): string {
   return month ? `${month} ${parseInt(m[3], 10)}, ${m[1]}` : cleanText(iso);
 }
 
+/**
+ * Adapt the PSO Communication payload to the unified Notice-of-Attempt
+ * shape and delegate to the canonical NIBRS-style generator. Keeping the
+ * function signature intact means DispatchPage and psoNoticeAutofill
+ * continue to call generateNoticeOfCommunication unchanged.
+ */
 export async function generateNoticeOfCommunication(data: NoticeOfCommunicationData): Promise<jsPDF> {
+  const recipient = (data.respondentName && data.respondentName.trim())
+    ? data.respondentName.trim()
+    : 'Occupant / Respondent';
+
+  const noticeAttempts: NoticeOfAttemptData['attempts'] = (data.attempts || []).map((a) => {
+    // The historical PSO payload's `result` may already be a structured PS
+    // code ("PS/15.05"), a legacy disposition string ("PS Evasive"), or a
+    // free-form enum ("no_contact"). The unified Notice generator's
+    // serveResultLabel() handles the legacy + free-form path; the PS code
+    // path is normalized here so the table cell reads as a full code.
+    const psCode = lookupPsoCode(a.result);
+    const resultText = psCode ? formatCodeFull(a.result) : (a.result || 'other');
+    return {
+      number: a.number,
+      date: a.date,
+      time: a.time,
+      result: resultText,
+      notes: a.notes || '',
+    };
+  });
+
+  const adapter: NoticeOfAttemptData = {
+    // The Notice of Attempt template's "Case Number" slot accepts whatever
+    // identifier the operator should print at the top — prefer the court
+    // case number, fall back to the agency reference (CFS) number.
+    caseNumber: data.courtCaseNumber || data.callNumber || 'N/A',
+    noticeDate: data.noticeDate,
+    courtName: data.courtName || 'N/A',
+    jurisdiction: 'Salt Lake County, Utah',
+    serverName: data.officerName || 'Process Server',
+    serverBadge: data.officerBadge || '',
+    serverCompany: 'Rocky Mountain Protective Group',
+    serverPhone: data.dispatchPhone || data.officerPhone,
+    signature: data.signature,
+    recipientName: recipient,
+    recipientAddress: data.serviceAddress || 'Address on file',
+    documentType: data.serviceType || 'Legal Documents',
+    // The contracting client maps cleanly onto the Hiring Party slot — keeps
+    // the recipient-facing notice honest about who originated the request.
+    clientName: data.clientName,
+    attempts: noticeAttempts,
+    nextAttemptNote: data.nextWindow,
+  };
+
+  // Hand off to the unified line/box generator. Anything that touches the
+  // visual style (watermark, headers, table chrome, attribution lines,
+  // signature block) lives there and is now identical for both surfaces.
+  return generateNoticeOfAttempt(adapter);
+}
+
+// ─── Legacy helpers preserved for back-compat ──────────────────────────
+// `_unusedLegacyShim` retains the old jsPDF/font/Arial setup so the import
+// list above still has a visible reference to registerArialFont; the new
+// generateNoticeOfCommunication delegates entirely to generateNoticeOfAttempt
+// so the historical court-paragraph layout below is no longer reachable.
+// We keep it exported as a named symbol so a downstream caller that imports
+// it for the legacy look can still reach it explicitly.
+export async function _legacyCourtParagraphLayout(data: NoticeOfCommunicationData): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   doc.setTextColor(0, 0, 0);

@@ -185,16 +185,34 @@ export default function ServePage() {
       const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
       const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
         .filter(Boolean).join(', ');
-      // Only unsuccessful attempts belong on a Notice of Attempt.
+      // Only unsuccessful attempts belong on a Notice of Attempt. Filter on
+      // both the legacy result enum AND the new disposition_code: a PS/05.*
+      // code is a completed service (Personal), so its attempt shouldn't
+      // appear on the "non-service" notice. Same for PS/10.* (Substitute)
+      // and PS/20.* (Posted, when the queue is `served`).
+      const { parseTimestamp } = await import('../utils/dateUtils');
       const attempts = (job.attempts || [])
-        .filter((a) => (a.result || '').toLowerCase() !== 'served')
+        .filter((a) => {
+          if ((a.result || '').toLowerCase() === 'served') return false;
+          const code = String((a as any).disposition_code || '').toUpperCase();
+          if (code.startsWith('PS/05') || code.startsWith('PS/10') || code.startsWith('PS/25')) return false;
+          return true;
+        })
         .map((a, i) => {
-          const at = a.attempt_at ? new Date(a.attempt_at) : null;
+          // Soft-recovery: prefer attempt_at, fall back to created_at. Legacy
+          // and auto-logged attempts sometimes have a null attempt_at but
+          // always have a created_at — without this the table renders blank.
+          // parseTimestamp() handles naive UTC server strings ("YYYY-MM-DD HH:MM:SS").
+          const ts = a.attempt_at || a.created_at || null;
+          const at = ts ? parseTimestamp(ts) : null;
+          // Structured code wins over the legacy enum — the generator's
+          // serveResultLabel() prints the full PS/XX.XX — Label.
+          const resultText = (a as any).disposition_code || a.result || 'other';
           return {
             number: a.attempt_number ?? i + 1,
-            date: at ? at.toLocaleDateString() : '',
-            time: at ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
-            result: a.result || 'other',
+            date: at && !isNaN(at.getTime()) ? at.toLocaleDateString() : '',
+            time: at && !isNaN(at.getTime()) ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+            result: resultText,
             notes: a.notes || '',
             gpsLat: a.latitude ?? null,
             gpsLng: a.longitude ?? null,
@@ -204,6 +222,18 @@ export default function ServePage() {
         setFetchError('No unsuccessful attempts recorded yet — log a failed attempt before generating a Notice of Attempt.');
         return;
       }
+      // The latest attempt carries the freshest signature; use it as the
+      // server's mark on the notice. (The Notice of Attempt is an unsworn
+      // notice, but a visible signature improves recipient trust.)
+      const latestAttempt = (job.attempts || [])[(job.attempts || []).length - 1] || {};
+      // Operator-set next-attempt note lives on the queue row — set by the
+      // attempt modal when a failed attempt is logged. Falls back to the
+      // generic boilerplate when nothing is scheduled and the job is still
+      // active; suppressed entirely when the queue is in failed terminal state.
+      const nextAttemptNote = (job as any).next_attempt_note
+        || (job.status === 'failed'
+              ? undefined
+              : 'A further attempt may be made; contact our office to arrange service.');
       const { generateNoticeOfAttempt } = await import('../utils/servePdfGenerator');
       const pdf = await generateNoticeOfAttempt({
         noticeDate: new Date().toLocaleDateString(),
@@ -213,13 +243,14 @@ export default function ServePage() {
         serverName: user?.full_name || user?.username || 'Process Server',
         serverBadge: user?.badge_number || '',
         serverCompany: 'Rocky Mountain Protective Group',
+        signature: latestAttempt.signature_data || undefined,
         recipientName: job.recipient_name,
         recipientAddress: fullAddress || (job.recipient_address || 'N/A'),
         documentType: job.document_type,
         clientName: job.client_name || undefined,
         attorneyName: job.attorney_name || undefined,
         attempts,
-        nextAttemptNote: job.status === 'failed' ? undefined : 'A further attempt may be made; contact our office to arrange service.',
+        nextAttemptNote,
       });
       // Open the REAL PDF bytes in a new tab so the server can print/leave the
       // notice immediately. (dataurlnewwindow opened an HTML wrapper around a

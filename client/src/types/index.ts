@@ -3163,6 +3163,10 @@ export interface ServeJob {
   sort_order: number;
   service_instructions: string | null;
   notes: string | null;
+  // Free-text "next attempt" message the server enters when logging a failed
+  // attempt — surfaced verbatim on the Notice of Attempt PDF. NULL means use
+  // the generic boilerplate. Persisted via migration 0134_serve_queue_next_attempt.
+  next_attempt_note: string | null;
   created_at: string;
   updated_at: string;
   call_id: number | null;
@@ -3217,6 +3221,14 @@ export interface ServeAttemptData {
   photo_ids?: string[];
   signature_data?: string;
   notes?: string;
+  // Optional operator-set message for the next attempt window — stored on the
+  // parent serve_queue row, not on the attempt itself, so it persists across
+  // attempts and is read at Notice-of-Attempt PDF generation time.
+  next_attempt_note?: string;
+  // Structured PS disposition code (PS/00..PS/45.XX). When supplied, the
+  // server derives the legacy `result` enum from it via codeToLegacyResult
+  // and persists the full code in serve_attempts.disposition_code.
+  disposition_code?: string;
 }
 
 export interface ServeRoute {
