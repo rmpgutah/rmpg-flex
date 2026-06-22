@@ -25,9 +25,27 @@ import {
   XAxis, YAxis, ZAxis, Tooltip, CartesianGrid,
   BarChart, Bar, Legend,
 } from 'recharts';
+import { Check } from 'lucide-react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { SectionHeader } from '../shell/SectionHeader';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
+import { useAuth } from '../../../../context/AuthContext';
+
+// Resolve a CSS custom property to a literal hex/rgb string for recharts
+// fills (recharts can't follow `var(--…)` at runtime — it copies the prop
+// into a generated <path fill="…">). Falls back to the hard-coded brand
+// hex if the var isn't on the element (e.g. SSR / pre-paint). Computed
+// once per mount; theme switches don't re-color recharts visuals until
+// the next route mount, which is acceptable for analytics screens.
+function cssVar(name: string, fallback: string): string {
+  if (typeof window === 'undefined' || !window.document) return fallback;
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 // ─── Shared period switcher ─────────────────────────────────
 
@@ -284,29 +302,50 @@ function fmtUsd(n: number | null | undefined): string {
 
 // ─── Route ─────────────────────────────────────────────────
 
-const PERIOD_STORAGE_KEY = 'rmpg_fleet_insights_period';
+const PERIOD_STORAGE_BASE = 'rmpg_fleet_insights_period';
+
+// Per-user scoping — shared-workstation pattern is real here (dispatch ↔
+// patrol on the same MDT); without the suffix everyone shared a key and
+// the last officer's preference clobbered the next one's. Anonymous /
+// pre-auth fall back to the bare key so the helper still works in tests
+// and the (rare) un-logged-in state. Pattern mirrors LawBookPage's
+// `rmpg_lawbook_recent_<user.id>` key. The OLD bare key is read once as
+// a one-time migration so existing operators don't lose their choice.
+function periodKey(userId: string | number | undefined): string {
+  return userId != null ? `${PERIOD_STORAGE_BASE}_${userId}` : PERIOD_STORAGE_BASE;
+}
 
 // Pull initial period from localStorage so the choice persists across reloads
 // (PR 9b saved-view persistence). Falls back to '90d' for fresh installs and
 // silently to in-memory state if localStorage is unavailable (SSR / private).
-export function readSavedPeriod(): Period {
+export function readSavedPeriod(userId?: string | number): Period {
   if (typeof window === 'undefined' || !window.localStorage) return '90d';
   try {
-    const raw = window.localStorage.getItem(PERIOD_STORAGE_KEY);
+    const k = periodKey(userId);
+    let raw = window.localStorage.getItem(k);
+    // One-time migration from the shared bare key.
+    if (!raw && userId != null) {
+      raw = window.localStorage.getItem(PERIOD_STORAGE_BASE);
+      if (raw === '30d' || raw === '90d' || raw === 'ytd') {
+        try { window.localStorage.setItem(k, raw); } catch { /* quota — silent */ }
+      }
+    }
     if (raw === '30d' || raw === '90d' || raw === 'ytd') return raw;
   } catch { /* private mode → fall through */ }
   return '90d';
 }
 
-function savePeriod(period: Period): void {
+function savePeriod(period: Period, userId?: string | number): void {
   if (typeof window === 'undefined' || !window.localStorage) return;
-  try { window.localStorage.setItem(PERIOD_STORAGE_KEY, period); } catch { /* quota / private — silent */ }
+  try { window.localStorage.setItem(periodKey(userId), period); } catch { /* quota / private — silent */ }
 }
 
 export function InsightsRoute() {
   useFleetV2View('/fleet/v2/insights');
-  const [period, setPeriodState] = useState<Period>(() => readSavedPeriod());
-  const setPeriod = (next: Period) => { setPeriodState(next); savePeriod(next); };
+  const { user } = useAuth();
+  const uid = user?.id;
+  const [period, setPeriodState] = useState<Period>(() => readSavedPeriod(uid));
+  const setPeriod = (next: Period) => { setPeriodState(next); savePeriod(next, uid); };
   return (
     <div className="h-full flex flex-col">
       <SectionHeader
@@ -331,7 +370,7 @@ export function InsightsRoute() {
         </div>
         <PmTimelineCard />
         <p className="text-[10px] text-rmpg-500 pt-2">
-          Backed by <code>/api/fleet-viz/*</code> aggregates (PR 7-9 backend #1500). Period persisted to localStorage (<code>{PERIOD_STORAGE_KEY}</code>).
+          Backed by <code>/api/fleet-viz/*</code> aggregates (PR 7-9 backend #1500). Period persisted per-user to localStorage (<code>{periodKey(uid)}</code>).
         </p>
       </div>
     </div>
@@ -392,7 +431,7 @@ function MpgByOfficerScatterCard({ period }: { period: Period }) {
                 formatter={(value, name) => [typeof value === 'number' ? value.toFixed(1) : value, name]}
                 labelFormatter={() => ''}
               />
-              <Scatter data={data.by_officer} fill="#d4a017" />
+              <Scatter data={data.by_officer} fill={cssVar('--brand-gold', '#d4a017')} />
             </ScatterChart>
           </ResponsiveContainer>
         </div>
@@ -450,7 +489,7 @@ function CostPerMileStackCard({ period }: { period: Period }) {
               />
               <Legend wrapperStyle={{ fontSize: 10 }} />
               <Bar dataKey="fuel" stackId="a" fill="#3b82f6" />
-              <Bar dataKey="maintenance" stackId="a" fill="#d4a017" />
+              <Bar dataKey="maintenance" stackId="a" fill={cssVar('--brand-gold', '#d4a017')} />
               <Bar dataKey="parts" stackId="a" fill="#10b981" />
             </BarChart>
           </ResponsiveContainer>
@@ -489,8 +528,8 @@ function FuelAnomaliesCard({ period }: { period: Period }) {
       {err ? <div className="text-xs text-red-400">{err}</div> :
        data == null ? <Skeleton lines={6} /> :
        flagged.length === 0 ? (
-         <div className="text-[10px] text-emerald-400 px-2 py-1 border border-emerald-500/40 rounded-sm bg-emerald-500/10">
-           ✓ No anomalies this period.
+         <div className="text-[10px] text-emerald-400 px-2 py-1 border border-emerald-500/40 rounded-sm bg-emerald-500/10 inline-flex items-center gap-1">
+           <Check className="w-3 h-3" aria-hidden="true" /> No anomalies this period.
          </div>
        ) : (
         <div className="overflow-x-auto">

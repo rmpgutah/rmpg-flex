@@ -9,7 +9,7 @@
 // legacy /fleet maintenance tab in a new tab.
 // ============================================================
 import { useEffect, useState, useCallback } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { FleetListShell } from '../shell/FleetListShell';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
@@ -216,6 +216,21 @@ function NewWorkOrderModal({ vehicles, onClose, onCreated }: NewWorkOrderModalPr
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Esc closes the modal — page-24 audit gap. We don't block while saving
+  // because the save is async and a stuck-spinner modal would otherwise
+  // need a force-refresh. Mirrors the smart-cascade pattern other audited
+  // pages use (Esc closes the top-most layer, never the underlying screen).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving) {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKey, { capture: true });
+    return () => document.removeEventListener('keydown', onKey, { capture: true });
+  }, [onClose, saving]);
+
   const handleSave = () => {
     setErr(null);
     if (!vehicleId) {
@@ -246,8 +261,7 @@ function NewWorkOrderModal({ vehicles, onClose, onCreated }: NewWorkOrderModalPr
       role="dialog"
       aria-modal="true"
       aria-labelledby="new-wo-title"
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.6)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={saving ? undefined : onClose}
     >
       <div
@@ -256,8 +270,14 @@ function NewWorkOrderModal({ vehicles, onClose, onCreated }: NewWorkOrderModalPr
       >
         <header className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700">
           <h2 id="new-wo-title" className="text-sm font-semibold text-rmpg-100">New Work Order</h2>
-          <button type="button" onClick={onClose} className="text-xs text-rmpg-400 hover:text-rmpg-100" disabled={saving}>
-            ✕
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-rmpg-400 hover:text-rmpg-100 p-1"
+            disabled={saving}
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </header>
         <div className="p-4 space-y-3">

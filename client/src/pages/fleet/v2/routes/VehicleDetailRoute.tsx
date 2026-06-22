@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useState, useCallback } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { OverviewTab } from '../vehicleDetail/OverviewTab';
@@ -48,11 +48,50 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'activity',    label: 'Activity' },
 ];
 
+const TAB_IDS = new Set<TabId>([
+  'overview', 'service', 'inspections', 'fuel', 'issues', 'work-orders',
+  'documents', 'costs', 'recalls', 'damage', 'tires', 'assignments', 'activity',
+]);
+
+function isTabId(v: string | null): v is TabId {
+  return !!v && (TAB_IDS as Set<string>).has(v);
+}
+
 export function VehicleDetailRoute() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   useFleetV2View(`/fleet/v2/vehicles/${id ?? ''}`);
   const [vehicle, setVehicle] = useState<FleetVehicleDetail | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  // Tab is URL-driven so an operator can land directly on, say,
+  // /fleet/v2/vehicles/42?tab=inspections from a deep-link in dispatch or
+  // a court-prep email. Falls through to 'overview' if the param is
+  // missing or unknown — never throws on a bad ?tab=.
+  const urlTab = searchParams.get('tab');
+  const initialTab: TabId = isTabId(urlTab) ? urlTab : 'overview';
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+
+  // Sync local state when the URL changes (back/forward, paste new link).
+  useEffect(() => {
+    const next = searchParams.get('tab');
+    if (isTabId(next) && next !== activeTab) {
+      setActiveTab(next);
+    }
+    // Strip unknown ?tab= values silently rather than leaving stale junk.
+    if (next && !isTabId(next)) {
+      const cleaned = new URLSearchParams(searchParams);
+      cleaned.delete('tab');
+      setSearchParams(cleaned, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const selectTab = useCallback((t: TabId) => {
+    setActiveTab(t);
+    const next = new URLSearchParams(searchParams);
+    if (t === 'overview') next.delete('tab'); // keep the default URL clean
+    else next.set('tab', t);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!id) return;
@@ -87,7 +126,7 @@ export function VehicleDetailRoute() {
               key={t.id}
               role="tab"
               aria-selected={activeTab === t.id}
-              onClick={() => setActiveTab(t.id)}
+              onClick={() => selectTab(t.id)}
               className={`px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm ${
                 activeTab === t.id ? 'bg-rmpg-700 text-rmpg-50' : 'text-rmpg-400 hover:text-rmpg-100'
               }`}

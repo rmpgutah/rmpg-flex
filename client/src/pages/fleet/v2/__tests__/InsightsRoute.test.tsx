@@ -46,6 +46,15 @@ vi.mock('../../../../utils/mapboxLoader', () => ({
   isMapboxReady: vi.fn().mockReturnValue(true),
 }));
 
+// InsightsRoute now reads `useAuth().user?.id` to scope the period-storage
+// key per-officer (so a shared MDT doesn't clobber preferences between
+// dispatch ↔ patrol). Provide a minimal user stub here — the tests assert
+// the same UI shape as before, the user-scoping is verified by separate
+// localStorage unit checks in the route module itself.
+vi.mock('../../../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 1, role: 'admin' } }),
+}));
+
 function stubApi(handlers: Record<string, unknown>) {
   vi.stubGlobal('fetch', vi.fn().mockImplementation((input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : (input instanceof URL ? input.toString() : (input as Request).url);
@@ -196,6 +205,43 @@ describe('<InsightsRoute>', () => {
     window.localStorage.setItem('rmpg_fleet_insights_period', 'bogus');
     expect(readSavedPeriod()).toBe('90d');  // rejects unknown values
     window.localStorage.removeItem('rmpg_fleet_insights_period');
+  });
+
+  it('scopes the saved period per user and migrates from the shared key', () => {
+    // Page-24 audit: shared-MDT pattern (dispatch ↔ patrol on the same
+    // physical terminal) used to clobber each operator's period choice
+    // because they all wrote to the bare `rmpg_fleet_insights_period`
+    // key. The fix is a `_<user.id>` suffix with a one-time read-through
+    // migration from the bare key so existing operators don't lose state.
+    const bare = 'rmpg_fleet_insights_period';
+    const scoped42 = `${bare}_42`;
+    const scoped99 = `${bare}_99`;
+    window.localStorage.removeItem(bare);
+    window.localStorage.removeItem(scoped42);
+    window.localStorage.removeItem(scoped99);
+
+    // 1. Per-user empty falls back to '90d'.
+    expect(readSavedPeriod(42)).toBe('90d');
+
+    // 2. One-time migration: a value on the bare key is adopted into the
+    //    scoped key on first read and the scoped key is written through.
+    window.localStorage.setItem(bare, 'ytd');
+    expect(readSavedPeriod(42)).toBe('ytd');
+    expect(window.localStorage.getItem(scoped42)).toBe('ytd');
+
+    // 3. User 99 starts fresh — they don't inherit user 42's choice.
+    //    The bare key is still 'ytd' (migration applies once-per-user).
+    expect(readSavedPeriod(99)).toBe('ytd'); // first time → adopts bare
+    expect(window.localStorage.getItem(scoped99)).toBe('ytd');
+
+    // 4. Subsequent writes are scoped. Updating user 42 doesn't touch 99.
+    window.localStorage.setItem(scoped42, '30d');
+    expect(readSavedPeriod(42)).toBe('30d');
+    expect(readSavedPeriod(99)).toBe('ytd');
+
+    window.localStorage.removeItem(bare);
+    window.localStorage.removeItem(scoped42);
+    window.localStorage.removeItem(scoped99);
   });
 
   it('renders the new V3/V4/V6 cards (PR 8b)', async () => {
