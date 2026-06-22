@@ -17,7 +17,7 @@ See [docs/superpowers/specs/2026-06-22-rmpg-flex-connect-ios-design.md](../../do
 2. Target → Signing & Capabilities → select your personal team (a free Apple ID works; install expires after 7 days — re-run to refresh).
 3. Plug in iPhone, pick it as the destination, press ⌘R.
 4. On the phone: Settings → General → VPN & Device Management → trust the cert.
-5. In Settings inside the app, enter RMPG creds and tap "Test login".
+5. On first launch, enter your RMPG credentials on the login screen and tap **TEST LOGIN**.
 
 ## Test the packages from CLI
 

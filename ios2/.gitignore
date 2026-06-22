@@ -9,5 +9,10 @@
 **/Packages/*/Package.resolved
 **/DerivedData/
 
+# Build outputs
+**/*.ipa
+**/*.dSYM/
+**/*.dSYM.zip
+
 # Generated
 **/.DS_Store

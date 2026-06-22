@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# Reinstall RMPG Flex Connect on the first connected iPhone via Xcode.
-# Requires Xcode + the `xcrun` toolchain. CLI builds bypass the Xcode GUI deadlock noted in ios/README.md.
+# Reinstall RMPG Flex Connect on the connected iPhone.
+#
+# STATUS: M0 stub. Not yet usable because:
+#   1. RMPGFlexConnect.xcodeproj doesn't exist until M0/Task 6 lands.
+#   2. xcodebuild deadlocks on the operator's Mac (see ios/README.md:77-87) —
+#      once provisioning is set up, this will be rewritten to follow the
+#      swiftc + manual-bundle + codesign pattern from ios/refresh-device.sh.
+#
+# For now, install via Xcode GUI: open RMPGFlexConnect.xcodeproj, plug in the
+# iPhone, and press Cmd-R.
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
-DEVICE_ID="$(xcrun devicectl list devices --quiet --json-output - 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(dev["identifier"]) for dev in d.get("result",{}).get("devices",[]) if dev.get("connectionProperties",{}).get("pairingState")=="paired"]' | head -n1)"
-
-if [ -z "${DEVICE_ID}" ]; then
-    echo "❌ No paired iPhone found. Connect a device and try again."
+if [ ! -d "RMPGFlexConnect.xcodeproj" ]; then
+    echo "RMPGFlexConnect.xcodeproj not found — run after M0/Task 6."
     exit 1
 fi
 
-echo "→ Building for device ${DEVICE_ID}..."
-xcodebuild -scheme RMPGFlexConnect \
-    -destination "id=${DEVICE_ID}" \
-    -configuration Debug \
-    -derivedDataPath .build \
-    build
-
-APP_PATH="$(find .build -name "RMPGFlexConnect.app" -type d | head -n1)"
-echo "→ Installing ${APP_PATH}..."
-xcrun devicectl device install app --device "${DEVICE_ID}" "${APP_PATH}"
-
-echo "✅ Installed. Launch from the home screen."
+echo "refresh-device.sh is an M0 stub. Use Xcode GUI Cmd-R to install."
+echo ""
+echo "Once provisioning is set up (post-M1), this will be rewritten to mirror"
+echo "ios/refresh-device.sh — swiftc + manual bundle + codesign + devicectl install,"
+echo "bypassing the xcodebuild deadlock documented in ios/README.md:77-87."
+exit 2
