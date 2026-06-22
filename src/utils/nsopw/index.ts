@@ -339,6 +339,7 @@ export async function ensureNsopwColumns(env: Bindings): Promise<void> {
         offense TEXT, risk_level TEXT, tier INTEGER, registration_status TEXT,
         compliance_status TEXT, photo_url TEXT, detail_url TEXT,
         detail_json TEXT, last_seen_at TEXT,
+        absconder INTEGER DEFAULT 0, age INTEGER, locations_json TEXT,
         fetched_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')))`);
       await execute(db, `CREATE TABLE IF NOT EXISTS nsopw_query_cache (
@@ -371,6 +372,19 @@ export async function ensureNsopwColumns(env: Bindings): Promise<void> {
   // would 500).
   if (!(await columnExists(db, 'persons', 'middle_name'))) {
     await execute(db, 'ALTER TABLE persons ADD COLUMN middle_name TEXT').catch(() => {});
+  }
+  // Mig 0147 adds absconder/age/locations_json on national_sex_offenders
+  // + jurisdiction_stats_json on nsopw_runs (real wire fields discovered
+  // during 2026-06-22 reconnaissance). Self-heal here.
+  for (const col of [
+    ['national_sex_offenders', 'absconder', 'INTEGER DEFAULT 0'],
+    ['national_sex_offenders', 'age', 'INTEGER'],
+    ['national_sex_offenders', 'locations_json', 'TEXT'],
+    ['nsopw_runs', 'jurisdiction_stats_json', 'TEXT'],
+  ] as const) {
+    if (!(await columnExists(db, col[0], col[1]))) {
+      await execute(db, `ALTER TABLE ${col[0]} ADD COLUMN ${col[1]} ${col[2]}`).catch(() => {});
+    }
   }
   _columnsEnsured = true;
 }

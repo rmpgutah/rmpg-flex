@@ -1,15 +1,32 @@
 // ============================================================
-// RMPG Flex — NSOPW Web Service client.
+// RMPG Flex — NSOPW Web Service client (the REAL one).
 // ------------------------------------------------------------
-// Wraps the DOJ-issued NSOPW federated search endpoint. The wire
-// format is the one publicly documented at nsopw.gov; the literal
-// MOU pack may rename a field or tighten the schema, in which case
-// only this file needs to change — every caller talks to a stable
-// internal contract (NsopwClient.search → NsopwSearchResponse).
+// Wire format reverse-engineered by reconnaissance on the live
+// nsopw.gov search form on 2026-06-22. Ground truth fixtures:
+//   tests/fixtures/nsopw/john-smith-search.real.json
+//   tests/fixtures/nsopw/jurisdictions-offline.real.json
 //
-// Auth: NSOPW_API_KEY (issued under MOU). Sent as Bearer header.
-// Endpoint: NSOPW_API_BASE (default https://api.nsopw.gov, override
-// in wrangler.toml if DOJ assigns a different host).
+// Endpoint: POST https://nsopw-api.ojp.gov/nsopw/v1/v1.0/search
+// Auth:     NONE. This is the public CORS-restricted endpoint
+//           the official nsopw.gov form calls. Anyone with the
+//           right headers + body can call it server-side.
+//
+// ⚠️  TERMS OF USE caveat: nsopw.gov's Conditions of Use page
+// likely prohibits automated/programmatic access to the public
+// endpoint, regardless of CORS allowing it technically. For
+// formal sanctioned LE use, the DOJ MOU path is the clean
+// option. This adapter is gated by NSOPW_ENABLED — set it
+// explicitly to opt in. Without the flag, every NSOPW call
+// returns `configured: false` and surfaces the disabled state
+// as a coverage gap (NOT a clearance) via the false-clear
+// guard in the screening framework.
+//
+// Headers required by the endpoint (browser CORS dance):
+//   Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+//     (despite the body being literal JSON — this is what the
+//      official nsopw.gov form sends)
+//   Origin: https://www.nsopw.gov
+//   Accept: application/json
 //
 // Worker-safe: no node:* imports. AbortController-based timeout,
 // bounded retry on transient 5xx / 429, typed errors.
@@ -21,66 +38,96 @@ import {
   NsopwConfigError, NsopwTimeoutError, NsopwHttpError, NsopwRateLimitError,
 } from './types';
 import { parseSearchResponse } from './parse';
+import { NSOPW_ALL_JURISDICTIONS } from './jurisdictions';
 
-const DEFAULT_BASE = 'https://api.nsopw.gov';
+const DEFAULT_BASE = 'https://nsopw-api.ojp.gov';
+const SEARCH_PATH = '/nsopw/v1/v1.0/search';
+const OFFLINE_PATH = '/nsopw/v1/v1.0/jurisdictions/offline';
 const DEFAULT_TIMEOUT_MS = 25_000;          // federated query takes 5-20s
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_BACKOFF_MS = 1_500;
 
 export interface NsopwClientConfig {
-  apiKey: string;
+  enabled: boolean;
   apiBase: string;
   timeoutMs: number;
   maxRetries: number;
+  /** Optional MOU-issued key. When set, sent as Authorization: Bearer.
+   *  Not required by the public endpoint but useful when the MOU sanctions
+   *  higher rate limits or formal attribution. */
+  apiKey?: string;
 }
 
 export function resolveClientConfig(env: Bindings): NsopwClientConfig {
-  const apiKey = (env as { NSOPW_API_KEY?: string }).NSOPW_API_KEY ?? '';
-  if (!apiKey) throw new NsopwConfigError('NSOPW_API_KEY unset');
+  // The endpoint is technically public, but we still gate the integration
+  // behind an explicit env flag so deployments must opt in to programmatic
+  // calls. This is the operator's "yes, our ToU posture is settled" switch.
+  const enabledFlag = (env as { NSOPW_ENABLED?: string }).NSOPW_ENABLED;
+  const enabled = enabledFlag === '1' || enabledFlag === 'true';
+  const apiKey = (env as { NSOPW_API_KEY?: string }).NSOPW_API_KEY;
   const apiBase = (env as { NSOPW_API_BASE?: string }).NSOPW_API_BASE || DEFAULT_BASE;
   return {
-    apiKey,
+    enabled,
     apiBase: apiBase.replace(/\/$/, ''),
     timeoutMs: DEFAULT_TIMEOUT_MS,
     maxRetries: DEFAULT_MAX_RETRIES,
+    apiKey: apiKey?.trim() || undefined,
   };
 }
 
-/** Probe whether the integration is configured without throwing. */
+/** Probe whether the integration is enabled without throwing. */
 export function isConfigured(env: Bindings): boolean {
-  return !!(env as { NSOPW_API_KEY?: string }).NSOPW_API_KEY;
+  const cfg = resolveClientConfig(env);
+  return cfg.enabled;
 }
 
 /**
- * Issue one federated NSOPW search. Returns a parsed response, or
- * throws a typed error. Caller is responsible for caching/persisting.
+ * Issue one federated NSOPW search against the live public endpoint.
+ * Returns a parsed response, or throws a typed error.
+ *
+ * NSOPW does NOT accept a DOB in the search form. The query.dob field
+ * on the input is intentionally NOT sent; matching is post-response.
  */
 export async function nsopwSearch(
   env: Bindings,
   query: NsopwQuery,
   config: NsopwClientConfig = resolveClientConfig(env),
 ): Promise<{ response: NsopwSearchResponse; httpStatus: number; latencyMs: number }> {
+  if (!config.enabled) throw new NsopwConfigError('NSOPW_ENABLED is not set');
+
   const body = JSON.stringify({
-    // Documented public-side envelope. The MOU spec may rename these;
-    // when the pack arrives, the operator updates these key names and
-    // every downstream layer keeps working.
-    firstName: query.forename,
-    lastName: query.surname,
-    middleName: query.middleName ?? '',
-    dob: query.dob ?? '',
-    // Empty jurisdictions array = federate to ALL participating systems
-    // (the whole point of NSOPW).
-    jurisdictions: [] as string[],
+    firstName: query.forename ?? '',
+    lastName: query.surname ?? '',
+    city: query.city ?? '',
+    county: query.county ?? '',
+    // zips is plural in the real wire shape, accepts a space-separated string
+    // OR a single zip; null is valid for "no zip filter".
+    zips: query.zip ?? null,
+    longitude: null,
+    latitude: null,
+    distance: null,
+    // Empty array = federate to NOTHING. Always send the full known list.
+    jurisdictions: [...NSOPW_ALL_JURISDICTIONS],
+    clientIp: '',
   });
 
+  // CONTENT-TYPE: the official site posts JSON with Content-Type
+  // application/x-www-form-urlencoded. That's unusual but it's what
+  // their backend accepts — they parse the raw body as JSON regardless.
   const headers: Record<string, string> = {
-    'content-type': 'application/json',
-    'accept': 'application/json',
-    'authorization': `Bearer ${config.apiKey}`,
-    'user-agent': 'RMPG-Flex/1.0 (Cloudflare Workers)',
+    'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+    'accept': 'application/json, text/javascript, */*; q=0.01',
+    // Origin matching the official site — server-side calls bypass CORS,
+    // but the Origin header may be inspected by upstream filters.
+    'origin': 'https://www.nsopw.gov',
+    'referer': 'https://www.nsopw.gov/',
+    'user-agent': 'RMPG-Flex/1.0 (Cloudflare Workers; sworn LE)',
   };
+  if (config.apiKey) {
+    headers['authorization'] = `Bearer ${config.apiKey}`;
+  }
 
-  const url = `${config.apiBase}/api/search`;
+  const url = `${config.apiBase}${SEARCH_PATH}`;
   const start = Date.now();
   let lastErr: Error | undefined;
 
@@ -118,7 +165,7 @@ export async function nsopwSearch(
       if (err instanceof Error && err.name === 'AbortError') {
         lastErr = new NsopwTimeoutError();
       } else if (err instanceof NsopwRateLimitError || err instanceof NsopwHttpError) {
-        throw err;                        // already-typed; bubble out
+        throw err;
       } else {
         lastErr = err instanceof Error ? err : new Error(String(err));
       }
@@ -130,6 +177,38 @@ export async function nsopwSearch(
   }
 
   throw lastErr ?? new NsopwHttpError(0, 'unknown failure');
+}
+
+/**
+ * Fetch the offline-jurisdictions list. Powers the coverage banner:
+ * when MN is in the offline list, a 0-record response from MN means
+ * "the state's API was down", not "no offenders match in MN".
+ */
+export async function nsopwOfflineJurisdictions(
+  env: Bindings,
+  config: NsopwClientConfig = resolveClientConfig(env),
+): Promise<string[]> {
+  if (!config.enabled) return [];
+  const url = `${config.apiBase}${OFFLINE_PATH}`;
+  const headers: Record<string, string> = {
+    'accept': 'application/json',
+    'origin': 'https://www.nsopw.gov',
+    'referer': 'https://www.nsopw.gov/',
+    'user-agent': 'RMPG-Flex/1.0 (Cloudflare Workers; sworn LE)',
+  };
+  if (config.apiKey) headers['authorization'] = `Bearer ${config.apiKey}`;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), config.timeoutMs);
+  try {
+    const res = await fetch(url, { method: 'GET', headers, signal: ctrl.signal });
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => []);
+    return Array.isArray(data) ? data.map(String) : [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 function sleep(ms: number): Promise<void> {

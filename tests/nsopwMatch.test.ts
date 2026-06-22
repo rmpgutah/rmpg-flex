@@ -6,9 +6,11 @@ function offender(over: Partial<NsopwOffender> = {}): NsopwOffender {
   return {
     nsopwOffenderId: 'X1', jurisdiction: 'UT', jurisdictionLabel: 'Utah',
     firstName: '', middleName: null, lastName: '', suffix: null, aliases: [],
-    dateOfBirth: null, sex: null, race: null, height: null, weight: null,
+    dateOfBirth: null, age: null, sex: null, race: null,
+    height: null, weight: null,
     hairColor: null, eyeColor: null, scarsMarks: null,
-    address: null, city: null, state: null, zip: null,
+    address: null, city: null, county: null, state: null, zip: null,
+    latitude: null, longitude: null, locations: [], absconder: false,
     offense: null, riskLevel: null, tier: null,
     registrationStatus: null, complianceStatus: null,
     photoUrl: null, detailUrl: null, raw: {},
@@ -71,7 +73,10 @@ describe('NSOPW classifyCandidate — strict + officer confirms', () => {
       { surname: 'Garcia', forename: 'Carlos', dob: '1985-06-12' },
       offender({
         firstName: 'Carlos', lastName: 'Rodriguez', dateOfBirth: '1985-06-12',
-        aliases: ['Carlos Garcia', 'C. Garcia'],
+        aliases: [
+          { firstName: 'Carlos', middleName: null, lastName: 'Garcia' },
+          { firstName: 'C', middleName: null, lastName: 'Garcia' },
+        ],
       }),
     );
     // Still a possible because alias-only surname can never reach the
