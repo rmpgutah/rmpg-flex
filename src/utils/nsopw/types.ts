@@ -80,6 +80,15 @@ export interface NsopwOffender {
    *  by the orchestrator after upsert; used to drive localPhotoUrl
    *  and the /api/nsopw/offender/:id detail link. */
   rowId: number | null;
+  /** Linked canonical persons.id (auto-created if no existing local
+   *  person matched the offender). Set after materializeOffenderLinks
+   *  in the orchestrator. Client uses this to deep-link to the
+   *  Records UI: /records?tab=persons&personId={personId}. */
+  personId: number | null;
+  /** Linked properties.id rows (one per real address from locations[];
+   *  TRANSIENT / INCARCERATED skipped). Each entry carries the
+   *  location_type so the UI can label "Residence" / "Work" / etc. */
+  linkedProperties: Array<{ propertyId: number; locationType: string; locationName: string | null }>;
   detailUrl: string | null;           // wire: offenderUri (deep-link to jurisdiction's public record)
   raw: unknown;
 }

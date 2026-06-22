@@ -190,10 +190,13 @@ export function parseOffender(raw: unknown): NsopwOffender | null {
     registrationStatus: null,
     complianceStatus: null,
     photoUrl: str(b.imageUri),
-    // localPhotoUrl + rowId are set by the orchestrator after
-    // upsertOffender; the parser doesn't know the row id yet.
+    // localPhotoUrl + rowId + personId + linkedProperties are set by
+    // the orchestrator after upsertOffender + materializeOffenderLinks;
+    // the parser doesn't know the row id yet.
     localPhotoUrl: null,
     rowId: null,
+    personId: null,
+    linkedProperties: [],
     detailUrl: str(b.offenderUri),
     raw,
   };
