@@ -691,6 +691,23 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1026: DL Search — privacy + theme + deep-link. recentScans
+//        localStorage key was global ('rmpg-dl-recent-scans') — two
+//        officers sharing a workstation saw each other's last DL
+//        scans (names + DL numbers). Bumped to a per-user key
+//        ('rmpg-dl-recent-scans:<userId>'); legacy global key is
+//        proactively cleared on hydration. Adds /dl-search?dl=…&state=…
+//        and ?last=…&first=…&dob=… URL deep-links (9th consecutive
+//        page-pass; auto-pre-fills inputs + runs search; strips
+//        params). Theme: 30+ hardcoded hex sites lifted across 5
+//        palettes: [#d4a017]/[#b88a12]/[#e0ac1d] gold trio →
+//        var(--brand-gold)/rgb(var(--brand-gold-700-rgb))/
+//        rgb(var(--brand-gold-400-rgb)); off-token soft-green
+//        [#7fb069] (×5, valid-DL/21+ badges) → var(--sev-ok-soft);
+//        warm-grey [#a89878] → var(--spm-text-muted); [#888888] →
+//        var(--spm-text-muted). Heaviest hex page in the audit so
+//        far — page wrote its own off-palette colors before the
+//        token system existed.
 // v1023: Patrol — hydrate isOnBreak from /patrol/breaks on mount (was
 //        local-state-only; operator on break who refreshed the page saw
 //        "Start Break" + a fresh click raced into a 2nd break). Adds a
