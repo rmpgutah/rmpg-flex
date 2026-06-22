@@ -190,6 +190,10 @@ export function parseOffender(raw: unknown): NsopwOffender | null {
     registrationStatus: null,
     complianceStatus: null,
     photoUrl: str(b.imageUri),
+    // localPhotoUrl + rowId are set by the orchestrator after
+    // upsertOffender; the parser doesn't know the row id yet.
+    localPhotoUrl: null,
+    rowId: null,
     detailUrl: str(b.offenderUri),
     raw,
   };

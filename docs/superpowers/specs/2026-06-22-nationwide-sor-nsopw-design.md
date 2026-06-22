@@ -1,8 +1,88 @@
 # Nationwide SOR Cross-Reference via NSOPW
 
-**Status:** Implemented + reconnaissance follow-up done. Set `NSOPW_ENABLED=1` to go live (no MOU required).
-**Date:** 2026-06-22 (initial design + recon)
+**Status:** Implemented + reconnaissance + photo persistence + UI consolidation. Live with `NSOPW_ENABLED=1` (no MOU required).
+**Date:** 2026-06-22 (initial design + recon + consolidation)
 **Author:** Christopher Zamora + Claude
+
+## Consolidation pass (PR series #1588 → #1590 → #1594 → photos PR)
+
+**`/nsopw` is now the only Sex Offender Registry surface in the app.** The two legacy pages were folded in:
+
+- **`/sex-offender-registry`** (Utah-only iCrimeWatch SOR) → now redirects to `/nsopw`
+- **`/offender-registry`** (RMPG-internal offender_alerts compliance) → now redirects to `/nsopw`
+
+Page components deleted. Navigation entries in `Sidebar.tsx`, `Layout.tsx`, and `MenuBar.tsx` collapsed to a single "Sex Offender Registry" item pointing at `/nsopw`. Old bookmarks survive via the route redirects.
+
+## Full data capture on match (photo persistence)
+
+NSOPW returns `imageUri` deep-linking the source state's image host
+(`fdle.state.fl.us`, `meganslaw.ca.gov`, `wsdocs.watchsystems.com`, etc.).
+Those URLs rotate on state CDN changes — leaving our records pointing at
+404s. Mig 0148 adds 5 columns to `national_sex_offenders`
+(`local_photo_key`, `local_photo_url`, `photo_fetched_at`,
+`photo_size_bytes`, `photo_content_type`); the orchestrator (`src/utils/nsopw/index.ts`)
+fires `downloadAndStorePhoto()` for every confirmed/possible candidate via
+`ctx.waitUntil()`. Photos land in R2 (`rmpg-flex-uploads`, prefix
+`nsopw-photos/{JURISDICTION}/{slug}.{ext}`) and are served back through
+`GET /api/nsopw/photo/:offenderRowId` (auth-gated). Self-rate-limited to
+once-per-7-days per offender (a re-query within the window skips the
+download). The client `NsopwSearchPanel` prefers `localPhotoUrl` over
+the upstream `photoUrl` and falls back on `img onError` if the local
+copy isn't in R2 yet.
+
+The full `detail_json` blob already captured the complete NSOPW response;
+mig 0147's `locations_json` captured multi-location. Combined with mig
+0148's photo, the RMPG-side record now owns a faithful copy of everything
+NSOPW returns about the subject.
+
+## NSOPW under warrants
+
+NSOPW is the primary SOR retention system under warrants:
+
+- **Auto-screen on warrant creation:** `src/routes/warrants.ts` POST `/`
+  fires `screenPersonForSor(env, subject_person_id, {triggeredBy:'warrant_create'})`
+  via `c.executionCtx.waitUntil()`. Confirmed/possible hits land in
+  `screening_hits` immediately after the warrant is recorded.
+- **Warrant Detail UI** renders a new `WarrantNsopwStatus` pane (between
+  Subject Info and Court Info) that reads `/api/nsopw/person/:id/hits` and
+  shows confirmed (red) + possible (amber) matches, the local photograph,
+  jurisdiction badge, match score, and a "Re-screen" button that triggers
+  a fresh federated query.
+
+## Reconnaissance update (2026-06-22)
+
+The initial design assumed an MOU-gated endpoint at `api.nsopw.gov`. **Live reconnaissance against the
+public nsopw.gov form showed the real federated search endpoint is `POST https://nsopw-api.ojp.gov/nsopw/v1/v1.0/search`,
+public-CORS-restricted (no auth), with a completely different request/response shape.** All findings are
+captured in `tests/fixtures/nsopw/john-smith-search.real.json` (399 offenders, 317 KB).
+
+Key changes from the initial design (now reflected in the code):
+
+- **Endpoint** → `https://nsopw-api.ojp.gov/nsopw/v1/v1.0/search`
+- **Auth** → none (public). MOU key still accepted as Bearer for sanctioned higher rate limits.
+- **Request body** → `firstName/lastName/city/county/zips/jurisdictions[]/clientIp` JSON sent with
+  `Content-Type: application/x-www-form-urlencoded`. **NO `dob` field accepted.** Jurisdictions array
+  must be the literal full list of 183 codes (`src/utils/nsopw/jurisdictions.ts`).
+- **Response shape** → `{statusCode, jurisdictionStatus[], query, offenders[]}` at top level. Each
+  offender is `{name:{givenName,middleName,surName}, aliases:[{...}], gender, dob, age, locations[], offenderUri, imageUri, absconder, jurisdictionId}`.
+- **DOB IS in the response** on ~73% of records as ISO datetime (`"1972-04-28T00:00:00"`). The strict-match
+  policy in `match.ts` works against the real data unchanged — name search, DOB post-filter.
+- **Offense / tier / risk are NOT in the federated response.** They require a per-state detail-URL
+  enrichment scrape (future work). The database columns remain (filled by future enrichment).
+- **`absconder` boolean is new** (94% coverage). Captured by mig 0147.
+- **Multi-location**: `locations[]` carries RESIDENCE + WORK + INCARCERATED for offenders with multiple.
+  Flat columns hold `locations[0]`; the full array goes into `locations_json` (mig 0147).
+
+The integration is gated by `NSOPW_ENABLED=1` env flag — opt-in switch acknowledging the ToU posture
+(the public endpoint's Conditions of Use page likely prohibits programmatic access regardless of CORS
+permitting it technically). Without the flag, the framework reports `configured: false` and the
+false-clear guard surfaces it as a coverage gap.
+
+Ground-truth fixture-driven tests: 51 unit tests (normalize + match + parse + photoStore), all driven
+by the real 317 KB capture and mocked R2/D1. Any future API drift will be caught by these tests
+against future fixture replacements.
+
+
 
 ## Reconnaissance update (2026-06-22)
 

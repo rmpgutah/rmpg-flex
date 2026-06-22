@@ -4,9 +4,9 @@
 // Direct user-facing component for the user's stated requirement:
 // "nationwide SOR pull, cross-ref name and DOB."
 //
-// Mounted as a tab on SexOffenderRegistryPage (the natural home),
-// and standalone-route-mounted at /nsopw for officers who want to
-// jump straight to the federated cross-ref.
+// Mounted on NsopwLookupPage at /nsopw — the canonical Sex Offender
+// Registry tab. (The legacy Utah-only and RMPG-internal SOR pages
+// were consolidated into this surface.)
 //
 // Talks to /api/nsopw/* — the dedicated route, NOT the generic
 // /api/screening/search. That route accepts `dob` end-to-end so
@@ -38,6 +38,11 @@ interface OffenderCard {
   tier: number | null;
   registrationStatus: string | null;
   photoUrl: string | null;
+  /** Worker-served URL for the locally persisted photo (R2-backed). When
+   *  set, the client prefers this over the upstream `photoUrl` so we serve
+   *  our copy, not the state SOR site. */
+  localPhotoUrl: string | null;
+  rowId: number | null;
   detailUrl: string | null;
   raw?: unknown;
 }
@@ -293,10 +298,17 @@ function Section({ title, subtitle, tone, children }: {
 
 function OffenderRow({ c }: { c: Classified }) {
   const o = c.offender;
+  // Prefer the locally persisted photo (worker-served from R2) over the
+  // upstream state-SOR host. If the local copy 404s (e.g. download still
+  // in-flight from the just-issued query), fall back to upstream.
   return (
     <div className="px-2 py-2 grid grid-cols-[auto_1fr_auto] gap-2 items-start">
-      {o.photoUrl ? (
-        <img src={o.photoUrl} alt="" className="w-16 h-20 object-cover bg-surface-sunken" />
+      {(o.localPhotoUrl || o.photoUrl) ? (
+        <PhotoWithFallback
+          local={o.localPhotoUrl}
+          remote={o.photoUrl}
+          className="w-16 h-20 object-cover bg-surface-sunken"
+        />
       ) : (
         <div className="w-16 h-20 bg-surface-sunken flex items-center justify-center">
           <User className="w-6 h-6 text-rmpg-400" />
@@ -341,6 +353,23 @@ function OffenderRow({ c }: { c: Classified }) {
         )}
       </div>
     </div>
+  );
+}
+
+// Renders the locally persisted photo first; on load error (e.g. local copy
+// not in R2 yet), falls back to the upstream state-SOR URL. Keeps the
+// graceful behavior even right after a fresh query while photoStore is
+// still writing to R2 in the background.
+function PhotoWithFallback({ local, remote, className }: {
+  local: string | null; remote: string | null; className: string;
+}) {
+  const [src, setSrc] = useState(local || remote || '');
+  if (!src) return <div className={className} />;
+  return (
+    <img src={src} alt="" className={className}
+      onError={() => {
+        if (local && src !== remote && remote) setSrc(remote);
+      }} />
   );
 }
 

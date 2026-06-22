@@ -62,7 +62,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
       { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
-      { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+      { path: '/nsopw', icon: UserX, label: 'Sex Offender Registry' },
     ],
   },
   {
