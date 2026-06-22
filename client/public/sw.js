@@ -810,6 +810,44 @@
 //        Dispatch). Theme: warrant-banner ⚠️ emoji → Lucide
 //        AlertTriangle; restored-draft #1a1500 → rgb(var(--sev-warn-rgb)
 //        / 0.08) (same lift as Patrol PR #1595).
+// v1038: Offender Registry (/nsopw, /offender-registry redirect) —
+//        court-ready PDF + deep-link + photo embed. 21st consecutive
+//        page-pass for the cross-page contract; NSOPW data is now the
+//        canonical Sex Offender Registry surface after PR #1599's
+//        consolidation, so the page needed parity with the other court-
+//        record pages (FI, Evidence, Criminal History, Cases).
+//          • New client/src/utils/offenderRegistrationCardPdf.ts —
+//            "NSOPW Offender Identification Card" PDF with RMPG-gold
+//            banner, classification banner (red CONFIRMED / amber
+//            POSSIBLE), photo + subject grid, registered address,
+//            offense block, cross-reference metadata + RMPG records
+//            linkage, mandatory point-in-time advisory caveat, and
+//            two-signature block. Pure helpers (formatSubjectName,
+//            formatAddress, classificationBanner, wrapText) covered
+//            by 21 new unit tests. Same Arial + signature-block idiom
+//            as fiCardPdf / evidenceItemPdf.
+//          • Print button on every offender row (search results + new
+//            deep-link card) — opens the PDF in a new tab. Best-effort
+//            photo embed via fetch→base64 with 5s timeout; failure
+//            falls back to a "no photo on file" placeholder.
+//          • Deep-link contract: /nsopw?offender_id=<row> loads a
+//            single offender straight from /api/nsopw/offender/:id
+//            (renders as an "OFFENDER (DEEP LINK)" amber card so the
+//            operator knows no name+DOB cross-check was performed).
+//            /nsopw?surname=&forename=&dob= pre-fills + auto-runs the
+//            cross-reference. The legacy /offender-registry and
+//            /sex-offender-registry routes now use a new
+//            RedirectKeepQuery wrapper in App.tsx — plain
+//            <Navigate to="/nsopw" /> was dropping the search part,
+//            silently breaking any old bookmarks with query params.
+//          • Empty-state distinction: a "no search yet" hint card now
+//            renders when the panel first loads — the existing zero-
+//            matches green card was indistinguishable from the never-
+//            searched state.
+//          • Coverage warning: ⚠ emoji → Lucide AlertTriangle (last
+//            emoji on the page).
+//          • Dead-imports cleanup: Link2 + IconButton were imported
+//            but never referenced. Removed.
 // v1037: Court Tracker — court-ready appearance prep PDF (Arial banner +
 //        countdown/imminence alert + judge notes + witnesses + bail +
 //        continuance history + signature block; same idiom as the v1024

@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
@@ -374,6 +374,15 @@ function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
   return <ErrorBoundary>{children}</ErrorBoundary>;
 }
 
+// <Navigate to="/foo" replace /> drops the URL search + hash. This wrapper
+// preserves both so legacy paths can act as transparent redirects (used by
+// /offender-registry → /nsopw so saved bookmarks with ?offender_id=… keep
+// working).
+function RedirectKeepQuery({ to }: { to: string }) {
+  const loc = useLocation();
+  return <Navigate to={`${to}${loc.search}${loc.hash}`} replace />;
+}
+
 function AppRoutes() {
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -531,8 +540,13 @@ function AppRoutes() {
             <Route path="/code-enforcement" element={<RouteErrorBoundary><CodeEnforcementPage /></RouteErrorBoundary>} />
             <Route path="/court" element={<RouteErrorBoundary><CourtTrackerPage /></RouteErrorBoundary>} />
             <Route path="/dar" element={<RouteErrorBoundary><DailyActivityReportsPage /></RouteErrorBoundary>} />
-            <Route path="/offender-registry" element={<Navigate to="/nsopw" replace />} />
-            <Route path="/sex-offender-registry" element={<Navigate to="/nsopw" replace />} />
+            {/* Legacy offender-registry surfaces — redirect to the canonical
+                /nsopw page but PRESERVE the query string so deep-links like
+                /offender-registry?offender_id=42 (saved bookmarks, dossier
+                cross-refs, court-package links) survive the move. Plain
+                <Navigate to="/nsopw" /> drops the search part. */}
+            <Route path="/offender-registry" element={<RedirectKeepQuery to="/nsopw" />} />
+            <Route path="/sex-offender-registry" element={<RedirectKeepQuery to="/nsopw" />} />
             <Route path="/nsopw" element={<RouteErrorBoundary><NsopwLookupPage /></RouteErrorBoundary>} />
             <Route path="/ncic" element={<RouteErrorBoundary><NcicPage /></RouteErrorBoundary>} />
             <Route path="/dl-search" element={<RouteErrorBoundary><DlSearchPage /></RouteErrorBoundary>} />
