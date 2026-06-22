@@ -691,6 +691,15 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1027: Evidence — court-ready chain-of-custody PDF (banner + item
+//        card + disposition-overdue alert bar + chain timeline +
+//        supervisor signature). 6th court-ready PDF this audit.
+//        /evidence?evidence_id= URL deep-link (10th consecutive page).
+//        Esc now smart-cancels whichever modal is open (was hard-
+//        coded to only chainModal — the 3 other modals ignored Esc).
+//        New `N` keyboard shortcut for new evidence (mirrors Dispatch
+//        / FI / Patrol). Inline-modal pattern + Lucide icons stay
+//        consistent with the audit's other operator-chrome upgrades.
 // v1023: Patrol — hydrate isOnBreak from /patrol/breaks on mount (was
 //        local-state-only; operator on break who refreshed the page saw
 //        "Start Break" + a fresh click raced into a 2nd break). Adds a
