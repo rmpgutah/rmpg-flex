@@ -106,7 +106,7 @@
 				LastSwiftUpdateCheck = 1640;
 				LastUpgradeCheck = 2650;
 			};
-			buildConfigurationList = BB0000000000000000000042 /* Build configuration list for PBXProject "RMPG Flex Connect" */;
+			buildConfigurationList = BB0000000000000000000042 /* Build configuration list for PBXProject "RMPGFlexConnect" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -258,11 +258,15 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = D3LYU7YCCN;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "RMPG Flex Connect";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_NFCReaderUsageDescription = "Field token scan";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Used to capture license plates, IDs, and scene photos.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Used to re-unlock the app during a shift.";
+				INFOPLIST_KEY_NSIdentityUsageDescription = "Officer ID";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Used to broadcast unit location during an active shift.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Used to attach location to events, dispatch, and call response.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Used to dictate notes and record audio for evidence.";
@@ -294,11 +298,15 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = D3LYU7YCCN;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "RMPG Flex Connect";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_NFCReaderUsageDescription = "Field token scan";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Used to capture license plates, IDs, and scene photos.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Used to re-unlock the app during a shift.";
+				INFOPLIST_KEY_NSIdentityUsageDescription = "Officer ID";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Used to broadcast unit location during an active shift.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Used to attach location to events, dispatch, and call response.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Used to dictate notes and record audio for evidence.";
@@ -333,7 +341,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		BB0000000000000000000042 /* Build configuration list for PBXProject "RMPG Flex Connect" */ = {
+		BB0000000000000000000042 /* Build configuration list for PBXProject "RMPGFlexConnect" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BB0000000000000000000080 /* Debug */,
