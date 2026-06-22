@@ -479,8 +479,8 @@ describe('applyOutbound', () => {
     expect(sentPayload).not.toBeNull();
     expect(sentPayload!.vehicle_id).toBe(99999);          // translated
     expect(sentPayload!.summary).toBe('Tire rotation');   // preserved
-    expect('vendor_id' in (sentPayload as object)).toBe(false);          // dropped (no link)
-    expect('assigned_to_user_id' in (sentPayload as object)).toBe(false); // dropped (no link)
+    expect(sentPayload!.vendor_id).toBeUndefined();            // dropped (no link)
+    expect(sentPayload!.assigned_to_user_id).toBeUndefined();  // dropped (no link)
   });
 
   it('fuel_entry/create — translates vehicle_id; no-op when parent unlinked', async () => {
