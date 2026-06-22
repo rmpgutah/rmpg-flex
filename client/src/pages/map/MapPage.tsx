@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { initMapbox, resolveMapboxAccessToken, mapboxgl, MAPBOX_STYLE_DARK, MAPBOX_STYLE_NIGHT, MAPBOX_STYLE_SATELLITE, MAPBOX_STYLE_STREETS, MAPBOX_STYLE_OUTDOORS, registerMapInstance, unregisterMapInstance, updateMapStyle, monitorTileLoading } from '../../utils/mapboxLoader';
 import { devLog, devWarn } from '../../utils/devLog';
 import { installWebglContextRecovery, type MapCamera } from '../../utils/webglRecovery';
@@ -122,6 +123,10 @@ import AnalysisDashboardPanel from './components/AnalysisDashboardPanel';
 import { useAnalysisSummary } from './hooks/useAnalysisSummary';
 import MultiStopRoutePanel, { type QueuedStop } from './components/MultiStopRoutePanel';
 import MapExportMenu from './components/MapExportMenu';
+import MapCompassRose from './components/MapCompassRose';
+import MapScaleBar from './components/MapScaleBar';
+import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp';
+import { MAP_SHORTCUT_BINDINGS } from '../../hooks/useMapKeyboardShortcuts';
 import { generateMapSituationReport } from '../../utils/mapSituationReportPdf';
 import { useAuth } from '../../context/AuthContext';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource, upsertGeoJsonSource } from '../../utils/mapboxSafeLayer';
@@ -351,6 +356,20 @@ export default function MapPage() {
     try { const v = localStorage.getItem('rmpg_map_sidebar_open'); return v !== 'false'; } catch { return true; }
   });
   const [sidebarTab, setSidebarTab] = usePersistedTab('rmpg_map_sidebar', 'units', ['units', 'calls'] as const);
+
+  // Sidebar focused-row id — clicking a unit/call in the rail pans the map but
+  // previously didn't mark the row as selected, so operators panned and lost
+  // context about WHICH row they clicked. Now: the focused row gets a brand-
+  // gold rail, the sidebar auto-scrolls it into view on URL deep-link, and the
+  // selection clears when sidebarTab changes (focus belongs to the active list).
+  const [focusedUnitId, setFocusedUnitId] = useState<string | null>(null);
+  const [focusedCallId, setFocusedCallId] = useState<string | null>(null);
+
+  // Keyboard-shortcuts help modal — toggled by `?` (Shift+/). Pulls binding
+  // labels from MAP_SHORTCUT_BINDINGS so the displayed list always matches
+  // the inline keydown handler. (Previous: the modal didn't exist, operators
+  // had to read the source to discover L/H/B/C/+/-/Esc.)
+  const [showKbdHelp, setShowKbdHelp] = useState(false);
 
   // Fix 32: persist sidebar open/closed state
   useEffect(() => {
@@ -3577,10 +3596,20 @@ export default function MapPage() {
             if (z != null) mapInstanceRef.current.setZoom(z - 1);
           }
           break;
-        case 'escape': // Close all panels
+        case '?': // Toggle keyboard-shortcuts help modal (Shift+/ on US layouts)
           e.preventDefault();
-          infoWindowRef.current?.remove();
-          setLayersPanelOpen(false);
+          setShowKbdHelp(prev => !prev);
+          break;
+        case 'escape':
+          // Smart-cancel cascade — Esc closes the SMALLEST open thing first
+          // so a quick "cancel my typing" Esc doesn't blast the whole UI.
+          // Order: kbd help → address search dropdown → info popup → layers
+          // panel → sidebar.
+          e.preventDefault();
+          if (showKbdHelp) { setShowKbdHelp(false); break; }
+          if (showAddressResults) { setShowAddressResults(false); break; }
+          if (infoWindowRef.current) { infoWindowRef.current.remove(); break; }
+          if (layersPanelOpen) { setLayersPanelOpen(false); break; }
           setSidebarOpen(false);
           break;
       }
@@ -3588,7 +3617,62 @@ export default function MapPage() {
 
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [units, layersPanelOpen]);
+  }, [units, layersPanelOpen, showKbdHelp, showAddressResults]);
+
+  // ============================================================
+  // Deep-link URL handlers: /map?call_id=… and /map?unit_id=…
+  // Mirrors the pattern Dispatch picked up in PR #1583 — every page that
+  // can be the destination of a "View on Map" / "Drill in" link needs a
+  // useSearchParams reader. One-shot per page load via the ref gate, then
+  // the params are stripped so a refresh doesn't re-select. Cross-tab
+  // handling: a call_id auto-switches sidebarTab to 'calls' so the row
+  // is visible in the rail; unit_id does the same for 'units'.
+  // ============================================================
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingCallIdRef = useRef<string | null>(searchParams.get('call_id'));
+  const pendingUnitIdRef = useRef<string | null>(searchParams.get('unit_id'));
+
+  useEffect(() => {
+    const target = pendingCallIdRef.current;
+    if (!target || !mapLoaded) return;
+    const call = calls.find((c) => String(c.id) === String(target));
+    if (!call) return;
+    pendingCallIdRef.current = null;
+    setSidebarTab('calls');
+    setFocusedCallId(String(call.id));
+    if (call.latitude != null && call.longitude != null) {
+      panTo(call.latitude, call.longitude);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('call_id');
+    setSearchParams(next, { replace: true });
+  }, [calls, mapLoaded, searchParams, setSearchParams, setSidebarTab]);
+
+  useEffect(() => {
+    const target = pendingUnitIdRef.current;
+    if (!target || !mapLoaded) return;
+    // Match by id OR call_sign — the dashboard might send a human-readable
+    // unit identifier like "U-12" rather than the database id.
+    const unit = units.find((u) =>
+      String(u.id) === String(target) || String((u as any).call_sign) === String(target));
+    if (!unit) return;
+    pendingUnitIdRef.current = null;
+    setSidebarTab('units');
+    setFocusedUnitId(String(unit.id));
+    if (unit.latitude != null && unit.longitude != null) {
+      panTo(unit.latitude, unit.longitude);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('unit_id');
+    setSearchParams(next, { replace: true });
+  }, [units, mapLoaded, searchParams, setSearchParams, setSidebarTab]);
+
+  // Clear the focused-row id when the sidebar tab changes — focus belongs to
+  // whichever list is currently visible, not the hidden one.
+  useEffect(() => {
+    if (sidebarTab === 'units') setFocusedCallId(null);
+    if (sidebarTab === 'calls') setFocusedUnitId(null);
+  }, [sidebarTab]);
 
   // ============================================================
   // Render
@@ -5786,6 +5870,30 @@ export default function MapPage() {
           </div>
         </div>}
 
+        {/* Compass rose (bottom-right, desktop) — rotates with map bearing,
+            click to reset north. Tiny, mapInstance-driven; the component was
+            already built and tokenized but never mounted (see PR notes). */}
+        {!isMobile && mapLoaded && (
+          <div className="absolute z-[10]" style={{ right: 16, bottom: 92 }}>
+            <MapCompassRose mapInstance={mapInstanceRef.current} />
+          </div>
+        )}
+
+        {/* Scale bar (bottom-right corner, desktop) — distance scale matters
+            for tactical ops ("how far is that perimeter?"). Re-renders on every
+            zoom/pan via the mapboxgl 'move' event inside the component. */}
+        {!isMobile && mapLoaded && (
+          <div className="absolute z-[10]" style={{ right: 16, bottom: 56 }}>
+            <MapScaleBar mapInstance={mapInstanceRef.current} />
+          </div>
+        )}
+
+        {/* Keyboard-shortcuts help modal — opened by `?` (handled in the
+            inline keydown switch above). Pulls the binding list from the
+            single source of truth (MAP_SHORTCUT_BINDINGS) so what the modal
+            shows is what the keydown handler actually does. */}
+        <KeyboardShortcutsHelp open={showKbdHelp} onClose={() => setShowKbdHelp(false)} />
+
         {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
         {/* Unified always-visible legend for every active overlay */}
         {!isMobile && (
@@ -6186,14 +6294,25 @@ export default function MapPage() {
                   {filteredUnits.map((unit) => {
                     const hasCoords = unit.latitude != null && unit.longitude != null;
                     const statusColor = UNIT_STATUS_COLORS[unit.status];
+                    const isFocused = focusedUnitId === String(unit.id);
                     return (
                       <button
                         key={unit.id}
-                        onClick={() => hasCoords && panTo(unit.latitude!, unit.longitude!)}
-                        disabled={!hasCoords}
-                        className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
-                          hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
-                        }`}
+                        onClick={() => {
+                          // Always remember the click — even units without
+                          // coords get a focus marker so the operator can
+                          // see "I clicked U-12, it has no GPS fix" rather
+                          // than the click feeling silently dropped.
+                          setFocusedUnitId(String(unit.id));
+                          if (hasCoords) panTo(unit.latitude!, unit.longitude!);
+                        }}
+                        disabled={false}
+                        aria-current={isFocused ? 'true' : undefined}
+                        className={`w-full text-left px-3 py-2.5 transition-colors border-l-2 ${
+                          isFocused
+                            ? 'bg-rmpg-800/60 border-l-[var(--brand-gold)]'
+                            : 'border-l-transparent hover:bg-rmpg-800/50'
+                        } ${hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'}`}
                       >
                         <div className="flex items-center gap-2">
                           <div
@@ -6230,16 +6349,24 @@ export default function MapPage() {
                     const hasCoords = call.latitude != null && call.longitude != null;
                     const pColor = PRIORITY_COLORS[call.priority] || '#666666';
                     const { category } = getIncidentCategory(call.incident_type);
+                    const isFocused = focusedCallId === String(call.id);
+                    const focusCall = () => {
+                      setFocusedCallId(String(call.id));
+                      if (hasCoords) panTo(call.latitude!, call.longitude!);
+                    };
                     return (
                       <div
                         role="button"
                         tabIndex={0}
                         key={call.id}
-                        onClick={() => hasCoords && panTo(call.latitude!, call.longitude!)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); hasCoords && panTo(call.latitude!, call.longitude!); } }}
-                        className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
-                          hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
-                        }`}
+                        onClick={focusCall}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); focusCall(); } }}
+                        aria-current={isFocused ? 'true' : undefined}
+                        className={`w-full text-left px-3 py-2.5 transition-colors border-l-2 ${
+                          isFocused
+                            ? 'bg-rmpg-800/60 border-l-[var(--brand-gold)]'
+                            : 'border-l-transparent hover:bg-rmpg-800/50'
+                        } ${hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'}`}
                       >
                         <div className="flex items-center gap-2">
                           <span
