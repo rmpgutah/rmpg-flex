@@ -6,16 +6,19 @@
 // submit → approve/return supervisor workflow.
 // ============================================================
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { formatEnumValue } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import {
   ClipboardCheck, Search, Plus, User, X, Save, Loader2, CheckCircle,
   AlertTriangle, Send, RotateCcw, Zap, Calendar, RefreshCw, Eye, FileText,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
-import type { DailyActivityReport, DARStatus } from '../types';
+import type { DailyActivityReport } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
+import ConfirmDialog from '../components/ConfirmDialog';
 import ExportButton from '../components/ExportButton';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
@@ -74,20 +77,16 @@ export default function DailyActivityReportsPage() {
   const [editHighlights, setEditHighlights] = useState('');
   const [editIssues, setEditIssues] = useState('');
 
+  // Supervisor "Return" review-notes ConfirmDialog state \u2014 replaces the
+  // native window.prompt() that lived here (no a11y, no theming, no
+  // multi-line). Mirrors the inline supervisor-notes pattern shipped on
+  // Cases (#1604), Field Interviews (#1597), and Trespass Orders (#1610).
+  const [returnNotesOpen, setReturnNotesOpen] = useState(false);
+  const [returnNotes, setReturnNotes] = useState('');
+  const [returningDar, setReturningDar] = useState(false);
+
   // Document title
   useEffect(() => { document.title = 'Daily Activity Reports \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
-      if (e.key === 'Escape') { setCreateFormOpen(false); setSelected(null); }
-      if (e.key === 'n' || e.key === 'N') { setCreateFormOpen(true); setAutoPopulateData(null); }
-      if (e.key === 'r' || e.key === 'R') { fetchDars({ silent: true }); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   const fetchDars = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -107,6 +106,89 @@ export default function DailyActivityReportsPage() {
 
   useEffect(() => { fetchDars(); }, [fetchDars]);
   useLiveSync('admin', () => fetchDars({ silent: true }));
+
+  // ── /daily-activity-reports?dar_id=<id> URL deep-link auto-select ──
+  // Honors the Dashboard-emit / page-consume contract shipped across the
+  // other audited pages (Cases, FI, Evidence, Trespass, Court Tracker).
+  // Once `dars` hydrates, find by id and select; strip the query so a
+  // refresh doesn't re-select. Direct-fetch fallback for ids not in the
+  // current filter view (e.g. an approved DAR linked from a supervisor's
+  // audit ticket while the filter is set to 'draft').
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingDarIdRef = useRef<string | null>(searchParams.get('dar_id'));
+  useEffect(() => {
+    const target = pendingDarIdRef.current;
+    if (!target || loading) return;
+    pendingDarIdRef.current = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const hit = dars.find((d) => String(d.id) === String(target));
+        if (hit) {
+          if (!cancelled) { setSelected(hit); setEditing(false); }
+        } else {
+          const res = await apiFetch<{ data: DailyActivityReport }>(`/dar/${target}`);
+          if (cancelled) return;
+          if (res?.data && res.data.id != null) { setSelected(res.data); setEditing(false); }
+          else addToast(`DAR ${target} not found`, 'warning');
+        }
+      } catch {
+        if (!cancelled) addToast(`Failed to load DAR ${target}`, 'error');
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('dar_id');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dars, loading]);
+
+  // Keyboard shortcuts:
+  //   Escape — smart-cascade close (smallest-open-first). Previous version
+  //            fired setCreateFormOpen(false) AND setSelected(null) on
+  //            every Esc, which closed the supervisor's open review pane
+  //            the moment they tried to dismiss the New-DAR modal sitting
+  //            on top of it. Cascade preserves the layer underneath.
+  //   N      — open a new DAR (mirrors Trespass / FI / Citations muscle
+  //            memory). Suppressed while typing in an input / textarea /
+  //            select / contenteditable so it doesn't fire mid-narrative.
+  //   R      — silent refresh.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Close-smallest-open-first. Each branch returns so a single Esc
+        // doesn't blast multiple open layers in one keypress.
+        if (returnNotesOpen) { setReturnNotesOpen(false); return; }
+        if (createFormOpen) { setCreateFormOpen(false); setAutoPopulateData(null); return; }
+        if (editing) { setEditing(false); return; }
+        if (selected) { setSelected(null); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        setCreateFormOpen(true);
+        setAutoPopulateData(null);
+        return;
+      }
+      if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        fetchDars({ silent: true });
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returnNotesOpen, createFormOpen, editing, selected]);
 
   const handleAutoPopulate = async () => {
     setAutoPopLoading(true);
@@ -171,16 +253,23 @@ export default function DailyActivityReportsPage() {
     } catch (err: any) { addToast(err.message, 'error'); }
   };
 
+  const openReturnDialog = () => {
+    if (!selected) return;
+    setReturnNotes('');
+    setReturnNotesOpen(true);
+  };
   const handleReturn = async () => {
-    const notes = prompt('Enter review notes (required):');
-    if (!notes || !selected) return;
+    if (!selected || !returnNotes.trim()) return;
+    setReturningDar(true);
     try {
-      await apiFetch(`/dar/${selected.id}/return`, { method: 'PUT', body: JSON.stringify({ review_notes: notes }) });
+      await apiFetch(`/dar/${selected.id}/return`, { method: 'PUT', body: JSON.stringify({ review_notes: returnNotes.trim() }) });
       addToast('DAR returned for revision', 'success');
       const updated = await apiFetch<{ data: DailyActivityReport }>(`/dar/${selected.id}`);
       setSelected(updated.data);
       fetchDars({ silent: true });
+      setReturnNotesOpen(false);
     } catch (err: any) { addToast(err.message, 'error'); }
+    finally { setReturningDar(false); }
   };
 
   const handleSaveNarrative = async () => {
@@ -257,13 +346,38 @@ export default function DailyActivityReportsPage() {
           {loading ? (
             <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading daily activity reports" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
           ) : dars.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-rmpg-500" role="status">
-              <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
-                <ClipboardCheck className="w-7 h-7 text-rmpg-600" />
-              </div>
-              <p className="text-sm font-medium text-rmpg-400">No DARs found</p>
-              <p className="text-[10px] text-rmpg-600 mt-1">Try adjusting your filters or create a new one</p>
-            </div>
+            (() => {
+              // Distinguish "no DARs in the system yet" (offer the New CTA)
+              // from "filters hid them" (offer to clear). Same pattern shipped
+              // on Trespass / Court Tracker — operators stopped panicking that
+              // the data was gone once the page told them why.
+              const filtered = !!(searchQuery || filterStatus);
+              return (
+                <div className="flex flex-col items-center justify-center py-16 text-rmpg-500" role="status">
+                  <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                    <ClipboardCheck className="w-7 h-7 text-rmpg-600" />
+                  </div>
+                  {filtered ? (
+                    <>
+                      <p className="text-sm font-medium text-rmpg-400">No DARs match these filters</p>
+                      <p className="text-[10px] text-rmpg-600 mt-1">Clear search and status to see all reports</p>
+                      <button
+                        type="button"
+                        onClick={() => { setSearchQuery(''); setFilterStatus(''); setPage(1); }}
+                        className="mt-3 toolbar-btn text-[10px]"
+                      >
+                        Clear filters
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-rmpg-400">No DARs yet</p>
+                      <p className="text-[10px] text-rmpg-600 mt-1">Press <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 text-rmpg-400 text-[9px] font-mono">N</kbd> or click + New to create one</p>
+                    </>
+                  )}
+                </div>
+              );
+            })()
           ) : (
             dars.map(dar => (
               <button type="button"
@@ -298,9 +412,13 @@ export default function DailyActivityReportsPage() {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-sunken">
-            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 hover:text-rmpg-100 disabled:opacity-30 disabled:hover:text-rmpg-400 transition-colors">← Prev</button>
+            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 hover:text-rmpg-100 disabled:opacity-30 disabled:hover:text-rmpg-400 transition-colors inline-flex items-center gap-1">
+              <ChevronLeft style={{ width: 11, height: 11 }} /> Prev
+            </button>
             <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">Page {page}/{totalPages}</span>
-            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 hover:text-rmpg-100 disabled:opacity-30 disabled:hover:text-rmpg-400 transition-colors">Next →</button>
+            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 hover:text-rmpg-100 disabled:opacity-30 disabled:hover:text-rmpg-400 transition-colors inline-flex items-center gap-1">
+              Next <ChevronRight style={{ width: 11, height: 11 }} />
+            </button>
           </div>
         )}
       </div>
@@ -320,10 +438,10 @@ export default function DailyActivityReportsPage() {
               )}
               {(isGodMode || (selected.status === 'submitted' && isAdmin)) && (
                 <>
-                  <button type="button" onClick={handleApprove} className="toolbar-btn" style={{ color: '#22c55e' }}>
+                  <button type="button" onClick={handleApprove} className="toolbar-btn text-green-400 hover:text-green-300">
                     <CheckCircle style={{ width: 11, height: 11 }} /> Approve
                   </button>
-                  <button type="button" onClick={handleReturn} className="toolbar-btn" style={{ color: '#ef4444' }}>
+                  <button type="button" onClick={openReturnDialog} className="toolbar-btn text-red-400 hover:text-red-300">
                     <RotateCcw style={{ width: 11, height: 11 }} /> Return
                   </button>
                 </>
@@ -524,6 +642,45 @@ export default function DailyActivityReportsPage() {
           </div>
         </div>
       )}
+
+      {/* Supervisor "Return for revision" — ConfirmDialog replaces the
+          native window.prompt() that lived in handleReturn(). The native
+          dialog had no a11y, no theming, no multi-line support, and gave
+          the operator zero context on which DAR they were about to bounce
+          back. Mirrors the pattern shipped on Cases (#1604), Trespass
+          Orders (#1610), and Field Interviews (#1597). */}
+      <ConfirmDialog
+        isOpen={returnNotesOpen}
+        onClose={() => (returningDar ? null : setReturnNotesOpen(false))}
+        onConfirm={handleReturn}
+        title="Return DAR for revision?"
+        message="The officer will see your notes when they re-open the report. Required — keep it actionable (which section, what's missing, what to add) so they don't have to guess."
+        details={selected ? (
+          <>
+            <div><span className="text-rmpg-500">DAR</span> <span className="font-mono text-rmpg-100">{selected.dar_number}</span></div>
+            {selected.officer_name && (
+              <div><span className="text-rmpg-500">Officer</span> <span className="text-rmpg-100">{selected.officer_name}</span></div>
+            )}
+            <div><span className="text-rmpg-500">Shift</span> <span className="text-rmpg-100">{selected.shift_date ? parseTimestamp(selected.shift_date).toLocaleDateString() : '—'}</span></div>
+            <div className="mt-2">
+              <label htmlFor="dar-return-notes" className="text-[9px] font-mono text-rmpg-500 uppercase">Review Notes *</label>
+              <textarea
+                id="dar-return-notes"
+                value={returnNotes}
+                onChange={(e) => setReturnNotes(e.target.value)}
+                rows={4}
+                placeholder="e.g. Narrative is too thin — add the dispatch detail for call 24-12345 and the property check on the south fence."
+                className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-600 outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors resize-none"
+                autoFocus
+              />
+            </div>
+          </>
+        ) : undefined}
+        confirmLabel={returningDar ? 'Returning…' : 'Return DAR'}
+        confirmVariant="warning"
+        isLoading={returningDar}
+        confirmDisabled={!returnNotes.trim()}
+      />
     </div>
   );
 }
