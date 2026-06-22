@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { formatEnumValue } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import { useToast } from '../components/ToastProvider';
+import WarrantNsopwStatus from '../components/WarrantNsopwStatus';
 import {
   AlertTriangle, Plus, Search, Edit, Trash2, CheckCircle, XCircle, Clock,
   Loader2, Archive, RotateCcw, MapPin, User, Gavel, ChevronDown, X, Scale, Radar,
@@ -2372,6 +2373,14 @@ export default function WarrantsPage() {
                       </div>
                     )}
                   </div>
+                )}
+
+                {/* NSOPW Status — nationwide SOR cross-reference for the
+                    warrant subject. Auto-fired when the warrant was created;
+                    confirmed/possible hits flow through screening_hits and
+                    surface here as the primary SOR retention pane. */}
+                {selectedWarrant.subject_person_id && (
+                  <WarrantNsopwStatus personId={selectedWarrant.subject_person_id} />
                 )}
 
                 {/* Court Info */}

@@ -77,7 +77,10 @@ nsopw.get('/search', requireRole(...READ_ROLES), async (c) => {
   const user = c.get('user');
   const result = await runNsopwScreening(c.env, {
     surname, forename, middleName: middleName || undefined, dob: dob || undefined,
-  }, { triggeredBy: user?.id ? `manual:${user.id}` : 'manual' });
+  }, {
+    triggeredBy: user?.id ? `manual:${user.id}` : 'manual',
+    executionCtx: c.executionCtx,
+  });
 
   // Light audit. Confirmed-hit-only audit (we don't want to log every
   // common-name fishing expedition by an officer to audit_log).
@@ -158,6 +161,36 @@ nsopw.get('/offender/:id', requireRole(...READ_ROLES), async (c) => {
     try { detail = JSON.parse(row.detail_json as string); } catch { /* ignore */ }
   }
   return c.json({ ...row, detail });
+});
+
+// ── GET /api/nsopw/photo/:offenderRowId ─────────────────────
+// Serve the locally-stored offender photograph. The R2 object key
+// lives on the national_sex_offenders row (local_photo_key, set
+// by photoStore.downloadAndStorePhoto). Auth-gated; only sworn
+// users see it. Returns the bytes with the original content-type
+// and a 1-hour edge cache (immutable: NSOPW photos rotate with
+// the offender's record, not with time).
+nsopw.get('/photo/:offenderRowId', requireRole(...READ_ROLES), async (c) => {
+  const id = parseInt(c.req.param('offenderRowId') ?? '', 10);
+  if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
+  const row = await queryFirst<{
+    local_photo_key: string | null;
+    photo_content_type: string | null;
+  }>(
+    getDb(c.env),
+    'SELECT local_photo_key, photo_content_type FROM national_sex_offenders WHERE id = ?',
+    id,
+  ).catch(() => null);
+  if (!row?.local_photo_key) return c.json({ error: 'no local photo' }, 404);
+  const obj = await c.env.UPLOADS.get(row.local_photo_key).catch(() => null);
+  if (!obj) return c.json({ error: 'photo bytes missing' }, 404);
+  return new Response(obj.body, {
+    headers: {
+      'content-type': row.photo_content_type || obj.httpMetadata?.contentType || 'image/jpeg',
+      'cache-control': 'private, max-age=3600',
+      'content-length': String(obj.size),
+    },
+  });
 });
 
 // ── GET /api/nsopw/person/:id/hits ──────────────────────────

@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, ClipboardList, MapPin, User, Clock, FileText,
   ChevronDown, Archive, RotateCcw, X, Save, Loader2, Eye, AlertTriangle, Trash2,
+  Printer,
 } from 'lucide-react';
+import { openFiCardPdf } from '../utils/fiCardPdf';
 import type { FieldInterview, FIContactReason, FIContactType, FIActionTaken } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
@@ -148,6 +151,11 @@ export default function FieldInterviewsPage() {
 
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<FieldInterview | null>(null);
+  // Admin hard-delete confirmation — previously used the native confirm()
+  // dialog which has no a11y, no keyboard polish, and is visually
+  // inconsistent with the rest of the app. Routes through the existing
+  // ConfirmDialog component instead.
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<FieldInterview | null>(null);
 
   // ── Fetch ──
   const fetchFis = useCallback(async (options?: { silent?: boolean }) => {
@@ -322,15 +330,22 @@ export default function FieldInterviewsPage() {
     }));
   };
 
-  // Admin God Mode — permanently delete an FI card (shared by detail button + context menu)
-  const handleDelete = async (fi: FieldInterview) => {
-    if (!confirm(`Admin God Mode: Permanently delete FI ${fi.fi_number}?`)) return;
+  // Admin God Mode — permanently delete an FI card (shared by detail button +
+  // context menu). Opens ConfirmDialog instead of the native confirm() prompt.
+  const handleDelete = (fi: FieldInterview) => { setHardDeleteTarget(fi); };
+
+  // Confirm-dialog callback — actually fires the DELETE once the operator
+  // clicks through the modal.
+  const confirmHardDelete = async () => {
+    const fi = hardDeleteTarget;
+    if (!fi) return;
     try {
       await apiFetch(`/field-interviews/${fi.id}?hard=true`, { method: 'DELETE' });
       addToast(`FI ${fi.fi_number} permanently deleted`, 'success');
       if (selectedFi?.id === fi.id) setSelectedFi(null);
       setFis(prev => prev.filter(f => f.id !== fi.id));
     } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+    finally { setHardDeleteTarget(null); }
   };
 
   // ── Right-click context menu for FI list rows ──
@@ -355,14 +370,57 @@ export default function FieldInterviewsPage() {
   // Set document title
   useEffect(() => { document.title = 'Field Interviews \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // Keyboard shortcuts: Escape closes modals; `N` opens a new FI card from
+  // anywhere on the page (mirrors Dispatch's `N` binding for operator muscle
+  // memory). Suppressed when the user is actually typing into an input/
+  // textarea/contenteditable so "N" doesn't fire while they're filling out
+  // the form they just opened.
   useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setFormOpen(false); setEditingFi(null); }
+      if (e.key === 'Escape') { setFormOpen(false); setEditingFi(null); return; }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        handleOpenNew();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── /field-interviews?fi_id=<id> deep-link auto-select ──
+  // Seventh consecutive page-pass implementing this contract. Once `fis`
+  // hydrates, find by id and set as selectedFi; strip the query so a
+  // refresh doesn't re-select. Surfaces a one-time toast if the id misses.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingFiIdRef = useRef<string | null>(searchParams.get('fi_id'));
+  useEffect(() => {
+    const target = pendingFiIdRef.current;
+    if (!target || loading) return;
+    const hit = fis.find((f) => String(f.id) === String(target));
+    if (!hit) {
+      // Wait until the list has actually hydrated before complaining.
+      if (fis.length === 0) return;
+      pendingFiIdRef.current = null;
+      addToast(`FI ${target} not in the current view (try unarchiving or clearing filters)`, 'warning');
+      const next = new URLSearchParams(searchParams);
+      next.delete('fi_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    pendingFiIdRef.current = null;
+    setSelectedFi(hit);
+    const next = new URLSearchParams(searchParams);
+    next.delete('fi_id');
+    setSearchParams(next, { replace: true });
+  }, [fis, loading, searchParams, setSearchParams, addToast]);
 
   return (
     <div className="flex flex-col h-full">
@@ -494,6 +552,19 @@ export default function FieldInterviewsPage() {
                 <span className="text-[10px] text-rmpg-400">Created {formatDateTime(selectedFi.created_at)}</span>
               </div>
               <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-1'}`}>
+                {/* Court-ready PDF — Arial banner + agency strap + active-
+                    warrant alert + subject/contact/narrative blocks +
+                    signature block. Replaces "screenshot the detail panel"
+                    as the supervisor-review / court-package path. */}
+                <button
+                  type="button"
+                  onClick={() => openFiCardPdf(selectedFi)}
+                  className="toolbar-btn"
+                  title="Open a printable PDF of this FI card"
+                  style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}
+                >
+                  <Printer style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Print
+                </button>
                 <button type="button" onClick={() => handleEdit(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                   <FileText style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Edit
                 </button>
@@ -524,8 +595,9 @@ export default function FieldInterviewsPage() {
                 const hasWarrant = flags.some((f: any) => f?.type === 'ACTIVE_WARRANT' || f === 'ACTIVE_WARRANT');
                 if (!hasWarrant) return null;
                 return (
-                  <div className="bg-red-900/50 border border-red-500 rounded-sm px-3 py-2 text-red-200 text-sm font-bold mb-3">
-                    ⚠️ SUBJECT HAS ACTIVE WARRANTS — Exercise caution
+                  <div className="bg-red-900/50 border border-red-500 rounded-sm px-3 py-2 text-red-200 text-sm font-bold mb-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                    <span>SUBJECT HAS ACTIVE WARRANTS — Exercise caution</span>
                   </div>
                 );
               } catch { return null; }
@@ -576,7 +648,7 @@ export default function FieldInterviewsPage() {
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               {formWasRestored && (
-                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.08)' }}>
                   <div className="flex items-center gap-2">
                     <Clock size={14} className="text-amber-400" />
                     <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
@@ -588,7 +660,28 @@ export default function FieldInterviewsPage() {
               )}
               {repeatWarning && (
                 <div className="bg-amber-900/40 border border-amber-700/50 px-3 py-2 text-xs text-amber-300 flex items-center gap-2">
-                  <AlertTriangle style={{ width: 14, height: 14 }} className="flex-shrink-0 text-amber-400" /> {repeatWarning}
+                  <AlertTriangle style={{ width: 14, height: 14 }} className="flex-shrink-0 text-amber-400" />
+                  <span className="flex-1">{repeatWarning}</span>
+                  {/* Drill-down: close the form + pre-fill the search input with
+                      the subject's last name so the operator can see the prior
+                      contacts that triggered the warning. Detection without
+                      action was the gap pre-2026-06. */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const lastName = formData.subject_last_name?.trim();
+                      if (!lastName) return;
+                      setSearchQuery(lastName);
+                      setPage(1);
+                      setShowArchived(false);
+                      clearFormDraft();
+                      setFormOpen(false);
+                    }}
+                    className="text-[10px] underline text-amber-200 hover:text-amber-100 transition-colors flex-shrink-0"
+                    title="Close this form and search the list for prior contacts with this last name"
+                  >
+                    View previous contacts →
+                  </button>
                 </div>
               )}
               {/* Person search */}
@@ -734,6 +827,27 @@ export default function FieldInterviewsPage() {
         onCancel={() => { clearFormDraft(); setFormOpen(false); }}
         isSaving={submitting}
         saveLabel={editingFi ? 'Update FI Card' : 'Create FI Card'}
+      />
+
+      {/* Admin God Mode hard-delete confirmation — replaces the native
+          confirm() prompt. Routes through the existing ConfirmDialog
+          component for a11y + visual consistency with every other
+          destructive flow in the app. */}
+      <ConfirmDialog
+        isOpen={hardDeleteTarget !== null}
+        onClose={() => setHardDeleteTarget(null)}
+        onConfirm={confirmHardDelete}
+        title="Permanently delete FI card"
+        message="This will permanently remove the field-interview record from the database. The action cannot be undone."
+        details={hardDeleteTarget && (
+          <div className="space-y-1">
+            <div><span className="text-rmpg-500">FI:</span> <span className="font-mono text-rmpg-200">{hardDeleteTarget.fi_number}</span></div>
+            <div><span className="text-rmpg-500">Subject:</span> {hardDeleteTarget.subject_last_name ? `${hardDeleteTarget.subject_last_name}, ${hardDeleteTarget.subject_first_name || ''}` : 'Unknown'}</div>
+            <div><span className="text-rmpg-500">Created:</span> {formatDateTime(hardDeleteTarget.created_at)}</div>
+          </div>
+        )}
+        confirmLabel="Delete permanently"
+        confirmVariant="danger"
       />
     </div>
   );
