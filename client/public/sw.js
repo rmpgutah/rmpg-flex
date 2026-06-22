@@ -727,6 +727,12 @@
 //        to [var(--brand-gold)]. The 13 categorical chart palette
 //        entries stay as raw hex (legitimate use — semantic --sev-*
 //        tokens can't distinguish 16 entity types).
+// v1030: AI Trinity PR1 — callAi() smart fallback (Claude → OpenAI →
+//        Workers AI) wired into 4 consumers: Deep Research, Intel AI,
+//        serve-intake OCR, vision OCR. New openai.ts provider module.
+//        Admin "Test" button on openai_api_key (mirrors Claude probe).
+//        mapbox_username D1 fix (was wrangler-command junk, now
+//        'chzamo7'). 14 new vitest tests; 1477/1478 passing total.
 // v1023: Patrol — hydrate isOnBreak from /patrol/breaks on mount (was
 //        local-state-only; operator on break who refreshed the page saw
 //        "Start Break" + a fresh click raced into a 2nd break). Adds a
