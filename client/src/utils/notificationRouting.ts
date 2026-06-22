@@ -1,0 +1,110 @@
+// ============================================================
+// RMPG Flex — Notification → deep-link routing
+//
+// Notifications carry an `entity_type` + `entity_id` pair on the
+// server (see src/utils/footage/footageAlpr.ts, intelWatchlist.ts,
+// caseTaskNudges.ts, serveNudgeSweep.ts, alpr.ts, intel.ts,
+// emailProcessor.ts, etc — every code path that issues a notification
+// stamps both fields). Until v1056 the client collapsed all of that
+// to a single `type → /dispatch | /warrants | /communications | …`
+// map in NotificationCenter, throwing the entity_id away — so
+// clicking a "Warrant hit on John Doe" notification landed the
+// operator on the warrants list instead of John's record.
+//
+// Each entity_type maps to the matching page's documented deep-link
+// param name (matches what /serve, /warrants, /cases, /citations,
+// /trespass-orders, /incidents, /field-interviews, /communications,
+// /records, /dispatch, /mdt, and /intel/bolos already accept on a
+// `?<entity>_id=` query). Returning `null` falls back to the
+// type-based default route so the link still goes somewhere useful.
+// ============================================================
+
+export interface NotificationLike {
+  type: string;
+  entity_type?: string | null;
+  entity_id?: number | string | null;
+}
+
+/**
+ * Default landing pages keyed by notification `type` — used when
+ * the notification has no entity_type/entity_id (or the entity_type
+ * isn't in the deep-link map yet).
+ */
+const TYPE_DEFAULT_ROUTE: Record<string, string> = {
+  dispatch: '/dispatch',
+  warrant: '/warrants',
+  bolo: '/communications?tab=bolos',
+  message: '/communications?tab=messages',
+  system: '/',
+  credential_expiry: '/personnel',
+  patrol_missed: '/patrol',
+  // Notification-type literals emitted by the server but not previously routed
+  intel_screen: '/intel',
+  watchlist_hit: '/intel',
+  case_task_nudge: '/cases',
+  serve_nudge: '/serve',
+  email_rule: '/communications?tab=messages',
+  intel_product: '/intel/reports',
+  escalation: '/notifications',
+};
+
+/**
+ * entity_type → (id) → deep-link path. The param name matches what
+ * the receiving page already documents as its deep-link contract:
+ *  - call           → /dispatch?call_id=
+ *  - warrant        → /warrants?warrant_id=
+ *  - case           → /cases?case_id=
+ *  - case_task      → /cases?case_id= (best-effort: cases page reads
+ *                     the parent case id; the task isn't deep-linkable
+ *                     on its own yet)
+ *  - person         → /records?tab=persons&person_id=
+ *  - vehicle        → /records?tab=vehicles&vehicle_id=
+ *  - bolo           → /communications?tab=bolos&bolo_id=
+ *  - intel_report   → /intel/reports?report_id=
+ *  - serve_job      → /serve?job_id=
+ *  - citation       → /citations?citation_id=
+ *  - field_interview→ /field-interviews?fi_id=
+ *  - trespass       → /trespass-orders?order_id=
+ *  - incident       → /incidents?incident_id=
+ *  - email_message  → /communications?tab=messages&message_id=
+ *  - alpr_capture   → /plate-log?capture_id= (best-effort fallback)
+ */
+const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
+  call: (id) => `/dispatch?call_id=${encodeURIComponent(id)}`,
+  warrant: (id) => `/warrants?warrant_id=${encodeURIComponent(id)}`,
+  case: (id) => `/cases?case_id=${encodeURIComponent(id)}`,
+  case_task: (id) => `/cases?task_id=${encodeURIComponent(id)}`,
+  person: (id) => `/records?tab=persons&person_id=${encodeURIComponent(id)}`,
+  vehicle: (id) => `/records?tab=vehicles&vehicle_id=${encodeURIComponent(id)}`,
+  bolo: (id) => `/communications?tab=bolos&bolo_id=${encodeURIComponent(id)}`,
+  intel_report: (id) => `/intel/reports?report_id=${encodeURIComponent(id)}`,
+  serve_job: (id) => `/serve?job_id=${encodeURIComponent(id)}`,
+  citation: (id) => `/citations?citation_id=${encodeURIComponent(id)}`,
+  field_interview: (id) => `/field-interviews?fi_id=${encodeURIComponent(id)}`,
+  trespass: (id) => `/trespass-orders?order_id=${encodeURIComponent(id)}`,
+  incident: (id) => `/incidents?incident_id=${encodeURIComponent(id)}`,
+  email_message: (id) => `/communications?tab=messages&message_id=${encodeURIComponent(id)}`,
+  alpr_capture: (id) => `/plate-log?capture_id=${encodeURIComponent(id)}`,
+};
+
+/**
+ * Resolve a notification → the URL we should navigate to.
+ * Returns `null` if neither the entity_type nor the type maps to a
+ * known route (caller should leave the operator on the current page
+ * and just mark-read).
+ */
+export function routeForEntity(n: NotificationLike): string | null {
+  if (n.entity_type && n.entity_id != null) {
+    const builder = ENTITY_ROUTE_BUILDERS[n.entity_type];
+    if (builder) return builder(String(n.entity_id));
+  }
+  return TYPE_DEFAULT_ROUTE[n.type] ?? null;
+}
+
+/**
+ * `true` if the notification has a deep-link target — useful for
+ * deciding whether to show an "Open" button / chevron next to a row.
+ */
+export function hasDeepLink(n: NotificationLike): boolean {
+  return routeForEntity(n) !== null;
+}

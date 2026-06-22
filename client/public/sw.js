@@ -639,6 +639,130 @@
 //            Lucide would require a layout-affecting size pass on every
 //            row, deferred until the rail itself is up for review.
 //
+// v1056: Notifications — Page 39 of the full-app frontend pass. The
+//        /notifications page (NotificationsPage.tsx, 452 lines) plus the
+//        global NotificationCenter dropdown (NotificationCenter.tsx, 567
+//        lines) plus notificationTones.ts. The biggest fix here is wiring
+//        the entity_type + entity_id pair that the server has been
+//        stamping on every notification for over a year — every
+//        INSERT INTO notifications site (footageAlpr, intelWatchlist,
+//        caseTaskNudges, serveNudgeSweep, emailProcessor, alpr.ts,
+//        intel.ts, intel/development.ts, notificationEngine.ts, etc) sets
+//        them, but the client collapsed all of that to a single
+//        type → /dispatch | /warrants | /communications | …
+//        map and discarded the entity_id. A "Warrant hit on John Doe"
+//        notification landed the operator on the warrants list instead
+//        of John's record. New shared client/src/utils/notificationRouting.ts
+//        builds a deep-link path per (entity_type, entity_id) pair:
+//          call           → /dispatch?call_id=
+//          warrant        → /warrants?warrant_id=
+//          case           → /cases?case_id=
+//          person         → /records?tab=persons&person_id=
+//          vehicle        → /records?tab=vehicles&vehicle_id=
+//          bolo           → /communications?tab=bolos&bolo_id=
+//          intel_report   → /intel/reports?report_id=
+//          serve_job      → /serve?job_id=
+//          citation       → /citations?citation_id=
+//          field_interview→ /field-interviews?fi_id=
+//          trespass       → /trespass-orders?order_id=
+//          incident       → /incidents?incident_id=
+//          email_message  → /communications?tab=messages&message_id=
+//          alpr_capture   → /plate-log?capture_id=
+//        Falls back to the type-default route when only the type is
+//        known (no entity_type/entity_id pair). NotificationsPage and
+//        NotificationCenter both call routeForEntity() now; the per-page
+//        type map is gone.
+//
+//        URL deep-link contract on /notifications (matches the v1019 /
+//        v1041 / v1044 / v1048 cross-page pattern):
+//          ?notification_id=<id> — highlight + scroll the row into view;
+//                                  toast + filter-reset hint if the id
+//                                  isn't in the current view.
+//          ?category=<type>      — preselect a category filter.
+//          ?unread=1             — preselect the Unread filter.
+//        All three are consumed once and stripped (replace:true) so a
+//        manual refresh doesn't re-pin the operator to a stale link.
+//
+//        Native window-confirm-less destructive sweeps → ConfirmDialog:
+//          "Clear Read" used to fire DELETE on the entire read corpus on
+//          a bare button click with zero confirmation — a misclick from
+//          the top-right of a busy CAD layout silently nuked every read
+//          notification. Same for "Cleanup 30d+". Both now flow through
+//          the same ConfirmDialog every other destructive surface uses
+//          (pre-focuses Cancel, body-scroll-lock, no global-Enter
+//          destructive action). The Clear Read dialog shows the
+//          estimated row count (total − unread) so the operator can see
+//          what's about to disappear; the 30d+ dialog clarifies that
+//          notifications already linked to audit_log / case timeline
+//          rows live in their own tables and aren't affected.
+//
+//        Esc smart-cascade (matches the v1024–v1048 pattern):
+//          confirm dialog → preferences panel → category filter →
+//          unread filter. Falls through (no preventDefault) when nothing
+//          is open. Previous handler: none — Esc on /notifications did
+//          nothing, you had to click the X yourself.
+//
+//        Empty-state distinction:
+//          "all caught up" (server returned 0, no filter) vs "no
+//          notifications match this filter" (filter is hiding the
+//          inbox). Before, both rendered the same flat "No notifications"
+//          line and an operator with a stale category filter could not
+//          tell which. The filter-empty state also gets a one-click
+//          "Clear filter" button so a deep-linked filter is recoverable.
+//
+//        Privacy — per-user notification-sound scope:
+//          notificationTones.ts now reads `rmpg_notification_sounds_<uid>`
+//          first and falls back to the legacy global key, so a shared
+//          MDT no longer inherits the previous operator's "off" pref.
+//          UserProfileModal's sound switch routes through the new
+//          isNotificationSoundEnabled / setNotificationSoundEnabled
+//          helpers (was reading + writing localStorage directly with
+//          inline hex colors, both fixed here). Legacy global key stays
+//          a read-only fallback so an existing operator's "off" pref
+//          isn't silently flipped back to "on" after the rollout.
+//
+//        Theme token sweep:
+//          NotificationCenter badge — hardcoded #888888 background +
+//          #ffffff text + rgba shadow → bg-red-600 + text-white +
+//          currentColor-keyed shadow (an unread count needs to be visible
+//          at a glance in both day and night; the gray was barely legible
+//          in day mode). NotificationCenter dropdown top border + row
+//          unread marker — #888888 → var(--border-strong) so the chrome
+//          re-themes with the palette.
+//
+//        Sidebar "All (N)" count correction:
+//          Previously displayed pagination.total, which flips to the
+//          *filtered* total the moment any category is selected — the
+//          "All" label was lying about the inbox size as soon as you
+//          clicked any sub-category. Now uses the sum of the categories
+//          breakdown (which is unfiltered) and falls back to
+//          pagination.total when categories haven't hydrated yet.
+//
+//        Dead code:
+//          NotificationsPage's `useAuth` import + `user` destructure
+//          removed — never read. The old NOTIFICATION_ROUTES map in
+//          NotificationCenter is gone (replaced by the shared helper).
+//
+//        Tests:
+//          New client/src/utils/__tests__/notificationRouting.test.ts
+//          (15 cases) covers entity-first routing, URL-encoding, type
+//          fallback, the "no route at all" case, and hasDeepLink.
+//          Existing dispatchTones.test.ts still passes — the legacy
+//          global key remains a valid read fallback.
+//
+//        Out of scope:
+//          The 30 day cleanup confirm dialog estimates "30d+" rows from
+//          a count we don't currently fetch — it tells the operator what
+//          the operation does instead of the exact row count. Adding a
+//          /notifications/cleanup-preview?days=30 endpoint to surface
+//          the precise count is a separate API change.
+//          The notification preferences panel itself ("Preferences"
+//          toolbar button) is still server-backed but the Esc handler
+//          treats it as a single layer to close — closing the panel
+//          mid-edit currently discards unsaved checkbox/quiet-hours
+//          changes. A "Save changes?" confirm on Esc-when-dirty would be
+//          a separate scope.
+//
 // v1048: Process Server / Serve Scheduler — Page 31 of the full-app
 //        frontend pass. ServePage.tsx (1801 lines) is the operational
 //        hub (Queue + Route + Map + Stats + Assign + My Run tabs) and
