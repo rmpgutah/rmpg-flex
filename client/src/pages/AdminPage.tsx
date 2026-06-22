@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Settings,
   Users,
@@ -32,6 +33,7 @@ import {
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useToast } from '../components/ToastProvider';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
@@ -246,15 +248,28 @@ const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
 export default function AdminPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   // Ref to suppress LiveSync refresh while a client inline edit is pending save
   const clientEditPendingRef = useRef(false);
 
+  // ── URL deep-link contract ──
+  // /admin?tab=<id> selects a section (round-trip: tab clicks update the URL
+  // so a copy-paste lands the recipient back on the same tab).
+  // /admin?user_id=<id> auto-selects a user on the Users tab once the roster
+  // hydrates; /admin?client_id=<id> the same on the Clients tab. /admin?setting_key=
+  // is forwarded as-is to the settings tab (it owns its own scroll behavior).
+  // All non-tab params are stripped after consumption so a hard refresh
+  // doesn't re-trigger the lookup, but ?tab= stays so the operator's tab
+  // selection is bookmarkable.
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleet_v2_health', 'fleetio_health', 'inspection_templates'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleet_v2_health', 'fleetio_health', 'inspection_templates', 'wallet_ids'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
-      // URL ?tab= param takes priority (used by Help → Training link)
-      const urlTab = new URLSearchParams(window.location.search).get('tab');
+      // URL ?tab= param takes priority (used by Help → Training link, and
+      // by external deep-links that point at a specific admin section).
+      const urlTab = searchParams.get('tab');
       if (urlTab && VALID_TABS.includes(urlTab)) return urlTab as TabId;
       const saved = localStorage.getItem(LS_ADMIN_TAB);
       if (saved && VALID_TABS.includes(saved)) return saved as TabId;
@@ -264,7 +279,23 @@ export default function AdminPage() {
   const setActiveTab = useCallback((tab: TabId) => {
     setActiveTabState(tab);
     try { localStorage.setItem(LS_ADMIN_TAB, tab); } catch { /* ignore */ }
-  }, []);
+    // Round-trip the tab into the URL so a copy-paste recipient lands on the
+    // same section. We do this in setActiveTab (not a useEffect on activeTab)
+    // so the back-button history is one entry per real navigation, not one
+    // per render. `replace: true` avoids polluting history when an operator
+    // clicks through several tabs in a row.
+    try {
+      const next = new URLSearchParams(searchParams);
+      if (next.get('tab') !== tab) {
+        next.set('tab', tab);
+        setSearchParams(next, { replace: true });
+      }
+    } catch { /* ignore */ }
+  }, [searchParams, setSearchParams]);
+
+  // Deep-link refs — consumed once the roster/clients hydrate, then stripped.
+  const pendingUserIdRef = useRef<string | null>(searchParams.get('user_id'));
+  const pendingClientIdRef = useRef<string | null>(searchParams.get('client_id'));
 
   // --- Data states ---
   const [users, setUsers] = useState<(User & { last_login_display?: string })[]>([]);
@@ -731,14 +762,114 @@ export default function AdminPage() {
   // Set document title
   useEffect(() => { document.title = 'Administration \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // \u2500\u2500 /admin?user_id=<id> deep-link auto-select \u2500\u2500
+  // Once the personnel roster hydrates, find the target by id, flip to the
+  // Users tab, and select it. Strip the param so a refresh doesn't re-pin.
   useEffect(() => {
+    const target = pendingUserIdRef.current;
+    if (!target) return;
+    if (loadingUsers) return;
+    const hit = users.find(u => String(u.id) === String(target));
+    if (hit) {
+      pendingUserIdRef.current = null;
+      setActiveTab('users');
+      setSelectedUser(hit);
+      const next = new URLSearchParams(searchParams);
+      next.delete('user_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    // Wait for hydration before deciding it's missing.
+    if (users.length === 0) return;
+    pendingUserIdRef.current = null;
+    addToast(`User ${target} not found`, 'warning');
+    const next = new URLSearchParams(searchParams);
+    next.delete('user_id');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [users, loadingUsers]);
+
+  // \u2500\u2500 /admin?client_id=<id> deep-link auto-select \u2500\u2500
+  useEffect(() => {
+    const target = pendingClientIdRef.current;
+    if (!target) return;
+    if (loadingClients) return;
+    const hit = clients.find(c => String(c.id) === String(target));
+    if (hit) {
+      pendingClientIdRef.current = null;
+      setActiveTab('clients');
+      setSelectedClient(hit);
+      const next = new URLSearchParams(searchParams);
+      next.delete('client_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    if (clients.length === 0) return;
+    pendingClientIdRef.current = null;
+    addToast(`Client ${target} not found`, 'warning');
+    const next = new URLSearchParams(searchParams);
+    next.delete('client_id');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clients, loadingClients]);
+
+  // \u2500\u2500 If the deep-link is for Clients but the tab opened to Users, force
+  // a clients fetch so the auto-select effect can resolve. \u2500\u2500
+  useEffect(() => {
+    if (pendingClientIdRef.current && clients.length === 0 && !loadingClients) {
+      fetchClients();
+    }
+    if (pendingUserIdRef.current && users.length === 0 && !loadingUsers) {
+      fetchUsers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // \u2500\u2500 Keyboard: Esc smart-cascade + N \u2192 New User / New Client \u2500\u2500
+  // Esc closes the smallest-open thing first so a delete confirm raised on
+  // top of an edit modal doesn't dismiss both at once. Order: delete
+  // confirms \u2192 primary modals \u2192 selected detail pane. The old handler only
+  // closed the user modal, leaving every other dialog captive to its own
+  // close button.
+  // N opens "Add User" on the Users tab or "Add Client" on the Clients tab;
+  // typing-suppressed so an admin filling out a search box doesn't trigger
+  // the shortcut mid-type.
+  useEffect(() => {
+    const isTypingTarget = (el: EventTarget | null): boolean => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setUserModalOpen(false); setEditingUser(null); }
+      if (e.key === 'Escape') {
+        if (userDeleteConfirmOpen) { setUserDeleteConfirmOpen(false); setDeletingUser(null); return; }
+        if (deleteConfirmOpen) { setDeleteConfirmOpen(false); setDeletingClient(null); return; }
+        if (userModalOpen) { setUserModalOpen(false); setEditingUser(null); return; }
+        if (clientModalOpen) { setClientModalOpen(false); setEditingClient(null); return; }
+        if (selectedUser) { setSelectedUser(null); return; }
+        if (selectedClient) { setSelectedClient(null); return; }
+        return;
+      }
+      if ((e.key === 'n' || e.key === 'N')
+          && !e.ctrlKey && !e.metaKey && !e.altKey
+          && !isTypingTarget(e.target)) {
+        // Suppress when any modal already owns the page.
+        if (userModalOpen || clientModalOpen || deleteConfirmOpen || userDeleteConfirmOpen) return;
+        if (activeTab === 'users') {
+          e.preventDefault();
+          openAddUser();
+        } else if (activeTab === 'clients') {
+          e.preventDefault();
+          openAddClient();
+        }
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [
+    userDeleteConfirmOpen, deleteConfirmOpen, userModalOpen, clientModalOpen,
+    selectedUser, selectedClient, activeTab,
+  ]);
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
