@@ -717,6 +717,29 @@
 //        Dispatch). Theme: warrant-banner ⚠️ emoji → Lucide
 //        AlertTriangle; restored-draft #1a1500 → rgb(var(--sev-warn-rgb)
 //        / 0.08) (same lift as Patrol PR #1595).
+// v1030: Warrants — kill the last 3 native window.confirm calls
+//        (bulk status update, bulk archive, >50-row print packet) and
+//        replace them with themed ConfirmDialog so the operator never
+//        sees a Chrome modal on a warrant action. Adds ?warrant_id=
+//        deep-link contract (FI-style) — list/direct-fetch fallback
+//        for archived or off-page targets, query strip after select.
+//        Esc smart-cascade: closes the smallest open modal first
+//        (bulk confirms → delete → Utah detail → person profile →
+//        serve → form) instead of nuking the whole stack. `N` opens
+//        New Warrant (suppressed in inputs / when any modal open / off
+//        the warrants tab). Empty state now distinguishes
+//        "no warrants on file" from "your filter returned zero" and
+//        from "archive is empty" — three messages, one icon swap.
+//        Privacy: bumps the form-draft localStorage key from the
+//        unscoped `rmpg_warrant_form` to `rmpg_warrant_form:<userId>`
+//        so a half-typed warrant on a shared MDT doesn't leak across
+//        badges; legacy global key proactively removed on hydrate.
+//        Theme: 28 #d4a017 arbitraries in WarrantsPage + 4 in sub-files
+//        lifted to var(--brand-gold) tokens; restored-draft #1a1500 →
+//        rgb(var(--sev-warn-rgb) / 0.08); ScrapersTab status-dot
+//        shadow hexes → var(--sev-*) tokens; WarrantPicker stray #ef4444
+//        and #666 → sev-critical / spm-text-muted; selected-row
+//        bg-[#1f1a08] → rgb(var(--brand-gold-rgb) / 0.12).
 // v1029: Connections graph — fix 3 entity-color collisions that
 //        silently rendered DIFFERENT entity types as the same dot
 //        color (person+case both brand-gold; evidence+arrest both red;
