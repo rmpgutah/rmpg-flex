@@ -727,6 +727,32 @@
 //        to [var(--brand-gold)]. The 13 categorical chart palette
 //        entries stay as raw hex (legitimate use — semantic --sev-*
 //        tokens can't distinguish 16 entity types).
+// v1036: Code Enforcement — court-ready notice + tow-order PDFs
+//        (codeEnforcementPdf.ts, Arial banner, gold strap, critical-
+//        violation alert bar, compliance-deadline reminder bar,
+//        property/violator/description/resolution blocks, dual-
+//        signature footer). Code-enforcement notices ARE the
+//        operator artifact (handed to the property owner / driver) —
+//        the only print path was previously bulk CSV. Two open*
+//        entry points wired from new "Notice PDF" / "Tow Order PDF"
+//        buttons on each detail panel; 18 unit tests cover the pure
+//        fmt/wrap/classify helpers. Adds /code-enforcement?
+//        violation_id=…&tow_id=… URL deep-link (auto-selects + tab-
+//        switches + strips the query). Esc cascade extended to
+//        smallest-open-first: reinspection inline → tow form →
+//        violation form (was hard-coded to only the violation form,
+//        silently ignoring tow form + reinspection date picker).
+//        Adds `N` keyboard shortcut for new violation/tow, typing-
+//        suppressed. Removes 5 declared-but-never-rendered state +
+//        handler blocks (severityScore, compTimeline, fineCalc,
+//        compDashboard, geoClusters) — dead since this page was
+//        stubbed. Distinct empty-state copy for filtered-empty vs
+//        truly-empty. Fixes the tow-form draft storage key typo
+//        (rmpg_code_template_form → rmpg_code_tow_form). Theme: 6
+//        text-[#d4a017] sites lifted to text-[var(--brand-gold)] +
+//        2 rgba(212,160,23,…) sites lifted to rgb(var(--brand-gold-
+//        rgb) / 0.NN) + fetch-error banner ⚠/✕ ASCII glyphs → Lucide
+//        AlertTriangle/X.
 // v1023: Patrol — hydrate isOnBreak from /patrol/breaks on mount (was
 //        local-state-only; operator on break who refreshed the page saw
 //        "Start Break" + a fresh click raced into a 2nd break). Adds a

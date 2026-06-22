@@ -6,12 +6,12 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Construction, Search, Plus, Truck, MapPin, Clock, User,
-  X, Save, Loader2, AlertTriangle, DollarSign, FileText,
-  ChevronDown, Eye, Hash, CheckCircle, Calendar,
+  Construction, Search, Plus, Truck, MapPin, Clock,
+  X, Save, Loader2, AlertTriangle, FileText, Eye, Calendar,
 } from 'lucide-react';
-import type { CodeViolation, VehicleTow, ViolationType, ViolationStatus, TowStatus, TowReason } from '../types';
+import type { CodeViolation, VehicleTow, ViolationType, TowReason } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import ExportButton from '../components/ExportButton';
@@ -30,6 +30,7 @@ import { isValidVIN, isValidPlate } from '../utils/validate';
 import { localToday, safeDateStr, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatAddressDisplay } from '../utils/statusLabels';
 import EmptyState from '../components/EmptyState';
+import { openCodeViolationNoticePdf, openTowOrderPdf } from '../utils/codeEnforcementPdf';
 
 const VIOLATION_TYPES: { value: ViolationType; label: string }[] = [
   { value: 'noise', label: 'Noise' }, { value: 'property_maintenance', label: 'Property Maintenance' },
@@ -155,56 +156,16 @@ export default function CodeEnforcementPage() {
     clearDraft: clearTFormDraft,
     snapshot: snapshotTForm,
   } = useFormDraft<typeof EMPTY_TOW>({
-    storageKey: 'rmpg_code_template_form',
+    storageKey: 'rmpg_code_tow_form',
     defaultValue: EMPTY_TOW,
     isActive: tFormOpen,
   });
   const [submitting, setSubmitting] = useState(false);
-
-  // ── Feature 31: Severity Score ──
-  const [severityScore, setSeverityScore] = useState<any>(null);
-  const handleSeverityScore = async (id: number) => {
-    try {
-      const data = await apiFetch<any>(`/code-enforcement/violations/${id}/severity-score`);
-      setSeverityScore(data?.data || data);
-    } catch { addToast('Failed to calculate severity', 'error'); }
-  };
-
-  // ── Feature 32: Compliance Timeline ──
-  const [compTimeline, setCompTimeline] = useState<any>(null);
-  const handleCompTimeline = async (id: number) => {
-    try {
-      const data = await apiFetch<any>(`/code-enforcement/violations/${id}/timeline`);
-      setCompTimeline(data?.data || data);
-    } catch { addToast('Failed to load timeline', 'error'); }
-  };
-
-  // ── Feature 34: Fine Calculation ──
-  const [fineCalc, setFineCalc] = useState<any>(null);
-  const handleCalcFine = async (id: number) => {
-    try {
-      const data = await apiFetch<any>(`/code-enforcement/violations/${id}/calculate-fine`);
-      setFineCalc(data?.data || data);
-    } catch { addToast('Failed to calculate fine', 'error'); }
-  };
-
-  // ── Feature 35: Compliance Dashboard ──
-  const [compDashboard, setCompDashboard] = useState<any>(null);
-  const handleLoadCompDashboard = async () => {
-    try {
-      const data = await apiFetch<any>('/code-enforcement/compliance-dashboard?days=90');
-      setCompDashboard(data?.data || data);
-    } catch { addToast('Failed to load compliance dashboard', 'error'); }
-  };
-
-  // ── Feature 33: Geographic Clustering ──
-  const [geoClusters, setGeoClusters] = useState<any>(null);
-  const handleLoadClusters = async () => {
-    try {
-      const data = await apiFetch<any>('/code-enforcement/violations/geo/clusters?days=90');
-      setGeoClusters(data?.data || data);
-    } catch { addToast('Failed to load clusters', 'error'); }
-  };
+  // NOTE: 5 unused state+handler blocks (severityScore, compTimeline, fineCalc,
+  // compDashboard, geoClusters) were declared but never rendered or called — dead
+  // since this page was first stubbed. Removed in v1036 to drop the bundle weight
+  // and `any`-flag count. The corresponding /code-enforcement/* routes still exist
+  // server-side; re-add the UI when an operator path actually consumes them.
 
   // Fetch violations
   const fetchViolations = useCallback(async (opts?: { silent?: boolean }) => {
@@ -358,14 +319,107 @@ export default function CodeEnforcementPage() {
   // Set document title
   useEffect(() => { document.title = 'Code Enforcement \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // \u2500\u2500 New-record helper (also used by the `N` keyboard shortcut) \u2500\u2500
+  const handleOpenNew = useCallback(() => {
+    if (activeTab === 'violations') {
+      clearVErrors();
+      setVFormData({ ...EMPTY_VIOLATION });
+      setVFormOpen(true);
+      snapshotVForm();
+    } else {
+      clearTErrors();
+      setTFormData({ ...EMPTY_TOW });
+      setTFormOpen(true);
+      snapshotTForm();
+    }
+  // setForm*/snapshot* are stable refs from useFormDraft; pulling them in
+  // would force handleOpenNew to re-create every render and re-bind the
+  // keyboard listener.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  // Keyboard shortcuts:
+  //   Esc \u2014 smart cascade: close the smallest-open thing first so a single
+  //         tap does not punch through every overlay (reinspection inline \u2192
+  //         tow form \u2192 violation form).
+  //   N   \u2014 open a new record from anywhere on the page, suppressed when
+  //         the user is actually typing into a field.
   useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setVFormOpen(false); }
+      if (e.key === 'Escape') {
+        if (showReinspection) { setShowReinspection(false); setReinspectionDate(''); return; }
+        if (tFormOpen)        { clearTFormDraft(); setTFormOpen(false); return; }
+        if (vFormOpen)        { clearVFormDraft(); setVFormOpen(false); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        handleOpenNew();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [showReinspection, tFormOpen, vFormOpen, clearTFormDraft, clearVFormDraft, handleOpenNew]);
+
+  // \u2500\u2500 /code-enforcement?violation_id=\u2026 / ?tow_id=\u2026 deep-link auto-select \u2500\u2500
+  // Once the matching list hydrates, find by id, switch tabs if needed, and
+  // strip the query so a manual refresh doesn't re-select. Surfaces a one-time
+  // toast when the id misses (e.g. archived or in another org's view).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingViolationIdRef = useRef<string | null>(searchParams.get('violation_id'));
+  const pendingTowIdRef = useRef<string | null>(searchParams.get('tow_id'));
+  useEffect(() => {
+    const target = pendingViolationIdRef.current;
+    if (!target || vLoading) return;
+    const hit = violations.find((v) => String(v.id) === String(target));
+    if (!hit) {
+      if (violations.length === 0) return;
+      pendingViolationIdRef.current = null;
+      addToast(`Violation ${target} not in the current view (try clearing filters)`, 'warning');
+      const next = new URLSearchParams(searchParams);
+      next.delete('violation_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    pendingViolationIdRef.current = null;
+    setActiveTab('violations');
+    setSelectedViolation(hit);
+    const next = new URLSearchParams(searchParams);
+    next.delete('violation_id');
+    setSearchParams(next, { replace: true });
+  }, [violations, vLoading, searchParams, setSearchParams, addToast]);
+
+  useEffect(() => {
+    const target = pendingTowIdRef.current;
+    if (!target || tLoading) return;
+    const hit = tows.find((t) => String(t.id) === String(target));
+    if (!hit) {
+      if (tows.length === 0) return;
+      pendingTowIdRef.current = null;
+      addToast(`Tow ${target} not in the current view (try clearing filters)`, 'warning');
+      const next = new URLSearchParams(searchParams);
+      next.delete('tow_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    pendingTowIdRef.current = null;
+    setActiveTab('tows');
+    setSelectedTow(hit);
+    const next = new URLSearchParams(searchParams);
+    next.delete('tow_id');
+    setSearchParams(next, { replace: true });
+  }, [tows, tLoading, searchParams, setSearchParams, addToast]);
+
+  // \u2500\u2500 Empty-state copy that distinguishes "filters active" vs "truly empty" \u2500\u2500
+  const violationsTrulyEmpty = !vSearch && !vFilterStatus;
+  const towsTrulyEmpty = !tSearch && !tFilterStatus;
 
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
@@ -374,20 +428,9 @@ export default function CodeEnforcementPage() {
         <PanelTitleBar title="Code Enforcement" icon={Construction}>
           <ExportButton exportUrl="/api/code-enforcement/export/csv" exportFilename="code_violations_export.csv" />
           <button type="button"
-            onClick={() => {
-              if (activeTab === 'violations') {
-                clearVErrors();
-                setVFormData({ ...EMPTY_VIOLATION });
-                setVFormOpen(true);
-                snapshotVForm();
-              } else {
-                clearTErrors();
-                setTFormData({ ...EMPTY_TOW });
-                setTFormOpen(true);
-                snapshotTForm();
-              }
-            }}
+            onClick={handleOpenNew}
             className="toolbar-btn toolbar-btn-primary print:hidden"
+            title={`New ${activeTab === 'violations' ? 'violation' : 'tow order'} (N)`}
           >
             <Plus style={{ width: 11, height: 11 }} />
             New
@@ -396,8 +439,15 @@ export default function CodeEnforcementPage() {
 
         {fetchError && (
           <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
-            <span>⚠ {fetchError}</span>
-            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+            <AlertTriangle style={{ width: 12, height: 12 }} />
+            <span>{fetchError}</span>
+            <IconButton
+              onClick={() => setFetchError('')}
+              className="ml-auto text-red-500 hover:text-red-300"
+              aria-label="Dismiss error"
+            >
+              <X style={{ width: 12, height: 12 }} />
+            </IconButton>
           </div>
         )}
 
@@ -468,7 +518,11 @@ export default function CodeEnforcementPage() {
         <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
           {activeTab === 'violations' ? (
             vLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
-            violations.length === 0 ? <EmptyState icon={Construction} title="No violations found" description="Try adjusting your filters or create a new one." /> :
+            violations.length === 0 ? <EmptyState
+              icon={Construction}
+              title={violationsTrulyEmpty ? 'No violations yet' : 'No violations match your filters'}
+              description={violationsTrulyEmpty ? 'Press N or click + New to log a code violation.' : 'Try clearing search or status filter.'}
+            /> :
             violations.map(v => (
               <button type="button"
                 key={v.id}
@@ -510,7 +564,11 @@ export default function CodeEnforcementPage() {
             ))
           ) : (
             tLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
-            tows.length === 0 ? <EmptyState icon={Truck} title="No tows found" description="Try adjusting your filters or create a new one." /> :
+            tows.length === 0 ? <EmptyState
+              icon={Truck}
+              title={towsTrulyEmpty ? 'No tow orders yet' : 'No tows match your filters'}
+              description={towsTrulyEmpty ? 'Press N or click + New to open a tow order.' : 'Try clearing search or status filter.'}
+            /> :
             tows.map(t => (
               <button type="button"
                 key={t.id}
@@ -545,6 +603,15 @@ export default function CodeEnforcementPage() {
         {activeTab === 'violations' && selectedViolation ? (
           <>
             <PanelTitleBar title={selectedViolation.violation_number} icon={Construction}>
+              <button
+                type="button"
+                onClick={() => openCodeViolationNoticePdf(selectedViolation)}
+                className="toolbar-btn print:hidden"
+                title="Print court-ready Notice of Violation"
+              >
+                <FileText style={{ width: 11, height: 11 }} />
+                Notice PDF
+              </button>
             </PanelTitleBar>
             <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
@@ -557,7 +624,7 @@ export default function CodeEnforcementPage() {
               </div>
               {/* Status actions */}
               <div className="panel-beveled p-3">
-                <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Actions</div>
+                <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Actions</div>
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
                   {['notice_sent', 'reinspection', 'resolved', 'referred', 'voided'].filter(s => s !== selectedViolation.status).map(s => (
                     <button type="button" key={s} onClick={() => handleViolationStatus(selectedViolation.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
@@ -569,7 +636,7 @@ export default function CodeEnforcementPage() {
               {/* Schedule Reinspection */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Reinspection</div>
+                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider">Reinspection</div>
                   <button type="button"
                     onClick={() => setShowReinspection(!showReinspection)}
                     className="text-[10px] px-2 py-1 border border-rmpg-600 text-rmpg-400 bg-surface-sunken hover:bg-rmpg-800/40 transition-colors"
@@ -611,7 +678,7 @@ export default function CodeEnforcementPage() {
               {propertyHistory && (
                 <div className={`panel-beveled p-3 ${propertyHistory.is_repeat_offender ? 'border-red-700/50 bg-red-900/10' : ''}`}>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Property Violation History (12 mo)</div>
+                    <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider">Property Violation History (12 mo)</div>
                     <span className={`text-[10px] font-bold px-2 py-0.5 border ${
                       propertyHistory.is_repeat_offender ? 'bg-red-900/50 text-red-400 border-red-700/50' : 'bg-rmpg-700/30 text-rmpg-300 border-rmpg-600/50'
                     }`}>
@@ -639,7 +706,7 @@ export default function CodeEnforcementPage() {
                   ['Created', safeDateTimeStr(selectedViolation.created_at)],
                 ].map(([label, value]) => (
                   <div key={label as string}>
-                    <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>
+                    <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider">{label}</div>
                     <div className="text-xs text-rmpg-100 mt-0.5">{value || '—'}</div>
                   </div>
                 ))}
@@ -649,6 +716,15 @@ export default function CodeEnforcementPage() {
         ) : activeTab === 'tows' && selectedTow ? (
           <>
             <PanelTitleBar title={selectedTow.tow_number} icon={Truck}>
+              <button
+                type="button"
+                onClick={() => openTowOrderPdf(selectedTow)}
+                className="toolbar-btn print:hidden"
+                title="Print court-ready Vehicle Tow Order"
+              >
+                <FileText style={{ width: 11, height: 11 }} />
+                Tow Order PDF
+              </button>
             </PanelTitleBar>
             <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
@@ -660,7 +736,7 @@ export default function CodeEnforcementPage() {
                 </span>
               </div>
               <div className="panel-beveled p-3">
-                <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Actions</div>
+                <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Actions</div>
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
                   {['dispatched', 'in_progress', 'completed', 'released', 'cancelled'].filter(s => s !== selectedTow.status).map(s => (
                     <button type="button" key={s} onClick={() => handleTowStatus(selectedTow.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
@@ -681,7 +757,7 @@ export default function CodeEnforcementPage() {
                   ['Storage Fee', selectedTow.storage_fee_daily && !isNaN(Number(selectedTow.storage_fee_daily)) ? `$${Number(selectedTow.storage_fee_daily).toFixed(2)}` : '—'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
-                    <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>
+                    <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider">{label}</div>
                     <div className="text-xs text-rmpg-100 mt-0.5">{value || '—'}</div>
                   </div>
                 ))}
@@ -712,7 +788,7 @@ export default function CodeEnforcementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               {vFormWasRestored && (
-                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgba(212,160,23,0.12)' }}>
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)' }}>
                   <div className="flex items-center gap-2">
                     <Clock size={14} className="text-amber-400" />
                     <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
@@ -808,7 +884,7 @@ export default function CodeEnforcementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               {tFormWasRestored && (
-                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgba(212,160,23,0.12)' }}>
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)' }}>
                   <div className="flex items-center gap-2">
                     <Clock size={14} className="text-amber-400" />
                     <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
