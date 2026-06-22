@@ -5,6 +5,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { normalizeDob } from '../utils/normalizeDob';
 import { codedLike } from '../utils/searchText';
 import { recordAudit } from '../utils/auditLog';
+import { screenPersonForSor } from '../utils/screening/nsopwAdapter';
 
 const records = new Hono<Env>();
 
@@ -322,6 +323,13 @@ records.post('/persons', async (c) => {
     const newId = Number(result.meta.last_row_id);
     await writePersonExt(db, newId, body);
     const person = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM persons WHERE id = ?', newId));
+    // Auto-screen new persons against NSOPW. Fire-and-forget: a SOR
+    // miss/timeout must NOT block person creation. Confirmed hits land
+    // in screening_hits and surface on PersonIntelPanel + dossier.
+    c.executionCtx.waitUntil(
+      screenPersonForSor(c.env, newId, { triggeredBy: 'person_create' })
+        .catch((err) => console.warn('[nsopw] person_create screen failed:', err)),
+    );
     return c.json(person, 201);
   } catch (err) {
     console.error('POST /records/persons failed:', err);
@@ -386,6 +394,13 @@ records.post('/from-dl-scan', async (c) => {
       personCreated = true;
     }
     const personId = Number(person!.id);
+    if (personCreated) {
+      // Auto-screen DL-scanned persons too. Same fire-and-forget posture.
+      c.executionCtx.waitUntil(
+        screenPersonForSor(c.env, personId, { triggeredBy: 'dl_scan_create' })
+          .catch((err) => console.warn('[nsopw] dl_scan screen failed:', err)),
+      );
+    }
 
     // ── Vehicle: optional; reuse by plate, always (re)link to the person ──
     let vehicle: Record<string, unknown> | null = null;

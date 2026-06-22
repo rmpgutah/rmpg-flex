@@ -17,6 +17,7 @@ import { LIST_VIEW_SELECT } from './calls';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
 import { findOrCreateBusiness } from '../../utils/serveIntakeRecords';
+import { screenPersonForSor } from '../../utils/screening/nsopwAdapter';
 // Live D1 stores literal "None"/"N/A"/"0" in flag columns rather than NULL, so a
 // naive truthiness check fires a bogus officer-safety alert on a subject with no
 // flags. isFlagSet() (shared) treats those sentinels as absent.
@@ -137,6 +138,19 @@ links.post('/calls/:id/persons', async (c) => {
   } catch (err) {
     console.warn('warrant-alert check failed (non-fatal):', err);
   }
+
+  // OFFICER SAFETY: also screen this subject against NSOPW. Fires
+  // in the background; a confirmed national SOR hit lands in
+  // screening_hits, which the dispatch board picks up via the existing
+  // call:warrant_alert / dispatch_update channels through the dossier
+  // integration. A pre-existing `is_sex_offender=1` flag on the local
+  // persons row already triggers the caution-flag voice cue below;
+  // the NSOPW path supplements that with up-to-date cross-jurisdiction
+  // data for subjects who were registered out of state.
+  c.executionCtx.waitUntil(
+    screenPersonForSor(c.env, body.person_id, { triggeredBy: 'cfs_subject_add' })
+      .catch((err) => console.warn('[nsopw] cfs_subject_add screen failed:', err)),
+  );
 
   // Officer MDT voice — "Subject added: <last name>". Person flags
   // (caution / sex_offender / gang) deserve an officer-safety push,

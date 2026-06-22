@@ -851,6 +851,12 @@ export default function SexOffenderRegistryPage() {
             </button>
           )}
           <ExportButton exportUrl="/api/sex-offender-registry/export/csv" exportFilename="sex-offenders.csv" />
+          {/* Nationwide cross-ref — federates NSOPW across all 50 states. */}
+          <a href="/nsopw" rel="noopener"
+            className="toolbar-btn px-2.5 py-1 text-[11px] flex items-center gap-1.5 bg-brand-700/80 hover:bg-brand-600"
+            title="Open the nationwide NSOPW name+DOB cross-reference">
+            <ShieldAlert size={12} /> Nationwide (NSOPW)
+          </a>
         </div>
       </PanelTitleBar>
 
