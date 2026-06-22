@@ -99,7 +99,7 @@ curl -sf https://api.rmpgutah.us/api/health   # expect {"status":"ok",...}
 #    e.g. `SELECT COUNT(*) FROM sqlite_master WHERE type='table'` (expect ~180).
 ```
 
-**Service worker cache**: bump `CACHE_NAME` in `client/public/sw.js` on every client change so users don't get stale chunks. Incident 2026-05-24: SW v321 lived in prod for weeks while source moved to v563 because the old `deploy.yml` only ran the Worker step. The new pipeline deploys both — but the SW bump is still required for cache invalidation.
+**Service worker cache**: `CACHE_NAME` in `client/public/sw.js` is the literal placeholder `'rmpg-flex-BUILD'`. The `stamp-sw-version` Vite plugin in [`client/vite.config.ts`](client/vite.config.ts) replaces it with `'rmpg-flex-<git-short-sha>'` in `dist/sw.js` during `closeBundle()` on every production build, so every commit gets a unique cache name automatically. **Do not edit `CACHE_NAME` by hand** — manual bumps are no-ops and were a chronic merge-conflict source (the whole reason this auto-stamp exists). If you want to document what shipped, add a one-line `// vNNN:` changelog comment under the most recent one in `sw.js`; those are pure documentation and don't influence cache invalidation. Historical: incident 2026-05-24 (SW v321 lived in prod for weeks while source moved to v563) was the original reason for manual bumps before the auto-stamp refactor.
 
 **Manual / local invocations**:
 ```bash
@@ -292,7 +292,7 @@ There is no Worker test suite yet — only typecheck. **Adding vitest for `/src/
 3. **D1 queries are async** — `await db.prepare(...).first()`. Forgetting `await` returns a Promise that JSON-serialises to `{}`, which the client then logs as "empty response."
 4. **`deploy.yml` step `Apply D1 migrations` has `continue-on-error: true`** — the Worker reconciles missing columns at boot, but you cannot rely on the deploy log alone to tell you a migration succeeded. After deploying, query the table directly via `wrangler d1 execute rmpg-flex --remote --command 'SELECT name FROM sqlite_master ...'` to confirm.
 5. **D1 has dirty schema in prod** — earlier migrations partially applied during the rehoming. New migrations must be idempotent. See [`migrations/README.md`](migrations/README.md).
-6. **Service worker cache** — bump `CACHE_NAME` in `client/public/sw.js` on every client change. Without a bump, users keep serving the old hash-named bundles from cache for up to 24 h.
+6. **Service worker cache** — `CACHE_NAME` in `client/public/sw.js` auto-stamps from the git short SHA via the `stamp-sw-version` plugin in [`client/vite.config.ts`](client/vite.config.ts) on every production build. Do NOT edit `CACHE_NAME` manually — it's a literal placeholder `'rmpg-flex-BUILD'` in source and a hand bump is a merge-conflict magnet (this auto-stamp refactor exists for that reason). Add a one-line changelog comment under the most recent `// vNNN:` entry if you want to document what shipped, but the cache name itself is handled for you.
 7. **Mapbox token** — `client/src/utils/mapboxApiKey.ts` reads `VITE_MAPBOX_ACCESS_TOKEN` at build time. The error string in that file still says "Add MAPBOX_ACCESS_TOKEN to server/.env" — that's stale (no `.env` on Workers); the token must be embedded into the Vite build via `client/.env` or Cloudflare Pages env vars.
 8. **Cloudflare Pages != Worker** — the React app on Pages (`rmpgutah.us`) is a separate deployment from the Worker on `api.rmpgutah.us`. Both deploy together via `deploy.yml`, but each can fail independently. Check Pages logs in the Cloudflare dashboard if the SPA shell breaks while the API is healthy (or vice versa).
 9. **WebSocket route** (`src/routes/ws.ts`) uses Workers' `webSocketPair()` — the auth/upgrade dance differs subtly from Node `ws`. JWT is verified once at upgrade time; subsequent messages on that socket are trusted.
@@ -311,7 +311,7 @@ If you encounter any of these in code comments, docs, or older messages, **do no
 - `better-sqlite3`, `initDatabase()` from `server/src/models/database.ts`
 - `addCol(...)` migrations in `database.ts` — D1 uses files in `migrations/` instead
 - nginx config tweaks (`/etc/nginx/sites-enabled/rmpgutah.us`, `mime.types`, `brotli.conf`) — Cloudflare handles all edge TLS / compression / caching
-- `CACHE_NAME` bump on the **VPS** — only the local `client/public/sw.js` matters
+- Manual `CACHE_NAME` bump in `client/public/sw.js` (VPS-era or otherwise) — the value is now auto-stamped from the git short SHA by the `stamp-sw-version` Vite plugin; source stays as the literal placeholder `'rmpg-flex-BUILD'`
 - TOTP / WebAuthn / Evidence-chain Ed25519 setup — those features were VPS-only and have not been ported to the Worker yet
 - Husky `pre-push` instructions about running 461 server tests — that gate was removed when `/server/` was quarantined
 
