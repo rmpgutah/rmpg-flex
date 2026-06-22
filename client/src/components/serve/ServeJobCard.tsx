@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import type { ServeJob, ServeJobLinkedCall, ServeAttempt } from '../../types';
 import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
+import { formatCodeShort } from '../../constants/processServiceCodes';
 
 interface ServeJobCardProps {
   job: ServeJob;
@@ -330,9 +331,22 @@ export default React.memo(function ServeJobCard({
                     }`}>
                       {ATTEMPT_RESULT_LABELS[attempt.result] || attempt.result}
                     </span>
-                    {attempt.notes && (
-                      <span className="text-[10px] text-rmpg-400 truncate flex-1 min-w-0">{attempt.notes}</span>
-                    )}
+                    {(() => {
+                      const fallback = attempt.notes
+                        || formatCodeShort(attempt.disposition_code);
+                      if (!fallback) return null;
+                      const isFallback = !attempt.notes;
+                      return (
+                        <span
+                          className={`text-[10px] truncate flex-1 min-w-0 ${
+                            isFallback ? 'italic text-rmpg-500' : 'text-rmpg-400'
+                          }`}
+                          title={isFallback ? 'No operator notes — showing disposition code' : undefined}
+                        >
+                          {fallback}
+                        </span>
+                      );
+                    })()}
                     {/* Edit affordance — always visible (no hover gate). Field
                         operators on iPad/phone have no hover state, so a
                         group-hover:opacity-100 pencil was invisible to them.
