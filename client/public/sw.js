@@ -810,6 +810,38 @@
 //        Dispatch). Theme: warrant-banner ⚠️ emoji → Lucide
 //        AlertTriangle; restored-draft #1a1500 → rgb(var(--sev-warn-rgb)
 //        / 0.08) (same lift as Patrol PR #1595).
+// v1045: Daily Activity Reports — 28th consecutive page-pass for the
+//        cross-page deep-link contract. The DAR PDF (Arial RMPG-gold
+//        banner + officer ident + shift + auto-compiled activity tables
+//        + narrative blocks + signature/review block) already shipped
+//        ahead of the audit, so the work here is the rest of the audit
+//        checklist that every prior page got but DAR didn't.
+//          • /daily-activity-reports?dar_id=<id> URL deep-link with the
+//            direct-fetch fallback so a link from a supervisor's audit
+//            ticket lands on the right report regardless of which status
+//            filter the operator left set.
+//          • Kill the native window.prompt() in handleReturn — supervisor
+//            review notes now flow through ConfirmDialog with a styled
+//            textarea (autofocus, multi-line, theme-correct, a11y, and
+//            DAR-identifying context so the supervisor sees which report
+//            they're about to bounce back). Same pattern Cases (#1604),
+//            FI (#1597), Trespass (#1610), Court Tracker (#1037).
+//          • Smart-cascade Escape (close-smallest-open-first): return-
+//            notes → New-DAR modal → narrative-edit mode → selection.
+//            Old handler hard-closed the form AND cleared the selection
+//            on every Esc, losing the supervisor's pane underneath.
+//          • Keyboard hygiene: `N`/`R` shortcuts now ignore Ctrl/Cmd/Alt
+//            modifiers + contenteditable, and `r` no longer fires while
+//            typing into a styled <select>.
+//          • Approve/Return toolbar buttons — inline hex (#22c55e/#ef4444)
+//            replaced with text-green-400/text-red-400 theme tokens so
+//            the day-theme variant gets a contrast-correct color.
+//          • Pagination arrows ← / → → Lucide ChevronLeft/ChevronRight.
+//            One less raw-glyph in the chrome.
+//          • Empty-state distinguishes "no DARs yet" (offers the N-key
+//            CTA) from "filters hid them" (offers a Clear-filters button).
+//          • No new migration; no server change. PDF, types, and routes
+//            unchanged.
 // v1038: Offender Registry (/nsopw, /offender-registry redirect) —
 //        court-ready PDF + deep-link + photo embed. 21st consecutive
 //        page-pass for the cross-page contract; NSOPW data is now the
