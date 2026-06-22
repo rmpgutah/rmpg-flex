@@ -718,6 +718,53 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1035: Trespass Orders — Page 18 of the full-app frontend pass. The
+//        trespass order IS a court document (it's what gets handed to
+//        the subject AND what gets attached to the case file when the
+//        order is violated and arrest follows), so the operator-artifact
+//        upgrade matters more here than on most pages.
+//        - New client/src/utils/trespassOrderPdf.ts — pure-client jsPDF
+//          generator using the same Arial + RMPG-gold banner idiom as
+//          fiCardPdf (#1597), clearedSummaryPdf (#1583), shiftReportPdf
+//          (#1587), and the chain-of-custody PDF (#1603). Status-aware
+//          banner color (red ACTIVE/VIOLATED, amber SERVED, gray
+//          EXPIRED/LIFTED), expiration callout with "(N days remaining)"
+//          for active orders within 30d, signature block that swaps the
+//          right-hand line between subject-acknowledgement (active/
+//          served) and supervisor-review (closed). Pure helpers
+//          (wrapText / expirationLine / bannerStyleFor) covered by 16
+//          new vitest cases. "Print" lands on the detail-panel toolbar
+//          AND the right-click context menu.
+//        - Native confirm() → ConfirmDialog. Admin hard-delete used the
+//          browser confirm() — no a11y, no keyboard polish, no way to
+//          show the operator WHAT they were about to wipe. Renders
+//          order number + subject + status + property as `details` so
+//          the row context is visible at decision time.
+//        - /trespass-orders?order_id=<id> URL deep-link with auto-select
+//          on hydrate, query strip on apply, and direct-fetch fallback
+//          for ids outside the current archive / status filter view
+//          (e.g. an expired order linked from a case file). 13th
+//          consecutive page to honor the Dashboard-emit / page-consume
+//          contract.
+//        - Esc smart-cascade: orderToDelete → expirationCalendar →
+//          bulkMode → formOpen. Previous handler hard-closed the form
+//          on every Esc, so an operator dismissing the expiration
+//          calendar above the form lost their draft as a side effect.
+//        - `N` opens a new order from anywhere on the page (mirrors
+//          Dispatch / Patrol / FI / Evidence). Suppressed while typing
+//          into input / textarea / contenteditable.
+//        - 3-way empty state distinction: "no archived orders" vs
+//          "no matches in current view" (with Clear-filters CTA) vs
+//          "no orders ever — create one". Same lift as Warrants #1608.
+//        - Theme tokens: text-[#d4a017] (4 sites) → text-[var(--brand-
+//          gold)]; rgba(212,160,23,0.25/0.5) submit-button background
+//          → rgb(var(--brand-gold-rgb) / 0.25); rgb hex inline colors
+//          (#f59e0b/#22c55e/#a855f7 on Serve/Lift/Violated buttons) →
+//          --sev-warn/--sev-ok/--sev-special tokens; #1a1500 restored-
+//          draft banner → rgb(var(--sev-warn-rgb) / 0.08) (same lift as
+//          Patrol PR #1595 + Field Interviews PR #1597).
+//        - Dead-import cleanup: Archive icon imported but never used;
+//          TrespassOrderStatus type imported but never referenced.
 // v1033: National Warrant Search — court-ready single-result PDF
 //        (Arial banner, active-warrant alert bar, subject + warrant +
 //        charges blocks, verification URL block, two-signature block);
