@@ -19,6 +19,7 @@ import type { Env } from '../types';
 import { getDb, query } from '../utils/db';
 import { getAnthropicKey, getClaudeModel, callClaude } from '../utils/anthropic';
 import { runIntelLLM } from '../utils/intelLlm';
+import { notConfigured } from '../utils/notConfigured';
 import {
   ASK_SYSTEM, buildAskPrompt, citationsFrom,
   EXTRACT_SYSTEM, buildExtractPrompt, parseExtract,
@@ -97,7 +98,7 @@ intelAi.post('/extract', async (c): Promise<Response> => {
 // POST /summarize — Claude dossier summary from client-supplied record sections.
 intelAi.post('/summarize', async (c): Promise<Response> => {
   const key = await getAnthropicKey(c.env);
-  if (!key) return c.json({ error: 'AI is not configured (set anthropic_api_key)', code: 'NO_AI_KEY' }, 503);
+  if (!key) return notConfigured(c, 'anthropic_api_key_unset', { error: 'AI is not configured (set anthropic_api_key)', code: 'NO_AI_KEY' });
   const body = await c.req.json<{ label?: string; sections?: Record<string, any[]> }>()
     .catch(() => ({}) as { label?: string; sections?: Record<string, any[]> });
   const label = (body.label || '').trim() || 'Subject';
