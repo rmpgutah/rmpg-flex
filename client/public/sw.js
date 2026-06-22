@@ -717,40 +717,38 @@
 //        Dispatch). Theme: warrant-banner ⚠️ emoji → Lucide
 //        AlertTriangle; restored-draft #1a1500 → rgb(var(--sev-warn-rgb)
 //        / 0.08) (same lift as Patrol PR #1595).
-// v1032: Incidents (/incidents) — 12th consecutive page-pass for the
-//        cross-page deep-link contract (?incident_id=<id> on mount,
-//        strip after select, fall through to /incidents/:id when not
-//        in the paged list). Kills every native browser dialog on the
-//        page: 6 sites total — 1 window.prompt (return-comments) +
-//        2 window.confirm (unlink person/vehicle) + 3 confirm() (remove
-//        offense/officer/cross-reference). The five removal flows now
-//        share a single themed ConfirmDialog (record-label rendered as
-//        a detail line under the message so the operator sees WHICH
-//        offense/officer/link they're destroying); return-comments lives
-//        in a real RichTextArea modal mirroring Cases SW v1028. Esc
-//        cascade extended from "form-modal only" to the full 11-modal
-//        smallest-first stack (removalConfirm → deleteTarget → custody-
-//        Transfer → return → addLink → addOfficer → addOffense →
-//        supplement → evidence → link-vehicle → link-person → form).
-//        Adds `N` keyboard shortcut for "New Incident" (mirrors
-//        Dispatch/FI/MDT; suppressed while typing into input/textarea/
-//        contenteditable). Empty-state distinguishes "no incidents on
-//        file" (with a hint about N + button) from "no match" (with a
-//        Clear-filters link). Theme: 5 raw hex sites lifted — UoF-Report
-//        button #f87171/#991b1b → rgb(var(--sev-critical-rgb)/0.85,
-//        0.55), approval-progress shadow #22c55e → rgb(var(--sev-ok-
-//        rgb)/0.9), felony/misdemeanor offense badge #ef4444/#f59e0b →
-//        var(--sev-critical)/var(--sev-warn), cross-ref typeColors map
-//        4/6 hues → semantic tokens (call/case/warrant/citation) with
-//        a categorical-palette carve-out for arrest #ec4899 (same logic
-//        as Connections SW v1029), action-bar gradient #141414/#0c0c0c
-//        → var(--surface-raised)/var(--surface-base). The cross-ref
-//        badge bg/border alpha tints switched from hex-suffix opacity
-//        ('color' + '20') to the rgb-companion tokens since `var(--…)`
-//        references can't take a hex suffix. The page already ships a
-//        full PDF system via pdfGenerator.ts + ReportTypeSelector — no
-//        new PDF utility added (would duplicate the existing court-
-//        ready incident report).
+// v1031: Citations — kill the last native window.confirm() in handleVoid
+//        and route it through the in-app ConfirmDialog (same destructive-
+//        flow polish every other audited page now uses; FI #1597, Evidence
+//        #1603, Cases #1604). Adds /citations?citation_id=<id> URL deep-
+//        link (14th consecutive page-pass). Falls through to a direct
+//        /citations/:id fetch when the row isn't in the current filtered
+//        page (so a deep-link from another module resolves even when the
+//        list is filtered to "Issued" but the target is "Voided"). Adds
+//        `N` keyboard shortcut for opening a new citation (mirrors FI /
+//        Dispatch / Patrol). Esc smart-cascade now closes void-confirm
+//        first, then the inline payment form, then the person-search
+//        dropdown, then the form panel. Empty-state copy distinguishes
+//        "filtered to zero" from "nothing on file" — operators on a
+//        clean install were uncertain whether the page was broken or
+//        just empty. Theme: 22 `[#d4a017]` Tailwind arbitraries lifted
+//        to `[var(--brand-gold)]`; restored-draft `#1a1500` background →
+//        `rgb(var(--sev-warn-rgb) / 0.08)` (same lift as Patrol PR
+//        #1595 + FI PR #1597); court-date overdue/soon/upcoming color
+//        ramp (`#ef4444`/`#f97316`/`#eab308`/`#22c55e`) → semantic
+//        `--sev-critical/high/caution/ok` so day-mode legibility tracks
+//        the rest of the palette. Operator-chrome emoji sweep: ⚡ →
+//        Zap, 🔒 → Lock, ⚖ → Gavel, ⚠ → AlertTriangle (lucide). The
+//        Citations page already ships TWO citation PDFs (the Spillman
+//        3-copy ticket via CitationPdfPreview/useCitationPreview, AND a
+//        generic record print via PrintRecordButton/recordPdfGenerator)
+//        — same trap Cases PR #1604 flagged, so no new PDF utility was
+//        added; the 3-copy ticket IS the court-record form. The form-
+//        draft localStorage key (`rmpg_citation_form`) was reviewed
+//        against the user-scoped-storage rule and intentionally left
+//        unscoped — `useFormDraft` is page-singleton everywhere in the
+//        app, and the draft only contains the field operator's own
+//        in-progress citation (not other officers' data).
 // v1029: Connections graph — fix 3 entity-color collisions that
 //        silently rendered DIFFERENT entity types as the same dot
 //        color (person+case both brand-gold; evidence+arrest both red;
