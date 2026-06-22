@@ -59,6 +59,33 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1034: Law Book — add cross-page URL deep-link contract (13th page in
+//        the sweep): /law-book?statute_id=<id> | /law-book?citation=76-5-102
+//        direct-fetches the statute via /statutes/section/:citation (with
+//        a /statutes/search?id= fallback when only the internal id is
+//        known), loads its containing chapter so siblings are visible,
+//        auto-opens the section, and strips the param so a hard refresh
+//        doesn't re-trigger. Worker side: /statutes/search gains an `id`
+//        query short-circuit. New per-user "Recent Statutes" card on the
+//        landing overview (`rmpg_lawbook_recent_<user.id>`, capped at 8,
+//        with a Clear button) — operators re-read the same handful of
+//        statutes constantly (DUI, assault, trespass) and the prior
+//        landing forced a fresh category click every time. Esc smart-
+//        cascade: open section → clear search → reset to browse
+//        (suppressed while typing in an input so native form-clear
+//        semantics stay intact). Empty-state distinction: search-with-
+//        nothing-matching now shows the actual query/severity in the
+//        message ("No statutes match \"foo\"") instead of the generic
+//        "No statutes match" that read the same as the chapter-empty
+//        state. Theme: 14 hardcoded hex literals lifted to tokens —
+//        #d4a017 → var(--brand-gold) (4 sites), #888888 → var(--spm-
+//        text-muted) (4 sites), 4 stats-ribbon accents → --sev-* tokens,
+//        Criminal Procedure category accent → var(--brand-gold). Kept
+//        #0a0a0a as a non-theme contrast literal on the active gold
+//        button (text-on-gold legibility, same convention as Cases v1028
+//        keeping #fff on filled chips). No new PDF — statutePdfGenerator
+//        already covers section + chapter prints (recon confirmed; would
+//        have been the 5th PDF-duplication trap if blindly added).
 // v601: auth-refresh fix — apiFetch + offlineSync now send sessionId on
 //       /api/auth/refresh (legacy handler requires session_id); was causing
 //       silent logout at every 15-min token expiry + the [SYNC] Refresh-failed
