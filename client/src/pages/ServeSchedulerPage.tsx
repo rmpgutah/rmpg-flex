@@ -3,6 +3,7 @@ import { ArrowLeft, RefreshCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { useToast } from '../components/ToastProvider';
 import RangePicker from '../components/scheduler/RangePicker';
 import UnassignedQueueSidebar from '../components/scheduler/UnassignedQueueSidebar';
 import OfficerLaneTimeline, { type OfficerOption } from '../components/scheduler/OfficerLaneTimeline';
@@ -37,6 +38,7 @@ export default function ServeSchedulerPage() {
   const [showRebalance, setShowRebalance] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { addToast } = useToast();
 
   const refetch = useCallback(async () => {
     try {
@@ -57,6 +59,18 @@ export default function ServeSchedulerPage() {
 
   useEffect(() => { refetch(); }, [refetch]);
   useLiveSync('serve-schedule', refetch);
+
+  // Esc — close the Rebalance preview when it's open. No N shortcut here;
+  // the scheduler is a read/drag surface, not a creation surface.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showRebalance) {
+        setShowRebalance(false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showRebalance]);
 
   // Officer list for the swim-lane view.
   useEffect(() => {
@@ -82,10 +96,11 @@ export default function ServeSchedulerPage() {
       });
     } catch (e) {
       refetch();
-      // eslint-disable-next-line no-alert
-      alert(`Could not reassign attempt: ${e instanceof Error ? e.message : 'unknown error'}`);
+      // Toast instead of native alert — the swim-lane is drag-driven so a
+      // modal would steal focus from the next drop the operator queued up.
+      addToast(`Could not reassign attempt: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
     }
-  }, [refetch]);
+  }, [refetch, addToast]);
 
   const handleQueueDrop = useCallback(async (
     queueId: number, target: { date: string; officer_id: number | null },
@@ -99,10 +114,9 @@ export default function ServeSchedulerPage() {
       });
       refetch();
     } catch (e) {
-      // eslint-disable-next-line no-alert
-      alert(`Could not assign paper: ${e instanceof Error ? e.message : 'unknown error'}`);
+      addToast(`Could not assign paper: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
     }
-  }, [refetch]);
+  }, [refetch, addToast]);
 
   return (
     <div className="p-3">

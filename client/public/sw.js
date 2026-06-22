@@ -132,6 +132,60 @@
 //            consistently with the steel-blue theme. Replacing them with
 //            Lucide would require a layout-affecting size pass on every
 //            row, deferred until the rail itself is up for review.
+//
+// v1048: Process Server / Serve Scheduler — Page 31 of the full-app
+//        frontend pass. ServePage.tsx (1801 lines) is the operational
+//        hub (Queue + Route + Map + Stats + Assign + My Run tabs) and
+//        ServeSchedulerPage.tsx is the swim-lane scheduler; both are
+//        court-critical because every attempt row feeds the
+//        Affidavit-of-Non-Service / Notice-of-Attempt PDFs.
+//        - URL deep-link contract: /serve?job_id=<n> expands a card on
+//          the Queue tab (with a "not in this view" toast + filter hint
+//          on miss); /serve?status=<filter> applies a status filter;
+//          /serve?tab=<Queue|Route|Map|Stats|Assign|My Run> preselects
+//          a tab; /serve?date=YYYY-MM-DD preselects the date picker.
+//          All four params are consumed once and stripped (replace:true)
+//          so a manual refresh doesn't re-pin the operator to a stale
+//          deep-link.
+//        - Kill native dialogs: replace window.confirm + window.alert in
+//          handleDeleteJob (court-record delete — destructive, was using
+//          a raw browser confirm that bypassed our keyboard-trap / a11y
+//          model and broke the day/night surface) with ConfirmDialog +
+//          useToast. ServeSchedulerPage's two drag-drop error alerts
+//          become toasts (a modal would steal focus from the next drop
+//          the operator queued up).
+//        - Esc smart-cascade: delete confirm → log-attempt modal →
+//          edit-attempt modal → skip-trace panel → route planner →
+//          create/edit job. Previous handler only closed the
+//          create form. The scheduler gains its own Esc → close the
+//          Rebalance preview.
+//        - N shortcut: open Add Job from anywhere on the Queue (or
+//          any non-modal surface). Suppressed when typing into an
+//          INPUT/TEXTAREA/SELECT/contentEditable (a recipient name
+//          with "n" in it must not pop the dialog mid-type) AND when
+//          any modal already owns the page. Title hint added to the
+//          Add Job button ("Add Job (N)").
+//        - Emoji chrome → Lucide: error banner ⚠/✕ → AlertTriangle/X;
+//          priority-sort toggle ⚡/↕ → Zap/ArrowUpDown.
+//        - Empty-state distinction: when jobs.length > 0 but
+//          filteredJobs.length === 0, render "No <filter> jobs match
+//          this filter" + a "Show all N jobs for this date" reset
+//          button. Before, both "queue truly empty" and "filter hiding
+//          everything" rendered the same generic copy and an operator
+//          with a stale ?status=failed deep-link could not tell which.
+//        Memory checks confirmed already-shipped:
+//          * GPS + photo capture on attempts (ServeAttemptModal lines
+//            172-186, 698-740): present and court-grade.
+//          * Affidavit + Notice-of-Attempt PDFs (handleGenerateAffidavit
+//            + handleNoticeOfAttempt): present; we did NOT re-implement
+//            them (memory [[project-serve-intake-upgrades]] flags the
+//            5-prior-PR duplication trap).
+//        Deferred: useFormDraft storage key `rmpg_serve_job_form` is
+//        unscoped (no user-id suffix), so on a shared device any draft
+//        with PII leaks across operators. Same pattern across 8 other
+//        pages — needs a system-wide useFormDraft scoping change, not a
+//        Page-31 fix. No D1 migration, no worker change.
+//
 // v1034: Law Book — add cross-page URL deep-link contract (13th page in
 //        the sweep): /law-book?statute_id=<id> | /law-book?citation=76-5-102
 //        direct-fetches the statute via /statutes/section/:citation (with
