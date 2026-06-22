@@ -3,6 +3,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { fireRule, type NotificationRuleRow } from './notificationEngine';
 import { getAnthropicKey, getClaudeModel, callClaude, diagnoseAnthropicError } from '../utils/anthropic';
+import { getOpenAiKey, getOpenAiModel, callOpenAi, diagnoseOpenAiError } from '../utils/openai';
 
 const admin = new Hono<Env>();
 
@@ -975,28 +976,45 @@ admin.delete('/third-party-keys', async (c) => {
 });
 
 // POST /api/admin/third-party-keys/:key/test — live connectivity probe for keys
-// we know how to test. Currently anthropic_api_key (a minimal Claude call): the
-// "Configured" badge only proves a value exists, but Deep Research + OCR silently
-// fall back to free Workers AI when the Claude key is invalid or out of credit —
-// this lets an admin tell those states apart. Always returns 200; read body.ok.
+// we know how to test. Currently anthropic_api_key and openai_api_key — both
+// send a minimal Chat-like ping and classify the result so an admin can tell
+// "configured + funded + reachable" apart from "configured but broken" (the
+// "Configured" badge only proves a value exists; AI consumers silently fall
+// back through the callAi chain when an upstream tier is unhealthy).
+// Always returns 200; read body.ok.
 admin.post('/third-party-keys/:key/test', async (c) => {
   const denied = requireRole(c, 'admin', 'manager');
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const key = c.req.param('key');
   if (!ALLOWED_THIRD_PARTY_KEYS.has(key)) return c.json({ error: 'Unknown key' }, 400);
-  if (key !== 'anthropic_api_key') {
-    return c.json({ ok: false, testable: false, message: 'No live test available for this key yet' });
+
+  if (key === 'anthropic_api_key') {
+    const apiKey = await getAnthropicKey(c.env);
+    if (!apiKey) return c.json({ ok: false, testable: true, message: 'Key not configured' });
+    try {
+      const model = await getClaudeModel(c.env);
+      const text = await callClaude(apiKey, { text: 'Reply with the single word: ok', maxTokens: 8, model });
+      return c.json({ ok: true, testable: true, model, message: `OK — ${model} responded`, sample: text.trim().slice(0, 40) });
+    } catch (e: any) {
+      const { status, hint } = diagnoseAnthropicError(String(e?.message || e));
+      return c.json({ ok: false, testable: true, status, message: hint });
+    }
   }
-  const apiKey = await getAnthropicKey(c.env);
-  if (!apiKey) return c.json({ ok: false, testable: true, message: 'Key not configured' });
-  try {
-    const model = await getClaudeModel(c.env);
-    const text = await callClaude(apiKey, { text: 'Reply with the single word: ok', maxTokens: 8, model });
-    return c.json({ ok: true, testable: true, model, message: `OK — ${model} responded`, sample: text.trim().slice(0, 40) });
-  } catch (e: any) {
-    const { status, hint } = diagnoseAnthropicError(String(e?.message || e));
-    return c.json({ ok: false, testable: true, status, message: hint });
+
+  if (key === 'openai_api_key') {
+    const apiKey = await getOpenAiKey(c.env);
+    if (!apiKey) return c.json({ ok: false, testable: true, message: 'Key not configured' });
+    try {
+      const model = await getOpenAiModel(c.env);
+      const text = await callOpenAi(apiKey, { text: 'Reply with the single word: ok', maxTokens: 8, model });
+      return c.json({ ok: true, testable: true, model, message: `OK — ${model} responded`, sample: text.trim().slice(0, 40) });
+    } catch (e: any) {
+      const { status, hint } = diagnoseOpenAiError(String(e?.message || e));
+      return c.json({ ok: false, testable: true, status, message: hint });
+    }
   }
+
+  return c.json({ ok: false, testable: false, message: 'No live test available for this key yet' });
 });
 
 // ============================================================
