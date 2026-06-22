@@ -1209,6 +1209,15 @@
 //        Warrant/Citation/Arrest types in the cross-link modal fall back to
 //        typed numeric input for now (rare in practice; dedicated pickers
 //        can land in a follow-up when the operator hits them).
+// v1006: PSO Notice court-paragraph layout DELETED. The old format was already
+//        unreachable (PR #1539 made generateNoticeOfCommunication delegate to
+//        the line/box generateNoticeOfAttempt and renamed the legacy body to
+//        _legacyCourtParagraphLayout for "back-compat"). Operator was still
+//        seeing the old format from a stale cached bundle — removing the dead
+//        function (215 lines + private layout constants + helpers) guarantees
+//        the old PDF format can never be served again, even from a hostile
+//        cache or a missed import. psoNoticePdfGenerator.ts is now a pure
+//        adapter to the unified line/box generator.
 // v1005: Notice of Attempt PDF — recipient-readability polish. The disclaimer
 //        body paragraphs now render in mixed case instead of shouting in
 //        ALL CAPS (police-form caps stay on field labels + table cells via
