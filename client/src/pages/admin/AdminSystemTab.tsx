@@ -390,7 +390,12 @@ export default function AdminSystemTab({
     setLoadingConfig(true);
     setError(null);
     try {
-      const grouped = await apiFetch<Record<string, ConfigItem[]>>('/admin/config');
+      // /admin/config-items returns the Record<category, ConfigItem[]> shape this
+      // tab needs for inline Add/Edit/Delete (each row has id + category). The
+      // sibling /admin/config returns a FLAT key/value map used by DispatchPage
+      // and IncidentsPage; calling it here yielded undefined for every category
+      // (only `dispositions` matched the shape), so every editor was empty.
+      const grouped = await apiFetch<Record<string, ConfigItem[]>>('/admin/config-items');
       setIncidentTypes(grouped.incident_types || []);
       setDispositionCodes(grouped.dispositions || []);
 
@@ -519,8 +524,12 @@ export default function AdminSystemTab({
   const saveJsonConfig = async (key: string, category: string, value: unknown) => {
     const jsonVal = JSON.stringify(value);
     try {
+      // Guard against `undefined` interpolating into the URL — the old code
+      // shipped `PUT /admin/config/undefined 404` whenever a prior POST silently
+      // returned no id and we re-tried the save (visible in the prod console).
+      // Always require a Number id before using the PUT path.
       const cachedId = configIdCacheRef.current[`${category}:${key}`];
-      if (cachedId) {
+      if (typeof cachedId === 'number' && Number.isFinite(cachedId) && cachedId > 0) {
         await apiFetch(`/admin/config/${cachedId}`, {
           method: 'PUT',
           body: JSON.stringify({ config_value: jsonVal }),
@@ -528,11 +537,14 @@ export default function AdminSystemTab({
         return;
       }
 
-      const grouped = await apiFetch<Record<string, ConfigItem[]>>('/admin/config');
+      // Look up the row id from the grouped endpoint (matches the fetch above
+      // — the flat /admin/config doesn't return per-row ids).
+      const grouped = await apiFetch<Record<string, ConfigItem[]>>('/admin/config-items');
       const existing = (grouped[category] || []).find((i) => i.config_key === key);
-      if (existing) {
-        configIdCacheRef.current[`${category}:${key}`] = existing.id;
-        await apiFetch(`/admin/config/${existing.id}`, {
+      const existingId = existing?.id;
+      if (typeof existingId === 'number' && Number.isFinite(existingId) && existingId > 0) {
+        configIdCacheRef.current[`${category}:${key}`] = existingId;
+        await apiFetch(`/admin/config/${existingId}`, {
           method: 'PUT',
           body: JSON.stringify({ config_value: jsonVal }),
         });
@@ -541,7 +553,12 @@ export default function AdminSystemTab({
           method: 'POST',
           body: JSON.stringify({ config_key: key, config_value: jsonVal, category }),
         });
-        if (created?.id) configIdCacheRef.current[`${category}:${key}`] = created.id;
+        // Only cache a real numeric id — never `undefined`, never the literal
+        // string 'undefined'. A bad cache here is what produced the prod URL
+        // `/admin/config/undefined`.
+        if (typeof created?.id === 'number' && Number.isFinite(created.id) && created.id > 0) {
+          configIdCacheRef.current[`${category}:${key}`] = created.id;
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to save ${category}`);
@@ -574,6 +591,12 @@ export default function AdminSystemTab({
   };
 
   const removeConfigItem = async (id: number) => {
+    // Same `undefined`-in-URL guard as saveJsonConfig — never fire DELETE
+    // /admin/config/undefined when an id is missing or malformed.
+    if (typeof id !== 'number' || !Number.isFinite(id) || id <= 0) {
+      setError('Cannot remove: missing or invalid id');
+      return;
+    }
     try {
       await apiFetch(`/admin/config/${id}`, { method: 'DELETE' });
       await fetchConfig();
