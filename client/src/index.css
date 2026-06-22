@@ -2980,6 +2980,52 @@ body.fx-noise::after {
   letter-spacing: 0.1em;
 }
 
+/* Quick-query button row — sits just above the input. Compact, terminal-
+   styled buttons that populate the input field with a verb prefix so the
+   operator only has to type the search term. The verb is shown in a bright
+   monospace pill; the descriptive label is the muted secondary text. */
+.ncic-quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 0;
+  background: #080808;
+  border-top: 2px solid #222222;
+}
+
+.ncic-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid rgb(var(--brand-gold-rgb) / 0.25);
+  color: rgb(var(--brand-gold-rgb) / 0.9);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 120ms, border-color 120ms;
+}
+.ncic-quick-btn:hover:not(:disabled) {
+  background: rgb(var(--brand-gold-rgb) / 0.12);
+  border-color: rgb(var(--brand-gold-rgb) / 0.55);
+}
+.ncic-quick-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ncic-quick-verb {
+  font-weight: 700;
+  color: var(--brand-gold);
+}
+.ncic-quick-label {
+  color: rgb(var(--brand-gold-rgb) / 0.7);
+}
+
 .ncic-input-row {
   display: flex;
   align-items: center;

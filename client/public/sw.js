@@ -691,6 +691,16 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1022: NCIC terminal — wire QUICK_QUERIES button row (declared since the
+//        2026-06 NCIC overhaul but never rendered), add up/down arrow
+//        command-history navigation (bounded at 30, dedupes back-to-back
+//        repeats), and dedupe the welcome banner that was duplicated
+//        verbatim between embedded + overlay render modes. Theme: 3
+//        hardcoded #d4a017 sites on the overlay header lifted to
+//        var(--brand-gold) + rgb(var(--brand-gold-rgb) / α). Adds a
+//        first unit test file for the panel (the live behavior is
+//        WebSocket/terminal-integrated and harder to unit-test, but
+//        the QUICK_QUERIES contract is now locked).
 // v1021: MDT end-of-shift PDF + deep-link + auth cleanup. The shift
 //        report download was a .txt file with Unicode-box borders for
 //        a year — replaced with a court-ready PDF (Arial banner, gold
