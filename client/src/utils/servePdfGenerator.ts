@@ -880,7 +880,25 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
   });
-  y += SPACING.SECTION_GAP;
+  y += SPACING.SM;
+
+  // ── Contact line (recipient-facing call-to-action) ──
+  // The disclaimer above tells the recipient to "contact our office to
+  // arrange delivery" but never prints the number. Surface the dispatch /
+  // server phone in a clean centered bold line below the signature so the
+  // person at the door can call without having to look up the agency.
+  if (data.serverPhone) {
+    y = checkPageBreak(doc, y, 10);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    const company = data.serverCompany || 'Rocky Mountain Protective Group';
+    doc.text(`To arrange delivery, contact ${company}: ${data.serverPhone}`,
+      pageWidth / 2, y, { align: 'center' });
+    y += 5;
+  }
+  y += SPACING.MD;
 
   // ── Footer legal text ──
   y = checkPageBreak(doc, y, 10);
