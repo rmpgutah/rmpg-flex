@@ -691,25 +691,22 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
-// v1020: Tactical Map wire-up + orphan audit — mounts three fully-built
-//        but never-imported map widgets: MapCompassRose (bottom-right,
-//        click-to-reset-north heading dial), MapScaleBar (live distance
-//        scale, rebuilds on every zoom), and KeyboardShortcutsHelp (a `?`
-//        modal listing the L/H/B/C/+/-/Esc bindings the operator was
-//        previously expected to learn by reading the source). The
-//        MAP_SHORTCUT_BINDINGS constant — used by the help modal — was
-//        out of sync with the inline handler (listed Phase-2 P/F/D/I/E
-//        overlays that were never wired); now matches reality. Adds
-//        /map?call_id=… and /map?unit_id=… deep-link auto-select
-//        (parallel to Dispatch PR #1583's ?call_id= pattern) — switches
-//        sidebarTab to match, sets the focused row, and pan-zooms.
-//        Sidebar rows gain an "I clicked this" focused state (brand-gold
-//        left rail) so panning the map doesn't lose context. Esc now
-//        smart-cancels the smallest open thing first (kbd help → address
-//        dropdown → info popup → layers panel → sidebar) instead of
-//        blasting the whole UI. Ships an _ORPHANS.md audit cataloging 28
-//        orphan panels + 13 orphan hooks — fully built, fully tokenized,
-//        zero imports — so future cleanup PRs have a roadmap.
+// v1019: Dispatch deep-link + cleanup — /dispatch now honors ?call_id=
+//        from Dashboard "Calls Near Me" (and any other source), auto-
+//        selecting the target call and switching the filter tab so the
+//        call is visible in the left rail (cleared calls land on Cleared,
+//        archived on Archive, etc.). dispatch_sort preference now hydrates
+//        from /api/user/preferences (was localStorage-only, lost across
+//        devices). Supervisors get a "Print Cleared" button on the
+//        Cleared tab — one-click PDF of every cleared call inside today's
+//        Mountain-Time window, with disposition/units/duration. WS-dedup
+//        Set capped at 500 entries (was unbounded — leaked for the life
+//        of the dispatcher session). Quick Flags chip "off" state now
+//        renders correctly (was falling back to '#888' because the
+//        var(--color-rmpg-*) tokens it referenced don't exist). Theme:
+//        new --brand-gold-rgb / --sev-*-rgb tokens in theme-palettes.css
+//        let opacity-tinted backgrounds use the canonical palette; 30+
+//        inline #d4a017 / rgba(220,38,38,…) literals lifted accordingly.
 // v1017: FlexCam close-query honesty (Plan E — surface 'failed' on
 //        the request the moment the cron concludes a 0-downloaded
 //        trip instead of marking it 'partial' and waiting 6h for the

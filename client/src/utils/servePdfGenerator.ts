@@ -909,6 +909,43 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
+  // ── What To Do Next (recipient guidance) ──
+  // Most recipients reading a "Notice of Attempt to Serve" have never seen
+  // one before. The disclaimer block answers "what is this?"; this block
+  // answers "what do I actually do now?" with three concrete numbered
+  // actions. Helps prevent the two most common operator headaches: a
+  // recipient ignoring the notice (and getting served at work) or
+  // assuming it's a scam.
+  y = checkPageBreak(doc, y, 42);
+  {
+    const sec = openAutoSection(doc, 'What To Do Next', y);
+    y = sec.contentY + 4;
+    const company = data.serverCompany || 'Rocky Mountain Protective Group';
+    const phoneCue = data.serverPhone
+      ? `at ${data.serverPhone}`
+      : 'at the number printed on this notice';
+    const steps: string[] = [
+      `Contact ${company} ${phoneCue} to arrange a convenient delivery time. A short call will prevent further visits to this address and may be more discreet than service at your workplace.`,
+      'Verify this notice. If you would like to confirm it is genuine, call our office and reference the AGENCY REF # printed at the top of this notice — we will confirm the assigned process server and the underlying matter without requiring you to share any personal information.',
+      'Read the underlying documents once delivered. The papers we have been engaged to deliver may contain time-sensitive deadlines. This notice does NOT extend, waive, or otherwise affect those deadlines.',
+      'Do nothing only if you accept that further service attempts will be made at this address, including at times that may be inconvenient (early morning, evening, or weekend) and at locations associated with you (residence, workplace, or known third-party).',
+    ];
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    steps.forEach((step, i) => {
+      // Number prefix in bold, body in normal — readable hierarchy.
+      const numLabel = `${i + 1}.`;
+      doc.setFont(PDF_VALUE_FONT, 'bold');
+      doc.text(numLabel, lx, y);
+      const numW = doc.getTextWidth(numLabel) + 2;
+      doc.setFont(PDF_VALUE_FONT, 'normal');
+      y = addWrappedText(doc, step, lx + numW, y, ffw - numW, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
+      y += SPACING.SM;
+    });
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
   // ── Server Signature (unsworn — this is a notice, not an affidavit) ──
   y = checkPageBreak(doc, y, SPACING.SIGNATURE_BOX_H + SPACING.LG);
   y = addSignatureBlock(doc, 'Process Server', lx, y, ffw, data.signature ? {
