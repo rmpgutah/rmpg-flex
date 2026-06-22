@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { safeDateStr } from '../../../../utils/dateUtils';
 
 interface RecallRow {
@@ -18,7 +18,7 @@ export function RecallsTab({ vehicleId }: { vehicleId: number }) {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<RecallRow[]>(`/fleet/recalls?vehicle_id=${vehicleId}`)
+    apiFetchV2<RecallRow[]>(`/fleet/recalls?vehicle_id=${vehicleId}`)
       .then((r) => { if (!cancelled) setRows(Array.isArray(r) ? r : []); })
       .catch(() => { if (!cancelled) setRows([]); })
       .finally(() => { if (!cancelled) setLoading(false); });

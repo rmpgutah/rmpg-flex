@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { safeDateTimeStr } from '../../../../utils/dateUtils';
 
 interface AuditRow {
@@ -16,7 +16,7 @@ export function ActivityTab({ vehicleId }: { vehicleId: number }) {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ rows: AuditRow[] }>(`/audit/by-vehicle/${vehicleId}?limit=100`)
+    apiFetchV2<{ rows: AuditRow[] }>(`/audit/by-vehicle/${vehicleId}?limit=100`)
       .then((r) => { if (!cancelled) setRows(Array.isArray(r?.rows) ? r.rows : []); })
       .catch(() => { if (!cancelled) setRows([]); })
       .finally(() => { if (!cancelled) setLoading(false); });

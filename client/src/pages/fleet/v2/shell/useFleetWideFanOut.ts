@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 
 interface VehicleStub { id: number; vehicle_name?: string | null; vehicle_number?: string | null; }
 
@@ -36,7 +36,7 @@ export function useFleetWideFanOut<T>(
   useEffect(() => {
     let cancelled = false;
     // /api/fleet returns { data, pagination } — unwrap.
-    apiFetch<VehicleStub[] | { data: VehicleStub[] }>('/fleet?limit=500')
+    apiFetchV2<VehicleStub[] | { data: VehicleStub[] }>('/fleet?limit=500')
       .then((vlist) => {
         if (cancelled) return;
         const list = Array.isArray(vlist)
@@ -46,7 +46,7 @@ export function useFleetWideFanOut<T>(
             : [];
         setVehicles(list);
         if (list.length === 0) { setLoading(false); return; }
-        Promise.allSettled(list.map((v) => apiFetch<unknown>(pathFor(v.id))))
+        Promise.allSettled(list.map((v) => apiFetchV2<unknown>(pathFor(v.id))))
           .then((results) => {
             if (cancelled) return;
             const flat: FanOutRow<T>[] = [];

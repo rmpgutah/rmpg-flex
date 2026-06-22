@@ -10,7 +10,7 @@
 // ============================================================
 import { useEffect, useState, useCallback } from 'react';
 import { Plus } from 'lucide-react';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { FleetListShell } from '../shell/FleetListShell';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 
@@ -65,7 +65,7 @@ export function WorkOrdersRoute() {
     if (statusFilter !== 'all') params.set('status', statusFilter);
     if (openOnly) params.set('open_only', '1');
     params.set('limit', '200');
-    apiFetch<{ count: number; data: WorkOrderRow[] }>(`/work-orders?${params.toString()}`)
+    apiFetchV2<{ count: number; data: WorkOrderRow[] }>(`/work-orders?${params.toString()}`)
       .then((r) => { setRows(r?.data ?? []); setLoading(false); })
       .catch((e) => { setErr(e instanceof Error ? e.message : 'Failed to load'); setLoading(false); });
   }, [statusFilter, openOnly]);
@@ -74,7 +74,7 @@ export function WorkOrdersRoute() {
 
   useEffect(() => {
     // /api/fleet returns { data, pagination } — unwrap.
-    apiFetch<VehicleStub[] | { data: VehicleStub[] }>('/fleet?limit=500')
+    apiFetchV2<VehicleStub[] | { data: VehicleStub[] }>('/fleet?limit=500')
       .then((r) => {
         const arr = Array.isArray(r)
           ? r
@@ -223,7 +223,7 @@ function NewWorkOrderModal({ vehicles, onClose, onCreated }: NewWorkOrderModalPr
       return;
     }
     setSaving(true);
-    apiFetch<{ data: WorkOrderRow }>('/work-orders', {
+    apiFetchV2<{ data: WorkOrderRow }>('/work-orders', {
       method: 'POST',
       body: JSON.stringify({
         vehicle_id: parseInt(vehicleId, 10),

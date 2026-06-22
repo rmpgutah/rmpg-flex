@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { FleetListShell } from '../shell/FleetListShell';
 import { LegacyActionLink } from '../shell/LegacyActionLink';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
@@ -25,7 +25,7 @@ export function PersonnelRoute() {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<AssignmentRow[]>('/fleet/assignments')
+    apiFetchV2<AssignmentRow[]>('/fleet/assignments')
       .then((r) => { if (!cancelled) setRows(Array.isArray(r) ? r : []); })
       .catch(() => { if (!cancelled) setRows([]); })
       .finally(() => { if (!cancelled) setLoading(false); });

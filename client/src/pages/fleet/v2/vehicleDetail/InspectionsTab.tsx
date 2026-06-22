@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 
 interface InspectionRow {
   id: number;
@@ -16,7 +16,7 @@ export function InspectionsTab({ vehicleId }: { vehicleId: number }) {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<InspectionRow[] | { results: InspectionRow[] }>(`/fleet/${vehicleId}/inspections`)
+    apiFetchV2<InspectionRow[] | { results: InspectionRow[] }>(`/fleet/${vehicleId}/inspections`)
       .then((r) => {
         if (cancelled) return;
         const arr = Array.isArray(r) ? r : (r as { results?: InspectionRow[] })?.results ?? [];

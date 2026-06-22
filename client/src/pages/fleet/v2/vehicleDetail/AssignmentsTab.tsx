@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { safeDateStr } from '../../../../utils/dateUtils';
 
 interface AssignmentRow {
@@ -17,7 +17,7 @@ export function AssignmentsTab({ vehicleId }: { vehicleId: number }) {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<AssignmentRow[] | { results: AssignmentRow[] }>(`/fleet/${vehicleId}/assignments`)
+    apiFetchV2<AssignmentRow[] | { results: AssignmentRow[] }>(`/fleet/${vehicleId}/assignments`)
       .then((r) => {
         if (cancelled) return;
         const arr = Array.isArray(r) ? r : (r as { results?: AssignmentRow[] })?.results ?? [];

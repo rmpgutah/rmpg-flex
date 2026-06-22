@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 
 interface CostRow { id: number; cost?: number | null; amount?: number | null; cost_date?: string | null; date?: string | null; description?: string | null; vendor?: string | null; }
 
@@ -14,11 +14,11 @@ export function CostsTab({ vehicleId }: { vehicleId: number }) {
   useEffect(() => {
     let cancelled = false;
     Promise.allSettled([
-      apiFetch<CostRow[]>(`/fleet/${vehicleId}/insurance`),
-      apiFetch<CostRow[]>(`/fleet/${vehicleId}/loans`),
-      apiFetch<CostRow[]>(`/fleet/${vehicleId}/accessories`),
-      apiFetch<CostRow[]>(`/fleet/${vehicleId}/other-costs`),
-      apiFetch<{ cost_per_mile?: number }>(`/fleet/cost-per-mile/${vehicleId}`),
+      apiFetchV2<CostRow[]>(`/fleet/${vehicleId}/insurance`),
+      apiFetchV2<CostRow[]>(`/fleet/${vehicleId}/loans`),
+      apiFetchV2<CostRow[]>(`/fleet/${vehicleId}/accessories`),
+      apiFetchV2<CostRow[]>(`/fleet/${vehicleId}/other-costs`),
+      apiFetchV2<{ cost_per_mile?: number }>(`/fleet/cost-per-mile/${vehicleId}`),
     ]).then(([i, l, a, o, cpm]) => {
       if (cancelled) return;
       const arrayOrEmpty = (r: PromiseSettledResult<CostRow[]>): CostRow[] =>
