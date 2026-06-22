@@ -59,6 +59,34 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1039: Records hub — Page 22 of the full-app frontend pass. Records
+//        hub gains the unified URL deep-link contract: /records accepts
+//        ?tab=<persons|vehicles|properties|businesses|evidence> together
+//        with &person_id=, &vehicle_id=, &property_id=, &business_id=,
+//        &evidence_id= (legacy camelCase + bare &id= preserved). Once the
+//        active tab's list hydrates, the matching record auto-selects;
+//        if it's missing (archived, paged-out, off-org) the page falls
+//        back to a direct fetch via /records/<type>/<id> for the two
+//        types with a by-id GET (persons, properties), strips the param
+//        on success, and surfaces a toast when the id truly misses. The
+//        Esc handler is now a smart-cascade — delete-confirm → duplicates
+//        modal → business form modal → link-record modal → selected
+//        record — so a single tap doesn't blow away a partially-filled
+//        form while a nested overlay is open. New "N" keyboard shortcut
+//        (typing-suppressed, archives-suppressed, modal-suppressed)
+//        opens the active tab's New record flow — same contract used on
+//        Court Tracker / Field Interviews / Cases / Patrol. Empty
+//        states are now 3-way ("no records yet" / "no match" /
+//        "archives empty") across all 5 tabs. Theme-token sweep:
+//        PersonsTab (SSN reveal pill — rgba(220,38,38…) → sev-critical
+//        rgb-triple; scars/marks → sev-warn-soft; alias → brand-gold-400
+//        rgb-triple), BusinessTab (status "active" → sev-ok-soft) and
+//        EvidenceTab (estimated value → sev-ok-soft) — all five hex
+//        literals in /pages/records/ swapped for theme variables so the
+//        same chip re-themes between night/day. No migrations; client-
+//        only. Business PDF intentionally deferred — Records hub is a
+//        navigation surface and the 4 existing per-type PDFs already
+//        cover the court-ready path.
 // v1034: Law Book — add cross-page URL deep-link contract (13th page in
 //        the sweep): /law-book?statute_id=<id> | /law-book?citation=76-5-102
 //        direct-fetches the statute via /statutes/section/:citation (with

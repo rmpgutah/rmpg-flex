@@ -690,9 +690,19 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
         {displayPersons.length === 0 && (
           <div className="text-center py-16">
             <UserCircle className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
+            <p className="text-sm text-rmpg-400 font-medium">
+              {searchQuery
+                ? 'No persons match your search.'
+                : showArchived
+                  ? 'No archived person records.'
+                  : 'No person records found.'}
+            </p>
             <p className="text-[10px] text-rmpg-600 mt-1">
-              {searchQuery ? 'Try broadening your search terms.' : 'Click "New Person" to create a record.'}
+              {searchQuery
+                ? 'Try broadening your search terms.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Person" to create a record.'}
             </p>
           </div>
         )}
@@ -1032,13 +1042,13 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             <RecordField label="Language" value={selectedPerson.language} />
           </FieldGrid>
           {selectedPerson.scars_marks_tattoos && (
-            <div className="mt-2"><RecordField label="Scars/Marks/Tattoos" value={selectedPerson.scars_marks_tattoos} valueColor="#fbbf24" /></div>
+            <div className="mt-2"><RecordField label="Scars/Marks/Tattoos" value={selectedPerson.scars_marks_tattoos} valueColor="var(--sev-warn-soft)" /></div>
           )}
           {selectedPerson.clothing_description && (
             <div className="mt-1"><RecordField label="Clothing" value={selectedPerson.clothing_description} /></div>
           )}
           {selectedPerson.alias_nickname && (
-            <div className="mt-1"><RecordField label="Alias" value={selectedPerson.alias_nickname} valueColor="#e8b820" /></div>
+            <div className="mt-1"><RecordField label="Alias" value={selectedPerson.alias_nickname} valueColor="rgb(var(--brand-gold-400-rgb))" /></div>
           )}
         </CollapsibleSection>
 
@@ -1119,8 +1129,8 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                           onClick={() => setSSNRevealed(!ssnRevealed)}
                           className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase border transition-colors"
                           style={ssnRevealed
-                            ? { color: '#f87171', background: 'rgba(220,38,38,0.15)', borderColor: 'rgba(220,38,38,0.4)' }
-                            : { color: 'var(--rmpg-400)', background: 'rgba(107,114,128,0.15)', borderColor: 'rgba(107,114,128,0.3)' }
+                            ? { color: 'var(--sev-critical-soft)', background: 'rgb(var(--sev-critical-rgb) / 0.15)', borderColor: 'rgb(var(--sev-critical-rgb) / 0.4)' }
+                            : { color: 'rgb(var(--rmpg-400-rgb))', background: 'rgb(var(--rmpg-500-rgb) / 0.15)', borderColor: 'rgb(var(--rmpg-500-rgb) / 0.3)' }
                           }
                           title={ssnRevealed ? 'Hide SSN' : 'Reveal SSN'}
                         >
