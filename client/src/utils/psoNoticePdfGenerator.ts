@@ -114,6 +114,51 @@ export function psoResultLabel(result: string): string {
 }
 
 /**
+ * "subpoena_service" → "Subpoena Service"; "civil_summons" → "Civil Summons".
+ * The dispatch autofill stores enum-shaped values (snake_case) in
+ * pso_service_type when the operator picks from a dropdown. The recipient-
+ * facing notice has to render those as proper English — the OLD legacy
+ * generator did this implicitly via the body sentence, but the NIBRS
+ * field grid prints the raw value, so we normalize here.
+ */
+function humanizeServiceType(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  if (/\s/.test(s)) return s; // already has spaces — assume operator-typed
+  return s
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+/**
+ * Generic-title detector. When the recipient name is a placeholder-y title
+ * ("Authorized Representative", "Manager", "Resident", "Occupant"), append
+ * "(or current occupant)" so the printed name doesn't read as a real human's
+ * name. Personal names (anything with a space + at least one lowercase
+ * letter pattern other than the few generics) skip the suffix.
+ */
+function softenGenericRecipient(name: string): string {
+  const norm = name.trim().toLowerCase();
+  const generics = new Set([
+    'authorized representative',
+    'authorized agent',
+    'registered agent',
+    'manager',
+    'managing agent',
+    'resident',
+    'occupant',
+    'tenant',
+    'owner',
+    'person in charge',
+    'recipient on file',
+  ]);
+  if (generics.has(norm)) return `${name.trim()} (or current occupant)`;
+  return name.trim();
+}
+
+/**
  * Adapt the PSO Communication payload to the unified Notice-of-Attempt
  * shape and delegate to the canonical NIBRS-style generator. Keeping the
  * function signature intact means DispatchPage and psoNoticeAutofill
@@ -121,7 +166,7 @@ export function psoResultLabel(result: string): string {
  */
 export async function generateNoticeOfCommunication(data: NoticeOfCommunicationData): Promise<jsPDF> {
   const recipient = (data.respondentName && data.respondentName.trim())
-    ? data.respondentName.trim()
+    ? softenGenericRecipient(data.respondentName)
     : 'Occupant / Respondent';
 
   const noticeAttempts: NoticeOfAttemptData['attempts'] = (data.attempts || []).map((a) => {
@@ -156,7 +201,7 @@ export async function generateNoticeOfCommunication(data: NoticeOfCommunicationD
     signature: data.signature,
     recipientName: recipient,
     recipientAddress: data.serviceAddress || 'Address on file',
-    documentType: data.serviceType || 'Legal Documents',
+    documentType: humanizeServiceType(data.serviceType) || 'Legal Documents',
     // The contracting client maps cleanly onto the Hiring Party slot — keeps
     // the recipient-facing notice honest about who originated the request.
     clientName: data.clientName,
