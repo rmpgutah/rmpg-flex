@@ -43,23 +43,35 @@ interface SimEdge {
   sourceTable: string;
 }
 
+// Entity-type color palette for the d3 force graph. Categorical hues — each
+// entity type gets a distinct color so an operator can scan the graph at a
+// glance. Previously 3 collisions silently rendered different entity types
+// as the same dot:
+//   person + case        both #d4a017 → case bumped to #84cc16 lime
+//   evidence + arrest    both #ef4444 → arrest bumped to #f43f5e rose
+//   incident + business  both #f59e0b → business bumped to #0ea5e9 sky
+// This is the LEGITIMATE use of raw hex literals in this codebase: a
+// categorical palette where every entry must be distinguishable. The
+// semantic --sev-* tokens can't serve here — only 5 tokens vs 16 entity
+// types — but the 3 hues that DO match sev (brand gold, sev-warn, sev-
+// critical) stay perceptually consistent with the rest of the app.
 const NODE_COLORS: Record<string, string> = {
-  person: '#d4a017',
-  vehicle: '#10b981',
-  property: '#8b5cf6',
-  business: '#f59e0b',
-  evidence: '#ef4444',
-  case: '#d4a017',
-  incident: '#f59e0b',
-  warrant: '#dc2626',
-  citation: '#fbbf24',
-  arrest: '#ef4444',
-  field_interview: '#64748b',
-  trespass_order: '#a855f7',
-  serve_job: '#14b8a6',
-  call: '#22d3ee',
-  report: '#ec4899',
-  intel_report: '#e879f9',
+  person:          '#d4a017', // brand gold (mirrors --brand-gold)
+  vehicle:         '#10b981', // emerald
+  property:        '#8b5cf6', // violet
+  business:        '#0ea5e9', // sky (was #f59e0b — collided with incident)
+  evidence:        '#ef4444', // red (mirrors --sev-critical)
+  case:            '#84cc16', // lime (was #d4a017 — collided with person)
+  incident:        '#f59e0b', // amber (mirrors --sev-warn)
+  warrant:         '#dc2626', // darker red — wider use across the app
+  citation:        '#fbbf24', // yellow (mirrors --sev-warn-soft)
+  arrest:          '#f43f5e', // rose (was #ef4444 — collided with evidence)
+  field_interview: '#64748b', // slate
+  trespass_order:  '#a855f7', // purple
+  serve_job:       '#14b8a6', // teal
+  call:            '#22d3ee', // cyan
+  report:          '#ec4899', // pink
+  intel_report:    '#e879f9', // fuchsia
 };
 
 const NODE_RADIUS: Record<string, number> = {
@@ -69,7 +81,23 @@ const NODE_RADIUS: Record<string, number> = {
   call: 20, report: 14, intel_report: 20,
 };
 
-const TIMELINE_KIND_COLOR: Record<string, string> = { intel: '#e879f9', incident: '#f59e0b', call: '#22d3ee', citation: '#fbbf24', warrant: '#dc2626', arrest: '#ef4444', field_interview: '#64748b', trespass_order: '#a855f7', case: '#d4a017', evidence: '#ef4444' };
+// Timeline-drawer colors — mirror NODE_COLORS exactly so the same entity
+// type renders the same dot color in both the graph AND the timeline.
+// Previously this map drifted: case used brand-gold (collided with the
+// person-node color in the graph) and arrest used the same red as
+// evidence. Re-aligned 2026-06-22.
+const TIMELINE_KIND_COLOR: Record<string, string> = {
+  intel:           '#e879f9', // fuchsia (matches intel_report)
+  incident:        '#f59e0b',
+  call:            '#22d3ee',
+  citation:        '#fbbf24',
+  warrant:         '#dc2626',
+  arrest:          '#f43f5e', // was '#ef4444' — collided with evidence
+  field_interview: '#64748b',
+  trespass_order:  '#a855f7',
+  case:            '#84cc16', // was '#d4a017' — collided with person
+  evidence:        '#ef4444',
+};
 
 const VIEW_W = 1000;
 const VIEW_H = 600;
@@ -462,19 +490,19 @@ export default function ConnectionsPage() {
           <input id="ff-connectionspage-0"
             type="text"
             placeholder="Search for a person, vehicle, case, incident..."
-            className="flex-1 bg-surface-raised border border-rmpg-700 px-3 py-2 text-sm text-rmpg-200 placeholder-rmpg-500 focus:border-[#d4a017] focus:outline-none"
+            className="flex-1 bg-surface-raised border border-rmpg-700 px-3 py-2 text-sm text-rmpg-200 placeholder-rmpg-500 focus:border-[var(--brand-gold)] focus:outline-none"
             style={{ borderRadius: 2 }}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             onFocus={() => { if (results.length) setDropdownOpen(true); }}
             aria-label="Seed search"
           />
-          {searching && <Loader2 className="w-4 h-4 animate-spin text-[#d4a017]" />}
+          {searching && <Loader2 className="w-4 h-4 animate-spin text-[var(--brand-gold)]" />}
           <button
             type="button"
             disabled={!seed || nodes.length === 0}
             onClick={() => setSaveModalOpen(true)}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[var(--brand-gold)] disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderRadius: 2 }}
           >
             SAVE INVESTIGATION
@@ -483,7 +511,7 @@ export default function ConnectionsPage() {
             type="button"
             disabled={!seed || nodes.length === 0}
             onClick={handleExportPng}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[var(--brand-gold)] disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderRadius: 2 }}
           >
             EXPORT PNG
@@ -492,7 +520,7 @@ export default function ConnectionsPage() {
             type="button"
             disabled={!seed || nodes.length === 0}
             onClick={handleExportPdf}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[var(--brand-gold)] disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderRadius: 2 }}
           >
             EXPORT PDF
@@ -501,7 +529,7 @@ export default function ConnectionsPage() {
             <button
               type="button"
               onClick={openLoadDropdown}
-              className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[#d4a017]"
+              className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[var(--brand-gold)]"
               style={{ borderRadius: 2 }}
             >
               LOAD INVESTIGATION
@@ -532,7 +560,7 @@ export default function ConnectionsPage() {
                   </ul>
                 )}
                 <div className="p-2 border-t border-rmpg-700 text-right">
-                  <button type="button" onClick={() => setLoadDropdownOpen(false)} className="text-xs text-rmpg-400 hover:text-[#d4a017]">Close</button>
+                  <button type="button" onClick={() => setLoadDropdownOpen(false)} className="text-xs text-rmpg-400 hover:text-[var(--brand-gold)]">Close</button>
                 </div>
               </div>
             )}
@@ -556,7 +584,7 @@ export default function ConnectionsPage() {
                 onClick={() => pickSeed(r)}
                 className="px-3 py-2 text-sm text-rmpg-200 cursor-pointer hover:bg-surface-sunken border-b border-border-subtle last:border-b-0"
               >
-                <span className="text-[#d4a017] text-xs uppercase mr-2">{r.type}</span>
+                <span className="text-[var(--brand-gold)] text-xs uppercase mr-2">{r.type}</span>
                 {r.label}
               </li>
             ))}
@@ -567,10 +595,10 @@ export default function ConnectionsPage() {
       {seed && (
         <div
           data-testid="seed-display"
-          className="px-3 py-2 bg-surface-raised border border-[#d4a017] text-sm text-rmpg-200 flex items-center gap-3"
+          className="px-3 py-2 bg-surface-raised border border-[var(--brand-gold)] text-sm text-rmpg-200 flex items-center gap-3"
           style={{ borderRadius: 2 }}
         >
-          <span className="text-[#d4a017] text-xs uppercase font-semibold">{seed.type}</span>
+          <span className="text-[var(--brand-gold)] text-xs uppercase font-semibold">{seed.type}</span>
           <span className="font-semibold">{seed.label}</span>
           <span className="text-rmpg-500 text-xs ml-auto">#{seed.id}</span>
           <div className="flex items-center gap-2 border-l border-rmpg-700 pl-3">
@@ -583,10 +611,10 @@ export default function ConnectionsPage() {
               step={1}
               value={graphDepth}
               onChange={e => setGraphDepth(Number(e.target.value))}
-              className="accent-[#d4a017]"
+              className="accent-[var(--brand-gold)]"
               aria-label="Graph depth"
             />
-            <span className="text-[#d4a017] font-mono w-4 text-center text-xs">{graphDepth}</span>
+            <span className="text-[var(--brand-gold)] font-mono w-4 text-center text-xs">{graphDepth}</span>
           </div>
           <button
             type="button"
@@ -600,7 +628,7 @@ export default function ConnectionsPage() {
           <button
             type="button"
             onClick={() => { setSeed(null); setAnnotations({}); }}
-            className="text-xs text-rmpg-400 hover:text-[#d4a017]"
+            className="text-xs text-rmpg-400 hover:text-[var(--brand-gold)]"
             aria-label="Clear seed"
           >
             CLEAR
@@ -615,7 +643,7 @@ export default function ConnectionsPage() {
         style={{ borderRadius: 2 }}
       >
         {loadingGraph && (
-          <div className="absolute inset-0 flex items-center justify-center text-sm text-[#d4a017] gap-2 z-10">
+          <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--brand-gold)] gap-2 z-10">
             <Loader2 className="w-4 h-4 animate-spin" /> Building graph...
           </div>
         )}
@@ -784,7 +812,7 @@ export default function ConnectionsPage() {
           <button
             type="button"
             onClick={resetView}
-            className="absolute top-2 right-2 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 hover:text-[#d4a017]"
+            className="absolute top-2 right-2 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 hover:text-[var(--brand-gold)]"
             style={{ borderRadius: 2 }}
             aria-label="Reset view"
           >
@@ -794,7 +822,7 @@ export default function ConnectionsPage() {
             <button
               type="button"
               onClick={() => { setPathNodes(new Set()); setPathEdges(new Set()); }}
-              className="absolute top-2 right-28 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 hover:text-[#d4a017]"
+              className="absolute top-2 right-28 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 hover:text-[var(--brand-gold)]"
               style={{ borderRadius: 2 }}
             >
               CLEAR PATH
@@ -813,7 +841,7 @@ export default function ConnectionsPage() {
                   const sel = nodes.find(n => n.id === selectedNodeId);
                   if (sel) setPathFrom({ type: sel.type, id: sel.entityId, label: sel.label });
                 }}
-                className="text-[#d4a017] hover:underline uppercase font-semibold"
+                className="text-[var(--brand-gold)] hover:underline uppercase font-semibold"
               >
                 Start Path
               </button>
@@ -823,7 +851,7 @@ export default function ConnectionsPage() {
                   setEditingAnnotationFor(selectedNodeId);
                   setAnnotationDraft(annotations[selectedNodeId] || '');
                 }}
-                className="text-[#d4a017] hover:underline uppercase font-semibold"
+                className="text-[var(--brand-gold)] hover:underline uppercase font-semibold"
               >
                 {annotations[selectedNodeId] ? 'Edit note' : 'Add note'}
               </button>
@@ -845,14 +873,14 @@ export default function ConnectionsPage() {
           )}
           {pathFrom && (
             <div
-              className="absolute top-2 left-2 right-32 bg-surface-raised border border-[#d4a017] px-3 py-2 flex items-center justify-between text-xs text-[#d4a017] z-20"
+              className="absolute top-2 left-2 right-32 bg-surface-raised border border-[var(--brand-gold)] px-3 py-2 flex items-center justify-between text-xs text-[var(--brand-gold)] z-20"
               style={{ borderRadius: 2 }}
             >
               <span>Click a second node to find the path from <strong>{pathFrom.label}</strong></span>
               <button
                 type="button"
                 onClick={() => { setPathFrom(null); setPathNodes(new Set()); setPathEdges(new Set()); }}
-                className="text-rmpg-300 hover:text-[#d4a017] uppercase font-semibold"
+                className="text-rmpg-300 hover:text-[var(--brand-gold)] uppercase font-semibold"
                 aria-label="Cancel path"
               >
                 Cancel Path
@@ -867,18 +895,18 @@ export default function ConnectionsPage() {
           className="w-40 bg-surface-raised border border-rmpg-700 p-2 space-y-1 overflow-y-auto"
           style={{ borderRadius: 2 }}
         >
-          <div className="text-[#d4a017] text-xs uppercase font-semibold mb-2">Filter by Type</div>
+          <div className="text-[var(--brand-gold)] text-xs uppercase font-semibold mb-2">Filter by Type</div>
           {availableTypes.map(t => (
             <label
               key={t}
-              className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer hover:text-[#d4a017]"
+              className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer hover:text-[var(--brand-gold)]"
             >
               <input id="ff-connectionspage-1"
                 type="checkbox"
                 checked={!hiddenTypes.has(t)}
                 onChange={() => toggleType(t)}
                 aria-label={`Show ${t}`}
-                className="accent-[#d4a017]"
+                className="accent-[var(--brand-gold)]"
               />
               <span
                 className="inline-block w-2 h-2 rounded-full"
@@ -914,12 +942,12 @@ export default function ConnectionsPage() {
       {editingAnnotationFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
           <div role="dialog" className="w-96 bg-surface-raised border border-rmpg-700 p-4 space-y-3" style={{ borderRadius: 2 }}>
-            <h2 className="text-[#d4a017] text-sm uppercase font-semibold">
+            <h2 className="text-[var(--brand-gold)] text-sm uppercase font-semibold">
               Note for {nodes.find(n => n.id === editingAnnotationFor)?.label}
             </h2>
             <RichTextArea
               aria-label={`Note for ${nodes.find(n => n.id === editingAnnotationFor)?.label}`}
-              className="w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-[#d4a017] focus:outline-none h-28"
+              className="w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-[var(--brand-gold)] focus:outline-none h-28"
               style={{ borderRadius: 2 }}
               value={annotationDraft}
               onChange={e => setAnnotationDraft(e.target.value)}
@@ -929,7 +957,7 @@ export default function ConnectionsPage() {
               <button
                 type="button"
                 onClick={() => { setEditingAnnotationFor(null); setAnnotationDraft(''); }}
-                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-[#d4a017]"
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-[var(--brand-gold)]"
               >
                 Cancel
               </button>
@@ -976,13 +1004,13 @@ export default function ConnectionsPage() {
             className="w-96 bg-surface-raised border border-rmpg-700 p-4 space-y-3"
             style={{ borderRadius: 2 }}
           >
-            <h2 className="text-[#d4a017] text-sm uppercase font-semibold">Save Investigation</h2>
+            <h2 className="text-[var(--brand-gold)] text-sm uppercase font-semibold">Save Investigation</h2>
 
             <label className="block text-xs text-rmpg-300">
               Name
               <input id="ff-connectionspage-2"
                 type="text"
-                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-[#d4a017] focus:outline-none"
+                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-[var(--brand-gold)] focus:outline-none"
                 style={{ borderRadius: 2 }}
                 value={saveName}
                 onChange={e => setSaveName(e.target.value)}
@@ -993,7 +1021,7 @@ export default function ConnectionsPage() {
             <label className="block text-xs text-rmpg-300">
               Description
               <RichTextArea
-                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-[#d4a017] focus:outline-none h-20"
+                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-[var(--brand-gold)] focus:outline-none h-20"
                 style={{ borderRadius: 2 }}
                 value={saveDescription}
                 onChange={e => setSaveDescription(e.target.value)}
@@ -1011,7 +1039,7 @@ export default function ConnectionsPage() {
                   setSaveDescription('');
                   setSaveError(null);
                 }}
-                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-[#d4a017]"
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-[var(--brand-gold)]"
               >
                 Cancel
               </button>

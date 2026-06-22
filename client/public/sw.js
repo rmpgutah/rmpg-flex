@@ -717,6 +717,16 @@
 //        Dispatch). Theme: warrant-banner ⚠️ emoji → Lucide
 //        AlertTriangle; restored-draft #1a1500 → rgb(var(--sev-warn-rgb)
 //        / 0.08) (same lift as Patrol PR #1595).
+// v1029: Connections graph — fix 3 entity-color collisions that
+//        silently rendered DIFFERENT entity types as the same dot
+//        color (person+case both brand-gold; evidence+arrest both red;
+//        incident+business both amber). Operator couldn't tell which
+//        type they were looking at on the graph. Bumped to lime/rose/
+//        sky for the three colliding types — every entity now has a
+//        distinct hue. Theme: 5 Tailwind brand-gold arbitraries lifted
+//        to [var(--brand-gold)]. The 13 categorical chart palette
+//        entries stay as raw hex (legitimate use — semantic --sev-*
+//        tokens can't distinguish 16 entity types).
 // v1023: Patrol — hydrate isOnBreak from /patrol/breaks on mount (was
 //        local-state-only; operator on break who refreshed the page saw
 //        "Start Break" + a fresh click raced into a 2nd break). Adds a
