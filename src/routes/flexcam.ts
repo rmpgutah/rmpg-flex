@@ -189,14 +189,32 @@ flexcam.get('/trips/:tripId/manifest', async (c): Promise<Response> => {
 
 flexcam.post('/render/:id', async (c): Promise<Response> => {
   const db = getDb(c.env);
+  await ensureRemuxSchema(db);
   const id = Number(c.req.param('id'));
+  const body = await c.req.json<{ format?: 'mp4' | 'ts' | 'fmp4' }>().catch(() => ({} as { format?: 'mp4' | 'ts' | 'fmp4' }));
+  const format = body.format ?? 'mp4';
+
   const rows = await query<{ seq: number; from_ts: number; to_ts: number; status: string; r2_key: string | null; bytes: number }>(
-    db, 'SELECT seq, from_ts, to_ts, status, r2_key, bytes FROM footage_chunks WHERE request_id=? ORDER BY seq', id).catch(() => []);
+    db, 'SELECT seq, from_ts, to_ts, status, r2_key, bytes FROM footage_chunks WHERE request_id=? ORDER BY seq', id,
+  ).catch(() => []);
   const manifest = buildManifest(id, rows);
   if (!manifest.chunks.length) return c.json({ error: 'No downloaded chunks' }, 409);
+
+  if (format === 'mp4') {
+    const stub = c.env.FLEXCAM_REMUX.get(c.env.FLEXCAM_REMUX.idFromName('rmx-' + id));
+    const resp = await stub.fetch('https://do/enqueue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId: id }),
+    });
+    const result = await resp.json<{ state: string }>();
+    await execute(db, "UPDATE footage_requests SET merged_status='queued' WHERE id=?", id);
+    return c.json({ remux_state: result.state, merged_status: 'queued' }, 202);
+  }
+
+  // Existing ts / fmp4 path (unchanged)
   const mergedKey = `flexcam/trips/merged/${id}.mp4`;
-  // Format from the discovery spike; default 'mp4' (unsupported on Worker → client renders).
-  const result = await concatToR2(c.env, mergedKey, manifest.chunks, 'mp4');
+  const result = await concatToR2(c.env, mergedKey, manifest.chunks, format);
   await execute(db, 'UPDATE footage_requests SET merged_r2_key=?, merged_status=? WHERE id=?', result === 'ready' ? mergedKey : null, result, id);
   return c.json({ merged_status: result, merged_r2_key: result === 'ready' ? mergedKey : null });
 });
