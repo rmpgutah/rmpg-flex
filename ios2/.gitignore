@@ -1,0 +1,13 @@
+# Xcode user state — never commit
+**/xcuserdata/
+**/*.xcuserstate
+**/xcshareddata/WorkspaceSettings.xcsettings
+
+# SwiftPM build artifacts
+**/.build/
+**/.swiftpm/
+**/Packages/*/Package.resolved
+**/DerivedData/
+
+# Generated
+**/.DS_Store
