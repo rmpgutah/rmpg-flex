@@ -3192,9 +3192,12 @@ export interface ServeAttempt {
   id: number;
   serve_queue_id: number;
   officer_id: number;
+  officer_name?: string;
   attempt_number: number;
   attempt_type: 'personal' | 'substitute' | 'posting' | 'failed';
   result: 'served' | 'no_answer' | 'refused' | 'wrong_address' | 'moved' | 'other';
+  /** Structured PS/NN.NN disposition code (migration 0143). Null on legacy rows. */
+  disposition_code?: string | null;
   latitude: number | null;
   longitude: number | null;
   gps_accuracy: number | null;
