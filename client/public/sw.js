@@ -59,6 +59,54 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1052: Geography (/geography) — Page 35 of the full-app frontend pass.
+//        Dispatch geography admin (4-column Miller drilldown over
+//        Areas → Sectors → Zones → Beats) was working but missed every
+//        cross-page contract the rest of the audit established:
+//
+//          • URL deep-link — ?area_id=N / ?sector_id=N / ?zone_id=N /
+//            ?beat_id=N auto-select the deepest tier plus all its
+//            ancestors so the drilldown columns are correct, then strip
+//            the params (replace:true) so a refresh doesn't re-pin. Same
+//            shape Trespass / Fleet / Communications / Serve use.
+//          • Native dialogs killed — window.prompt() (Add a tier) and
+//            window.confirm() (Delete) replaced with ConfirmDialog. Add
+//            now shows the parent code so a mid-shift misclick is
+//            obvious before save; Delete shows tier + code + name so the
+//            operator sees exactly what they're about to drop.
+//          • Esc smart-cascade — single press unwinds exactly one layer:
+//            delete dialog → add dialog → editing → search → selection.
+//            Each branch returns so a fast double-Esc never collapses
+//            two layers.
+//          • N shortcut for New — opens Add at the deepest selected tier
+//            (Beat if a Zone is selected, Zone if a Sector is selected,
+//            etc.; Area if nothing is selected). Suppressed inside any
+//            input, dialog, or modifier chord.
+//          • CSV export — Download button next to refresh dumps a flat
+//            tier / area / sector / zone / beat sheet with the key
+//            dispatch attributes (codes, units, radio, population, sq
+//            mi, active) plus a Denver-local datestamped filename. The
+//            sheet is the court-ready hierarchy snapshot MOU exhibits
+//            and supervisor rosters were asking for.
+//          • Privacy / shared-MDT — useFormDraft storage keys
+//            (rmpg_geo_*_form) were system-wide unscoped per the memory
+//            note. Scoped per-user (_${user.id}) with a one-time
+//            read-through migration from the bare key so existing
+//            drafts aren't lost. Same per-user scoping pattern fleet-v2
+//            InsightsRoute landed in v1041.
+//          • Theme tokens — six `#d4a017` literals (column headers,
+//            selected-row border, detail-pane heading, checkbox accent,
+//            Save/Edit buttons) → `text-brand-gold-500` /
+//            `border-brand-gold-500` / `accent-brand-gold-500`. The gold
+//            stays #d4a017 at night per CLAUDE.md but darkens slightly
+//            in day mode for legibility — exact same migration the
+//            other audited pages did.
+//
+//        No D1 migration, no Worker route changes — the
+//        POST/PUT/DELETE endpoints for areas / sectors / zones / beats
+//        already exist in src/routes/dispatch/geography.ts (created in
+//        the original Phase 3 ship). Client-only. Typecheck passes;
+//        1946 client tests still pass.
 // v1051: Settings (/settings) — Page 34 of the full-app frontend pass.
 //        SettingsPage is the per-user prefs hub (voice persona, voice
 //        alerts, Motorola tones, PTT, map view/overlays/GPS/markers) — it
