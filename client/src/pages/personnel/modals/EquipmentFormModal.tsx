@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Package } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
 import { useFormDraft } from '../../../hooks/useFormDraft';
+import { useAuth } from '../../../context/AuthContext';
 import type { EquipmentType, EquipmentCondition, EquipmentStatus } from '../../../types';
 
 import RichTextArea from '../../../components/RichTextArea';
@@ -82,6 +83,15 @@ const EMPTY: EquipmentFormData = {
 export default function EquipmentFormModal({
   isOpen, onClose, onSubmit, isSubmitting, officers, initialData, mode = 'create',
 }: Props) {
+  // Per-operator draft key — equipment serial numbers and the linked
+  // officer name are not the kind of half-typed data you want bleeding
+  // onto the next operator on a shared MDT. Tab key already user-scopes
+  // (see PersonnelPage tabKey); the form draft now matches.
+  const { user } = useAuth();
+  const draftKey = user?.id
+    ? `rmpg_personnel_equipment_form_${user.id}`
+    : 'rmpg_personnel_equipment_form';
+
   const {
     form,
     setForm,
@@ -91,7 +101,7 @@ export default function EquipmentFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<EquipmentFormData>({
-    storageKey: 'rmpg_personnel_equipment_form',
+    storageKey: draftKey,
     defaultValue: EMPTY,
     isActive: isOpen,
   });

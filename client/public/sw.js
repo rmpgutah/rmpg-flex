@@ -59,6 +59,65 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1055: Personnel — Equipment (Page 38 of the full-app frontend pass).
+//        The Equipment tab + per-officer detail tab + Issue/Edit modal
+//        get the same v1024–v1054 court-ready / deep-link contract every
+//        other audited surface has. Operator-side equipment custody is
+//        the natural counterpart to evidence custody — a firearm or
+//        body camera tied to a use-of-force review needs an issuance
+//        receipt, a return-condition log, and the officer name on a
+//        signed line. The in-app tab showed all of this but had no
+//        print path before now.
+//
+//        What changed:
+//          • client/src/utils/equipmentCustodyPdf.ts — new court-ready
+//            PDF (banner + agency strap + lost/damaged alert banner +
+//            item block + notes + checkout/return log table +
+//            issuing supervisor / receiving officer signature lines +
+//            generated-on footer). Pure helpers (logEntryDate /
+//            logEntryActor / prettyAction) unit-tested in
+//            client/src/utils/__tests__/equipmentCustodyPdf.test.ts.
+//          • EquipmentTab — FileText action button on every row + right-
+//            click "Open custody PDF" menu entry. Per-item checkout log
+//            is fetched on demand from
+//            GET /personnel/equipment/:id/checkout-log and cached so a
+//            repeat open doesn't refetch. Search box (serial / asset
+//            tag / make-model / officer name) + CSV export of the
+//            filtered view (equipment_<date>.csv).
+//          • EquipmentDetailTab — same FileText button on each per-
+//            officer card, reusing the already-loaded per-item checkout
+//            log when it's expanded.
+//          • PersonnelPage URL deep-link contract — ?item_id= /
+//            ?serial= / ?assigned_to= and ?tab=equipment auto-redirect
+//            to the Equipment tab, validate the target resolves to a
+//            row, scroll the matched row into view + flash-highlight
+//            (ring-2 ring-brand-400/70), and strip the params so a
+//            refresh doesn't re-trigger. ?item_id / ?serial that
+//            don't resolve surface a "not found" toast; ?assigned_to
+//            seeds the search filter without pinning (officers can
+//            have multiple items). Implicit equipment params skip
+//            the persisted-tab default on first paint.
+//          • Distinct empty states — "no equipment matches your
+//            filters" (with Clear-filters button + 0-of-N counter) vs
+//            "no equipment issued yet" (with the N shortcut hint).
+//            The original generic "No equipment found" couldn't tell
+//            an operator whether their filter chip was too narrow or
+//            the table was truly empty.
+//          • N shortcut — extended from roster-only to also open
+//            "Issue Equipment" when activeTab === 'equipment'. Still
+//            typing-suppressed (search/select/textarea/contentEditable
+//            don't swallow the letter as a shortcut).
+//          • Privacy — EquipmentFormModal draft key now scopes to
+//            user.id (rmpg_personnel_equipment_form_<uid>) so a half-
+//            typed serial number / officer assignment from operator A
+//            doesn't leak onto operator B on a shared MDT. Matches the
+//            tabKey privacy scope at the top of PersonnelPage that was
+//            previously the only user-scoped key on the page.
+//
+//        No D1 migration, no Worker route changes — client-only. Reuses
+//        the existing /personnel/equipment* routes (GET list, GET log,
+//        GET /:id/checkout-log, POST /:officerId/equipment, PUT, DELETE,
+//        POST /:id/checkout, POST /:id/checkin) without modification.
 // v1054: Training Management (/training) — Page 37 of the full-app frontend
 //        pass. TrainingPage.tsx (1641 lines) holds the dashboard /
 //        records / requirements / calendar tabs and is the supervisor's
