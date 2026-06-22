@@ -82,6 +82,13 @@ class_name = "AlertHubDO"
 name = "DEEP_RESEARCH"
 class_name = "DeepResearchDO"
 
+# FlexCamRemuxDO — one instance per footage_request_id (idFromName('rmx-' + id))
+# for lazy MP4 → fMP4 remux. Triggered by POST /api/flexcam/render/:id for
+# format='mp4'. See src/durable-objects/FlexCamRemuxDO.ts.
+[[durable_objects.bindings]]
+name = "FLEXCAM_REMUX"
+class_name = "FlexCamRemuxDO"
+
 [[migrations]]
 tag = "v1"
 # new_sqlite_classes (not new_classes) — free-plan compatible.
@@ -206,6 +213,13 @@ new_sqlite_classes = ["AlertHubDO"]
 [[migrations]]
 tag = "v4-deepresearch"
 new_sqlite_classes = ["DeepResearchDO"]
+
+# FlexCamRemuxDO — APPENDED (same prefix rule as v2-voicehub: live tags
+# must be a prefix of this list, so new DO migrations go at the END).
+# SQLite-backed for free-plan + storage.put/getAlarm.
+[[migrations]]
+tag = "v5-flexcamremux"
+new_sqlite_classes = ["FlexCamRemuxDO"]
 
 # ─── Workers AI ────────────────────────────────────────────
 # Used by /api/serve-intake/scan-document + /api/serve-intake/upload

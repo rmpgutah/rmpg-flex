@@ -44,6 +44,11 @@ export type Bindings = {
   // officer-safety broadcasts (panic) + forced-ack. See
   // src/durable-objects/AlertHubDO.ts + src/utils/alertHub.ts.
   ALERT_HUB: DurableObjectNamespace;
+  // FlexCamRemuxDO namespace — one instance per footage_request_id
+  // (idFromName('rmx-' + id)) for lazy MP4 → fMP4 remux. Triggered
+  // by POST /api/flexcam/render/:id for format='mp4'. Free-plan
+  // compatible (new_sqlite_classes; see wrangler.toml).
+  FLEXCAM_REMUX: DurableObjectNamespace;
   // PDF Tools sidecar — Cloudflare Container holding qpdf + pdftotext
   // + ocrmypdf. Worker proxies to it via getContainer(env.PDF_TOOLS,
   // 'shared').fetch(req). Parameterized so getContainer<T> narrows
