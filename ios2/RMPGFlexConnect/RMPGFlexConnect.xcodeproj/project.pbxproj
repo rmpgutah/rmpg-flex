@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 100;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -29,7 +29,6 @@
 /* Begin PBXFrameworksBuildPhase section */
 		BB0000000000000000000051 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				F07C2D422FE99AE4005907A2 /* FeatureQuickActions in Frameworks */,
 				F07C2D412FE99AE4005907A2 /* FeatureShell in Frameworks */,
@@ -37,7 +36,6 @@
 				F07C2D3F2FE99AE4005907A2 /* CoreAuth in Frameworks */,
 				F07C2D3E2FE99AE4005907A2 /* CoreAPI in Frameworks */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
@@ -50,6 +48,7 @@
 				BB0000000000000000000011 /* Products */,
 			);
 			sourceTree = "<group>";
+			usesTabs = 0;
 		};
 		BB0000000000000000000011 /* Products */ = {
 			isa = PBXGroup;
@@ -78,8 +77,6 @@
 				BB0000000000000000000052 /* Resources */,
 			);
 			buildRules = (
-			);
-			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
 				BB0000000000000000000001 /* RMPGFlexConnect */,
@@ -122,7 +119,7 @@
 				BB0000000000000000000304 /* XCLocalSwiftPackageReference "Packages/FeatureShell" */,
 				BB0000000000000000000305 /* XCLocalSwiftPackageReference "Packages/FeatureQuickActions" */,
 			);
-			preferredProjectObjectVersion = 77;
+			preferredProjectObjectVersion = 100;
 			productRefGroup = BB0000000000000000000011 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -135,25 +132,21 @@
 /* Begin PBXResourcesBuildPhase section */
 		BB0000000000000000000052 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		BB0000000000000000000050 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		BB0000000000000000000080 /* Debug */ = {
+		BB0000000000000000000080 /* Debug configuration for PBXProject "RMPGFlexConnect" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -204,7 +197,7 @@
 			};
 			name = Debug;
 		};
-		BB0000000000000000000081 /* Release */ = {
+		BB0000000000000000000081 /* Release configuration for PBXProject "RMPGFlexConnect" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -249,7 +242,7 @@
 			};
 			name = Release;
 		};
-		BB0000000000000000000082 /* Debug */ = {
+		BB0000000000000000000082 /* Debug configuration for PBXNativeTarget "RMPG Flex Connect" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -289,7 +282,7 @@
 			};
 			name = Debug;
 		};
-		BB0000000000000000000083 /* Release */ = {
+		BB0000000000000000000083 /* Release configuration for PBXNativeTarget "RMPG Flex Connect" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -335,19 +328,17 @@
 		BB0000000000000000000040 /* Build configuration list for PBXNativeTarget "RMPG Flex Connect" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BB0000000000000000000082 /* Debug */,
-				BB0000000000000000000083 /* Release */,
+				BB0000000000000000000082 /* Debug configuration for PBXNativeTarget "RMPG Flex Connect" */,
+				BB0000000000000000000083 /* Release configuration for PBXNativeTarget "RMPG Flex Connect" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		BB0000000000000000000042 /* Build configuration list for PBXProject "RMPGFlexConnect" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BB0000000000000000000080 /* Debug */,
-				BB0000000000000000000081 /* Release */,
+				BB0000000000000000000080 /* Debug configuration for PBXProject "RMPGFlexConnect" */,
+				BB0000000000000000000081 /* Release configuration for PBXProject "RMPGFlexConnect" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
