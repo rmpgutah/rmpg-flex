@@ -12,17 +12,20 @@ public struct Endpoint: Sendable {
 
     public let method: Method
     public let path: String
+    public let queryItems: [URLQueryItem]?
     public let headers: [String: String]
     public let body: Data?
 
     public init(
         method: Method,
         path: String,
+        queryItems: [URLQueryItem]? = nil,
         headers: [String: String] = [:],
         body: Data? = nil
     ) {
         self.method = method
         self.path = path
+        self.queryItems = queryItems
         self.headers = headers
         self.body = body
     }

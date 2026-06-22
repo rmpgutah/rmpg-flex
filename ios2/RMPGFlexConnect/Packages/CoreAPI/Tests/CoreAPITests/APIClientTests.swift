@@ -88,6 +88,42 @@ final class APIClientTests: XCTestCase {
             XCTAssertEqual(e, .server(status: 500, code: "boom", message: "db is sad"))
         } catch { XCTFail("wrong error: \(error)") }
     }
+
+    func testQueryItemsAreEncodedInURL() async throws {
+        var captured: URLRequest?
+        let client = makeClient(token: "tok") { req in
+            captured = req
+            return (HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data("{}".utf8))
+        }
+        struct Empty: Decodable {}
+        let endpoint = Endpoint(
+            method: .get,
+            path: "alpr/captures",
+            queryItems: [URLQueryItem(name: "call_id", value: "123"), URLQueryItem(name: "limit", value: "20")]
+        )
+        _ = try? await client.request(endpoint, as: Empty.self)
+        let url = captured?.url?.absoluteString ?? ""
+        XCTAssertTrue(url.contains("alpr/captures"), "URL should contain path; got \(url)")
+        XCTAssertTrue(url.contains("call_id=123"), "URL should contain call_id query; got \(url)")
+        XCTAssertTrue(url.contains("limit=20"), "URL should contain limit query; got \(url)")
+    }
+
+    func testPathWithLeadingSlashDoesNotDoubleSlash() async throws {
+        var captured: URLRequest?
+        let client = makeClient(token: "tok") { req in
+            captured = req
+            return (HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data("{}".utf8))
+        }
+        struct Empty: Decodable {}
+        _ = try? await client.request(Endpoint(method: .get, path: "/api/health"), as: Empty.self)
+        let url = captured?.url?.absoluteString ?? ""
+        // Strip the scheme so `https://` does not match the path-level
+        // double-slash check.
+        let afterScheme = url.replacingOccurrences(of: "https://", with: "")
+            .replacingOccurrences(of: "http://", with: "")
+        XCTAssertFalse(afterScheme.contains("//"), "Should not have double slash in path; got \(url)")
+        XCTAssertTrue(url.hasSuffix("/api/health"), "Should end with /api/health; got \(url)")
+    }
 }
 
 /// URLProtocol stub for synchronous test injection.

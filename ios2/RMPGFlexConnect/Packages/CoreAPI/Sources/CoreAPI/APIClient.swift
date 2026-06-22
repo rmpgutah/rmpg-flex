@@ -55,7 +55,20 @@ public final class APIClient: Sendable {
     }
 
     internal func buildRequest(for endpoint: Endpoint) -> URLRequest {
-        let url = baseURL.appendingPathComponent(endpoint.path)
+        // Build via URLComponents so query items are encoded correctly and
+        // a path string like "api/auth/login" composes with baseURL safely.
+        let baseString = baseURL.absoluteString.hasSuffix("/")
+            ? baseURL.absoluteString
+            : baseURL.absoluteString + "/"
+        let trimmedPath = endpoint.path.hasPrefix("/")
+            ? String(endpoint.path.dropFirst())
+            : endpoint.path
+        var components = URLComponents(string: baseString + trimmedPath)
+            ?? URLComponents(url: baseURL, resolvingAgainstBaseURL: true)!
+        if let items = endpoint.queryItems, !items.isEmpty {
+            components.queryItems = (components.queryItems ?? []) + items
+        }
+        let url = components.url ?? baseURL
         var req = URLRequest(url: url)
         req.httpMethod = endpoint.method.rawValue
         for (k, v) in endpoint.headers { req.setValue(v, forHTTPHeaderField: k) }
