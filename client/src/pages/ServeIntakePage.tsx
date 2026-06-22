@@ -193,6 +193,20 @@ function fileMeta(f: UploadedFile): string {
 // the caller can flip the bar from determinate % to an indeterminate
 // "analyzing" state while the server runs OCR + extraction. Resolves with the
 // raw status/text the caller needs (mirrors what it used from the Response).
+// Read the bytes into an in-memory File so the eventual upload doesn't fail
+// with ERR_UPLOAD_FILE_CHANGED when something touches the disk file between
+// pick and submit. The intake flow holds files in state for seconds-to-
+// minutes while the operator reviews OCR — plenty of time for iCloud Drive
+// / OneDrive / Spotlight / anti-virus to bump lastModified on the original.
+// The snapshot is backed by an ArrayBuffer the browser owns, so a disk
+// change can no longer abort the multipart send. Preserves name/type/
+// lastModified so the rest of the page (status badges, dedupe heuristics,
+// scan-OCR docType inference) is unaffected.
+async function snapshotFile(f: File): Promise<File> {
+  const bytes = await f.arrayBuffer();
+  return new File([bytes], f.name, { type: f.type, lastModified: f.lastModified });
+}
+
 function xhrUpload(
   url: string,
   body: FormData,
@@ -210,7 +224,21 @@ function xhrUpload(
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
     xhr.upload.onload = () => onSent();
     xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, text: xhr.responseText });
-    xhr.onerror = () => reject(new Error('Network error during upload'));
+    // XHR onerror doesn't surface the underlying browser code (ERR_UPLOAD_FILE_CHANGED,
+    // ERR_INTERNET_DISCONNECTED, ERR_HTTP2_PROTOCOL_ERROR, etc.) — the spec
+    // gives us nothing. We can at least disambiguate the offline case via
+    // navigator.onLine, and tell the operator what to check next; the
+    // ERR_UPLOAD_FILE_CHANGED race is now defended at the snapshotFile() seam
+    // in handleFiles, so a generic network failure here is most likely a real
+    // connectivity / firewall issue.
+    xhr.onerror = () => {
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      reject(new Error(
+        offline
+          ? 'Upload failed: device is offline. Reconnect and try again.'
+          : 'Upload failed: network error. Check your connection or VPN/firewall; if the file is in iCloud/OneDrive, copy it to a local folder first and retry.',
+      ));
+    };
     // Distinguish a user cancel from a real failure (the `aborted` flag) so
     // the caller resets quietly instead of flashing a scary red error.
     xhr.onabort = () => reject(Object.assign(new Error('Upload canceled'), { aborted: true }));
@@ -452,10 +480,22 @@ export default function ServeIntakePage() {
     const newFiles: UploadedFile[] = [];
     // Born-digital PDFs queued for server-side LLM field extraction after setFiles.
     const pdfScans: Array<{ file: File; text: string }> = [];
-    for (const file of Array.from(fileList)) {
-      const isImage = file.type.startsWith('image/');
-      const isPdf = file.type === 'application/pdf';
+    for (const rawFile of Array.from(fileList)) {
+      const isImage = rawFile.type.startsWith('image/');
+      const isPdf = rawFile.type === 'application/pdf';
       if (!isImage && !isPdf) continue;
+
+      // Snapshot to in-memory bytes immediately so the eventual upload
+      // can't abort with ERR_UPLOAD_FILE_CHANGED if the disk file is
+      // touched while the operator reviews OCR. See snapshotFile() above.
+      let file: File;
+      try {
+        file = await snapshotFile(rawFile);
+      } catch {
+        // arrayBuffer() can throw if the underlying file vanished between
+        // pick and read (rare). Skip the file rather than wedge the batch.
+        continue;
+      }
 
       let text = '';
       let ocrResult: any = null;
