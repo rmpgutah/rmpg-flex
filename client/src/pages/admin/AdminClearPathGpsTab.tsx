@@ -697,6 +697,8 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               value={refreshToken}
               onChange={(e) => setRefreshToken(e.target.value)}
               placeholder={status?.configured ? 'Enter new Refresh Token to replace...' : 'ClearPath session refresh token...'}
+              autoComplete="new-password"
+              spellCheck={false}
               className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
             <button type="button"
