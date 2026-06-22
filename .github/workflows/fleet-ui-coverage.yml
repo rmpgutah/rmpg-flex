@@ -17,7 +17,7 @@ jobs:
     name: No DDL in fleet-ui PR
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - name: Block any new migrations file IF this is a fleet-UI PR
         env:
@@ -55,7 +55,7 @@ jobs:
     name: Endpoint coverage report (informational in 7'a, blocking in 7'c)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Compute old vs new /api/fleet/* endpoint sets
         id: cov
         run: |
