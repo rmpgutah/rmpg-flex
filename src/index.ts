@@ -521,7 +521,7 @@ export default {
       ctx.waitUntil(
         (async () => {
           try {
-            const [{ applyOutbound }, { configFromEnv, createVehicle, updateVehicle, archiveVehicle, createFuelEntry, createWorkOrder }] = await Promise.all([
+            const [{ applyOutbound }, { configFromEnv, createVehicle, updateVehicle, archiveVehicle, createFuelEntry, updateFuelEntry, createWorkOrder, updateWorkOrder }] = await Promise.all([
               import('./utils/fleetio/sync'),
               import('./utils/fleetio/client'),
             ]);
@@ -546,7 +546,9 @@ export default {
                 updateVehicle: (args) => updateVehicle({ config, fleetioId: args.fleetioId, payload: args.payload }),
                 archiveVehicle: (args) => archiveVehicle({ config, fleetioId: args.fleetioId, archivedAtIso: args.archivedAtIso }),
                 createFuelEntry: (args) => createFuelEntry({ config, payload: args.payload }),
+                updateFuelEntry: (args) => updateFuelEntry({ config, fleetioId: args.fleetioId, payload: args.payload }),
                 createWorkOrder: (args) => createWorkOrder({ config, payload: args.payload }),
+                updateWorkOrder: (args) => updateWorkOrder({ config, fleetioId: args.fleetioId, payload: args.payload }),
               },
             });
             if (result.attempted > 0) {

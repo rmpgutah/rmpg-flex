@@ -357,6 +357,46 @@ export async function createWorkOrder(input: CreateWorkOrderInput): Promise<Flee
   });
 }
 
+// ── PR after #1545: update verbs ──────────────────────────────
+// Closes the remaining 501 holes in the sync engine. PR #1540 added
+// create/delete; PR #1545 added FK translation; this set adds the
+// matching update verbs so a RMPG-side PATCH to fuel_entries or
+// work_orders no longer leaves a stuck 'pending' event.
+
+export interface UpdateFuelEntryInput {
+  config: FleetioConfig;
+  fleetioId: number;
+  payload: Record<string, unknown>;
+  fetchImpl?: typeof fetch;
+}
+
+export async function updateFuelEntry(input: UpdateFuelEntryInput): Promise<FleetioFuelEntry> {
+  return fleetioFetch<FleetioFuelEntry>({
+    method: 'PATCH',
+    path: `/fuel_entries/${input.fleetioId}`,
+    config: input.config,
+    body: input.payload,
+    fetchImpl: input.fetchImpl,
+  });
+}
+
+export interface UpdateWorkOrderInput {
+  config: FleetioConfig;
+  fleetioId: number;
+  payload: Record<string, unknown>;
+  fetchImpl?: typeof fetch;
+}
+
+export async function updateWorkOrder(input: UpdateWorkOrderInput): Promise<FleetioWorkOrder> {
+  return fleetioFetch<FleetioWorkOrder>({
+    method: 'PATCH',
+    path: `/work_orders/${input.fleetioId}`,
+    config: input.config,
+    body: input.payload,
+    fetchImpl: input.fetchImpl,
+  });
+}
+
 /** Helper for routes: build a FleetioConfig from the env bindings, throwing
  *  FleetioConfigError if either secret is unset. */
 export function configFromEnv(env: Record<string, unknown>): FleetioConfig {
