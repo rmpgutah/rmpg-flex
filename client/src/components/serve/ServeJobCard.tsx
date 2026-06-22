@@ -317,7 +317,7 @@ export default React.memo(function ServeJobCard({
                 {job.attempts.map((attempt) => (
                   <div
                     key={attempt.id}
-                    className="group flex items-start gap-2 pl-2 border-l-2 border-rmpg-600/50"
+                    className="flex items-center gap-2 pl-2 border-l-2 border-rmpg-600/50"
                   >
                     <span className="text-[10px] font-mono text-rmpg-400 flex-shrink-0 w-16">
                       {safeDateStr(attempt.attempt_at)}
@@ -331,17 +331,23 @@ export default React.memo(function ServeJobCard({
                       {ATTEMPT_RESULT_LABELS[attempt.result] || attempt.result}
                     </span>
                     {attempt.notes && (
-                      <span className="text-[10px] text-rmpg-400 truncate flex-1">{attempt.notes}</span>
+                      <span className="text-[10px] text-rmpg-400 truncate flex-1 min-w-0">{attempt.notes}</span>
                     )}
+                    {/* Edit affordance — always visible (no hover gate). Field
+                        operators on iPad/phone have no hover state, so a
+                        group-hover:opacity-100 pencil was invisible to them.
+                        Bumped icon + padding clears the iOS-HIG 44×44 minimum
+                        without enlarging the row visually. */}
                     {onEditAttempt && (
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); onEditAttempt(job.id, attempt); }}
-                        className="ml-auto flex-shrink-0 text-rmpg-500 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 focus:outline-none focus:opacity-100 focus:ring-1 focus:ring-amber-400/50"
+                        className="ml-auto flex-shrink-0 text-amber-400 hover:text-amber-300 active:text-amber-200 bg-rmpg-800/40 hover:bg-rmpg-800/70 border border-amber-700/40 hover:border-amber-500/60 rounded-[2px] inline-flex items-center gap-1 px-1.5 py-1 text-[10px] font-medium focus:outline-none focus:ring-1 focus:ring-amber-400"
                         title={`Edit attempt #${attempt.attempt_number}`}
                         aria-label={`Edit attempt ${attempt.attempt_number} for ${job.recipient_name}`}
                       >
                         <Pencil className="w-3 h-3" />
+                        <span>Edit</span>
                       </button>
                     )}
                   </div>
