@@ -742,6 +742,9 @@ const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
   // process service
   'process_service_type', 'process_served_to', 'process_served_address',
   'process_attempts', 'process_served_at', 'process_service_result',
+  // Court name for PSO calls — surfaced on the Notice of Attempt PDF.
+  // Column added via migration 0145_cfs_court_name.sql.
+  'court_name',
   // tactical flags overflowed here on 2026-05-26 when calls_for_service hit
   // the 100-column D1 cap. New tactical flags should land here too.
   'fire_requested', 'hazmat', 'gang_related', 'evidence_collected',

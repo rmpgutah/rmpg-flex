@@ -288,6 +288,10 @@ export default function DispatchPage() {
       await openNoticeOfCommunication(failedCall, {
         officerName,
         officerBadge: (user as any)?.badge_number || '',
+        // RMPG Dispatch direct line. Embedded as a build-time constant
+        // for now (single agency, single phone); migrate to a Worker
+        // settings row when a second tenant ever shows up.
+        dispatchPhone: '(385) 436-3370',
         redispatchCallNumber: extra?.redispatchCallNumber,
         nextWindow: extra?.nextWindow,
       });
@@ -5551,6 +5555,28 @@ export default function DispatchPage() {
                           <div>
                             <label className="text-[9px] text-amber-400">Attempts</label>
                             <input type="number" className="input-dark text-xs" min="0" placeholder="0" value={editData.process_attempts ?? 0} onChange={(e) => updateEditField('process_attempts', e.target.value ? parseInt(e.target.value, 10) : 0)} />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="sm:col-span-2">
+                            <label className="text-[9px] text-amber-400">Court</label>
+                            <input
+                              type="text"
+                              className="input-dark text-xs w-full"
+                              placeholder="e.g., Third District Court — Salt Lake County"
+                              value={(editData as any).court_name || ''}
+                              onChange={(e) => updateEditField('court_name' as any, e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-amber-400">Case #</label>
+                            <input
+                              type="text"
+                              className="input-dark text-xs w-full"
+                              placeholder="Court case number"
+                              value={editData.case_number || ''}
+                              onChange={(e) => updateEditField('case_number', e.target.value)}
+                            />
                           </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">

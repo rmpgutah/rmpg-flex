@@ -142,8 +142,19 @@ export function buildNoticeOfCommunicationFromCall(
   // only call-level fallback (usually null in practice).
   const respondentName = serveJob?.respondentName || filled.process_served_to || undefined;
 
-  // The failed call IS the unsuccessful attempt. Represent it as one row.
-  const stamp = splitStamp(filled.cleared_at || filled.closed_at || filled.created_at);
+  // The failed call IS the unsuccessful attempt. The TIME OF ARRIVAL on
+  // the notice should reflect when the officer actually arrived on scene
+  // (onscene_at), not when the dispatcher cleared the call (cleared_at).
+  // Falls back through the lifecycle stamps so a call closed without an
+  // onscene transition still gets a meaningful timestamp.
+  const filledAny = filled as Record<string, any>;
+  const stamp = splitStamp(
+    filledAny.onscene_at
+    || filledAny.enroute_at
+    || filled.cleared_at
+    || filled.closed_at
+    || filled.created_at,
+  );
   const attempt: NoticeOfCommunicationAttempt = {
     number: filled.pso_attempt_number || 1,
     date: stamp.date,
@@ -160,8 +171,13 @@ export function buildNoticeOfCommunicationFromCall(
     noticeDate,
     callNumber: filled.call_number || '',
     respondentName,
-    courtCaseNumber: serveJob?.courtCaseNumber || undefined,
-    courtName: serveJob?.courtName || undefined,
+    // Prefer the linked serve job's case/court (the serve queue is the
+    // authoritative system of record for legal-matter detail), but FALL
+    // BACK to the call's own case_number / court_name (now an ext column
+    // per mig 0145) so dispatch operators can capture the court even
+    // before a serve_queue row exists.
+    courtCaseNumber: serveJob?.courtCaseNumber || filled.case_number || undefined,
+    courtName: serveJob?.courtName || (filledAny.court_name as string | undefined) || undefined,
     clientName,
     clientContact,
     clientAddress,

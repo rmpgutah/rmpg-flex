@@ -243,6 +243,9 @@ export default function ServePage() {
         serverName: user?.full_name || user?.username || 'Process Server',
         serverBadge: user?.badge_number || '',
         serverCompany: 'Rocky Mountain Protective Group',
+        // RMPG Dispatch direct line — surfaces in the PDF's "To arrange
+        // delivery, contact ..." call-to-action below the signature.
+        serverPhone: '(385) 436-3370',
         signature: latestAttempt.signature_data || undefined,
         recipientName: job.recipient_name,
         recipientAddress: fullAddress || (job.recipient_address || 'N/A'),
