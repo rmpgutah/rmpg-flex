@@ -2130,7 +2130,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // parseTimestamp interprets naive server strings as UTC (the app standard);
       // Date.parse treated them as local, skewing the elapsed deltas ~6-7h.
       const t = s.iso ? parseTimestamp(s.iso).getTime() : NaN;
-      const time = isFinite(t) ? new Date(t).toLocaleTimeString('en-US', { hour12: false }) : undefined;
+      const time = isFinite(t) ? new Date(t).toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Denver' }) : undefined;
       const elapsed = isFinite(t) && prevTs != null ? formatElapsed(t - prevTs) : undefined;
       // Status-aware state: done if timestamped, else active/future per the
       // lifecycle. Lets the strip render "PENDING" on the live edge + faint
@@ -6430,6 +6430,7 @@ export async function generateRecordPdf<T extends RecordPdfType>(
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    timeZone: 'America/Denver',
   }));
 
   // Watermark on first page
@@ -6704,6 +6705,7 @@ export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    timeZone: 'America/Denver',
   }));
 
   // Sort by severity: felony first
@@ -6944,6 +6946,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    timeZone: 'America/Denver',
   }));
 
   addConfidentialWatermark(doc);
