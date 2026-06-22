@@ -244,8 +244,20 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
         {filteredEvidence.length === 0 && (
           <div className="text-center py-16">
             <Package className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No evidence matches your search.' : 'No evidence records found.'}</p>
-            <p className="text-[10px] text-rmpg-600 mt-1">Click "New Evidence" to add a record</p>
+            <p className="text-sm text-rmpg-400 font-medium">
+              {searchQuery
+                ? 'No evidence matches your search.'
+                : showArchived
+                  ? 'No archived evidence records.'
+                  : 'No evidence records found.'}
+            </p>
+            <p className="text-[10px] text-rmpg-600 mt-1">
+              {searchQuery
+                ? 'Try broadening your search.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Evidence" to add a record.'}
+            </p>
           </div>
         )}
         {filteredEvidence.map((ev: any, idx: number) => {
@@ -612,7 +624,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
             <FieldGrid cols={3}>
               <RecordField label="Serial #" value={selectedEvidence.serial_number} mono copyable />
               <RecordField label="Brand/Model" value={selectedEvidence.brand ? `${selectedEvidence.brand}${selectedEvidence.model ? ` ${selectedEvidence.model}` : ''}` : undefined} />
-              <RecordField label="Est. Value" value={selectedEvidence.estimated_value ? `$${Number(selectedEvidence.estimated_value).toLocaleString()}` : undefined} valueColor="#4ade80" />
+              <RecordField label="Est. Value" value={selectedEvidence.estimated_value ? `$${Number(selectedEvidence.estimated_value).toLocaleString()}` : undefined} valueColor="var(--sev-ok-soft)" />
               <RecordField label="Dimensions" value={selectedEvidence.dimensions} />
               <RecordField label="Weight" value={selectedEvidence.weight} />
               <RecordField label="Quantity" value={selectedEvidence.quantity} />

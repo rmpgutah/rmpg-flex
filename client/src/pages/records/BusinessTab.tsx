@@ -289,7 +289,20 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
         {displayBusinesses.length === 0 && (
           <div className="text-center py-16">
             <Briefcase className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400">{searchQuery ? 'No businesses match.' : 'No business records found.'}</p>
+            <p className="text-sm text-rmpg-400">
+              {searchQuery
+                ? 'No businesses match.'
+                : showArchived
+                  ? 'No archived business records.'
+                  : 'No business records found.'}
+            </p>
+            <p className="text-[10px] text-rmpg-600 mt-1">
+              {searchQuery
+                ? 'Try broadening your search.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Business" to add a record.'}
+            </p>
           </div>
         )}
         {displayBusinesses.map((b, idx) => (
@@ -426,7 +439,7 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
           <RecordField label="Industry" value={b.industry} showEmpty />
           <RecordField label="Employees" value={b.employee_count} showEmpty />
           <RecordField label="Revenue" value={b.annual_revenue} showEmpty />
-          <RecordField label="Status" value={(b.status || 'N/A').toUpperCase()} valueColor={b.status === 'active' ? '#4ade80' : undefined} />
+          <RecordField label="Status" value={(b.status || 'N/A').toUpperCase()} valueColor={b.status === 'active' ? 'var(--sev-ok-soft)' : undefined} />
         </FieldGrid>
       </CollapsibleSection>
 
