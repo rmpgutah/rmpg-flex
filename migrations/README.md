@@ -71,18 +71,26 @@ These exist for historical reasons and should NOT be "fixed" by renumbering — 
 5. Run locally first: `npm run migrate:local`.
 6. On merge to main, `deploy.yml` runs `wrangler d1 migrations apply rmpg-flex --remote`. The step now blocks deploy on failure (no more `continue-on-error: true`). If your migration fails on remote, fix it before re-merging.
 
-## Manual schema patches via the D1 MCP
+## Manual schema patches
 
-Sometimes you need to apply a schema fix directly to live D1 without going through a migration file — for example, when reverse-engineering a missing table from the deployed legacy bundle, or when the matching code change can't ship in the same PR. The tool is `mcp__bfc8f52c-…__d1_database_query` against `database_id: 785de7ae-3e7a-4e01-93bb-d24ddd813f6b`.
+Sometimes you need to apply a schema fix directly to live D1 without going through the merge → `deploy.yml` flow — when reverse-engineering a missing table from the deployed legacy bundle, when the matching code change can't ship in the same PR, or simply after merging an `ALTER`-bearing migration that `continue-on-error: true` would otherwise let drift.
 
-**When you do this, also INSERT a row into `d1_migrations` so wrangler's tracker doesn't try to re-apply on the next deploy:**
+**Use [`scripts/apply-migration.sh`](../scripts/apply-migration.sh) — it applies the file AND inserts the tracker row in one step:**
+
+```bash
+scripts/apply-migration.sh 0147_your_migration.sql
+```
+
+The script runs `wrangler d1 execute rmpg-flex --remote --file migrations/0147_your_migration.sql` then `INSERT OR IGNORE INTO d1_migrations`. If wrangler errors on the apply (commonly: "duplicate column name" on an idempotent re-apply), it prompts before marking tracked so genuine failures don't get papered over.
+
+For one-off non-migration patches (no file under `migrations/`), the manual SQL still works:
 
 ```sql
 INSERT OR IGNORE INTO d1_migrations (name, applied_at)
   VALUES ('00NN_your_migration.sql', datetime('now'));
 ```
 
-Wrangler matches by exact filename. If you omit this step, the next deploy will try to re-run your migration from scratch — usually a no-op for idempotent DDL, but it can fail loudly on `ALTER TABLE` ADD COLUMN that's already there. Worse, the failure now blocks the whole deploy (no more `continue-on-error`), so the discipline matters.
+Wrangler matches by exact filename. Skipping the tracker insert is what caused the **19-row drift sweep on 2026-06-22** (0128 → 0145 were all applied to live but untracked; wrangler retried them on every deploy until reconciled). Don't skip it.
 
 A short audit trail of every manual patch lives in `TRIAGE.md` addenda — append there when you patch live directly.
 
