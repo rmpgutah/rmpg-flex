@@ -262,6 +262,16 @@ SERVER_TIMEZONE = "America/Denver"
 # webhook receiver that needs the third one).
 FLEETIO_API_BASE = "https://secure.fleetio.com/api/v1"
 
+# NSOPW nationwide SOR (mig 0146 + 0147). The federated search endpoint at
+# nsopw-api.ojp.gov is technically public + CORS-restricted; nsopw.gov's
+# Conditions of Use likely prohibit programmatic access regardless. The
+# integration is opt-in via NSOPW_ENABLED — sworn LE operators accept the
+# ToU posture explicitly by setting this. Without it, every NSOPW path
+# returns configured=false and the framework surfaces a coverage gap
+# (NEVER a clearance) — the false-clear guard stays intact.
+# Spec: docs/superpowers/specs/2026-06-22-nationwide-sor-nsopw-design.md
+NSOPW_ENABLED = "1"
+
 # Secrets (set via `npx wrangler secret put`)
 # JWT_SECRET (already set)
 # GOOGLE_MAPS_API_KEY
