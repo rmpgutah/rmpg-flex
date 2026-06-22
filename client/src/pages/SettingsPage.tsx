@@ -1,15 +1,23 @@
 // ============================================================
-// RMPG Flex — Unified Settings
-// Voice (dispatcher persona + alerts) and Map (GPS / mapper) prefs.
+// RMPG Flex — Unified Settings (Page 34 of full-app frontend pass)
+// Voice (dispatcher persona + alerts), Map (GPS / mapper), and
+// Display (day/night theme + font) prefs.
 // All controls write to localStorage via existing helpers, so they
 // take effect without any server round-trip (voice persona also
-// best-effort syncs to /api/voice-persona via useVoicePersona).
+// best-effort syncs to /api/voice-persona via useVoicePersona;
+// theme + font_scale sync via /api/user/preferences).
+//
+// Deep-link contract: /settings?section=<id> scrolls the matching
+// SectionCard into view on mount and strips the param so a refresh
+// doesn't re-trigger the scroll. Section IDs:
+//   voice | alerts | tones | ptt | display | map | overlays | gps | markers
 // ============================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Mic, Map as MapIcon, Volume2, Gauge, SlidersHorizontal,
   Play, RotateCcw, Radio, Crosshair, MapPin, RadioTower,
+  Monitor, CheckCircle2,
 } from 'lucide-react';
 import {
   playSound, resetToneMap, getSlotSound, setSlotSound,
@@ -33,6 +41,12 @@ import type { RadioChannel } from './radio/types';
 import { getPttPrefs, setPttPrefs, keyCodeLabel, type PttPreferences } from '../utils/pttPreferences';
 import { saveAsOrgDefault } from '../utils/settingsSync';
 import { useAuth } from '../context/AuthContext';
+import {
+  applyThemePreference, normalizeThemePreference, writeThemeOverride,
+  resolveCurrentTheme, readThemeOverride, isLegacyBlackForced,
+  LEGACY_FLAG_KEY,
+} from '../utils/theme';
+import { useUserPreferences } from '../context/UserPreferencesContext';
 
 // ─── Reusable controls ──────────────────────────────────────
 
@@ -53,11 +67,15 @@ function ToggleRow({ label, description, checked, onChange }: {
       </span>
       <span
         className="shrink-0 w-9 h-5 flex items-center px-0.5 transition-colors"
-        style={{ background: checked ? '#d4a017' : 'var(--border-default)', borderRadius: 2 }}
+        style={{ background: checked ? 'var(--brand-gold)' : 'var(--border-default)', borderRadius: 2 }}
       >
         <span
-          className="w-4 h-4 bg-black transition-transform"
-          style={{ borderRadius: 1, transform: checked ? 'translateX(16px)' : 'translateX(0)' }}
+          className="w-4 h-4 transition-transform"
+          style={{
+            background: 'var(--surface-overlay)',
+            borderRadius: 1,
+            transform: checked ? 'translateX(16px)' : 'translateX(0)',
+          }}
         />
       </span>
     </button>
@@ -78,7 +96,8 @@ function SliderRow({ label, value, min, max, step, format, onChange }: {
         type="range"
         min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-[#d4a017]"
+        className="w-full"
+        style={{ accentColor: 'var(--brand-gold)' }}
         aria-label={label}
       />
     </div>
@@ -99,9 +118,9 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
             onClick={() => onChange(opt.value)}
             className="flex-1 px-2 py-1 text-[10px] uppercase tracking-wide border transition-colors"
             style={{
-              background: value === opt.value ? '#d4a017' : 'var(--surface-base)',
-              color: value === opt.value ? '#000' : '#888',
-              borderColor: value === opt.value ? '#d4a017' : '#222',
+              background: value === opt.value ? 'var(--brand-gold)' : 'var(--surface-base)',
+              color: value === opt.value ? 'var(--surface-overlay)' : 'var(--text-muted)',
+              borderColor: value === opt.value ? 'var(--brand-gold)' : 'var(--border-default)',
               borderRadius: 2,
             }}
             aria-pressed={value === opt.value}
@@ -141,7 +160,7 @@ function SoundAssignRow({ label, desc, value, onPick }: {
       <button
         type="button"
         onClick={() => playSound(value)}
-        className="shrink-0 p-1.5 border border-border-default text-rmpg-400 hover:text-brand-400 hover:border-[#d4a017] transition-colors"
+        className="shrink-0 p-1.5 border border-border-default text-rmpg-400 hover:text-brand-400 transition-colors"
         style={{ borderRadius: 2 }}
         aria-label={`Preview ${label} sound`}
       >
@@ -151,11 +170,16 @@ function SoundAssignRow({ label, desc, value, onPick }: {
   );
 }
 
-function SectionCard({ title, icon, children }: {
-  title: string; icon: React.ElementType; children: React.ReactNode;
+function SectionCard({ id, title, icon, children }: {
+  id?: string; title: string; icon: React.ElementType; children: React.ReactNode;
 }) {
   return (
-    <div className="panel-beveled" style={{ background:"var(--surface-sunken)" }}>
+    <div
+      id={id}
+      data-settings-section={id}
+      className="panel-beveled scroll-mt-20"
+      style={{ background: 'var(--surface-sunken)' }}
+    >
       <PanelTitleBar title={title} icon={icon} />
       <div>{children}</div>
     </div>
@@ -177,16 +201,33 @@ const EVENT_LABELS: { cat: VoiceEventCategory; label: string; desc: string }[] =
   { cat: 'status', label: 'Unit status changes', desc: 'En route, on scene, cleared' },
 ];
 
+// Sections that ?section= can deep-link to. Anchors map 1:1 to the
+// `id` on each SectionCard below. Keeping the list in one place avoids
+// drift and gives us a safe whitelist for the URL param.
+const SECTION_IDS = [
+  'display', 'voice', 'alerts', 'tones', 'ptt',
+  'map', 'overlays', 'gps', 'markers',
+] as const;
+type SectionId = typeof SECTION_IDS[number];
+
+function isSectionId(v: string | null): v is SectionId {
+  return v != null && (SECTION_IDS as readonly string[]).includes(v);
+}
+
 export default function SettingsPage() {
   const { persona, setPersona } = useVoicePersona();
   const { user } = useAuth();
+  const { prefs: userPrefs } = useUserPreferences();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+  const [orgSaveOk, setOrgSaveOk] = useState<null | boolean>(null);
   const [orgSaveMsg, setOrgSaveMsg] = useState('');
   async function publishOrgDefaults() {
+    setOrgSaveOk(null);
     setOrgSaveMsg('Saving…');
     const ok = await saveAsOrgDefault();
-    setOrgSaveMsg(ok ? 'Published to all users ✓' : 'Save failed');
-    setTimeout(() => setOrgSaveMsg(''), 4000);
+    setOrgSaveOk(ok);
+    setOrgSaveMsg(ok ? 'Published to all users' : 'Save failed');
+    setTimeout(() => { setOrgSaveMsg(''); setOrgSaveOk(null); }, 4000);
   }
 
   // Voice — alerts master + engine + severity
@@ -219,11 +260,70 @@ export default function SettingsPage() {
   const [capturingKey, setCapturingKey] = useState(false);
   const patchPtt = (p: Partial<PttPreferences>) => { setPttPrefs(p); setPtt(getPttPrefs()); };
 
+  // Display & theme — keep local state in sync with the actual override
+  // so the Auto/Day/Night picker reflects what's stored regardless of
+  // which surface (here, UserProfileModal, Layout) last wrote it.
+  const readThemeChoice = (): 'auto' | 'dark' | 'light' => {
+    const o = readThemeOverride();
+    return o?.active ? o.theme : 'auto';
+  };
+  const [themeChoice, setThemeChoice] = useState<'auto' | 'dark' | 'light'>(readThemeChoice);
+  const [legacyBlack, setLegacyBlack] = useState<boolean>(isLegacyBlackForced);
+  const [fontScale, setFontScale] = useState<number>(() => {
+    const fromPrefs = userPrefs?.font_scale;
+    return typeof fromPrefs === 'number' && fromPrefs > 0 ? fromPrefs : 1.0;
+  });
+  // Hydrate font scale from server-side user preferences once they load.
+  useEffect(() => {
+    const fromPrefs = userPrefs?.font_scale;
+    if (typeof fromPrefs === 'number' && fromPrefs > 0) setFontScale(fromPrefs);
+  }, [userPrefs?.font_scale]);
+
+  function setTheme(choice: 'auto' | 'dark' | 'light') {
+    setThemeChoice(choice);
+    if (choice === 'auto') {
+      writeThemeOverride({ theme: 'dark', active: false });
+      applyThemePreference(resolveCurrentTheme(), { persist: false });
+    } else {
+      const theme = normalizeThemePreference(choice);
+      writeThemeOverride({ theme, active: true });
+      applyThemePreference(theme);
+      // Best-effort cross-device sync via the same API UserProfileModal uses.
+      apiFetch('/user/preferences', {
+        method: 'PUT',
+        body: JSON.stringify({ theme_preference: theme }),
+      }).catch(() => { /* offline / unauth — local override still applies */ });
+    }
+  }
+
+  function toggleLegacyBlack(on: boolean) {
+    setLegacyBlack(on);
+    try {
+      if (on) localStorage.setItem(LEGACY_FLAG_KEY, '1');
+      else localStorage.removeItem(LEGACY_FLAG_KEY);
+    } catch { /* storage unavailable */ }
+    // Re-resolve so the change is visible immediately.
+    applyThemePreference(resolveCurrentTheme(), { persist: false });
+  }
+
+  function changeFontScale(v: number) {
+    const clamped = Math.max(0.8, Math.min(1.4, v));
+    setFontScale(clamped);
+    document.documentElement.style.setProperty('--user-font-scale', String(clamped));
+    document.documentElement.style.fontSize = `${clamped * 100}%`;
+    apiFetch('/user/preferences', {
+      method: 'PUT',
+      body: JSON.stringify({ font_scale: clamped }),
+    }).catch(() => { /* offline — local style still applies */ });
+  }
+
   useEffect(() => {
     apiFetch<RadioChannel[]>('/radio/channels').then(setPttChannels).catch(() => { /* offline */ });
   }, []);
 
   // Capture the next key press to rebind the PTT key.
+  // Esc cancels capture without binding (matches the smart-cascade
+  // contract on the other pages: Esc dismisses the most local interaction).
   useEffect(() => {
     if (!capturingKey) return;
     const onKey = (e: KeyboardEvent) => {
@@ -269,6 +369,29 @@ export default function SettingsPage() {
   // Keep the document title aligned with the rest of the app.
   useEffect(() => { document.title = 'Settings — RMPG Flex'; return () => { document.title = 'RMPG Flex'; }; }, []);
 
+  // URL deep-link contract: /settings?section=<id> scrolls the matching
+  // SectionCard into view on mount, then strips the param so a refresh
+  // doesn't re-trigger the scroll. Mirrors the v1047/v1048 contract used
+  // by Intel Portal + Serve. Section IDs whitelist-validated.
+  const scrolledRef = useRef(false);
+  useEffect(() => {
+    if (scrolledRef.current) return;
+    const sp = new URLSearchParams(window.location.search);
+    const section = sp.get('section');
+    if (!isSectionId(section)) return;
+    scrolledRef.current = true;
+    // Run after paint so the SectionCard has been laid out.
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-settings-section="${section}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    // Strip the param.
+    const next = new URLSearchParams(window.location.search);
+    next.delete('section');
+    const qs = next.toString();
+    window.history.replaceState(null, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+  }, []);
+
   const femaleVoices = VOICE_CATALOG.filter((v) => v.gender === 'female');
   const maleVoices = VOICE_CATALOG.filter((v) => v.gender === 'male');
 
@@ -277,13 +400,25 @@ export default function SettingsPage() {
       <PanelTitleBar title="SETTINGS" icon={SlidersHorizontal}>
         {isAdmin && (
           <div className="ml-auto flex items-center gap-2">
-            {orgSaveMsg && <span className="text-[10px] text-brand-400">{orgSaveMsg}</span>}
+            {orgSaveMsg && (
+              <span
+                className="text-[10px] inline-flex items-center gap-1"
+                style={{ color: orgSaveOk === false ? 'var(--sev-critical)' : 'var(--brand-gold)' }}
+              >
+                {orgSaveOk === true && <CheckCircle2 className="w-3 h-3" />}
+                {orgSaveMsg}
+              </span>
+            )}
             <button
               type="button"
               onClick={publishOrgDefaults}
               title="Publish your current voice / tone / map / PTT settings as the default for all users (they can still override)."
-              className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-[#d4a017] text-brand-400 hover:bg-[#d4a017] hover:text-black transition-colors"
-              style={{ borderRadius: 2 }}
+              className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border transition-colors"
+              style={{
+                borderColor: 'var(--brand-gold)',
+                color: 'var(--brand-gold)',
+                borderRadius: 2,
+              }}
             >
               <RadioTower className="w-3 h-3" /> Save as org default
             </button>
@@ -292,9 +427,41 @@ export default function SettingsPage() {
       </PanelTitleBar>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-        {/* ── DISPATCHER VOICE ── */}
+        {/* ── LEFT COLUMN: VOICE + AUDIO ── */}
         <div className="space-y-4">
-          <SectionCard title="DISPATCHER VOICE" icon={Mic}>
+          <SectionCard id="display" title="DISPLAY & THEME" icon={Monitor}>
+            <Segmented
+              label="Theme"
+              value={themeChoice}
+              options={[
+                { value: 'auto', label: 'Auto (shift)' },
+                { value: 'dark', label: 'Night' },
+                { value: 'light', label: 'Day' },
+              ]}
+              onChange={(v) => setTheme(v)}
+            />
+            <SliderRow
+              label="Font scale"
+              value={fontScale}
+              min={0.8}
+              max={1.4}
+              step={0.05}
+              format={(v) => `${Math.round(v * 100)}%`}
+              onChange={changeFontScale}
+            />
+            <ToggleRow
+              label="Legacy pure-black mode"
+              description="Restores the pre-Spillman black palette. Use only if the new theme is unreadable."
+              checked={legacyBlack}
+              onChange={toggleLegacyBlack}
+            />
+            <p className="px-3 py-2 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              Auto (shift) follows the duty schedule: Day 06:00–18:00, Night 18:00–06:00.
+              Manual picks override the schedule until you set it back to Auto.
+            </p>
+          </SectionCard>
+
+          <SectionCard id="voice" title="DISPATCHER VOICE" icon={Mic}>
             {/* Voice picker */}
             <div className="px-3 py-2 border-b border-border-default">
               <span className="block text-[11px] text-rmpg-100 mb-1.5">Voice</span>
@@ -320,8 +487,12 @@ export default function SettingsPage() {
                 type="button"
                 onClick={previewVoice}
                 disabled={previewing}
-                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-[#d4a017] text-brand-400 hover:bg-[#d4a017] hover:text-black transition-colors disabled:opacity-50"
-                style={{ borderRadius: 2 }}
+                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border transition-colors disabled:opacity-50"
+                style={{
+                  borderColor: 'var(--brand-gold)',
+                  color: 'var(--brand-gold)',
+                  borderRadius: 2,
+                }}
               >
                 <Play className="w-3 h-3" /> {previewing ? 'Speaking…' : 'Test voice'}
               </button>
@@ -358,7 +529,7 @@ export default function SettingsPage() {
             />
           </SectionCard>
 
-          <SectionCard title="VOICE ALERTS" icon={Volume2}>
+          <SectionCard id="alerts" title="VOICE ALERTS" icon={Volume2}>
             <ToggleRow
               label="Voice alerts enabled"
               description="Master switch for all spoken dispatch alerts"
@@ -391,7 +562,7 @@ export default function SettingsPage() {
             ))}
           </SectionCard>
 
-          <SectionCard title="SOUND PROFILE — MOTOROLA TONES" icon={RadioTower}>
+          <SectionCard id="tones" title="SOUND PROFILE — MOTOROLA TONES" icon={RadioTower}>
             <div className="px-3 pt-2 pb-1">
               <span className="block text-[10px] text-rmpg-400">
                 Assign a Motorola tone to each dispatch function. Changes apply everywhere instantly.
@@ -415,7 +586,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => { resetToneMap(); setToneMap(readSlots()); }}
-                className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-rmpg-400 hover:text-rmpg-100 hover:border-rmpg-700 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-rmpg-400 hover:text-rmpg-100 transition-colors"
                 style={{ borderRadius: 2 }}
               >
                 <RotateCcw className="w-3 h-3" /> Reset to Motorola defaults
@@ -423,7 +594,7 @@ export default function SettingsPage() {
             </div>
           </SectionCard>
 
-          <SectionCard title="RADIO PTT — PUSH-TO-TALK" icon={Radio}>
+          <SectionCard id="ptt" title="RADIO PTT — PUSH-TO-TALK" icon={Radio}>
             <ToggleRow
               label="Enable global PTT key"
               description="Hold the key on any page to key the mic on the radio channel"
@@ -433,7 +604,9 @@ export default function SettingsPage() {
             <div className="px-3 py-2 border-b border-border-default flex items-center justify-between gap-3">
               <span className="min-w-0">
                 <span className="block text-[11px] text-rmpg-100">PTT key</span>
-                <span className="block text-[10px] text-rmpg-400 mt-0.5">Press to bind any key</span>
+                <span className="block text-[10px] text-rmpg-400 mt-0.5">
+                  {capturingKey ? 'Press any key to bind, or Esc to cancel' : 'Press to bind any key'}
+                </span>
               </span>
               <button
                 type="button"
@@ -441,9 +614,11 @@ export default function SettingsPage() {
                 className="shrink-0 min-w-[120px] px-3 py-1.5 text-[11px] font-mono border transition-colors"
                 style={{
                   borderRadius: 2,
-                  background: capturingKey ? '#3a0d0d' : 'var(--surface-base)',
-                  borderColor: capturingKey ? '#ef4444' : '#222',
-                  color: capturingKey ? '#fca5a5' : '#fff',
+                  background: capturingKey
+                    ? 'rgb(var(--sev-critical-rgb) / 0.15)'
+                    : 'var(--surface-base)',
+                  borderColor: capturingKey ? 'var(--sev-critical)' : 'var(--border-default)',
+                  color: capturingKey ? 'var(--sev-critical-soft)' : 'var(--text-primary)',
                 }}
               >
                 {capturingKey ? 'Press a key…' : keyCodeLabel(ptt.keyCode)}
@@ -472,9 +647,9 @@ export default function SettingsPage() {
           </SectionCard>
         </div>
 
-        {/* ── GPS MAPPER ── */}
+        {/* ── RIGHT COLUMN: GPS MAPPER ── */}
         <div className="space-y-4">
-          <SectionCard title="MAP — DEFAULT VIEW" icon={MapIcon}>
+          <SectionCard id="map" title="MAP — DEFAULT VIEW" icon={MapIcon}>
             <div className="px-3 py-2 border-b border-border-default">
               <span className="block text-[11px] text-rmpg-100 mb-1.5">Default map style</span>
               <select id="ff-settingspage-4"
@@ -500,7 +675,7 @@ export default function SettingsPage() {
               onChange={(v) => patchMap({ layers: { ...mapPrefs.layers, properties: v } })} />
           </SectionCard>
 
-          <SectionCard title="MAP — ANALYTICS OVERLAYS" icon={MapPin}>
+          <SectionCard id="overlays" title="MAP — ANALYTICS OVERLAYS" icon={MapPin}>
             <ToggleRow label="Incident heatmap" description="Density overlay on by default"
               checked={mapPrefs.overlays.heatmap}
               onChange={(v) => patchMap({ overlays: { ...mapPrefs.overlays, heatmap: v } })} />
@@ -509,7 +684,7 @@ export default function SettingsPage() {
               onChange={(v) => patchMap({ overlays: { ...mapPrefs.overlays, breadcrumbs: v } })} />
           </SectionCard>
 
-          <SectionCard title="MAP — GPS TRACKING" icon={Crosshair}>
+          <SectionCard id="gps" title="MAP — GPS TRACKING" icon={Crosshair}>
             <ToggleRow label="High-accuracy positioning" description="Tighter fix, more battery use"
               checked={mapPrefs.gps.highAccuracy}
               onChange={(v) => patchMap({ gps: { ...mapPrefs.gps, highAccuracy: v } })} />
@@ -521,7 +696,7 @@ export default function SettingsPage() {
               onChange={(v) => patchMap({ gps: { ...mapPrefs.gps, batchIntervalMs: v } })} />
           </SectionCard>
 
-          <SectionCard title="MAP — MARKERS" icon={Gauge}>
+          <SectionCard id="markers" title="MAP — MARKERS" icon={Gauge}>
             <ToggleRow label="Unit marker pulse" checked={mapPrefs.markers.unitPulse}
               onChange={(v) => patchMap({ markers: { ...mapPrefs.markers, unitPulse: v } })} />
             <ToggleRow label="Call marker pulse" checked={mapPrefs.markers.callPulse}
@@ -539,7 +714,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={resetMap}
-                className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-rmpg-400 hover:text-rmpg-100 hover:border-rmpg-700 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-rmpg-400 hover:text-rmpg-100 transition-colors"
                 style={{ borderRadius: 2 }}
               >
                 <RotateCcw className="w-3 h-3" /> Reset map settings
