@@ -691,6 +691,20 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1021: MDT end-of-shift PDF + deep-link + auth cleanup. The shift
+//        report download was a .txt file with Unicode-box borders for
+//        a year — replaced with a court-ready PDF (Arial banner, gold
+//        agency strap, 5-up summary tiles, per-section tables for
+//        calls/incidents/scans, two-signature block). New /mdt?call_id=
+//        URL contract makes the 4th consecutive page-pass to honor
+//        Dashboard's deep-link emit pattern — finds the call in
+//        my-calls or pending, sets it as selectedCall, switches the
+//        right tab. user_id reads from useAuth instead of localStorage
+//        (stale localStorage could attribute a freshly-submitted FI to
+//        the prior signed-out user). Theme: lifts UNIT_STATUSES,
+//        priority colors, hazard banner, channel badges, NCIC tab to
+//        semantic --sev-* tokens so a future tactical-day mode (if
+//        ever) re-themes automatically.
 // v1017: FlexCam close-query honesty (Plan E — surface 'failed' on
 //        the request the moment the cron concludes a 0-downloaded
 //        trip instead of marking it 'partial' and waiting 6h for the

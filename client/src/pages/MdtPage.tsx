@@ -6,6 +6,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Monitor, Navigation, Eye, CheckCircle, MapPin, Clock, Send, AlertTriangle,
   MessageSquare, Shield, FileText, Loader2, X, ChevronRight,
@@ -16,6 +17,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useAuth } from '../context/AuthContext';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { humanizePriority } from '../utils/statusLabels';
 import { formatTimer, getStatusElapsed, isActiveStatus } from '../utils/dispatchTimers';
@@ -30,15 +32,19 @@ import { Volume2, VolumeX, Vibrate } from 'lucide-react';
 import { type AudioMode, getLocalAudioMode, persistAudioMode, syncAudioModeFromServer } from '../utils/audioMode';
 import { formatDateTime, localToday, safeTimeStr } from '../utils/dateUtils';
 import { useToast } from '../components/ToastProvider';
+import { openShiftReportPdf } from '../utils/shiftReportPdf';
 
 // ── Quick Status Buttons ────────────────────────────────────
 
+// Status color tokens — semantic hues route through the sev-* palette so a
+// future tactical-day mode (if ever) remaps automatically. "ENROUTE" stays
+// neutral grey (no severity); "OFF" uses the rmpg-500 muted token.
 const UNIT_STATUSES = [
-  { label: 'AVAIL', status: 'available', color: '#22c55e' },
-  { label: 'ENROUTE', status: 'enroute', color: '#888888' },
-  { label: 'ON SCENE', status: 'onscene', color: '#a855f7' },
-  { label: 'BUSY', status: 'busy', color: '#ef4444' },
-  { label: 'OFF', status: 'off_duty', color: 'var(--rmpg-500)' },
+  { label: 'AVAIL',    status: 'available', color: 'var(--sev-ok)' },
+  { label: 'ENROUTE',  status: 'enroute',   color: 'var(--spm-text-muted)' },
+  { label: 'ON SCENE', status: 'onscene',   color: 'var(--sev-special-soft)' },
+  { label: 'BUSY',     status: 'busy',      color: 'var(--sev-critical)' },
+  { label: 'OFF',      status: 'off_duty',  color: 'var(--rmpg-500)' },
 ] as const;
 
 // ── MDT Messages Panel ────────────────────────────────────
@@ -106,18 +112,30 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
 
   const prioStyle = (p: string) => {
     switch (p) {
-      case 'emergency': return { color: '#ef4444', bg: 'rgba(239,68,68,0.1)' };
-      case 'urgent':    return { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' };
-      default:          return { color: '#22c55e', bg: 'transparent' };
+      case 'emergency': return { color: 'var(--sev-critical)', bg: 'rgb(var(--sev-critical-rgb) / 0.1)' };
+      case 'urgent':    return { color: 'var(--sev-warn)',     bg: 'rgb(var(--sev-warn-rgb) / 0.1)' };
+      default:          return { color: 'var(--sev-ok)',       bg: 'transparent' };
     }
   };
 
   const channelBadge = (ch: string) => {
-    const colors: Record<string, string> = { dispatch: '#888888', broadcast: '#a855f7', direct: '#22c55e', zone: '#f59e0b' };
+    // Channel color hue is semantic, not severity — these are just visual
+    // tags. Background reads on top of a colored chip so text stays surface-
+    // base for max contrast (it's the same trick the priority pills use).
+    const colors: Record<string, string> = {
+      dispatch: 'var(--spm-text-muted)',
+      broadcast: 'var(--sev-special-soft)',
+      direct: 'var(--sev-ok)',
+      zone: 'var(--sev-warn)',
+    };
     return (
       <span
         className="text-[7px] font-black uppercase px-1 py-px rounded-sm"
-        style={{ background: colors[ch] || 'var(--rmpg-500)', color: '#000', letterSpacing: '0.05em' }}
+        style={{
+          background: colors[ch] || 'var(--rmpg-500)',
+          color: 'var(--surface-base)',
+          letterSpacing: '0.05em',
+        }}
       >
         {ch}
       </span>
@@ -167,7 +185,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
                 {msg.priority !== 'routine' && (
                   <span
                     className="text-[7px] font-black uppercase px-1 py-px mt-1 inline-block rounded-sm"
-                    style={{ background: ps.color, color: '#000', letterSpacing: '0.05em' }}
+                    style={{ background: ps.color, color: 'var(--surface-base)', letterSpacing: '0.05em' }}
                   >
                     {humanizePriority(msg.priority)}
                   </span>
@@ -187,9 +205,9 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
               onClick={() => setComposeChannel(ch)}
               className="text-[8px] font-bold uppercase px-1.5 py-0.5 transition-colors"
               style={{
-                background: composeChannel === ch ? '#888888' : 'transparent',
-                color: composeChannel === ch ? '#000' : 'var(--rmpg-500)',
-                border: `1px solid ${composeChannel === ch ? '#888888' : 'var(--border-subtle)'}`,
+                background: composeChannel === ch ? 'var(--spm-text-muted)' : 'transparent',
+                color: composeChannel === ch ? 'var(--surface-base)' : 'var(--rmpg-500)',
+                border: `1px solid ${composeChannel === ch ? 'var(--spm-text-muted)' : 'var(--border-subtle)'}`,
               }}
             >
               {ch}
@@ -232,6 +250,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
 export default function MdtPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
   const gps = useGpsTracking();
   const [myUnit, setMyUnit] = useState<Unit | null>(null);
   // DI-5: per-unit audio mode (silent dispatch). Source of truth = server,
@@ -289,67 +308,30 @@ export default function MdtPage() {
   }, []);
 
   // ── Shift Report PDF ──
+  // Replaces the previous text-blob-with-Unicode-box-borders download with a
+  // court-ready PDF (Arial, RMPG-gold banner, summary tiles, per-section
+  // tables, two-signature block). Pure-client — feeds the same /reports/
+  // shift-activity payload into shiftReportPdf.ts. User id pulled from
+  // useAuth so a stale localStorage entry can't mis-attribute the report.
   const handleGenerateShiftReport = async () => {
+    if (!user) {
+      addToast('Sign in required to generate a shift report', 'warning');
+      return;
+    }
     setGeneratingReport(true);
     try {
-      const userId = localStorage.getItem('rmpg_user_id') || '';
       const today = localToday();
-      const data = await apiFetch<any>(`/reports/shift-activity/${userId}?date=${today}`);
-      // Generate a text-based report and download as PDF-like text file
-      const lines: string[] = [
-        '═══════════════════════════════════════════════════════',
-        '              RMPG FLEX — END OF SHIFT REPORT',
-        '═══════════════════════════════════════════════════════',
-        '',
-        `Officer: ${data.officer?.full_name || 'N/A'}  Badge: ${data.officer?.badge_number || 'N/A'}`,
-        `Date: ${data.date}  Unit: ${myUnit?.call_sign || 'N/A'}`,
-        '',
-        `───── SUMMARY ─────────────────────────────────────────`,
-        `Calls Handled: ${data.summary?.totalCalls ?? 0}`,
-        `Incidents Filed: ${data.summary?.totalIncidents ?? 0}`,
-        `Patrol Scans: ${data.summary?.totalScans ?? 0}`,
-        `Citations: ${data.summary?.totalCitations ?? 0}`,
-        `Field Interviews: ${data.summary?.totalFieldInterviews ?? 0}`,
-        '',
-      ];
-
-      if ((data.calls || []).length > 0) {
-        lines.push('───── CALLS FOR SERVICE ────────────────────────────────');
-        (data.calls as any[]).forEach((c: any) => {
-          lines.push(`  ${c.call_number}  ${(c.incident_type || 'UNKNOWN').toUpperCase()}  ${c.priority || ''}  ${c.status || ''}`);
-          lines.push(`    Location: ${c.location_address || 'N/A'}`);
-          lines.push(`    Time: ${safeTimeStr(c.created_at)}`);
-          lines.push('');
-        });
-      }
-
-      if ((data.incidents || []).length > 0) {
-        lines.push('───── INCIDENT REPORTS ─────────────────────────────────');
-        (data.incidents as any[]).forEach((i: any) => {
-          lines.push(`  ${i.incident_number}  ${(i.incident_type || '').replace(/_/g, ' ').toUpperCase()}  ${(i.status || '').replace(/_/g, ' ').toUpperCase()}`);
-          lines.push(`    Location: ${i.location_address || 'N/A'}`);
-          lines.push('');
-        });
-      }
-
-      if ((data.scans || []).length > 0) {
-        lines.push('───── PATROL SCANS ────────────────────────────────────');
-        (data.scans as any[]).forEach((s: any) => {
-          lines.push(`  ${safeTimeStr(s.scanned_at)}  ${s.checkpoint_name || 'Unknown'}`);
-        });
-        lines.push('');
-      }
-
-      lines.push('═══════════════════════════════════════════════════════');
-      lines.push(`Generated: ${formatDateTime(new Date().toISOString())}`);
-
-      const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `shift-report-${data.date}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const data = await apiFetch<any>(`/reports/shift-activity/${user.id}?date=${today}`);
+      openShiftReportPdf({
+        officer: data.officer,
+        date: data.date || today,
+        unitCallSign: myUnit?.call_sign,
+        summary: data.summary,
+        calls: data.calls,
+        incidents: data.incidents,
+        scans: data.scans,
+        officerNameFallback: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username,
+      });
     } catch (err) {
       console.error('Failed to generate shift report:', err);
       addToast('Failed to generate shift report', 'error');
@@ -367,7 +349,9 @@ export default function MdtPage() {
         body: JSON.stringify({
           ...fiData,
           location: fiData.location || (gps.latitude ? `${gps.latitude.toFixed(5)}, ${gps.longitude?.toFixed(5)}` : ''),
-          officer_id: localStorage.getItem('rmpg_user_id') || '',
+          // user_id routes through useAuth (was localStorage which lagged the
+          // real auth state and could attribute the FI to a stale prior user).
+          officer_id: user?.id || '',
           call_id: selectedCall?.id || undefined,
         }),
       });
@@ -450,6 +434,38 @@ export default function MdtPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useLiveSync('dispatch', fetchData);
+
+  // ── Deep-link auto-select: /mdt?call_id=<id> ──
+  // Fourth consecutive page-pass implementing this contract (Dashboard emits,
+  // Dispatch/Map/MDT consume). Picks the call from either my-calls or
+  // pending, sets it as selectedCall, switches the appropriate tab, and
+  // strips the query so a refresh doesn't re-select. Falls back to a toast
+  // if the call id isn't in either list once both are hydrated.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingCallIdRef = useRef<string | null>(searchParams.get('call_id'));
+  useEffect(() => {
+    const target = pendingCallIdRef.current;
+    if (!target || loading) return;
+    const mine = myCalls.find((c) => String(c.id) === String(target));
+    const pending = !mine ? pendingCalls.find((c) => String(c.id) === String(target)) : null;
+    const hit = mine || pending;
+    if (!hit) {
+      // Only complain once both lists have actually hydrated.
+      if (myCalls.length === 0 && pendingCalls.length === 0) return;
+      pendingCallIdRef.current = null;
+      addToast(`Call ${target} not assigned to you or pending`, 'warning');
+      const next = new URLSearchParams(searchParams);
+      next.delete('call_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    pendingCallIdRef.current = null;
+    setSelectedCall(hit);
+    setActiveTab(mine ? 'my-calls' : 'pending');
+    const next = new URLSearchParams(searchParams);
+    next.delete('call_id');
+    setSearchParams(next, { replace: true });
+  }, [myCalls, pendingCalls, loading, searchParams, setSearchParams, addToast]);
 
   // ── Real-time WebSocket subscriptions for dispatch events ──
   const { subscribe } = useWebSocket();
@@ -545,11 +561,14 @@ export default function MdtPage() {
   };
 
   // ── Priority Color ──
+  // Routes through semantic sev tokens — P1=critical, P2=high, P3=caution —
+  // so a future tactical-day mode (if ever) automatically remaps without
+  // touching this map.
   const prioColor = (p: string) => {
     switch (p) {
-      case 'P1': return '#ef4444';
-      case 'P2': return '#f97316';
-      case 'P3': return '#eab308';
+      case 'P1': return 'var(--sev-critical)';
+      case 'P2': return 'var(--sev-high)';
+      case 'P3': return 'var(--sev-caution)';
       default: return 'var(--rmpg-500)';
     }
   };
@@ -593,8 +612,8 @@ export default function MdtPage() {
         className={`${isMobile ? 'flex flex-col gap-1.5 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0 bg-surface-sunken border-b border-rmpg-700`}
       >
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-6 h-6" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
-            <Monitor style={{ width: 14, height: 14, color: '#22c55e' }} />
+          <div className="flex items-center justify-center w-6 h-6" style={{ background: 'rgb(var(--sev-ok-rgb) / 0.1)', border: '1px solid rgb(var(--sev-ok-rgb) / 0.25)' }}>
+            <Monitor style={{ width: 14, height: 14, color: 'var(--sev-ok)' }} />
           </div>
           <div>
             <span className="text-[11px] font-black text-green-400 tracking-wider font-mono">
@@ -676,7 +695,7 @@ export default function MdtPage() {
 
       {/* ── Quick FI Form ── */}
       {showFiForm && (
-        <div className="px-4 py-2 flex-shrink-0 border-b border-purple-700/50" style={{ background: 'rgba(147, 51, 234, 0.08)' }}>
+        <div className="px-4 py-2 flex-shrink-0 border-b border-purple-700/50" style={{ background: 'rgb(var(--sev-special-rgb) / 0.08)' }}>
           <div className="flex items-center gap-2 mb-1.5">
             <span className="text-[9px] font-bold text-purple-400 uppercase tracking-wider">Quick Field Interview</span>
             {selectedCall && <span className="text-[8px] text-rmpg-400">Linked to {selectedCall.call_number}</span>}
@@ -727,7 +746,7 @@ export default function MdtPage() {
       {myCalls.length > 0 && !selectedCall && (
         <div
           className="flex-shrink-0 px-4 py-2 flex items-center gap-3 cursor-pointer hover:bg-green-900/15 transition-colors"
-          style={{ background: 'rgba(34,197,94,0.06)', borderBottom: '1px solid rgba(34,197,94,0.2)' }}
+          style={{ background: 'rgb(var(--sev-ok-rgb) / 0.06)', borderBottom: '1px solid rgb(var(--sev-ok-rgb) / 0.2)' }}
           onClick={() => setSelectedCall(myCalls[0])}
         >
           <span className="led-dot led-green animate-led-pulse" />
@@ -767,9 +786,9 @@ export default function MdtPage() {
                 onClick={() => setActiveTab(tab)}
                 className="flex-1 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
                 style={{
-                  background: activeTab === tab ? '#0a0a0a' : 'transparent',
-                  color: activeTab === tab ? (tab === 'ncic' ? '#22c55e' : '#fff') : 'var(--rmpg-500)',
-                  borderBottom: activeTab === tab ? `2px solid ${tab === 'ncic' ? '#22c55e' : '#22c55e'}` : '2px solid transparent',
+                  background: activeTab === tab ? 'var(--surface-deep)' : 'transparent',
+                  color: activeTab === tab ? 'var(--sev-ok)' : 'var(--rmpg-500)',
+                  borderBottom: activeTab === tab ? '2px solid var(--sev-ok)' : '2px solid transparent',
                 }}
               >
                 {tab === 'my-calls' ? `My Calls (${myCalls.length})` :
@@ -797,7 +816,7 @@ export default function MdtPage() {
                     onClick={() => setSelectedCall(call)}
                     className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-surface-raised"
                     style={{
-                      background: selectedCall?.id === call.id ? 'rgba(34,197,94,0.08)' : 'transparent',
+                      background: selectedCall?.id === call.id ? 'rgb(var(--sev-ok-rgb) / 0.08)' : 'transparent',
                       borderLeft: `3px solid ${prioColor(call.priority)}`,
                     }}
                   >
@@ -834,7 +853,7 @@ export default function MdtPage() {
                     onClick={() => setSelectedCall(call)}
                     className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-surface-raised"
                     style={{
-                      background: selectedCall?.id === call.id ? 'rgba(34,197,94,0.08)' : 'transparent',
+                      background: selectedCall?.id === call.id ? 'rgb(var(--sev-ok-rgb) / 0.08)' : 'transparent',
                       borderLeft: `3px solid ${prioColor(call.priority)}`,
                     }}
                   >
@@ -943,7 +962,7 @@ export default function MdtPage() {
                         addToast('Call sent to your phone', 'success');
                       } catch { addToast('Failed to send to phone', 'error'); }
                     }}
-                    className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-surface-sunken/50 text-[#d4a017] border border-[#d4a017]/40 hover:bg-surface-raised/50 transition-colors"
+                    className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-surface-sunken/50 text-[var(--brand-gold)] border border-[rgb(var(--brand-gold-rgb)/0.4)] hover:bg-surface-raised/50 transition-colors"
                   >
                     <Send style={{ width: 10, height: 10 }} /> To phone
                   </button>
@@ -992,7 +1011,7 @@ export default function MdtPage() {
                 <div>
                   <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1" style={{ letterSpacing: '0.1em' }}>Location</div>
                   <div className="text-[11px] text-rmpg-100 flex items-center gap-1.5">
-                    <MapPin style={{ width: 11, height: 11, color: '#22c55e' }} />
+                    <MapPin style={{ width: 11, height: 11, color: 'var(--sev-ok)' }} />
                     {selectedCall.location || 'No address'}
                   </div>
                   {selectedCall.cross_street && (
@@ -1013,8 +1032,8 @@ export default function MdtPage() {
 
                 {/* Hazard flags */}
                 {(selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim())) || selectedCall.domestic_violence || selectedCall.injuries_reported ? (
-                  <div className="flex items-center gap-2 p-2" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid #991b1b' }}>
-                    <AlertTriangle style={{ width: 12, height: 12, color: '#ef4444' }} />
+                  <div className="flex items-center gap-2 p-2" style={{ background: 'rgb(var(--sev-critical-rgb) / 0.1)', border: '1px solid rgb(var(--sev-critical-rgb) / 0.5)' }}>
+                    <AlertTriangle style={{ width: 12, height: 12, color: 'var(--sev-critical)' }} />
                     <div className="flex gap-2">
                       {selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim()) && (
                         <span className="text-[9px] font-bold text-red-400 uppercase">WEAPONS</span>
@@ -1082,9 +1101,9 @@ export default function MdtPage() {
                           key={u}
                           className="text-[9px] font-mono font-bold px-1.5 py-0.5"
                           style={{
-                            background: u === myUnit?.call_sign ? 'rgba(34,197,94,0.2)' : 'var(--surface-base)',
-                            color: u === myUnit?.call_sign ? '#22c55e' : '#888888',
-                            border: `1px solid ${u === myUnit?.call_sign ? '#16a34a' : 'var(--border-subtle)'}`,
+                            background: u === myUnit?.call_sign ? 'rgb(var(--sev-ok-rgb) / 0.2)' : 'var(--surface-base)',
+                            color: u === myUnit?.call_sign ? 'var(--sev-ok)' : 'var(--spm-text-muted)',
+                            border: `1px solid ${u === myUnit?.call_sign ? 'var(--sev-ok)' : 'var(--border-subtle)'}`,
                           }}
                         >
                           {u}
