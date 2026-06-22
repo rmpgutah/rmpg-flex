@@ -4,17 +4,20 @@
 // chronological criminal history timeline.
 // ============================================================
 
-import {useState, useCallback, useEffect} from 'react';
-import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale, List, Clock, Loader2, Eye } from 'lucide-react';
+import {useState, useCallback, useEffect, useRef} from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale, List, Clock, Loader2, Eye, Printer } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { toDisplayLabel } from '../utils/formatters';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
 import { formatAddressDisplay } from '../utils/statusLabels';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { openCriminalHistoryPdf } from '../utils/criminalHistoryPdf';
 
 interface PersonResult {
   id: string;
@@ -47,6 +50,7 @@ interface HistoryEntry {
 export default function CriminalHistoryPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchType, setSearchType] = useState<'name' | 'dob' | 'dl'>('name');
   const [persons, setPersons] = useState<PersonResult[]>([]);
@@ -57,13 +61,18 @@ export default function CriminalHistoryPage() {
   const [fetchError, setFetchError] = useState('');
   const [viewMode, setViewMode] = useState<'table' | 'timeline'>('table');
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
+  // Distinguishes "haven't searched yet" from "search ran and returned zero":
+  // the placeholder copy is different so the operator can tell which.
+  const [lastSearchedQuery, setLastSearchedQuery] = useState<string | null>(null);
 
   const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim()) return;
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
     setLoading(true);
     setFetchError('');
+    setLastSearchedQuery(trimmed);
     try {
-      const params = new URLSearchParams({ [searchType]: searchQuery.trim() });
+      const params = new URLSearchParams({ [searchType]: trimmed });
       const data = await apiFetch<any>(`/records/persons?${params}`);
       // `/records/persons` has no rewrite handler and falls through to legacy,
       // which may return a bare array OR an envelope ({ data | results | persons: [...] }).
@@ -90,11 +99,17 @@ export default function CriminalHistoryPage() {
     setSelectedPerson(person);
     setHistoryLoading(true);
     try {
-      // Fetch all related records for this person
-      const [incidents, citations, fis] = await Promise.all([
+      // Fetch all related records for this person. Warrants were added 2026-06:
+      // the HistoryEntry type union already had a 'warrant' case + the renderer
+      // handled the row, but no fetch ever populated those rows — a person
+      // with active warrants got a list-tile "WARRANTS" badge and an empty
+      // timeline. /warrants/check/:personId returns { warrants: [...] } with
+      // active local warrants for the subject.
+      const [incidents, citations, fis, warrantCheck] = await Promise.all([
         apiFetch<any>(`/records/persons/${person.id}/incidents`).catch(() => ({ data: [] })),
         apiFetch<any>(`/citations?q=${encodeURIComponent(`${person.first_name} ${person.last_name}`)}`).catch(() => ({ data: [] })),
         apiFetch<any>(`/field-interviews?search=${encodeURIComponent(`${person.first_name} ${person.last_name}`)}`).catch(() => ({ data: [] })),
+        apiFetch<any>(`/warrants/check/${person.id}`).catch(() => ({ warrants: [] })),
       ]);
 
       const entries: HistoryEntry[] = [];
@@ -142,6 +157,22 @@ export default function CriminalHistoryPage() {
         });
       });
 
+      // Warrants — /warrants/check/:personId returns { warrants: [...] }.
+      // The row shape is the local warrants table (warrant_number, warrant_type,
+      // charge_description, status, plus issued_date/created_at on the wire).
+      const warrData: any[] = Array.isArray(warrantCheck?.warrants) ? warrantCheck.warrants : [];
+      warrData.forEach((w: any) => {
+        entries.push({
+          id: String(w.id),
+          type: 'warrant',
+          date: w.issued_date || w.created_at || '',
+          reference_number: w.warrant_number || `WAR-${w.id}`,
+          description: w.charge_description
+            || `${(w.warrant_type || 'Warrant').toString().toUpperCase()}`,
+          status: w.status || 'active',
+        });
+      });
+
       entries.sort((a, b) => ((b.date ? parseTimestamp(b.date).getTime() : 0) || 0) - ((a.date ? parseTimestamp(a.date).getTime() : 0) || 0));
       setHistory(entries);
     } catch (err) {
@@ -150,6 +181,7 @@ export default function CriminalHistoryPage() {
       setHistory([]);
     }
     setHistoryLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const openUtahCourts = useCallback((person?: PersonResult | null) => {
@@ -202,6 +234,47 @@ export default function CriminalHistoryPage() {
 
   // Set document title
   useEffect(() => { document.title = 'Criminal History \u2014 RMPG Flex'; }, []);
+
+  // \u2500\u2500 ?person_id=<id> URL deep-link auto-select \u2500\u2500
+  // Eighth consecutive page-pass implementing this contract. From Person
+  // Dossier / NCIC subject-history \u2192 "view criminal history" lands here
+  // pre-selected. Fetches the single person + calls selectPerson; strips
+  // the param so a refresh doesn't re-fetch.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingPersonIdRef = useRef<string | null>(searchParams.get('person_id'));
+  useEffect(() => {
+    const target = pendingPersonIdRef.current;
+    if (!target) return;
+    pendingPersonIdRef.current = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch<any>(`/records/persons/${target}`);
+        const person: PersonResult | null = data && data.id != null
+          ? (data as PersonResult)
+          : data?.data && data.data.id != null
+            ? (data.data as PersonResult)
+            : null;
+        if (cancelled || !person) {
+          if (!cancelled) addToast(`Person ${target} not found`, 'warning');
+          return;
+        }
+        setPersons([person]);
+        setLastSearchedQuery(`#${target}`);
+        await selectPerson(person);
+      } catch {
+        if (!cancelled) addToast(`Failed to load person ${target}`, 'error');
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('person_id');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden">
@@ -272,10 +345,24 @@ export default function CriminalHistoryPage() {
         {/* Person Results List */}
         <div className={`${isMobile ? (selectedPerson ? 'hidden' : 'w-full') : 'w-1/3'} border-r border-rmpg-700/50 overflow-auto`}>
           {persons.length === 0 && !loading && (
+            // Distinguish "no search yet" from "search ran and returned zero" —
+            // previously the operator saw the same generic instructional
+            // message either way and couldn't tell if their search ran.
             <div className="flex items-center justify-center h-full text-rmpg-500 text-[10px]">
-              <div className="text-center">
+              <div className="text-center max-w-[280px]">
                 <Search className="w-7 h-7 mx-auto mb-2 text-rmpg-600" />
-                <p className="font-mono uppercase tracking-wider">Search for a person to view criminal history</p>
+                {lastSearchedQuery ? (
+                  <>
+                    <p className="font-mono uppercase tracking-wider text-rmpg-400">No persons match</p>
+                    <p className="font-mono text-rmpg-200 mt-1 break-words">"{lastSearchedQuery}"</p>
+                    <p className="text-[9px] text-rmpg-500 mt-2 normal-case tracking-normal">
+                      Try a shorter / partial name, or switch the search type
+                      to DOB (<span className="font-mono">YYYY-MM-DD</span>) or DL number.
+                    </p>
+                  </>
+                ) : (
+                  <p className="font-mono uppercase tracking-wider">Search for a person to view criminal history</p>
+                )}
               </div>
             </div>
           )}
@@ -347,13 +434,32 @@ export default function CriminalHistoryPage() {
                   <div className="text-right space-y-1">
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold">Record ID</span>
                     <p className="text-sm font-mono text-brand-400 font-bold">{selectedPerson.id}</p>
-                    <button type="button"
-                      onClick={() => openUtahCourts(selectedPerson)}
-                      className="toolbar-btn text-[9px] gap-1"
-                      title="Search Utah Courts Xchange for this person"
-                    >
-                      <Scale className="w-3 h-3" /> Utah Courts
-                    </button>
+                    <div className="flex justify-end gap-1">
+                      {/* Court-ready PDF — subject card + caution flags +
+                          5-up summary tiles + chronological history table +
+                          signature block. Replaces "screenshot the panel". */}
+                      <button type="button"
+                        onClick={() => openCriminalHistoryPdf({
+                          subject: selectedPerson as any,
+                          history,
+                          preparedBy: user
+                            ? (`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username)
+                            : undefined,
+                        })}
+                        className="toolbar-btn text-[9px] gap-1"
+                        title="Open a printable criminal-history PDF for this subject"
+                        disabled={historyLoading}
+                      >
+                        <Printer className="w-3 h-3" /> Print
+                      </button>
+                      <button type="button"
+                        onClick={() => openUtahCourts(selectedPerson)}
+                        className="toolbar-btn text-[9px] gap-1"
+                        title="Search Utah Courts Xchange for this person"
+                      >
+                        <Scale className="w-3 h-3" /> Utah Courts
+                      </button>
+                    </div>
                   </div>
                 </div>
 

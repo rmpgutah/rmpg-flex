@@ -161,6 +161,23 @@ export async function runNsopwScreening(
               url: c.offender.photoUrl,
             });
           }
+          // Materialize canonical records links (persons + properties).
+          // Awaited so the response carries personId / linkedProperties
+          // back to the client immediately — these are short writes and
+          // the operator expects the View Person Record / View Property
+          // buttons to appear on the very first response.
+          try {
+            const { materializeOffenderLinks } = await import('./recordsLink');
+            const links = await materializeOffenderLinks(env, db, id, c.offender);
+            c.offender.personId = links.personId;
+            c.offender.linkedProperties = links.propertyLinks.map((p) => ({
+              propertyId: p.propertyId,
+              locationType: p.locationType,
+              locationName: p.locationName,
+            }));
+          } catch (err) {
+            console.warn('[nsopw] records-link failed:', err);
+          }
         }
       } catch (err) {
         console.warn('[nsopw] persist failed:', err);
@@ -401,6 +418,27 @@ export async function ensureNsopwColumns(env: Bindings): Promise<void> {
         ON nsopw_query_cache(cache_key)`);
       await execute(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_nsopw_jur_offender
         ON national_sex_offenders(jurisdiction, nsopw_offender_id)`);
+      // Mig 0149 — records linkage join tables. Self-heal in case
+      // the migration didn't reach live.
+      await execute(db, `CREATE TABLE IF NOT EXISTS nsopw_offender_properties (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        offender_id INTEGER NOT NULL, property_id INTEGER NOT NULL,
+        location_type TEXT, location_name TEXT,
+        latitude REAL, longitude REAL,
+        first_seen_at TEXT DEFAULT (datetime('now')),
+        last_seen_at TEXT DEFAULT (datetime('now')),
+        active INTEGER DEFAULT 1)`).catch(() => {});
+      await execute(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_nsopw_offprop_uniq
+        ON nsopw_offender_properties(offender_id, property_id, location_type)`).catch(() => {});
+      await execute(db, `CREATE TABLE IF NOT EXISTS nsopw_offender_vehicles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        offender_id INTEGER NOT NULL, vehicle_id INTEGER NOT NULL,
+        source TEXT DEFAULT 'nsopw_enrichment',
+        first_seen_at TEXT DEFAULT (datetime('now')),
+        last_seen_at TEXT DEFAULT (datetime('now')),
+        active INTEGER DEFAULT 1)`).catch(() => {});
+      await execute(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_nsopw_offveh_uniq
+        ON nsopw_offender_vehicles(offender_id, vehicle_id)`).catch(() => {});
       await execute(db, `INSERT OR IGNORE INTO screening_source_state
         (source_key, enabled) VALUES ('nsopw', 1)`).catch(() => {});
     } catch (err) {
@@ -427,6 +465,8 @@ export async function ensureNsopwColumns(env: Bindings): Promise<void> {
     ['national_sex_offenders', 'photo_fetched_at', 'TEXT'],
     ['national_sex_offenders', 'photo_size_bytes', 'INTEGER'],
     ['national_sex_offenders', 'photo_content_type', 'TEXT'],
+    // Mig 0149 — records linkage.
+    ['national_sex_offenders', 'person_id', 'INTEGER'],
   ] as const) {
     if (!(await columnExists(db, col[0], col[1]))) {
       await execute(db, `ALTER TABLE ${col[0]} ADD COLUMN ${col[1]} ${col[2]}`).catch(() => {});
