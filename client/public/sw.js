@@ -691,6 +691,17 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1028: Cases — kill the last 4 native window.prompt / window.confirm
+//        calls in the page (save-view name, delete-note, close-readiness
+//        gate, submit-for-review gate). Readiness gates now render the
+//        missing-fields list as a proper bulleted list instead of \n-
+//        joined plain text inside a native confirm. Adds /cases?case_id=
+//        URL deep-link (11th consecutive page). Esc cascade extended to
+//        cover all 7 modal states (was hard-coded to only form + return
+//        modal; linkPerson silently ignored). Theme: 8 hex chart-color
+//        literals → semantic --sev-* tokens. The page already has a
+//        full v2 case-report PDF (caseReportGenerator.ts) — no new PDF
+//        utility added.
 // v1024: Field Interviews — court-ready single-FI PDF (Arial banner,
 //        active-warrant alert bar, subject/contact/narrative blocks,
 //        signature block); replaces "screenshot the detail panel" as
