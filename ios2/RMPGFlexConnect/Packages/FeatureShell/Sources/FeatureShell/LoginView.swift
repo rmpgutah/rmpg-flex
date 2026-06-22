@@ -2,6 +2,7 @@ import SwiftUI
 import DesignSystem
 import CoreAuth
 
+@MainActor
 public struct LoginView: View {
     @Environment(\.theme) private var theme
     @Bindable public var vm: LoginViewModel

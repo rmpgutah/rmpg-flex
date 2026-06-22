@@ -1,6 +1,7 @@
 import SwiftUI
 import DesignSystem
 
+@MainActor
 public struct StartPatrolView: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss

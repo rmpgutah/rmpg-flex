@@ -7,6 +7,7 @@ import FeatureCFS
 /// Half-sheet grid of all `QuickActionsRegistry.all`. Tap a tile → for the two
 /// implemented actions, presents a real screen. The other six show
 /// `PendingActionSheet` until their handlers ship.
+@MainActor
 public struct QuickActionsSheetView: View {
     @Environment(\.theme) private var theme
     @State private var tapped: QuickAction?
