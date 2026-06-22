@@ -16,6 +16,7 @@ import MyRunTab from './serve/MyRunTab';
 import { apiFetch } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { importWithRetry } from '../utils/importWithRetry';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
@@ -194,7 +195,7 @@ export default function ServePage() {
       // code is a completed service (Personal), so its attempt shouldn't
       // appear on the "non-service" notice. Same for PS/10.* (Substitute)
       // and PS/20.* (Posted, when the queue is `served`).
-      const { parseTimestamp } = await import('../utils/dateUtils');
+      const { parseTimestamp } = await importWithRetry(() => import('../utils/dateUtils'));
       const attempts = (job.attempts || [])
         .filter((a) => {
           if ((a.result || '').toLowerCase() === 'served') return false;
@@ -250,7 +251,7 @@ export default function ServePage() {
         || (job.status === 'failed'
               ? undefined
               : 'A further attempt may be made; contact our office to arrange service.');
-      const { generateNoticeOfAttempt } = await import('../utils/servePdfGenerator');
+      const { generateNoticeOfAttempt } = await importWithRetry(() => import('../utils/servePdfGenerator'));
       const pdf = await generateNoticeOfAttempt({
         // MM/DD/YYYY zero-padded so it matches the attempt dates in the
         // table below. toLocaleDateString() returns M/D/YYYY (no leading
@@ -287,7 +288,7 @@ export default function ServePage() {
       // notice immediately. (dataurlnewwindow opened an HTML wrapper around a
       // session-bound blob URL — saving that wrapper produced a blank
       // "PDF"; see openPdfDocument.ts.)
-      const { openPdfDocument } = await import('../utils/openPdfDocument');
+      const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
       openPdfDocument(pdf, `Notice-of-Attempt-${job.case_number || job.id}.pdf`);
     } catch (err) {
       console.error('[serve] Notice of Attempt generation failed:', err);
