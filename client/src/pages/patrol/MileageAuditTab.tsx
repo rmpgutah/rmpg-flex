@@ -1021,7 +1021,7 @@ export default function MileageAuditTab() {
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-1 min-w-0">
-                      <span className={`font-mono text-[12px] truncate ${isTrip ? 'text-[#d4a017]' : 'text-rmpg-100'}`}>
+                      <span className={`font-mono text-[12px] truncate ${isTrip ? 'text-[var(--brand-gold)]' : 'text-rmpg-100'}`}>
                         {row.call_number || `#${row.id}`}
                       </span>
                       {corrected && (
@@ -1121,7 +1121,7 @@ export default function MileageAuditTab() {
                         </td>
                         <td>
                           <div className="flex items-center gap-1">
-                            <span className={`font-mono text-[11px] ${row.source === 'unit_trip' ? 'text-[#d4a017]' : 'text-rmpg-100'}`}>
+                            <span className={`font-mono text-[11px] ${row.source === 'unit_trip' ? 'text-[var(--brand-gold)]' : 'text-rmpg-100'}`}>
                               {row.call_number || `#${row.id}`}
                             </span>
                             {(row.ending_mileage_corrected || row.starting_mileage_corrected) && (

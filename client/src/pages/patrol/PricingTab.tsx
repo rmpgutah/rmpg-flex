@@ -23,11 +23,11 @@ export default function PricingTab() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="PROCESS SERVICE PRICING" icon={DollarSign} />
-      <p className="text-[10px] text-[#888]">Dynamic rate card. Edits apply to NEW charges only — existing charges keep their snapshotted amounts.</p>
-      {loading ? <div className="text-[11px] text-[#888]">Loading…</div> : (
+      <p className="text-[10px] text-[var(--spm-text-muted)]">Dynamic rate card. Edits apply to NEW charges only — existing charges keep their snapshotted amounts.</p>
+      {loading ? <div className="text-[11px] text-[var(--spm-text-muted)]">Loading…</div> : (
         <div className="overflow-x-auto"><table className="w-full text-[11px]">
           <thead>
-            <tr className="text-left text-[9px] font-semibold text-[#888] border-b border-border-default">
+            <tr className="text-left text-[9px] font-semibold text-[var(--spm-text-muted)] border-b border-border-default">
               <th className="py-[3px]">CODE</th><th>LABEL</th><th>UNIT</th><th>AMOUNT</th>
               <th>TAX</th><th>ATTEMPTS INCL.</th><th>ACTIVE</th><th></th>
             </tr>
@@ -35,7 +35,7 @@ export default function PricingTab() {
           <tbody>
             {items.map((r) => (
               <tr key={r.id} className="border-b border-border-subtle">
-                <td className="py-[2px] font-mono text-[#d4a017]">{r.code}</td>
+                <td className="py-[2px] font-mono text-[var(--brand-gold)]">{r.code}</td>
                 <td><input className="bg-surface-sunken border border-border-default px-1 w-full" value={r.label} onChange={(e) => edit(r.id, 'label', e.target.value)} /></td>
                 <td>
                   <select className="bg-surface-sunken border border-border-default px-1" value={r.unit} onChange={(e) => edit(r.id, 'unit', e.target.value)}>
@@ -47,7 +47,7 @@ export default function PricingTab() {
                 <td><input type="number" className="bg-surface-sunken border border-border-default px-1 w-14 text-right" value={r.attempts_included} onChange={(e) => edit(r.id, 'attempts_included', Number(e.target.value))} /></td>
                 <td><input type="checkbox" checked={!!r.is_active} onChange={(e) => edit(r.id, 'is_active', e.target.checked ? 1 : 0)} /></td>
                 <td>
-                  <button className="flex items-center gap-1 text-[#d4a017] disabled:opacity-50" disabled={savingId === r.id} onClick={() => saveRow(r)}>
+                  <button className="flex items-center gap-1 text-[var(--brand-gold)] disabled:opacity-50" disabled={savingId === r.id} onClick={() => saveRow(r)}>
                     <Save size={12} /> {savingId === r.id ? 'Saving…' : 'Save'}
                   </button>
                 </td>

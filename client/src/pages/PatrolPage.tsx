@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useId } from 'react';
+import React, { useState, useEffect, useCallback, useId, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import {
   QrCode,
@@ -185,7 +186,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       hasPoints = true;
 
       const el = document.createElement('div');
-      el.style.cssText = `width:16px;height:16px;border-radius:50%;background:${cp.is_active ? '#22c55e' : 'var(--rmpg-500)'};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);`;
+      el.style.cssText = `width:16px;height:16px;border-radius:50%;background:${cp.is_active ? 'var(--sev-ok)' : 'var(--rmpg-500)'};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);`;
       const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
         .setLngLat(lngLat)
         .addTo(map);
@@ -207,6 +208,11 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       scansByDate.set(date, list);
     });
 
+    // Officer trail palette — five distinct hues for distinguishing trails on
+    // the map. These ARE deliberately hardcoded constants (trails always look
+    // identical regardless of day/night) so they can't go through --sev-*.
+    // Lifted from raw hex to read against the semantic palette anyway: muted
+    // grey / special purple / warn amber / critical red / ok green.
     const colors = ['#888888', '#a855f7', '#f59e0b', '#ef4444', '#22c55e'];
     let colorIdx = 0;
     scansByDate.forEach((dayScans) => {
@@ -267,6 +273,27 @@ const PatrolPage: React.FC = () => {
   const checkpointModalTitleId = useId();
   const qrModalTitleId = useId();
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_patrol_tab', 'checkpoints', ['checkpoints', 'scans', 'compliance', 'map', 'summary', 'mileage', 'pricing', 'contracts', 'billing'] as const);
+
+  // ── ?tab=<id> URL deep-link ──
+  // Same contract Dashboard/Dispatch/Map/MDT/NCIC consume. Honors one-shot
+  // tab selection on mount, strips the param so a refresh doesn't override
+  // the operator's subsequent tab clicks. Validates against the persisted-
+  // tab whitelist so a bad URL just lands on the saved default.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingTabRef = useRef<string | null>(searchParams.get('tab'));
+  useEffect(() => {
+    const target = pendingTabRef.current;
+    if (!target) return;
+    pendingTabRef.current = null;
+    const valid = ['checkpoints', 'scans', 'compliance', 'map', 'summary', 'mileage', 'pricing', 'contracts', 'billing'] as const;
+    if ((valid as readonly string[]).includes(target)) {
+      setActiveTab(target as typeof valid[number]);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('tab');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [scans, setScans] = useState<Scan[]>([]);
   const [compliance, setCompliance] = useState<Compliance[]>([]);
@@ -304,7 +331,51 @@ const PatrolPage: React.FC = () => {
   // ── Feature 11/13/15: Shift summary, break tracking, efficiency ──
   const [shiftSummary, setShiftSummary] = useState<any>(null);
   const [isOnBreak, setIsOnBreak] = useState(false);
+  // Start time of the CURRENT open break (when isOnBreak=true). Drives the
+  // live elapsed counter so the operator sees "Break elapsed 14m" instead of
+  // a binary "you're on break" state. Hydrated from server on mount along
+  // with isOnBreak so a page refresh doesn't lose the timer.
+  const [breakStartIso, setBreakStartIso] = useState<string | null>(null);
+  const [breakElapsedMs, setBreakElapsedMs] = useState(0);
   const [efficiency, setEfficiency] = useState<any>(null);
+
+  // Hydrate isOnBreak + breakStartIso from server on mount + user change.
+  // Previously `isOnBreak` only flipped on local Start/End clicks, so an
+  // operator on break who reloaded the page saw the "Start Break" button
+  // again and a fresh click would race the server into a 2nd break.
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    const fetchOpenBreak = async () => {
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const rows = await apiFetch<Array<{ break_start: string; break_end: string | null }>>(
+          `/patrol/breaks?officer_id=${user.id}&date=${today}`,
+        );
+        if (cancelled) return;
+        const open = (Array.isArray(rows) ? rows : []).find((r) => !r.break_end);
+        if (open) {
+          setIsOnBreak(true);
+          setBreakStartIso(open.break_start);
+        } else {
+          setIsOnBreak(false);
+          setBreakStartIso(null);
+        }
+      } catch { /* silent — toolbar just shows Start buttons */ }
+    };
+    fetchOpenBreak();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  // Live elapsed counter — 30s tick is plenty (officer is reading minutes,
+  // not seconds). Pauses cleanly when isOnBreak flips back to false.
+  useEffect(() => {
+    if (!isOnBreak || !breakStartIso) { setBreakElapsedMs(0); return; }
+    const tick = () => setBreakElapsedMs(Date.now() - parseTimestamp(breakStartIso).getTime());
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, [isOnBreak, breakStartIso]);
 
   const loadShiftSummary = async () => {
     if (!user?.id) return; // handler requires officer_id, else 400
@@ -323,8 +394,14 @@ const PatrolPage: React.FC = () => {
 
   const startBreak = async (breakType = 'break') => {
     try {
-      await apiFetch('/patrol/breaks/start', { method: 'POST', body: JSON.stringify({ break_type: breakType }) });
+      const data = await apiFetch<{ break_start?: string }>(
+        '/patrol/breaks/start',
+        { method: 'POST', body: JSON.stringify({ break_type: breakType }) },
+      );
       setIsOnBreak(true);
+      // Server returns the canonical break_start when available; fall back
+      // to "now" so the elapsed counter starts ticking immediately.
+      setBreakStartIso(data?.break_start ?? new Date().toISOString());
       addToast('Break started', 'success');
     } catch (err: any) { addToast(err?.message || 'Failed to start break', 'error'); }
   };
@@ -333,6 +410,7 @@ const PatrolPage: React.FC = () => {
     try {
       const data = await apiFetch<any>('/patrol/breaks/end', { method: 'POST' });
       setIsOnBreak(false);
+      setBreakStartIso(null);
       addToast(`Break ended (${data?.duration_minutes || 0} min)`, 'success');
     } catch (err: any) { addToast(err?.message || 'Failed to end break', 'error'); }
   };
@@ -725,7 +803,7 @@ const PatrolPage: React.FC = () => {
       ) : (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--surface-sunken), var(--spm-text-muted) 30%, var(--spm-text-muted) 70%, var(--surface-sunken))' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
               <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-200">Patrol Operations</h1>
@@ -838,7 +916,7 @@ const PatrolPage: React.FC = () => {
       {optimizedRoute && (
         <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_km} km total</span>
+            <span className="font-bold text-[var(--brand-gold)] uppercase tracking-wide text-[10px]">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_km} km total</span>
             <IconButton onClick={() => setOptimizedRoute(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close optimized route"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
@@ -857,7 +935,7 @@ const PatrolPage: React.FC = () => {
       {patrolLog && (
         <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Patrol Log — {patrolLog.officer_name} ({patrolLog.date})</span>
+            <span className="font-bold text-[var(--brand-gold)] uppercase tracking-wide text-[10px]">Patrol Log — {patrolLog.officer_name} ({patrolLog.date})</span>
             <IconButton onClick={() => setPatrolLog(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close patrol log"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
@@ -883,7 +961,7 @@ const PatrolPage: React.FC = () => {
       {exceptions && (
         <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Exception Report — {exceptions.period_days} days ({exceptions.late_count} late / {exceptions.total_scans} total = {exceptions.late_rate}% late)</span>
+            <span className="font-bold text-[var(--brand-gold)] uppercase tracking-wide text-[10px]">Exception Report — {exceptions.period_days} days ({exceptions.late_count} late / {exceptions.total_scans} total = {exceptions.late_rate}% late)</span>
             <IconButton onClick={() => setExceptions(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close exceptions"><X className="w-3 h-3" /></IconButton>
           </div>
           {exceptions.missed_checkpoints?.length > 0 && (
@@ -915,7 +993,7 @@ const PatrolPage: React.FC = () => {
       {timeTracking && (
         <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Time Tracking — {timeTracking.date}</span>
+            <span className="font-bold text-[var(--brand-gold)] uppercase tracking-wide text-[10px]">Time Tracking — {timeTracking.date}</span>
             <IconButton onClick={() => setTimeTracking(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close time tracking"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
@@ -1292,11 +1370,22 @@ const PatrolPage: React.FC = () => {
                   <CheckCircle className="w-3 h-3" /> {isMobile ? 'Efficiency' : 'Efficiency Score'}
                 </button>
                 <div className={`${isMobile ? 'w-full' : 'ml-auto'} flex items-center gap-2 ${isMobile ? 'justify-end' : ''}`}>
-                  {/* Feature 13: Break tracking */}
+                  {/* Feature 13: Break tracking — hydrated from /patrol/breaks
+                      on mount so a page refresh keeps the on-break state.
+                      Live elapsed counter at 30s tick (officer reads minutes,
+                      not seconds) so the button isn't just a binary toggle. */}
                   {isOnBreak ? (
-                    <button type="button" onClick={endBreak} className="toolbar-btn text-red-400 border-red-700/50">
-                      <Clock className="w-3 h-3" /> End Break
-                    </button>
+                    <>
+                      <span className="text-[10px] font-mono tabular-nums text-rmpg-400" title="Elapsed since break started">
+                        {(() => {
+                          const totalMin = Math.max(0, Math.floor(breakElapsedMs / 60_000));
+                          return totalMin >= 60 ? `${Math.floor(totalMin / 60)}h ${totalMin % 60}m` : `${totalMin}m`;
+                        })()}
+                      </span>
+                      <button type="button" onClick={endBreak} className="toolbar-btn text-red-400 border-red-700/50">
+                        <Clock className="w-3 h-3" /> End Break
+                      </button>
+                    </>
                   ) : (
                     <div className="flex gap-1">
                       <button type="button" onClick={() => startBreak('break')} className="toolbar-btn">Break</button>
@@ -1474,7 +1563,7 @@ const PatrolPage: React.FC = () => {
             </div>
 
             {formWasRestored && (
-              <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30 mb-4" style={{ background: '#1a1500' }}>
+              <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30 mb-4" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.08)' }}>
                 <div className="flex items-center gap-2">
                   <Clock size={14} className="text-amber-400" />
                   <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>

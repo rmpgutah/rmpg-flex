@@ -691,6 +691,20 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1023: Patrol — hydrate isOnBreak from /patrol/breaks on mount (was
+//        local-state-only; operator on break who refreshed the page saw
+//        "Start Break" + a fresh click raced into a 2nd break). Adds a
+//        live elapsed counter next to End Break (30s tick). New
+//        /patrol?tab=<id> URL deep-link, 6th consecutive page-pass to
+//        honor the same pattern. Replaces window.prompt × 3 in
+//        BillingReviewTab (void reason + invoice from/to dates) with
+//        proper inline modals — last patrol/ holdout; MileageAuditTab +
+//        TripManagerSection already migrated. Theme: 24 hardcoded
+//        [#d4a017]/[#888]/[#e0533d] sites across PricingTab/
+//        BillingReviewTab/ContractsTab/MileageAuditTab/PatrolPage
+//        lifted to var(--brand-gold)/var(--spm-text-muted)/var(--sev-
+//        critical) tokens. The #e0533d was off-token entirely (not in
+//        --sev-*); now routes through --sev-critical semantically.
 // v1022: NCIC terminal — wire QUICK_QUERIES button row (declared since the
 //        2026-06 NCIC overhaul but never rendered), add up/down arrow
 //        command-history navigation (bounded at 30, dedupes back-to-back
