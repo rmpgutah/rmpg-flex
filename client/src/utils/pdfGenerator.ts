@@ -243,7 +243,7 @@ export function applyFieldNumber(label: string): string {
  * These fonts only support Latin-1 (ISO-8859-1). Unicode arrows, em-dashes, curly quotes,
  * etc. have zero width in font metrics, causing justification to spread text wildly.
  */
-export function sanitizePdfText(text: string, opts: { preserveMarkers?: boolean } = {}): string {
+export function sanitizePdfText(text: string, opts: { preserveMarkers?: boolean; preserveCase?: boolean } = {}): string {
   if (!text) return text;
   let s = text
     // HTML entity decode — narrative text occasionally arrives still
@@ -350,10 +350,14 @@ export function sanitizePdfText(text: string, opts: { preserveMarkers?: boolean 
     .replace(/[\uD800-\uDFFF]+ ?/g, '')
     .replace(/ ?[\uD800-\uDFFF]+/g, '')
     .replace(/[^\x00-\xFF]/g, '') // Drop remaining non-Latin-1 chars ('?' placeholders read as data errors)
-    .replace(/(?<=\S)[ \t]{2,}/g, ' ')   // collapse INTERIOR double spaces only; keep leading indentation (drives list nesting depth)
-    .toUpperCase();              // Police-form convention: ALL CAPS (applied
-                                 // globally as the single sanitization chokepoint
-                                 // so every render path emits uppercase text).
+    .replace(/(?<=\S)[ \t]{2,}/g, ' ');  // collapse INTERIOR double spaces only; keep leading indentation (drives list nesting depth)
+  // Police-form convention: ALL CAPS — applied globally as the single
+  // sanitization chokepoint so every render path emits uppercase text.
+  // Recipient-facing prose (legal disclaimer paragraphs on a Notice of
+  // Attempt) opts out via { preserveCase: true } since all-caps body
+  // text is hard to read for the subject and reads as aggressive on a
+  // notice meant to be helpful.
+  if (!opts.preserveCase) s = s.toUpperCase();
   return s;
 }
 
@@ -1637,9 +1641,20 @@ export function addDocumentIntegrityTrailer(
  * Text is justified (words distributed to fill line width) except for
  * the last line of each paragraph which stays left-aligned.
  */
-export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE): number {
+export function addWrappedText(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  fontSize: number = FONT.SIZE_FIELD_VALUE,
+  opts: { preserveCase?: boolean } = {},
+): number {
   if (!text) return y;
-  text = sanitizePdfText(text);
+  // Recipient-facing prose passes preserveCase so the legal disclaimer
+  // paragraphs render in mixed case (professional, readable) instead of
+  // shouting in ALL CAPS like the field labels around them.
+  text = sanitizePdfText(text, { preserveCase: opts.preserveCase });
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);

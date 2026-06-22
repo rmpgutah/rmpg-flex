@@ -1209,6 +1209,16 @@
 //        Warrant/Citation/Arrest types in the cross-link modal fall back to
 //        typed numeric input for now (rare in practice; dedicated pickers
 //        can land in a follow-up when the operator hits them).
+// v1005: Notice of Attempt PDF — recipient-readability polish. The disclaimer
+//        body paragraphs now render in mixed case instead of shouting in
+//        ALL CAPS (police-form caps stay on field labels + table cells via
+//        sanitizePdfText's preserveCase opt-out). The "lead" anti-simulation
+//        line ("THIS IS NOT A COURT ORDER...") is centered, slightly larger,
+//        and flanked by horizontal rules so the subject can't miss it.
+//        Next-attempt note renders as an italic call-out below the disclaimer
+//        instead of an all-caps field-pair. The "police-report style" frame
+//        (NIBRS header, line/box sections, signature block) is preserved;
+//        only the recipient-facing prose was unstuck from caps.
 // v1004: Salt Lake County Assessor lookup wired into Business + Property
 //        records forms. Address blur (typed or picked) → /assessor/parcels;
 //        AssessorSuggestionPanel renders the 0/1/N matches below the address
