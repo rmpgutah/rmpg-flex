@@ -1448,6 +1448,19 @@ warrants.post('/', requireRole(...ROLES_CRUD_WRITE), async (c) => {
       entity_id: warrantId as number,
     }, c.env);
 
+    // NSOPW: every warrant subject auto-screens against the nationwide
+    // SOR. Fire-and-forget so a SOR miss / timeout never blocks the
+    // warrant create. Confirmed hits land in screening_hits and surface
+    // on the warrant detail page (NSOPW Status section).
+    if (subjectPersonId != null) {
+      c.executionCtx.waitUntil(
+        import('../utils/screening/nsopwAdapter')
+          .then(({ screenPersonForSor }) =>
+            screenPersonForSor(c.env, subjectPersonId, { triggeredBy: 'warrant_create' }))
+          .catch((err) => console.warn('[nsopw] warrant_create screen failed:', err)),
+      );
+    }
+
     return c.json(created, 201);
   } catch (err) {
     console.error('[warrants] create error', err);

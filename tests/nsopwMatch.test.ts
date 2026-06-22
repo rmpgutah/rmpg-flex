@@ -13,7 +13,7 @@ function offender(over: Partial<NsopwOffender> = {}): NsopwOffender {
     latitude: null, longitude: null, locations: [], absconder: false,
     offense: null, riskLevel: null, tier: null,
     registrationStatus: null, complianceStatus: null,
-    photoUrl: null, detailUrl: null, raw: {},
+    photoUrl: null, localPhotoUrl: null, rowId: null, detailUrl: null, raw: {},
     ...over,
   };
 }

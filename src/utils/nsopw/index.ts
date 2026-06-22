@@ -50,6 +50,10 @@ export interface NsopwScreeningResult {
 export interface RunOpts {
   triggeredBy?: string;                 // 'manual' | 'cron' | 'person_create' | ...
   skipCache?: boolean;
+  /** Optional execution context for detaching photo downloads via
+   *  waitUntil(). When omitted, photo downloads attach to the caller
+   *  Promise chain (fine when the caller is itself inside a waitUntil). */
+  executionCtx?: { waitUntil(p: Promise<unknown>): void };
 }
 
 /**
@@ -135,14 +139,50 @@ export async function runNsopwScreening(
     // Persist confirmed + possible (NOT excluded) so the review queue
     // works after cache expiry.
     const persistedIds: number[] = [];
+    const photoTargets: Array<{ id: number; jurisdiction: string; extId: string; url: string }> = [];
     for (const c of classified) {
       if (c.classification === 'excluded') continue;
       try {
         const id = await upsertOffender(db, c.offender);
-        if (id) persistedIds.push(id);
+        if (id) {
+          persistedIds.push(id);
+          // Decorate the offender with the worker-served local photo URL
+          // and the persisted row id. The client prefers localPhotoUrl
+          // (serves our R2 copy through /api/nsopw/photo/:id) and falls
+          // back to the upstream `photoUrl` if the photo hasn't landed
+          // in R2 yet.
+          c.offender.rowId = id;
+          c.offender.localPhotoUrl = `/api/nsopw/photo/${id}`;
+          if (c.offender.photoUrl) {
+            photoTargets.push({
+              id,
+              jurisdiction: c.offender.jurisdiction,
+              extId: c.offender.nsopwOffenderId,
+              url: c.offender.photoUrl,
+            });
+          }
+        }
       } catch (err) {
         console.warn('[nsopw] persist failed:', err);
       }
+    }
+    // Download photos in the background — never blocks the response.
+    // Mig 0148 added local_photo_* columns; downloadAndStorePhoto is
+    // best-effort and self-rate-limits to once per 7 days per offender.
+    if (photoTargets.length > 0) {
+      const photoWork = (async () => {
+        const { downloadAndStorePhoto } = await import('./photoStore');
+        for (const t of photoTargets) {
+          await downloadAndStorePhoto(env, db, t.id, t.jurisdiction, t.extId, t.url)
+            .catch((err) => console.warn('[nsopw-photo]', t.extId, err));
+        }
+      })();
+      // Detach via waitUntil when caller provides ctx (HTTP routes).
+      // When the orchestrator is itself inside an outer waitUntil
+      // (cron sweep), no ctx is needed — the outer chain keeps the
+      // isolate alive. Either way, we don't block the response.
+      if (opts.executionCtx) opts.executionCtx.waitUntil(photoWork);
+      else void photoWork;
     }
     // Cache (including misses — empty candidates).
     await writeCache(db, query, r.response, persistedIds).catch((err) => {
@@ -381,6 +421,12 @@ export async function ensureNsopwColumns(env: Bindings): Promise<void> {
     ['national_sex_offenders', 'age', 'INTEGER'],
     ['national_sex_offenders', 'locations_json', 'TEXT'],
     ['nsopw_runs', 'jurisdiction_stats_json', 'TEXT'],
+    // Mig 0148 — photo persistence.
+    ['national_sex_offenders', 'local_photo_key', 'TEXT'],
+    ['national_sex_offenders', 'local_photo_url', 'TEXT'],
+    ['national_sex_offenders', 'photo_fetched_at', 'TEXT'],
+    ['national_sex_offenders', 'photo_size_bytes', 'INTEGER'],
+    ['national_sex_offenders', 'photo_content_type', 'TEXT'],
   ] as const) {
     if (!(await columnExists(db, col[0], col[1]))) {
       await execute(db, `ALTER TABLE ${col[0]} ADD COLUMN ${col[1]} ${col[2]}`).catch(() => {});

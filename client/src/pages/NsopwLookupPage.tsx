@@ -1,8 +1,9 @@
 // ============================================================
 // RMPG Flex — NSOPW Nationwide SOR Cross-Reference page.
 // ------------------------------------------------------------
-// Standalone page hosting the NsopwSearchPanel + a coverage banner.
-// Linked from SexOffenderRegistryPage as the "Nationwide" tab.
+// The canonical Sex Offender Registry surface. Replaces the legacy
+// Utah-only `/sex-offender-registry` and RMPG-internal
+// `/offender-registry` pages (both now redirect here).
 // ============================================================
 
 import { useEffect, useState } from 'react';
