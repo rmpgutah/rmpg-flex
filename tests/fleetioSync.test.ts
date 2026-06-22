@@ -275,7 +275,10 @@ describe('applyOutbound', () => {
 
   it('unsupported (resource, action) records a failure and moves on', async () => {
     const state: FleetTables = {
-      events: [baseEvent({ resource: 'work_order', action: 'update' })],
+      // fuel_entry/delete is still 501 (hard-delete semantics deferred).
+      // The previous test used work_order/update which is now implemented;
+      // any genuinely-unsupported verb works for this assertion.
+      events: [baseEvent({ resource: 'fuel_entry', action: 'delete' })],
       links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
     };
     const { db } = makeDb(state);
@@ -481,6 +484,121 @@ describe('applyOutbound', () => {
     expect(sentPayload!.summary).toBe('Tire rotation');   // preserved
     expect(sentPayload!.vendor_id).toBeUndefined();            // dropped (no link)
     expect(sentPayload!.assigned_to_user_id).toBeUndefined();  // dropped (no link)
+  });
+
+  it('fuel_entry/update — PATCHes Fleet.io when the row is linked', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ id: 30, event_id: 'evt-fuel-upd', resource: 'fuel_entry', resource_id: 200, action: 'update',
+        payload_json: JSON.stringify({ vehicle_id: 7777, gallons: 13.5, total_cost: 48.0 }) })],
+      links: [
+        { rmpg_table: 'fleet_vehicles', rmpg_id: 7777, fleetio_id: 99999 },
+        { rmpg_table: 'fleet_fuel_log',  rmpg_id: 200,  fleetio_id: 555 },
+      ],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    let seen: { fleetioId?: number; payload?: Record<string, unknown> } = {};
+    const adapter = {
+      async createVehicle() { throw new Error('nu'); }, async updateVehicle() { throw new Error('nu'); },
+      async archiveVehicle() { throw new Error('nu'); },
+      async createFuelEntry() { throw new Error('nu'); },
+      async updateFuelEntry(args: { fleetioId: number; payload: Record<string, unknown> }) {
+        seen = args;
+        return { id: args.fleetioId } as never;
+      },
+      async createWorkOrder() { throw new Error('nu'); },
+      async updateWorkOrder() { throw new Error('nu'); },
+    };
+    const result = await applyOutbound({ db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
+    expect(result.completed).toBe(1);
+    expect(seen.fleetioId).toBe(555);
+    expect(seen.payload!.vehicle_id).toBe(99999);    // translated
+    expect(seen.payload!.gallons).toBe(13.5);        // preserved
+  });
+
+  it('fuel_entry/update — no-op when the row was never linked', async () => {
+    const state: FleetTables = {
+      events: [baseEvent({ id: 31, event_id: 'evt-fuel-upd-orphan', resource: 'fuel_entry', resource_id: 999, action: 'update',
+        payload_json: JSON.stringify({ vehicle_id: 7777, gallons: 5 }) })],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 7777, fleetio_id: 99999 }], // vehicle linked, fuel row NOT
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    let calls = 0;
+    const adapter = {
+      async createVehicle() { throw new Error('nu'); }, async updateVehicle() { throw new Error('nu'); },
+      async archiveVehicle() { throw new Error('nu'); },
+      async createFuelEntry() { throw new Error('nu'); },
+      async updateFuelEntry() { calls++; return {} as never; },
+      async createWorkOrder() { throw new Error('nu'); }, async updateWorkOrder() { throw new Error('nu'); },
+    };
+    const result = await applyOutbound({ db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
+    expect(calls).toBe(0);
+    expect(result.completed).toBe(1);
+  });
+
+  it('work_order/update — PATCHes Fleet.io when linked; no-op when unlinked', async () => {
+    const linkedState: FleetTables = {
+      events: [baseEvent({ id: 32, event_id: 'evt-wo-upd', resource: 'work_order', resource_id: 1, action: 'update',
+        payload_json: JSON.stringify({ vehicle_id: 7777, summary: 'Updated summary', status: 'in_progress' }) })],
+      links: [
+        { rmpg_table: 'fleet_vehicles', rmpg_id: 7777, fleetio_id: 99999 },
+        { rmpg_table: 'work_orders',    rmpg_id: 1,    fleetio_id: 8888 },
+      ],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    let seen: { fleetioId?: number; payload?: Record<string, unknown> } = {};
+    const adapter = {
+      async createVehicle() { throw new Error('nu'); }, async updateVehicle() { throw new Error('nu'); },
+      async archiveVehicle() { throw new Error('nu'); },
+      async createFuelEntry() { throw new Error('nu'); }, async updateFuelEntry() { throw new Error('nu'); },
+      async createWorkOrder() { throw new Error('nu'); },
+      async updateWorkOrder(args: { fleetioId: number; payload: Record<string, unknown> }) {
+        seen = args; return { id: args.fleetioId } as never;
+      },
+    };
+    const r1 = await applyOutbound({ db: makeDb(linkedState).db, adapter: adapter as never, config: stubConfig });
+    expect(r1.completed).toBe(1);
+    expect(seen.fleetioId).toBe(8888);
+    expect(seen.payload!.summary).toBe('Updated summary');
+    expect(seen.payload!.vehicle_id).toBe(99999);
+
+    // Unlinked work_order — no-op
+    const orphanState: FleetTables = {
+      events: [baseEvent({ id: 33, event_id: 'evt-wo-upd-orphan', resource: 'work_order', resource_id: 999, action: 'update',
+        payload_json: JSON.stringify({ vehicle_id: 7777, summary: 'whatever' }) })],
+      links: [{ rmpg_table: 'fleet_vehicles', rmpg_id: 7777, fleetio_id: 99999 }],
+      fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    let calls = 0;
+    const adapter2 = {
+      async createVehicle() { throw new Error('nu'); }, async updateVehicle() { throw new Error('nu'); },
+      async archiveVehicle() { throw new Error('nu'); },
+      async createFuelEntry() { throw new Error('nu'); }, async updateFuelEntry() { throw new Error('nu'); },
+      async createWorkOrder() { throw new Error('nu'); }, async updateWorkOrder() { calls++; return {} as never; },
+    };
+    const r2 = await applyOutbound({ db: makeDb(orphanState).db, adapter: adapter2 as never, config: stubConfig });
+    expect(calls).toBe(0);
+    expect(r2.completed).toBe(1);
+  });
+
+  it('inspection — silent no-op completion (RMPG-only resource, no Fleet.io equivalent)', async () => {
+    const state: FleetTables = {
+      events: [
+        baseEvent({ id: 40, event_id: 'i1', resource: 'inspection', action: 'create',
+          payload_json: JSON.stringify({ vehicle_id: 1, phase: 'pre_trip' }) }),
+        baseEvent({ id: 41, event_id: 'i2', resource: 'inspection', action: 'update',
+          payload_json: JSON.stringify({ completed_at: '2026-06-22T01:00:00Z' }) }),
+      ],
+      links: [], fleet_vehicles: {}, fleet_fuel_log: {}, conflicts: [],
+    };
+    const adapter = {
+      async createVehicle() { throw new Error('nu'); }, async updateVehicle() { throw new Error('nu'); },
+      async archiveVehicle() { throw new Error('nu'); },
+      async createFuelEntry() { throw new Error('nu'); }, async updateFuelEntry() { throw new Error('nu'); },
+      async createWorkOrder() { throw new Error('nu'); }, async updateWorkOrder() { throw new Error('nu'); },
+    };
+    const result = await applyOutbound({ db: makeDb(state).db, adapter: adapter as never, config: stubConfig });
+    expect(result.completed).toBe(2);                        // both events drained as no-op
+    expect(state.events.every(e => e.status === 'completed')).toBe(true);
   });
 
   it('fuel_entry/create — translates vehicle_id; no-op when parent unlinked', async () => {

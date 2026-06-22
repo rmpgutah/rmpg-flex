@@ -77,7 +77,9 @@ export interface FleetioAdapter {
   updateVehicle(args: { fleetioId: number; payload: Record<string, unknown> }): Promise<FleetioVehicle>;
   archiveVehicle(args: { fleetioId: number; archivedAtIso: string }): Promise<FleetioVehicle>;
   createFuelEntry(args: { payload: Record<string, unknown> }): Promise<FleetioFuelEntry>;
+  updateFuelEntry(args: { fleetioId: number; payload: Record<string, unknown> }): Promise<FleetioFuelEntry>;
   createWorkOrder(args: { payload: Record<string, unknown> }): Promise<{ id: number; [k: string]: unknown }>;
+  updateWorkOrder(args: { fleetioId: number; payload: Record<string, unknown> }): Promise<{ id: number; [k: string]: unknown }>;
 }
 
 /** Pure typed deps for applyOutbound — eliminates I/O coupling for tests. */
@@ -269,8 +271,37 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     await recordLink(deps.db, 'work_orders', row.resource_id, 'work_order', created.id, now(deps));
     return created;
   }
-  // Unknown / unsupported (inspection, fuel_entry update/delete) — left for
-  // a follow-up PR. Sits in queue and surfaces in /admin/fleetio-health.
+  if (row.resource === 'fuel_entry' && row.action === 'update') {
+    // No fleetio_links row for `fuel_entries` today — fuel rows are emit-create,
+    // not bidirectionally seeded. Until a future PR adds explicit linking, we
+    // can't PATCH a remote row we never recorded. No-op so the queue doesn't
+    // pile up; the original create already pushed the row to Fleet.io with the
+    // accurate values.
+    const fleetioId = await lookupFleetioId(deps.db, 'fleet_fuel_log', row.resource_id);
+    if (!fleetioId) return null;
+    const translated = await translateOutboundFks(deps.db, 'fuel_entry', filteredPayload);
+    if (translated == null) return null;
+    return deps.adapter.updateFuelEntry({ fleetioId, payload: translated });
+  }
+  if (row.resource === 'work_order' && row.action === 'update') {
+    const fleetioId = await lookupFleetioId(deps.db, 'work_orders', row.resource_id);
+    if (!fleetioId) return null;               // parent never pushed → nothing to update
+    const translated = await translateOutboundFks(deps.db, 'work_order', filteredPayload);
+    if (translated == null) return null;
+    return deps.adapter.updateWorkOrder({ fleetioId, payload: translated });
+  }
+  if (row.resource === 'inspection') {
+    // Inspections are intentionally RMPG-only — see INSPECTION_OWNERSHIP in
+    // ownership.ts (every column is 'rmpg' because Fleet.io's
+    // inspection_submissions shape differs and an inbound update wouldn't
+    // round-trip cleanly). No Fleet.io equivalent to push to; mark the event
+    // completed so it stops surfacing in /admin/fleetio-health.
+    return null;
+  }
+  // Genuinely unsupported (fuel_entry/delete, work_order/delete, etc.). The
+  // hard-delete verbs are deferred because the semantics differ between
+  // systems — RMPG soft-deletes via archived_at while Fleet.io has discrete
+  // DELETE endpoints — and we don't want to silently destroy data either way.
   throw new FleetioHttpError(
     `Unsupported outbound (${row.resource}/${row.action}) — sync handler not yet implemented`,
     501,
