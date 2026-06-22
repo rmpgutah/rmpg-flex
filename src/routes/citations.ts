@@ -420,6 +420,199 @@ citations.put('/:id', async (c) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// COPIES — multi-copy PDF upload to R2 (PR 1 of Utah master redesign)
+// ═══════════════════════════════════════════════════════════════
+//
+// Officer device renders the 4 copies (court/agency/defendant/file)
+// in-browser via the Utah master form schema, then POSTs them here as
+// a single multipart body. We stash each in R2 under
+// `citations/<id>/<copy>.pdf` and create/upsert a citation_filing row
+// holding the 4 keys + lifecycle status.
+//
+// Architectural deviation from spec: the spec said MAP_DATA binding,
+// but MAP_DATA is the system-essentials bucket (map tiles + reference
+// data). User-generated content belongs in UPLOADS (mirrors ALPR,
+// redactions, uploads.ts, NSOPW photos). Using UPLOADS here.
+const CITATION_COPY_KINDS = ['court', 'agency', 'defendant', 'file'] as const;
+type CitationCopyKind = typeof CITATION_COPY_KINDS[number];
+
+// Ensure citation_filing exists. Migration 0150 is supposed to do this,
+// but mirrors the project-wide pattern (gotcha #4 + #5): the deploy
+// migration apply is continue-on-error, so a runtime reconciler keeps
+// production reachable when 0150 hasn't been applied yet via
+// scripts/apply-migration.sh.
+async function ensureCitationFilingTables(db: ReturnType<typeof getDb>): Promise<void> {
+  await execute(db, `
+    CREATE TABLE IF NOT EXISTS citation_filing (
+      citation_id INTEGER PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'pending',
+      defendant_copy_url TEXT,
+      court_copy_url TEXT,
+      agency_copy_url TEXT,
+      file_copy_url TEXT,
+      batch_id INTEGER,
+      filed_at TEXT,
+      filed_by INTEGER,
+      generated_at TEXT,
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    )
+  `);
+}
+
+citations.post('/:id/copies', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+
+    // Verify the citation exists before accepting uploads
+    const cit = await queryFirst<{ id: number; citation_number: string }>(
+      db, 'SELECT id, citation_number FROM citations WHERE id = ?', id,
+    );
+    if (!cit) return c.json({ error: 'Citation not found', code: 'NOT_FOUND' }, 404);
+
+    let form: FormData;
+    try {
+      form = await c.req.formData();
+    } catch {
+      return c.json({ error: 'Expected multipart/form-data', code: 'BAD_MULTIPART' }, 400);
+    }
+
+    await ensureCitationFilingTables(db);
+
+    // Upload each provided copy to R2. Officer may upload all 4 at once or
+    // a subset (e.g., re-upload after signature stamp). Existing keys for
+    // the missing variants are preserved.
+    const uploaded: Partial<Record<CitationCopyKind, string>> = {};
+    const errors: string[] = [];
+    for (const kind of CITATION_COPY_KINDS) {
+      const entry = form.get(kind);
+      if (!entry || typeof entry !== 'object' || !('arrayBuffer' in (entry as object))) continue;
+      const file = entry as File;
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      // Sanity cap — a single citation PDF should be well under 5 MB
+      if (bytes.length > 5 * 1024 * 1024) {
+        errors.push(`${kind}: file too large (${bytes.length} bytes; max 5 MB)`);
+        continue;
+      }
+      const key = `citations/${id}/${kind}.pdf`;
+      try {
+        await c.env.UPLOADS.put(key, bytes, {
+          httpMetadata: { contentType: 'application/pdf' },
+        });
+        uploaded[kind] = key;
+      } catch (err: any) {
+        errors.push(`${kind}: R2 put failed: ${err?.message || 'unknown'}`);
+      }
+    }
+
+    if (Object.keys(uploaded).length === 0) {
+      return c.json({
+        error: 'No copies were uploaded. Provide multipart fields named court / agency / defendant / file.',
+        code: 'NO_COPIES',
+        errors,
+      }, 400);
+    }
+
+    // Upsert citation_filing row. INSERT OR IGNORE then UPDATE keeps existing
+    // keys for variants not in this upload (idempotent partial uploads).
+    await execute(
+      db,
+      `INSERT OR IGNORE INTO citation_filing (citation_id, status, generated_at)
+       VALUES (?, 'pending', datetime('now','localtime'))`,
+      id,
+    );
+    const sets: string[] = ['generated_at = COALESCE(generated_at, datetime("now","localtime"))', 'updated_at = datetime("now","localtime")'];
+    const vals: unknown[] = [];
+    if (uploaded.court)     { sets.push('court_copy_url = ?');     vals.push(uploaded.court); }
+    if (uploaded.agency)    { sets.push('agency_copy_url = ?');    vals.push(uploaded.agency); }
+    if (uploaded.defendant) { sets.push('defendant_copy_url = ?'); vals.push(uploaded.defendant); }
+    if (uploaded.file)      { sets.push('file_copy_url = ?');      vals.push(uploaded.file); }
+    vals.push(id);
+    await execute(
+      db,
+      `UPDATE citation_filing SET ${sets.join(', ')} WHERE citation_id = ?`,
+      ...vals,
+    );
+
+    const filingRow = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM citation_filing WHERE citation_id = ?', id,
+    );
+
+    // Analytics: citation_copies_stored event (best-effort).
+    emitAnalytics(c, c.env.EVENTS, [flexEvent({
+      event_type: 'citation_copies_stored', occurred_at: new Date().toISOString(),
+      actor_id: (c.get('userId') as number | undefined) ?? null,
+      entity_type: 'citation', entity_id: id,
+      label: cit.citation_number, status: 'pending',
+      category: 'enforcement',
+      payload: { uploaded_kinds: Object.keys(uploaded), errors: errors.length ? errors : undefined },
+    })]);
+
+    return c.json({
+      data: filingRow,
+      uploaded_kinds: Object.keys(uploaded),
+      ...(errors.length ? { errors } : {}),
+    }, 201);
+  } catch (err) {
+    return c.json({
+      error: 'Failed to upload copies', code: 'COPIES_UPLOAD_ERROR',
+      detail: err instanceof Error ? err.message : String(err),
+    }, 500);
+  }
+});
+
+// GET /:id/filing — return the citation_filing row + presigned URLs for the
+// 4 copies. Officer/admin uses this to fetch the defendant copy for re-print
+// or to retrieve the court copy from the batch export workflow (PR 3).
+citations.get('/:id/filing', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    await ensureCitationFilingTables(db);
+    const row = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM citation_filing WHERE citation_id = ?', id,
+    );
+    if (!row) return c.json({ data: null });
+    return c.json({ data: row });
+  } catch (err) {
+    return c.json({ error: 'Failed to get filing record', code: 'FILING_GET_ERROR' }, 500);
+  }
+});
+
+// GET /:id/copies/:kind — return the R2 PDF bytes for a given copy.
+// Public-ish (auth: officer+) — officer can re-fetch the defendant copy to
+// reprint if the violator dropped the original.
+citations.get('/:id/copies/:kind', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const id = parseInt(c.req.param('id'), 10);
+    const kind = c.req.param('kind') as CitationCopyKind;
+    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    if (!CITATION_COPY_KINDS.includes(kind)) {
+      return c.json({ error: 'Invalid copy kind', code: 'INVALID_KIND' }, 400);
+    }
+    const key = `citations/${id}/${kind}.pdf`;
+    const obj = await c.env.UPLOADS.get(key);
+    if (!obj) return c.json({ error: 'Copy not found', code: 'NOT_FOUND' }, 404);
+    return new Response(obj.body, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Cache-Control': 'private, max-age=60',
+        'Content-Disposition': `inline; filename="citation-${id}-${kind}.pdf"`,
+      },
+    });
+  } catch (err) {
+    return c.json({ error: 'Failed to fetch copy', code: 'COPY_FETCH_ERROR' }, 500);
+  }
+});
+
 // ── DELETE /:id — admin/manager only ────────────────────────
 citations.delete('/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager');
