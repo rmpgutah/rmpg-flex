@@ -4,7 +4,7 @@ import { getDb, query, queryFirst, execute, executeBatch, columnExists } from '.
 import { getClearPathSource } from './clearpathSource';
 import { splitWindow } from './splitWindow';
 import { capChunkCount, batchLimit } from './pacing';
-import { retentionCutoffMs } from './retention';
+import { retentionCutoffMs, isBeyondRequestHorizon } from './retention';
 import { assignClipsToChunks } from './assignClips';
 import { shouldEarlyAbandon } from './earlyAbandon';
 import { validateMp4Header, isDuplicateContent, formatRejectionReason } from './integrity';
@@ -26,6 +26,11 @@ const EARLY_ABANDON_ATTEMPTS = 10; // zero-clips guard threshold
 // camera offline, etc). Stop after 5 tries — not 720 — so the queue clears fast.
 const MAX_REQUEST_ATTEMPTS = 5;
 const CHUNK_SECONDS = 40;          // segment length we split a drive into
+// Recency horizon for NEW requests: ClearPath only serves on-demand clips for
+// recent footage (older windows = off the SD / parked time → ~99% 500). Enqueuing
+// them just floods the queue with doomed chunks. Configurable via
+// flexcam_request_max_age_days; 0 disables the cap.
+const DEFAULT_REQUEST_MAX_AGE_DAYS = 7;
 
 /** Read an integer config from system_config (category integrations); def on absent/NaN. */
 async function cfgInt(db: D1Database, key: string, def: number): Promise<number> {
@@ -83,6 +88,12 @@ export async function enqueueFootage(env: Bindings, args: EnqueueArgs): Promise<
   await ensureFootageSchema(db);
   const source = await getClearPathSource(db, env);
   if (!source) return null;
+
+  // Recency cap: skip windows older than the request horizon — ClearPath can't
+  // serve on-demand clips that old, so enqueuing them just buries the queue in
+  // ~99%-doomed chunks (8.8k 'missing' observed from a month-wide backfill).
+  const maxAgeDays = await cfgInt(db, 'flexcam_request_max_age_days', DEFAULT_REQUEST_MAX_AGE_DAYS);
+  if (isBeyondRequestHorizon(args.fromTs, Date.now(), maxAgeDays)) return null;
 
   // Idempotency is a non-atomic check-then-insert (TOCTOU); acceptable for the once-per-minute single-isolate cron + low API-route call volume.
   const dup = await queryFirst<{ id: number }>(db,
