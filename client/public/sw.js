@@ -59,6 +59,47 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1053: Shift Plans (/shift-plans) — Page 36 of the full-app frontend
+//        pass. The supervisor's deployment board got the same court-ready
+//        / native-dialog / deep-link contract every other audited page
+//        carries:
+//          • URL deep-link — ?date=YYYY-MM-DD and ?plan_id= so a "open
+//            this plan" link in a Slack message lands the operator on
+//            the right date with the right plan selected; params are
+//            stripped after consumption so a refresh doesn't re-fire.
+//          • Court-ready supervisor briefing PDF (shiftPlanPdf.ts) —
+//            same Arial + RMPG-gold idiom as the v1024–v1048 series;
+//            includes coverage tiles, warning blocks for understaffed /
+//            OT notifications, double-book conflict callouts, the full
+//            area-assignment table, and a supervisor signature line.
+//            The prior "Export" was admin CSV only — unusable as a
+//            hand-off artifact in the briefing room.
+//          • 3 native confirm() prompts (delete plan, delete via header,
+//            clear-all assignments) replaced with ConfirmDialog so the
+//            operator sees what they're acting on (plan name, date,
+//            shift type, assignment count) instead of a generic
+//            window-prompt blocking the page.
+//          • Esc smart-cascade — confirm dialogs → create form → plan
+//            deselect. The prior handler only closed the create form,
+//            leaving every other modal state captive to its X button.
+//          • N → New Plan (typing-suppressed) — matches Citations /
+//            Personnel / Process-Server / Fleet / Comms / Dash.
+//          • Lucide ChevronLeft/Right replace the Unicode "◀ ▶ Back to
+//            Plans" arrows so the surface doesn't depend on OS-font
+//            availability for chrome icons.
+//          • Per-user privacy — selected-date + selected-plan persist
+//            under rmpg_shift_plans_state_<user.id> so a shared
+//            workstation doesn't leak "Lt. Smith was looking at the
+//            night shift" across logins. Mirrors the Personnel
+//            user-scoped tab key pattern from v1040.
+//          • Hardcoded rgba() literals in PlanStatusBadge swapped for
+//            theme tokens (var(--surface-sunken) / var(--rmpg-*)) so
+//            day/night palette swaps apply.
+//          • Dead-code prune: 4 pieces of state (editingAssignment,
+//            assignOfficerIds, assignUnitIds, assignNotes) were
+//            declared and never read — the assignment-edit modal
+//            actually lives on the Map page's shift planning overlay.
+//
 // v1047: Intel Portal (/intel/*) — Page 30 of the full-app frontend pass,
 //        applied to the multi-route command-center shell (IntelPortalLayout
 //        + IntelDashboard + BoloBoard + IntelSearch + the supporting widgets).
