@@ -59,6 +59,108 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1057: Audit Log (/audit) — Page 40 of the full-app frontend pass.
+//        The audit log is THE highest-evidentiary surface in the app: it
+//        proves chain-of-custody, who saw/edited what, and when. Defense
+//        counsel will subpoena it during discovery, so the gap the audit
+//        caught was that the page shipped with a CSV export but no court-
+//        signable PDF, no URL deep-link contract (a supervisor could not
+//        share a link to a specific entry / filter snapshot), no row-to-
+//        source-record navigation (a "warrant 47 updated" row had no way
+//        to jump to /warrants?warrant_id=47), and a generic empty state
+//        that conflated "filtered to nothing" with "log is empty".
+//
+//        What changed:
+//          • Court-ready PDF export — new client/src/utils/auditLogPdf.ts
+//            (gold banner, agency strap, TAMPER-EVIDENCE statement, filter-
+//            context block, paginated landscape rows with zebra striping
+//            and per-page footer, signature block for exporting + reviewing
+//            supervisor). Same Arial + RMPG-gold visual contract as the
+//            bodycam / dashcam / conversation-transcript / FI / evidence
+//            PDFs, so a court package built from multiple surfaces has a
+//            consistent "RMPG record" look. New "Court PDF" toolbar button
+//            sits next to "Export CSV"; both disabled when no rows.
+//          • URL deep-link contract — useSearchParams hydrates filters
+//            from `?action=`, `?entityType=`, `?user_id=`, `?date_from=`,
+//            `?date_to=`, `?search=` (plus legacy camelCase: entity_type,
+//            userId, startDate, endDate, q). `?entry_id=<n>` highlights +
+//            scrolls a specific row (brand-gold left rail, toast on miss
+//            so the operator knows to widen filters). All consumed params
+//            are stripped after first paint so a refresh doesn't re-pin
+//            the operator to a stale link. `entry_id` is mirrored back
+//            into the URL via the right-click menu's new "Copy deep-link
+//            to entry" action so a supervisor can paste an IA-package
+//            link straight from a row.
+//          • Row-to-source-record navigation — new pure util
+//            `getAuditEntityRoute(entity_type, entity_id)` maps every
+//            entity_type recorded by the codebase (15+ distinct types,
+//            from `call` / `incident` / `warrant` through `dashcam_video`
+//            and `inmate`) onto the SPA route + cross-page deep-link
+//            param the target page already accepts (`?warrant_id=`,
+//            `?call_id=`, `?incident_id=`, etc — the same contract the
+//            v1024–v1052 pages established). Routable rows now show an
+//            ExternalLink glyph in the Entity column, get a click cursor,
+//            and left-click navigates; modifier-click + the right-click
+//            "Open …" menu item still work for "new tab" muscle memory.
+//            Non-routable entity types (system / config / alpr_capture /
+//            field_photo / fleet_vehicle / fleetio) fall through cleanly.
+//            Tested in client/src/utils/__tests__/auditEntityRoute.test.ts
+//            (16 cases — empty inputs, plural/snake/camel tolerance,
+//            URL-encoding of composite ids, system-event passthrough).
+//          • Esc smart-cascade — was previously a no-op; now smallest-
+//            open: error banner → row highlight → active filter set.
+//            Typing-surface targets (INPUT/TEXTAREA/SELECT) are ignored
+//            so the browser's native blur-on-Esc still works in the
+//            filter inputs.
+//          • Tamper-evidence indicator — new inline amber-token pill
+//            below the toolbar describing the operational guarantee:
+//            audit_log is append-only at the application layer, no
+//            UPDATE/DELETE API, retention purges are admin-only and
+//            themselves generate audit entries. Same statement is
+//            embedded in the court PDF so a clerk receiving the
+//            document can read it without context from the operator.
+//          • Compliance gaps — `/audit/compliance-report?days=30` was
+//            already fetched, but only the headline numbers (login
+//            failure rate, active users) were rendered; the `gaps[]`
+//            array was dropped on the floor. Now surfaced inline below
+//            the compliance row as a horizontally-flowing chip list
+//            (date + tooltip = "n entries — below daily minimum"),
+//            capped at 30 visible with a "+N more" tail.
+//          • Empty-state distinction — same audit finding as the prior
+//            16 pages: "no entries found" used the same copy whether
+//            the filter selected an impossible slice or the table was
+//            actually empty. Now branches on `hasActiveFilters` — the
+//            filtered case includes a one-click "Clear all filters"
+//            button so the operator can recover without scrolling back
+//            up to the filter bar.
+//          • Theme-token sweep — replaced one hardcoded `#0a1a0a`
+//            literal (the "today entries > 0" highlight background,
+//            which read as pure-black-green on the new steel-blue night
+//            theme) with a green-rail-on-token-surface pattern so the
+//            highlight remains visible on both palettes without baking
+//            the legacy black in.
+//          • Dead code — removed two unused `i` index args in
+//            `stats.topActions.slice(1,4).map((a, i) => …)` and
+//            `stats.topUsers.slice(1,4).map((u, i) => …)` (the keys are
+//            stable strings; the index was never read).
+//
+//        Privacy / role-gating — re-verified. /audit is gated by
+//        `AdminRoute` (admin OR manager) in client/src/App.tsx, and
+//        `src/routes/audit.ts` enforces the same gate at the API
+//        (`audit.use('*', authMiddleware role-check)`) plus an extra
+//        admin-only requirement on the destructive retention endpoints.
+//        The cross-page "Open …" links emitted by the audit row do not
+//        bypass any target page's auth (the destination route resolves
+//        through the normal React Router → AuthGuard chain).
+//
+//        Out of scope (deferred):
+//          • Sub-/supra-page `?entry_id=` direct-fetch. Pagination is
+//            100 rows per page and the audit log is ~6 MB on live, so
+//            a deep-linked entry from an older page surfaces a toast
+//            instead of a hidden refetch. A future GET /audit/:id +
+//            "Locate" affordance would close that loop without forcing
+//            a server scan on every link click.
+//
 // v1047: Intel Portal (/intel/*) — Page 30 of the full-app frontend pass,
 //        applied to the multi-route command-center shell (IntelPortalLayout
 //        + IntelDashboard + BoloBoard + IntelSearch + the supporting widgets).
