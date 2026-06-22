@@ -1047,6 +1047,51 @@
 //            emoji on the page).
 //          • Dead-imports cleanup: Link2 + IconButton were imported
 //            but never referenced. Removed.
+// v1043: Dash Cameras (MVR Review Station, /dash-cameras) — Page 26 of
+//        the full-app frontend pass. Dashcam clips are statutory court-
+//        record material when classified evidence/flagged, but the
+//        review page had no print path, the Esc key was wired to only
+//        the edit modal, and there was no deep-link contract so
+//        cross-page "view this clip" links from cases/incidents had to
+//        round-trip through the gallery.
+//          • New client/src/utils/dashcamReviewPdf.ts — "MVR Review
+//            Card" PDF with RMPG-gold banner, missing-case-link alert
+//            (fires red when an evidence/flagged/restricted clip has no
+//            case_number and no case link), retention-hold banner, clip
+//            field grid, vehicle/officer block, optional location
+//            block with GPS + heading, linked-records timeline (alt-row
+//            shading, synthesizes a legacy row from case_number when
+//            only the column is populated), notes block, and two-
+//            signature block. Pure helpers (channelLabel, sourceLabel,
+//            formatDuration, formatFileSize, prettyEntityType,
+//            needsCaseLinkAlert) covered by 23 new unit tests.
+//          • Print button on the detail-panel header — opens the PDF
+//            in a new tab. Hydrates the selected clip with joined
+//            officer_name/officer_badge + dashcam_video_links rows
+//            from /api/fleet/dashcam-videos/:id when a clip is opened
+//            (the list endpoint omits them) so the print path always
+//            has every field even on a deep-linked clip.
+//          • Deep-link contract: /dash-cameras?clip_id=<id> auto-
+//            selects the target clip and primes the inline player.
+//            Falls through to a direct GET when the clip isn't in the
+//            current paged list; the param is stripped after applying.
+//          • Esc smart-cascade: smallest-open-first close across
+//            videoToDelete → editingVideo → linkingVideo → showUpload
+//            → playingVideo → selectedVideo. Previously only
+//            editingVideo cleared, so the confirm-delete, upload,
+//            link, full-screen player, and detail panel all ignored
+//            Escape entirely.
+//          • N keyboard shortcut: opens the Upload modal (manager-
+//            tier; mirrors the New-X binding on Dispatch / FI /
+//            Patrol / Evidence). Suppressed while typing into any
+//            input / textarea / select / contenteditable.
+//          • Empty-state distinction: filtered-out vs nothing-uploaded
+//            now show different copy + a "Clear filters" button on
+//            the filtered case, so an operator with active filters
+//            doesn't waste time troubleshooting an upload.
+//          • Tactical-dark HUD overlays preserved — the channel/REC
+//            indicators stay on dark surfaces regardless of day/night
+//            theme (memory: tactical surfaces always dark).
 // v1037: Court Tracker — court-ready appearance prep PDF (Arial banner +
 //        countdown/imminence alert + judge notes + witnesses + bail +
 //        continuance history + signature block; same idiom as the v1024
