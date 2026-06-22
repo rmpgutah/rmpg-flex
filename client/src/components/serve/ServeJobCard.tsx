@@ -18,8 +18,9 @@ import {
   Shield,
   Gavel,
   FileWarning,
+  Pencil,
 } from 'lucide-react';
-import type { ServeJob, ServeJobLinkedCall } from '../../types';
+import type { ServeJob, ServeJobLinkedCall, ServeAttempt } from '../../types';
 import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
 
 interface ServeJobCardProps {
@@ -30,6 +31,8 @@ interface ServeJobCardProps {
   onSkipTrace: (jobId: number) => void;
   onFlagAddress: (jobId: number) => void;
   onEdit: (jobId: number) => void;
+  /** Edit a previously-logged attempt — opens EditServeAttemptModal in the parent. */
+  onEditAttempt?: (jobId: number, attempt: ServeAttempt) => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
 }
@@ -96,6 +99,7 @@ export default React.memo(function ServeJobCard({
   onSkipTrace,
   onFlagAddress,
   onEdit,
+  onEditAttempt,
   isExpanded = false,
   onToggleExpand,
 }: ServeJobCardProps) {
@@ -313,7 +317,7 @@ export default React.memo(function ServeJobCard({
                 {job.attempts.map((attempt) => (
                   <div
                     key={attempt.id}
-                    className="flex items-start gap-2 pl-2 border-l-2 border-rmpg-600/50"
+                    className="group flex items-start gap-2 pl-2 border-l-2 border-rmpg-600/50"
                   >
                     <span className="text-[10px] font-mono text-rmpg-400 flex-shrink-0 w-16">
                       {safeDateStr(attempt.attempt_at)}
@@ -327,7 +331,18 @@ export default React.memo(function ServeJobCard({
                       {ATTEMPT_RESULT_LABELS[attempt.result] || attempt.result}
                     </span>
                     {attempt.notes && (
-                      <span className="text-[10px] text-rmpg-400 truncate">{attempt.notes}</span>
+                      <span className="text-[10px] text-rmpg-400 truncate flex-1">{attempt.notes}</span>
+                    )}
+                    {onEditAttempt && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onEditAttempt(job.id, attempt); }}
+                        className="ml-auto flex-shrink-0 text-rmpg-500 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 focus:outline-none focus:opacity-100 focus:ring-1 focus:ring-amber-400/50"
+                        title={`Edit attempt #${attempt.attempt_number}`}
+                        aria-label={`Edit attempt ${attempt.attempt_number} for ${job.recipient_name}`}
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
                     )}
                   </div>
                 ))}

@@ -25,11 +25,12 @@ import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { toDisplayLabel } from '../utils/formatters';
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
+import EditServeAttemptModal from '../components/serve/EditServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
 import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
 import FormModal from '../components/FormModal';
 import AddressAutocomplete, { type ParsedAddress } from '../components/AddressAutocomplete';
-import type { ServeJob, ServeAttemptData, ServeSkipAddress } from '../types';
+import type { ServeJob, ServeAttempt, ServeAttemptData, ServeSkipAddress } from '../types';
 import ExportButton from '../components/ExportButton';
 import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
@@ -141,6 +142,9 @@ export default function ServePage() {
 
   // ── Modals / panels ────────────────────────────────────────────────
   const [attemptJob, setAttemptJob] = useState<ServeJob | null>(null);
+  // Edit modal for a previously-logged attempt — carries both the job
+  // (so we know which queueId to PUT against) and the specific attempt row.
+  const [editAttempt, setEditAttempt] = useState<{ jobId: number; attempt: ServeAttempt } | null>(null);
   const [skipTraceJob, setSkipTraceJob] = useState<ServeJob | null>(null);
   const [routePlannerOpen, setRoutePlannerOpen] = useState(false);
   const [createJobOpen, setCreateJobOpen] = useState(false);
@@ -1061,6 +1065,7 @@ export default function ServePage() {
                     }}
                     onFlagAddress={handleFlagAddress}
                     onEdit={openEdit}
+                    onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
                     isExpanded={expandedJobId === job.id}
                     onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                   />
@@ -1455,6 +1460,17 @@ export default function ServePage() {
           onClose={() => setAttemptJob(null)}
           job={attemptJob}
           onSubmit={handleAttemptSubmit}
+        />
+      )}
+
+      {/* Edit an existing attempt — operator corrections to a logged attempt */}
+      {editAttempt && (
+        <EditServeAttemptModal
+          isOpen={!!editAttempt}
+          onClose={() => setEditAttempt(null)}
+          queueId={editAttempt.jobId}
+          attempt={editAttempt.attempt}
+          onSaved={refreshJobs}
         />
       )}
 

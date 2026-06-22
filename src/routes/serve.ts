@@ -409,7 +409,43 @@ sv.get('/', async (c) => {
       CASE q.priority WHEN 'urgent' THEN 1 WHEN 'rush' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END,
       q.deadline IS NULL, q.deadline ASC, q.sort_order ASC, q.id DESC LIMIT ?`;
   args.push(limit);
-  return c.json(await query(db, sql, ...args));
+  const jobs = await query<any>(db, sql, ...args);
+
+  // ── Attach attempts per job ────────────────────────────────
+  // ServeJobCard renders a "Prior Attempts" timeline when job.attempts is
+  // non-empty, but the list endpoint historically only returned serve_queue
+  // columns — so the timeline never appeared in the queue view (only in
+  // the detail page that hits GET /:id). One follow-up query batches
+  // every attempt for the listed jobs and merges them in-process.
+  // disposition_code is schema-guarded — migration 0143 may not be live
+  // on every D1, in which case we still return the legacy `result` column.
+  if (jobs.length) {
+    const ids = jobs.map((j) => j.id).filter((n) => Number.isFinite(n));
+    if (ids.length) {
+      const placeholders = ids.map(() => '?').join(',');
+      const hasDispositionCol = await columnExists(db, 'serve_attempts', 'disposition_code');
+      const attemptCols = hasDispositionCol
+        ? 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.disposition_code, a.notes, a.latitude, a.longitude, a.officer_id, u.full_name AS officer_name'
+        : 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.notes, a.latitude, a.longitude, a.officer_id, u.full_name AS officer_name';
+      const attempts = await query<any>(
+        db,
+        `SELECT ${attemptCols}
+           FROM serve_attempts a
+           LEFT JOIN users u ON u.id = a.officer_id
+          WHERE a.serve_queue_id IN (${placeholders})
+          ORDER BY a.attempt_at ASC, a.id ASC`,
+        ...ids,
+      );
+      const byQueue = new Map<number, any[]>();
+      for (const a of attempts) {
+        const bucket = byQueue.get(a.serve_queue_id) ?? [];
+        bucket.push(a);
+        byQueue.set(a.serve_queue_id, bucket);
+      }
+      for (const j of jobs) j.attempts = byQueue.get(j.id) ?? [];
+    }
+  }
+  return c.json(jobs);
 });
 
 sv.post('/', async (c) => {
@@ -667,6 +703,151 @@ sv.post('/:id/substitute-service', async (c) => {
   );
   await generateServeCharges(db, id);
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Edit an existing attempt
+// ─────────────────────────────────────────────────────────────
+// PUT /:queueId/attempt/:attemptId
+//
+// Operator corrections to a previously-logged attempt: timestamp typos,
+// wrong attempt_type, wrong result/disposition_code picked, follow-up
+// notes. Photo/signature/officer_id stay immutable — those are evidence.
+//
+// Status side-effect: if the edit changes result or disposition_code,
+// re-derive serve_queue.status from the most-recent attempt (per the
+// 2026-06-22 product decision). Edits to notes/timestamp/type alone
+// don't touch parent state. Billing is NOT reversed — generateServeCharges
+// is one-way; a wrongly-billed completion needs a manual credit.
+sv.put('/:queueId/attempt/:attemptId', async (c) => {
+  const denied = requireRole(c, ...WRITE);
+  if (denied) return c.json({ error: denied }, 403);
+  const queueId = parseInt(c.req.param('queueId'), 10);
+  const attemptId = parseInt(c.req.param('attemptId'), 10);
+  if (isNaN(queueId) || isNaN(attemptId)) return c.json({ error: 'Invalid id' }, 400);
+  const body = await c.req.json<any>().catch(() => ({}));
+  const db = getDb(c.env);
+
+  // Ownership check: attempt must belong to this queue row. Prevents an
+  // operator with WRITE role from editing some other tenant's job's
+  // attempts via a guessed id.
+  const existing = await queryFirst<{
+    id: number; result: string | null; disposition_code: string | null;
+    attempt_number: number;
+  }>(db, 'SELECT id, result, attempt_number FROM serve_attempts WHERE id = ? AND serve_queue_id = ?',
+    attemptId, queueId);
+  if (!existing) return c.json({ error: 'Attempt not found for this job' }, 404);
+
+  // Whitelist + per-field validation. disposition_code is guarded —
+  // migration 0143 may not have reached live D1 on a fresh deploy.
+  const hasDispositionCol = 'disposition_code' in body
+    ? await columnExists(db, 'serve_attempts', 'disposition_code')
+    : true;
+  const sets: string[] = [];
+  const args: any[] = [];
+  let resultChanged = false;
+  let newResult: string | null = existing.result;
+
+  if ('attempt_at' in body && body.attempt_at !== undefined) {
+    sets.push('attempt_at = ?');
+    args.push(body.attempt_at || null);
+  }
+  if ('attempt_type' in body && body.attempt_type !== undefined) {
+    sets.push('attempt_type = ?');
+    args.push(body.attempt_type || null);
+  }
+  if ('notes' in body && body.notes !== undefined) {
+    sets.push('notes = ?');
+    args.push(body.notes || null);
+  }
+  if ('latitude' in body && body.latitude !== undefined) {
+    sets.push('latitude = ?');
+    args.push(body.latitude == null ? null : Number(body.latitude));
+  }
+  if ('longitude' in body && body.longitude !== undefined) {
+    sets.push('longitude = ?');
+    args.push(body.longitude == null ? null : Number(body.longitude));
+  }
+
+  // Structured PS code takes precedence — derive the legacy `result`
+  // and update both columns when supplied. Mirrors logAttempt.
+  if ('disposition_code' in body && body.disposition_code !== undefined && hasDispositionCol) {
+    const code = typeof body.disposition_code === 'string' && body.disposition_code.trim()
+      ? body.disposition_code.trim().toUpperCase()
+      : null;
+    if (code && !lookupPsoCode(code)) {
+      return c.json({ error: `Unknown disposition_code: ${code}` }, 400);
+    }
+    sets.push('disposition_code = ?');
+    args.push(code);
+    if (code) {
+      const derived = codeToLegacyResult(code);
+      sets.push('result = ?');
+      args.push(derived);
+      newResult = derived;
+      resultChanged = derived !== existing.result;
+    }
+  } else if ('result' in body && body.result !== undefined) {
+    if (!ATTEMPT_RESULTS.has(body.result)) {
+      return c.json({ error: `Unknown result: ${body.result}` }, 400);
+    }
+    sets.push('result = ?');
+    args.push(body.result);
+    newResult = body.result;
+    resultChanged = body.result !== existing.result;
+  }
+
+  if (!sets.length) return c.json({ error: 'No editable fields supplied' }, 400);
+  args.push(attemptId);
+  await execute(db, `UPDATE serve_attempts SET ${sets.join(', ')} WHERE id = ?`, ...args);
+
+  // ── Parent status recompute ───────────────────────────────
+  // Only fire when result/disposition actually changed. We re-derive
+  // status from the most recent attempt's result, not the edited one,
+  // because the edit may target an OLD attempt and the latest is what
+  // determines whether the job is currently served/failed/attempted.
+  let recomputed: { status: string } | null = null;
+  if (resultChanged) {
+    const queue = await queryFirst<{ attempt_count: number; max_attempts: number; status: string }>(
+      db, 'SELECT attempt_count, max_attempts, status FROM serve_queue WHERE id = ?', queueId);
+    const latest = await queryFirst<{ result: string | null; disposition_code: string | null }>(
+      db,
+      hasDispositionCol
+        ? 'SELECT result, disposition_code FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_at DESC, id DESC LIMIT 1'
+        : 'SELECT result FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_at DESC, id DESC LIMIT 1',
+      queueId,
+    );
+    if (queue && latest) {
+      let nextStatus = queue.status;
+      const psCode = latest.disposition_code;
+      if (psCode) {
+        const codeStatus = codeToQueueStatus(psCode);
+        if (codeStatus === 'served' || codeStatus === 'failed') nextStatus = codeStatus;
+        else if (codeStatus === 'pending') nextStatus = 'pending';
+        else nextStatus = queue.attempt_count >= (queue.max_attempts ?? 3) ? 'failed' : 'attempted';
+      } else if (latest.result === 'served' || latest.result === 'sub_served') {
+        nextStatus = 'served';
+      } else if (queue.attempt_count >= (queue.max_attempts ?? 3)) {
+        nextStatus = 'failed';
+      } else {
+        nextStatus = 'attempted';
+      }
+      if (nextStatus !== queue.status) {
+        await execute(db,
+          `UPDATE serve_queue SET status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+          nextStatus, queueId);
+        recomputed = { status: nextStatus };
+      }
+    }
+  }
+
+  return c.json({
+    success: true,
+    attempt_id: attemptId,
+    fields_updated: sets.length,
+    result: newResult,
+    queue_status_recomputed: recomputed,
+  });
 });
 
 // GET /:id/gps-trail — attempts ordered chronologically, drop ones missing coords
