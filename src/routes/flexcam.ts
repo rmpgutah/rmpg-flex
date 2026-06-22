@@ -8,7 +8,7 @@ import { notConfigured } from '../utils/notConfigured';
 import { getClearPathSource } from '../utils/footage/clearpathSource';
 import { getApiConfig, listDevices, listMedia } from '../utils/clearpathGps';
 import { ensureMarkersSchema, buildFootageMarkers } from '../utils/footage/markers';
-import { buildManifest, concatToR2 } from '../utils/footage/concat';
+import { buildManifest, concatToR2, buildPlayerManifest } from '../utils/footage/concat';
 import { requireRole } from '../middleware/auth';
 import { footageEvidenceNumber, isUnlockable, buildCourtManifest, manifestPayloadHash, logCustody, viewSessionKey } from '../utils/footage/evidence';
 import { signTriple } from '../utils/pdfSign';
@@ -148,6 +148,43 @@ flexcam.get('/footage/:id/continuous', async (c): Promise<Response> => {
     if (obj) return new Response(obj.body, { headers: { 'Content-Type': 'video/mp4', 'Cache-Control': 'private, max-age=3600' } });
   }
   return c.json({ merged_status: req.merged_status ?? 'pending', hint: 'POST /render/:id (or client ffmpeg.wasm for MP4)' }, 202);
+});
+
+// Player-oriented trip manifest. Joins unit_trips × footage_chunks
+// (via footage_requests.trip_id) and composes buildPlayerManifest()
+// so the FlexCam page can scrub a multi-request trip on one timeline.
+// Mount-level auth (`/api/flexcam` is `auth: 'required'`) gates access.
+flexcam.get('/trips/:tripId/manifest', async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  const tripId = Number(c.req.param('tripId'));
+  if (!Number.isFinite(tripId)) return c.json({ error: 'Invalid tripId' }, 400);
+  const channel = c.req.query('channel') ?? 'outside';
+
+  const trip = await queryFirst<{ id: number; start_time: number; end_time: number | null }>(
+    db, 'SELECT id, start_time, end_time FROM unit_trips WHERE id = ?', tripId,
+  ).catch(() => null);
+  if (!trip) return c.json({ error: 'Trip not found' }, 404);
+
+  // Pull every chunk attached to any request whose trip_id matches.
+  const chunks = await query<{
+    id: number; request_id: number; seq: number; channel: string;
+    from_ts: number; to_ts: number; status: string; r2_key: string | null;
+    sha256: string | null; bytes: number;
+  }>(db,
+    `SELECT fc.id, fc.request_id, fc.seq, fc.channel, fc.from_ts, fc.to_ts,
+            fc.status, fc.r2_key, fc.sha256, fc.bytes
+       FROM footage_chunks fc
+       JOIN footage_requests fr ON fr.id = fc.request_id
+      WHERE fr.trip_id = ?
+      ORDER BY fc.from_ts`, tripId,
+  ).catch(() => []);
+
+  const manifest = buildPlayerManifest(
+    { id: trip.id, start_time: trip.start_time, end_time: trip.end_time },
+    channel,
+    chunks,
+  );
+  return c.json(manifest);
 });
 
 flexcam.post('/render/:id', async (c): Promise<Response> => {
