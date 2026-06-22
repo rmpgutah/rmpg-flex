@@ -35,6 +35,7 @@ import { deriveCrossStreetFromCoords } from './crossStreet';
 import { parseLocationParts } from './parseLocationParts';
 import { buildPsoBriefing, buildOcrContext } from './serveIntakeBriefing';
 import type { IntakeDocMeta, OcrContext, PropertyRecord, BusinessRecord } from './serveIntakeBriefing';
+import { createCaseWithLinks } from './caseCreate';
 import {
   planAttemptWindows, escalatePriorityForDeadline,
   clusterByProximity, applyUrgencyTier,
@@ -511,6 +512,14 @@ export interface CommitResult {
   // no new records are created; uploaded documents attach to the existing
   // entry instead (serve_queue_id points at it).
   duplicate_of?: { serve_queue_id: number; status: string; case_number: string | null } | null;
+  // Auto-created Case File (migration 0146) anchoring everything from this
+  // intake batch — CFS, persons, property, the queue row itself, and the
+  // uploaded packet docs. Null only when the case-create write itself
+  // failed (best-effort: a case-create error never aborts the intake).
+  // On duplicate intake we surface the EXISTING case (looked up via the
+  // duplicate queue row's case_id) so re-uploads attach to the same file.
+  case_id?: number | null;
+  rmpg_case_number?: string | null;
 }
 
 export interface CommitInput {
@@ -565,11 +574,29 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       queueRow.recipient_name, queueRow.recipient_address) as any;
   }
   if (dup) {
+    // Re-uploaded packet: surface the EXISTING case anchored to the
+    // duplicate queue row so /upload can attach the just-uploaded docs
+    // to the same Case File. case_id column lands with migration 0146 —
+    // legacy D1 returns null and the route handles that gracefully.
+    let dupCaseId: number | null = null;
+    let dupCaseNumber: string | null = null;
+    try {
+      const dupRow = await queryFirst<{ case_id: number | null }>(
+        db, 'SELECT case_id FROM serve_queue WHERE id = ?', dup.id);
+      if (dupRow?.case_id) {
+        dupCaseId = dupRow.case_id;
+        const caseRow = await queryFirst<{ case_number: string | null }>(
+          db, 'SELECT case_number FROM cases WHERE id = ?', dupCaseId);
+        dupCaseNumber = caseRow?.case_number ?? null;
+      }
+    } catch { /* column missing on legacy D1 — non-fatal */ }
     return {
       serve_queue_id: dup.id, person_id: null, agent_person_id: null,
       business_id: null, property_id: null, call_id: null, call_number: null,
       created: { person: false, agent_person: false, business: false, property: false, call: false },
       duplicate_of: { serve_queue_id: dup.id, status: dup.status, case_number: dup.case_number ?? null },
+      case_id: dupCaseId,
+      rmpg_case_number: dupCaseNumber,
     };
   }
 
@@ -959,6 +986,66 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
     console.error('linkCall* failed (non-fatal):', err);
   }
 
+  // ── 7. Auto-create the Case File for this intake batch ─────
+  // Anchors all downstream artifacts (attempts, photos, notice
+  // PDFs, follow-on CFS dispatches) to a single record so the
+  // operator and reviewers have one place to read the job's
+  // history. Best-effort — a case-create failure cannot abort
+  // the intake commit (queue row + CFS already inserted). Per
+  // option B (operator decision 2026-06-22), runs unconditionally
+  // — even when no CFS was created (address-less batches), the
+  // case is the home for re-attempted intake or post-intake
+  // address discovery.
+  let caseId: number | null = null;
+  let caseNumber: string | null = null;
+  try {
+    // Title reads "Service: <recipient> — <doc type>" so the case
+    // browser surfaces the same info the queue card does. Fall back
+    // through best-available identifiers when intake is sparse.
+    const recipientLabel = queueRow.recipient_name?.trim()
+      || businessName
+      || [recipientFirst, recipientLast].filter(Boolean).join(' ').trim()
+      || 'Unknown recipient';
+    const docTypeLabel = queueRow.document_type
+      ? queueRow.document_type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+      : 'Service of Process';
+    const title = `Service: ${recipientLabel} — ${docTypeLabel}`;
+
+    // Summary mirrors the briefing the PSO sees on the call. Cap
+    // hard so a long packet can't blow the cases.summary index.
+    const summary = (input.documentSummary || '').slice(0, 1500) || null;
+
+    // Persons: include both the agent person (corporate) and the
+    // direct recipient (individual) when both ended up created.
+    // The relationship label tells the case browser which is which.
+    const linkedPersons: { person_id: number; relationship?: string }[] = [];
+    if (isBusiness && agentPerson.id) {
+      linkedPersons.push({ person_id: agentPerson.id, relationship: 'serve_recipient_agent' });
+    } else if (person.id) {
+      linkedPersons.push({ person_id: person.id, relationship: 'serve_recipient' });
+    }
+
+    const created = await createCaseWithLinks(db, {
+      title,
+      case_type: 'service',
+      summary,
+      created_by: userId,
+      source: 'serve-intake',
+      linked_call_id: callId,
+      linked_persons: linkedPersons,
+      linked_property_id: property.id || null,
+      linked_serve_queue_id: queueId,
+    });
+    caseId = created.case_id;
+    caseNumber = created.case_number;
+  } catch (err) {
+    // Auto-case is a convenience layer — a failure here must NOT
+    // unwind the intake. Operator can manually create + link a
+    // case via POST /api/cases as before. Log so we notice drift
+    // (typically: cases table missing or D1 quota).
+    console.error('auto-case-create failed (non-fatal):', err);
+  }
+
   return {
     intake_note: ocrContext?.noteText ?? null,
     missing_critical: ocrContext?.missingCritical ?? [],
@@ -971,6 +1058,8 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
     property_id: property.id || null,
     call_id: callId,
     call_number: callNumber,
+    case_id: caseId,
+    rmpg_case_number: caseNumber,
     created: {
       person: person.created,
       agent_person: agentPerson.created,

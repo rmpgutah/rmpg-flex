@@ -620,6 +620,7 @@ si.post('/upload', async (c) => {
   let commit: CommitResult = {
     serve_queue_id: null, person_id: null, agent_person_id: null,
     business_id: null, property_id: null, call_id: null, call_number: null,
+    case_id: null, rmpg_case_number: null,
     created: { person: false, agent_person: false, business: false, property: false, call: false },
   };
   if (row.recipient_name || row.recipient_address) {
@@ -641,10 +642,23 @@ si.post('/upload', async (c) => {
       allDates: [...allDates],
       env: c.env,
     });
-    // Back-link the document rows to the new queue entry.
+    // Back-link the document rows to the new queue entry — and to the
+    // auto-created Case File when commitIntake produced one. case_id
+    // column lands with migration 0146; on legacy D1 the UPDATE 500s
+    // and we fall back to the queue-only UPDATE (try/catch per doc).
     if (commit.serve_queue_id) {
       for (const d of documents) {
-        if (d.id) {
+        if (!d.id) continue;
+        let linkedCase = false;
+        if (commit.case_id) {
+          try {
+            await execute(db,
+              'UPDATE serve_intake_documents SET serve_queue_id = ?, case_id = ? WHERE id = ?',
+              commit.serve_queue_id, commit.case_id, d.id);
+            linkedCase = true;
+          } catch { /* legacy D1 without case_id col — fall through */ }
+        }
+        if (!linkedCase) {
           await execute(db,
             'UPDATE serve_intake_documents SET serve_queue_id = ? WHERE id = ?',
             commit.serve_queue_id, d.id);
@@ -698,6 +712,12 @@ si.post('/upload', async (c) => {
     property_id: commit.property_id,
     call_id: commit.call_id,
     call_number: commit.call_number,
+    // Auto-created Case File anchoring this batch (migration 0146).
+    // Null when the case-create failed (best-effort) OR on legacy D1
+    // without the cases table. UI surfaces "Case 26-000123-SV" on the
+    // success card so the operator can jump straight to the file.
+    case_id: commit.case_id ?? null,
+    rmpg_case_number: commit.rmpg_case_number ?? null,
     created: commit.created,
     latitude: null,
     longitude: null,
@@ -878,6 +898,7 @@ si.post('/intake', async (c) => {
   let commit: CommitResult = {
     serve_queue_id: null, person_id: null, agent_person_id: null,
     business_id: null, property_id: null, call_id: null, call_number: null,
+    case_id: null, rmpg_case_number: null,
     created: { person: false, agent_person: false, business: false, property: false, call: false },
   };
   if (row.recipient_name || row.recipient_address) {
