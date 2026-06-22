@@ -691,6 +691,17 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1025: Criminal History — wire warrants into the history timeline
+//        (the row TYPE was rendered + dot-color + filter chip all wired
+//        since launch, but no fetch ever populated it — a person with
+//        active warrants got a "WARRANTS" badge and an empty timeline).
+//        New /criminal-history?person_id= URL deep-link (8th
+//        consecutive page-pass). New court-ready criminalHistoryPdf
+//        — subject card + caution-flag alert + 5-up summary tiles +
+//        chronological history table + signature block. 5th court-
+//        ready PDF this audit. Post-search empty-state distinguishes
+//        "no search yet" from "search returned zero" (was the same
+//        generic placeholder either way).
 // v1023: Patrol — hydrate isOnBreak from /patrol/breaks on mount (was
 //        local-state-only; operator on break who refreshed the page saw
 //        "Start Break" + a fresh click raced into a 2nd break). Adds a
