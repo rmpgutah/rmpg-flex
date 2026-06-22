@@ -202,9 +202,7 @@ export default function ServePage() {
           // Soft-recovery: prefer attempt_at, fall back to created_at. Legacy
           // and auto-logged attempts sometimes have a null attempt_at but
           // always have a created_at — without this the table renders blank.
-          // parseTimestamp() handles naive UTC server strings ("YYYY-MM-DD HH:MM:SS")
-          // correctly; plain new Date(str) on naive strings parses as device-LOCAL
-          // and drifts ~6-7h in Mountain Time (caught by check-new-date.js).
+          // parseTimestamp() handles naive UTC server strings ("YYYY-MM-DD HH:MM:SS").
           const ts = a.attempt_at || a.created_at || null;
           const at = ts ? parseTimestamp(ts) : null;
           // Structured code wins over the legacy enum — the generator's
