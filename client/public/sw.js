@@ -810,6 +810,28 @@
 //        Dispatch). Theme: warrant-banner ⚠️ emoji → Lucide
 //        AlertTriangle; restored-draft #1a1500 → rgb(var(--sev-warn-rgb)
 //        / 0.08) (same lift as Patrol PR #1595).
+// v1037: Court Tracker — court-ready appearance prep PDF (Arial banner +
+//        countdown/imminence alert + judge notes + witnesses + bail +
+//        continuance history + signature block; same idiom as the v1024
+//        FI / v1025 CH / v1026 evidence chain PDFs). Replaces the
+//        page's last native dialog (`window.prompt()` in
+//        handleCloneEvent) with a styled ConfirmDialog + date input.
+//        Adds /court?event_id= (and court_event_id=) URL deep-link
+//        with direct-fetch fallback + URL param strip — 12th
+//        consecutive page-pass on the contract. Esc smart-cascade
+//        (closes the smallest-open-first of 10 modals, replacing
+//        the old hard-coded "Esc closes form only"). `N` keyboard
+//        shortcut → New Event, typing-suppressed. Empty state now
+//        distinguishes filter/search-empty vs upcoming-empty vs
+//        truly-empty so the "New Event" CTA doesn't ambush a stale
+//        filter. Theme: 14 `text-[#d4a017]` → `text-[var(--brand-gold)]`
+//        and the restored-draft `#1a1500` → `bg-amber-950/40`.
+//        Bugfixes: duplicate `id` attrs across mapped witness rows
+//        (HTML5 unique-id violation, breaks form-tab navigation);
+//        court-fee total string-concat ("50"+"25"="5025") → numeric
+//        coercion with .toFixed(2); conflicts state now resets on
+//        every selection change so a prior event's red conflict
+//        banner doesn't ghost over a clean selection.
 // v1031: Citations — kill the last native window.confirm() in handleVoid
 //        and route it through the in-app ConfirmDialog (same destructive-
 //        flow polish every other audited page now uses; FI #1597, Evidence
