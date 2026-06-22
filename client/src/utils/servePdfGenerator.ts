@@ -669,9 +669,13 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }));
 
-  addConfidentialWatermark(doc);
-  // @ts-expect-error jsPDF GState — safety reset after watermark
-  doc.setGState(new doc.GState({ opacity: 1.0 }));
+  // The Notice of Attempt is RECIPIENT-facing. The diagonal CONFIDENTIAL
+  // watermark used on internal police forms (affidavit, service log)
+  // rotated through the body text at low opacity, producing a strikethrough
+  // appearance on the first wrapped line of the disclaimer paragraph (the
+  // letters of "CONFIDENTIAL" intersected the lowercase descenders). For
+  // the recipient-facing notice we drop it — internal-use stamping happens
+  // via the page-footer "INTERNAL USE ONLY" band and the corner barcode.
 
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
@@ -797,42 +801,53 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
   }
 
   // ── Notice Statement ── (keep the whole block together — it must read as one unit)
-  y = checkPageBreak(doc, y, 65);
+  // 75 mm reservation covers lead-band + body + next-attempt + spacing; if
+  // the page can't fit, break BEFORE opening the section so the IMPORTANT
+  // NOTICE header isn't orphaned at the bottom of one page with the lead
+  // and body stranded on the next.
+  y = checkPageBreak(doc, y, 75);
   {
     const sec = openAutoSection(doc, 'IMPORTANT NOTICE — ATTEMPTED SERVICE OF LEGAL DOCUMENTS', y);
-    // addWrappedText draws at the text BASELINE — pad past the black header band
-    // so the first line's ascender doesn't clip (matches the
-    // psoNoticePdfGenerator fix, commit 3c0e68f9).
-    y = sec.contentY + 4;
+    y = sec.contentY + 2;
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     const contact = data.serverPhone ? ` at ${data.serverPhone}` : ' at the number on file';
     const pageWidth = doc.internal.pageSize.getWidth();
 
     // ── Anti-simulation lead (Utah Code § 76-8-712) ──
-    // The loudest line on the page — flanked by horizontal rules so the
-    // subject can't miss it, centered for impact, slightly larger than the
-    // body. Must read as an unambiguous "this is NOT court-issued process"
-    // statement, not just another paragraph.
-    const ruleY1 = y + 1;
-    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.line(lx, ruleY1, lx + ffw, ruleY1);
-    y += 5;
+    // Tinted background band immediately under the section header so the
+    // lead line ANCHORS the section visually instead of floating between
+    // unflanked rules. The prior "rule above / rule below" design read as
+    // ambiguous — the rules were easy to miss, and on some renders ended
+    // up looking like the lead had drifted to the bottom of the page.
+    // A solid 8 mm gray band with the bold caps line centered inside it is
+    // unambiguous: the lead is PART of the section, not after it.
+    const bandH = 8;
+    const bandY = y;
+    // Light gray FILL only — no outline. The earlier design used a black
+    // outline rect, but the band's BOTTOM outline rule (at bandY + bandH)
+    // landed almost exactly on the top of the body paragraph's first line,
+    // producing a strikethrough appearance on "Rocky Mountain Protective
+    // Group, a private process service agency...". The 240/240/240 fill
+    // by itself is enough callout — it already contrasts with the white
+    // page and the dark IMPORTANT NOTICE header band above it.
+    doc.setFillColor(240, 240, 240);
+    doc.rect(lx, bandY, ffw, bandH, 'F');
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE + 2);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const lead = 'THIS IS NOT A COURT ORDER, A SUMMONS, OR A DEMAND FOR PAYMENT.';
-    doc.text(lead, pageWidth / 2, y, { align: 'center' });
-    y += 4;
-    doc.line(lx, y, lx + ffw, y);
-    y += SPACING.MD;
+    // Center vertically inside the band: top + (band/2) + (cap-height/2).
+    doc.text(lead, pageWidth / 2, bandY + bandH / 2 + 1.8, { align: 'center' });
+    // Generous gap before body so even an aggressive line-height can't pull
+    // the body's first line up into the band.
+    y = bandY + bandH + SPACING.LG;
 
     // ── Body prose in mixed case ──
     // ALL CAPS body text reads as shouting on a notice the subject must
     // ACTUALLY read. Police-form ALL-CAPS convention belongs on field
     // labels and table cells; the prose paragraphs here opt out via
     // preserveCase so the document reads as a professional legal notice
-    // rather than a 1990s warrant printout. (The "lead" line above stays
+    // rather than a 1990s warrant printout. (The lead band above stays
     // caps deliberately — emphasis, not body.)
     const noticeText =
       `${company}, a private process service agency, has attempted to deliver the legal document(s) ` +
@@ -880,23 +895,26 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
   });
-  y += SPACING.SM;
+  y += SPACING.LG;
 
   // ── Contact line (recipient-facing call-to-action) ──
   // The disclaimer above tells the recipient to "contact our office to
   // arrange delivery" but never prints the number. Surface the dispatch /
   // server phone in a clean centered bold line below the signature so the
   // person at the door can call without having to look up the agency.
+  // SPACING.LG gap before this line keeps the call-to-action from feeling
+  // like a continuation of the signature block (which is sworn-style and
+  // visually closed) — clearly its own section.
   if (data.serverPhone) {
-    y = checkPageBreak(doc, y, 10);
+    y = checkPageBreak(doc, y, 12);
     const pageWidth = doc.internal.pageSize.getWidth();
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     doc.text(`To arrange delivery, contact ${company}: ${data.serverPhone}`,
-      pageWidth / 2, y, { align: 'center' });
-    y += 5;
+      pageWidth / 2, y + 3, { align: 'center' });
+    y += 8;
   }
   y += SPACING.MD;
 
@@ -914,7 +932,9 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     addPageFooter(doc, i, totalPages, 'serve_notice_of_attempt');
-    if (i > 1) addConfidentialWatermark(doc);
+    // Watermark intentionally omitted on the Notice of Attempt — it's
+    // recipient-facing, and the diagonal CONFIDENTIAL caused strikethrough
+    // appearance on the disclaimer paragraph's first line.
   }
 
   finalizePoliceReport(doc, {
