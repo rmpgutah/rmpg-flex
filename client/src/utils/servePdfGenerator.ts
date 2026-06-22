@@ -94,7 +94,20 @@ export interface AffidavitOfNonServiceData {
 // service block instead of a perjury declaration and notary section.
 export interface NoticeOfAttemptData {
   noticeDate: string;
+  /**
+   * The COURT case number (e.g. "2026-CA-000610") for field "5. Case Number".
+   * Empty / undefined renders as N/A. This is NOT the agency's internal
+   * reference — that goes in agencyRefNumber and prints in the header.
+   */
   caseNumber: string;
+  /**
+   * The AGENCY's internal reference (CFS#, serve_queue JOB#, etc.). Renders
+   * at the top-right of the NIBRS header under the "AGENCY REF #" label so
+   * the recipient can quote it back when calling our office. Falls back to
+   * caseNumber when not supplied (preserves the old behavior for callers
+   * that haven't been updated).
+   */
+  agencyRefNumber?: string;
   courtName: string;
   jurisdiction: string;
   serverName: string;
@@ -682,12 +695,19 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
 
-  setActiveCaseNumber(data.caseNumber);
+  // Header uses agencyRefNumber when supplied (the AGENCY's internal CFS
+  // or job ref); falls back to caseNumber for back-compat with callers
+  // that pre-date the agencyRefNumber field. Label switches accordingly
+  // so the recipient knows whether they're looking at OUR reference vs
+  // the court's case number.
+  const headerRef = data.agencyRefNumber || data.caseNumber;
+  setActiveCaseNumber(headerRef);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
     formTitle: 'NOTICE OF ATTEMPT TO SERVE',
-    caseNumber: data.caseNumber,
+    caseNumber: headerRef,
+    caseNumberLabel: data.agencyRefNumber ? 'AGENCY REF #' : 'CASE NUMBER',
   });
 
   // ── Notice Date ──
@@ -707,7 +727,11 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
   y = checkPageBreak(doc, y, 15);
   { const sec = openAutoSection(doc, 'Case Information', y); y = sec.contentY;
     const fy1 = addFieldPair(doc, '4. Court', data.courtName, lx, y, hfw);
-    const fy2 = addFieldPair(doc, '5. Case Number', data.caseNumber, rx, y, hfw);
+    // Field 5 prints the COURT case number, never the agency ref. When
+    // operator hasn't entered a court case, render N/A — the agency CFS#
+    // already shows in the header.
+    const courtCaseDisplay = (data.caseNumber && data.caseNumber !== headerRef) ? data.caseNumber : 'N/A';
+    const fy2 = addFieldPair(doc, '5. Case Number', courtCaseDisplay, rx, y, hfw);
     y = Math.max(fy1, fy2);
     // Hiring Party label: when both the attorney and the client are on
     // record, show both with role disambiguation ("Atty / Client") so the

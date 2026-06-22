@@ -114,6 +114,19 @@ export function psoResultLabel(result: string): string {
 }
 
 /**
+ * Strip the trailing country tag from a geocoded address.
+ *   "745 East Village Way, Sandy, Utah 84094, United States"
+ *     → "745 East Village Way, Sandy, Utah 84094"
+ * Mapbox / nominatim / Google all append ", United States" (or "USA") to
+ * geocoded addresses, but a domestic recipient-facing notice doesn't need
+ * the country line — it just clutters the "2. Service Address" cell.
+ */
+function trimCountrySuffix(raw: string | null | undefined): string {
+  if (!raw) return '';
+  return String(raw).replace(/,\s*(United States|USA|US)\.?\s*$/i, '').trim();
+}
+
+/**
  * "subpoena_service" → "Subpoena Service"; "civil_summons" → "Civil Summons".
  * The dispatch autofill stores enum-shaped values (snake_case) in
  * pso_service_type when the operator picks from a dropdown. The recipient-
@@ -187,10 +200,14 @@ export async function generateNoticeOfCommunication(data: NoticeOfCommunicationD
   });
 
   const adapter: NoticeOfAttemptData = {
-    // The Notice of Attempt template's "Case Number" slot accepts whatever
-    // identifier the operator should print at the top — prefer the court
-    // case number, fall back to the agency reference (CFS) number.
-    caseNumber: data.courtCaseNumber || data.callNumber || 'N/A',
+    // Field "5. Case Number" prints the COURT case number ONLY — never the
+    // agency CFS reference. When no court case has been entered, the field
+    // shows N/A and the recipient knows to look at the header's AGENCY
+    // REF # for our internal tracking number.
+    caseNumber: data.courtCaseNumber || '',
+    // Header AGENCY REF # — the CFS call number. Always available; never
+    // duplicates field 5.
+    agencyRefNumber: data.callNumber || undefined,
     noticeDate: data.noticeDate,
     courtName: data.courtName || 'N/A',
     jurisdiction: 'Salt Lake County, Utah',
@@ -200,7 +217,7 @@ export async function generateNoticeOfCommunication(data: NoticeOfCommunicationD
     serverPhone: data.dispatchPhone || data.officerPhone,
     signature: data.signature,
     recipientName: recipient,
-    recipientAddress: data.serviceAddress || 'Address on file',
+    recipientAddress: trimCountrySuffix(data.serviceAddress) || 'Address on file',
     documentType: humanizeServiceType(data.serviceType) || 'Legal Documents',
     // The contracting client maps cleanly onto the Hiring Party slot — keeps
     // the recipient-facing notice honest about who originated the request.

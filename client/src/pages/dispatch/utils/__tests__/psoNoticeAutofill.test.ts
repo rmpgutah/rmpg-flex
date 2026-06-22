@@ -53,7 +53,10 @@ describe('buildNoticeOfCommunicationFromCall', () => {
     const d = buildNoticeOfCommunicationFromCall(failedPsoCall, ctx);
     expect(d.attempts).toHaveLength(1);
     expect(d.attempts[0].number).toBe(2);
-    expect(d.attempts[0].date).toBe('2026-06-09');
+    // splitStamp now returns MM/DD/YYYY (US legal-document convention)
+    // so the table column matches the notice-date format. Raw ISO was
+    // leaking through to the recipient copy.
+    expect(d.attempts[0].date).toBe('06/09/2026');
     expect(d.attempts[0].time).toBe('03:15');
     expect(d.attempts[0].result).toBe('no_contact');
     expect(d.attempts[0].notes).toContain('No answer');
@@ -143,7 +146,7 @@ describe('buildNoticeOfCommunicationFromCall', () => {
     expect(d.attempts).toHaveLength(3);
     // Sorted ascending by visit_number — recipient reads the chain in order.
     expect(d.attempts.map((a) => a.number)).toEqual([1, 2, 3]);
-    expect(d.attempts[0].date).toBe('2026-06-07');
+    expect(d.attempts[0].date).toBe('06/07/2026');
     expect(d.attempts[0].time).toBe('14:00');
     expect(d.attempts[0].notes).toContain('No answer');
     expect(d.attempts[1].notes).toContain('Gate locked');
