@@ -937,6 +937,58 @@
 //        Dispatch). Theme: warrant-banner ⚠️ emoji → Lucide
 //        AlertTriangle; restored-draft #1a1500 → rgb(var(--sev-warn-rgb)
 //        / 0.08) (same lift as Patrol PR #1595).
+// v1041: Fleet (/fleet, v2 shell) — Page 24 of the full-app frontend pass.
+//        Honors the cross-page URL deep-link contract and seals six
+//        recon gaps the FleetShell v2 ship missed:
+//          • /fleet/v2/vehicles?vehicle_id=<id> (alias ?fleet_id=)
+//            auto-redirects into the path-based /fleet/v2/vehicles/:id
+//            detail screen and strips the query so back-button doesn't
+//            re-fire. Optional ?tab=<tab> carries through to the detail
+//            tab — same shape every other audited page uses.
+//          • /fleet/v2/vehicles/:id?tab=<tab> is now URL-driven (sync'd
+//            both ways via useSearchParams): paste a court-prep link
+//            straight to ?tab=inspections, back/forward navigates tabs,
+//            unknown ?tab= values are silently stripped instead of
+//            leaving stale junk in the address bar. The Overview tab is
+//            the default and clean (no ?tab=overview noise in the URL).
+//          • Insights period-storage privacy: the saved-period key
+//            `rmpg_fleet_insights_period` was shared across every
+//            operator on the same MDT (dispatch ↔ patrol on one
+//            terminal — real). Now scoped per user
+//            `rmpg_fleet_insights_period_<user.id>` with a one-time
+//            read-through migration from the bare key so existing
+//            preferences survive. Pattern mirrors LawBookPage's
+//            `rmpg_lawbook_recent_<user.id>`.
+//          • Dashboard rendered-but-never-fetched fix: the three cards
+//            ("Upcoming Service", "Recent Fuel Entries", "Recent
+//            Inspections") used to display literal text ("Service items
+//            due in the next 7 days") with no API call backing it.
+//            Now wired to /fleet/analytics?period=90d +
+//            /fleet/overdue-inspections (Promise.allSettled, each cell
+//            degrades to '—' on outage). Third card renamed
+//            "Inspection Issues" since the count it now shows is
+//            overdue + failing, not a recent-activity feed.
+//          • NewWorkOrderModal Esc smart-cascade: the modal opened
+//            but Esc on the keyboard did nothing — operator had to
+//            click X or backdrop. Now Esc closes the modal (blocked
+//            during in-flight save so a stuck spinner doesn't strand
+//            data) with stopPropagation so it doesn't bubble to the
+//            FleetShell.
+//          • Theme/emoji cleanup: brand-gold literal `#d4a017` in two
+//            recharts <Scatter>/<Bar> fills (recharts can't follow
+//            `var(--…)` at runtime — it copies the prop into a
+//            generated `<path fill="…">`) now resolved at mount via
+//            getComputedStyle(--brand-gold), with the hex as the SSR
+//            fallback. `✓` text → `<Check />` Lucide icon in the
+//            anomalies all-clear chip; `✕` text → `<X />` Lucide icon
+//            in the new-WO modal close button (now also has the
+//            aria-label "Close" that was missing). NewWO backdrop
+//            switched from inline `rgba(0,0,0,0.6)` to
+//            `bg-black/60 backdrop-blur-sm` for theme consistency.
+//        No D1 migration, no Worker route changes — client-only.
+//        88 fleet/v2 tests still pass; added a user-scoping/migration
+//        test for readSavedPeriod and adjusted two existing tests for
+//        the new card title + renamed cards.
 // v1040: Personnel (/personnel) — kill 6 native window.confirm() prompts
 //        + cross-page URL deep-link contract + Esc smart-cascade +
 //        `N` keyboard shortcut + theme sweep + user-scoped tab key.

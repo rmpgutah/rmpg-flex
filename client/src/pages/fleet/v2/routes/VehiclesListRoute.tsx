@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { LayoutGrid, Table as TableIcon, Plus } from 'lucide-react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { FleetListShell } from '../shell/FleetListShell';
@@ -26,9 +26,37 @@ type ViewMode = 'card' | 'table';
 
 export function VehiclesListRoute() {
   useFleetV2View('/fleet/v2/vehicles');
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState<FleetVehicleRow[]>([]);
   const [search, setSearch] = useState('');
   const [mode, setMode] = useState<ViewMode>('card');
+
+  // Deep-link contract: `?vehicle_id=42` (or `?fleet_id=42`, same semantics —
+  // operators arrive here from Dispatch / Map / GPS pills with either) drops
+  // the operator straight onto the vehicle detail screen and strips the
+  // query so back-button doesn't re-fire the redirect. Falls back to the
+  // direct path API even if the row isn't in the limit=500 list (large
+  // fleets / soft-deleted rows). Pattern lifted from the prior page audits
+  // (warrants, FI, cases) so deep-links are uniform across the app.
+  useEffect(() => {
+    const raw = searchParams.get('vehicle_id') ?? searchParams.get('fleet_id');
+    if (!raw) return;
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      // strip junk
+      const next = new URLSearchParams(searchParams);
+      next.delete('vehicle_id'); next.delete('fleet_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    // strip first so the redirect doesn't loop on back-button
+    const next = new URLSearchParams(searchParams);
+    next.delete('vehicle_id'); next.delete('fleet_id');
+    const tab = searchParams.get('tab');
+    setSearchParams(next, { replace: true });
+    navigate(`/fleet/v2/vehicles/${n}${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`, { replace: true });
+  }, [searchParams, setSearchParams, navigate]);
 
   // ─── New Vehicle modal state ────────────────────────────
   // The header button used to be unwired (zero onClick) — click did nothing.
