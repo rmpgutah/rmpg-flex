@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { FleetListShell } from '../shell/FleetListShell';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 import { safeDateTimeStr } from '../../../../utils/dateUtils';
@@ -29,7 +29,7 @@ export function GpsTrackingRoute() {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<GpsVehicle[] | { vehicles: GpsVehicle[] }>('/clearpathgps/vehicles')
+    apiFetchV2<GpsVehicle[] | { vehicles: GpsVehicle[] }>('/clearpathgps/vehicles')
       .then((r) => {
         if (cancelled) return;
         const arr = Array.isArray(r) ? r : (r && 'vehicles' in r && Array.isArray((r as { vehicles: GpsVehicle[] }).vehicles)) ? (r as { vehicles: GpsVehicle[] }).vehicles : [];

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 
 /** Real /api/fleet/analytics shape (src/routes/fleet.ts:484-498).
  *  status_breakdown: counts by status; fleet_summary: aggregate costs over
@@ -34,8 +34,8 @@ export function KpiRibbon() {
   useEffect(() => {
     let cancelled = false;
     Promise.allSettled([
-      apiFetch<AnalyticsResp>('/fleet/analytics?period=90d'),
-      apiFetch<OverdueResp>('/fleet/overdue-inspections'),
+      apiFetchV2<AnalyticsResp>('/fleet/analytics?period=90d'),
+      apiFetchV2<OverdueResp>('/fleet/overdue-inspections'),
     ]).then(([a, o]) => {
       if (cancelled) return;
       const next: KpiData = {};

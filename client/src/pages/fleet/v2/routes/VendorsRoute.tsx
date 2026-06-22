@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { FleetListShell } from '../shell/FleetListShell';
 import { LegacyActionLink } from '../shell/LegacyActionLink';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
@@ -23,7 +23,7 @@ export function VendorsRoute() {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<VendorRow[]>('/fleet/fuel/vendors')
+    apiFetchV2<VendorRow[]>('/fleet/fuel/vendors')
       .then((r) => { if (!cancelled) setRows(Array.isArray(r) ? r : []); })
       .catch(() => { if (!cancelled) setRows([]); })
       .finally(() => { if (!cancelled) setLoading(false); });

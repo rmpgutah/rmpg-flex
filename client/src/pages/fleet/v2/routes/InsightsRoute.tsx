@@ -25,7 +25,7 @@ import {
   XAxis, YAxis, ZAxis, Tooltip, CartesianGrid,
   BarChart, Bar, Legend,
 } from 'recharts';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { SectionHeader } from '../shell/SectionHeader';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 
@@ -53,7 +53,7 @@ function KpiRibbonFleetIo({ period }: { period: Period }) {
   useEffect(() => {
     let cancelled = false;
     setData(null); setError(null);
-    apiFetch<KpiResp>(`/fleet-viz/kpi?period=${period}`)
+    apiFetchV2<KpiResp>(`/fleet-viz/kpi?period=${period}`)
       .then((r) => { if (!cancelled) setData(r); })
       .catch((err) => { if (!cancelled) setError(err?.message ?? 'Failed to load'); });
     return () => { cancelled = true; };
@@ -100,7 +100,7 @@ function ReadinessCard() {
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ data: ReadinessRow[] }>('/fleet-viz/readiness')
+    apiFetchV2<{ data: ReadinessRow[] }>('/fleet-viz/readiness')
       .then((r) => { if (!cancelled) setRows(r.data ?? []); })
       .catch((err) => { if (!cancelled) setError(err?.message ?? 'Failed to load'); });
     return () => { cancelled = true; };
@@ -175,7 +175,7 @@ function CallsPerGallonCard({ period }: { period: Period }) {
   useEffect(() => {
     let cancelled = false;
     setRows(null); setError(null);
-    apiFetch<{ data: CallsPerGallonRow[] }>(`/fleet-viz/calls-per-gallon?period=${period}`)
+    apiFetchV2<{ data: CallsPerGallonRow[] }>(`/fleet-viz/calls-per-gallon?period=${period}`)
       .then((r) => { if (!cancelled) setRows(r.data ?? []); })
       .catch((err) => { if (!cancelled) setError(err?.message ?? 'Failed to load'); });
     return () => { cancelled = true; };
@@ -352,7 +352,7 @@ function MpgByOfficerScatterCard({ period }: { period: Period }) {
   useEffect(() => {
     let cancelled = false;
     setData(null); setErr(null);
-    apiFetch<MpgByOfficerResp>(`/fleet-viz/mpg-by-officer?period=${period}`)
+    apiFetchV2<MpgByOfficerResp>(`/fleet-viz/mpg-by-officer?period=${period}`)
       .then((r) => { if (!cancelled) setData(r); })
       .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
     return () => { cancelled = true; };
@@ -415,7 +415,7 @@ function CostPerMileStackCard({ period }: { period: Period }) {
   useEffect(() => {
     let cancelled = false;
     setData(null); setErr(null);
-    apiFetch<CostPerMileResp>(`/fleet-viz/cost-per-mile?period=${period}`)
+    apiFetchV2<CostPerMileResp>(`/fleet-viz/cost-per-mile?period=${period}`)
       .then((r) => { if (!cancelled) setData(r); })
       .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
     return () => { cancelled = true; };
@@ -478,7 +478,7 @@ function FuelAnomaliesCard({ period }: { period: Period }) {
   useEffect(() => {
     let cancelled = false;
     setData(null); setErr(null);
-    apiFetch<FuelAnomaliesResp>(`/fleet-viz/fuel-anomalies?period=${period}`)
+    apiFetchV2<FuelAnomaliesResp>(`/fleet-viz/fuel-anomalies?period=${period}`)
       .then((r) => { if (!cancelled) setData(r); })
       .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
     return () => { cancelled = true; };
@@ -549,7 +549,7 @@ function PmUpcomingCard() {
   useEffect(() => {
     let cancelled = false;
     setData(null); setErr(null);
-    apiFetch<PmUpcomingResp>('/fleet-viz/pm-upcoming?limit=12')
+    apiFetchV2<PmUpcomingResp>('/fleet-viz/pm-upcoming?limit=12')
       .then((r) => { if (!cancelled) setData(r); })
       .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
     return () => { cancelled = true; };
@@ -618,7 +618,7 @@ function WorkOrderFlowCard({ period }: { period: Period }) {
   useEffect(() => {
     let cancelled = false;
     setData(null); setErr(null);
-    apiFetch<WoFlowResp>(`/fleet-viz/work-order-flow?period=${period}`)
+    apiFetchV2<WoFlowResp>(`/fleet-viz/work-order-flow?period=${period}`)
       .then((r) => { if (!cancelled) setData(r); })
       .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
     return () => { cancelled = true; };
@@ -701,7 +701,7 @@ function PmTimelineCard() {
   useEffect(() => {
     let cancelled = false;
     setData(null); setErr(null);
-    apiFetch<PmTimelineResp>('/fleet-viz/pm-timeline?horizon_days=90')
+    apiFetchV2<PmTimelineResp>('/fleet-viz/pm-timeline?horizon_days=90')
       .then((r) => { if (!cancelled) setData(r); })
       .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
     return () => { cancelled = true; };
@@ -803,7 +803,7 @@ function FleetMapCard() {
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      apiFetch<FleetMapResp>('/fleet-viz/fleet-map')
+      apiFetchV2<FleetMapResp>('/fleet-viz/fleet-map')
         .then((r) => { if (!cancelled) { setData(r); setErr(null); } })
         .catch((e) => { if (!cancelled) setErr(e?.message ?? 'Failed to load'); });
     };

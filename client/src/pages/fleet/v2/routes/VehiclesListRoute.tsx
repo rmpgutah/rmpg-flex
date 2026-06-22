@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { LayoutGrid, Table as TableIcon, Plus } from 'lucide-react';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { FleetListShell } from '../shell/FleetListShell';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 import VehicleFormModal, {
@@ -45,7 +45,7 @@ export function VehiclesListRoute() {
     // `Array.isArray(r) ? r : []` was correct against crashes but silently
     // hid the data. Extract .data explicitly; accept a bare array too in
     // case the contract ever simplifies.
-    apiFetch<FleetVehicleRow[] | { data: FleetVehicleRow[] }>('/fleet?limit=500')
+    apiFetchV2<FleetVehicleRow[] | { data: FleetVehicleRow[] }>('/fleet?limit=500')
       .then((r) => {
         const arr = Array.isArray(r)
           ? r
@@ -88,7 +88,7 @@ export function VehiclesListRoute() {
         equipment: equipArr,
         notes: form.notes.trim() || null,
       };
-      await apiFetch('/fleet', { method: 'POST', body: JSON.stringify(payload) });
+      await apiFetchV2('/fleet', { method: 'POST', body: JSON.stringify(payload) });
       setToast({ kind: 'ok', text: `Vehicle "${payload.vehicle_number}" created.` });
       setModalOpen(false);
       fetchRows();

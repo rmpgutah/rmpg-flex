@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { OverviewTab } from '../vehicleDetail/OverviewTab';
 import { ServiceTab } from '../vehicleDetail/ServiceTab';
 import { InspectionsTab } from '../vehicleDetail/InspectionsTab';
@@ -56,7 +56,7 @@ export function VehicleDetailRoute() {
 
   useEffect(() => {
     if (!id) return;
-    apiFetch<FleetVehicleDetail>(`/fleet/${id}`).then(setVehicle).catch(() => setVehicle(null));
+    apiFetchV2<FleetVehicleDetail>(`/fleet/${id}`).then(setVehicle).catch(() => setVehicle(null));
   }, [id]);
 
   if (!vehicle) return <div className="p-4 text-rmpg-400 text-sm">Loading vehicle #{id}…</div>;

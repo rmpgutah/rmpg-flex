@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { FleetListShell } from '../shell/FleetListShell';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 import { safeDateStr, safeDateTimeStr } from '../../../../utils/dateUtils';
@@ -32,8 +32,8 @@ export function DashCamerasRoute() {
   useEffect(() => {
     let cancelled = false;
     Promise.allSettled([
-      apiFetch<CameraRow[]>('/fleet/dash-cameras'),
-      apiFetch<VideoRow[]>('/fleet/dashcam-videos'),
+      apiFetchV2<CameraRow[]>('/fleet/dash-cameras'),
+      apiFetchV2<VideoRow[]>('/fleet/dashcam-videos'),
     ]).then(([c, v]) => {
       if (cancelled) return;
       if (c.status === 'fulfilled' && Array.isArray(c.value)) setCameras(c.value);

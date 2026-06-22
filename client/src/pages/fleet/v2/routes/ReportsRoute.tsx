@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowRight, Activity, Wrench, AlertTriangle, TrendingUp, Users, CalendarCheck, DollarSign, ClipboardCheck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { SectionHeader } from '../shell/SectionHeader';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 
@@ -79,7 +79,7 @@ function Card({ title, icon: Icon, loading, headline, secondary, tone = 'neutral
 
 function HealthScoresCard() {
   const [data, setData] = useState<HealthScoresResp | null>(null);
-  useEffect(() => { apiFetch<HealthScoresResp>('/fleet/health-scores').then(setData).catch(() => setData({})); }, []);
+  useEffect(() => { apiFetchV2<HealthScoresResp>('/fleet/health-scores').then(setData).catch(() => setData({})); }, []);
   const scores = asArr<{ score?: number }>(data?.health_scores);
   const avg = scores.length > 0 ? scores.reduce((s, r) => s + (r.score ?? 0), 0) / scores.length : null;
   const low = scores.filter((r) => (r.score ?? 100) < 60).length;
@@ -97,7 +97,7 @@ function HealthScoresCard() {
 
 function MaintenanceScheduleCard() {
   const [data, setData] = useState<MaintScheduleResp | null>(null);
-  useEffect(() => { apiFetch<MaintScheduleResp>('/fleet/maintenance-schedule').then(setData).catch(() => setData({})); }, []);
+  useEffect(() => { apiFetchV2<MaintScheduleResp>('/fleet/maintenance-schedule').then(setData).catch(() => setData({})); }, []);
   const schedule = asArr<{ due_soon?: boolean; overdue?: boolean }>(data?.schedule);
   const overdue = schedule.filter((s) => s.overdue).length;
   const dueSoon = schedule.filter((s) => s.due_soon).length;
@@ -115,7 +115,7 @@ function MaintenanceScheduleCard() {
 
 function ServiceAlertsCard() {
   const [data, setData] = useState<ServiceAlertsResp | null>(null);
-  useEffect(() => { apiFetch<ServiceAlertsResp>('/fleet/service-alerts').then(setData).catch(() => setData({})); }, []);
+  useEffect(() => { apiFetchV2<ServiceAlertsResp>('/fleet/service-alerts').then(setData).catch(() => setData({})); }, []);
   const alerts = asArr<{ severity?: string }>(data?.all_alerts);
   const critical = alerts.filter((a) => (a.severity ?? '').toLowerCase() === 'critical' || (a.severity ?? '').toLowerCase() === 'high').length;
   return (
@@ -132,7 +132,7 @@ function ServiceAlertsCard() {
 
 function OverdueInspectionsCard() {
   const [data, setData] = useState<OverdueResp | null>(null);
-  useEffect(() => { apiFetch<OverdueResp>('/fleet/overdue-inspections').then(setData).catch(() => setData({})); }, []);
+  useEffect(() => { apiFetchV2<OverdueResp>('/fleet/overdue-inspections').then(setData).catch(() => setData({})); }, []);
   const alerts = asArr(data?.alerts);
   return (
     <Card
@@ -148,7 +148,7 @@ function OverdueInspectionsCard() {
 
 function CostTrendsCard() {
   const [data, setData] = useState<CostTrendsResp | null>(null);
-  useEffect(() => { apiFetch<CostTrendsResp>('/fleet/cost-trends').then(setData).catch(() => setData({})); }, []);
+  useEffect(() => { apiFetchV2<CostTrendsResp>('/fleet/cost-trends').then(setData).catch(() => setData({})); }, []);
   const trends = asArr<{ month?: string; total?: number }>(data?.cost_trends);
   const latest = trends[trends.length - 1];
   const prev = trends[trends.length - 2];
@@ -169,7 +169,7 @@ function CostTrendsCard() {
 
 function MonthlySpendCard() {
   const [data, setData] = useState<MonthlySpendResp | null>(null);
-  useEffect(() => { apiFetch<MonthlySpendResp>('/fleet/monthly-spend?months=8').then(setData).catch(() => setData({})); }, []);
+  useEffect(() => { apiFetchV2<MonthlySpendResp>('/fleet/monthly-spend?months=8').then(setData).catch(() => setData({})); }, []);
   const months = asArr<{ month?: string; total?: number }>(data?.monthly_spend);
   const latest = months[months.length - 1];
   const avg = months.length > 0 ? months.reduce((s, m) => s + (m.total ?? 0), 0) / months.length : null;
@@ -186,7 +186,7 @@ function MonthlySpendCard() {
 
 function DriverPerformanceCard() {
   const [data, setData] = useState<DriverPerfResp | null>(null);
-  useEffect(() => { apiFetch<DriverPerfResp>('/fleet/driver-performance').then(setData).catch(() => setData({})); }, []);
+  useEffect(() => { apiFetchV2<DriverPerfResp>('/fleet/driver-performance').then(setData).catch(() => setData({})); }, []);
   const drivers = asArr(data?.drivers);
   return (
     <Card
@@ -201,7 +201,7 @@ function DriverPerformanceCard() {
 
 function LifecycleCard() {
   const [data, setData] = useState<LifecycleResp | null>(null);
-  useEffect(() => { apiFetch<LifecycleResp>('/fleet/vehicle-lifecycle').then(setData).catch(() => setData({})); }, []);
+  useEffect(() => { apiFetchV2<LifecycleResp>('/fleet/vehicle-lifecycle').then(setData).catch(() => setData({})); }, []);
   const lifecycle = asArr(data?.lifecycle);
   return (
     <Card
