@@ -810,6 +810,78 @@
 //        Dispatch). Theme: warrant-banner ⚠️ emoji → Lucide
 //        AlertTriangle; restored-draft #1a1500 → rgb(var(--sev-warn-rgb)
 //        / 0.08) (same lift as Patrol PR #1595).
+// v1040: Personnel (/personnel) — kill 6 native window.confirm() prompts
+//        + cross-page URL deep-link contract + Esc smart-cascade +
+//        `N` keyboard shortcut + theme sweep + user-scoped tab key.
+//        23rd consecutive page-pass on the deep-link contract.
+//          • Six destructive flows (delete schedule / credential /
+//            equipment / body camera / video / time entry) routed
+//            through a single shared ConfirmDialog instead of the
+//            blocking native modal. Each handler now publishes a
+//            { title, message, onConfirm } record to a centralized
+//            deleteConfirm state — one dialog instance, one Esc
+//            target, one audit point. The body-cam video confirm
+//            message also names the chain-of-custody side-effect
+//            ("custody record will note the deletion") instead of
+//            the generic "this cannot be undone" — operators were
+//            unaware deletion was logged, leading them to hesitate
+//            on routine purges of duplicate uploads.
+//          • Deep-link: /personnel?officer_id=<id> | ?personnel_id=
+//            <id> | ?employee_id=<id> all auto-select. Linker
+//            surfaces use different names (warrants/incidents use
+//            officer_id, HR exports use personnel_id, payroll uses
+//            employee_id) — accepting all three means external
+//            bookmarks survive without knowing our internal
+//            preference. If the target is not in the active view,
+//            the page auto-flips to archives and retries (so a
+//            terminated officer's link still resolves) before
+//            surfacing "not found". Params stripped after select
+//            so a hard refresh doesn't re-trigger.
+//          • Esc smart-cascade: closes the smallest-open thing
+//            first (playing video → editing video → delete confirm
+//            → terminate confirm → primary modal → selected
+//            officer). The old hard-coded "Esc closes editingVideo
+//            only" left every other modal captive to its own close
+//            button; opening a credential form on top of an
+//            officer selection and pressing Esc dismissed the
+//            video preview that wasn't even on screen.
+//          • `N` shortcut → New Officer on the Roster tab (mirrors
+//            Dispatch / FI / Court / Citations). Typing-suppressed
+//            via input/textarea/select/contentEditable check so a
+//            "Norman" search query doesn't open the form.
+//          • Theme: 3 `#d4a017` literals in DashboardWidgets
+//            (HoursTrendCard linearGradient stops + AreaChart
+//            stroke) → `var(--brand-gold)` so the Last-7-Days hours
+//            chart re-themes between night/day/legacy without code
+//            changes. (Recharts SVG resolves CSS custom properties
+//            via paint-attr inheritance, verified by render in
+//            both palettes.)
+//          • Privacy: `rmpg_personnel_tab` localStorage key now
+//            suffixed with the user id (DlSearch #1601 / Warrants
+//            #1608 pattern). Was the only personnel localStorage
+//            key without a per-user suffix — the seven modal form-
+//            draft keys auto-discard on submit so they don't carry
+//            the same shared-workstation leak, but the last-active
+//            tab persisted across users on the same browser
+//            (supervisor leaving "Credentials" tab open → next
+//            officer's first land on a tab they don't normally
+//            use).
+//          • False-positive lessons:
+//            - Court-ready PDF — DEFERRED on purpose. The page
+//              already ships PrintRecordButton in PersonnelDetailPanel
+//              (5 server-side report types: Full / Credentials /
+//              Training / Equipment / Time). Adding a client-side
+//              court-ready PDF here would duplicate that surface
+//              and confuse the print menu. The HR-file print path
+//              is well-covered.
+//            - "Hydrate UI state from server on mount" — already
+//              fully wired (fetchCoreData + useLiveSync 'personnel'
+//              + per-tab lazy loads). No action.
+//            - Personnel-specific completeness checks (certification
+//              expiry indicators, training reminders, on-duty roster
+//              sync) — already wired: credential alert chip on
+//              roster row, expiringCreds count on Credentials tab,
+//              roster row LED + Duty Board tab. No gap.
 // v1038: Offender Registry (/nsopw, /offender-registry redirect) —
 //        court-ready PDF + deep-link + photo embed. 21st consecutive
 //        page-pass for the cross-page contract; NSOPW data is now the
