@@ -155,13 +155,46 @@ export function buildNoticeOfCommunicationFromCall(
     || filled.closed_at
     || filled.created_at,
   );
-  const attempt: NoticeOfCommunicationAttempt = {
+  const currentAttempt: NoticeOfCommunicationAttempt = {
     number: filled.pso_attempt_number || 1,
     date: stamp.date,
     time: stamp.time,
     result: filled.disposition || 'no_contact',
     notes: filled.action_taken || lastNoteText(filled.notes) || '',
   };
+
+  // Surface the full PSO chain on every notice — every prior visit becomes
+  // its own attempt row so a respondent's second / third / fourth notice
+  // reads as a coherent record of all attempts, not just the latest.
+  // visit_history comes from GET /api/dispatch/calls/:id (server-side
+  // reconstruction via calls_for_service_ext.parent_call_id); the opener
+  // backfills it via fetchVisitHistoryForCall when it's missing from the
+  // CallForService payload (list views don't include it).
+  const historyRows = Array.isArray(call.visit_history) ? call.visit_history : [];
+  const priorAttempts: NoticeOfCommunicationAttempt[] = historyRows.map((v) => {
+    const visitTs = v.onscene_at || v.enroute_at || v.cleared_at || v.closed_at || v.created_at;
+    const visitStamp = splitStamp(visitTs);
+    return {
+      number: v.visit_number || 0,
+      date: visitStamp.date,
+      time: visitStamp.time,
+      result: v.disposition || 'no_contact',
+      notes: v.note || '',
+    };
+  });
+
+  // Combine + dedup by visit_number (the server query excludes the current
+  // call via `c.id < ?`, but a future change could include it — guard
+  // anyway so the same attempt never lists twice).
+  const merged = [...priorAttempts, currentAttempt];
+  const seen = new Set<number>();
+  const attempts = merged
+    .filter((a) => {
+      if (seen.has(a.number)) return false;
+      seen.add(a.number);
+      return true;
+    })
+    .sort((a, b) => a.number - b.number);
 
   const noticeDate = new Date().toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
@@ -188,7 +221,7 @@ export function buildNoticeOfCommunicationFromCall(
     serviceAddress: filled.location || filled.process_served_address || 'Address on file',
     authorization: filled.pso_authorization || undefined,
     billingCode: filled.pso_billing_code || undefined,
-    attempts: [attempt],
+    attempts,
     redispatchCallNumber: ctx.redispatchCallNumber,
     nextWindow: ctx.nextWindow,
     officerName: ctx.officerName,
@@ -212,10 +245,36 @@ export function buildNoticeOfCommunicationFromCall(
  * Throws on failure so callers can toast.
  */
 export async function openNoticeOfCommunication(call: CallForService, ctx: PsoNoticeContext): Promise<void> {
+  // Backfill visit_history if missing. The dispatch list views ship calls
+  // without it (only the detail endpoint reconstructs the chain), and
+  // every notice past the first MUST surface the full sequence of attempts
+  // so the recipient sees a coherent record.
+  const enrichedCall = (Array.isArray(call.visit_history) && call.visit_history.length > 0)
+    ? call
+    : { ...call, visit_history: await fetchVisitHistoryForCall(call.id) };
   const serveJob = await fetchServeJobForCall(call.id);
-  const data = buildNoticeOfCommunicationFromCall(call, ctx, serveJob);
+  const data = buildNoticeOfCommunicationFromCall(enrichedCall, ctx, serveJob);
   const { generateNoticeOfCommunication } = await importWithRetry(() => import('../../../utils/psoNoticePdfGenerator'));
   const doc = await generateNoticeOfCommunication(data);
   const { openPdfDocument } = await importWithRetry(() => import('../../../utils/openPdfDocument'));
   openPdfDocument(doc, `Notice-of-Communication-${data.callNumber || 'PSO'}.pdf`);
+}
+
+/**
+ * Pulls the full PSO chain for a CFS via the dispatch detail endpoint. The
+ * server's GET /api/dispatch/calls/:id reconstructs visit_history from
+ * calls_for_service + calls_for_service_ext.parent_call_id (excluding the
+ * current call via `c.id < ?`). Returns empty on any failure so the caller
+ * just renders the current attempt — never throw a notice generation away
+ * because of a chain-lookup blip.
+ */
+export async function fetchVisitHistoryForCall(callId: string | number): Promise<any[]> {
+  try {
+    const { apiFetch } = await importWithRetry(() => import('../../../hooks/useApi'));
+    const detail = await apiFetch<any>(`/dispatch/calls/${encodeURIComponent(String(callId))}`);
+    const hist = detail && Array.isArray(detail.visit_history) ? detail.visit_history : [];
+    return hist;
+  } catch {
+    return [];
+  }
 }
