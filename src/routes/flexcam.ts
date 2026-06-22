@@ -4,6 +4,7 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { ensureFootageSchema, enqueueFootage } from '../utils/footage/captureOrchestrator';
+import { notConfigured } from '../utils/notConfigured';
 import { getClearPathSource } from '../utils/footage/clearpathSource';
 import { getApiConfig, listDevices, listMedia } from '../utils/clearpathGps';
 import { ensureMarkersSchema, buildFootageMarkers } from '../utils/footage/markers';
@@ -314,7 +315,7 @@ flexcam.get('/footage/:id/markers', async (c): Promise<Response> => {
 flexcam.post('/diagnose', requireRole('admin'), async (c): Promise<Response> => {
   const db = getDb(c.env);
   const client = await getApiConfig(db, c.env).catch(() => null);
-  if (!client) return c.json({ ok: false, error: 'ClearPath not configured (no refresh token)' }, 503);
+  if (!client) return notConfigured(c, 'clearpath_refresh_token_unset', { ok: false, error: 'ClearPath not configured (no refresh token)' });
   let body: { asset_id?: number; window_seconds?: number; lookback_minutes?: number };
   try { body = await c.req.json(); } catch { body = {}; }
 
@@ -379,7 +380,7 @@ flexcam.post('/backfill', requireRole('admin'), async (c): Promise<Response> => 
     "SELECT config_value FROM system_config WHERE config_key='flexcam_enabled' AND category='integrations' AND is_active=1 LIMIT 1",
   ).catch(() => null);
   if (enabled?.config_value !== 'true') {
-    return c.json({ error: 'Footage backfill unavailable — set flexcam_enabled=true in system_config (integrations)' }, 503);
+    return notConfigured(c, 'flexcam_enabled_flag_off', { error: 'Footage backfill unavailable — set flexcam_enabled=true in system_config (integrations)' });
   }
 
   // Configurable batch size (default 500; spec conservative was 200)
