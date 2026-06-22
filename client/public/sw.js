@@ -691,6 +691,20 @@
 //       enough; explicit load() re-fires 'ended' at end-of-clip = repeat bug);
 //       use canplay + readyState guard; pause() before src swap for clean
 //       play-promise teardown; MDT player + list pages (SW v998 squashed).
+// v1021: MDT end-of-shift PDF + deep-link + auth cleanup. The shift
+//        report download was a .txt file with Unicode-box borders for
+//        a year — replaced with a court-ready PDF (Arial banner, gold
+//        agency strap, 5-up summary tiles, per-section tables for
+//        calls/incidents/scans, two-signature block). New /mdt?call_id=
+//        URL contract makes the 4th consecutive page-pass to honor
+//        Dashboard's deep-link emit pattern — finds the call in
+//        my-calls or pending, sets it as selectedCall, switches the
+//        right tab. user_id reads from useAuth instead of localStorage
+//        (stale localStorage could attribute a freshly-submitted FI to
+//        the prior signed-out user). Theme: lifts UNIT_STATUSES,
+//        priority colors, hazard banner, channel badges, NCIC tab to
+//        semantic --sev-* tokens so a future tactical-day mode (if
+//        ever) re-themes automatically.
 // v1019: Dispatch deep-link + cleanup — /dispatch now honors ?call_id=
 //        from Dashboard "Calls Near Me" (and any other source), auto-
 //        selecting the target call and switching the filter tab so the
@@ -707,6 +721,22 @@
 //        new --brand-gold-rgb / --sev-*-rgb tokens in theme-palettes.css
 //        let opacity-tinted backgrounds use the canonical palette; 30+
 //        inline #d4a017 / rgba(220,38,38,…) literals lifted accordingly.
+// v1018: Dashboard truth-up — /reports/dashboard now returns
+//        activeWarrants/pendingServe/openCases/totalPersons (previously
+//        the page read these but the endpoint never returned them, so 3
+//        of 4 Status Summary cards permanently showed 0). New
+//        /reports/calls-near geo endpoint powers the patrol "Calls Near
+//        Me" panel with real distance-sorted active calls (was a fake
+//        duplicate of the global priority grid). Title-bar LED now
+//        tracks data-sync health (red=error, amber=stale>5min, green=ok)
+//        with a "Synced HH:MM" chip. Toolbar gained Quick Capture /
+//        Field Camera / Patrol Scan / Tasks (previously unreachable from
+//        the dashboard). Deep-link cards now pass ?status=active|pending|
+//        open so receiving pages land pre-filtered. BOLO nav corrected
+//        to /intel/bolos. Theme + a11y nits: lifted hardcoded
+//        rgba(136,136,136,…) values to rgb(var(--spm-text-muted-rgb)/α)
+//        (new token in theme-palettes.css for all 3 palette blocks);
+//        weather widget emoji 💧/💨 → Lucide <Droplets>/<Wind>.
 // v1017: FlexCam close-query honesty (Plan E — surface 'failed' on
 //        the request the moment the cron concludes a 0-downloaded
 //        trip instead of marking it 'partial' and waiting 6h for the
