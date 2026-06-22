@@ -44,6 +44,27 @@ async function ensureEvidenceSchema(db: D1Database): Promise<void> {
   evidenceSchemaReady = true;
 }
 
+// Mirrors ensureEvidenceSchema(): tolerates a live D1 that hasn't
+// yet had migration 0144 applied. Safe to call repeatedly — every
+// ALTER is guarded by columnExists().
+async function ensureRemuxSchema(db: D1Database): Promise<void> {
+  const adds: Array<[string, string]> = [
+    ['remux_state', 'TEXT'],
+    ['remux_started_at', 'INTEGER'],
+    ['remux_finished_at', 'INTEGER'],
+    ['remux_error', 'TEXT'],
+    ['remux_attempts', 'INTEGER DEFAULT 0'],
+    ['merged_sha256', 'TEXT'],
+  ];
+  for (const [col, ddl] of adds) {
+    const has = await columnExists(db, 'footage_requests', col).catch(() => false);
+    if (!has) {
+      await db.prepare(`ALTER TABLE footage_requests ADD COLUMN ${col} ${ddl}`)
+        .run().catch(() => {});
+    }
+  }
+}
+
 flexcam.get('/status', async (c): Promise<Response> => {
   const db = getDb(c.env);
   await ensureFootageSchema(db);
