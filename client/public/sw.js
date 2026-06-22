@@ -810,6 +810,49 @@
 //        Dispatch). Theme: warrant-banner ⚠️ emoji → Lucide
 //        AlertTriangle; restored-draft #1a1500 → rgb(var(--sev-warn-rgb)
 //        / 0.08) (same lift as Patrol PR #1595).
+// v1046: Reports & Analytics — Page 29 of the full-app frontend pass. The
+//        Reports page is the supervisor's main analytics console (incident
+//        type breakdowns, response time trends, officer activity, beat
+//        activity, citation revenue, daily briefing & weekly digest,
+//        approval queue, patrol-tracking PDF generator). Two native
+//        dialogs, no URL deep-link, no keyboard shortcuts, and the legacy
+//        pure-black grid stroke leaked through to chart chrome.
+//          • Native dialog cleanup (2 sites)
+//            – Supervisor "Return for revision" used window.prompt()
+//              with no row context — the supervisor saw "Return reason:"
+//              and had to click Cancel to remember WHICH report they
+//              were rejecting. Replaced with an inline modal that shows
+//              incident #, type, and author + badge before the textarea.
+//              Same pattern as Court Tracker #1607 and Cases #1604.
+//            – PatrolTrackingCard "No data for selected period" used
+//              window.alert() which blocked the render thread; replaced
+//              with a non-blocking toast so the supervisor can adjust
+//              the date range without hitting OK first.
+//          • URL deep-link contract — 22nd consecutive page-pass.
+//              /reports?range=last_30_days lands the supervisor on the
+//              right window immediately; /reports?range=custom&start_date=
+//              2026-06-01&end_date=2026-06-22 hydrates the custom picker;
+//              /reports?card=patrol-tracking scroll-pulses the patrol PDF
+//              generator into view (anchor list: approval-queue, patrol-
+//              tracking, crime-trends, beat-activity, citation-revenue,
+//              daily-briefing, weekly-digest, schedules-templates). The
+//              previous behavior silently dropped these params, even
+//              though supervisors routinely share Reports URLs in Slack.
+//              Mirror state -> URL via replace:true so refresh keeps the
+//              window without polluting the back-button history.
+//          • Esc smart-cascade — closes the error banner first, then
+//              exits Custom Range back to Last 14 Days. The previous
+//              page had no Esc binding at all. Inside the approval queue
+//              the inline return-reason modal owns Esc via capture-phase.
+//          • N keyboard shortcut → /reports/custom (New Custom Report).
+//              Mirrors the Dispatch/Patrol/FI/Evidence/Trespass muscle
+//              memory shipped across the audit. Typing-suppressed.
+//          • Theme-token sweep — chart CartesianGrid stroke="#2e2e2e"
+//              (8 sites) -> var(--border-default) so the grid lines
+//              re-theme between night/day instead of staying legacy
+//              pure-black. Categorical chart palettes (Pie slices,
+//              PRIORITY_COLORS) stay raw per the Connections #1605
+//              precedent — sweeping those changes their meaning.
 // v1038: Offender Registry (/nsopw, /offender-registry redirect) —
 //        court-ready PDF + deep-link + photo embed. 21st consecutive
 //        page-pass for the cross-page contract; NSOPW data is now the
