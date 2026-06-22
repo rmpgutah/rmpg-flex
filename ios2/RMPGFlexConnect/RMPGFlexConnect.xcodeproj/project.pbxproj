@@ -12,6 +12,8 @@
 		F07C2D402FE99AE4005907A2 /* DesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000203 /* DesignSystem */; };
 		F07C2D412FE99AE4005907A2 /* FeatureShell in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000204 /* FeatureShell */; };
 		F07C2D422FE99AE4005907A2 /* FeatureQuickActions in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000205 /* FeatureQuickActions */; };
+		F07C2D432FE99AE4005907A2 /* FeatureDuty in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000206 /* FeatureDuty */; };
+		F07C2D442FE99AE4005907A2 /* FeatureCFS in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000207 /* FeatureCFS */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +33,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F07C2D442FE99AE4005907A2 /* FeatureCFS in Frameworks */,
+				F07C2D432FE99AE4005907A2 /* FeatureDuty in Frameworks */,
 				F07C2D422FE99AE4005907A2 /* FeatureQuickActions in Frameworks */,
 				F07C2D412FE99AE4005907A2 /* FeatureShell in Frameworks */,
 				F07C2D402FE99AE4005907A2 /* DesignSystem in Frameworks */,
@@ -91,6 +95,8 @@
 				BB0000000000000000000203 /* DesignSystem */,
 				BB0000000000000000000204 /* FeatureShell */,
 				BB0000000000000000000205 /* FeatureQuickActions */,
+				BB0000000000000000000206 /* FeatureDuty */,
+				BB0000000000000000000207 /* FeatureCFS */,
 			);
 			productName = RMPGFlexConnect;
 			productReference = BB0000000000000000000020 /* RMPG Flex Connect.app */;
@@ -121,6 +127,8 @@
 				BB0000000000000000000303 /* XCLocalSwiftPackageReference "Packages/DesignSystem" */,
 				BB0000000000000000000304 /* XCLocalSwiftPackageReference "Packages/FeatureShell" */,
 				BB0000000000000000000305 /* XCLocalSwiftPackageReference "Packages/FeatureQuickActions" */,
+				BB0000000000000000000306 /* XCLocalSwiftPackageReference "Packages/FeatureDuty" */,
+				BB0000000000000000000307 /* XCLocalSwiftPackageReference "Packages/FeatureCFS" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BB0000000000000000000011 /* Products */;
@@ -373,6 +381,14 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/FeatureQuickActions;
 		};
+		BB0000000000000000000306 /* XCLocalSwiftPackageReference "Packages/FeatureDuty" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureDuty;
+		};
+		BB0000000000000000000307 /* XCLocalSwiftPackageReference "Packages/FeatureCFS" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureCFS;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -400,6 +416,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BB0000000000000000000305 /* XCLocalSwiftPackageReference "Packages/FeatureQuickActions" */;
 			productName = FeatureQuickActions;
+		};
+		BB0000000000000000000206 /* FeatureDuty */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000306 /* XCLocalSwiftPackageReference "Packages/FeatureDuty" */;
+			productName = FeatureDuty;
+		};
+		BB0000000000000000000207 /* FeatureCFS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000307 /* XCLocalSwiftPackageReference "Packages/FeatureCFS" */;
+			productName = FeatureCFS;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
