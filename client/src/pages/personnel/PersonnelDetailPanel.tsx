@@ -219,6 +219,10 @@ interface Props {
   onAddEquipment: (officerId: string) => void;
   onEditEquipment: (eq: OfficerEquipment) => void;
   onDeleteEquipment: (eqId: string) => void;
+  /** Forwarded onto EquipmentDetailTab → custody PDF "Prepared by" line.
+   *  Optional — pages that don't have the current user pass undefined and
+   *  the PDF renders without it. */
+  preparedBy?: string;
   bodyCameras: BodyCamera[];
   bodyCamVideos: BodyCamVideo[];
   bodyCamerasLoading: boolean;
@@ -255,7 +259,7 @@ export default function PersonnelDetailPanel({
   onAddCredential, onEditCredential, onDeleteCredential,
   onAddSchedule, onDeleteSchedule,
   onAddTraining,
-  equipment, equipmentLoading, onAddEquipment, onEditEquipment, onDeleteEquipment,
+  equipment, equipmentLoading, onAddEquipment, onEditEquipment, onDeleteEquipment, preparedBy,
   bodyCameras, bodyCamVideos, bodyCamerasLoading,
   onAddBodyCamera, onEditBodyCamera, onDeleteBodyCamera,
   onUploadVideo, onDeleteVideo, onEditVideo, onPlayVideo,
@@ -493,6 +497,7 @@ export default function PersonnelDetailPanel({
             onEdit={onEditEquipment}
             onDelete={onDeleteEquipment}
             loading={equipmentLoading}
+            preparedBy={preparedBy}
           />
         )}
         {activeTab === 'body_cameras' && (

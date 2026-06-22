@@ -120,6 +120,22 @@ export default function PersonnelPage() {
       || searchParams.get('personnel_id')
       || searchParams.get('employee_id'),
   );
+  // ── Equipment-tab deep-link (?item_id= / ?serial= / ?assigned_to=) ──
+  // Lets dispatch paste a court-prep link to a specific equipment row.
+  // ?item_id targets a row by its DB id; ?serial and ?assigned_to seed
+  // the type-and-search filters (and, when ?serial uniquely resolves,
+  // also pin the highlight). The URL is stripped after resolution so a
+  // refresh doesn't keep re-triggering the lookup. ?tab= bypasses
+  // command-on-fresh-load when the operator wants a specific tab.
+  const pendingEquipmentItemIdRef = useRef<string | null>(searchParams.get('item_id'));
+  const pendingEquipmentSerialRef = useRef<string | null>(searchParams.get('serial'));
+  const pendingEquipmentAssignedToRef = useRef<string | null>(searchParams.get('assigned_to'));
+  const [resolvedEquipmentItemId, setResolvedEquipmentItemId] = useState<string | null>(null);
+  const [equipmentInitialSearch, setEquipmentInitialSearch] = useState<string | undefined>(undefined);
+  // Snapshot URL params on mount only — once we land on a tab the URL
+  // stays clean, so re-reading on every render would re-seed an empty
+  // search every time the operator clicks elsewhere on the page.
+  const initialUrlTabRef = useRef<string | null>(searchParams.get('tab'));
 
   // Tab state — user-scoped so the tab a supervisor lands on doesn't leak
   // to a shared workstation's next officer (was the only per-page key with
@@ -131,6 +147,25 @@ export default function PersonnelPage() {
     'command' as MainTab,
     ['command', 'roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'deployment'] as const,
   );
+  // First-paint URL override: ?tab=equipment / ?item_id=… implicitly
+  // routes to the Equipment tab. Apply once on mount so a hard-coded
+  // deep-link beats the persisted tab without fighting it on every
+  // subsequent re-render. Equipment-only signals (item_id/serial/
+  // assigned_to) imply tab=equipment for the linker's convenience.
+  useEffect(() => {
+    const raw = initialUrlTabRef.current;
+    const implicitEquipment = pendingEquipmentItemIdRef.current
+      || pendingEquipmentSerialRef.current
+      || pendingEquipmentAssignedToRef.current;
+    const target = (raw === 'equipment' || implicitEquipment) ? 'equipment' : raw;
+    if (!target) return;
+    const allowed: MainTab[] = ['command', 'roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'deployment'];
+    if ((allowed as string[]).includes(target)) {
+      setActiveTab(target as MainTab);
+      initialUrlTabRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -321,6 +356,67 @@ export default function PersonnelPage() {
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [officers, loading, showArchived]);
+
+  // ── Equipment deep-link resolver ──
+  // Runs once the equipment list hydrates. Validates the target id /
+  // serial / officer name actually resolves to a row; if so, sets the
+  // tab + the resolved highlight id + seeds the search filter. Strips
+  // the URL params after either success (so a refresh keeps the row
+  // selected via persistence) or a clear "not found" toast.
+  useEffect(() => {
+    const itemId = pendingEquipmentItemIdRef.current;
+    const serial = pendingEquipmentSerialRef.current;
+    const assignedTo = pendingEquipmentAssignedToRef.current;
+    if (!itemId && !serial && !assignedTo) return;
+    // Wait for equipment to hydrate. The lazy-loader above triggers the
+    // fetch on tab switch — when the deep-link forces tab=equipment on
+    // mount that fetch fires immediately.
+    if (activeTab !== 'equipment') return;
+    if (equipmentLoading) return;
+    if (equipment.length === 0) return; // still hydrating or genuinely empty
+
+    let resolvedId: string | null = null;
+    let seedSearch: string | undefined;
+    if (itemId) {
+      const hit = equipment.find(e => String(e.id) === String(itemId));
+      if (hit) { resolvedId = hit.id; }
+    }
+    if (!resolvedId && serial) {
+      const needle = serial.trim().toLowerCase();
+      const hit = equipment.find(e => (e.serial_number || '').toLowerCase() === needle
+        || (e.asset_tag || '').toLowerCase() === needle);
+      if (hit) { resolvedId = hit.id; }
+      seedSearch = serial;
+    }
+    if (!resolvedId && assignedTo) {
+      // Match by officer id or by officer_name substring — both surface in
+      // the equipment row JOIN. We don't pick a "highlight" row here on
+      // purpose: an officer may have multiple items.
+      seedSearch = assignedTo;
+    }
+
+    if (seedSearch !== undefined) setEquipmentInitialSearch(seedSearch);
+    setResolvedEquipmentItemId(resolvedId);
+
+    // Surface "not found" only when the operator gave us a precise
+    // identifier (id or serial) — assigned_to is a filter seed, not a
+    // single-row pin, so "no match" there just means "filter empty".
+    if (!resolvedId && (itemId || serial)) {
+      addToast(`Equipment ${itemId || serial} not found`, 'warning');
+    }
+
+    // Strip the URL params either way so a refresh doesn't re-trigger.
+    pendingEquipmentItemIdRef.current = null;
+    pendingEquipmentSerialRef.current = null;
+    pendingEquipmentAssignedToRef.current = null;
+    const next = new URLSearchParams(searchParams);
+    next.delete('item_id');
+    next.delete('serial');
+    next.delete('assigned_to');
+    next.delete('tab');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [equipment, equipmentLoading, activeTab]);
 
   // Lazy-load tab data
   useEffect(() => {
@@ -1263,6 +1359,7 @@ export default function PersonnelPage() {
       onAddEquipment={id => openAddEquipment(id)}
       onEditEquipment={openEditEquipment}
       onDeleteEquipment={handleEquipmentDelete}
+      preparedBy={user?.full_name || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username}
       bodyCameras={bodyCameras}
       bodyCamVideos={bodyCamVideos}
       bodyCamerasLoading={bodyCamerasLoading}
@@ -1361,7 +1458,12 @@ export default function PersonnelPage() {
         if (selectedOfficer) { setSelectedOfficer(null); return; }
         return;
       }
-      // N → New Officer (typing-suppressed; only on Roster tab)
+      // N → New {Officer | Equipment | Credential | Training | …}
+      // Typing-suppressed; the tab decides which modal to open. Mirrors
+      // FI / Court / Citations / Dispatch where N opens "the canonical
+      // new-thing for this view." Equipment was the explicit ask in the
+      // page-38 audit but credentials/training had the same gap; rolling
+      // them into the same dispatch table keeps the contract uniform.
       if ((e.key === 'n' || e.key === 'N')
           && !e.ctrlKey && !e.metaKey && !e.altKey
           && !isTypingTarget(e.target)) {
@@ -1370,6 +1472,9 @@ export default function PersonnelPage() {
           setOfficerEditData(undefined);
           setOfficerModalMode('create');
           setModal('new_officer');
+        } else if (activeTab === 'equipment') {
+          e.preventDefault();
+          openAddEquipment();
         }
       }
     };
@@ -1563,6 +1668,9 @@ export default function PersonnelPage() {
             onAddEquipment={() => openAddEquipment()}
             onEditEquipment={openEditEquipment}
             onDeleteEquipment={handleEquipmentDelete}
+            initialSearchQuery={equipmentInitialSearch}
+            highlightItemId={resolvedEquipmentItemId}
+            preparedBy={user?.full_name || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username}
           />
         )}
 
