@@ -59,6 +59,132 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1049: Email (/email) — Page 32 of the full-app frontend pass. The
+//        Outlook-style EmailPage.tsx (3220 LOC) was deferred from the
+//        Communications PR #1625 because the chrome + state surface is the
+//        largest single page in the SPA. Applies the same v1024–v1048
+//        court-ready / native-dialog / deep-link / privacy contract every
+//        other operator page now honors.
+//
+//        Court-ready PDF
+//          • New client/src/utils/emailThreadPdf.ts — "Email Thread
+//            Transcript" with RMPG-gold banner, importance-aware alert bar
+//            (high → red, low → grey, normal → no bar), conversation
+//            summary block (subject/folder/participants/message-count/
+//            attachment-count/first/last/thread-id), per-message envelope
+//            (sender → recipient + CC, importance + flag + read-state
+//            tags, word-wrapped HTML-stripped body), per-message
+//            attachments listing (non-inline only), and a two-signature
+//            block (exporting officer + supervisor). Same Arial pattern as
+//            fiCardPdf / courtAppearancePdf / conversationTranscriptPdf.
+//          • Pure helpers (wrapText, stripHtmlForText, highestImportance,
+//            participantsOf) covered by 24 new vitest cases plus 6 jsPDF
+//            smoke tests (empty thread, very-long-word body, 60-message
+//            page-break exercise, attachments listing, high+flagged+unread
+//            tag overlap).
+//          • New "Court-ready thread PDF" toolbar button (FileDown icon)
+//            next to Print. Uses the hydrated `fullMessage` (which has
+//            bodyHtml, To/CC populated) merged into the thread list so a
+//            single-message export still renders correctly when only one
+//            message of the conversation is on-page. Email threads ARE
+//            court records (subpoenas, IA inquiries, records requests,
+//            vendor billing) — before this PR the only export was raw
+//            .eml (not human-readable) or Outlook's print-to-PDF (no
+//            agency banner, no signature block).
+//
+//        Native dialogs killed
+//          • 3 window.confirm() prompts replaced with themed ConfirmDialog:
+//              · Block sender — "Future mail goes to Junk; not reversible
+//                from this dialog" + sender details (name, address,
+//                subject).
+//              · Sweep sender to Archive — folder context + From details.
+//              · Empty Deleted Items / Junk Email — danger variant.
+//          • Folder-delete (right-click → Delete on user folders) used to
+//            fire DELETE with NO confirmation at all — a right-click slip
+//            on a deeply nested case-correspondence folder erased every
+//            message inside it. Now goes through the same ConfirmDialog
+//            machinery with message-count detail.
+//
+//        URL deep-link contract (23rd consecutive page-pass)
+//          • /email?folder=<name>      — switch to that folder on mount
+//            (well-known keys like "inbox", "sentitems", "drafts",
+//            "trash"→"deleteditems", "junk"→"junkemail", or the Graph
+//            folder id).
+//          • /email?thread_id=<convId> — once messages hydrate, auto-
+//            select the matching conversation's latest message.
+//          • /email?message_id=<id>    — once messages hydrate, auto-
+//            select that specific message.
+//          • /email?compose=1          — open the New Message modal on
+//            mount (useful for `mailto`-style deep-links from other RMPG
+//            pages, e.g. a case detail panel's "Email contact" button).
+//          • Misses surface a snackbar ("Linked message is not on this
+//            page — try searching or switch folders") instead of silently
+//            failing.
+//          • Every consumed param is stripped (replaceState) so a manual
+//            refresh doesn't re-trigger the lookup. The pre-existing
+//            ?enrolled=1 OAuth-callback strip was rewritten to preserve
+//            other params — previously it `replaceState({}, '', '/email')`
+//            and nuked any deep-link the OAuth bounce was about to land on.
+//
+//        Esc smart-cascade
+//          • Closes the top-of-stack layer first: ConfirmDialog →
+//            Headers/AutoReply modals → attachment viewer → snooze/
+//            category/more menus → folder-context-menu → folder rename
+//            → new-folder → search-filters → scheduled-emails panel →
+//            message context menu → compose modal → search query →
+//            selected message. Previous handler only handled the last
+//            three.
+//
+//        N keyboard shortcut
+//          • Bare `N` opens Compose. Typing-suppressed (INPUT/TEXTAREA/
+//            SELECT/contentEditable) AND modal-suppressed (every menu/
+//            popover/modal/confirm above). Ctrl/Cmd+N still works.
+//          • Title hints added to both Compose buttons ("New Message (N)").
+//
+//        User-scoped localStorage (privacy sweep)
+//          • 5 keys promoted from bare → suffixed with the user id, with
+//            a one-time migration from the legacy bare key so existing
+//            operators don't lose their preference on first paint:
+//              · email_compose_draft_<id>     (draft restore, was the
+//                biggest leak — half-typed case email to the city
+//                attorney was restored under the next officer's session)
+//              · email_reading_theme_<id>     (dark/light reading pane)
+//              · email_notifications_enabled_<id>
+//              · email_folder_collapsed_<id>
+//              · email_list_width_<id>        (list/reading split)
+//          • Shared MDT pattern is real (dispatch ↔ patrol on the same
+//            keyboard across a shift). Same fix Fleet Insights used in
+//            v1041 + Intel panel-collapsed in v1047.
+//
+//        Empty-state distinction
+//          • "No messages in this folder" (with an N hint) is now
+//            distinct from "No results for X" (with Clear-search) AND
+//            from "No messages match the active filters" (with the
+//            hidden-count + Clear-filters CTA). Operators with a stale
+//            filter combo no longer stare at a blank list assuming the
+//            folder is empty.
+//
+//        Theme / hex / chrome hygiene
+//          • Avatar palette refactor — index 0 and 7 were BOTH `#888888`
+//            in two inline copies of AVATAR_COLORS. The duplicate halved
+//            the effective hash space for every other color so neutral
+//            grey rendered for ~2/10 of senders instead of 1/10. Replaced
+//            with blue-500 and lifted to a single module-level constant
+//            (+ avatarColorFor() helper) so the message-list and reading-
+//            pane avatars stay in sync.
+//
+//        Out of scope (deferred):
+//          • The OAuth admin-flow (status?.configured/authorized gates,
+//            integration setup) was not touched — that's an admin page.
+//          • Folder-tree drag-and-drop (currently click + right-click)
+//            and message-list drag-to-folder.
+//          • Composer rich-text upgrade (currently markdown-style
+//            insertFormat) — that's a 1k-LOC separate effort.
+//          • The print stylesheet still uses raw hex (#1a1a1a, #888888);
+//            those run inside a `window.open()` blob document outside the
+//            React theme system, so the values stay literal (same
+//            decision as the existing printEmail helper).
+//
 // v1047: Intel Portal (/intel/*) — Page 30 of the full-app frontend pass,
 //        applied to the multi-route command-center shell (IntelPortalLayout
 //        + IntelDashboard + BoloBoard + IntelSearch + the supporting widgets).
