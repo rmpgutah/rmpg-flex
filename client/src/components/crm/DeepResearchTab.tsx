@@ -9,6 +9,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
+import ConfirmDialog from '../ConfirmDialog';
 
 interface JobRow {
   id: string; subject: string; subject_type: string; status: string; progress: number;
@@ -49,6 +50,11 @@ export default function DeepResearchTab() {
   const [submitting, setSubmitting] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [detail, setDetail] = useState<JobDetail | null>(null);
+  // ConfirmDialog target — replaces the native window.confirm() that was
+  // escaping the theme, blocking the polling loop, and rendering outside
+  // the page's accessibility/focus contract.
+  const [jobToDelete, setJobToDelete] = useState<JobRow | null>(null);
+  const [deletingJob, setDeletingJob] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadJobs = useCallback(async () => {
@@ -130,11 +136,22 @@ export default function DeepResearchTab() {
     try { await apiFetch(`/deep-research/jobs/${id}/rerun`, { method: 'POST', body: JSON.stringify({}) }); setActiveId(id); addToast('Re-running', 'success'); }
     catch { addToast('Failed', 'error'); }
   };
-  const del = async (id: string) => {
-    if (!window.confirm('Delete this research job?')) return;
-    try { await apiFetch(`/deep-research/jobs/${id}`, { method: 'DELETE' }); if (activeId === id) { setActiveId(null); setDetail(null); } loadJobs(); }
-    catch { addToast('Failed', 'error'); }
-  };
+  const confirmDeleteJob = useCallback(async () => {
+    if (!jobToDelete) return;
+    setDeletingJob(true);
+    try {
+      const id = jobToDelete.id;
+      await apiFetch(`/deep-research/jobs/${id}`, { method: 'DELETE' });
+      if (activeId === id) { setActiveId(null); setDetail(null); }
+      loadJobs();
+      addToast('Research job deleted', 'success');
+      setJobToDelete(null);
+    } catch {
+      addToast('Failed to delete', 'error');
+    } finally {
+      setDeletingJob(false);
+    }
+  }, [jobToDelete, activeId, loadJobs, addToast]);
 
   return (
     <div className="p-4 space-y-4">
@@ -201,7 +218,7 @@ export default function DeepResearchTab() {
                 <div className="flex items-center gap-1">
                   {j.monitor_interval_days ? <span className="text-[8px] text-rmpg-400 flex items-center gap-0.5"><Eye className="w-3 h-3" />{j.monitor_interval_days}d</span> : null}
                   <button type="button" aria-label="Re-run" onClick={(e) => { e.stopPropagation(); rerun(j.id); }} className="text-rmpg-400 hover:text-rmpg-100"><RefreshCw className="w-3 h-3" /></button>
-                  <button type="button" aria-label="Delete" onClick={(e) => { e.stopPropagation(); del(j.id); }} className="text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                  <button type="button" aria-label="Delete" onClick={(e) => { e.stopPropagation(); setJobToDelete(j); }} className="text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
                 </div>
               </div>
             </div>
@@ -272,6 +289,24 @@ export default function DeepResearchTab() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={jobToDelete !== null}
+        onClose={() => { if (!deletingJob) setJobToDelete(null); }}
+        onConfirm={confirmDeleteJob}
+        title="Delete research job?"
+        message="This permanently removes the job and all of its findings, sources, and report. Confirmed findings linked to entities elsewhere remain on those records."
+        details={jobToDelete ? (
+          <div className="mt-2 text-[11px] text-rmpg-300">
+            <div><span className="text-rmpg-500">Subject:</span> {jobToDelete.subject}</div>
+            <div><span className="text-rmpg-500">Type:</span> {jobToDelete.subject_type}</div>
+            <div><span className="text-rmpg-500">Sources / Findings:</span> {jobToDelete.source_count} · {jobToDelete.finding_count}</div>
+          </div>
+        ) : undefined}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={deletingJob}
+      />
     </div>
   );
 }

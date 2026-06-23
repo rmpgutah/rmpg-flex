@@ -6,8 +6,9 @@
 // when there's no camera or the read is poor. Every sighting is stored and
 // source-tagged (FIELD CAMERA / DASHCAM / MANUAL), building a searchable,
 // mappable per-plate history. ClearPath dashcam reads land here automatically.
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Car, MapPin, ScanLine, Map as MapIcon } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { AlertTriangle, Car, FileText, MapPin, ScanLine, Map as MapIcon } from 'lucide-react';
 import { apiFetch, apiPostForm, authedImageUrl } from '../hooks/useApi';
 import { downscaleImage } from '../utils/downscaleImage';
 import { enhancePlateImage } from '../utils/alprImagePrep';
@@ -19,6 +20,7 @@ import ClearPathDashcamPanel from '../components/ClearPathDashcamPanel';
 import AlprCaptureGallery from '../components/AlprCaptureGallery';
 import CaptureReviewEditor, { type EditableCapture } from '../components/CaptureReviewEditor';
 import TrustBadge from '../components/TrustBadge';
+import { openPlateCapturePdf, type PlateCaptureForPdf } from '../utils/plateCapturePdf';
 
 interface ScreenHit { kind: string; severity: 'critical' | 'warning'; detail: string }
 interface Vehicle { id: number; plate_number: string; make: string; model: string; color: string; year: number }
@@ -88,12 +90,15 @@ interface Sighting {
 }
 
 // Shared hit banners — identical styling for manual + ALPR results.
+// Critical hits get the Lucide AlertTriangle (the prior `⚠` glyph rendered as
+// a tofu box on some Android WebView builds and on the iOS app's older fallback
+// font); warning hits are bordered gold chips.
 function HitBanners({ hits }: { hits: ScreenHit[] }) {
   return (
     <>
       {hits.filter((h) => h.severity === 'critical').map((h, i) => (
-        <div key={`c${i}-${h.detail}`} className="bg-red-950 border border-red-600 text-red-300 text-sm font-semibold px-3 py-2">
-          ⚠ {h.detail}
+        <div key={`c${i}-${h.detail}`} className="bg-red-950 border border-red-600 text-red-300 text-sm font-semibold px-3 py-2 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" /> {h.detail}
         </div>
       ))}
       {hits.filter((h) => h.severity === 'warning').map((h, i) => (
@@ -126,7 +131,16 @@ export default function PlateLogPage() {
   const [dossierPlate, setDossierPlate] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [view, setView] = useState<'scan' | 'gallery'>('scan');
+  const [pdfBusy, setPdfBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const plateInputRef = useRef<HTMLInputElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // One-shot deep-link handles: `?capture_id=<n>` hydrates the scan tile from
+  // server (so the entity-aware notification routing — see notificationRouting.ts
+  // `alpr_capture → /plate-log?capture_id=` — actually lands SOMEWHERE useful).
+  // `?plate=ABC123` opens the dossier directly.
+  const pendingCaptureRef = useRef<string | null>(searchParams.get('capture_id'));
+  const pendingPlateRef = useRef<string | null>(searchParams.get('plate'));
 
   // Source-filtered recent sightings + per-source counts.
   const filteredRecent = useMemo(
@@ -214,6 +228,140 @@ export default function PlateLogPage() {
       { enableHighAccuracy: true, timeout: 5000 },
     );
   }, []);
+
+  // ── Deep-link: ?capture_id= hydrates the scan tile, ?plate= opens dossier ─
+  // Both are one-shot; the URL param is stripped after consumption so a refresh
+  // doesn't keep re-firing. Mirrors FlexCamPage's pendingRequestIdRef pattern.
+  useEffect(() => {
+    const consumeParams = () => {
+      if (!pendingCaptureRef.current && !pendingPlateRef.current) return;
+      const next = new URLSearchParams(searchParams);
+      next.delete('capture_id');
+      next.delete('plate');
+      setSearchParams(next, { replace: true });
+    };
+    const captureId = pendingCaptureRef.current;
+    const plateParam = pendingPlateRef.current;
+    if (plateParam && plateParam.trim()) {
+      pendingPlateRef.current = null;
+      setDossierPlate(plateParam.trim().toUpperCase());
+    }
+    if (captureId) {
+      pendingCaptureRef.current = null;
+      const numericId = Number(captureId);
+      if (Number.isFinite(numericId) && numericId > 0) {
+        setView('scan');
+        apiFetch<AlprResult>(`/alpr/capture/${numericId}`)
+          .then((cap) => {
+            // The GET shape carries everything the scan tile needs except
+            // `hits` (which is a per-screen result, not a stored field) and
+            // `enrich_status` (server only emits on POST). Synthesize the
+            // missing pieces so the tile renders without throwing.
+            setScan({ ...(cap as any), hits: cap.hits ?? [], enrich_status: 'done' });
+            if (cap.capture?.plate) setPlate(cap.capture.plate);
+          })
+          .catch((e: any) => setScanErr(
+            `Could not open capture #${numericId}: ${e?.message || 'not found'}`,
+          ));
+      }
+    }
+    consumeParams();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Esc smart-cascade: close-newest-open-first ─────────────────────────
+  // Order: dossier → editing modal → reviewMsg banner → scan tile → scanErr.
+  // Skip while typing in any field — operator may be editing notes/plate.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (isTypingInField(e.target)) return;
+      // PlateDossier and CaptureReviewEditor are modal overlays; they own
+      // their own Esc handling once focus is inside them — but the cascade
+      // here is the fallback for the (common) case where focus is still on
+      // the page underneath.
+      if (dossierPlate) { setDossierPlate(null); return; }
+      if (editing) { setEditing(null); return; }
+      if (reviewMsg) { setReviewMsg(null); return; }
+      if (scanErr) { setScanErr(null); return; }
+      if (scan) { setScan(null); return; }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [dossierPlate, editing, reviewMsg, scanErr, scan]);
+
+  // ── `N` shortcut: jump to plate input for a fresh manual entry. Keyboard
+  // operators expect a quick "new entry" affordance (same convention as the
+  // dispatch board's `N` for new call) — currently the only way to start a
+  // manual entry on this page was to scroll/tap, awkward on mobile-keyboard.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target;
+      if (t instanceof HTMLElement) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
+      }
+      if (view !== 'scan') setView('scan');
+      e.preventDefault();
+      requestAnimationFrame(() => plateInputRef.current?.focus());
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [view]);
+
+  // ── Court-record PDF for the currently-displayed scan tile. Pulls the
+  // review history server-side so the chain-of-review is embedded in the
+  // printout. Best-effort — a missing history endpoint shouldn't block the
+  // print (handed off as []).
+  const onPrintCapture = useCallback(async () => {
+    if (!scan || pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      const history = await apiFetch<Array<{ id: number; action: string; details: string | null; created_at: string; user_name: string | null }>>(
+        `/alpr/capture/${scan.id}/history`,
+      ).catch(() => []);
+      const capForPdf: PlateCaptureForPdf = {
+        id: scan.id,
+        plate: scan.capture.plate,
+        state: scan.capture.state,
+        make: scan.capture.make,
+        model: scan.capture.model,
+        color: scan.capture.color,
+        year: scan.capture.year,
+        vehicle_type: scan.capture.vehicleType,
+        condition: scan.capture.condition ?? scan.condition,
+        damage_summary: scan.capture.damageSummary ?? scan.damage_summary,
+        damage_observed: scan.capture.damageObserved ?? scan.damage_observed,
+        review_status: scan.capture.reviewStatus,
+        accepted: scan.capture.accepted ?? scan.accepted,
+        plate_confidence: scan.capture.plateConfidence ?? scan.plate_confidence,
+        confidence: scan.capture.confidence,
+        risk_score: scan.capture.riskScore,
+        alerted: scan.capture.alerted,
+        location_text: location.trim() || null,
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null,
+        image_url: scan.image_url,
+        annotated_image_url: scan.annotated_image_url,
+      };
+      await openPlateCapturePdf({
+        capture: capForPdf,
+        hits: scan.hits,
+        history: Array.isArray(history) ? history : [],
+      });
+    } catch (e: any) {
+      setReviewMsg({ text: `Print failed: ${e?.message || 'error'}`, kind: 'err' });
+    } finally {
+      setPdfBusy(false);
+    }
+  }, [scan, pdfBusy, location, coords]);
 
   const submit = async () => {
     if (plate.trim().length < 2 || busy) return;
@@ -321,10 +469,15 @@ export default function PlateLogPage() {
       {scan && (
         <div className="border border-border-default bg-surface-sunken">
           <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-border-default flex items-center gap-2">
-            ALPR CAPTURE
+            <span>ALPR CAPTURE</span>
             {scan.capture.confidence != null && (
               <TrustBadge trust={{ trustScore: scan.capture.confidence, readCount: 1, basis: 'single read' }} />
             )}
+            <button type="button" onClick={onPrintCapture} disabled={pdfBusy}
+              className="ml-auto text-[9px] font-bold uppercase px-1.5 py-0.5 border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1400] disabled:opacity-40 flex items-center gap-1"
+              title="Generate court-record PDF for this capture">
+              <FileText className="w-3 h-3" />{pdfBusy ? '…' : 'COURT PDF'}
+            </button>
           </div>
           <div className="p-3 space-y-2">
             <HitBanners hits={scan.hits} />
@@ -387,10 +540,12 @@ export default function PlateLogPage() {
       <div className="text-[9px] text-rmpg-500 uppercase tracking-wider text-center">— or enter manually —</div>
 
       <input
+        ref={plateInputRef}
         value={plate}
         onChange={(e) => setPlate(e.target.value.toUpperCase())}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
         placeholder="PLATE"
+        aria-label="Plate number (press N anywhere on the page to focus this field)"
         className="w-full bg-surface-overlay border border-border-default px-3 py-3 text-2xl tracking-[0.3em] text-center text-rmpg-100 font-semibold focus:border-[#d4a017] outline-none uppercase"
       />
       <div className="flex items-center gap-2">
