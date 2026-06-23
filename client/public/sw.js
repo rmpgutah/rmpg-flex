@@ -3,6 +3,66 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1114: Victim Services — role gates (canManage: admin/manager/supervisor), ?victim_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
+// v1113: Crisis Response — ?crisis_id=/?incident_id= deep-link (strip after mount),
+//        N shortcut (admin|manager), Esc cascade (delete->form->search), search bar
+//        with distinct empty states (loading/no-data/no-results), role-gated create
+//        and delete (admin|manager only), text-green-400 -> text-blue-400 brand token.
+// v1111: Gang Intel (/gang-intel) — Page 88 of the full-app frontend pass.
+//        Replaced inline delete modal with ConfirmDialog (danger variant, shows
+//        name/moniker/gang in details). Added N shortcut (new member), Esc
+//        cascade (form → delete confirm, stopPropagation). Deep-link:
+//        ?member_id= auto-opens that member in the edit form after load,
+//        ?gang_id= accepted and stripped; both removed with { replace: true }.
+//        Role gate: Delete button + context-menu item hidden for non-admin/
+//        manager/supervisor (mirrors Worker DELETE 403 guard). Distinct empty
+//        states: "Loading…" spinner on initial fetch, "No results for X" when
+//        search has no hits vs "No gang members tracked yet" when data is truly
+//        empty. Search bar filters by name/moniker/gang in-client. Removed dead
+//        EMPTY_GANG constant and unused `gangs` render path. Brand tokens: no
+//        hardcoded hex (was using CSS-var-backed Tailwind tokens already).
+//        formData type tightened from `any` to `typeof EMPTY_MEMBER`.
+// v1110: Interagency (/interagency) — ConfirmDialog replaces hand-rolled delete modal,
+//        ?agency_id= deep-link (strip with replace:true), N shortcut for New Partner,
+//        Esc cascade closes form/dialog, 3-state empty states (loading/no-data/no-results),
+//        admin|manager role gates on edit/delete UI, search filter, typed Partner interface.
+// v1109: Risk Management (/risk) — Page 86 frontend audit. Replaced inline
+//        delete div with ConfirmDialog. Added ?risk_id= deep-link (opens edit
+//        modal, stripped with replace:true). N shortcut opens New Assessment
+//        (admin/manager only). Esc cascade: delete confirm → form. Empty states
+//        now distinguish loading vs no-data vs no-search-results. Role gates:
+//        canWrite (admin|manager) hides New/Edit/Delete from other roles.
+//        API envelope correctly unwraps .data array from /risk/assessments.
+//        Dead state removed (showForm erroneously derived from editingRecord
+//        !== null). Hardcoded hex (#888888) migrated to text-rmpg-400 token.
+//        Filter bar with live client-side search added to toolbar.
+// v1108: Billing (/billing, /invoices) — Page 85 of the full-app frontend
+//        pass. BillingPage: replaced todayLocal() helper with localToday()
+//        from dateUtils (consistent timezone handling). InvoicesPage: added
+//        ?invoice_id= deep-link (opens + selects invoice after load) +
+//        ?client_id= pre-filter; N shortcut (canEdit only, skips while
+//        typing) opens New Invoice; Esc cascade (payment form → line-item
+//        form → detail panel → create panel); ConfirmDialog for delete-
+//        payment and delete-line-item (were instant no-confirmation deletes);
+//        useToast feedback on delete success/error; distinct empty states —
+//        loading spinner / "no invoices match filters" + clear CTA / "no
+//        invoices yet" + create CTA.
+// v1107: QA (/qa) — Page 84 of the full-app frontend pass. Replaced inline
+//        delete dialog with ConfirmDialog (with review details). Added ?qa_id=
+//        / ?review_id= deep-link (stripped after mount with replace:true). Added
+//        N shortcut (new review when not in input) and Esc cascade (close modal
+//        or delete dialog). Role gates: admin/manager/supervisor for create/edit,
+//        admin/manager for delete. DataTable loading prop wired for skeleton vs
+//        empty-state distinction. Removed `showForm = editingRecord !== null`
+//        dead pattern — replaced with separate formOpen boolean. Migrated
+//        hardcoded hex (#888888, #991b1b, #f87171) to CSS variable tokens via
+//        ConfirmDialog. Fixed created_at column to use formatDateTime().
+// v1106: Asset Management — ?asset_id= deep-link, Esc cascade, N shortcut, search bar,
+//        distinct empty states, ConfirmDialog delete, role-gated delete (admin|manager).
+// v1105: Jail Management — role gate delete (admin|manager), parseTimestamp in
+//        fmtRelativeAge, JailRecordsPage: deep-link ?source_key=, N shortcut,
+//        Esc cascade, loading/empty states, role gate ingest (supervisor+),
+//        brand tokens (no hardcoded hex), booking search filter.
 // v1104: Tasks page — role gates (delete=admin|manager, urgent-priority=supervisor+),
 //        notificationRouting: add task/task_assignment entity types + fix case_task
 //        routing from /cases?task_id= (no-op) to /tasks?task_id= (correct deep-link).
@@ -3819,6 +3879,9 @@
 //       truncation limit. Server /api/process-server/:id/attempt now
 //       persists next_attempt_note when the column exists, falls back
 //       gracefully when migration 0142 hasn't landed.
+// v1112: Special Ops — ConfirmDialog for delete, ?op_id= deep-link, N shortcut,
+//        Esc cascade, three-state empty (loading/empty/search), admin/manager/supervisor
+//        role gate for create/delete, parseTimestamp for dates, search filter bar.
 // v1103: CRM/Overwatch — task delete ConfirmDialog, role gate for intel tabs
 //        (webintel/competitors/firecrawl/deepresearch now require supervisor+),
 //        ?section= URL param stripped after seeding, ?contact_id= deep-link
