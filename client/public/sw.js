@@ -3,6 +3,14 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1100: Communications — Page 77 of the full-app frontend pass.
+//        Implemented messages CRUD backend (GET/POST/PUT read+ack/DELETE)
+//        + emergency-broadcast (accepts content not message) + drafts POST
+//        + activity-feed real D1 query in stubs router. Client: BOLO search
+//        field + distinct empty states (no-BOLOs vs no-results), role gates
+//        (canCreateBolo: supervisor+ only sees New BOLO/resolve/archive/N
+//        shortcut), Esc cascade clears boloSearch, subject not required in
+//        compose (auto-derived from content).
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate
