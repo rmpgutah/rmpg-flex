@@ -59,6 +59,25 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1075: Document Intake (/document-intake) — Page 57 of the full-app
+//        frontend pass. Layout was a clean three-state finite-state-machine
+//        but lacked the per-page contract every v1024+ audited surface
+//        exposes: no keyboard cascade (Esc was a no-op, N didn't reopen the
+//        picker), no deep-link (`?new=1` now lands directly on the picker),
+//        a "Upload Another" button that silently dropped pending clerk
+//        edits, inline hex (#d4a017 / #888 / #0a0a0a / #10b981 / #eab308 /
+//        #ef4444) instead of theme tokens, and no print path for the
+//        extraction. This bump adds the cascade + N shortcut + `?new=1`,
+//        gates the destructive reset through a ConfirmDialog when the
+//        clerk has dirty edits, sweeps the page + reviewer onto the
+//        brand-gold-* / sev-* / rmpg-* tokens (so the night/day shift now
+//        re-themes), and lands a new utils/documentIntakePdf.ts emitting
+//        a clerk-trail one-pager (source + detected kind + per-field
+//        confidence band + value + OCR original + raw-text preview) so a
+//        supervisor reviewing the intake queue or a discovery responder
+//        has a printed record of what got pulled before it landed in
+//        records. Covered by 21 unit tests in documentIntakePdf.test.ts.
+//        SW name auto-stamps via vite plugin — bump here is documentation.
 // v1074: Quick Capture (/intel/quick-capture) — Page 56 of the full-app
 //        frontend pass. Officer's 30-second on-scene contact logger; the
 //        page already did the one-POST dedupe-or-create person + vehicle
