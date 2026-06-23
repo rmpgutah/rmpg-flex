@@ -19,6 +19,8 @@ import { Search, Loader2, Shield, AlertTriangle, MapPin, User, RefreshCw, Buildi
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from './PanelTitleBar';
 import { openOffenderRegistrationCardPdf } from '../utils/offenderRegistrationCardPdf';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from './ToastProvider';
 
 interface OffenderCard {
   nsopwOffenderId: string;
