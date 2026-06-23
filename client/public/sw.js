@@ -3874,6 +3874,9 @@
 //       truncation limit. Server /api/process-server/:id/attempt now
 //       persists next_attempt_note when the column exists, falls back
 //       gracefully when migration 0142 hasn't landed.
+// v1112: Special Ops — ConfirmDialog for delete, ?op_id= deep-link, N shortcut,
+//        Esc cascade, three-state empty (loading/empty/search), admin/manager/supervisor
+//        role gate for create/delete, parseTimestamp for dates, search filter bar.
 // v1103: CRM/Overwatch — task delete ConfirmDialog, role gate for intel tabs
 //        (webintel/competitors/firecrawl/deepresearch now require supervisor+),
 //        ?section= URL param stripped after seeding, ?contact_id= deep-link
