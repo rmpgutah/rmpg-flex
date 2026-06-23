@@ -532,7 +532,7 @@ export default function CriminalHistoryPage() {
                       <button type="button"
                         onClick={() => openCriminalHistoryPdf({
                           subject: selectedPerson as any,
-                          history,
+                          history: history as any,
                           preparedBy: user
                             ? (`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username)
                             : undefined,
