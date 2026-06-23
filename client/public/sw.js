@@ -59,6 +59,44 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1073: Mass Notification Templates (/alerts) — Page 55 of the
+//        full-app frontend pass. AlertsPage manages Rave-Alert-parity
+//        notification templates (the API at /api/alerts is templates +
+//        batches; this surface is templates-only). What this PR adds:
+//          - URL deep-link contract: ?template_id (highlight + scroll
+//            into view; toast + filter-clear if a current filter is
+//            hiding it; param stripped on consume so a refresh doesn't
+//            re-pin to a stale link), ?category, ?channel.
+//          - Filter bar (channel + category) with the category
+//            dropdown distilled from the server payload (no useless
+//            empty selects on a fresh install). Empty-state distinction:
+//            "No notification templates" (server returned zero) vs
+//            "No templates match the current filter" (a filter is
+//            hiding everything; one-line description suggests Esc /
+//            Clear to recover — same pattern as v1056 Notifications).
+//          - ConfirmDialog replaces the inline delete modal. The old
+//            modal hardcoded #888888 body text, #991b1b border, #f87171
+//            confirm text — all gone. ConfirmDialog pre-focuses Cancel,
+//            traps focus, body-scroll-locks, owns its own Esc.
+//          - Esc smart-cascade: delete confirm (handled by
+//            ConfirmDialog) → edit modal → clear filters. Falls
+//            through (no preventDefault) when nothing on the page is
+//            open so a global upstream handler can still react.
+//          - "N" shortcut opens New Template (skipped when typing in
+//            an input/textarea/select, when a modal is open, or when
+//            any modifier key is held).
+//          - Cmd/Ctrl+Enter inside the edit modal saves.
+//          - Highlight ring on the deep-linked row via DataTable's
+//            existing `selectedKey` prop; fades after 4s.
+//          - aria-label on the icon-only Edit/Delete row buttons
+//            (was just `<Pencil />` / `<Trash2 />` with no a11y label).
+//        Entity-aware routing / severity colors / alert-source
+//        attribution from the prompt = N/A. This page is template
+//        management, not an alert feed. Distinct from the
+//        /notifications inbox (Page 39, v1056) and the per-user
+//        NotificationCenter dropdown.
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
