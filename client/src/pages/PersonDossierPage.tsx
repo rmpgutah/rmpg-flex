@@ -1,18 +1,23 @@
 // Person Dossier — 360° investigative workspace (Palantir Phase 2).
 // One /api/intel/dossier/person/:id call renders identity + flags,
 // unified contact timeline, known associates (pivot to THEIR dossiers),
-// vehicles, addresses, and confirmed linked identities. PDF export via
-// dossierPdfGenerator (Arial-only stack).
+// vehicles, addresses, confirmed linked identities, and disseminated
+// intel reports naming this person. PDF export via dossierPdfGenerator
+// (Arial-only stack).
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { UserSearch, FileDown, Network, FolderOpen, Eye, EyeOff } from 'lucide-react';
+import { UserSearch, FileDown, Network, FolderOpen, Eye, EyeOff, X, FileText } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
-import { generateDossierPdf, type DossierData } from '../utils/dossierPdfGenerator';
+import { generateDossierPdf, type DossierData, type LinkedIntelEntry } from '../utils/dossierPdfGenerator';
 import { formatLabel } from '../utils/formatters';
 
-interface DossierResponse extends DossierData { watched?: boolean; escalation?: { recent: number; baseline: number; ratio: number; trend: string } | null }
+interface DossierResponse extends DossierData {
+  watched?: boolean;
+  escalation?: { recent: number; baseline: number; ratio: number; trend: string } | null;
+  linked_intel?: LinkedIntelEntry[];
+}
 
 const SENTINELS = new Set(['', 'none', 'n/a', 'na', 'null', '0', 'unknown']);
 const real = (v: unknown) => v != null && !SENTINELS.has(String(v).trim().toLowerCase());
@@ -22,6 +27,11 @@ const KIND_COLOR: Record<string, string> = {
   call: 'text-[#d4a017]', incident: 'text-orange-400', citation: 'text-rmpg-300',
   field_interview: 'text-emerald-400', trespass_order: 'text-red-400',
   warrant: 'text-red-500', arrest: 'text-red-400',
+};
+
+const THREAT_COLOR: Record<string, string> = {
+  low: 'text-emerald-400', medium: 'text-[#d4a017]', high: 'text-orange-400',
+  critical: 'text-red-500', imminent: 'text-red-500',
 };
 
 function Field({ label, value }: { label: string; value: unknown }) {
@@ -46,21 +56,67 @@ export default function PersonDossierPage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<DossierResponse | null>(null);
   const [watched, setWatched] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; notFound: boolean } | null>(null);
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     setData(null); setError(null);
     apiFetch<DossierResponse>(`/intel/dossier/person/${id}`)
       .then((d) => { setData(d); setWatched(!!d.watched); })
-      .catch((e) => setError(e?.message || 'Failed to load dossier'));
+      .catch((e: any) => {
+        const notFound = e?.status === 404;
+        setError({ message: e?.message || 'Failed to load dossier', notFound });
+      });
   }, [id]);
 
-  if (error) return <div className="p-4 text-[11px] text-red-400">{error}</div>;
+  // Esc cascade: photo zoom → navigate back. Read-only page, no forms /
+  // confirms / filters to peel off, so the stack is short by design.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (photoOpen) { setPhotoOpen(false); return; }
+      navigate(-1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [photoOpen, navigate]);
+
+  if (error) {
+    if (error.notFound) {
+      return (
+        <div className="p-4 space-y-3">
+          <PanelTitleBar title="PERSON DOSSIER" icon={UserSearch} />
+          <div className="bg-surface-base border border-border-default p-4 text-[11px] text-[#888888]">
+            No person on file for id <span className="text-rmpg-200">#{id}</span>. The record may have been merged, deleted, or never existed.
+            <div className="mt-3">
+              <button onClick={() => navigate(-1)} className="text-[#d4a017] hover:underline">← Back</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return <div className="p-4 text-[11px] text-red-400">{error.message}</div>;
+  }
   if (!data) return <div className="p-4 text-[11px] text-[#888888]">Loading dossier…</div>;
 
   const p = data.person;
   const name = [p.first_name, p.middle_name, p.last_name].filter(real).join(' ') || `Person #${p.id}`;
+  const linkedIntel = data.linked_intel ?? [];
+
+  const onExportPdf = async () => {
+    if (pdfBusy) return;
+    setPdfBusy(true);
+    try { generateDossierPdf(data); }
+    finally {
+      // Tiny visual debounce so accidental double-press doesn't fire two
+      // jsPDF instances (each one re-registers the Arial font subset).
+      setTimeout(() => setPdfBusy(false), 600);
+    }
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -69,7 +125,17 @@ export default function PersonDossierPage() {
       {/* Header band */}
       <div className="bg-surface-base border border-border-default p-3 flex items-start gap-4">
         {real(p.photo_url)
-          ? <img src={p.photo_url} alt={name} className="w-20 h-24 object-cover border border-border-default" />
+          ? (
+            <button
+              type="button"
+              onClick={() => setPhotoOpen(true)}
+              aria-label="Open photo full-size"
+              title="Click to enlarge"
+              className="block w-20 h-24 border border-border-default p-0 overflow-hidden"
+            >
+              <img src={p.photo_url} alt={name} className="w-full h-full object-cover" />
+            </button>
+          )
           : <div className="w-20 h-24 bg-surface-overlay border border-border-default flex items-center justify-center text-[9px] text-[#888888]">NO PHOTO</div>}
         <div className="flex-1 min-w-0">
           <div className="text-lg text-rmpg-100 font-semibold">{name}</div>
@@ -82,7 +148,10 @@ export default function PersonDossierPage() {
               <span key={f} className="text-[9px] font-semibold text-red-500 border border-red-900 px-2 py-[1px]">{f}</span>
             ))}
             {data.escalation?.trend === 'escalating' && (
-              <span className="text-[9px] font-semibold text-red-500 border border-red-600 px-2 py-[1px]">
+              <span
+                title={`Recent 30d: ${data.escalation.recent} events; 90d baseline: ${data.escalation.baseline.toFixed(1)}`}
+                className="text-[9px] font-semibold text-red-500 border border-red-600 px-2 py-[1px]"
+              >
                 ESCALATING {data.escalation.ratio >= 99 ? '' : `${data.escalation.ratio.toFixed(1)}×`}
               </span>
             )}
@@ -92,6 +161,11 @@ export default function PersonDossierPage() {
             {data.cluster.length > 0 && (
               <span className="text-[9px] text-[#d4a017] border border-border-default px-2 py-[1px]">
                 {data.cluster.length} LINKED IDENTIT{data.cluster.length === 1 ? 'Y' : 'IES'}
+              </span>
+            )}
+            {linkedIntel.length > 0 && (
+              <span className="text-[9px] font-semibold text-[#d4a017] border border-[#d4a017] px-2 py-[1px]">
+                {linkedIntel.length} INTEL REPORT{linkedIntel.length === 1 ? '' : 'S'}
               </span>
             )}
           </div>
@@ -109,8 +183,13 @@ export default function PersonDossierPage() {
             }}>
             {watched ? <Eye className="w-4 h-4 text-[#d4a017]" /> : <EyeOff className="w-4 h-4" />}
           </IconButton>
-          <IconButton aria-label="Export dossier PDF" title="Export PDF" onClick={() => generateDossierPdf(data)}>
-            <FileDown className="w-4 h-4" />
+          <IconButton
+            aria-label="Export dossier PDF"
+            title={pdfBusy ? 'Generating…' : 'Export PDF'}
+            disabled={pdfBusy}
+            onClick={onExportPdf}
+          >
+            <FileDown className={`w-4 h-4 ${pdfBusy ? 'opacity-40' : ''}`} />
           </IconButton>
           <IconButton aria-label="Open in Connections graph" title="Connections graph"
             onClick={() => navigate(`/connections?type=person&id=${p.id}`)}>
@@ -179,6 +258,38 @@ export default function PersonDossierPage() {
               </div>
             ))}
           </Section>
+
+          {/* Linked Intelligence — disseminated intel reports naming this
+              person. The dossier endpoint has shipped `linked_intel` since
+              Wave 4 but the workspace never rendered it; the data was only
+              visible from the Intel Reports list, never on the subject. */}
+          {linkedIntel.length > 0 && (
+            <Section title={`LINKED INTELLIGENCE (${linkedIntel.length})`}>
+              {linkedIntel.map((r) => (
+                <Link
+                  key={r.id}
+                  to={`/intel/reports/${r.id}`}
+                  className="block py-[3px] border-b border-border-default last:border-b-0 hover:bg-surface-raised"
+                >
+                  <div className="flex items-baseline gap-2 text-[11px]">
+                    <FileText className="w-3 h-3 text-[#d4a017] shrink-0" />
+                    <span className="text-[#d4a017]">{r.report_number || `IR-${r.id}`}</span>
+                    {r.threat_level && (
+                      <span className={`text-[9px] font-semibold ${THREAT_COLOR[r.threat_level] || 'text-[#888888]'}`}>
+                        {r.threat_level.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-rmpg-200 ml-5 truncate">{r.title}</div>
+                  <div className="text-[9px] text-[#888888] ml-5">
+                    {r.role || 'subject'}
+                    {r.disseminated_at && ` · ${String(r.disseminated_at).slice(0, 10)}`}
+                    {r.handling_code && ` · ${r.handling_code}`}
+                  </div>
+                </Link>
+              ))}
+            </Section>
+          )}
         </div>
 
         {/* Right column — timeline */}
@@ -197,6 +308,30 @@ export default function PersonDossierPage() {
           ))}
         </Section>
       </div>
+
+      {/* Photo full-size modal */}
+      {photoOpen && real(p.photo_url) && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Subject photo"
+          onClick={() => setPhotoOpen(false)}
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 cursor-zoom-out"
+        >
+          <div className="relative max-w-3xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <img src={p.photo_url} alt={name} className="max-w-full max-h-[90vh] object-contain border border-border-default" />
+            <button
+              type="button"
+              onClick={() => setPhotoOpen(false)}
+              aria-label="Close photo"
+              className="absolute top-2 right-2 bg-surface-overlay border border-border-default p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="mt-2 text-[10px] text-[#888888] text-center">{name} — press Esc to close</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
