@@ -12,11 +12,13 @@
 //   • showForm was `editingRecord !== null` — "New Event" set editingRecord
 //     to null so the form never opened. Now tracked by a separate boolean.
 //   • Raw inline delete `div` → ConfirmDialog.
-//   • Esc cascade: form → delete confirmation, in that priority order.
-//   • `N` keyboard shortcut opens "New Event" when no modal is open.
+//   • Esc cascade: deleteTarget → form, each branch stopPropagation.
+//   • `N` keyboard shortcut opens "New Event" and focuses event name input.
 //   • Role-guard: Write buttons hidden for officer/dispatcher/client_viewer.
 //   • Tab navigation exposes tips, watch-groups, alerts (stats + list).
 //   • Error banner lives OUTSIDE PanelTitleBar children.
+//   • deepLinkRef guard prevents double-consume on re-render.
+//   • 3-state empty: loading / no-data / no-results per tab.
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -144,6 +146,10 @@ export default function CommunityPage() {
   // ── Stats ────────────────────────────────────────────────
   const [stats, setStats] = useState<Stats>({ events: 0, tips: 0, watch_groups: 0, alerts: 0 });
 
+  // ── Refs ─────────────────────────────────────────────────
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const deepLinkRef = useRef(false);
+
   // ── Form / UI state ──────────────────────────────────────
   const [showForm, setShowForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CommunityEvent | null>(null);
@@ -226,11 +232,12 @@ export default function CommunityPage() {
   // ── URL deep-link: ?event_id=N ───────────────────────────
   useEffect(() => {
     const rawId = searchParams.get('event_id');
-    if (!rawId) return;
+    if (!rawId || deepLinkRef.current) return;
     const id = parseInt(rawId, 10);
     if (isNaN(id)) { setSearchParams((p) => { p.delete('event_id'); return p; }, { replace: true }); return; }
-    // Wait until events are loaded then auto-open
+    // Wait until events are loaded then auto-open (consume exactly once)
     if (eventsLoading) return;
+    deepLinkRef.current = true;
     const found = events.find((e) => e.id === id);
     if (found) {
       openEdit(found);
@@ -238,8 +245,7 @@ export default function CommunityPage() {
       addToast(`Event #${id} not found`, 'warning');
     }
     setSearchParams((p) => { p.delete('event_id'); return p; }, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventsLoading, searchParams]);
+  }, [eventsLoading, events, searchParams, openEdit, addToast, setSearchParams]);
 
   // ── Tab lazy-load ────────────────────────────────────────
 
@@ -323,14 +329,18 @@ export default function CommunityPage() {
       const inInput = target.closest('input,textarea,select') !== null;
 
       if (e.key === 'Escape') {
-        if (deleteTarget) { setDeleteTarget(null); return; }
-        if (showForm) { closeForm(); return; }
+        if (deleteTarget) { e.stopPropagation(); setDeleteTarget(null); return; }
+        if (showForm) { e.stopPropagation(); closeForm(); return; }
         return;
       }
 
       if ((e.key === 'n' || e.key === 'N') && !inInput && !showForm && !deleteTarget && canWrite) {
         e.preventDefault();
-        if (activeTab === 'events') openNew();
+        if (activeTab === 'events') {
+          openNew();
+          // Focus the primary input after state flush
+          requestAnimationFrame(() => nameInputRef.current?.focus());
+        }
       }
     };
     window.addEventListener('keydown', handler);
@@ -484,10 +494,11 @@ export default function CommunityPage() {
           data={events}
           loading={eventsLoading}
           emptyMessage={
-            eventsLoading
-              ? 'Loading...'
-              : 'No community events found. Press N or click "New Event" to create one.'
+            canWrite
+              ? 'No community events found. Press N or click "New Event" to create one.'
+              : 'No community events found.'
           }
+          emptyDescription={eventsLoading ? undefined : 'Events will appear here once added.'}
           onRowClick={(row) => openEdit(row as CommunityEvent)}
           rowContextMenu={(row) => [
             m.action('Open / Edit', () => openEdit(row as CommunityEvent), { icon: <Pencil size={12} /> }),
@@ -506,7 +517,8 @@ export default function CommunityPage() {
           columns={tipColumns}
           data={tips}
           loading={tipsLoading}
-          emptyMessage="No public tips have been submitted yet."
+          emptyMessage={tipsLoading ? 'Loading tips…' : 'No public tips have been submitted yet.'}
+          emptyDescription={tipsLoading ? undefined : 'Anonymous and named tips appear here when submitted.'}
         />
       )}
 
@@ -516,7 +528,8 @@ export default function CommunityPage() {
           columns={watchColumns}
           data={watchGroups}
           loading={watchLoading}
-          emptyMessage="No neighborhood watch groups registered."
+          emptyMessage={watchLoading ? 'Loading watch groups…' : 'No neighborhood watch groups registered.'}
+          emptyDescription={watchLoading ? undefined : 'Watch groups appear here once registered.'}
         />
       )}
 
@@ -526,7 +539,8 @@ export default function CommunityPage() {
           columns={alertColumns}
           data={alerts}
           loading={alertsLoading}
-          emptyMessage="No community alerts have been sent."
+          emptyMessage={alertsLoading ? 'Loading alerts…' : 'No community alerts have been sent.'}
+          emptyDescription={alertsLoading ? undefined : 'Broadcast alerts appear here once created.'}
         />
       )}
 
@@ -555,6 +569,7 @@ export default function CommunityPage() {
                 </label>
                 <input
                   id="ce-event-name"
+                  ref={nameInputRef}
                   className="input-dark mt-1"
                   value={formData.event_name}
                   onChange={(e) => setFormData({ ...formData, event_name: e.target.value })}
