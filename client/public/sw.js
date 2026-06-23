@@ -59,6 +59,72 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1074: Quick Capture (/intel/quick-capture) — Page 56 of the full-app
+//        frontend pass. Officer's 30-second on-scene contact logger; the
+//        page already did the one-POST dedupe-or-create person + vehicle
+//        + FI + screening dance, but was missing every audit-series
+//        contract.
+//          • ?call_id= / ?incident_id= deep-link — when launched from a
+//            dispatch call card / incident detail with a context query
+//            string, the resulting FI is now stamped on the server
+//            (field_interviews.associated_call_id /
+//            associated_incident_id columns existed since baseline) so
+//            the contact appears on the call's / incident's timeline.
+//            A persistent chip at the top of the page tells the operator
+//            "Logging contact on Call #123" with an X to unlink. Context
+//            persists across multiple captures on the same scene
+//            (different from login-style flash banners that strip on
+//            mount) — logging several FIs against one call is the
+//            dominant on-scene pattern.
+//          • Esc smart-cascade — busy gate first (lets the network
+//            finish), then close the result panel, then clear typed-but-
+//            unsaved form. Single Esc never blasts past a state the
+//            operator wanted to keep. Suppressed during in-flight POST.
+//          • N shortcut — clears the form and focuses First Name. Same
+//            N=New convention as Citations / Warrants / FI / Arrests /
+//            Cases / etc. Suppressed inside inputs and modifier chords.
+//          • Print FI — court-ready PDF for the just-written FI via the
+//            existing recordPdfGenerator field_interview type and the
+//            shared PrintRecordButton. The FI is hydrated from
+//            /field-interviews/:id on click rather than constructed from
+//            the local form, so officer name, badge, canonical fi_number,
+//            and the resolved person/vehicle ids come from the server.
+//            Lazy load (no fetch unless the operator asks to print).
+//          • Privacy mask — DOB is the most sensitive field on this page;
+//            digits render as bullets by default with an eye-toggle
+//            reveal (focus reveals so the operator can type, eye-icon
+//            re-hides). Plate stays visible because it's the operator's
+//            only visual confirmation that the correct vehicle attached.
+//            autocomplete=off + spellCheck=false on the DOB field so
+//            password managers and dictation engines don't pick it up.
+//          • GPS visibility — explicit re-acquire button (Crosshair
+//            icon) with hover-title showing the actual lat/lng + meter
+//            accuracy that will be stamped on the FI. The first-mount
+//            fix is the same silent best-effort as before (GPS is a
+//            bonus, manual location always works); but mid-shift /
+//            mid-drive on-foot operators were typing locations because
+//            the page showed no signal that the fix was 10 minutes old
+//            and 800m off. Permission-denied surfaces an error toast;
+//            timeout / position-unavailable surface a warning + retry.
+//          • Theme tokens throughout — no hardcoded #d4a017 / #888888 /
+//            arrow glyph in chrome. text-brand-400, text-rmpg-400/500,
+//            border-brand-400, AlertTriangle icon, ArrowRight icon
+//            (the "→" was the only Lucide-able chrome glyph on the
+//            page; the "⚠" in the critical banner became AlertTriangle).
+//            Red critical-hit banner kept verbatim (bg-red-950 etc.) —
+//            the audit's "no hardcoded hex" rule is about brand surface
+//            tokens; semantic alert colors stay opaque so a stuck/
+//            mistuned palette can't make a critical-records-hit banner
+//            blend into a normal info row.
+//        Server: src/routes/intel.ts /quick-capture accepts call_id +
+//          incident_id in the body and writes them to
+//          associated_call_id / associated_incident_id on the new FI
+//          row, and echoes them on the response. Number-coerced (NaN →
+//          null) so a stringly-typed body doesn't trip D1.
+//        Tests: 4 new vitest cases (deep-link call/incident, N shortcut
+//          focus, Esc clears form). Existing critical-hit test kept.
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
