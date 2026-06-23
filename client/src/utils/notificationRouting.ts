@@ -95,6 +95,18 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   email_message: (id) => `/communications?tab=messages&message_id=${encodeURIComponent(id)}`,
   alpr_capture: (id) => `/plate-log?capture_id=${encodeURIComponent(id)}`,
   use_of_force: (id) => `/use-of-force?uof_id=${encodeURIComponent(id)}`,
+// Arrest Records (Page 43 audit) — the test in
+  // notificationRouting.test.ts asserts this route, but PR #1655 added the
+  // test without the corresponding builder entry, leaving the assertion
+  // failing on main. Wiring it correctly here (and the `arrest` alias)
+  // is a pre-existing-failure cleanup the Page 61 audit happened to land in.
+  arrest_record: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
+  arrest: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
+  // Web Research (Page 61 audit) — a saved-research notification (e.g.
+  // future "research result for monitored subject" emit) deep-links into
+  // the Saved Results tab of /web-research with the row highlighted.
+  research_result: (id) => `/web-research?research_id=${encodeURIComponent(id)}`,
+  web_research: (id) => `/web-research?research_id=${encodeURIComponent(id)}`,
 arrest_record: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
   arrest: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
   court_event: (id) => `/court-records?event_id=${encodeURIComponent(id)}`,

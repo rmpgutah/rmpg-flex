@@ -41,6 +41,7 @@ describe('notificationRouting', () => {
         .toBe('/arrest-records?arrest_id=250');
     });
 
+<<<<<<< HEAD
     it('builds /court-records?event_id= for court_event entity_type', () => {
       // Page 54 audit added court_event routing so a "hearing reminder",
       // "outcome recorded", or "continuance granted" notification lands
@@ -52,6 +53,17 @@ describe('notificationRouting', () => {
       // canonical emitter writes `court_event` so we always land on the
       // historical disposition view, and operators can pivot to /court
       // for upcoming-dates via the in-page "Tracker" button.
+=======
+    it('builds /web-research?research_id= for research_result entity_type', () => {
+      // Page 61 audit added web-research deep-link routing so a future
+      // "research result for monitored subject" notification lands on
+      // the Saved Results tab with the matching row highlighted.
+      expect(routeForEntity({ type: 'system', entity_type: 'research_result', entity_id: 17 }))
+        .toBe('/web-research?research_id=17');
+      // Short alias for any server emitter that uses `web_research`.
+      expect(routeForEntity({ type: 'system', entity_type: 'web_research', entity_id: 17 }))
+        .toBe('/web-research?research_id=17');
+>>>>>>> origin/claude/page-61-web-research-improvements
     });
 
     it('falls back to type-default when entity_type is unknown', () => {
