@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1246: Serve filing & smart calendar — "Move to…" context-menu submenu on every job card (in_progress/pending/served/failed/archive) with optimistic UI; backfill planner now reads business_id + parsed_data.recipient_type to pick business-hours vs evening/morning windows; uses created_at as base time for same-day uploads.
 // v1245: Serve Scheduler full-page fix — backfill button on ServeSchedulerPage empty state, setLoading(true) on refetch start (both panel+page), officer assignment propagates to schedule slots (manually_moved=0) in PUT /:id Worker route.
 // v1243: Warrants — isAdminOrManager gates toolbar New Warrant button+mobile FAB+empty-state create action; OffenseLevelBadge dead import removed; all ConfirmDialogs, deep-link (?warrant_id=/?personId=), N+Esc cascade, 3-state empty states, API shape, brand tokens verified.
 // v1240: Trespass Orders — ConfirmDialog gates Lift (warning variant) in addition to existing Delete; ?person_id= deep-link filters list+toast+strip (alongside ?order_id= direct-fetch+toast); Esc cascade adds orderToLift branch+stopPropagation+full deps; handleLift removed; text-brand-gold-500+text-rmpg-400 Tailwind tokens replace inline style vars; N+canManage, 3-state empty states, role gates, API shape verified.

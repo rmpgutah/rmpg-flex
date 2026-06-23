@@ -1397,12 +1397,19 @@ si.post('/schedule/backfill', async (c) => {
   const todayYmd = nowDenver.slice(0, 10);
 
   // Find active queue jobs with no existing schedule rows.
+  // Fetch business_id + recipient_type so planAttemptWindows uses the right
+  // window strategy (business = weekday 09:30-11:30 / 13:30-15:30,
+  // residential = evening first, then morning, then weekend).
   const unscheduled = await query<{
     id: number; deadline: string | null; priority: string;
     attempt_count: number; max_attempts: number;
+    business_id: number | null; created_at: string;
+    recipient_type: string | null;
   }>(
     db,
-    `SELECT q.id, q.deadline, q.priority, q.attempt_count, q.max_attempts
+    `SELECT q.id, q.deadline, q.priority, q.attempt_count, q.max_attempts,
+            q.business_id, q.created_at,
+            q.parsed_data->>'recipient_type' AS recipient_type
      FROM serve_queue q
      WHERE q.status IN ('pending', 'in_progress')
        AND NOT EXISTS (
@@ -1416,7 +1423,16 @@ si.post('/schedule/backfill', async (c) => {
     const remainingAttempts = job.max_attempts - job.attempt_count;
     if (remainingAttempts <= 0) continue;
     try {
-      const plan = planAttemptWindows(nowIso, job.deadline ?? null, 'America/Denver');
+      // Determine serve target type from structural FK (business_id) or
+      // OCR-derived field in parsed_data. Business → weekday office windows.
+      const isBusiness = !!job.business_id || (job.recipient_type ?? '').toLowerCase() === 'business';
+
+      // Use created_at as the planning baseline when the intake happened today —
+      // gives morning uploads an evening-first plan rather than tomorrow-first.
+      const uploadedToday = job.created_at?.slice(0, 10) === todayYmd;
+      const baseIso = uploadedToday ? job.created_at : nowIso;
+
+      const plan = planAttemptWindows(baseIso, job.deadline ?? null, 'America/Denver', { isBusiness });
       // Trim plan to only remaining attempts and only future dates.
       const futurePlan = plan
         .filter((w) => w.date >= todayYmd)
