@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runHeuristics } from '../src/utils/serveIntakeJudge';
+import { runHeuristics, judgeMerged } from '../src/utils/serveIntakeJudge';
 
 const mkField = (value: string, confidence = 0.85) => ({ value, confidence });
 
@@ -87,5 +87,69 @@ describe('runHeuristics', () => {
       [{ name: 'doc.pdf', text: 'unrelated content here' }],
     );
     expect(r.recipient_address.ok).toBe(false);
+  });
+});
+
+// Stand-in for the callAi-flavoured AI dispatcher. The judge uses callAi
+// from src/utils/callAi.ts; tests inject a fake by passing a mocked env.AI
+// that runs the callAi happy path.
+function mkEnv(opts: { aiResponse?: string; aiThrows?: boolean } = {}): any {
+  return {
+    DB: {} as any,
+    AI: {
+      run: async () => {
+        if (opts.aiThrows) throw new Error('rate limited');
+        return { response: opts.aiResponse ?? '{}' };
+      },
+    },
+  };
+}
+
+describe('judgeMerged', () => {
+  it('returns clean status when nothing is flagged', async () => {
+    const r = await judgeMerged(
+      mkEnv({ aiResponse: '{}' }),
+      { recipient_first_name: { value: 'Alice', confidence: 0.95 } },
+      [{ name: 'doc.pdf', text: 'Alice Smith' }],
+      ['info_page'],
+    );
+    expect(r.overall_status).toBe('clean');
+    expect(r.flagged_field_count).toBe(0);
+    expect(r.fallback_chain).toContain('heuristic');
+  });
+
+  it('returns needs_review when heuristic flags a field', async () => {
+    const r = await judgeMerged(
+      mkEnv({ aiResponse: '{}' }),
+      { recipient_first_name: { value: 'Alice', confidence: 0.95 } },
+      [{ name: 'doc.pdf', text: 'Defendant: Bob Smith' }],
+      ['info_page'],
+    );
+    expect(r.overall_status).toBe('needs_review');
+    expect(r.verdicts.recipient_first_name.ok).toBe(false);
+    expect(r.verdicts.recipient_first_name.source).toBe('heuristic');
+  });
+
+  it("falls back to heuristic-only when both LLM stages throw", async () => {
+    const r = await judgeMerged(
+      mkEnv({ aiThrows: true }),
+      { recipient_first_name: { value: 'Alice', confidence: 0.95 } },
+      [{ name: 'doc.pdf', text: 'Alice Smith' }],
+      ['info_page'],
+    );
+    expect(r.fallback_chain).toEqual(['heuristic']);
+    expect(r.overall_status).toBe('clean'); // heuristic passes
+    expect(r.model).toBe('heuristic-only');
+  });
+
+  it('truncates raw_response to 8 KB', async () => {
+    const long = 'x'.repeat(20_000);
+    const r = await judgeMerged(
+      mkEnv({ aiResponse: long }),
+      { recipient_first_name: { value: 'Alice', confidence: 0.95 } },
+      [{ name: 'doc.pdf', text: 'Alice Smith' }],
+      ['info_page'],
+    );
+    expect(r.raw_response.length).toBeLessThanOrEqual(8 * 1024);
   });
 });
