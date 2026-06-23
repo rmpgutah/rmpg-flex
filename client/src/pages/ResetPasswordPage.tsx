@@ -266,7 +266,7 @@ export default function ResetPasswordPage() {
                   Your password has been updated. All existing sessions have been signed out for security.
                 </p>
                 <a
-                  href="/login"
+                  href="/login?reset=1"
                   className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-100 transition-all duration-150 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
                   style={{
                     background: 'linear-gradient(180deg, #888888 0%, #3a3a3a 100%)',

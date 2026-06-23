@@ -59,6 +59,19 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
+//        No client code changed; the endpoint already had three callers in
+//        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
+//        Print) but the route did not exist on the Worker — every Download
+//        PDF / Preview / Print click silently 404'd. Caught during the
+//        Billing audit (PR #1648). The new route returns the denormalized
+//        payload shape the client-side invoicePdfGenerator expects (invoice
+//        + line items + payments + client / billing fields) under
+//        { data: { invoice: …, line_items: […], payments: […] } }, with
+//        sensible COALESCE defaults for schema columns we never landed
+//        (period_start/end, discount_amount, late_fee_amount, line_type).
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+
 // v1065: Skip Tracker (/skip-tracer) — Page 48 of the full-app frontend pass.
 //        Two-part fix. (1) The page's server surface was dead: every
 //        client search hit /skiptracer/search/{byname,byaddress,bynameaddress,
@@ -801,126 +814,80 @@
 //            Lucide would require a layout-affecting size pass on every
 //            row, deferred until the rail itself is up for review.
 //
-// v1064: Tasks — Page 47 of the full-app frontend pass. TasksPage was a
-//        127-line minimum-viable view: list + new/edit/delete + three
-//        stats cards. The backend (src/routes/tasks.ts) already supported
-//        filtering (status / priority / assignee / linked-entity /
-//        overdue) plus an `assigned_by` column + `completed_at` timestamp,
-//        none of which the UI surfaced — and the page silently swallowed
-//        every fetch error in an empty `catch { /* */ }`.
-//
-//        What changed:
-//          • URL deep-link contract — `?task_id=<n>` opens the row in
-//            its edit modal and decorates it with a brand-gold left rail
-//            for 4 seconds; falls back to a direct GET /tasks/:id when
-//            the target is outside the current filter slice (toast on
-//            miss). `?status=` / `?priority=` / `?assignee=` /
-//            `?entity_type=` / `?overdue=true` hydrate the filter bar.
-//            All consumed params are stripped after first paint so a
-//            refresh doesn't re-pin the operator to a stale link. The
-//            row right-click menu's new "Copy deep-link" action mirrors
-//            the same URL so a supervisor can paste a task link into
-//            chat directly.
-//          • Filter bar — Status / Priority / Assignee (OfficerPicker)
-//            / Linked Type / Overdue-only checkbox, all mapping 1:1 to
-//            the GET /tasks query params the route already accepted.
-//          • Court-style PDF export — new client/src/utils/taskPdf.ts
-//            (gold banner, filter snapshot, paginated landscape rows
-//            with overdue accent + zebra striping, signature block for
-//            exporting + reviewing supervisor). Same Arial + RMPG-gold
-//            visual contract as the audit-log, bodycam, FI, and
-//            evidence-item PDFs so a court packet stitched from
-//            multiple surfaces looks consistent. Lower-evidentiary than
-//            auditLogPdf — task rows are mutable so there's no
-//            tamper-evidence claim — but the filter snapshot and
-//            signature block document reproducibility. Unit-tested in
-//            client/src/utils/__tests__/taskPdf.test.ts (16 cases —
-//            empty filters, all-fields filters, pagination, overdue
-//            accent path, optional-field omission, timestamp format).
-//          • Due-date countdown — new pure util client/src/utils/
-//            taskDueCountdown.ts (`describeDueDate` → 'OVERDUE 3d' /
-//            'Due today' / 'Due tomorrow' / 'Due in 5d' /
-//            'Due 2026-07-15') colour-coded via `dueToneTextClass`
-//            (red overdue → amber today → brand soon → muted later).
-//            Pure module, timezone-aware (America/Denver — operating
-//            jurisdiction). Unit-tested in __tests__/taskDueCountdown
-//            .test.ts (10 cases — empty inputs, parse failures, every
-//            tone bucket, ISO-timestamp tolerance, MT day-boundary
-//            edge case). Completed/cancelled tasks bypass the
-//            countdown and surface "Closed YYYY-MM-DD" instead, since
-//            once a task is closed the "overdue" framing is misleading.
-//          • Linked-entity navigation — reuses `getAuditEntityRoute`
-//            (the same util Audit Log uses) so a task linked to
-//            warrant #47 / case #12 / incident #8 renders as an
-//            ExternalLink chip in the Linked column, click opens the
-//            target page via the established `?<entity>_id=`
-//            contract, and the row right-click menu offers the same
-//            "Open …" item. Non-routable types still render as plain
-//            text without the chip. Same util gained a new mapping
-//            for `task` / `task_assignment` / `tasks` →
-//            `/tasks?task_id=` so audit-log rows for task mutations
-//            now navigate back into the Tasks page (4 new cases in
-//            auditEntityRoute.test.ts).
-//          • ConfirmDialog for deletion — replaces the bespoke inline
-//            overlay (which had its own focus + Esc + backdrop
-//            handling and would have drifted from the rest of the
-//            app over time). ConfirmDialog already pre-focuses
-//            Cancel for danger variants, locks the body scroll, has
-//            no global Enter binding, and renders an identifying
-//            details block (#id, assignee, due date) so the operator
-//            sees exactly what they're about to destroy.
-//          • Empty-state distinction — same finding as the prior 17
-//            pages: 'No tasks found' used identical copy for a
-//            filtered-to-zero slice and a never-populated queue.
-//            Now branches on `hasActiveFilters` ('No tasks match the
-//            active filters' with a hint to widen the filters, vs
-//            'No tasks yet' with a hint to press N).
-//          • Esc smart-cascade — close-newest-open-first: confirm
-//            dialog → form modal → row highlight → error banner →
-//            active filter set. Skips while typing in any input /
-//            textarea / select / contenteditable so the browser's
-//            native blur-on-Esc still works in the filter inputs.
-//          • `N` shortcut for new task — matches the muscle memory
-//            established by Geography / Serve / DARs / Code
-//            Enforcement / Dash Cameras / Field Interviews / etc.
-//            Skipped while a modal is open or a typing surface is
-//            focused so it doesn't fire inside the title field.
-//          • Inline supervisor metadata — `assigned_by_name` is now
-//            rendered as 'by Sgt. X' under the assignee, so the
-//            chain of assignment is visible without opening the
-//            edit modal. The right-click menu's quick-status toggle
-//            ('Mark complete' / 'Reopen task') hits the same PUT
-//            endpoint the modal uses, so the backend's automatic
-//            `completed_at` stamp + audit-log write still run.
-//          • Audit-visible failure — the prior `catch { /* */ }`
-//            silently swallowed every load error. The new version
-//            surfaces a dismissable inline error banner with an
-//            AlertTriangle icon and the underlying message so an
-//            operator can see when /tasks is degraded instead of
-//            staring at an empty list.
-//          • Icon-only buttons — Pencil/Trash row actions now use
-//            <IconButton aria-label="..."> so the missing accessible
-//            names are caught at the TypeScript layer (IconButton's
-//            `aria-label` is a required prop) rather than waiting
-//            for a screen-reader audit.
-//
-//        Out of scope (deferred):
-//          • Per-user 'my tasks' cache key — the form-draft hook is
-//            globally scoped throughout the app; reworking just
-//            Tasks would diverge from the system-wide pattern.
-//            /cases already exposes `/cases/tasks/mine` which is the
-//            canonical 'tasks assigned to me' surface; a future
-//            merge could collapse the two task tables
-//            (task_assignments and case_tasks) into a unified queue,
-//            but that's its own program.
-//          • Inline task-comments thread inside the edit modal —
-//            backend POST /tasks/:id/comments already exists, but
-//            surfacing the thread inline needs design work to fit
-//            it alongside the form fields without ballooning the
-//            modal. Tracked separately.
-//
-//        No migration; no server route changes; no SW behavior changes
-//        (this version is a content bump only).
+// v1061: Use of Force (/use-of-force) — Page 44 of the full-app frontend
+//        pass. UoF reports are simultaneously court-admissible, IA-
+//        reviewable, and Utah POST state-DOJ reportable — among the
+//        highest-stakes records in the system. The page had a working
+//        list + create flow but was missing every operator affordance
+//        the adjacent court surfaces (BWC, dashcam, audit) had landed:
+//        - URL deep-link contract: ?uof_id=<n> opens that report (with
+//          a /:id direct-fetch fallback when it's outside the current
+//          50-row slice, plus a toast on 404 instead of silent miss);
+//          ?incident_id=<n> + ?subject_id=<n> pre-filter the list AND
+//          pre-fill the create-form's pickers so an officer drilling
+//          in from a person/incident record doesn't re-pick the entity.
+//          uof_id is mirror-stripped after consumption; the two filter
+//          deep-links are also stripped so a refresh doesn't silently
+//          re-apply over operator edits.
+//        - Court-ready PDF: useOfForceReportPdf.ts — RMPG-gold banner,
+//          stacked lethal-force + injuries alerts, incident block,
+//          officer/subject demographics, force details, justification,
+//          de-escalation, injuries, narrative, linked footage table
+//          (BWC + dashcam clips fetched from the new /:id/footage
+//          endpoint which joins footage_evidence_links populated by
+//          autoPreserve at submission), supervisor review block, and a
+//          two-signature block for reporting officer + reviewer. Mountain
+//          Time everywhere. Helpers unit-tested. Print available from
+//          both the detail panel header and the row right-click menu.
+//        - Server additions: GET /use-of-force/:id (single-row fetch
+//          for the deep-link fallback) + GET /use-of-force/:id/footage
+//          (returns { flexcam: FootageRequest[], bodycam: BodycamVideo[] }
+//          — schema-tolerant so older D1 column gaps soft-fail the join
+//          instead of 500'ing). No migration needed; both endpoints sit
+//          on top of existing tables and the autoPreserve entity_type
+//          'use_of_force' linkage that's been in place since #1261.
+//        - Esc smart-cascade: closes the create modal → review confirm
+//          dialog → error banner → detail-panel selection → active
+//          filter set (in that order). Ignores typing surfaces.
+//        - N shortcut: opens the New Report modal from anywhere on the
+//          page that isn't a typing surface (matches Records / Citations
+//          / Incidents). Modifier-keys skip the shortcut so OS bindings
+//          (Cmd-N) aren't hijacked.
+//        - Per-user form draft (24h TTL via useFormDraft, keyed on
+//          user id) — UoF narratives are long-form and the prior loss
+//          of a half-typed report to an accidental tab close was a real
+//          operator complaint. "Draft restored" banner inside the modal
+//          with a one-click Discard.
+//        - ConfirmDialog for supervisor Approve / Return: previously
+//          a single click immediately mutated the report; now both
+//          decisions route through the shared dialog with an optional
+//          (recommended for Return) review-notes textarea that round-
+//          trips to the server's `notes` body field and lands in the
+//          new "Supervisor Review" detail block.
+//        - Linked-footage panel on the detail surface: lists BWC clips
+//          + FlexCam dashcam requests tied to the report, with the
+//          evidence-locked chip + evidence number when present, so an
+//          IA reviewer can see at a glance what video evidence backs
+//          the report without leaving the page.
+//        - Theme tokens: STATUS_COLORS' hard #888888/#22c55e/#f59e0b
+//          hex strings are now token-backed tones (text-rmpg-300/
+//          text-green-400/text-amber-400 + matching swatch + border
+//          classes) so the status pills + stat counters re-theme
+//          between night (steel-blue) and day (light-grey).
+//        - Empty-state distinction: loading spinner with "Loading
+//          reports…" label, hard error with the message, and a zero-
+//          rows panel that branches between "no reports filed" (cold
+//          start) and "no matching reports" (filters applied) — the
+//          previous shared "No reports" string left operators unsure
+//          whether to wait, escalate, or widen filters.
+//        - Notification routing: added 'use_of_force' → /use-of-force?
+//          uof_id= to notificationRouting.ts so an IA-emitted alert
+//          like "UoF #42 returned for revision" deep-links to the
+//          report instead of dumping the operator on the list page.
+//        - Migration: none. The /:id and /:id/footage routes are net-
+//          new but read from existing tables (use_of_force + the
+//          footage_evidence_links table already in place since #1261);
+//          no column adds. recordAudit still fires on CREATE / REVIEW.
 // v1058: FlexCam — Page 41 of the full-app frontend pass. FlexCamPage
 //        (327 lines, request list) + FlexCamFootagePage (1225 lines,
 //        MDT-style chunk player with evidence lock / court package /
@@ -971,6 +938,47 @@
 //          status.
 //        - No migration; no server route changes; no SW behavior changes
 //          (this version is a content bump only).
+// v1063: Plate Log (/intel/plate-log) — Page 46 of the full-app frontend
+//        pass. PlateLogPage.tsx is the manual + ALPR-camera plate sighting
+//        surface that an officer uses on a felony stop or a pursuit; every
+//        capture is a potential court exhibit, and the page already had the
+//        review queue, gallery, and dossier wired up.
+//
+//        What the audit caught and what changed:
+//        - `?capture_id=` deep-link was DECLARED in notificationRouting.ts
+//          (`alpr_capture → /plate-log?capture_id=`) but the page never read
+//          it. Clicking an ALPR-capture notification dropped the operator
+//          on the page with no context. The page now hydrates the scan tile
+//          from `GET /api/alpr/capture/:id` and switches to the SCAN view.
+//          `?plate=ABC123` opens the per-plate dossier directly. Both are
+//          one-shot — params are stripped after first paint (FlexCam pattern).
+//        - Court-record PDF — new client/src/utils/plateCapturePdf.ts (same
+//          RMPG-gold banner + signature-block contract as dashcamReviewPdf,
+//          evidenceItemPdf, auditLogPdf). Renders the annotated image +
+//          plate/state/vehicle/trust/source/device, an UNVERIFIED-READ alert
+//          banner when review_status is anything but `confirmed*` (the v963
+//          TrustBadge audit catches the false-100% case at the screen layer;
+//          this is the same protection at the printed-page layer), screening
+//          hits, GPS + location + linked call/incident #, AND the full review
+//          history pulled from /api/alpr/capture/:id/history so the chain-of-
+//          review is embedded in the printout. New "COURT PDF" header button
+//          on the scan tile.
+//        - Esc smart-cascade — close-newest-open-first: dossier → editing
+//          modal → reviewMsg banner → scanErr → scan tile. Skips while
+//          typing in any field so plate/notes editing isn't disrupted.
+//        - `N` shortcut focuses the plate input from anywhere on the page
+//          (same convention as the dispatch board's `N` for new call) and
+//          auto-switches the view back to SCAN if the operator was in the
+//          CAPTURES gallery — previously the only way to start a manual
+//          entry was to scroll-and-tap, awkward on a mobile keyboard.
+//        - `⚠` glyph in HitBanners replaced by Lucide AlertTriangle. The
+//          glyph rendered as tofu on some Android WebView builds and on the
+//          iOS app's older fallback font (same symptom the FieldInterviews
+//          audit flagged) — Lucide is consistent across every platform.
+//        - No migration; no server route changes; no SW behavior changes;
+//          all existing endpoints (the /capture/:id GET and /capture/:id/
+//          history GET were already shipping from PR #1269/#1278).
+//
 // v1056: Notifications — Page 39 of the full-app frontend pass. The
 //        /notifications page (NotificationsPage.tsx, 452 lines) plus the
 //        global NotificationCenter dropdown (NotificationCenter.tsx, 567
