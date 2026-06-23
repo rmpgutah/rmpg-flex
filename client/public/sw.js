@@ -59,6 +59,13 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1081: Patrol (/patrol) — Page 63 of the full-app frontend pass. Added Esc
+//        smart-cascade (QR modal → Checkpoint modal), N shortcut to open the
+//        New Checkpoint form on the Checkpoints tab, four-way empty-state
+//        distinction (no-checkpoints-ever / no-scans-with-filters / no-scans-
+//        ever / no-active-checkpoints-for-compliance), and removed dead
+//        coverageData/handleLoadCoverage state that was defined but never
+//        rendered anywhere in the JSX.
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
