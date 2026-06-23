@@ -59,6 +59,21 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1084: Citations (/citations) — Page 66 of the full-app frontend pass.
+//        (1) Stats bar was always showing zeros: GET /citations/stats returned
+//        byStatus as a row array (camelCase) but CitationsPage read it as
+//        by_status: Record<string,number>. Worker now returns both shapes plus
+//        the missing fines_issued, fines_collected, and today_count fields.
+//        (2) Deep-links: ?plate=<plate> pre-fills the search box (incoming from
+//        PlateLog "View citations for plate"); ?officer_id=<id> pre-fills with
+//        the officer id (incoming from Personnel). ?citation_id=<id> already
+//        existed. (3) Plate in detail view now has an "ALPR" button that
+//        navigates to /intel/plate-log?plate=<plate> for history. Right-click
+//        context menu also gets "View plate history" when plate is present.
+//        (4) Court Information section header now has a "Court Tracker" link
+//        that navigates to /court.
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
