@@ -3,7 +3,6 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
-// v1247: Process Server Job Sheet (PS-300) — "Print Job Sheet" in every job's context menu; generates a full printable packet (jsPDF) with 8 sections: Job Info, Recipient, Document/Case, Service Instructions, Attempt History table+GPS, Skip Trace results, blank Field Notes lines, and certification/signature block; filed as PS-300 with barcode.
 // v1246: Serve filing & smart calendar — "Move to…" context-menu submenu on every job card (in_progress/pending/served/failed/archive) with optimistic UI; backfill planner now reads business_id + parsed_data.recipient_type to pick business-hours vs evening/morning windows; uses created_at as base time for same-day uploads.
 // v1245: Serve Scheduler full-page fix — backfill button on ServeSchedulerPage empty state, setLoading(true) on refetch start (both panel+page), officer assignment propagates to schedule slots (manually_moved=0) in PUT /:id Worker route.
 // v1243: Warrants — isAdminOrManager gates toolbar New Warrant button+mobile FAB+empty-state create action; OffenseLevelBadge dead import removed; all ConfirmDialogs, deep-link (?warrant_id=/?personId=), N+Esc cascade, 3-state empty states, API shape, brand tokens verified.

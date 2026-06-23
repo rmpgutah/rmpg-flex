@@ -222,13 +222,6 @@ export default function CommunityPage() {
     }
   }, [addToast]);
 
-  // ── Initial load ─────────────────────────────────────────
-
-  useEffect(() => {
-    fetchEvents();
-    fetchStats();
-  }, [fetchEvents, fetchStats]);
-
   // ── Form helpers ─────────────────────────────────────────
 
   const openNew = useCallback(() => {
@@ -252,6 +245,17 @@ export default function CommunityPage() {
     setShowForm(true);
   }, []);
 
+  const closeForm = useCallback(() => {
+    setShowForm(false);
+    setEditingEvent(null);
+  }, []);
+
+  // ── Initial load ─────────────────────────────────────────
+  useEffect(() => {
+    fetchEvents();
+    fetchStats();
+  }, [fetchEvents, fetchStats]);
+
   // ── URL deep-link: ?event_id=N ───────────────────────────
   useEffect(() => {
     const rawId = searchParams.get('event_id');
@@ -270,17 +274,11 @@ export default function CommunityPage() {
   }, [eventsLoading, events, searchParams, openEdit, addToast, setSearchParams]);
 
   // ── Tab lazy-load ────────────────────────────────────────
-
   useEffect(() => {
     if (activeTab === 'tips') fetchTips();
     else if (activeTab === 'watch-groups') fetchWatchGroups();
     else if (activeTab === 'alerts') fetchAlerts();
   }, [activeTab, fetchTips, fetchWatchGroups, fetchAlerts]);
-
-  const closeForm = useCallback(() => {
-    setShowForm(false);
-    setEditingEvent(null);
-  }, []);
 
   const handleSave = async () => {
     if (!formData.event_name.trim()) { addToast('Event name is required', 'error'); return; }

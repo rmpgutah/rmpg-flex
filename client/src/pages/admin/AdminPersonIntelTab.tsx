@@ -37,10 +37,17 @@ export default function AdminPersonIntelTab({ LoadingSpinner, error, setError }:
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<ConfigRow[]>('/admin/config?prefix=microbilt_api_key,pipl_api_key,spokeo_api_key,numverify_api_key,hunter_api_key,clearbit_api_key');
-      setRows(data ?? []);
+      // /admin/config returns a flat Record<string,string> — not an array.
+      // Use /admin/config-items (grouped by category) and flatten so we get
+      // real ConfigRow objects with is_active values.
+      const grouped = await apiFetch<Record<string, ConfigRow[]>>('/admin/config-items');
+      const providerKeys = new Set(PROVIDERS.map(p => p.key));
+      const data: ConfigRow[] = (Object.values(grouped) as ConfigRow[][])
+        .flat()
+        .filter(r => providerKeys.has(r.config_key));
+      setRows(data);
       const init: Record<string, string> = {};
-      (data ?? []).forEach(r => { init[r.config_key] = r.config_value ?? ''; });
+      data.forEach(r => { init[r.config_key] = r.config_value ?? ''; });
       setValues(init);
     } catch (e: any) {
       setError(e.message ?? 'Failed to load config');
