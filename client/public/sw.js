@@ -59,6 +59,131 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1062: Jail Management (/jail) — Page 45 of the full-app frontend pass.
+//        JailPage.tsx was a 184-line manual-booking screen for the
+//        in-house `inmates` table (scraped county rosters live separately
+//        on Arrest Records — the existing one-shot Database banner on
+//        this page links there). The audit caught that every cross-page
+//        v1024–v1058 contract was missing: no court-ready PDF for the
+//        booking sheet (the chain-of-custody artifact a defense attorney
+//        pulls during discovery), no deep-link contract so a notification
+//        or warrant cross-ref couldn't land on the right inmate, the
+//        delete flow used a hand-rolled inline modal that lacked the
+//        keyboard-trap / Cancel-pre-focus protections of ConfirmDialog,
+//        Esc only closed the modal (no smart-cascade), no N shortcut
+//        (matched v1054 Training / v1055 Equipment), no search / status
+//        filter, no distinct empty states ("0 in custody" vs "0 match
+//        your filters"), no sync-status pill for the 4h jail-roster
+//        cron (the operator couldn't tell whether the scraper was
+//        healthy), the JailFormModal's draft key was global rather than
+//        per-user (operator A's half-typed booking would auto-restore
+//        on a shared MDT for operator B), and JailFormModal carried a
+//        dead `localToday` import.
+//
+//        Court-ready booking sheet PDF + roster snapshot PDF
+//        - New client/src/utils/jailBookingSheetPdf.ts ships TWO outputs
+//          off the same Arial + RMPG-gold idiom:
+//            * openJailBookingSheetPdf({ inmate, charges, preparedBy })
+//              — single-inmate full intake packet. Banner with booking #,
+//              agency strap, subject name in 12pt bold, in-custody alert
+//              banner (UNIT / CELL inline so the relief shift sees them
+//              first), consistency banner that flags a release_date
+//              recorded on an in-custody status (or vice versa — a
+//              quiet schema bug we'd otherwise leak into a discovery
+//              packet), subject / custody / notes blocks, charges table
+//              fetched on-demand from /jail/inmates/:id/charges (charge
+//              description / statute / level / bond / docket), two-
+//              signature block (booking officer / inmate), generated-on
+//              footer. Pure helpers (formatHeight, formatWeight,
+//              formatBail, prettyStatus, isInCustody,
+//              bookingConsistencyAlert) covered by 24 unit tests in
+//              client/src/utils/__tests__/jailBookingSheetPdf.test.ts.
+//            * openJailRosterSnapshotPdf({ rows, scope, preparedBy }) —
+//              shift-handoff roster used by the off-going supervisor
+//              before relief shows up. Banner with row count + scope
+//              ("All in-custody" / "Filtered: status=booked"), paginated
+//              table (booking # / name / status / unit / cell / DOB /
+//              booked), two-signature block (off-going / on-coming
+//              supervisor). Defaults to the page's current filtered view
+//              so the operator can print a search hit list.
+//        - FileText action on each row + "Print booking sheet" context-
+//          menu entry. Disabled while the per-row charges fetch is in
+//          flight (single-flight; printingId state).
+//        - Roster PDF toolbar button next to "New Inmate" pulls the
+//          filtered view + the operator name as preparedBy.
+//
+//        URL deep-link contract (matches the v1024-v1058 cross-page
+//        pattern)
+//        - /jail?inmate_id=<n> or ?booking_id=<n> — opens the Edit
+//          modal for that row, scrolls into view, flash-highlights for
+//          3s. Miss surfaces "Inmate #<id> not found in current view"
+//          toast (the operator may have a status filter set that hid
+//          the row — same idiom as v1048 ServePage's job_id deep-link).
+//        - /jail?booking_number=BK-26-0042 — same flow keyed by the
+//          human-readable booking #. Useful for cross-page links from
+//          the warrants / arrests routes that don't have the raw id.
+//        - /jail?status=<booked|housed|court|medical|released|transferred>
+//          — preselects the status filter; warrants the v1056-style
+//          per-page filter persistence without polluting localStorage.
+//        - /jail?q=<term> — seeds the search box (booking# / name /
+//          unit / cell substring match).
+//        - All five params consumed once and stripped (replace:true)
+//          so a manual refresh doesn't re-pop the modal.
+//
+//        Native delete modal → ConfirmDialog
+//        - The original hand-rolled inline modal lacked the focus-
+//          trap / Cancel-pre-focus / data-confirm-cancel selector that
+//          the audit-day v1009 lock pattern caught: Enter on the X
+//          close button would fire the destructive action. The new
+//          ConfirmDialog flow shows booking # / name / status / housing
+//          as the destructive-action context (the v1056 / v1057
+//          confirm-shows-the-row-identifying-data pattern), and uses
+//          isLoading={deleting} so a slow delete doesn't double-fire.
+//
+//        Esc smart-cascade
+//        - Smallest-open-first: delete confirm → form modal (FormModal
+//          owns its own Esc) → clear-filter chip. Falls through (no
+//          preventDefault) when nothing is open. Previous handler:
+//          none — Esc on /jail just hit the JailFormModal handler.
+//
+//        N shortcut → open "New Inmate" (typing-suppressed so search /
+//        select / textarea / contentEditable don't swallow the key).
+//        Suppressed while the form / delete confirm is already open.
+//
+//        Filter strip + distinct empty states
+//        - New search input (booking # / name / middle / housing-unit /
+//          housing-cell substring) + status select (the six booking
+//          states the API exposes). "X of N shown" counter on the right.
+//        - Empty state distinguishes the three cases now: trueEmpty
+//          ("No inmates booked yet. Press N…") vs filteredEmpty
+//          ("No inmates match these filters (0 of N).") with a
+//          one-click "Clear filters" recovery button vs the legacy
+//          generic message when both rows and filters are absent.
+//
+//        Roster sync indicator
+//        - Pulls the most-recent recent_syncs[0] from
+//          /jail-roster/statistics (the 4h cron stamps this row) and
+//          renders "Roster OK · 2h ago" (success) or "Roster ERROR ·
+//          12h ago" (amber) inline with the scraped-county-roster
+//          banner. Title attribute shows the absolute timestamp on
+//          hover. The page only renders the banner at all when
+//          rosterCount > 0 so an unprovisioned env (no scraper) stays
+//          quiet.
+//
+//        Per-user form draft scope
+//        - JailFormModal's useFormDraft storageKey now scopes to
+//          rmpg_jail_form_<user.id> so a half-typed booking from
+//          operator A doesn't auto-restore for operator B on a shared
+//          MDT. Falls back to the legacy global key when there's no
+//          user (login screen, etc.) so we never lose existing
+//          drafts during the rollout — matches the v1055 / v1056
+//          per-user privacy pattern.
+//        - Dead `localToday` import removed.
+//
+//        No D1 migration, no Worker route changes — client-only.
+//        Reuses the existing /jail/inmates / /jail/stats /
+//        /jail/inmates/:id/charges / /jail-roster/statistics routes
+//        without modification.
 // v1057: Audit Log (/audit) — Page 40 of the full-app frontend pass.
 //        The audit log is THE highest-evidentiary surface in the app: it
 //        proves chain-of-custody, who saw/edited what, and when. Defense
