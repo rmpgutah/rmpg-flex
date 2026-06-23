@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1126: Plate Log — role gates (canManage: admin/manager/supervisor) on Confirm/Reject/Bulk actions, ConfirmDialog for bulk ops, 3-state empty (loading/no-data/no-results-for-filter), brand-gold-500 tokens replace all hardcoded #d4a017, text-rmpg-400 replaces #888888.
 // v1114: Victim Services — role gates (canManage: admin/manager/supervisor), ?victim_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
 // v1113: Crisis Response — ?crisis_id=/?incident_id= deep-link (strip after mount),
 //        N shortcut (admin|manager), Esc cascade (delete->form->search), search bar
