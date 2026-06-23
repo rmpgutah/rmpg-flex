@@ -222,8 +222,35 @@ export default function CommunityPage() {
     }
   }, [addToast]);
 
-  // ── Initial load ─────────────────────────────────────────
+  // ── Form helpers ─────────────────────────────────────────
 
+  const openNew = useCallback(() => {
+    setEditingEvent(null);
+    setFormData(EMPTY_FORM);
+    setShowForm(true);
+  }, []);
+
+  const openEdit = useCallback((ev: CommunityEvent) => {
+    setEditingEvent(ev);
+    setFormData({
+      event_name: ev.event_name ?? '',
+      event_type: ev.event_type ?? 'other',
+      description: ev.description ?? '',
+      location: ev.location ?? '',
+      start_date: ev.start_date ?? '',
+      end_date: ev.end_date ?? '',
+      status: ev.status ?? 'planned',
+      notes: ev.notes ?? '',
+    });
+    setShowForm(true);
+  }, []);
+
+  const closeForm = useCallback(() => {
+    setShowForm(false);
+    setEditingEvent(null);
+  }, []);
+
+  // ── Initial load ─────────────────────────────────────────
   useEffect(() => {
     fetchEvents();
     fetchStats();
@@ -258,7 +285,6 @@ export default function CommunityPage() {
     if (!rawId || deepLinkRef.current) return;
     const id = parseInt(rawId, 10);
     if (isNaN(id)) { setSearchParams((p) => { p.delete('event_id'); return p; }, { replace: true }); return; }
-    // Wait until events are loaded then auto-open (consume exactly once)
     if (eventsLoading) return;
     deepLinkRef.current = true;
     const found = events.find((e) => e.id === id);
@@ -271,7 +297,6 @@ export default function CommunityPage() {
   }, [eventsLoading, events, searchParams, openEdit, addToast, setSearchParams]);
 
   // ── Tab lazy-load ────────────────────────────────────────
-
   useEffect(() => {
     if (activeTab === 'tips') fetchTips();
     else if (activeTab === 'watch-groups') fetchWatchGroups();

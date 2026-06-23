@@ -1379,6 +1379,60 @@ si.get('/schedule', async (c) => {
   return c.json({ schedule, generated_at: now });
 });
 
+// ── POST /schedule/backfill — generate slots for active jobs with no schedule ─
+// Idempotent: only touches queue rows that have 0 rows in serve_attempt_schedules.
+// Designed to be called once after deploying the scheduler feature, or via the
+// "Generate Schedule" button in ServeSchedulerPanel when the view is empty.
+si.post('/schedule/backfill', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
+
+  const { persistAttemptSchedule, denverNow } = await import('../utils/serveAttemptScheduler');
+  const { planAttemptWindows } = await import('../utils/serveDiligencePlanner');
+
+  const nowIso = new Date().toISOString();
+  const nowDenver = denverNow();
+  const todayYmd = nowDenver.slice(0, 10);
+
+  // Find active queue jobs with no existing schedule rows.
+  const unscheduled = await query<{
+    id: number; deadline: string | null; priority: string;
+    attempt_count: number; max_attempts: number;
+  }>(
+    db,
+    `SELECT q.id, q.deadline, q.priority, q.attempt_count, q.max_attempts
+     FROM serve_queue q
+     WHERE q.status IN ('pending', 'in_progress')
+       AND NOT EXISTS (
+         SELECT 1 FROM serve_attempt_schedules s
+          WHERE s.queue_id = q.id AND s.dismissed = 0
+       )`,
+  );
+
+  let seeded = 0;
+  for (const job of unscheduled) {
+    const remainingAttempts = job.max_attempts - job.attempt_count;
+    if (remainingAttempts <= 0) continue;
+    try {
+      const plan = planAttemptWindows(nowIso, job.deadline ?? null, 'America/Denver');
+      // Trim plan to only remaining attempts and only future dates.
+      const futurePlan = plan
+        .filter((w) => w.date >= todayYmd)
+        .slice(0, remainingAttempts)
+        .map((w, i) => ({ ...w, attempt: job.attempt_count + i + 1 }));
+      if (futurePlan.length === 0) continue;
+      await persistAttemptSchedule(db, job.id, futurePlan, nowIso);
+      seeded++;
+    } catch {
+      // Skip individual failures — don't abort the whole backfill.
+    }
+  }
+
+  return c.json({ seeded, total_unscheduled: unscheduled.length });
+});
+
 // ── GET /officers — minimal officer roster for the scheduler lanes ─
 // Returns active users in field-facing roles so dispatchers can render
 // the swim-lane view without needing /admin/users access.
@@ -1752,6 +1806,19 @@ si.put('/:id', async (c) => {
   sets.push("updated_at = datetime('now','localtime')");
   args.push(id);
   await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+
+  // Propagate officer_id to auto-placed schedule slots so the lane timeline stays in sync.
+  // Manually-moved slots (manually_moved=1) keep their officer assignment intact.
+  if ('officer_id' in body) {
+    const newOfficer = body.officer_id == null ? null : Number(body.officer_id) || null;
+    await execute(
+      db,
+      `UPDATE serve_attempt_schedules SET officer_id = ? WHERE queue_id = ? AND manually_moved = 0 AND dismissed = 0`,
+      newOfficer,
+      id,
+    );
+  }
+
   return c.json({ success: true });
 });
 

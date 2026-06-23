@@ -72,7 +72,7 @@ import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
 import { escapeHtml } from '../../utils/sanitize';
-import { getMapPreferences } from '../../utils/mapPreferences';
+import { getMapPreferences, loadMapPref } from '../../utils/mapPreferences';
 import { subscribeSettings } from '../../utils/settingsBus';
 import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
@@ -131,6 +131,12 @@ import { generateMapSituationReport } from '../../utils/mapSituationReportPdf';
 import { useAuth } from '../../context/AuthContext';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource, upsertGeoJsonSource } from '../../utils/mapboxSafeLayer';
 import { applyRmpgBasemap, type BasemapVariant } from '../../utils/mapboxBasemap';
+import MapToolbar, { type MapTool } from '../../components/MapToolbar';
+import DrawGeofenceTool from './components/DrawGeofenceTool';
+import { useBuildingsLayer } from './components/BuildingsLayer';
+import MinimapControl from './components/MinimapControl';
+import { useScaleControl, useFullscreenControl } from './components/ScaleFullscreenControls';
+import { useFeatureFlags } from '../../context/FeatureFlagsContext';
 
 // ============================================================
 // Constants
@@ -960,6 +966,12 @@ export default function MapPage() {
   const [showPanicZone, setShowPanicZone] = useState(true); // on by default for safety
   const [showDaylight, setShowDaylight] = useState(false);
 
+  // MapToolbar feature flags + toolbar-driven state
+  const flags = useFeatureFlags();
+  const [showMinimap, setShowMinimap] = useState(false);
+  const [showScale, setShowScale] = useState(() => Boolean(loadMapPref('scale_visible')));
+  const [showFullscreen, setShowFullscreen] = useState(() => Boolean(loadMapPref('fullscreen_visible')));
+
   // Tactical map hooks
   const predictions = useMapPredictions(mapInstanceRef.current, showPredictions);
   const intelLayerData = useMapIntelLayers(mapInstanceRef.current, intelLayers);
@@ -999,6 +1011,11 @@ export default function MapPage() {
 
   // Tactical tools hook (pure client-side, always active)
   const tactical = useMapTactical(mapInstanceRef.current);
+
+  // MapToolbar-driven hooks
+  const { enabled: buildingsEnabled, toggle: toggleBuildings } = useBuildingsLayer(mapInstanceRef.current);
+  useScaleControl(mapInstanceRef.current, showScale);
+  useFullscreenControl(mapInstanceRef.current, showFullscreen);
 
   // ============================================================
   // Data Fetching
@@ -3678,6 +3695,48 @@ export default function MapPage() {
   // Render
   // ============================================================
 
+  // MapToolbar tool definitions — flag=null means always visible
+  const MAP_TOOLS: MapTool[] = [
+    { id: 'draw', icon: '✏️', label: 'Draw Geofence', flag: 'draw', component: DrawGeofenceTool },
+    {
+      id: 'buildings',
+      icon: '🏢',
+      label: buildingsEnabled ? '3D Buildings (on)' : '3D Buildings',
+      flag: 'buildings_3d',
+      component: ({ onClose }: { map: mapboxgl.Map; onClose: () => void }) => {
+        toggleBuildings();
+        onClose();
+        return null;
+      },
+    },
+    {
+      id: 'minimap',
+      icon: '🗺️',
+      label: 'Minimap',
+      flag: 'minimap',
+      component: ({ map, onClose }: { map: mapboxgl.Map; onClose: () => void }) =>
+        showMinimap ? (
+          <MinimapControl parentMap={map} onClose={() => { setShowMinimap(false); onClose(); }} />
+        ) : (
+          (() => { setShowMinimap(true); return null; })()
+        ),
+    },
+    {
+      id: 'scale',
+      icon: '📐',
+      label: showScale ? 'Scale Bar (on)' : 'Scale Bar',
+      flag: null,
+      component: ({ onClose }: { map: mapboxgl.Map; onClose: () => void }) => { setShowScale(p => !p); onClose(); return null; },
+    },
+    {
+      id: 'fullscreen',
+      icon: '⛶',
+      label: 'Fullscreen',
+      flag: null,
+      component: ({ onClose }: { map: mapboxgl.Map; onClose: () => void }) => { setShowFullscreen(p => !p); onClose(); return null; },
+    },
+  ];
+
   return (
     <div className={`tactical-dark relative h-full flex ${isMobile ? 'overflow-hidden' : ''}`}>
       {/* Map Container — full-bleed on mobile, flex-1 on desktop */}
@@ -3689,6 +3748,14 @@ export default function MapPage() {
           role="application"
           aria-label="Tactical Map"
         />
+
+        {/* Map Toolbar — floating tool launcher (draw, buildings, minimap, scale, fullscreen) */}
+        <MapToolbar map={mapInstanceRef.current} tools={MAP_TOOLS} />
+
+        {/* Minimap overlay (rendered when showMinimap is true) */}
+        {showMinimap && mapInstanceRef.current && (
+          <MinimapControl parentMap={mapInstanceRef.current} onClose={() => setShowMinimap(false)} />
+        )}
 
         {/* WebGL recovery badge — non-blocking. Shows for the ~1s rebuild after
             the GPU dropped the map's WebGL context. Centered up top so the

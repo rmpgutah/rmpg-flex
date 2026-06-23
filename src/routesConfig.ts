@@ -126,6 +126,7 @@ import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import voiceRoute from './routes/voice';
 import forensics from './routes/forensics';
+import geofences from './routes/geofences';
 import gangIntel from './routes/gangIntel';
 import hr from './routes/hr';
 import patrol from './routes/patrol';
@@ -383,6 +384,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
   { prefix: '/api/forensic-lab', router: forensics, auth: 'required',
     note: 'Alias for /api/forensics — client ForensicLabPage uses this path' },
+  { prefix: '/api/geofences', router: geofences, auth: 'required',
+    note: 'Geofence zone CRUD — writes to geofence_zones. All authenticated roles.' },
   { prefix: '/api/gang-intel', router: gangIntel, auth: 'required',
     note: 'Gang intelligence: members, gangs, graffiti records, injunctions, activity mapping' },
   { prefix: '/api/hr', router: hr, auth: 'required',
