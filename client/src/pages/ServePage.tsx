@@ -11,11 +11,14 @@ import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
+  FolderOpen, Layers,
 } from 'lucide-react';
+import ServeStatusFolder from '../components/serve/ServeStatusFolder';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import AssignTab from './serve/AssignTab';
 import MyRunTab from './serve/MyRunTab';
+import PerformanceTab from './serve/PerformanceTab';
 import { apiFetch } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
@@ -34,7 +37,8 @@ import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
 import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
 import FormModal from '../components/FormModal';
 import AddressAutocomplete, { type ParsedAddress } from '../components/AddressAutocomplete';
-import type { ServeJob, ServeAttempt, ServeAttemptData, ServeSkipAddress } from '../types';
+import type { ServeJob, ServeAttempt, ServeAttemptData, ServeSkipAddress, ServeFolder } from '../types';
+import { deriveServeFolder, SERVE_FOLDER_CONFIG } from '../types';
 import ExportButton from '../components/ExportButton';
 import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
@@ -44,7 +48,7 @@ import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
-const TABS = ['Queue', 'Route', 'Map', 'Stats', 'Assign', 'My Run'] as const;
+const TABS = ['Queue', 'Route', 'Map', 'Stats', 'Assign', 'My Run', 'Performance'] as const;
 type Tab = typeof TABS[number];
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'served' | 'failed';
 
@@ -57,7 +61,7 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 ];
 
 const MARKER_COLORS: Record<string, string> = {
-  pending: '#888888',
+  pending: 'var(--text-muted)',
   in_progress: '#eab308',
   served: '#22c55e',
   failed: '#ef4444',
@@ -127,12 +131,13 @@ export default function ServePage() {
   const m = useMenuActions();
   // ── URL deep-link contract ──
   // /serve?job_id=<n>            — auto-expand that job's card (Queue tab)
+  // /serve?serve_id=<n>          — alias for job_id (same behaviour)
+  // /serve?case_id=<n>           — expand the first job whose case_number matches
   // /serve?status=<filter>       — apply a status filter (pending|in_progress|served|failed|all)
   // /serve?tab=<Queue|Route|Map|Stats|Assign|My%20Run>  — preselect a tab
   // /serve?date=YYYY-MM-DD       — preselect the date picker
   // Honored once on mount; the param is stripped so a manual refresh does
-  // not re-select. A miss for ?job_id raises a toast pointing at the
-  // current filter (a job served yesterday won't be in today's queue).
+  // not re-select. A miss raises a toast pointing at the current filter.
   const [searchParams, setSearchParams] = useSearchParams();
   // ── Core state ──────────────────────────────────────────────────────
   const initialDateParam = searchParams.get('date');
@@ -148,7 +153,11 @@ export default function ServePage() {
   const [activeTab, setActiveTab] = useState<Tab>(validTab);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(validStatus);
   // Pending deep-link target — resolved once jobs hydrate.
-  const pendingJobIdRef = useRef<string | null>(searchParams.get('job_id'));
+  // ?serve_id= and ?job_id= are interchangeable; ?case_id= is stored separately.
+  const pendingJobIdRef = useRef<string | null>(
+    searchParams.get('serve_id') ?? searchParams.get('job_id'),
+  );
+  const pendingCaseIdRef = useRef<string | null>(searchParams.get('case_id'));
   // Delete-job confirm replaces the v480 window.confirm(). Carries the
   // job so the dialog body can show "for {name} (case {n})" detail.
   const [deleteJob, setDeleteJob] = useState<ServeJob | null>(null);
@@ -407,6 +416,31 @@ export default function ServePage() {
   // ── WebSocket live updates ─────────────────────────────────────────
   useLiveSync('process-server', refreshJobs);
 
+  // ── Cross-tab sync: My Run emits 'serve:statusChanged' on quick status
+  //    updates; Queue tab picks it up here so its folder view updates
+  //    immediately without waiting for the WS poll cycle.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { jobId, newStatus } = (e as CustomEvent<{ jobId: number; newStatus: string }>).detail;
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.id === jobId
+            ? {
+                ...j,
+                status: newStatus as ServeJob['status'],
+                closed_at:
+                  newStatus === 'served' || newStatus === 'failed'
+                    ? new Date().toISOString()
+                    : j.closed_at,
+              }
+            : j,
+        ),
+      );
+    };
+    window.addEventListener('serve:statusChanged', handler);
+    return () => window.removeEventListener('serve:statusChanged', handler);
+  }, []);
+
   // ── Fetch officers for route planner ─────────────────────────────
   useEffect(() => {
     let cancelled = false;
@@ -527,9 +561,29 @@ export default function ServePage() {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    refreshJobs();
+
+    // Optimistic update — move job to its new folder immediately without waiting for poll
+    const newStatus = (result.jobStatus as ServeJob['status']) || attemptJob.status;
+    const newClosedAt = (newStatus === 'served' || newStatus === 'failed')
+      ? new Date().toISOString()
+      : undefined;
+    if (newStatus !== attemptJob.status) {
+      setJobs(prev => prev.map(j =>
+        j.id === attemptJob.id
+          ? { ...j, status: newStatus, closed_at: newClosedAt ?? j.closed_at, attempt_count: j.attempt_count + 1 }
+          : j,
+      ));
+      if (newStatus === 'served') {
+        addToast('Job marked as Served', 'success');
+      } else if (newStatus === 'failed') {
+        addToast('Job marked as Non-Service', 'warning');
+      }
+    }
+
+    // Still refresh after short delay to sync any server-side changes
+    setTimeout(refreshJobs, 600);
     return result;
-  }, [attemptJob, refreshJobs]);
+  }, [attemptJob, refreshJobs, setJobs, addToast]);
 
   const handleRouteOptimized = useCallback(async (
     orderedJobIds: number[],
@@ -644,6 +698,12 @@ export default function ServePage() {
 
   // ── Feature 1: Priority Queue Sort ──
   const [sortByUrgency, setSortByUrgency] = useState(false);
+  // ── Queue view: folder mode vs flat list ──
+  const [viewMode, setViewMode] = useState<'folders' | 'list'>(() =>
+    (localStorage.getItem('rmpg_serve_view_mode') as 'folders' | 'list') || 'folders',
+  );
+  const [searchQuery, setSearchQuery] = useState('');
+  const [allFoldersOpen, setAllFoldersOpen] = useState<boolean | undefined>(undefined);
   // ── Feature 5: Cost Calculator ──
   const [costEstimate, setCostEstimate] = useState<any>(null);
   const [costJobId, setCostJobId] = useState<number | null>(null);
@@ -658,6 +718,17 @@ export default function ServePage() {
 
   const filteredJobs = useMemo(() => {
     let result = statusFilter === 'all' ? jobs : jobs.filter(j => j.status === statusFilter);
+
+    // Search filter — applies across all folders
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(j =>
+        j.recipient_name.toLowerCase().includes(q) ||
+        (j.case_number || '').toLowerCase().includes(q) ||
+        (j.client_name || '').toLowerCase().includes(q) ||
+        (j.recipient_address || '').toLowerCase().includes(q),
+      );
+    }
 
     // Feature 1: Sort by deadline urgency
     if (sortByUrgency) {
@@ -674,7 +745,18 @@ export default function ServePage() {
     }
 
     return result;
-  }, [jobs, statusFilter, sortByUrgency]);
+  }, [jobs, statusFilter, sortByUrgency, searchQuery]);
+
+  // Group jobs by folder for folder view
+  const jobsByFolder = useMemo(() => {
+    const groups: Record<ServeFolder, ServeJob[]> = {
+      in_progress: [], pending: [], served: [], failed: [], archived: [],
+    };
+    for (const job of filteredJobs) {
+      groups[deriveServeFolder(job)].push(job);
+    }
+    return groups;
+  }, [filteredJobs]);
 
   // ══════════════════════════════════════════════════════════════════════
   // Map Tab
@@ -891,21 +973,41 @@ export default function ServePage() {
     return () => window.removeEventListener('keydown', handler);
   }, [deleteJob, attemptJob, editAttempt, skipTraceJob, routePlannerOpen, createJobOpen, clearFormDraft, openCreate]);
 
-  // \u2500\u2500 Deep-link resolver \u2014 runs once jobs hydrate, then strips the param \u2500\u2500
+  // \u2500\u2500 Deep-link resolver \u2014 runs once jobs hydrate, then strips the params \u2500\u2500
   useEffect(() => {
-    const target = pendingJobIdRef.current;
-    if (!target || loading) return;
+    if (loading) return;
     if (jobs.length === 0) return; // wait one more cycle for hydration
-    const hit = jobs.find((j) => String(j.id) === String(target));
-    pendingJobIdRef.current = null;
-    if (!hit) {
-      addToast(`Serve job ${target} not in the current view (try clearing the date filter)`, 'warning');
-    } else {
-      setActiveTab('Queue');
-      setExpandedJobId(hit.id);
+
+    // ?job_id= / ?serve_id= \u2014 expand by numeric job id
+    const jobTarget = pendingJobIdRef.current;
+    if (jobTarget) {
+      pendingJobIdRef.current = null;
+      const hit = jobs.find((j) => String(j.id) === String(jobTarget));
+      if (!hit) {
+        addToast(`Serve job ${jobTarget} not in the current view (try clearing the date filter)`, 'warning');
+      } else {
+        setActiveTab('Queue');
+        setExpandedJobId(hit.id);
+      }
     }
+
+    // ?case_id= \u2014 expand first job whose case_number matches
+    const caseTarget = pendingCaseIdRef.current;
+    if (caseTarget) {
+      pendingCaseIdRef.current = null;
+      const hit = jobs.find((j) => String(j.case_number) === String(caseTarget));
+      if (!hit) {
+        addToast(`No serve job found for case ${caseTarget} in the current view`, 'warning');
+      } else {
+        setActiveTab('Queue');
+        setExpandedJobId(hit.id);
+      }
+    }
+
     const next = new URLSearchParams(searchParams);
     next.delete('job_id');
+    next.delete('serve_id');
+    next.delete('case_id');
     setSearchParams(next, { replace: true });
   }, [jobs, loading, searchParams, setSearchParams, addToast]);
 
@@ -915,7 +1017,8 @@ export default function ServePage() {
   useEffect(() => {
     if (consumedInitialParamsRef.current) return;
     consumedInitialParamsRef.current = true;
-    if (!initialTabParam && !initialStatusParam && !initialDateParam) return;
+    const hasInitial = initialTabParam || initialStatusParam || initialDateParam;
+    if (!hasInitial) return;
     const next = new URLSearchParams(searchParams);
     if (initialTabParam) next.delete('tab');
     if (initialStatusParam) next.delete('status');
@@ -964,7 +1067,7 @@ export default function ServePage() {
         <div className="flex items-center gap-1.5">
           <Briefcase size={16} className="text-brand-gold-500" />
           {!isMobile && <span className="text-sm font-semibold text-rmpg-100 tracking-wider">PROCESS SERVER</span>}
-          {!isMobile && <span className="block h-px w-full bg-[#d4a017]/30 mt-0.5" />}
+          {!isMobile && <span className="block h-px w-full bg-brand-400/30 mt-0.5" />}
         </div>
 
         {/* Date picker + route stats */}
@@ -1037,8 +1140,21 @@ export default function ServePage() {
 
       {/* ─── Tab Bar ───────────────────────────────────────────────── */}
       <div className="flex items-center border-b border-rmpg-700 bg-surface-sunken" role="tablist" aria-label="Process Server views">
-        {TABS.filter(tab => tab !== 'Assign' || ['admin','manager','supervisor'].includes(user?.role ?? '')).map(tab => {
-          const Icon = tab === 'Queue' ? List : tab === 'Route' ? Route : tab === 'Map' ? MapIcon : tab === 'Assign' ? Users : tab === 'My Run' ? Route : BarChart3;
+        {TABS.filter(tab => {
+          const role = user?.role ?? '';
+          if (tab === 'Assign') return ['admin', 'manager', 'supervisor'].includes(role);
+          if (tab === 'Performance') return ['admin', 'manager', 'supervisor', 'officer'].includes(role);
+          // Queue, Route, Map, Stats, My Run — visible to all
+          return true;
+        }).map(tab => {
+          const Icon =
+            tab === 'Queue' ? List :
+            tab === 'Route' ? Route :
+            tab === 'Map' ? MapIcon :
+            tab === 'Stats' ? BarChart3 :
+            tab === 'Assign' ? Users :
+            tab === 'Performance' ? BarChart3 :
+            Route; // My Run
           return (
             <button type="button"
               key={tab}
@@ -1063,49 +1179,78 @@ export default function ServePage() {
         {/* ── Queue Tab ───────────────────────────────────────────── */}
         {activeTab === 'Queue' && (
           <div className="h-full flex flex-col">
-            {/* Filter buttons */}
-            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-rmpg-700 overflow-x-auto tab-scroll">
-              {STATUS_FILTERS.map(f => (
-                <button type="button"
-                  key={f.value}
-                  role="button"
-                  aria-pressed={statusFilter === f.value}
-                  onClick={() => setStatusFilter(f.value)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-rmpg-500/50 ${
-                    statusFilter === f.value
-                      ? 'text-rmpg-100 bg-rmpg-500 border-rmpg-500 shadow-[0_0_6px_rgba(212,160,23,0.3)]'
-                      : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-200'
-                  }`}
-                >
-                  {f.label}
-                  {f.value !== 'all' && (
-                    <span className="ml-1 text-[10px] tabular-nums font-mono text-rmpg-500">
-                      {jobs.filter(j => j.status === f.value).length}
-                    </span>
-                  )}
-                </button>
-              ))}
-              {/* Feature 1: Priority Sort Toggle */}
+            {/* Toolbar */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 overflow-x-auto tab-scroll">
+              {/* Search */}
+              <div className="relative flex-1 min-w-0 max-w-[220px]">
+                <SearchIcon size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search recipient, case #..."
+                  className="w-full pl-6 pr-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-200 placeholder:text-rmpg-600 focus:outline-none focus:border-rmpg-500"
+                />
+              </div>
+              {/* Count summary */}
+              <div className="hidden sm:flex items-center gap-2 text-[10px] text-rmpg-500 flex-shrink-0">
+                {(jobsByFolder.in_progress.length + jobsByFolder.pending.length) > 0 && (
+                  <span className="text-amber-400 font-mono">{jobsByFolder.in_progress.length + jobsByFolder.pending.length} active</span>
+                )}
+                {jobsByFolder.served.length > 0 && (
+                  <span className="text-green-400 font-mono">{jobsByFolder.served.length} served</span>
+                )}
+                {jobsByFolder.failed.length > 0 && (
+                  <span className="text-red-400 font-mono">{jobsByFolder.failed.length} non-svc</span>
+                )}
+              </div>
+              {/* View mode toggle */}
+              <div className="flex items-center border border-rmpg-700 rounded-[2px] overflow-hidden flex-shrink-0">
+                <button type="button" title="Folder view"
+                  aria-pressed={viewMode === 'folders'}
+                  onClick={() => { setViewMode('folders'); localStorage.setItem('rmpg_serve_view_mode', 'folders'); }}
+                  className={`px-2 py-1 text-[10px] transition-colors ${viewMode === 'folders' ? 'bg-rmpg-500/30 text-rmpg-200' : 'text-rmpg-500 hover:text-rmpg-300'}`}
+                ><FolderOpen size={11} /></button>
+                <button type="button" title="List view"
+                  aria-pressed={viewMode === 'list'}
+                  onClick={() => { setViewMode('list'); localStorage.setItem('rmpg_serve_view_mode', 'list'); }}
+                  className={`px-2 py-1 text-[10px] transition-colors ${viewMode === 'list' ? 'bg-rmpg-500/30 text-rmpg-200' : 'text-rmpg-500 hover:text-rmpg-300'}`}
+                ><Layers size={11} /></button>
+              </div>
+              {/* Collapse All / Expand All (folder mode only) */}
+              {viewMode === 'folders' && (
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button type="button" onClick={() => setAllFoldersOpen(true)}
+                    className="px-2 py-1 text-[10px] text-rmpg-500 hover:text-rmpg-300 border border-rmpg-700 rounded-[2px] transition-colors">
+                    Expand
+                  </button>
+                  <button type="button" onClick={() => setAllFoldersOpen(false)}
+                    className="px-2 py-1 text-[10px] text-rmpg-500 hover:text-rmpg-300 border border-rmpg-700 rounded-[2px] transition-colors">
+                    Collapse
+                  </button>
+                </div>
+              )}
+              {/* Priority sort */}
               <button type="button"
                 role="button"
                 aria-pressed={sortByUrgency}
                 onClick={() => setSortByUrgency(prev => !prev)}
                 className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap ml-auto focus:outline-none focus:ring-1 focus:ring-amber-500/50 ${
                   sortByUrgency
-                    ? 'text-amber-400 bg-amber-900/30 border-amber-600 shadow-[0_0_6px_rgba(245,158,11,0.2)]'
+                    ? 'text-amber-400 bg-amber-900/30 border-amber-600'
                     : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-200'
                 }`}
                 title="Sort by deadline urgency"
               >
                 <span className="inline-flex items-center gap-1">
                   {sortByUrgency
-                    ? (<><Zap size={11} aria-hidden="true" /> Urgent First</>)
-                    : (<><ArrowUpDown size={11} aria-hidden="true" /> Priority Sort</>)}
+                    ? (<><Zap size={11} aria-hidden="true" /> Urgent</>)
+                    : (<><ArrowUpDown size={11} aria-hidden="true" /> Sort</>)}
                 </span>
               </button>
             </div>
 
-            {/* Feature 1: Urgency color indicators */}
+            {/* Urgency legend */}
             {sortByUrgency && filteredJobs.length > 0 && (
               <div className="px-3 py-1 border-b border-rmpg-700 flex items-center gap-3 text-[9px] text-rmpg-500">
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Overdue</span>
@@ -1116,64 +1261,102 @@ export default function ServePage() {
               </div>
             )}
 
-            {/* Job list */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2 scrollbar-dark">
+            {/* Job list / Folder view */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 scrollbar-dark">
               {loading && jobs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-xs text-rmpg-400">
                   <Loader2 size={16} className="animate-spin mr-2 text-rmpg-500" />
                   <span className="text-rmpg-400">Loading jobs...</span>
                 </div>
-              ) : filteredJobs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-40 text-center">
-                  <div className="w-12 h-12 rounded-full bg-surface-sunken flex items-center justify-center mb-3">
-                    <Briefcase size={20} className="text-rmpg-500" />
-                  </div>
-                  {/* Distinguish "filter is hiding rows" from "queue is truly empty" — */}
-                  {/* before this, both rendered the same generic empty state and an */}
-                  {/* operator with a stale ?status=failed could not tell whether the */}
-                  {/* day was clean or whether they were looking through a filter. */}
-                  {jobs.length > 0 ? (
-                    <>
+              ) : viewMode === 'folders' ? (
+                /* ── FOLDER VIEW ─────────────────────────────────── */
+                <div className="space-y-2">
+                  {jobs.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-40 text-center">
+                      <div className="w-12 h-12 rounded-full bg-surface-sunken flex items-center justify-center mb-3">
+                        <Briefcase size={20} className="text-rmpg-500" />
+                      </div>
                       <p className="text-sm text-rmpg-400 font-medium">
-                        No {statusFilter.replace(/_/g, ' ')} jobs match this filter.
+                        No jobs for {selectedDate}. Sync from ServeManager, press <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">N</kbd>, or add manually.
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setStatusFilter('all')}
-                        className="mt-2 text-[11px] text-brand-400 hover:text-brand-300 underline underline-offset-2"
-                      >
-                        Show all {jobs.length} job{jobs.length === 1 ? '' : 's'} for this date
-                      </button>
-                    </>
+                    </div>
                   ) : (
-                    <p className="text-sm text-rmpg-400 font-medium">
-                      No jobs for {selectedDate}. Sync from ServeManager, press <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">N</kbd>, or add manually.
-                    </p>
+                    (['in_progress', 'pending', 'served', 'failed', 'archived'] as ServeFolder[]).map(folder => {
+                      const cfg = SERVE_FOLDER_CONFIG[folder];
+                      const folderJobs = jobsByFolder[folder];
+                      return (
+                        <ServeStatusFolder
+                          key={folder}
+                          status={folder}
+                          label={cfg.label}
+                          defaultOpen={cfg.defaultOpen}
+                          count={folderJobs.length}
+                          forceOpen={allFoldersOpen}
+                        >
+                          {folderJobs.map(job => (
+                            <div key={job.id} onContextMenu={(e) => openMenu(e, buildJobMenu(job))}>
+                              <ServeJobCard
+                                job={job}
+                                linkedCall={linkedCalls[job.id] || null}
+                                onAttempt={(id) => { const j = jobs.find(jj => jj.id === id); if (j) setAttemptJob(j); }}
+                                onNavigate={handleNavigate}
+                                onSkipTrace={(id) => { const j = jobs.find(jj => jj.id === id); if (j) setSkipTraceJob(j); }}
+                                onFlagAddress={handleFlagAddress}
+                                onEdit={openEdit}
+                                onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
+                                isExpanded={expandedJobId === job.id}
+                                onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
+                              />
+                            </div>
+                          ))}
+                        </ServeStatusFolder>
+                      );
+                    })
                   )}
                 </div>
               ) : (
-                filteredJobs.map(job => (
-                  <div key={job.id} onContextMenu={(e) => openMenu(e, buildJobMenu(job))}>
-                  <ServeJobCard
-                    job={job}
-                    linkedCall={linkedCalls[job.id] || null}
-                    onAttempt={(id) => {
-                      const j = jobs.find(jj => jj.id === id);
-                      if (j) setAttemptJob(j);
-                    }}
-                    onNavigate={handleNavigate}
-                    onSkipTrace={(id) => {
-                      const j = jobs.find(jj => jj.id === id);
-                      if (j) setSkipTraceJob(j);
-                    }}
-                    onFlagAddress={handleFlagAddress}
-                    onEdit={openEdit}
-                    onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
-                    isExpanded={expandedJobId === job.id}
-                    onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
-                  />
-                  </div>
-                ))
+                /* ── FLAT LIST VIEW (legacy) ─────────────────────── */
+                <div className="space-y-2">
+                  {filteredJobs.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-40 text-center">
+                      <div className="w-12 h-12 rounded-full bg-surface-sunken flex items-center justify-center mb-3">
+                        <Briefcase size={20} className="text-rmpg-500" />
+                      </div>
+                      {jobs.length > 0 ? (
+                        <>
+                          <p className="text-sm text-rmpg-400 font-medium">
+                            {searchQuery ? `No jobs match "${searchQuery}"` : `No ${statusFilter.replace(/_/g, ' ')} jobs.`}
+                          </p>
+                          <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); }}
+                            className="mt-2 text-[11px] text-brand-400 hover:text-brand-300 underline underline-offset-2">
+                            Clear filters — show all {jobs.length} job{jobs.length === 1 ? '' : 's'}
+                          </button>
+                        </>
+                      ) : (
+                        <p className="text-sm text-rmpg-400 font-medium">
+                          No jobs for {selectedDate}.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    filteredJobs.map(job => (
+                      <div key={job.id} onContextMenu={(e) => openMenu(e, buildJobMenu(job))}>
+                        <ServeJobCard
+                          job={job}
+                          linkedCall={linkedCalls[job.id] || null}
+                          onAttempt={(id) => { const j = jobs.find(jj => jj.id === id); if (j) setAttemptJob(j); }}
+                          onNavigate={handleNavigate}
+                          onSkipTrace={(id) => { const j = jobs.find(jj => jj.id === id); if (j) setSkipTraceJob(j); }}
+                          onFlagAddress={handleFlagAddress}
+                          onEdit={openEdit}
+                          onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
+                          isExpanded={expandedJobId === job.id}
+                          onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
+                        />
+                      </div>
+                    ))
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -1229,12 +1412,8 @@ export default function ServePage() {
                   {/* Progress bar */}
                   <div className="w-full h-1.5 bg-surface-overlay rounded-full overflow-hidden">
                     <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${progressPct}%`,
-                        background: progressPct === 100 ? '#22c55e' : '#d4a017',
-                        boxShadow: `0 0 6px ${progressPct === 100 ? '#22c55e' : '#d4a017'}40`,
-                      }}
+                      className={`h-full rounded-full transition-all duration-500 ${progressPct === 100 ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.25)]' : 'bg-brand-400 shadow-[0_0_6px_var(--brand-gold-glow,rgba(212,160,23,0.25))]'}`}
+                      style={{ width: `${progressPct}%` }}
                     />
                   </div>
 
@@ -1256,10 +1435,9 @@ export default function ServePage() {
                         >
                           {/* Stop number */}
                           <span
-                            className="w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-rmpg-100 flex-shrink-0"
-                            style={{
-                              background: isCompleted ? '#22c55e' : isFailed ? '#ef4444' : job.status === 'in_progress' ? '#eab308' : '#888888',
-                            }}
+                            className={`w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-rmpg-100 flex-shrink-0 ${
+                              isCompleted ? 'bg-green-500' : isFailed ? 'bg-red-500' : job.status === 'in_progress' ? 'bg-amber-500' : 'bg-rmpg-500'
+                            }`}
                           >
                             {idx + 1}
                           </span>
@@ -1284,11 +1462,15 @@ export default function ServePage() {
                           </div>
 
                           {/* Status badge */}
-                          <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] flex-shrink-0" style={{
-                            background: isCompleted ? '#22c55e20' : isFailed ? '#ef444420' : job.status === 'in_progress' ? '#eab30820' : '#88888820',
-                            color: isCompleted ? '#4ade80' : isFailed ? '#f87171' : job.status === 'in_progress' ? '#facc15' : '#aaaaaa',
-                            border: `1px solid ${isCompleted ? '#22c55e30' : isFailed ? '#ef444430' : job.status === 'in_progress' ? '#eab30830' : '#88888830'}`,
-                          }}>
+                          <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] flex-shrink-0 border ${
+                            isCompleted
+                              ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                              : isFailed
+                                ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                : job.status === 'in_progress'
+                                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                  : 'bg-rmpg-500/10 text-rmpg-400 border-rmpg-500/20'
+                          }`}>
                             {toDisplayLabel(job.status)}
                           </span>
                         </div>
@@ -1549,7 +1731,14 @@ export default function ServePage() {
         )}
 
         {activeTab === 'Assign' && ['admin','manager','supervisor'].includes(user?.role ?? '') && <AssignTab />}
-        {activeTab === 'My Run' && user?.id != null && <MyRunTab officerId={Number(user.id)} />}
+        {activeTab === 'My Run' && user?.id != null && (
+          <MyRunTab
+            officerId={Number(user.id)}
+            sharedJobs={jobs}
+            onJobsChange={setJobs}
+          />
+        )}
+        {activeTab === 'Performance' && ['admin','manager','supervisor','officer'].includes(user?.role ?? '') && <PerformanceTab />}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════ */}

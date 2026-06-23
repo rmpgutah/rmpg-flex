@@ -137,11 +137,12 @@ export default function TasksPage() {
   // Backend role gates:
   //   DELETE — admin | manager only
   //   PUT    — admin | manager | supervisor | officer
-  //   POST   — admin | manager | supervisor | officer
+  //   POST   — admin | manager | supervisor (checklist: create gated)
   // Mirror these client-side so a dispatcher/viewer doesn't see actions
   // that will 403 on the server.
   const canDelete = user?.role === 'admin' || user?.role === 'manager';
-  const canAssign = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+  const canCreate = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+  const canAssign = canCreate;
 
   // ── State ──────────────────────────────────────────────────────
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -317,11 +318,12 @@ export default function TasksPage() {
   }, [deleteId, formOpen, highlightId, error, hasActiveFilters]);
 
   // ── `N` shortcut to open a new task. Skips while a modal is open or
-  // a typing surface is focused. Matches the muscle memory established
-  // by GeographyPage / ServePage / DARs / CodeEnforcement / etc.
+  // a typing surface is focused. Gated by canCreate (admin|manager|supervisor).
+  // Matches the muscle memory established by GeographyPage / ServePage / DARs etc.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!canCreate) return;
       if (formOpen || deleteId !== null) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
@@ -332,7 +334,7 @@ export default function TasksPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [formOpen, deleteId, openNew]);
+  }, [canCreate, formOpen, deleteId, openNew]);
 
   const handleSubmit = async (data: TaskFormData) => {
     setFormSubmitting(true); setFormError(null);
@@ -554,15 +556,17 @@ export default function TasksPage() {
         >
           <FileText size={13} /> Task PDF
         </button>
-        <button
-          type="button"
-          onClick={openNew}
-          className="toolbar-btn flex items-center gap-1.5"
-          style={{ height: 28, padding: '0 10px' }}
-          title="New task (shortcut: N)"
-        >
-          <Plus size={13} /> New Task
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            onClick={openNew}
+            className="toolbar-btn flex items-center gap-1.5"
+            style={{ height: 28, padding: '0 10px' }}
+            title="New task (shortcut: N)"
+          >
+            <Plus size={13} /> New Task
+          </button>
+        )}
       </PanelTitleBar>
 
       {/* Error banner — replaces the prior silent catch{}. Dismissable
@@ -673,7 +677,7 @@ export default function TasksPage() {
         emptyMessage={hasActiveFilters ? 'No tasks match the active filters' : 'No tasks yet'}
         emptyDescription={hasActiveFilters
           ? 'Try widening the status / priority / assignee filter or toggling overdue-only.'
-          : 'Press N or click New Task above to create the first one.'}
+          : canCreate ? 'Press N or click New Task above to create the first one.' : 'No tasks have been created yet.'}
         emptyIcon={ClipboardList}
         onRowClick={(row) => openEdit(row)}
         rowContextMenu={(row) => {

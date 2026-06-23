@@ -256,13 +256,35 @@ export default function CommunityPage() {
     fetchStats();
   }, [fetchEvents, fetchStats]);
 
+  // ── Form helpers ─────────────────────────────────────────
+
+  const openNew = useCallback(() => {
+    setEditingEvent(null);
+    setFormData(EMPTY_FORM);
+    setShowForm(true);
+  }, []);
+
+  const openEdit = useCallback((ev: CommunityEvent) => {
+    setEditingEvent(ev);
+    setFormData({
+      event_name: ev.event_name ?? '',
+      event_type: ev.event_type ?? 'other',
+      description: ev.description ?? '',
+      location: ev.location ?? '',
+      start_date: ev.start_date ?? '',
+      end_date: ev.end_date ?? '',
+      status: ev.status ?? 'planned',
+      notes: ev.notes ?? '',
+    });
+    setShowForm(true);
+  }, []);
+
   // ── URL deep-link: ?event_id=N ───────────────────────────
   useEffect(() => {
     const rawId = searchParams.get('event_id');
     if (!rawId || deepLinkRef.current) return;
     const id = parseInt(rawId, 10);
     if (isNaN(id)) { setSearchParams((p) => { p.delete('event_id'); return p; }, { replace: true }); return; }
-    // Wait until events are loaded then auto-open (consume exactly once)
     if (eventsLoading) return;
     deepLinkRef.current = true;
     const found = events.find((e) => e.id === id);
@@ -280,6 +302,11 @@ export default function CommunityPage() {
     else if (activeTab === 'watch-groups') fetchWatchGroups();
     else if (activeTab === 'alerts') fetchAlerts();
   }, [activeTab, fetchTips, fetchWatchGroups, fetchAlerts]);
+
+  const closeForm = useCallback(() => {
+    setShowForm(false);
+    setEditingEvent(null);
+  }, []);
 
   const handleSave = async () => {
     if (!formData.event_name.trim()) { addToast('Event name is required', 'error'); return; }

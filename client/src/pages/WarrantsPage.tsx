@@ -23,7 +23,7 @@ import WarrantBadge from '../components/WarrantBadge';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
-import StatuteLookup, { OffenseLevelBadge } from '../components/StatuteLookup';
+import StatuteLookup from '../components/StatuteLookup';
 import type { StatuteResult } from '../components/StatuteLookup';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { useFormDraft } from '../hooks/useFormDraft';
@@ -1608,7 +1608,7 @@ export default function WarrantsPage() {
       <PanelTitleBar title="WARRANT SEARCH" icon={AlertTriangle}>
         <RmpgLogo height={16} iconOnly />
         <span className="toolbar-separator" />
-        {activeTab === 'warrants' && !showArchived && (
+        {activeTab === 'warrants' && !showArchived && isAdminOrManager && (
           <button type="button" onClick={openNewForm} className="toolbar-btn toolbar-btn-primary text-[9px]">
             <Plus className="w-3 h-3" /> New Warrant
           </button>
@@ -2200,7 +2200,7 @@ export default function WarrantsPage() {
                       icon={Gavel}
                       title="No warrants on file"
                       description="Create a new warrant to get started."
-                      action={{ label: 'New Warrant', onClick: openNewForm }}
+                      action={isAdminOrManager ? { label: 'New Warrant', onClick: openNewForm } : undefined}
                     />
                   );
                 })()
@@ -4212,7 +4212,7 @@ export default function WarrantsPage() {
       )}
 
       {/* MOBILE FAB */}
-      {isMobile && activeTab === 'warrants' && !selectedWarrant && !showArchived && !formOpen && (
+      {isMobile && activeTab === 'warrants' && !selectedWarrant && !showArchived && !formOpen && isAdminOrManager && (
         <IconButton onClick={openNewForm} className="mobile-fab" aria-label="New Warrant">
           <Plus className="w-6 h-6" />
         </IconButton>
