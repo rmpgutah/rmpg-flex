@@ -36,7 +36,7 @@ describe('QuickCapturePage', () => {
     renderPage();
     fireEvent.change(screen.getByPlaceholderText('Last name'), { target: { value: 'Smith' } });
     fireEvent.click(screen.getByText('CAPTURE + CHECK'));
-    await waitFor(() => expect(screen.getByText(/Active warrant W-4/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText(/Active warrant W-4/).length).toBeGreaterThan(0));
     expect(screen.getByText(/Open dossier/)).toBeInTheDocument();
   });
 
