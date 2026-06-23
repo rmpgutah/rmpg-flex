@@ -59,58 +59,66 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
-// v1067: Billing & Financial (/billing) — Page 50 of the full-app
-//        frontend audit pass. BillingPage is the lightweight invoice
-//        dashboard (the deeper line-item / payment / status-transition
-//        surface lives in /invoices). The audit caught that the page
-//        shipped with: no URL deep-link contract (a supervisor could
-//        not share a link to a specific invoice or filtered view), no
-//        status filter at all, a hand-rolled delete modal that bypassed
-//        the shared ConfirmDialog a11y / focus / Esc machinery, no
-//        invoice PDF surface (AdminInvoiceTab + InvoicesPage both have
-//        Download PDF buttons; BillingPage did not), no `N` keyboard
-//        shortcut, no Esc cascade, and no overdue indicator on the
-//        row even though due_date is in the feed.
+// v1065: Skip Tracker (/skip-tracer) — Page 48 of the full-app frontend pass.
+//        Two-part fix. (1) The page's server surface was dead: every
+//        client search hit /skiptracer/search/{byname,byaddress,bynameaddress,
+//        byphone,byemail}, /skiptracer/person/:id, and /api/skiptracer/export/csv
+//        — none of which existed on the rewrite Worker. The legacy VPS
+//        "v2 worker" that historically owned those round-trips was
+//        decommissioned 2026-06-15 (memory: project-vps-decommissioned),
+//        so every search 404'd silently. src/routes/skiptracer.ts now
+//        implements the full surface against the rewrite's own D1 corpus
+//        — persons + dl_records + microbilt_searches as a search cache —
+//        with per-mode audit_log entries via recordAudit. Result rows are
+//        returned in the legacy "PeopleDetails" envelope so the client
+//        (and NcicQueryPanel which also calls these paths from the QS
+//        cross-reference) doesn't need a parser branch for local-vs-
+//        external. Microbilt-style "Lives in"/"Person ID" fields are
+//        synthesised from the local row so the same renderer works.
+//        (2) The page itself is brought up to the audit-series contract:
+//          • URL deep-link: ?subject_id=<n>&mode=<m>&search=<q> — consumed
+//            once and stripped (replace:true) so a refresh doesn't loop.
+//          • ConfirmDialog over silent destroy: "Clear" search history
+//            was a one-click localStorage.removeItem — now a danger-
+//            variant dialog with the entry count + most-recent query in
+//            the detail block. Matches FlexCam / Geography / DAR pattern.
+//          • Esc smart-cascade: extended detail → selected → error →
+//            results → empty. Suppressed while typing.
+//          • `N` shortcut: clears the form + focuses the active mode's
+//            input. Suppressed inside fields/dialogs/modifier chords.
+//          • Per-user search-history (DlSearch #1601 pattern): the bare
+//            `rmpg_skiptracer_history` key leaked one operator's name/
+//            phone queries to the next person to use a shared MDT. Scope
+//            is now `rmpg_skiptracer_history_${user.id}` with a one-time
+//            read-through migration so existing local history isn't lost.
+//          • Court-ready investigator-handoff PDF: new client/src/utils/
+//            skipTracerReportPdf.ts (5 unit tests covering Microbilt
+//            envelope shape, lower_snake local rows, mixed-shape arrays,
+//            empty subjects, and officer-attribution footer). Operators
+//            previously screenshotted the detail pane to file a lead in
+//            a case folder. Toolbar PDF button appears once a subject is
+//            selected; same generator is also wired into the result-row
+//            right-click menu.
+//          • Empty-state distinction: "no search yet" vs "search ran, 0
+//            hits" — the right pane now shows a "Start over" CTA on
+//            zero-results so the operator has a one-click reset instead
+//            of having to re-find the form on a mobile collapse.
+//          • setTimeout(handleSearch, 100) race in rerunSearch replaced
+//            with an effect-driven pendingRerunRef that waits for the
+//            updated handleSearch closure to see the freshly-set query
+//            state before firing. The 100ms guess was visibly flaky on
+//            slow MDTs (search ran with the previous query).
 //
-//        What changed:
-//          • URL deep-link: ?invoice_id=N opens the edit form for the
-//            matching row once the list hydrates; ?status= and
-//            ?client_id= filter the grid. Params are stripped after
-//            apply (matches the FlexCam / CodeEnforcement pattern).
-//            Cross-page contract: anywhere that names an invoice can
-//            now /billing?invoice_id=42 to drop the operator straight
-//            into the edit form.
-//          • Status filter dropdown + clear button + "N of M" counter
-//            sit above the grid. Filters are mirrored back into the URL
-//            so the view is sharable. Empty state now distinguishes
-//            "no invoices yet" (zero-state) from "no matches" (filter
-//            applied) — the latter suggests clearing filters.
-//          • Native delete modal replaced with ConfirmDialog: variant
-//            'danger', details surface invoice #, client, and total so
-//            the operator sees what they are about to destroy (and so
-//            we kill the two hardcoded #991b1b / #f87171 hex values
-//            that bypassed the day/night theme system).
-//          • Per-row Download PDF button + context-menu entry. Fetches
-//            line items from /billing/invoices/:id/items and payments
-//            from /billing/payments?invoice_id= then hands the merged
-//            shape to generateInvoicePdf — the same Arial-only,
-//            NIBRS-style invoice generator AdminInvoiceTab uses.
-//          • `N` keyboard shortcut opens New Invoice (skips while
-//            typing in any field and while any modal is open, mirrors
-//            CodeEnforcement / ShiftPlans / DashCameras).
-//          • Esc smart-cascade: the form + delete dialog own their own
-//            Esc handlers (close-newest-first); page-level Esc clears
-//            active filters when nothing modal is open.
-//          • Overdue chip: when status='sent' or 'partial' and due_date
-//            is in the past, a red OVERDUE pill renders alongside the
-//            status — gives dispatchers / supervisors a visual prompt
-//            without making them open every invoice. Comparison is
-//            lexicographic on the YYYY-MM-DD form because that's how
-//            the server stores due_date (no TZ surprises).
+//        Theme: per-mode chip accent hex values kept (decorative
+//        per-mode icon tints that don't re-theme in either direction);
+//        the single rgba(136,136,136,0.15) avatar background tile
+//        migrated to var(--surface-raised).
 //
-//        No server changes. The existing /billing/* surface already
-//        exposes everything the upgrades need (items, payments,
-//        invoices CRUD, stats).
+//        Worker: src/routes/skiptracer.ts gains 7 endpoints. No D1
+//        migration — only reads existing tables. recordAudit wired so
+//        every skip-trace becomes part of the central audit seam (and
+//        therefore reaches flex_events). Existing /status, /stats,
+//        /dossiers, /dossiers/:id endpoints untouched.
 //
 // v1057: Audit Log (/audit) — Page 40 of the full-app frontend pass.
 //        The audit log is THE highest-evidentiary surface in the app: it
