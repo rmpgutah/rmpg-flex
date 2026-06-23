@@ -108,6 +108,11 @@ export default function GeographyPage() {
   const { user } = useAuth();
   const userId = user?.id;
 
+  // Role gate: admin / manager / supervisor may create, edit, and delete
+  // geography tiers. Officers and dispatchers get read-only access.
+  const CAN_WRITE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+  const canWrite = CAN_WRITE_ROLES.has(user?.role ?? '');
+
   // ── Editing state ──
   const [editing, setEditing] = useState<TierId | null>(null);
   const [saving, setSaving] = useState(false);
@@ -570,6 +575,7 @@ export default function GeographyPage() {
         return;
       }
       if (e.key === 'n' || e.key === 'N') {
+        if (!canWrite) return;
         // Deepest selected tier wins so the operator gets the new row
         // exactly where their attention is (cursor-down-the-tree UX).
         e.preventDefault();
@@ -586,7 +592,7 @@ export default function GeographyPage() {
   }, [
     deletePending, addingTier, editing, handleCancelEdit,
     state.searchQuery, state.selectedAreaId, state.selectedSectorId,
-    state.selectedZoneId, state.selectedBeatId, closeDelete, closeAdd, openAdd,
+    state.selectedZoneId, state.selectedBeatId, closeDelete, closeAdd, openAdd, canWrite,
   ]);
 
   // ── URL deep-link: ?area_id=&sector_id=&zone_id=&beat_id= ──
@@ -911,6 +917,7 @@ export default function GeographyPage() {
           selectedId={state.selectedAreaId}
           onSelect={selectArea}
           onAdd={() => openAdd('area')}
+          canAdd={canWrite}
           renderItem={(a) => ({
             primary: a.area_name,
             secondary: a.sector_count != null ? `${a.sector_count} sectors` : '',
@@ -925,6 +932,7 @@ export default function GeographyPage() {
           selectedId={state.selectedSectorId}
           onSelect={selectSector}
           onAdd={() => openAdd('sector')}
+          canAdd={canWrite}
           disabled={state.selectedAreaId == null}
           renderItem={(s) => ({
             primary: s.sector_name,
@@ -940,6 +948,7 @@ export default function GeographyPage() {
           selectedId={state.selectedZoneId}
           onSelect={selectZone}
           onAdd={() => openAdd('zone')}
+          canAdd={canWrite}
           disabled={state.selectedSectorId == null}
           renderItem={(z) => ({
             primary: z.zone_name,
@@ -955,6 +964,7 @@ export default function GeographyPage() {
           selectedId={state.selectedBeatId}
           onSelect={selectBeat}
           onAdd={() => openAdd('beat')}
+          canAdd={canWrite}
           disabled={state.selectedZoneId == null}
           renderItem={(b) => ({
             primary: b.beat_name,
@@ -973,6 +983,7 @@ export default function GeographyPage() {
           editForm={activeEditForm}
           onEditFieldChange={setActiveEditField}
           saving={saving}
+          canWrite={canWrite}
         />
       </div>
 
@@ -1124,6 +1135,8 @@ interface TierColumnProps<T extends { id: number }> {
   selectedId: number | null;
   onSelect: (id: number) => void;
   onAdd: () => void;
+  /** False for read-only roles (officer / dispatcher) — hides the + button. */
+  canAdd?: boolean;
   disabled?: boolean;
   renderItem: (item: T) => { primary: string; secondary: string; code: string };
   width: number;
@@ -1139,14 +1152,16 @@ function TierColumn<T extends { id: number }>(props: TierColumnProps<T>) {
         <span className="text-[10px] font-bold tracking-wider text-brand-gold-500 truncate">
           {props.title}
         </span>
-        <button
-          onClick={props.onAdd}
-          disabled={props.disabled}
-          className="p-1 hover:bg-surface-raised disabled:opacity-30 disabled:cursor-not-allowed"
-          title={`Add new ${props.title.split(' ')[0].toLowerCase()}`}
-        >
-          <Plus size={12} className="text-[var(--text-muted)]" />
-        </button>
+        {props.canAdd !== false && (
+          <button
+            onClick={props.onAdd}
+            disabled={props.disabled}
+            className="p-1 hover:bg-surface-raised disabled:opacity-30 disabled:cursor-not-allowed"
+            title={`Add new ${props.title.split(' ')[0].toLowerCase()}`}
+          >
+            <Plus size={12} className="text-[var(--text-muted)]" />
+          </button>
+        )}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
         {props.disabled ? (
@@ -1234,6 +1249,7 @@ function DetailPane({
   editForm,
   onEditFieldChange,
   saving,
+  canWrite,
 }: {
   selected: SelectedItem;
   onDelete: () => void;
@@ -1244,6 +1260,8 @@ function DetailPane({
   editForm: Record<string, any>;
   onEditFieldChange: (field: string, value: any) => void;
   saving: boolean;
+  /** False for read-only roles — hides Edit and Delete buttons. */
+  canWrite: boolean;
 }) {
   if (!selected) {
     return (
@@ -1388,34 +1406,36 @@ function DetailPane({
         </dl>
       )}
 
-      {/* Action buttons */}
-      <div className="flex gap-2">
-        {isEditing ? (
+      {/* Action buttons — write-gated (admin / manager / supervisor only) */}
+      {canWrite && (
+        <div className="flex gap-2">
+          {isEditing ? (
+            <button
+              onClick={onSaveEdit}
+              disabled={saving}
+              className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-brand-gold-500 bg-brand-gold-500/10 text-brand-gold-500 hover:bg-brand-gold-500/20 disabled:opacity-50"
+            >
+              <Save size={11} />
+              Save
+            </button>
+          ) : (
+            <button
+              onClick={onStartEdit}
+              className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-border-subtle hover:border-brand-gold-500 hover:bg-brand-gold-500/10 text-[var(--text-muted)] hover:text-brand-gold-500"
+            >
+              <Edit2 size={11} />
+              Edit
+            </button>
+          )}
           <button
-            onClick={onSaveEdit}
-            disabled={saving}
-            className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-brand-gold-500 bg-brand-gold-500/10 text-brand-gold-500 hover:bg-brand-gold-500/20 disabled:opacity-50"
+            onClick={isEditing ? onCancelEdit : onDelete}
+            className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-border-subtle hover:border-red-400 hover:bg-red-900/20 text-[var(--text-muted)] hover:text-red-300"
           >
-            <Save size={11} />
-            Save
+            <Trash2 size={11} />
+            {isEditing ? 'Cancel' : 'Delete'}
           </button>
-        ) : (
-          <button
-            onClick={onStartEdit}
-            className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-border-subtle hover:border-brand-gold-500 hover:bg-brand-gold-500/10 text-[var(--text-muted)] hover:text-brand-gold-500"
-          >
-            <Edit2 size={11} />
-            Edit
-          </button>
-        )}
-        <button
-          onClick={isEditing ? onCancelEdit : onDelete}
-          className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-border-subtle hover:border-red-400 hover:bg-red-900/20 text-[var(--text-muted)] hover:text-red-300"
-        >
-          <Trash2 size={11} />
-          {isEditing ? 'Cancel' : 'Delete'}
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
