@@ -10272,3 +10272,15 @@ td.sparkline-cell {
     visibility: visible !important;
   }
 }
+
+/* Evidence barcode stripe on evidence-number chip — replaces inline
+   rgba(255,255,255,0.06) with a CSS-variable-backed utility class. */
+.evidence-barcode-stripe {
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 2px,
+    rgb(var(--rmpg-100-rgb) / 0.06) 2px,
+    rgb(var(--rmpg-100-rgb) / 0.06) 4px
+  );
+}
