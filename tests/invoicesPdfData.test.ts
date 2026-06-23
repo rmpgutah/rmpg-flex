@@ -101,8 +101,8 @@ function makeDbStub(scenario: 'found' | 'no-table' | 'not-found') {
 function makeApp(stub: ReturnType<typeof makeDbStub>) {
   const app = new Hono();
   app.use('*', async (c, next) => {
-    c.set('user', { id: 7, username: 'tester', role: 'admin' });
-    c.set('userId', 7);
+    (c as any).set('user', { id: 7, username: 'tester', role: 'admin' });
+    (c as any).set('userId', 7);
     (c as any).env = { DB: stub.db };
     await next();
   });
