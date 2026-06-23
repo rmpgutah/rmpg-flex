@@ -3,6 +3,10 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1113: Crisis Response — ?crisis_id=/?incident_id= deep-link (strip after mount),
+//        N shortcut (admin|manager), Esc cascade (delete->form->search), search bar
+//        with distinct empty states (loading/no-data/no-results), role-gated create
+//        and delete (admin|manager only), text-green-400 -> text-blue-400 brand token.
 // v1111: Gang Intel (/gang-intel) — Page 88 of the full-app frontend pass.
 //        Replaced inline delete modal with ConfirmDialog (danger variant, shows
 //        name/moniker/gang in details). Added N shortcut (new member), Esc
