@@ -1,5 +1,5 @@
 // ============================================================
-// RMPG Flex — Billing & Financial dashboard (Page 50 of the
+// RMPG Flex — Billing & Financial dashboard (Page 85 of the
 // full-app frontend audit pass)
 // ============================================================
 // Lightweight invoice dashboard. The deeper invoice surface
@@ -9,7 +9,7 @@
 // glance at outstanding balances and create/edit/delete an
 // invoice record.
 //
-// Audit upgrades (v1067):
+// Audit upgrades (v1108):
 // - URL deep-link: ?invoice_id=N opens the edit form; ?status=
 //   and ?client_id= filter the grid. Params are stripped after
 //   apply (matches the FlexCam / CodeEnforcement pattern).
@@ -42,6 +42,7 @@ import BillingFormModal, { BillingFormData } from '../components/BillingFormModa
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { localToday } from '../utils/dateUtils';
 import { DollarSign, FileText, Clock, Receipt, Plus, Pencil, Trash2, Download, AlertTriangle, X } from 'lucide-react';
 
 type Invoice = Record<string, any> & { id: number; invoice_number?: string; status?: string; due_date?: string | null };
@@ -59,20 +60,12 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 
 // Local YYYY-MM-DD (Denver) for overdue comparisons — server stores due_date
 // as a plain date string, so we compare lexicographically.
-function todayLocal(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 function isOverdue(inv: Invoice): boolean {
   const s = inv.status;
   if (s !== 'sent' && s !== 'partial') return false;
   const due = (inv.due_date || '').toString().slice(0, 10);
   if (!due) return false;
-  return due < todayLocal();
+  return due < localToday();
 }
 
 export default function BillingPage() {
