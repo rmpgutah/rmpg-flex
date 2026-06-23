@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1245: Warrants — isAdminOrManager gates toolbar New Warrant button+mobile FAB+empty-state create action; OffenseLevelBadge dead import removed; all ConfirmDialogs, deep-link (?warrant_id=/?personId=), N+Esc cascade, 3-state empty states, API shape, brand tokens verified.
 // v1244: Web Research — canDelete (admin|manager) gates Trash2 delete button; ConfirmDialog+ConfirmDialog gates delete+clear-history; ?query=/?research_id=/?tab= deep-link (useRef guard+strip+auto-search); N focuses search input; Esc cascade (deleteConfirm→clearHistory→linkModal→editingNotes→results→query→filter) full deps; loading/no-results/pre-search 3-state distinct; API shape verified; brand tokens verified (no raw hex).
 // v1241: Use of Force — ConfirmDialog gates delete (canDelete admin|manager); canCreate (admin|manager|supervisor|officer) gates N shortcut + New button; deleteTarget Esc cascade branch added; delete context-menu item + Delete… detail-panel button; no raw hex; API shape verified (.data unwrap correct).
 // v1242: Victim Services — canDelete (admin|manager) gates Trash2+context-menu delete, separate from canManage (admin|manager|supervisor) create/edit; ConfirmDialog+useRef guard+deep-link (?victim_id=/?case_id=)+N+Esc cascade already present; 3-state empty (loading/error/no-data/no-results) distinct; API shape verified (no .data unwrap); no raw hex; aria-label on delete button.
