@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
+import PersonIntelGraphTab from './PersonIntelGraphTab';
 
 interface DataPoint {
   id: number;
@@ -105,7 +106,7 @@ export default function PersonIntelDossierPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'data' | 'sources' | 'connections'>('data');
+  const [activeTab, setActiveTab] = useState<'data' | 'sources' | 'connections' | 'graph'>('data');
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   const load = useCallback(async () => {
@@ -214,7 +215,7 @@ export default function PersonIntelDossierPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-rmpg-800">
-        {(['data', 'sources', 'connections'] as const).map(tab => (
+        {(['data', 'sources', 'connections', 'graph'] as const).map(tab => (
           <button
             key={tab}
             className={`text-xs px-3 py-1.5 capitalize border-b-2 -mb-px transition-colors ${activeTab === tab ? 'border-brand-400 text-brand-400' : 'border-transparent text-rmpg-500 hover:text-rmpg-300'}`}
@@ -222,7 +223,8 @@ export default function PersonIntelDossierPage() {
           >
             {tab === 'data' ? `Data Points (${dossier.dataPoints.filter(p => p.confidence >= 0.40).length})` :
              tab === 'sources' ? `Sources (${dossier.sources.length})` :
-             `Connections (${dossier.connections.length})`}
+             tab === 'connections' ? `Connections (${dossier.connections.length})` :
+             `Graph`}
           </button>
         ))}
       </div>
@@ -342,6 +344,13 @@ export default function PersonIntelDossierPage() {
             </div>
           )}
         </div>
+      )}
+
+      {activeTab === 'graph' && (
+        <PersonIntelGraphTab
+          subjectName={dossier.subject_name}
+          connections={dossier.connections}
+        />
       )}
     </div>
   );
