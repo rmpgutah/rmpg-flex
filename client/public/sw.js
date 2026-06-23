@@ -3,6 +3,14 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1089: Community (/community) — Page 71 of the full-app frontend pass.
+//        Fixed critical bug: "New Event" modal never opened (showForm was
+//        `editingRecord !== null`, but openNew() set it to null). Separate
+//        showForm boolean state introduced. Replaced inline delete div with
+//        ConfirmDialog. Added Esc cascade (delete → form), N shortcut,
+//        ?event_id= deep-link, tab nav for Tips/Watch Groups/Alerts,
+//        role-guard hiding write buttons for read-only roles, per-tab lazy
+//        loading, and distinct empty-state messages.
 // v451: Traccar replaces OwnTracks as the dominant primary GPS source.
 //       /api/traccar (canonical) + /traccar (alias) accept Traccar
 //       Client (OsmAnd HTTP), Traccar Server forward-webhook, and
@@ -59,6 +67,63 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1088: Criminal History (/criminal-history) — Page 70 of the full-app
+//        frontend pass.
+//        (1) Fixed silent search bug: name/DOB/DL searches sent ?name=/?dob=/?dl=
+//            params the server does not read, returning the full 500-person
+//            unfiltered list instead of matching records. Name now routes to
+//            /records/persons/search?q= (proper LIKE); DOB/DL use the bulk
+//            list's ?search= param.
+//        (2) Switched person history to /records/persons/:id/system-history
+//            (single round-trip, FK-joined) — previously 4 separate fetches
+//            used fuzzy name-text search for citations/FIs, returning records
+//            for anyone with a similar name, not the selected person.
+//        (3) Added CriminalHistorySection panel — formal arrest/conviction/
+//            charge records from the criminal_history table were absent.
+//        (4) Added WarrantNsopwStatus panel — NSOPW nationwide SOR cross-ref.
+//        (5) Esc smart-cascade: Esc while person selected returns to list.
+//        (6) ?subject= URL param pre-fills and auto-fires name search.
+//        (7) ConfirmDialog on CriminalHistorySection delete (was bare click).
+//        (8) normPerson() handles dob/gender/dl_number aliases from bulk list.
+// v1086: Daily Activity Reports (Page 68 audit). Fixed: search param was sent
+//        by the client but silently ignored by the Worker (no LIKE clause);
+//        pagination.totalPages missing from API response (client showed page 1
+//        always); client sent limit= but Worker read per_page=; reviewed_by_name
+//        never populated (only officer join, no reviewer join). Added:
+//        ?officer_id= and ?date= URL deep-links (pre-seed filter + strip);
+//        equipment_issues + recommendations edit fields (were in PDF + type but
+//        no UI to write them); ensureTable idempotent ALTER for new cols.
+// v1083: Evidence (Page 65) — add 8 missing backend sub-resource endpoints
+//   (chain-action, checkout, checkin, disposition, request-release,
+//   approve-release, custody-validation, linked-records); fix ?id= deep-link
+//   from QuickSearchCard; gate Approve/Deny release to supervisor+; seed
+//   ?status= and ?case_id= URL filters on mount.
+// v1084: Citations (/citations) — Page 66 of the full-app frontend pass.
+//        (1) Stats bar was always showing zeros: GET /citations/stats returned
+//        byStatus as a row array (camelCase) but CitationsPage read it as
+//        by_status: Record<string,number>. Worker now returns both shapes plus
+//        the missing fines_issued, fines_collected, and today_count fields.
+//        (2) Deep-links: ?plate=<plate> pre-fills the search box (incoming from
+//        PlateLog "View citations for plate"); ?officer_id=<id> pre-fills with
+//        the officer id (incoming from Personnel). ?citation_id=<id> already
+//        existed. (3) Plate in detail view now has an "ALPR" button that
+//        navigates to /intel/plate-log?plate=<plate> for history. Right-click
+//        context menu also gets "View plate history" when plate is present.
+//        (4) Court Information section header now has a "Court Tracker" link
+//        that navigates to /court.
+// v1082: Incidents (Page 64) — source-call buttons now deep-link to
+//        /dispatch?call_id=<id> so clicking the call number from an incident
+//        auto-selects that call in the Dispatch CAD board. Previously both
+//        "SOURCE CALL" header and "Linked Call" info-panel buttons navigated
+//        to /dispatch with no context, leaving operators to find the call
+//        manually. No schema or API changes.
+// v1081: Patrol (/patrol) — Page 63 of the full-app frontend pass. Added Esc
+//        smart-cascade (QR modal → Checkpoint modal), N shortcut to open the
+//        New Checkpoint form on the Checkpoints tab, four-way empty-state
+//        distinction (no-checkpoints-ever / no-scans-with-filters / no-scans-
+//        ever / no-active-checkpoints-for-compliance), and removed dead
+//        coverageData/handleLoadCoverage state that was defined but never
+//        rendered anywhere in the JSX.
 // v1070: Cmd+K Global Search — scope recent-search history per user.id
 //        instead of sharing one bare 'rmpg-recent-searches-v2' localStorage
 //        key across every operator on the MDT. A shared patrol laptop was
