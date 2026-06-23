@@ -59,6 +59,59 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1067: Billing & Financial (/billing) — Page 50 of the full-app
+//        frontend audit pass. BillingPage is the lightweight invoice
+//        dashboard (the deeper line-item / payment / status-transition
+//        surface lives in /invoices). The audit caught that the page
+//        shipped with: no URL deep-link contract (a supervisor could
+//        not share a link to a specific invoice or filtered view), no
+//        status filter at all, a hand-rolled delete modal that bypassed
+//        the shared ConfirmDialog a11y / focus / Esc machinery, no
+//        invoice PDF surface (AdminInvoiceTab + InvoicesPage both have
+//        Download PDF buttons; BillingPage did not), no `N` keyboard
+//        shortcut, no Esc cascade, and no overdue indicator on the
+//        row even though due_date is in the feed.
+//
+//        What changed:
+//          • URL deep-link: ?invoice_id=N opens the edit form for the
+//            matching row once the list hydrates; ?status= and
+//            ?client_id= filter the grid. Params are stripped after
+//            apply (matches the FlexCam / CodeEnforcement pattern).
+//            Cross-page contract: anywhere that names an invoice can
+//            now /billing?invoice_id=42 to drop the operator straight
+//            into the edit form.
+//          • Status filter dropdown + clear button + "N of M" counter
+//            sit above the grid. Filters are mirrored back into the URL
+//            so the view is sharable. Empty state now distinguishes
+//            "no invoices yet" (zero-state) from "no matches" (filter
+//            applied) — the latter suggests clearing filters.
+//          • Native delete modal replaced with ConfirmDialog: variant
+//            'danger', details surface invoice #, client, and total so
+//            the operator sees what they are about to destroy (and so
+//            we kill the two hardcoded #991b1b / #f87171 hex values
+//            that bypassed the day/night theme system).
+//          • Per-row Download PDF button + context-menu entry. Fetches
+//            line items from /billing/invoices/:id/items and payments
+//            from /billing/payments?invoice_id= then hands the merged
+//            shape to generateInvoicePdf — the same Arial-only,
+//            NIBRS-style invoice generator AdminInvoiceTab uses.
+//          • `N` keyboard shortcut opens New Invoice (skips while
+//            typing in any field and while any modal is open, mirrors
+//            CodeEnforcement / ShiftPlans / DashCameras).
+//          • Esc smart-cascade: the form + delete dialog own their own
+//            Esc handlers (close-newest-first); page-level Esc clears
+//            active filters when nothing modal is open.
+//          • Overdue chip: when status='sent' or 'partial' and due_date
+//            is in the past, a red OVERDUE pill renders alongside the
+//            status — gives dispatchers / supervisors a visual prompt
+//            without making them open every invoice. Comparison is
+//            lexicographic on the YYYY-MM-DD form because that's how
+//            the server stores due_date (no TZ surprises).
+//
+//        No server changes. The existing /billing/* surface already
+//        exposes everything the upgrades need (items, payments,
+//        invoices CRUD, stats).
+//
 // v1057: Audit Log (/audit) — Page 40 of the full-app frontend pass.
 //        The audit log is THE highest-evidentiary surface in the app: it
 //        proves chain-of-custody, who saw/edited what, and when. Defense
