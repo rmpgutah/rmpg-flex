@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Phone, Users, FileText, Clock, AlertTriangle, Plus, Activity, Shield, Loader2,
   Radio, MapPin, Eye, ArrowRight, TrendingUp, Gavel, Briefcase, Target,
@@ -403,6 +403,14 @@ export default function DashboardPage() {
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
 
+  // Role gates
+  // canCreate: any operational role may create records (calls, incidents, citations)
+  const canCreate = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'].includes(role);
+
+  // Deep-link: ?panel=<id> or ?widget=<id> scrolls to the named panel section on mount
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkRef = useRef(false);
+
   // Warrant polling status (added 2026-05-24 — operator complaint that the
   // 4h Utah warrant watch was invisible). Sourced from /api/warrants/watch/runs
   // which is also what /warrants → Sources tab uses, so the dashboard widget
@@ -645,6 +653,25 @@ export default function DashboardPage() {
   // Set document title
   useEffect(() => { document.title = 'Dashboard \u2014 RMPG Flex'; }, []);
 
+  // Deep-link: ?panel=<id> or ?widget=<id> \u2014 scroll to the named panel on first render,
+  // then strip the param so the back-button works correctly. useRef guard prevents
+  // double-firing if searchParams identity changes after setSearchParams.
+  useEffect(() => {
+    if (deepLinkRef.current) return;
+    const target = searchParams.get('panel') ?? searchParams.get('widget');
+    if (!target) return;
+    deepLinkRef.current = true;
+    // Defer until the DOM has rendered the panels
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`dashboard-panel-${target}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    const next = new URLSearchParams(searchParams);
+    next.delete('panel');
+    next.delete('widget');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   // Poll latest warrant-watch run. 60s interval is fine \u2014 the scheduled
   // upstream scan only fires every 4h, so 60s is responsive enough for
   // operators to see freshness without hammering the API.
@@ -662,14 +689,28 @@ export default function DashboardPage() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  // Keyboard shortcut: Escape to close modals (must be before early return to preserve hook order)
+  // Keyboard shortcuts — must be before early return to preserve hook order.
+  // Esc cascade: NewCallModal → IncidentModal (each branch stopPropagation so only one closes per press).
+  // N: open New Call modal (primary action), gated to canCreate.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowNewCallModal(false); }
+      const tag = (e.target as HTMLElement)?.tagName ?? '';
+      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable;
+
+      if (e.key === 'Escape') {
+        if (showNewCallModal) { e.stopPropagation(); setShowNewCallModal(false); return; }
+        if (showIncidentModal) { e.stopPropagation(); setShowIncidentModal(false); return; }
+        return;
+      }
+
+      if (e.key === 'n' || e.key === 'N') {
+        if (inInput || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (canCreate) { e.preventDefault(); setShowNewCallModal(true); }
+      }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [showNewCallModal, showIncidentModal, canCreate]);
 
   const isInitialLoading = loading && stats === DEFAULT_STATS;
 
@@ -728,16 +769,23 @@ export default function DashboardPage() {
       {/* Spillman screen toolbar: View selector + raised action buttons */}
       <div className="spm-screen-toolbar" role="toolbar" aria-label="Dashboard actions">
         <DashboardViewSelector view={view} canSwitch={maySwitch} onChange={handleViewChange} />
-        {toolbarActionsForView(view).map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            className={`spm-toolbtn ${a.id === 'print' ? 'spacer' : ''}`.trim()}
-            onClick={() => runToolbarAction(a.id)}
-          >
-            {a.label}
-          </button>
-        ))}
+        {toolbarActionsForView(view)
+          // Gate record-create actions to roles that may create records
+          .filter((a) => {
+            if ((a.id === 'newCall' || a.id === 'newIncident' || a.id === 'newCitation') && !canCreate) return false;
+            if (a.id === 'quickCapture' && !canCreate) return false;
+            return true;
+          })
+          .map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={`spm-toolbtn ${a.id === 'print' ? 'spacer' : ''}`.trim()}
+              onClick={() => runToolbarAction(a.id)}
+            >
+              {a.label}
+            </button>
+          ))}
       </div>
 
       {/* Portal Header — RMPG Logo + System Title */}
@@ -788,6 +836,7 @@ export default function DashboardPage() {
 
       {/* Stats Cards Row */}
       {hasPanel('activeCalls') && (
+      <div id="dashboard-panel-activeCalls">
       <SpmGroup title="Active Calls — Priority & Volume">
       <div className="space-y-4">
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'}`} role="region" aria-label="Key statistics">
@@ -862,10 +911,12 @@ export default function DashboardPage() {
       </div>
       </div>
       </SpmGroup>
+      </div>
       )}
 
       {/* Secondary Stats Row — expanded to 5 cols 2026-05-24 to add Warrant Poll card */}
       {hasPanel('statusSummary') && (
+      <div id="dashboard-panel-statusSummary">
       <SpmGroup title="Status Summary">
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2'}`} role="region" aria-label="Record statistics">
         <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/warrants?status=active')}>
@@ -930,6 +981,7 @@ export default function DashboardPage() {
         </div>
       </div>
       </SpmGroup>
+      </div>
       )}
 
       {/* Shift Countdown + Weather + Quick Actions Row */}
@@ -1063,8 +1115,20 @@ export default function DashboardPage() {
       </div>
 
       {/* BOLO Ticker */}
-      {hasPanel('activeBolos') && bolos.length > 0 && (
+      {hasPanel('activeBolos') && (
+      <div id="dashboard-panel-activeBolos">
         <SpmGroup title="Active BOLOs" tone="red">
+        {loading && bolos.length === 0 ? (
+          <div className="flex items-center justify-center py-4 gap-2" role="status">
+            <Loader2 className="w-4 h-4 text-rmpg-500 animate-spin" aria-hidden="true" />
+            <span className="text-[10px] text-rmpg-500 select-none">Loading BOLOs…</span>
+          </div>
+        ) : bolos.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-4 gap-2" role="status">
+            <span className="led-dot led-green" aria-hidden="true" />
+            <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No active BOLOs</span>
+          </div>
+        ) : (
         <div className="bg-red-900/20 panel-beveled p-3 cursor-pointer hover:bg-red-900/30 transition-colors duration-200 border-l-4 border-l-red-500 shadow-md shadow-red-900/15 animate-fade-in" role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/intel/bolos'); }} onClick={() => navigate('/intel/bolos')} aria-label={`View ${bolos.length} active BOLO${bolos.length !== 1 ? 's' : ''}`}>
           <div className="flex items-center gap-2 mb-2">
             <span className="led-dot led-red animate-led-pulse" />
@@ -1088,7 +1152,9 @@ export default function DashboardPage() {
           ))}
           </div>
         </div>
+        )}
         </SpmGroup>
+      </div>
       )}
 
       {/* Calls Near Me (patrol view) — REAL geo-filtered list of currently-
@@ -1263,7 +1329,7 @@ export default function DashboardPage() {
 
       {/* Main Content Grid */}
       {hasPanel('callAnalytics') && (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics">
+      <div id="dashboard-panel-callAnalytics" className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics">
         {/* Calls by Hour — Area Chart with Gradient */}
         <div className="lg:col-span-2 panel-beveled bg-surface-base shadow-md shadow-black/10">
           <PanelTitleBar title="CALLS BY HOUR — TODAY" icon={Activity} />
@@ -1803,7 +1869,7 @@ export default function DashboardPage() {
 
       {/* Activity Feed + Operational Alerts Row */}
       {(hasPanel('recentActivity') || hasPanel('activeUnits')) && (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div id="dashboard-panel-recentActivity" className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Activity Feed */}
         {hasPanel('recentActivity') && (
         <div className="lg:col-span-2">
