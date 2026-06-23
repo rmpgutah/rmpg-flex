@@ -3,6 +3,14 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1089: Community (/community) — Page 71 of the full-app frontend pass.
+//        Fixed critical bug: "New Event" modal never opened (showForm was
+//        `editingRecord !== null`, but openNew() set it to null). Separate
+//        showForm boolean state introduced. Replaced inline delete div with
+//        ConfirmDialog. Added Esc cascade (delete → form), N shortcut,
+//        ?event_id= deep-link, tab nav for Tips/Watch Groups/Alerts,
+//        role-guard hiding write buttons for read-only roles, per-tab lazy
+//        loading, and distinct empty-state messages.
 // v451: Traccar replaces OwnTracks as the dominant primary GPS source.
 //       /api/traccar (canonical) + /traccar (alias) accept Traccar
 //       Client (OsmAnd HTTP), Traccar Server forward-webhook, and
