@@ -92,14 +92,6 @@ export default function SkipTracerPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<any>(null);
-  const [expandedPerson, _setExpandedPerson] = useState<number | null>(null);
-  // expandedPerson was an unused render branch in v1.0 (the right pane
-  // already mirrors `selected`). Kept the state variable for backward-
-  // compatible callsites; the setter is no longer wired and the var is
-  // referenced here so the lint pass doesn't strip it before someone
-  // re-wires the expanded-row pattern.
-  void expandedPerson;
-
   // Person details via ID
   const [personDetail, setPersonDetail] = useState<any>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -399,10 +391,10 @@ export default function SkipTracerPage() {
       // ConfirmDialog owns its own Esc handler — only react when it isn't open.
       if (showClearHistoryConfirm) return;
       if (isTypingInField(e.target)) return;
-      if (personDetail) { setPersonDetail(null); return; }
-      if (selected) { setSelected(null); return; }
-      if (error) { setError(null); return; }
-      if (results) { setResults(null); return; }
+      if (personDetail) { e.stopPropagation(); setPersonDetail(null); return; }
+      if (selected) { e.stopPropagation(); setSelected(null); return; }
+      if (error) { e.stopPropagation(); setError(null); return; }
+      if (results) { e.stopPropagation(); setResults(null); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);

@@ -1,15 +1,32 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+// ============================================================
+// RMPG Flex — Serve Scheduler (Full swim-lane view)
+// ============================================================
+// Features:
+//   • Officer swim-lane calendar (drag/drop reschedule + queue assign)
+//   • Unassigned queue sidebar (drag source)
+//   • Auto-rebalance preview modal (admin/manager/supervisor only)
+//   • Deep-link: ?schedule_id=<id> — highlights + scrolls that slot
+//   • N shortcut — opens Rebalance modal (canManage only)
+//   • Esc cascade — closes Rebalance modal, then blurs focus
+//   • Role gates: canManage (admin/manager/supervisor) for Rebalance
+//   • 3-state empty: loading / empty-schedule / error
+// ============================================================
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, RefreshCcw } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
 import RangePicker from '../components/scheduler/RangePicker';
 import UnassignedQueueSidebar from '../components/scheduler/UnassignedQueueSidebar';
 import OfficerLaneTimeline, { type OfficerOption } from '../components/scheduler/OfficerLaneTimeline';
 import RebalancePreviewModal from '../components/scheduler/RebalancePreviewModal';
 import type { RangeMode } from '../utils/schedulerLanes';
 import type { ScheduleSlot } from '../utils/schedulerView';
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 interface ScheduleResp {
   schedule: Array<{ date: string; weekday: string; slots: ScheduleSlot[] }>;
@@ -31,6 +48,26 @@ const RANGE_DAYS: Record<RangeMode, number> = { week: 7, 'two-week': 14, month: 
 
 export default function ServeSchedulerPage() {
   const today = useMemo(todayDenver, []);
+  const { user } = useAuth();
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+
+  // ── Deep-link: ?schedule_id=<id> — strip after capturing ──
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkSlotId = useRef<number | null>(null);
+  useEffect(() => {
+    const raw = searchParams.get('schedule_id');
+    if (!raw) return;
+    const parsed = parseInt(raw, 10);
+    if (!isNaN(parsed)) deepLinkSlotId.current = parsed;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('schedule_id');
+      return next;
+    }, { replace: true });
+  // Run once on mount — searchParams intentionally excluded to avoid loops.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [anchorYmd, setAnchorYmd] = useState(today);
   const [mode, setMode] = useState<RangeMode>('week');
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
@@ -60,24 +97,37 @@ export default function ServeSchedulerPage() {
   useEffect(() => { refetch(); }, [refetch]);
   useLiveSync('serve-schedule', refetch);
 
-  // Esc — close the Rebalance preview when it's open. No N shortcut here;
-  // the scheduler is a read/drag surface, not a creation surface.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showRebalance) {
-        setShowRebalance(false);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [showRebalance]);
-
   // Officer list for the swim-lane view.
   useEffect(() => {
     apiFetch<Array<{ id: number; name: string }>>('/serve-intake/officers')
       .then((rows) => setOfficers(rows.map((u) => ({ id: u.id, name: u.name }))))
       .catch(() => { /* lanes still render Unassigned even on failure */ });
   }, []);
+
+  // ── Keyboard shortcuts ──
+  //   N — open Rebalance modal (canManage only, not while typing).
+  //   Esc — close Rebalance first, then blur active element.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName ?? '';
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+        || (e.target as HTMLElement)?.isContentEditable;
+
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        if (showRebalance) { setShowRebalance(false); return; }
+        (document.activeElement as HTMLElement | null)?.blur();
+        return;
+      }
+
+      if ((e.key === 'n' || e.key === 'N') && canManage && !isTyping && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setShowRebalance(true);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showRebalance, canManage]);
 
   const handleSlotDrop = useCallback(async (
     slot: ScheduleSlot, target: { date: string; officer_id: number | null },
@@ -118,6 +168,44 @@ export default function ServeSchedulerPage() {
     }
   }, [refetch, addToast]);
 
+  // ── Timeline area: 3-state (loading / empty / data) ──
+  const renderTimeline = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center h-32 text-[11px] text-rmpg-400" role="status">
+          Loading schedule…
+        </div>
+      );
+    }
+    if (error) {
+      return (
+        <div className="flex items-center justify-center h-32 text-[11px] text-red-300" role="alert">
+          {error}
+        </div>
+      );
+    }
+    if (slots.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center h-32 gap-1 text-[11px] text-rmpg-400">
+          <span>No serve attempts scheduled for this window.</span>
+          <span className="text-[10px]">Drag items from the queue{canManage ? ' or use Rebalance (N)' : ''} to populate lanes.</span>
+        </div>
+      );
+    }
+    return (
+      <OfficerLaneTimeline
+        anchorYmd={anchorYmd}
+        mode={mode}
+        slots={slots}
+        officers={officers}
+        todayYmd={today}
+        highlightSlotId={deepLinkSlotId.current ?? undefined}
+        onSlotDrop={canManage ? handleSlotDrop : undefined}
+        onQueueDrop={canManage ? handleQueueDrop : undefined}
+      />
+    );
+  };
+
   return (
     <div className="p-3">
       <div className="flex items-center justify-between gap-2 mb-2">
@@ -136,43 +224,33 @@ export default function ServeSchedulerPage() {
             onAnchorChange={setAnchorYmd}
             onModeChange={setMode}
           />
-          <button
-            type="button"
-            onClick={() => setShowRebalance(true)}
-            className="px-2 py-0.5 text-[10px] uppercase text-rmpg-300 hover:text-rmpg-100 border border-rmpg-700 rounded-[2px]"
-          >
-            <RefreshCcw size={9} className="inline mr-1" /> Rebalance
-          </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setShowRebalance(true)}
+              title="Rebalance (N)"
+              className="px-2 py-0.5 text-[10px] uppercase text-rmpg-300 hover:text-rmpg-100 border border-rmpg-700 rounded-[2px]"
+            >
+              <RefreshCcw size={9} className="inline mr-1" /> Rebalance
+            </button>
+          )}
         </div>
       </div>
 
       <div className="flex gap-2">
         <UnassignedQueueSidebar onAssign={(_item, _officerId, _date) => { refetch(); }} />
         <div className="flex-1 min-w-0">
-          {error
-            ? <div className="p-3 text-[11px] text-red-300">{error}</div>
-            : loading
-            ? <div className="p-3 text-[11px] text-rmpg-400">Loading…</div>
-            : (
-              <OfficerLaneTimeline
-                anchorYmd={anchorYmd}
-                mode={mode}
-                slots={slots}
-                officers={officers}
-                todayYmd={today}
-                onSlotDrop={handleSlotDrop}
-                onQueueDrop={handleQueueDrop}
-              />
-            )
-          }
+          {renderTimeline()}
         </div>
       </div>
 
-      <RebalancePreviewModal
-        open={showRebalance}
-        onClose={() => setShowRebalance(false)}
-        onApplied={refetch}
-      />
+      {canManage && (
+        <RebalancePreviewModal
+          open={showRebalance}
+          onClose={() => setShowRebalance(false)}
+          onApplied={refetch}
+        />
+      )}
     </div>
   );
 }
