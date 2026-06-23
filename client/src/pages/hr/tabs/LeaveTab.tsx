@@ -336,6 +336,7 @@ export default function LeaveTab() {
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-rmpg-100">My Requests</h3>
           <button type="button"
+            data-hr-new-btn
             onClick={() => { setEditRequest(null); setModalOpen(true); }}
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5"
           >
@@ -538,6 +539,7 @@ export default function LeaveTab() {
           </h3>
           <ExportButton exportUrl="/api/hr/leave/export/csv" exportFilename="leave-requests.csv" />
           <button type="button"
+            data-hr-new-btn
             onClick={() => { setEditRequest(null); setModalOpen(true); }}
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5"
           >
