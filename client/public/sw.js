@@ -3,6 +3,19 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1099: Training pages — Page 76 of the full-app frontend audit.
+//        TrainingDocsPage: replaced window.confirm() with ConfirmDialog,
+//        removed dead isGodMode variable, fixed stale-closure keyboard
+//        shortcut (loadDocuments now in deps), added ?doc_id= deep-link,
+//        improved empty-state (no-data vs filtered vs no-category).
+//        TrainingManagementPage: fixed critical bug where "New Course"
+//        modal never opened (showForm was editingRecord !== null, but
+//        openNew sets editingRecord = null); added separate showForm boolean,
+//        role gate (admin/manager/hr only), Esc cascade, N shortcut,
+//        replaced inline delete div with ConfirmDialog, added Docs Library
+//        cross-link button. Worker: added 3 missing endpoints —
+//        GET /personnel/training-materials, GET /personnel/training-alerts,
+//        POST /personnel/training-bulk-assign.
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate
