@@ -3177,9 +3177,45 @@ export interface ServeJob {
   created_at: string;
   updated_at: string;
   call_id: number | null;
+  // Automation columns (migrations 0140, 0153, 0154)
+  closed_at?: string | null;
+  urgency_tier?: 'normal' | 'high' | 'critical' | null;
+  auto_assigned?: number | null;
+  intake_screened_at?: string | null;
   attempts?: ServeAttempt[];
   skipTraces?: ServeSkipTrace[];
 }
+
+// ── Serve folder helpers ───────────────────────────────────────────────────
+
+export type ServeFolder = 'in_progress' | 'pending' | 'served' | 'failed' | 'archived';
+
+/** Map a job's status to its display folder. */
+export function deriveServeFolder(job: ServeJob): ServeFolder {
+  if (job.status === 'in_progress') return 'in_progress';
+  if (job.status === 'pending') return 'pending';
+  if (job.status === 'served') return 'served';
+  if (job.status === 'failed') return 'failed';
+  return 'archived'; // skipped | archived
+}
+
+export interface ServeFolderConfig {
+  label: string;
+  dotClass: string;
+  borderClass: string;
+  bgClass: string;
+  defaultOpen: boolean;
+  order: number;
+  emptyLabel: string;
+}
+
+export const SERVE_FOLDER_CONFIG: Record<ServeFolder, ServeFolderConfig> = {
+  in_progress: { label: 'In Progress', dotClass: 'bg-amber-500 animate-pulse', borderClass: 'border-l-amber-500', bgClass: 'bg-amber-900/10', defaultOpen: true, order: 0, emptyLabel: 'No jobs in progress' },
+  pending:     { label: 'Queue',       dotClass: 'bg-rmpg-500',                 borderClass: 'border-l-rmpg-500',  bgClass: '',                  defaultOpen: true, order: 1, emptyLabel: 'No pending jobs' },
+  served:      { label: 'Served',      dotClass: 'bg-green-500',                borderClass: 'border-l-green-500', bgClass: 'bg-green-900/10',  defaultOpen: false, order: 2, emptyLabel: 'No served jobs today' },
+  failed:      { label: 'Non-Service', dotClass: 'bg-red-500',                  borderClass: 'border-l-red-500',   bgClass: 'bg-red-900/10',    defaultOpen: false, order: 3, emptyLabel: 'No non-service jobs' },
+  archived:    { label: 'Archived',    dotClass: 'bg-rmpg-600',                 borderClass: 'border-l-rmpg-600',  bgClass: 'bg-rmpg-800/20',   defaultOpen: false, order: 4, emptyLabel: 'No archived jobs' },
+};
 
 export interface ServeJobLinkedCall {
   id: number;
