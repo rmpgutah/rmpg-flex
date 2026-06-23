@@ -3,6 +3,11 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1097: Body Cameras (/body-cameras) — Page 74 audit. Fixed canManage to
+//        include manager role (matched backend WRITE_ROLES). Added ?camera_id=
+//        and ?officer_id= deep-links (camera row highlight + officer search
+//        seed). Added N shortcut to open Assign Camera. Distinct empty-state
+//        messages (no data vs no search results). Removed dead isGodMode alias.
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate
