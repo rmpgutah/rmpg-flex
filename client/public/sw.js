@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1186: Crisis Response — ConfirmDialog for delete, ?incident_id= deep-link, N shortcut (canCreate), Esc cascade e.stopPropagation() per branch (deleteTarget→form→search), canCreate/canDelete (admin|manager) role gates, 3-state empty (loading/error/no-results/no-data).
 // v1194: DL Search — brand-gold-500 tokens replace text/bg/border [var(--brand-gold)] (19 sites), fromDeepLinkRef guard toasts on no-results deep-link, addToast in handleSearch deps.
 // v1185: Court Tracker — ?hearing_id= deep-link alias, Esc cascade e.stopPropagation() per branch (cloneEventId→witnessOpen→feeOpen→prosecutorOpen→judgeNotesOpen→bailOpen→continuanceOpen→outcomeOpen→citationSearchOpen→formOpen), text-[var(--brand-gold)] → text-brand-gold-500 token (14 sites).
 // v1179: Body Cameras — Esc cascade e.stopPropagation() per branch, parseTimestamp replaces new Date(string) in video-delete label/details.
