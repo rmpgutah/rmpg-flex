@@ -8,7 +8,7 @@
 
 import {useState, useCallback, useEffect, useRef} from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Camera, Loader2, X, Eye, ScanLine, UserCheck, Upload, History } from 'lucide-react';
+import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Loader2, X, Eye, ScanLine, UserCheck, Upload, History } from 'lucide-react';
 import { apiFetch, apiUploadFilesWithProgress } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import type { ReadoutRow, ScanAlert, LeField } from '../utils/aamvaParser';
@@ -20,6 +20,7 @@ import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 // QR code that opens this scanner page on the officer's phone —
 // scans made there relay to this desktop session automatically.
@@ -117,12 +118,15 @@ export default function DlSearchPage() {
   const [state, setState] = useState('');
   const [dob, setDob] = useState('');
   const [results, setResults] = useState<DlSubject[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selected, setSelected] = useState<DlSubject | null>(null);
   const [source, setSource] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState('');
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [isManualSubmitting, setIsManualSubmitting] = useState(false);
+  // Ref for the first search field — used by the N shortcut to focus it
+  const firstFieldRef = useRef<HTMLInputElement>(null);
 
   // ── DL Scanner (PDF417 barcode-first, OCR fallback) ──
   const navigate = useNavigate();
@@ -187,6 +191,8 @@ export default function DlSearchPage() {
   const [clToken, setClToken] = useState('');
   const [sorImportText, setSorImportText] = useState('');
   const [sorImporting, setSorImporting] = useState(false);
+  // Confirm before bulk-importing SOR records (hard-to-undo write op)
+  const [confirmSorImport, setConfirmSorImport] = useState(false);
 
   const loadSources = useCallback(() => {
     apiFetch<any>('/dl-records/sources-config')
@@ -505,29 +511,33 @@ export default function DlSearchPage() {
     } catch (err: any) { addToast(err?.message || 'Stolen check failed', 'error'); }
   };
 
-  // ── ?dl=… / ?last=… URL deep-link ──
-  // Ninth consecutive page to honor the cross-page contract. Two shapes
-  // supported: ?dl=<number>&state=<XX> (from scan-history "look this up
-  // again" links + NCIC QD popouts) and ?last=&first=&dob= (from name-
-  // based pre-fills). Pre-fills inputs + auto-runs the search; param is
-  // stripped after applying so a refresh doesn't loop.
+  // ── ?dl= / ?dl_number= / ?last= / ?person_id= URL deep-link ──
+  // Supports: ?dl=<number>&state=<XX> (legacy short form), ?dl_number=<number>&state=<XX>
+  // (canonical form used by scan-history links + NCIC QD popouts),
+  // ?last=&first=&dob= (name-based pre-fills), and ?person_id=<id>
+  // (navigates directly to the person record in /records).
+  // Pre-fills inputs + auto-runs the search; params are stripped after
+  // applying so a refresh doesn't loop.
   const [searchParams, setSearchParams] = useSearchParams();
   const pendingDeepLinkRef = useRef<{
     dl: string | null; state: string | null;
     last: string | null; first: string | null; dob: string | null;
+    person_id: string | null;
   } | null>((() => {
-    const dl = searchParams.get('dl');
+    const dl = searchParams.get('dl_number') || searchParams.get('dl');
     const state = searchParams.get('state');
     const last = searchParams.get('last');
     const first = searchParams.get('first');
     const dob = searchParams.get('dob');
-    if (!dl && !last && !first && !dob) return null;
-    return { dl, state, last, first, dob };
+    const person_id = searchParams.get('person_id');
+    if (!dl && !last && !first && !dob && !person_id) return null;
+    return { dl, state, last, first, dob, person_id };
   })());
 
   const handleSearch = useCallback(async () => {
     if (!lastName.trim() && !dlNumber.trim()) return;
     setLoading(true);
+    setHasSearched(true);
     setSelected(null);
     setFetchError('');
     try {
@@ -563,15 +573,20 @@ export default function DlSearchPage() {
     const pending = pendingDeepLinkRef.current;
     if (!pending) return;
     pendingDeepLinkRef.current = null;
+    // Strip the query so a refresh doesn't re-apply.
+    const next = new URLSearchParams(searchParams);
+    ['dl', 'dl_number', 'state', 'last', 'first', 'dob', 'person_id'].forEach((k) => next.delete(k));
+    setSearchParams(next, { replace: true });
+    // ?person_id= — navigate directly to the person record without running a search.
+    if (pending.person_id) {
+      navigate(`/records?tab=persons&personId=${pending.person_id}`);
+      return;
+    }
     if (pending.dl) setDlNumber(pending.dl);
     if (pending.state) setState(pending.state);
     if (pending.last) setLastName(pending.last);
     if (pending.first) setFirstName(pending.first);
     if (pending.dob) setDob(pending.dob);
-    // Strip the query so a refresh doesn't re-apply.
-    const next = new URLSearchParams(searchParams);
-    ['dl', 'state', 'last', 'first', 'dob'].forEach((k) => next.delete(k));
-    setSearchParams(next, { replace: true });
     // Auto-run the search next tick once state has flushed.
     setTimeout(() => { handleSearch(); }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -838,7 +853,7 @@ export default function DlSearchPage() {
   // Desktop search bar
   const searchControls = (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <input id="ff-dlsearchpage-0" className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="Last Name" value={lastName}
+      <input id="ff-dlsearchpage-0" ref={firstFieldRef} className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="Last Name" value={lastName}
         onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
       <input id="ff-dlsearchpage-1" className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="First Name" value={firstName}
         onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
@@ -873,6 +888,40 @@ export default function DlSearchPage() {
 
   // Set document title
   useEffect(() => { document.title = 'DL Search \u2014 RMPG Flex'; }, []);
+
+  // \u2500\u2500 N shortcut \u2014 focus the first search field \u2500\u2500
+  // \u2500\u2500 Esc cascade \u2014 clear results \u2192 deselect \u2192 close scanner preview \u2500\u2500
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // N \u2014 focus search when not already in an input/textarea/select
+      if (e.key === 'n' || e.key === 'N') {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        e.preventDefault();
+        firstFieldRef.current?.focus();
+        return;
+      }
+      // Esc cascade: scanner modal \u2192 scan history \u2192 sources \u2192 detail panel \u2192 results
+      if (e.key === 'Escape') {
+        if (showOcrPreview) { e.stopPropagation(); setShowOcrPreview(false); return; }
+        if (showScanHistory) { e.stopPropagation(); setShowScanHistory(false); return; }
+        if (showSources) { e.stopPropagation(); setShowSources(false); return; }
+        if (showManualEntry) { e.stopPropagation(); setShowManualEntry(false); return; }
+        if (showLiveScanner) { e.stopPropagation(); setShowLiveScanner(false); return; }
+        if (selected) { e.stopPropagation(); setSelected(null); return; }
+        if (results.length > 0) {
+          e.stopPropagation();
+          setResults([]);
+          setHasSearched(false);
+          setFetchError('');
+          setSource('');
+          return;
+        }
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [showOcrPreview, showScanHistory, showSources, showManualEntry, showLiveScanner, selected, results.length]);
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden">
@@ -930,7 +979,14 @@ export default function DlSearchPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Results List */}
         <div className={`${isMobile ? (selected ? 'hidden' : 'w-full') : 'w-1/3'} border-r border-rmpg-700/50 overflow-auto`}>
-          {results.length === 0 && !loading && (
+          {results.length === 0 && !loading && hasSearched && (
+            <div className="flex flex-col items-center justify-center h-full text-rmpg-500 text-[10px] p-4 gap-3">
+              <Search className="w-8 h-8 text-rmpg-600" />
+              <p className="font-semibold text-rmpg-400">No records found</p>
+              <p className="text-[9px] text-rmpg-600 text-center">No DL records match your search. Try a different name, DL number, or state.</p>
+            </div>
+          )}
+          {results.length === 0 && !loading && !hasSearched && (
             <div className="flex flex-col items-center justify-center h-full text-rmpg-500 text-[10px] p-4 gap-4">
               <div className="text-center">
                 <CreditCard className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
@@ -1258,7 +1314,7 @@ export default function DlSearchPage() {
                     />
                     <button
                       type="button"
-                      onClick={importSor}
+                      onClick={() => setConfirmSorImport(true)}
                       disabled={sorImporting || !sorImportText.trim()}
                       className="px-2.5 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-rmpg-300 hover:text-rmpg-100 disabled:opacity-40"
                     >{sorImporting ? 'Importing…' : 'Import records'}</button>
@@ -1928,6 +1984,17 @@ export default function DlSearchPage() {
           </div>
         </div>
       )}
+
+      {/* SOR bulk-import confirmation */}
+      <ConfirmDialog
+        isOpen={confirmSorImport}
+        onClose={() => setConfirmSorImport(false)}
+        onConfirm={() => { setConfirmSorImport(false); importSor(); }}
+        title="Import SOR Records"
+        message="This will bulk-import the pasted offender records into the local DL database. Existing records are deduped by registry_id. This action cannot be easily undone."
+        confirmLabel="Import records"
+        confirmVariant="warning"
+      />
     </div>
   );
 }

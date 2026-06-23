@@ -3,6 +3,24 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1124: Court Tracker — role gates (canManage: admin/manager), ?case_id= deep-link, API shape fixes (upcoming/single-event/conflicts/stats/calendar wrapped in {data}), byType event_type key fix, case_id filter on GET /events.
+// v1123: Code Enforcement — role gates (canEnforce: admin/manager/supervisor) gate
+//        New button, N shortcut, void/refer violation, cancel tow; ConfirmDialog for
+//        void + cancel (warning variant); ?case_id= deep-link alias for ?violation_id=;
+//        Esc cascade now closes ConfirmDialog first; all existing features preserved.
+// v1122: Trespass Orders — role gates (canManage: admin/manager/supervisor) for create/edit/serve/lift/violate/renew; officers/dispatchers get read-only. Context menu, toolbar, detail panel, and empty-state action all gated. N shortcut suppressed for read-only roles.
+// v1121: Law Book — ?section= deep-link alias, / shortcut to focus search, Esc stopPropagation, canManage role gate, sev-* token migration.
+// v1120: National Warrants — ?search= / ?warrant_id= deep-link, N shortcut, Esc cascade (highlight→state→results), 3-state empty (idle/searching/no-results), row highlight + scroll-into-view for warrant_id deep-link.
+// v1119: DL Search — ?dl_number= / ?person_id= deep-link, N shortcut focuses search, Esc cascade (modal→panel→results), 3-state empty (not-searched/loading/no-results), ConfirmDialog for SOR import, dead Camera import removed.
+// v1118: Recruitment — ConfirmDialog replaces inline delete div, ?applicant_id= / ?recruit_id=
+//        deep-link, N shortcut, Esc cascade (delete → form), 3-state empty (loading/error/no-data/
+//        no-results), role gates (canManage: admin/manager/human_resources), search filter,
+//        safeDateStr for applied_date display, localToday() replaces new Date() in EMPTY_FORM,
+//        dead-code cleanup (deleteId → deleteTarget, loading → loadState, any → typed formData).
+// v1117: Accreditation — role gates (canManage: admin/manager), ?standard_id= / ?accred_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces inline delete modal, search filter, typed formData, dead-code cleanup.
+// v1116: Narcotics — role gates (canManage: admin/manager/supervisor), ?narcotics_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
+// v1115: Alarm Management — role gates (canWrite/canDelete: admin/manager/supervisor), ?alarm_id= deep-link, N shortcut, Esc cascade, 3-state empty states, ConfirmDialog replaces inline delete modal, search filter, dead-code cleanup.
+// v1114: Victim Services — role gates (canManage: admin/manager/supervisor), ?victim_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
 // v1114: Victim Services — role gates (canManage: admin/manager/supervisor), ?victim_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
 // v1113: Crisis Response — ?crisis_id=/?incident_id= deep-link (strip after mount),
 //        N shortcut (admin|manager), Esc cascade (delete->form->search), search bar
