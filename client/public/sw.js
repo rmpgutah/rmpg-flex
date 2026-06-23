@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1189: DashCam Detail — ConfirmDialog for Burn HUD (admin/manager gate), ?clip_id= deep-link, N triggers Download Original, Esc cascade (burnConfirm→editModal→fullscreen→back) stopPropagation, 3-state empty (loading/error/no-data), isAdminOrManager gates reclassify+burn, .data envelope unwrap, dead duplicate useEffects removed, Video icon for no-data state.
 // v1188: Custom Report Builder — ConfirmDialog for reset/start-over, ?report_id= deep-link (missing-target toast + strip), N focuses first source card or jumps to source step, Esc cascade e.stopPropagation() per branch (resetConfirm→preview→filters→columns→source), canCreate (admin|manager) gates source cards/Run Query/Re-run/Reset, 3-state loading/no-data/no-results empty states in preview step.
 // v1187: CRM — ConfirmDialog for contact delete, canManage (admin|manager) gates task/contact delete + N shortcut on tasks, Esc cascade e.stopPropagation() per branch + contactToDelete added, ?account_id= deep-link alias for ?client_id= with missing-target toast, 3-state empty (loading/no-data/no-results) on Properties/Contacts/Invoices, contact delete button + context menu.
 // v1186: Crisis Response — ConfirmDialog for delete, ?incident_id= deep-link, N shortcut (canCreate), Esc cascade e.stopPropagation() per branch (deleteTarget→form→search), canCreate/canDelete (admin|manager) role gates, 3-state empty (loading/error/no-results/no-data).
