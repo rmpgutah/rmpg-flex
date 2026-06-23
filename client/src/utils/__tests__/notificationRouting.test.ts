@@ -42,16 +42,15 @@ describe('notificationRouting', () => {
     });
 
     it('builds /court-records?event_id= for court_event entity_type', () => {
-      // Page 54 audit added court_event routing so a "hearing reminder",
-      // "outcome recorded", or "continuance granted" notification lands
-      // on the actual docket entry instead of a generic page.
       expect(routeForEntity({ type: 'system', entity_type: 'court_event', entity_id: 7 }))
         .toBe('/court-records?event_id=7');
-      // Confirms the deep-link param matches what CourtRecordsPage's
-      // useSearchParams hook reads (`event_id` / `court_event_id`); the
-      // canonical emitter writes `court_event` so we always land on the
-      // historical disposition view, and operators can pivot to /court
-      // for upcoming-dates via the in-page "Tracker" button.
+    });
+
+    it('builds /web-research?research_id= for research_result entity_type', () => {
+      expect(routeForEntity({ type: 'system', entity_type: 'research_result', entity_id: 17 }))
+        .toBe('/web-research?research_id=17');
+      expect(routeForEntity({ type: 'system', entity_type: 'web_research', entity_id: 17 }))
+        .toBe('/web-research?research_id=17');
     });
 
     it('falls back to type-default when entity_type is unknown', () => {

@@ -339,6 +339,45 @@
 //        `hover:text-[#d4a017]` hardcoded hex swapped to `hover:text-brand-400`
 //        so the Edit-PDF affordance follows brand-gold token instead of
 //        a literal.
+// v1079: Web Research (/web-research) — Page 61 of the full-app frontend pass.
+//        WebResearchPage was a Firecrawl-backed search + saved-results
+//        surface but had no court-ready export, no URL deep-link, no
+//        per-user privacy on the (PII-sensitive) recent-query log, no
+//        Esc cascade, no N shortcut, and a silent window.confirm() guarding
+//        the destructive delete path. Audit fixes:
+//          * Court-ready PDF — new webResearchReportPdf renders the active
+//            filter slice of saved results into the canonical Arial+gold
+//            audit-series artifact (banner, export context, per-row entries
+//            with title/URL/metadata/notes/scraped excerpt capped at 2000
+//            chars, OSINT chain-of-custody disclaimer in the footer). Six
+//            vitest smoke tests cover normal/empty/truncated/optional-attr
+//            shapes. PDF entry point lives in the page header toolbar.
+//          * URL deep-link contract — ?research_id=<n>, ?query=<text>,
+//            ?tab=<search|saved>. Consumed once + stripped with replace:true
+//            so a hard refresh doesn't re-pin to a stale row.
+//          * ConfirmDialog — replaces window.confirm() on delete (shows
+//            title/URL/query/linked-entity context) AND adds a new clear-
+//            history confirm where the older "Clear" link silently nuked
+//            localStorage on a single click.
+//          * Per-user recent-query history — scoped to user.id under
+//            rmpg_web_research_history_<uid> so a shared MDT can't leak
+//            one operator's subject-name/plate-number queries to the next.
+//            Capped at 20 entries; click-to-rerun chips below the search.
+//          * Esc smart-cascade — link modal -> notes editor -> results ->
+//            query -> filter (newest-open-first; one Esc per layer).
+//          * N shortcut — opens a new search (typing-suppressed).
+//          * Firecrawl-offline banner — replaces the LED-only signal so
+//            operators see WHY a search returns empty when the API key
+//            isn't configured.
+//          * Hydrate-on-mount — saved-results count now loads on mount
+//            so the tab-strip badge advertises existing research from any
+//            deep-link landing, not just from clicking the Saved tab.
+//          * notificationRouting — `research_result` + `web_research`
+//            entity_types now deep-link to /web-research?research_id=
+//            (covered by 2 new vitest assertions). Client-only PR; no
+//            Worker route changes, no D1 migration.
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,

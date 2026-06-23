@@ -106,6 +106,10 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   ia_complaint: (id) => `/affairs?complaint_id=${encodeURIComponent(id)}`,
   ia_investigation: (id) => `/affairs?investigation_id=${encodeURIComponent(id)}`,
   court_event: (id) => `/court-records?event_id=${encodeURIComponent(id)}`,
+  // Web Research (Page 61 audit) — a saved-research notification deep-links
+  // into the Saved Results tab of /web-research with the row highlighted.
+  research_result: (id) => `/web-research?research_id=${encodeURIComponent(id)}`,
+  web_research: (id) => `/web-research?research_id=${encodeURIComponent(id)}`,
 };
 
 /**
