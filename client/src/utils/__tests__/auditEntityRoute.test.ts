@@ -95,6 +95,13 @@ describe('getAuditEntityRoute', () => {
     expect(getAuditEntityRoute('user', 5)?.path).toBe('/personnel?user_id=5');
   });
 
+  it('routes task / task_assignment to the Tasks page', () => {
+    expect(getAuditEntityRoute('task', 83)?.path).toBe('/tasks?task_id=83');
+    expect(getAuditEntityRoute('task_assignment', 83)?.path).toBe('/tasks?task_id=83');
+    expect(getAuditEntityRoute('tasks', 83)?.path).toBe('/tasks?task_id=83');
+    expect(getAuditEntityRoute('TASK', 83)?.label).toBe('Open task');
+  });
+
   it('returns null for non-routable system entity types', () => {
     expect(getAuditEntityRoute('system', '1')).toBeNull();
     expect(getAuditEntityRoute('config', '1')).toBeNull();
