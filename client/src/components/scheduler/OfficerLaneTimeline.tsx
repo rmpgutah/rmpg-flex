@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { AlertTriangle, Pin } from 'lucide-react';
 import {
   type ScheduleSlot,
@@ -16,6 +16,8 @@ interface Props {
   slots: ScheduleSlot[];
   officers: OfficerOption[];
   todayYmd: string;
+  /** Deep-link highlight: auto-scroll to this slot and ring it on first render. */
+  highlightSlotId?: number;
   onSlotClick?: (slot: ScheduleSlot) => void;
   onSlotDrop?: (slot: ScheduleSlot, target: { date: string; officer_id: number | null }) => void;
   onQueueDrop?: (queueId: number, target: { date: string; officer_id: number | null }) => void;
@@ -37,10 +39,20 @@ function formatHeader(ymd: string): string {
 
 export default function OfficerLaneTimeline({
   anchorYmd, mode, slots, officers, todayYmd,
-  onSlotClick, onSlotDrop, onQueueDrop,
+  highlightSlotId, onSlotClick, onSlotDrop, onQueueDrop,
 }: Props) {
   const days = useMemo(() => extendRange(anchorYmd, mode), [anchorYmd, mode]);
   const grouped = useMemo(() => groupByOfficerLane(slots), [slots]);
+
+  // Deep-link scroll: fire once when highlightSlotId first resolves to a DOM node.
+  const highlightFiredRef = useRef(false);
+  useEffect(() => {
+    if (!highlightSlotId || highlightFiredRef.current) return;
+    const el = document.getElementById(`slot-${highlightSlotId}`);
+    if (!el) return;
+    highlightFiredRef.current = true;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [highlightSlotId, slots]); // re-check when slots load
 
   // Lanes: every officer, plus an "Unassigned" lane keyed 0.
   const lanes: Array<{ id: number; name: string }> = [
@@ -120,13 +132,15 @@ export default function OfficerLaneTimeline({
                 >
                   {cellSlots.map((slot) => {
                     const tier = (slot.urgency_tier ?? 'standard') as keyof typeof TIER_CLASSES;
+                    const isHighlighted = highlightSlotId === slot.id;
                     return (
                       <div
                         key={slot.id}
+                        id={`slot-${slot.id}`}
                         draggable
                         onDragStart={handleDragStart(slot)}
                         onClick={() => onSlotClick?.(slot)}
-                        className={`${TIER_CLASSES[tier]} relative rounded-[2px] px-1 py-0.5 mb-0.5 text-[10px] cursor-grab active:cursor-grabbing`}
+                        className={`${TIER_CLASSES[tier]} relative rounded-[2px] px-1 py-0.5 mb-0.5 text-[10px] cursor-grab active:cursor-grabbing${isHighlighted ? ' ring-1 ring-brand-400' : ''}`}
                       >
                         <div className="flex items-center justify-between gap-1">
                           <span className="truncate font-semibold">{(slot.recipient_name ?? '—').split(/\s+/).pop()?.toUpperCase()}</span>
