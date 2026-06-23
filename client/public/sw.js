@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1142: Security Dashboard — ConfirmDialog for unblock-IP, ?tab= deep-link (strip after mount), N shortcut triggers refresh, Esc cascade closes confirm dialog, distinct empty states (loading/no-data), role-gated unblock action (admin/manager/supervisor), brand-gold-500/text-rmpg-400 tokens replace hardcoded hex.
 // v1141: Serve Scheduler — ?schedule_id= deep-link (strip after mount, highlight+scroll slot), N shortcut opens Rebalance (canManage), Esc cascade (rebalance→blur), ConfirmDialog for rebalance apply (warning variant), canManage role gate on Rebalance button+drag ops, 3-state empty (loading/empty-window/error), OfficerLaneTimeline highlightSlotId prop.
 // v1136: Skip Tracer — Esc cascade adds e.stopPropagation() per branch, remove dead expandedPerson state (no callsites).
 // v1139: Serve — role gates (canManage: admin/manager/supervisor) on Add Job button, N shortcut, Edit job menu item; Esc cascade adds e.stopPropagation(); dead code removed (affidavitData, handleGenerateAffidavit, handleNotifyCompletion); brand tokens (#d4a017→text-brand-gold-500, #888888→rmpg-500, #141414→CSS vars); map popup CSS vars; duplicate id fixed on Apt/Unit input.
