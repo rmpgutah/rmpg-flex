@@ -85,6 +85,80 @@
 //        (period_start/end, discount_amount, late_fee_amount, line_type).
 //        SW name auto-stamps via vite plugin — bump here is documentation.
 
+// v1078: Knowledge Base (/knowledge-base) — Page 60 of the full-app frontend
+//        pass. The page is the system-wide one-search-box destination — the
+//        twin of the global Cmd+K palette — and shipped with a thin URL
+//        contract (?q= only, so a reload of an active filter chip silently
+//        dropped it), no keyboard navigation (Cmd+K had ↑↓/Enter; the
+//        dedicated page didn't, despite operators expecting parity), no Esc
+//        handler at all (Esc inside the input did the browser default — a
+//        hidden noop on macOS), no print path (operators were screenshotting
+//        the list into case folders, which is not a record), and a global
+//        chrome that hardcoded the brand gold (#d4a017) and the surface-base
+//        almost-black (#0a0a0a) — so neither would re-theme between night
+//        and day. Recent-searches existed in the global palette but were
+//        unscoped (rmpg-recent-searches-v2), which had been called out as a
+//        cross-operator privacy leak in v1065 (SkipTracker per-user key
+//        rollout).
+//
+//        What changed:
+//          • URL deep-link contract — ?q=<query>&type=<typeFilter>. The
+//            active type chip now round-trips on reload / share so a
+//            "?q=smith&type=warrant" link reopens to exactly the same view
+//            the operator saw when they grabbed the URL. ?q clears once the
+//            field empties, ?type persists across query edits inside the
+//            same session.
+//          • Keyboard contract matches GlobalSearch — ↑↓ navigate, Enter
+//            opens the highlighted row, Esc smart-cascades: filter chip →
+//            query → blur. Hovering a row syncs the keyboard cursor so a
+//            mouse-and-keyboard mix doesn't fight itself.
+//          • Per-user recent searches — rmpg_kb_recent_${user.id}. A shared
+//            MDT no longer leaks one operator's queries (subject names,
+//            plates, badge numbers) to the next person to sit down. Bare
+//            key intentionally not migrated: the previous page never
+//            persisted anything locally, so there's nothing to carry.
+//            Surfaced as an interactive list on the empty state with a
+//            one-click Clear (no ConfirmDialog: low-cost, easy to refill).
+//          • Court-ready PDF export — new client/src/utils/
+//            knowledgeBaseSearchPdf.ts (11 unit tests covering ellipsize,
+//            groupByType, empty-results, single-type, multi-type-grouping,
+//            many-rows-pagination, active-type-filter header, missing
+//            officer attribution, and case-number capture). Same Arial +
+//            RMPG-gold visual contract as darPdf / skipTracerReportPdf /
+//            shiftReportPdf / forensicCasePdf so a multi-surface court
+//            binder keeps a consistent look. "Print Results" toolbar
+//            button appears once a search has returned rows.
+//          • Empty-state distinction widened — three states now: no query
+//            yet (recent-list + keyboard-cheatsheet), 0 results matched
+//            (with "try a shorter substring" hint), and "0 results in
+//            this filter" (with one-click "Show all N results" reset so
+//            the operator doesn't have to remember which chip is active).
+//          • Auto-drop a stale chip — if the new result set has zero rows
+//            of the active type, the chip releases itself. Otherwise the
+//            operator stares at "0 results in this filter" with no way
+//            back without finding the chip.
+//          • Theme-token chrome — the search-box top accent and the active
+//            "All N" chip background/foreground now read var(--brand-500)
+//            and var(--surface-base) instead of #d4a017 / #0a0a0a, so both
+//            re-theme between night and day. The per-type accent chips
+//            keep their decorative per-type hex (call=#22c55e etc.) by
+//            design — same call-out the SkipTracker (v1065) made for its
+//            per-mode chips.
+//
+//        Worker: untouched. /api/knowledge-base/search is the same shared
+//        endpoint Cmd+K already calls.
+//
+//        Not in scope for this PR (deferred):
+//          • The Cmd+K global palette (client/src/components/GlobalSearch
+//            .tsx) still uses the unscoped rmpg-recent-searches-v2 key.
+//            Migrating it to a per-user key has the same leak shape as the
+//            KB page above and should land as a follow-up so the two
+//            surfaces stay in lockstep — see spawned task.
+//          • Server-side search ranking is unchanged. The page is a
+//            presentation layer over the existing endpoint.
+//
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+
 // v1065: Skip Tracker (/skip-tracer) — Page 48 of the full-app frontend pass.
 //        Two-part fix. (1) The page's server surface was dead: every
 //        client search hit /skiptracer/search/{byname,byaddress,bynameaddress,
