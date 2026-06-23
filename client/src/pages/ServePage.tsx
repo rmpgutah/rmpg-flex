@@ -531,6 +531,23 @@ export default function ServePage() {
   // Opens the in-page ConfirmDialog (replaces the v480 native window.confirm
   // and its window.alert on failure — both broke the day/night surface and
   // bypassed our keyboard-trap / a11y model).
+  const handleMoveToFolder = useCallback(async (job: ServeJob, newStatus: string) => {
+    // Optimistic UI: update folder immediately.
+    setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: newStatus as ServeJob['status'] } : j));
+    try {
+      await apiFetch(`/serve-intake/${job.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      addToast(`Moved to ${newStatus === 'cancelled' ? 'Archive' : newStatus.replace('_', ' ')}`, 'success');
+      setTimeout(refreshJobs, 600);
+    } catch (e) {
+      // Revert optimistic update on failure.
+      setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: job.status } : j));
+      addToast(`Could not move job: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    }
+  }, [addToast, refreshJobs]);
+
   const handleDeleteJob = useCallback((job: ServeJob) => {
     setDeleteJob(job);
   }, []);
@@ -1033,12 +1050,34 @@ export default function ServePage() {
     const addr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
       .filter(Boolean).join(', ');
     const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived';
+    const currentFolder = deriveServeFolder(job);
+
+    // "Move to…" submenu — available statuses excluding the current folder.
+    const MOVE_OPTIONS: Array<{ status: string; label: string; adminOnly?: boolean }> = [
+      { status: 'in_progress', label: 'In Progress' },
+      { status: 'pending',     label: 'Queue (Pending)' },
+      { status: 'served',      label: 'Served',       adminOnly: true },
+      { status: 'failed',      label: 'Non-Service',  adminOnly: true },
+      { status: 'cancelled',   label: 'Archive' },
+    ];
+    const folderForStatus = (s: string) =>
+      s === 'in_progress' ? 'in_progress' : s === 'pending' ? 'pending' : s === 'served' ? 'served' : s === 'failed' ? 'failed' : 'archived';
+    const moveSubmenu: ContextMenuItem[] = MOVE_OPTIONS
+      .filter(opt => folderForStatus(opt.status) !== currentFolder && (!opt.adminOnly || canManage))
+      .map(opt => ({
+        label: opt.label,
+        onClick: () => handleMoveToFolder(job, opt.status),
+      }));
+
     return [
       m.action('Open / expand', () => setExpandedJobId(prev => prev === job.id ? null : job.id), { icon: <Eye size={12} /> }),
       ...(canManage ? [m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> })] : []),
       ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
       ...(job.attempt_count > 0 ? [m.action('Notice of Attempt to Serve', () => handleNoticeOfAttempt(job.id), { icon: <FileWarning size={12} /> })] : []),
       m.action('Skip trace', () => setSkipTraceJob(job), { icon: <SearchIcon size={12} /> }),
+      moveSubmenu.length > 0
+        ? { label: 'Move to…', icon: <FolderOpen size={12} />, submenu: moveSubmenu }
+        : null,
       m.separator(),
       m.copy('Copy recipient', job.recipient_name),
       m.copyId(job.id),
@@ -1048,7 +1087,7 @@ export default function ServePage() {
       ...(canDelete ? [
         m.action('Delete job', () => handleDeleteJob(job), { icon: <Trash2 size={12} />, danger: true }),
       ] : []),
-    ];
+    ].filter(Boolean) as ContextMenuItem[];
   };
 
   return (
