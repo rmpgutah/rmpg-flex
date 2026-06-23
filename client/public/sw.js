@@ -851,6 +851,47 @@
 //          status.
 //        - No migration; no server route changes; no SW behavior changes
 //          (this version is a content bump only).
+// v1063: Plate Log (/intel/plate-log) — Page 46 of the full-app frontend
+//        pass. PlateLogPage.tsx is the manual + ALPR-camera plate sighting
+//        surface that an officer uses on a felony stop or a pursuit; every
+//        capture is a potential court exhibit, and the page already had the
+//        review queue, gallery, and dossier wired up.
+//
+//        What the audit caught and what changed:
+//        - `?capture_id=` deep-link was DECLARED in notificationRouting.ts
+//          (`alpr_capture → /plate-log?capture_id=`) but the page never read
+//          it. Clicking an ALPR-capture notification dropped the operator
+//          on the page with no context. The page now hydrates the scan tile
+//          from `GET /api/alpr/capture/:id` and switches to the SCAN view.
+//          `?plate=ABC123` opens the per-plate dossier directly. Both are
+//          one-shot — params are stripped after first paint (FlexCam pattern).
+//        - Court-record PDF — new client/src/utils/plateCapturePdf.ts (same
+//          RMPG-gold banner + signature-block contract as dashcamReviewPdf,
+//          evidenceItemPdf, auditLogPdf). Renders the annotated image +
+//          plate/state/vehicle/trust/source/device, an UNVERIFIED-READ alert
+//          banner when review_status is anything but `confirmed*` (the v963
+//          TrustBadge audit catches the false-100% case at the screen layer;
+//          this is the same protection at the printed-page layer), screening
+//          hits, GPS + location + linked call/incident #, AND the full review
+//          history pulled from /api/alpr/capture/:id/history so the chain-of-
+//          review is embedded in the printout. New "COURT PDF" header button
+//          on the scan tile.
+//        - Esc smart-cascade — close-newest-open-first: dossier → editing
+//          modal → reviewMsg banner → scanErr → scan tile. Skips while
+//          typing in any field so plate/notes editing isn't disrupted.
+//        - `N` shortcut focuses the plate input from anywhere on the page
+//          (same convention as the dispatch board's `N` for new call) and
+//          auto-switches the view back to SCAN if the operator was in the
+//          CAPTURES gallery — previously the only way to start a manual
+//          entry was to scroll-and-tap, awkward on a mobile keyboard.
+//        - `⚠` glyph in HitBanners replaced by Lucide AlertTriangle. The
+//          glyph rendered as tofu on some Android WebView builds and on the
+//          iOS app's older fallback font (same symptom the FieldInterviews
+//          audit flagged) — Lucide is consistent across every platform.
+//        - No migration; no server route changes; no SW behavior changes;
+//          all existing endpoints (the /capture/:id GET and /capture/:id/
+//          history GET were already shipping from PR #1269/#1278).
+//
 // v1056: Notifications — Page 39 of the full-app frontend pass. The
 //        /notifications page (NotificationsPage.tsx, 452 lines) plus the
 //        global NotificationCenter dropdown (NotificationCenter.tsx, 567
