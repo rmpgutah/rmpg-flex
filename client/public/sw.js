@@ -59,6 +59,19 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
+//        No client code changed; the endpoint already had three callers in
+//        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
+//        Print) but the route did not exist on the Worker — every Download
+//        PDF / Preview / Print click silently 404'd. Caught during the
+//        Billing audit (PR #1648). The new route returns the denormalized
+//        payload shape the client-side invoicePdfGenerator expects (invoice
+//        + line items + payments + client / billing fields) under
+//        { data: { invoice: …, line_items: […], payments: […] } }, with
+//        sensible COALESCE defaults for schema columns we never landed
+//        (period_start/end, discount_amount, late_fee_amount, line_type).
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+
 // v1065: Skip Tracker (/skip-tracer) — Page 48 of the full-app frontend pass.
 //        Two-part fix. (1) The page's server surface was dead: every
 //        client search hit /skiptracer/search/{byname,byaddress,bynameaddress,
