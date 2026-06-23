@@ -87,6 +87,8 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   email_message: (id) => `/communications?tab=messages&message_id=${encodeURIComponent(id)}`,
   alpr_capture: (id) => `/plate-log?capture_id=${encodeURIComponent(id)}`,
   use_of_force: (id) => `/use-of-force?uof_id=${encodeURIComponent(id)}`,
+  arrest_record: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
+  arrest: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
 };
 
 /**

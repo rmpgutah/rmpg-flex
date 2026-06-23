@@ -1559,7 +1559,7 @@ export default function IncidentsPage() {
             <label className="field-label" style={{ fontSize: '10px', letterSpacing: '0.05em' }}>SOURCE CALL</label>
             <div className="flex items-center gap-3 mt-0.5">
               <button type="button"
-                onClick={() => navigate('/dispatch')}
+                onClick={() => navigate(selectedIncident.call_id ? `/dispatch?call_id=${selectedIncident.call_id}` : '/dispatch')}
                 className="font-mono text-green-400 text-sm hover:text-green-300 hover:underline transition-colors"
               >
                 {inc.call_number}
@@ -1591,7 +1591,7 @@ export default function IncidentsPage() {
               <label className="field-label">Linked Call:</label>
               {selectedIncident.call_number ? (
                 <button type="button"
-                  onClick={() => navigate('/dispatch')}
+                  onClick={() => navigate(selectedIncident.call_id ? `/dispatch?call_id=${selectedIncident.call_id}` : '/dispatch')}
                   className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold text-rmpg-400 bg-surface-sunken/20 border border-border-default/40 hover:bg-surface-sunken/40 transition-colors"
                   title="Go to dispatch"
                 >

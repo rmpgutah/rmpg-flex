@@ -3,6 +3,14 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1089: Community (/community) — Page 71 of the full-app frontend pass.
+//        Fixed critical bug: "New Event" modal never opened (showForm was
+//        `editingRecord !== null`, but openNew() set it to null). Separate
+//        showForm boolean state introduced. Replaced inline delete div with
+//        ConfirmDialog. Added Esc cascade (delete → form), N shortcut,
+//        ?event_id= deep-link, tab nav for Tips/Watch Groups/Alerts,
+//        role-guard hiding write buttons for read-only roles, per-tab lazy
+//        loading, and distinct empty-state messages.
 // v451: Traccar replaces OwnTracks as the dominant primary GPS source.
 //       /api/traccar (canonical) + /traccar (alias) accept Traccar
 //       Client (OsmAnd HTTP), Traccar Server forward-webhook, and
@@ -59,11 +67,76 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1088: Criminal History (/criminal-history) — Page 70 of the full-app
+//        frontend pass.
+//        (1) Fixed silent search bug: name/DOB/DL searches sent ?name=/?dob=/?dl=
+//            params the server does not read, returning the full 500-person
+//            unfiltered list instead of matching records. Name now routes to
+//            /records/persons/search?q= (proper LIKE); DOB/DL use the bulk
+//            list's ?search= param.
+//        (2) Switched person history to /records/persons/:id/system-history
+//            (single round-trip, FK-joined) — previously 4 separate fetches
+//            used fuzzy name-text search for citations/FIs, returning records
+//            for anyone with a similar name, not the selected person.
+//        (3) Added CriminalHistorySection panel — formal arrest/conviction/
+//            charge records from the criminal_history table were absent.
+//        (4) Added WarrantNsopwStatus panel — NSOPW nationwide SOR cross-ref.
+//        (5) Esc smart-cascade: Esc while person selected returns to list.
+//        (6) ?subject= URL param pre-fills and auto-fires name search.
+//        (7) ConfirmDialog on CriminalHistorySection delete (was bare click).
+//        (8) normPerson() handles dob/gender/dl_number aliases from bulk list.
+// v1086: Daily Activity Reports (Page 68 audit). Fixed: search param was sent
+//        by the client but silently ignored by the Worker (no LIKE clause);
+//        pagination.totalPages missing from API response (client showed page 1
+//        always); client sent limit= but Worker read per_page=; reviewed_by_name
+//        never populated (only officer join, no reviewer join). Added:
+//        ?officer_id= and ?date= URL deep-links (pre-seed filter + strip);
+//        equipment_issues + recommendations edit fields (were in PDF + type but
+//        no UI to write them); ensureTable idempotent ALTER for new cols.
 // v1083: Evidence (Page 65) — add 8 missing backend sub-resource endpoints
 //   (chain-action, checkout, checkin, disposition, request-release,
 //   approve-release, custody-validation, linked-records); fix ?id= deep-link
 //   from QuickSearchCard; gate Approve/Deny release to supervisor+; seed
 //   ?status= and ?case_id= URL filters on mount.
+// v1084: Citations (/citations) — Page 66 of the full-app frontend pass.
+//        (1) Stats bar was always showing zeros: GET /citations/stats returned
+//        byStatus as a row array (camelCase) but CitationsPage read it as
+//        by_status: Record<string,number>. Worker now returns both shapes plus
+//        the missing fines_issued, fines_collected, and today_count fields.
+//        (2) Deep-links: ?plate=<plate> pre-fills the search box (incoming from
+//        PlateLog "View citations for plate"); ?officer_id=<id> pre-fills with
+//        the officer id (incoming from Personnel). ?citation_id=<id> already
+//        existed. (3) Plate in detail view now has an "ALPR" button that
+//        navigates to /intel/plate-log?plate=<plate> for history. Right-click
+//        context menu also gets "View plate history" when plate is present.
+//        (4) Court Information section header now has a "Court Tracker" link
+//        that navigates to /court.
+// v1082: Incidents (Page 64) — source-call buttons now deep-link to
+//        /dispatch?call_id=<id> so clicking the call number from an incident
+//        auto-selects that call in the Dispatch CAD board. Previously both
+//        "SOURCE CALL" header and "Linked Call" info-panel buttons navigated
+//        to /dispatch with no context, leaving operators to find the call
+//        manually. No schema or API changes.
+// v1081: Patrol (/patrol) — Page 63 of the full-app frontend pass. Added Esc
+//        smart-cascade (QR modal → Checkpoint modal), N shortcut to open the
+//        New Checkpoint form on the Checkpoints tab, four-way empty-state
+//        distinction (no-checkpoints-ever / no-scans-with-filters / no-scans-
+//        ever / no-active-checkpoints-for-compliance), and removed dead
+//        coverageData/handleLoadCoverage state that was defined but never
+//        rendered anywhere in the JSX.
+// v1070: Cmd+K Global Search — scope recent-search history per user.id
+//        instead of sharing one bare 'rmpg-recent-searches-v2' localStorage
+//        key across every operator on the MDT. A shared patrol laptop was
+//        leaking one officer's recent name/plate/badge queries to the next
+//        person who opened the dialog. Now keyed on
+//        `rmpg_globalsearch_recent_${user.id}`, with a one-time read-through
+//        migration that copies the legacy bare key into the first
+//        signed-in user's slot and then deletes the legacy key so the
+//        next user doesn't inherit it. Reads/writes are skipped entirely
+//        when no user is signed in (mid-login first render). Mirrors the
+//        SkipTracerPage history pattern (PR #1657 / SW v1065).
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
@@ -75,6 +148,80 @@
 //        { data: { invoice: …, line_items: […], payments: […] } }, with
 //        sensible COALESCE defaults for schema columns we never landed
 //        (period_start/end, discount_amount, late_fee_amount, line_type).
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+
+// v1078: Knowledge Base (/knowledge-base) — Page 60 of the full-app frontend
+//        pass. The page is the system-wide one-search-box destination — the
+//        twin of the global Cmd+K palette — and shipped with a thin URL
+//        contract (?q= only, so a reload of an active filter chip silently
+//        dropped it), no keyboard navigation (Cmd+K had ↑↓/Enter; the
+//        dedicated page didn't, despite operators expecting parity), no Esc
+//        handler at all (Esc inside the input did the browser default — a
+//        hidden noop on macOS), no print path (operators were screenshotting
+//        the list into case folders, which is not a record), and a global
+//        chrome that hardcoded the brand gold (#d4a017) and the surface-base
+//        almost-black (#0a0a0a) — so neither would re-theme between night
+//        and day. Recent-searches existed in the global palette but were
+//        unscoped (rmpg-recent-searches-v2), which had been called out as a
+//        cross-operator privacy leak in v1065 (SkipTracker per-user key
+//        rollout).
+//
+//        What changed:
+//          • URL deep-link contract — ?q=<query>&type=<typeFilter>. The
+//            active type chip now round-trips on reload / share so a
+//            "?q=smith&type=warrant" link reopens to exactly the same view
+//            the operator saw when they grabbed the URL. ?q clears once the
+//            field empties, ?type persists across query edits inside the
+//            same session.
+//          • Keyboard contract matches GlobalSearch — ↑↓ navigate, Enter
+//            opens the highlighted row, Esc smart-cascades: filter chip →
+//            query → blur. Hovering a row syncs the keyboard cursor so a
+//            mouse-and-keyboard mix doesn't fight itself.
+//          • Per-user recent searches — rmpg_kb_recent_${user.id}. A shared
+//            MDT no longer leaks one operator's queries (subject names,
+//            plates, badge numbers) to the next person to sit down. Bare
+//            key intentionally not migrated: the previous page never
+//            persisted anything locally, so there's nothing to carry.
+//            Surfaced as an interactive list on the empty state with a
+//            one-click Clear (no ConfirmDialog: low-cost, easy to refill).
+//          • Court-ready PDF export — new client/src/utils/
+//            knowledgeBaseSearchPdf.ts (11 unit tests covering ellipsize,
+//            groupByType, empty-results, single-type, multi-type-grouping,
+//            many-rows-pagination, active-type-filter header, missing
+//            officer attribution, and case-number capture). Same Arial +
+//            RMPG-gold visual contract as darPdf / skipTracerReportPdf /
+//            shiftReportPdf / forensicCasePdf so a multi-surface court
+//            binder keeps a consistent look. "Print Results" toolbar
+//            button appears once a search has returned rows.
+//          • Empty-state distinction widened — three states now: no query
+//            yet (recent-list + keyboard-cheatsheet), 0 results matched
+//            (with "try a shorter substring" hint), and "0 results in
+//            this filter" (with one-click "Show all N results" reset so
+//            the operator doesn't have to remember which chip is active).
+//          • Auto-drop a stale chip — if the new result set has zero rows
+//            of the active type, the chip releases itself. Otherwise the
+//            operator stares at "0 results in this filter" with no way
+//            back without finding the chip.
+//          • Theme-token chrome — the search-box top accent and the active
+//            "All N" chip background/foreground now read var(--brand-500)
+//            and var(--surface-base) instead of #d4a017 / #0a0a0a, so both
+//            re-theme between night and day. The per-type accent chips
+//            keep their decorative per-type hex (call=#22c55e etc.) by
+//            design — same call-out the SkipTracker (v1065) made for its
+//            per-mode chips.
+//
+//        Worker: untouched. /api/knowledge-base/search is the same shared
+//        endpoint Cmd+K already calls.
+//
+//        Not in scope for this PR (deferred):
+//          • The Cmd+K global palette (client/src/components/GlobalSearch
+//            .tsx) still uses the unscoped rmpg-recent-searches-v2 key.
+//            Migrating it to a per-user key has the same leak shape as the
+//            KB page above and should land as a follow-up so the two
+//            surfaces stay in lockstep — see spawned task.
+//          • Server-side search ranking is unchanged. The page is a
+//            presentation layer over the existing endpoint.
+//
 //        SW name auto-stamps via vite plugin — bump here is documentation.
 
 // v1065: Skip Tracker (/skip-tracer) — Page 48 of the full-app frontend pass.

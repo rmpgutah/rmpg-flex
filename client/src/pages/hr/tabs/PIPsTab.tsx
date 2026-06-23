@@ -4,6 +4,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
@@ -44,6 +45,8 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [form, setForm] = useState({ officer_id: '', start_date: '', end_date: '', reason: '', goals: [''] });
+  const [confirmFailId, setConfirmFailId] = useState<number | null>(null);
+  const [confirmFailLoading, setConfirmFailLoading] = useState(false);
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(userRole);
 
@@ -81,8 +84,20 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
   };
 
   const updateStatus = async (id: number, status: string) => {
-    if (status === 'failed' && !window.confirm('Mark this PIP as failed? This will be recorded permanently.')) return;
+    if (status === 'failed') { setConfirmFailId(id); return; }
     try { await apiFetch(`/hr/pips/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }); addToast('PIP updated', 'success'); load(); } catch { addToast('Failed to update PIP', 'error'); }
+  };
+
+  const doFailPip = async () => {
+    if (confirmFailId === null) return;
+    setConfirmFailLoading(true);
+    try {
+      await apiFetch(`/hr/pips/${confirmFailId}`, { method: 'PUT', body: JSON.stringify({ status: 'failed' }) });
+      addToast('PIP marked as failed', 'success');
+      setConfirmFailId(null);
+      load();
+    } catch { addToast('Failed to update PIP', 'error'); }
+    finally { setConfirmFailLoading(false); }
   };
 
   const daysRemaining = (endDate: string) => {
@@ -126,7 +141,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
             <option value="all">All Statuses</option>
             {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
           </select>
-          {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> New PIP</button>}
+          {isManager && <button type="button" data-hr-new-btn onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> New PIP</button>}
         </div>
       </div>
 
@@ -231,6 +246,17 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmFailId !== null}
+        onClose={() => setConfirmFailId(null)}
+        onConfirm={doFailPip}
+        title="Mark PIP as Failed"
+        message="Mark this PIP as failed? This will be recorded permanently."
+        confirmLabel="Mark Failed"
+        confirmVariant="danger"
+        isLoading={confirmFailLoading}
+      />
     </div>
   );
 }
