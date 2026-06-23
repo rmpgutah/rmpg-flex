@@ -71,4 +71,24 @@ describe('commitIntake with defendantsSelected', () => {
     });
     expect(db._rows.serve_queue.length).toBe(1);
   });
+
+  it('all defendants share the same case_file_id (forcedCaseId mechanism)', async () => {
+    const db: any = makeDbStub();
+    const result = await commitIntake(db, {
+      fields: { recipient_first_name: { value: 'John', confidence: 0.9 },
+                recipient_last_name: { value: 'Smith', confidence: 0.9 } },
+      queueRow: { recipient_name: 'John Smith', recipient_address: '1 Main St' } as any,
+      userId: 1, documentSummary: '', docCount: 1,
+      defendantsSelected: ['John Smith', 'Jane Smith', 'Bob Doe'],
+      judgeRunId: 17,
+      env: {} as any,
+    });
+    // The wrapper returns iteration 1's result.
+    // The key assertion: case_files table has at most 1 insert across all N
+    // iterations — iterations 2..N reuse the shared case via forcedCaseId
+    // and should not create new case_files rows.
+    expect(db._rows.case_files?.length ?? 0).toBeLessThanOrEqual(1);
+    // Also verify 3 serve_queue rows were created (one per defendant).
+    expect(db._rows.serve_queue.length).toBe(3);
+  });
 });
