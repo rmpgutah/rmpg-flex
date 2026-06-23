@@ -1,6 +1,8 @@
 // client/src/hooks/useAssessorLookup.ts
 // On-blur Assessor lookup. Returns parcels, loading, error, plus
-// dismiss() / refetch() controls. Lookup is debounced to dedupe rapid blurs.
+// dismiss() / refetch() controls. Surfaces fallback-chain metadata
+// (source / degraded / manual_url) so the panel can tell the user when
+// they're looking at AI-derived or stale data.
 
 import { useCallback, useRef, useState } from 'react';
 import { apiFetch } from './useApi';
@@ -14,10 +16,22 @@ export interface ParcelSummary {
   detail_url: string;
 }
 
+export type LookupSource =
+  | 'firecrawl' | 'direct' | 'ai' | 'stale_cache' | 'cache' | 'none';
+
+export type LookupCode =
+  | 'ok' | 'not_configured' | 'no_match' | 'upstream_error' | 'timeout'
+  | 'missing_address';
+
 interface LookupResponse {
+  ok: boolean;
   parcels: ParcelSummary[];
   cached: boolean;
-  source_url: string | null;
+  source: LookupSource;
+  code: LookupCode;
+  degraded: boolean;
+  manual_url: string;
+  diagnostic?: string;
 }
 
 const DIGIT_RE = /\d/;
@@ -26,16 +40,26 @@ export function useAssessorLookup() {
   const [parcels, setParcels] = useState<ParcelSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [code, setCode] = useState<LookupCode | null>(null);
+  const [source, setSource] = useState<LookupSource | null>(null);
+  const [degraded, setDegraded] = useState(false);
+  const [manualUrl, setManualUrl] = useState<string | null>(null);
   const [cached, setCached] = useState(false);
   const inFlight = useRef<AbortController | null>(null);
+  const lastAddress = useRef<string | null>(null);
 
   const lookup = useCallback(async (address: string) => {
     setError(null);
     const trimmed = address.trim();
     if (!trimmed || !DIGIT_RE.test(trimmed)) {
       setParcels(null);
+      setCode(null);
+      setSource(null);
+      setDegraded(false);
+      setManualUrl(null);
       return;
     }
+    lastAddress.current = trimmed;
     inFlight.current?.abort();
     const ctl = new AbortController();
     inFlight.current = ctl;
@@ -45,17 +69,49 @@ export function useAssessorLookup() {
         `/assessor/parcels?address=${encodeURIComponent(trimmed)}`,
         { signal: ctl.signal },
       );
-      if (!ctl.signal.aborted) {
-        setParcels(res.parcels);
-        setCached(res.cached);
-      }
+      if (ctl.signal.aborted) return;
+      setParcels(res.parcels ?? []);
+      setCached(res.cached);
+      setSource(res.source);
+      setCode(res.code);
+      setDegraded(res.degraded);
+      setManualUrl(res.manual_url);
     } catch (e: any) {
-      if (!ctl.signal.aborted) setError(e?.message ?? 'Assessor lookup failed');
+      if (ctl.signal.aborted) return;
+      setParcels([]);
+      setCode('upstream_error');
+      setSource('none');
+      setDegraded(false);
+      setError(e?.message ?? 'Assessor lookup failed');
+      setManualUrl(`https://apps.saltlakecounty.gov/assessor/new/query.cfm?address=${encodeURIComponent(trimmed)}`);
     } finally {
       if (!ctl.signal.aborted) setLoading(false);
     }
   }, []);
 
-  const dismiss = useCallback(() => setParcels(null), []);
-  return { parcels, loading, error, cached, lookup, dismiss };
+  const dismiss = useCallback(() => {
+    setParcels(null);
+    setCode(null);
+    setSource(null);
+    setDegraded(false);
+    setError(null);
+  }, []);
+
+  const retry = useCallback(() => {
+    if (lastAddress.current) lookup(lastAddress.current);
+  }, [lookup]);
+
+  return {
+    parcels,
+    loading,
+    error,
+    code,
+    source,
+    degraded,
+    manualUrl,
+    cached,
+    lookup,
+    dismiss,
+    retry,
+  };
 }
