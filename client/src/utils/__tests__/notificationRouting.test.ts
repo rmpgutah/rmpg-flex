@@ -30,6 +30,17 @@ describe('notificationRouting', () => {
         .toBe('/communications?tab=bolos&bolo_id=5');
     });
 
+    it('builds /arrest-records?arrest_id= for arrest_record entity_type', () => {
+      // Page 43 audit added arrest-record deep-link routing so a
+      // "booking processed" or "criminal-history hit" notification lands
+      // on the actual booking detail panel instead of a generic page.
+      expect(routeForEntity({ type: 'system', entity_type: 'arrest_record', entity_id: 250 }))
+        .toBe('/arrest-records?arrest_id=250');
+      // Short alias for any older server emitter that uses `arrest`.
+      expect(routeForEntity({ type: 'system', entity_type: 'arrest', entity_id: 250 }))
+        .toBe('/arrest-records?arrest_id=250');
+    });
+
     it('falls back to type-default when entity_type is unknown', () => {
       expect(routeForEntity({ type: 'warrant', entity_type: 'something_new', entity_id: 1 }))
         .toBe('/warrants');
