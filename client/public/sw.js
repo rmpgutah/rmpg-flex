@@ -3,6 +3,20 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1111: Gang Intel (/gang-intel) — Page 88 of the full-app frontend pass.
+//        Replaced inline delete modal with ConfirmDialog (danger variant, shows
+//        name/moniker/gang in details). Added N shortcut (new member), Esc
+//        cascade (form → delete confirm, stopPropagation). Deep-link:
+//        ?member_id= auto-opens that member in the edit form after load,
+//        ?gang_id= accepted and stripped; both removed with { replace: true }.
+//        Role gate: Delete button + context-menu item hidden for non-admin/
+//        manager/supervisor (mirrors Worker DELETE 403 guard). Distinct empty
+//        states: "Loading…" spinner on initial fetch, "No results for X" when
+//        search has no hits vs "No gang members tracked yet" when data is truly
+//        empty. Search bar filters by name/moniker/gang in-client. Removed dead
+//        EMPTY_GANG constant and unused `gangs` render path. Brand tokens: no
+//        hardcoded hex (was using CSS-var-backed Tailwind tokens already).
+//        formData type tightened from `any` to `typeof EMPTY_MEMBER`.
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate
