@@ -554,7 +554,7 @@ export default function CourtTrackerPage() {
   // Both params are stripped after hydration so a refresh doesn't re-run.
   const [searchParams, setSearchParams] = useSearchParams();
   const pendingEventIdRef = useRef<string | null>(
-    searchParams.get('event_id') || searchParams.get('court_event_id')
+    searchParams.get('hearing_id') || searchParams.get('event_id') || searchParams.get('court_event_id')
   );
   const pendingCaseIdRef = useRef<string | null>(searchParams.get('case_id'));
   useEffect(() => {
@@ -586,6 +586,7 @@ export default function CourtTrackerPage() {
       } finally {
         if (!cancelled) {
           const next = new URLSearchParams(searchParams);
+          next.delete('hearing_id');
           next.delete('event_id');
           next.delete('court_event_id');
           setSearchParams(next, { replace: true });
@@ -603,16 +604,16 @@ export default function CourtTrackerPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (cloneEventId != null) { setCloneEventId(null); return; }
-      if (witnessOpen) { setWitnessOpen(false); return; }
-      if (feeOpen) { setFeeOpen(false); return; }
-      if (prosecutorOpen) { setProsecutorOpen(false); return; }
-      if (judgeNotesOpen) { setJudgeNotesOpen(false); return; }
-      if (bailOpen) { setBailOpen(false); return; }
-      if (continuanceOpen) { setContinuanceOpen(false); return; }
-      if (outcomeOpen) { setOutcomeOpen(false); return; }
-      if (citationSearchOpen) { setCitationSearchOpen(false); return; }
-      if (formOpen) { setFormOpen(false); return; }
+      if (cloneEventId != null) { e.stopPropagation(); setCloneEventId(null); return; }
+      if (witnessOpen) { e.stopPropagation(); setWitnessOpen(false); return; }
+      if (feeOpen) { e.stopPropagation(); setFeeOpen(false); return; }
+      if (prosecutorOpen) { e.stopPropagation(); setProsecutorOpen(false); return; }
+      if (judgeNotesOpen) { e.stopPropagation(); setJudgeNotesOpen(false); return; }
+      if (bailOpen) { e.stopPropagation(); setBailOpen(false); return; }
+      if (continuanceOpen) { e.stopPropagation(); setContinuanceOpen(false); return; }
+      if (outcomeOpen) { e.stopPropagation(); setOutcomeOpen(false); return; }
+      if (citationSearchOpen) { e.stopPropagation(); setCitationSearchOpen(false); return; }
+      if (formOpen) { e.stopPropagation(); setFormOpen(false); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -764,7 +765,7 @@ export default function CourtTrackerPage() {
               <>
                 {/* Totals */}
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Overview (Last 12 Months)</div>
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Overview (Last 12 Months)</div>
                   <div className="grid grid-cols-2 gap-2">
                     {[
                       ['Total Events', stats.totals?.total || 0],
@@ -783,7 +784,7 @@ export default function CourtTrackerPage() {
 
                 {/* By Outcome */}
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Outcomes</div>
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Outcomes</div>
                   {(stats.byOutcome || []).map((r: any) => (
                     <div key={r.outcome} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
                       <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ')}</span>
@@ -802,7 +803,7 @@ export default function CourtTrackerPage() {
 
                 {/* By Type */}
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">By Event Type</div>
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">By Event Type</div>
                   {(stats.byType || []).map((r: any) => (
                     <div key={r.event_type} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
                       <span className={`text-[10px] px-1.5 py-0.5 border ${EVENT_TYPE_COLORS[r.event_type] || ''}`}>
@@ -996,7 +997,7 @@ export default function CourtTrackerPage() {
                   ['Prosecutor', selected.prosecutor || '--'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
-                    <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider">{label}</div>
+                    <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider">{label}</div>
                     <div className="text-xs text-rmpg-100 mt-0.5">{value || '--'}</div>
                   </div>
                 ))}
@@ -1005,7 +1006,7 @@ export default function CourtTrackerPage() {
               {/* Feature 6: Bail/Bond Info */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider flex items-center gap-1">
                     <DollarSign style={{ width: 10, height: 10 }} /> Bail / Bond
                   </div>
                   {canManage && (
@@ -1035,7 +1036,7 @@ export default function CourtTrackerPage() {
                 if (!Array.isArray(officers) || officers.length === 0) return null;
                 return (
                   <div className="panel-beveled p-3">
-                    <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2 flex items-center gap-1">
                       <Shield style={{ width: 10, height: 10 }} /> Officer Confirmations
                     </div>
                     {officers.map((oid: any) => {
@@ -1059,7 +1060,7 @@ export default function CourtTrackerPage() {
               {/* Feature 8: Judge notes */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider flex items-center gap-1">
                     <BookOpen style={{ width: 10, height: 10 }} /> Judge Preferences / Notes
                   </div>
                   {canManage && (
@@ -1071,7 +1072,7 @@ export default function CourtTrackerPage() {
 
               {/* Feature 7: Court documents */}
               <div className="panel-beveled p-3">
-                <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2 flex items-center gap-1">
+                <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2 flex items-center gap-1">
                   <FileText style={{ width: 10, height: 10 }} /> Court Documents
                 </div>
                 {(() => {
@@ -1091,7 +1092,7 @@ export default function CourtTrackerPage() {
               {/* Feature 7: Prosecutor Contact Info */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider flex items-center gap-1">
                     <User style={{ width: 10, height: 10 }} /> Prosecutor Contact
                   </div>
                   {canManage && (
@@ -1119,7 +1120,7 @@ export default function CourtTrackerPage() {
               {/* Feature 8b: Court Fee Tracking */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider flex items-center gap-1">
                     <DollarSign style={{ width: 10, height: 10 }} /> Court Fees
                   </div>
                   {canManage && (
@@ -1156,7 +1157,7 @@ export default function CourtTrackerPage() {
               {/* Feature 9: Witness List */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider flex items-center gap-1">
                     <Users style={{ width: 10, height: 10 }} /> Witnesses
                   </div>
                   {canManage && (
@@ -1202,7 +1203,7 @@ export default function CourtTrackerPage() {
                 if (log.length === 0) return null;
                 return (
                   <div className="panel-beveled p-3">
-                    <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Continuance History</div>
+                    <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Continuance History</div>
                     {log.map((entry: any, i: number) => (
                       <div key={i} className="py-1 border-b border-rmpg-800 last:border-0">
                         <div className="text-[10px] text-amber-400 font-bold">#{i + 1}: {entry.reason}</div>
@@ -1218,7 +1219,7 @@ export default function CourtTrackerPage() {
               {/* Outcome section */}
               {selected.outcome && (
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Outcome</div>
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Outcome</div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div><span className="text-[9px] text-rmpg-500">Verdict:</span> <span className="text-xs text-rmpg-100 font-bold">{selected.outcome.replace(/_/g, ' ')}</span></div>
                     {selected.sentence && <div><span className="text-[9px] text-rmpg-500">Sentence:</span> <span className="text-xs text-rmpg-100">{selected.sentence}</span></div>}
@@ -1229,7 +1230,7 @@ export default function CourtTrackerPage() {
 
               {selected.notes && (
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-1">Notes</div>
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-1">Notes</div>
                   <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selected.notes}</div>
                 </div>
               )}
