@@ -30,6 +30,7 @@ export default function ServeSchedulerPanel() {
 
   const refetch = useCallback(async () => {
     try {
+      setLoading(true);
       setError(null);
       const include = 'tier';
       const range = view === 'week' ? 7 : 31;

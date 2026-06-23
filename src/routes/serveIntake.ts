@@ -1390,6 +1390,7 @@ si.post('/schedule/backfill', async (c) => {
   await reconcileScheduleSchema(db);
 
   const { persistAttemptSchedule, denverNow } = await import('../utils/serveAttemptScheduler');
+  const { planAttemptWindows } = await import('../utils/serveDiligencePlanner');
 
   const nowIso = new Date().toISOString();
   const nowDenver = denverNow();
@@ -1805,6 +1806,19 @@ si.put('/:id', async (c) => {
   sets.push("updated_at = datetime('now','localtime')");
   args.push(id);
   await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+
+  // Propagate officer_id to auto-placed schedule slots so the lane timeline stays in sync.
+  // Manually-moved slots (manually_moved=1) keep their officer assignment intact.
+  if ('officer_id' in body) {
+    const newOfficer = body.officer_id == null ? null : Number(body.officer_id) || null;
+    await execute(
+      db,
+      `UPDATE serve_attempt_schedules SET officer_id = ? WHERE queue_id = ? AND manually_moved = 0 AND dismissed = 0`,
+      newOfficer,
+      id,
+    );
+  }
+
   return c.json({ success: true });
 });
 
