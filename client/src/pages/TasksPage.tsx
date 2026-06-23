@@ -300,16 +300,16 @@ export default function TasksPage() {
       // 1) Confirm-delete dialog (ConfirmDialog handles its own Esc too,
       //    but this branch documents the cascade ordering and catches
       //    Esc bubbling that originated outside the dialog).
-      if (deleteId !== null) { setDeleteId(null); return; }
+      if (deleteId !== null) { e.stopPropagation(); setDeleteId(null); return; }
       // 2) Open form modal — FormModal already wires Esc internally,
       //    but a stray Esc on the page chrome should still close it.
-      if (formOpen) { setFormOpen(false); setEditingRecord(undefined); return; }
+      if (formOpen) { e.stopPropagation(); setFormOpen(false); setEditingRecord(undefined); return; }
       // 3) Active deep-link highlight
-      if (highlightId !== null) { setHighlightId(null); return; }
+      if (highlightId !== null) { e.stopPropagation(); setHighlightId(null); return; }
       // 4) Inline error banner
-      if (error) { setError(null); return; }
+      if (error) { e.stopPropagation(); setError(null); return; }
       // 5) Active filter set
-      if (hasActiveFilters) { setFilters(EMPTY_FILTERS); setAssigneeName(''); return; }
+      if (hasActiveFilters) { e.stopPropagation(); setFilters(EMPTY_FILTERS); setAssigneeName(''); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -443,7 +443,7 @@ export default function TasksPage() {
           // Brand-gold left rail when this is the deep-linked row.
           // Padding stays consistent so the rail doesn't shift the
           // text horizontally when it appears/disappears.
-          style={isHighlighted ? { borderLeft: '3px solid var(--rmpg-gold, #d4a017)', paddingLeft: 6 } : undefined}
+          style={isHighlighted ? { borderLeft: '3px solid var(--brand-gold)', paddingLeft: 6 } : undefined}
         >
           <div className="text-rmpg-100">{row.task_title}</div>
           {row.description && (
