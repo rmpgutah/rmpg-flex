@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1130: Training Docs (/training-docs) — fixed creator name display (API returns created_by_name, not creator_name); all 10 audit items already present (ConfirmDialog, deep-link ?doc_id=, N shortcut, Esc cascade, 3-state empty, role gates, API shape, no dead code, brand tokens).
 // v1114: Victim Services — role gates (canManage: admin/manager/supervisor), ?victim_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
 // v1113: Crisis Response — ?crisis_id=/?incident_id= deep-link (strip after mount),
 //        N shortcut (admin|manager), Esc cascade (delete->form->search), search bar
