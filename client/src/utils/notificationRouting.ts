@@ -83,7 +83,6 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   call: (id) => `/dispatch?call_id=${encodeURIComponent(id)}`,
   warrant: (id) => `/warrants?warrant_id=${encodeURIComponent(id)}`,
   case: (id) => `/cases?case_id=${encodeURIComponent(id)}`,
-  case_task: (id) => `/cases?task_id=${encodeURIComponent(id)}`,
   person: (id) => `/records?tab=persons&person_id=${encodeURIComponent(id)}`,
   vehicle: (id) => `/records?tab=vehicles&vehicle_id=${encodeURIComponent(id)}`,
   bolo: (id) => `/communications?tab=bolos&bolo_id=${encodeURIComponent(id)}`,

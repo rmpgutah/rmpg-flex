@@ -51,7 +51,7 @@ export default function CrimeAnalysisPage() {
   // once on mount, then strip the param so the URL stays clean.
   const VALID_DAYS = new Set(['30', '90', '180', '365', 'custom']);
   const seedDays = searchParams.get('days') ?? searchParams.get('date_range') ?? '90';
-  const [dateRange, setDateRange] = useState(() => VALID_DAYS.has(seedDays) ? seedDays : '90');
+  const [dateRange, setDateRange] = useState<string>(() => VALID_DAYS.has(seedDays) ? seedDays : '90');
   const [startDate, setStartDate] = useState(searchParams.get('start_date') ?? '');
   const [endDate, setEndDate] = useState(searchParams.get('end_date') ?? '');
 
