@@ -5,7 +5,8 @@
 // Hash set management, job creation/monitoring, hash results.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   HardDrive, Search, Plus, Loader2, X, RefreshCw, Play, Square, CheckCircle,
   AlertTriangle, Clock, Hash, Database, Trash2, Upload, FileText, Eye, Activity,
@@ -15,6 +16,8 @@ import { apiFetch } from '../hooks/useApi';
 import { formatLabel } from '../utils/formatters';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useAuth } from '../context/AuthContext';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -115,7 +118,12 @@ function formatDate(d: string | null): string {
 // ── Component ───────────────────────────────────────────────
 
 export default function IpedPage() {
+  const { user } = useAuth();
   const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Role gates
+  const canManage = user?.role === 'admin' || user?.role === 'manager';
 
   // Dashboard stats
   const [stats, setStats] = useState<StatusStats>({
@@ -159,7 +167,18 @@ export default function IpedPage() {
   const [hashSearchQuery, setHashSearchQuery] = useState('');
   const [hashSearchResults, setHashSearchResults] = useState<HashResult[]>([]);
   const [hashSearching, setHashSearching] = useState(false);
+  const [hashSearchDone, setHashSearchDone] = useState(false);
   const [hashSearchError, setHashSearchError] = useState('');
+
+  // ConfirmDialog state
+  const [removeHashSetTarget, setRemoveHashSetTarget] = useState<string | null>(null);
+  const [cancelJobTarget, setCancelJobTarget] = useState<number | null>(null);
+  const [cancelJobLoading, setCancelJobLoading] = useState(false);
+  const [removeHashSetLoading, setRemoveHashSetLoading] = useState(false);
+
+  // Refs
+  const hashSearchInputRef = useRef<HTMLInputElement>(null);
+  const deepLinkRef = useRef(false);
 
   // ── Fetch Functions ───────────────────────────────────────
 
@@ -207,16 +226,17 @@ export default function IpedPage() {
     if (!hashSearchQuery.trim()) return;
     setHashSearching(true);
     setHashSearchError('');
+    setHashSearchDone(false);
     try {
       const q = hashSearchQuery.trim();
       const data = await apiFetch<any>(`/iped/hashes/search?q=${encodeURIComponent(q)}`);
-      setHashSearchResults(data.results || data.data || []);
-      if ((data.results || data.data || []).length === 0) {
-        setHashSearchError('No matches found');
-      }
+      const results = data.results || data.data || [];
+      setHashSearchResults(results);
+      setHashSearchDone(true);
     } catch (err: any) {
       setHashSearchError(err?.message || 'Search failed');
       setHashSearchResults([]);
+      setHashSearchDone(true);
     } finally {
       setHashSearching(false);
     }
@@ -226,7 +246,7 @@ export default function IpedPage() {
     setDetailLoading(true);
     try {
       const data = await apiFetch<any>(`/iped/jobs/${id}`);
-      setSelectedJob(data);
+      setSelectedJob(data.job ?? data);
       setJobHashes(data.hashes || []);
       setJobProgress(data.progress || null);
     } catch (err: any) {
@@ -238,6 +258,7 @@ export default function IpedPage() {
 
   // ── Effects ───────────────────────────────────────────────
 
+  useEffect(() => { document.title = 'IPED Digital Forensics — RMPG Flex'; }, []);
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
   useEffect(() => { fetchJobs(); }, [fetchJobs]);
   useEffect(() => { fetchHashSets(); }, [fetchHashSets]);
@@ -255,6 +276,111 @@ export default function IpedPage() {
     const iv = setInterval(() => fetchJobDetail(selectedJob.id), 3000);
     return () => clearInterval(iv);
   }, [selectedJob, fetchJobDetail]);
+
+  // ── Deep-link: ?job_id=<id> opens job detail ─────────────
+  const jobIdParam = searchParams.get('job_id');
+  useEffect(() => {
+    if (jobsLoading || deepLinkRef.current || !jobIdParam) return;
+    deepLinkRef.current = true;
+    const id = Number(jobIdParam);
+    if (Number.isFinite(id) && jobs.some(j => j.id === id)) {
+      fetchJobDetail(id);
+      const el = document.getElementById(`iped-job-row-${id}`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      addToast(`Job #${jobIdParam} not found.`, 'warning');
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('job_id');
+    setSearchParams(next, { replace: true });
+  }, [jobsLoading, jobs, jobIdParam, searchParams, setSearchParams, addToast, fetchJobDetail]);
+
+  // ── Deep-link: ?search=<val> auto-runs hash search ───────
+  const searchParam = searchParams.get('search');
+  const searchDeepLinkRef = useRef(false);
+  useEffect(() => {
+    if (searchDeepLinkRef.current || !searchParam) return;
+    searchDeepLinkRef.current = true;
+    setHashSearchQuery(searchParam);
+    const next = new URLSearchParams(searchParams);
+    next.delete('search');
+    setSearchParams(next, { replace: true });
+    // Defer to let state settle
+    setTimeout(() => {
+      apiFetch<any>(`/iped/hashes/search?q=${encodeURIComponent(searchParam)}`)
+        .then(data => {
+          const results = data.results || data.data || [];
+          setHashSearchResults(results);
+          setHashSearchDone(true);
+          if (results.length === 0) addToast(`No hash matches for "${searchParam}".`, 'warning');
+        })
+        .catch((err: any) => {
+          setHashSearchError(err?.message || 'Search failed');
+          setHashSearchDone(true);
+        });
+    }, 100);
+  }, [searchParam, searchParams, setSearchParams, addToast]);
+
+  // ── N shortcut → focus hash search input ─────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      const tag = t.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (t.isContentEditable) return;
+      e.preventDefault();
+      hashSearchInputRef.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  // ── Esc cascade ───────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (cancelJobTarget !== null) {
+        e.stopPropagation();
+        setCancelJobTarget(null);
+        return;
+      }
+      if (removeHashSetTarget !== null) {
+        e.stopPropagation();
+        setRemoveHashSetTarget(null);
+        return;
+      }
+      if (showNewJob) {
+        e.stopPropagation();
+        setShowNewJob(false);
+        return;
+      }
+      if (showImportHashSet) {
+        e.stopPropagation();
+        setShowImportHashSet(false);
+        return;
+      }
+      if (selectedJob) {
+        e.stopPropagation();
+        setSelectedJob(null);
+        setJobHashes([]);
+        setJobProgress(null);
+        return;
+      }
+      if (hashSearchResults.length > 0 || hashSearchQuery) {
+        e.stopPropagation();
+        setHashSearchResults([]);
+        setHashSearchQuery('');
+        setHashSearchDone(false);
+        setHashSearchError('');
+        return;
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [cancelJobTarget, removeHashSetTarget, showNewJob, showImportHashSet, selectedJob, hashSearchResults, hashSearchQuery]);
 
   // ── Actions ───────────────────────────────────────────────
 
@@ -287,15 +413,21 @@ export default function IpedPage() {
     }
   };
 
-  const handleCancelJob = async (id: number) => {
+  const handleCancelJobConfirmed = async () => {
+    if (cancelJobTarget === null) return;
+    const id = cancelJobTarget;
+    setCancelJobLoading(true);
     try {
       await apiFetch(`/iped/jobs/${id}/cancel`, { method: 'POST' });
       addToast('Job cancelled', 'success');
+      setCancelJobTarget(null);
       fetchJobs();
       fetchStatus();
       if (selectedJob?.id === id) fetchJobDetail(id);
     } catch (err: any) {
       addToast(err.message || 'Failed to cancel job', 'error');
+    } finally {
+      setCancelJobLoading(false);
     }
   };
 
@@ -321,23 +453,25 @@ export default function IpedPage() {
     }
   };
 
-  const handleRemoveHashSet = async (name: string) => {
-    if (!window.confirm(`Remove hash set "${name}"? This cannot be undone.`)) return;
+  const handleRemoveHashSetConfirmed = async () => {
+    if (!removeHashSetTarget) return;
+    const name = removeHashSetTarget;
+    setRemoveHashSetLoading(true);
     try {
       await apiFetch(`/iped/hash-sets/${encodeURIComponent(name)}`, { method: 'DELETE' });
       addToast(`Hash set "${name}" removed`, 'success');
+      setRemoveHashSetTarget(null);
       fetchHashSets();
     } catch (err: any) {
       addToast(err.message || 'Failed to remove hash set', 'error');
+    } finally {
+      setRemoveHashSetLoading(false);
     }
   };
 
   const totalPages = Math.ceil(jobsTotal / 20) || 1;
 
   // ── Render ────────────────────────────────────────────────
-
-  // Set document title
-  useEffect(() => { document.title = 'IPED Digital Forensics \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="app-grid-bg h-full flex flex-col overflow-hidden">
@@ -356,13 +490,15 @@ export default function IpedPage() {
           >
             <RefreshCw size={14} />
           </button>
-          <button type="button"
-            onClick={() => setShowNewJob(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-brand-blue/20 text-brand-blue border border-brand-blue/30 hover:bg-brand-blue/30 transition-colors"
-          >
-            <Plus size={13} />
-            New Job
-          </button>
+          {canManage && (
+            <button type="button"
+              onClick={() => setShowNewJob(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-brand-blue/20 text-brand-blue border border-brand-blue/30 hover:bg-brand-blue/30 transition-colors"
+            >
+              <Plus size={13} />
+              New Job
+            </button>
+          )}
         </div>
       </div>
 
@@ -396,10 +532,12 @@ export default function IpedPage() {
           </div>
           <div className="p-3 space-y-2">
             <div className="flex gap-2">
-              <input id="ff-ipedpage-0"
+              <input
+                ref={hashSearchInputRef}
+                id="ff-ipedpage-0"
                 type="text"
                 value={hashSearchQuery}
-                onChange={e => setHashSearchQuery(e.target.value)}
+                onChange={e => { setHashSearchQuery(e.target.value); setHashSearchDone(false); }}
                 onKeyDown={e => e.key === 'Enter' && handleHashSearch()}
                 placeholder="Search MD5, SHA1, or SHA256 hash..." aria-label="Search MD5, SHA1, or SHA256 hash..."
                 className="flex-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 font-mono outline-none"
@@ -410,9 +548,20 @@ export default function IpedPage() {
                 Search
               </button>
             </div>
-            <div className="text-[9px] text-rmpg-500">Accepts MD5 (32 chars), SHA1 (40 chars), SHA256 (64 chars), or partial hashes</div>
+            <div className="text-[9px] text-rmpg-500">Accepts MD5 (32 chars), SHA1 (40 chars), SHA256 (64 chars), or partial hashes · Press N to focus</div>
+
+            {/* Empty states */}
+            {hashSearching && (
+              <div className="flex items-center gap-2 py-2 text-[10px] text-rmpg-500">
+                <Loader2 size={11} className="animate-spin" />
+                Searching…
+              </div>
+            )}
+            {!hashSearching && hashSearchDone && hashSearchResults.length === 0 && !hashSearchError && (
+              <div className="text-[10px] text-rmpg-500 py-2">No hash matches found.</div>
+            )}
             {hashSearchError && (
-              <div className="text-[10px] text-rmpg-400">{hashSearchError}</div>
+              <div className="text-[10px] text-red-400">{hashSearchError}</div>
             )}
             {hashSearchResults.length > 0 && (
               <div className="space-y-1 max-h-48 overflow-y-auto">
@@ -452,13 +601,15 @@ export default function IpedPage() {
               <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wide">Hash Sets</span>
               <span className="text-[10px] text-rmpg-500">({hashSets.length})</span>
             </div>
-            <button type="button"
-              onClick={() => setShowImportHashSet(true)}
-              className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-sm bg-brand-blue/10 text-brand-blue border border-brand-blue/20 hover:bg-brand-blue/20 transition-colors"
-            >
-              <Upload size={10} />
-              Import
-            </button>
+            {canManage && (
+              <button type="button"
+                onClick={() => setShowImportHashSet(true)}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-sm bg-brand-blue/10 text-brand-blue border border-brand-blue/20 hover:bg-brand-blue/20 transition-colors"
+              >
+                <Upload size={10} />
+                Import
+              </button>
+            )}
           </div>
           <div className="p-3">
             {hashSetsLoading ? (
@@ -481,13 +632,15 @@ export default function IpedPage() {
                         <span className="text-[10px] text-rmpg-600">{(hs.hashType || 'MD5').toUpperCase()}</span>
                       </div>
                     </div>
-                    <button type="button"
-                      onClick={() => handleRemoveHashSet(hs.name)}
-                      className="p-1 rounded-sm text-rmpg-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
-                      title="Remove hash set"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                    {canManage && (
+                      <button type="button"
+                        onClick={() => setRemoveHashSetTarget(hs.name)}
+                        className="p-1 rounded-sm text-rmpg-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
+                        title="Remove hash set"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -524,9 +677,18 @@ export default function IpedPage() {
             {jobsLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 size={18} className="animate-spin text-rmpg-500" />
+                <span className="ml-2 text-xs text-rmpg-500">Loading jobs…</span>
+              </div>
+            ) : jobs.length === 0 && jobsFilter ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-2">
+                <Search size={20} className="text-rmpg-600" />
+                <p className="text-xs text-rmpg-500">No jobs match the selected filter.</p>
               </div>
             ) : jobs.length === 0 ? (
-              <p className="text-xs text-rmpg-500 text-center py-8">No jobs found.</p>
+              <div className="flex flex-col items-center justify-center py-8 gap-2">
+                <Server size={20} className="text-rmpg-600" />
+                <p className="text-xs text-rmpg-500">No jobs yet. Create a new processing job to get started.</p>
+              </div>
             ) : (
               <div className="overflow-x-auto"><table className="w-full text-xs">
                 <thead>
@@ -547,6 +709,7 @@ export default function IpedPage() {
                     const Icon = STATUS_ICONS[job.status] || Clock;
                     return (
                       <tr
+                        id={`iped-job-row-${job.id}`}
                         key={job.id}
                         onClick={() => fetchJobDetail(job.id)}
                         className={`border-b border-rmpg-700/50 cursor-pointer transition-colors hover:bg-surface-raised/60 ${selectedJob?.id === job.id ? 'bg-brand-blue/10' : ''}`}
@@ -586,9 +749,9 @@ export default function IpedPage() {
                         </td>
                         <td className="px-3 py-2 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            {job.status === 'running' && (
+                            {job.status === 'running' && canManage && (
                               <button type="button"
-                                onClick={(e) => { e.stopPropagation(); handleCancelJob(job.id); }}
+                                onClick={(e) => { e.stopPropagation(); setCancelJobTarget(job.id); }}
                                 className="p-1 rounded-sm text-red-400 hover:bg-red-900/20 transition-colors"
                                 title="Cancel job"
                               >
@@ -974,6 +1137,32 @@ export default function IpedPage() {
           </div>
         </div>
       )}
+
+      {/* ── ConfirmDialog: Cancel Job ──────────────────────── */}
+      <ConfirmDialog
+        isOpen={cancelJobTarget !== null}
+        onClose={() => setCancelJobTarget(null)}
+        onConfirm={handleCancelJobConfirmed}
+        title="Cancel Job"
+        message="Stop this running job? Progress will be lost and the job will be marked as failed."
+        details={cancelJobTarget !== null ? <span>Job #{cancelJobTarget}</span> : undefined}
+        confirmLabel="Cancel Job"
+        confirmVariant="warning"
+        isLoading={cancelJobLoading}
+      />
+
+      {/* ── ConfirmDialog: Remove Hash Set ─────────────────── */}
+      <ConfirmDialog
+        isOpen={removeHashSetTarget !== null}
+        onClose={() => setRemoveHashSetTarget(null)}
+        onConfirm={handleRemoveHashSetConfirmed}
+        title="Remove Hash Set"
+        message="Remove this hash set? All associated hash entries will be permanently deleted. This cannot be undone."
+        details={removeHashSetTarget ? <span>{removeHashSetTarget}</span> : undefined}
+        confirmLabel="Remove"
+        confirmVariant="danger"
+        isLoading={removeHashSetLoading}
+      />
     </div>
   );
 }
