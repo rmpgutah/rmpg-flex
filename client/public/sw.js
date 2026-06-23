@@ -3,6 +3,13 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1096: Fleet v2 (FleetShell) — Page 73 of the full-app frontend pass.
+//        Added N shortcut (open New Vehicle modal when not typing),
+//        Esc cascade (closes New Vehicle modal before propagating),
+//        ?unit_id= deep-link param (alongside ?vehicle_id= and ?fleet_id=),
+//        VehicleDetailRoute now distinguishes loading vs 404 (no more
+//        silent blank on a bad ID), GpsTrackingRoute link updated from
+//        /fleet-legacy to /map (the actual GPS map surface).
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate
