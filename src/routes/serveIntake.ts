@@ -1128,20 +1128,61 @@ async function reprocessDocument(
   };
 }
 
-// GET /review-queue — docs that never became a serve job (unlinked), failed, or
-// extracted at low confidence. The operator's "needs attention" list.
+// GET /review-queue — serve_queue entries filtered by quality_status.
+// Defaults to 'needs_review'; accepts ?quality_status=clean|needs_review|reviewed_ok|reviewed_fixed.
 si.get('/review-queue', async (c) => {
-  const user = c.get('user') as { role: string } | undefined;
-  if (!user || !INTAKE_ROLES.includes(user.role)) return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
-  const rows = await query(getDb(c.env),
-    `SELECT id, file_name, file_type, doc_type, confidence, status, serve_queue_id,
-            extraction_model, error_message, created_at,
-            CASE WHEN serve_queue_id IS NULL THEN 1 ELSE 0 END AS unlinked,
-            substr(raw_text, 1, 180) AS raw_preview
-       FROM serve_intake_documents
-      WHERE serve_queue_id IS NULL OR status = 'failed' OR confidence < 0.4
-      ORDER BY created_at DESC LIMIT 200`);
-  return c.json({ documents: rows });
+  const user = c.get('user') as { id: number; role: string } | undefined;
+  if (!user || !INTAKE_ROLES.includes(user.role)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const db = getDb(c.env);
+  await ensureQualityGateColumns(db);
+  const status = c.req.query('quality_status');
+  let sql = `SELECT id, recipient_name, recipient_address, quality_status, judge_run_id, created_at
+             FROM serve_queue
+             WHERE 1 = 1`;
+  const bindings: unknown[] = [];
+  if (status === 'needs_review' || status === 'clean' || status === 'reviewed_ok' || status === 'reviewed_fixed') {
+    sql += ` AND quality_status = ?`;
+    bindings.push(status);
+  } else {
+    sql += ` AND quality_status = 'needs_review'`;
+  }
+  sql += ` ORDER BY created_at DESC LIMIT 200`;
+  const rows = await query(db, sql, ...bindings);
+  return c.json({ rows });
+});
+
+const REVIEW_ROLES = ['admin', 'manager', 'supervisor'] as const;
+
+si.post('/review-queue/:id/accept', async (c) => {
+  const denied = requireRole(c, ...REVIEW_ROLES);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const user = c.get('user') as { id: number } | undefined;
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  await ensureQualityGateColumns(db);
+  const r = await db.prepare(
+    `UPDATE serve_queue SET quality_status = ?, quality_reviewed_by = ?, quality_reviewed_at = datetime('now') WHERE id = ?`,
+  ).bind('reviewed_ok', user?.id ?? null, id).run();
+  if ((r.meta?.changes ?? 0) === 0) return c.json({ error: 'Not found' }, 404);
+  return c.json({ success: true, quality_status: 'reviewed_ok' });
+});
+
+si.post('/review-queue/:id/fix', async (c) => {
+  const denied = requireRole(c, ...REVIEW_ROLES);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const user = c.get('user') as { id: number } | undefined;
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  await ensureQualityGateColumns(db);
+  const r = await db.prepare(
+    `UPDATE serve_queue SET quality_status = ?, quality_reviewed_by = ?, quality_reviewed_at = datetime('now') WHERE id = ?`,
+  ).bind('reviewed_fixed', user?.id ?? null, id).run();
+  if ((r.meta?.changes ?? 0) === 0) return c.json({ error: 'Not found' }, 404);
+  return c.json({ success: true, quality_status: 'reviewed_fixed' });
 });
 
 // POST /documents/:docId/reprocess — re-extract one doc; auto-commit if recovered.
