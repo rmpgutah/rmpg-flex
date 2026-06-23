@@ -3,6 +3,10 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1113: Crisis Response — ?crisis_id=/?incident_id= deep-link (strip after mount),
+//        N shortcut (admin|manager), Esc cascade (delete->form->search), search bar
+//        with distinct empty states (loading/no-data/no-results), role-gated create
+//        and delete (admin|manager only), text-green-400 -> text-blue-400 brand token.
 // v1104: Tasks page — role gates (delete=admin|manager, urgent-priority=supervisor+),
 //        notificationRouting: add task/task_assignment entity types + fix case_task
 //        routing from /cases?task_id= (no-op) to /tasks?task_id= (correct deep-link).
