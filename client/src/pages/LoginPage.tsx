@@ -5,6 +5,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, Lock,
   KeyRound, Usb, Fingerprint, Monitor, Server, Wifi, Clock,
@@ -102,11 +103,21 @@ export default function LoginPage() {
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [webauthnError, setWebauthnError] = useState(false);
   const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('choose');
-  const [twoFactorMethods, setTwoFactorMethods] = useState<{ totp?: boolean; webauthn?: boolean }>({});
+  // NOTE: `twoFactorMethods` is currently never written (AuthContext owns the
+  // real source of truth) — leaving the local read so the UI doesn't crash if
+  // a future wiring pass adds the method-list to the context. Today both keys
+  // are undefined, which makes `getEffectiveMode()` fall through to 'totp'.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [twoFactorMethods, _setTwoFactorMethods] = useState<{ totp?: boolean; webauthn?: boolean }>({});
 
   // Forgot Password flow state
   type ForgotPwStep = 'username' | 'questions' | 'reset' | 'success';
-  const [forgotPwActive, setForgotPwActive] = useState(false);
+  // Auto-opens when `/login?forgot=1` (the redirect from the legacy
+  // /forgot-password route) so the operator lands on the working in-page flow.
+  const [forgotPwActive, setForgotPwActive] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('forgot') === '1';
+  });
   const [forgotPwStep, setForgotPwStep] = useState<ForgotPwStep>('username');
   const [forgotUsername, setForgotUsername] = useState('');
   const [forgotQuestions, setForgotQuestions] = useState<string[]>([]);
@@ -119,6 +130,59 @@ export default function LoginPage() {
 
   // Last login display
   const [lastLoginInfo, setLastLoginInfo] = useState<{ time: string; ip: string } | null>(null);
+
+  // ── URL deep-link contract (one-shot, stripped after consumption) ──
+  // Honors `?return=<path>` to redirect to the original destination after
+  // login (a supervisor can paste a deep link without authing first and
+  // still land where they intended). `?reset=1` flashes a success banner
+  // after the reset-password flow returns the user to /login. `?error=...`
+  // surfaces a single banner (e.g. `?error=session_expired`).
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const returnUrl = useMemo(() => {
+    const raw = searchParams.get('return');
+    if (!raw) return null;
+    // Only same-origin paths — never let an attacker bounce to an external host
+    if (!raw.startsWith('/') || raw.startsWith('//')) return null;
+    return raw;
+  }, [searchParams]);
+  const [resetSuccess, setResetSuccess] = useState<boolean>(() => searchParams.get('reset') === '1');
+  const [urlError, setUrlError] = useState<string | null>(() => {
+    const code = searchParams.get('error');
+    if (!code) return null;
+    switch (code) {
+      case 'session_expired':  return 'Your session expired. Sign in again to continue.';
+      case 'unauthorized':     return 'You must sign in to view that page.';
+      case 'logged_out':       return 'You have been signed out.';
+      default:                 return null;
+    }
+  });
+  // Strip consumed params on mount so a refresh doesn't re-pin the banners.
+  useEffect(() => {
+    if (searchParams.has('reset') || searchParams.has('error') || searchParams.has('forgot')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('reset');
+      next.delete('error');
+      next.delete('forgot');
+      // Preserve `return` — it's still load-bearing for the post-login navigate.
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Auto-dismiss the reset-success flash after 6s so the form regains focus.
+  useEffect(() => {
+    if (!resetSuccess) return;
+    const t = setTimeout(() => setResetSuccess(false), 6000);
+    return () => clearTimeout(t);
+  }, [resetSuccess]);
+
+  // Post-login redirect honoring `?return=<path>`. The App.tsx /login route
+  // already auto-redirects authed users to `/` (or `/crm`), but it ignores
+  // the return URL. We intercept on `complete` and route there explicitly.
+  useEffect(() => {
+    if (loginStep !== 'complete' || !returnUrl) return;
+    navigate(returnUrl, { replace: true });
+  }, [loginStep, returnUrl, navigate]);
 
   // Check for last login info stored during login flow
   useEffect(() => {
@@ -156,6 +220,25 @@ export default function LoginPage() {
 
   // Device info (computed once)
   const device = useMemo(() => getDeviceInfo(), []);
+
+  // Esc smart-cascade: clear the most-foreground transient state first.
+  //   1. URL-error banner   2. reset-success flash   3. unmasked password
+  //   4. open forgot-password panel  → otherwise no-op (no native default).
+  // Critically, Esc does NOT cancel 2FA / setup_2fa — those have their own
+  // explicit "Back" controls and an accidental Esc mid-verification would
+  // discard the partially-entered code.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (urlError) { setUrlError(null); return; }
+      if (resetSuccess) { setResetSuccess(false); return; }
+      if (showPassword) { setShowPassword(false); return; }
+      if (forgotPwActive) { handleForgotClose(); return; }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlError, resetSuccess, showPassword, forgotPwActive]);
 
   // Auto-logout (idle / max-session) messaging removed — sessions no longer
   // expire automatically, so these notices can never fire.
@@ -505,6 +588,46 @@ export default function LoginPage() {
           </div>
 
           <div className="p-4 sm:p-5">
+            {/* URL `?error=...` banner — dismisses on Esc or close */}
+            {urlError && !forgotPwActive && (
+              <div className="flex items-center gap-2 p-2.5 mb-4 animate-fade-in" role="alert" aria-live="polite" style={{
+                background: 'rgba(220, 38, 38, 0.10)',
+                border: '1px solid #7f1d1d',
+              }}>
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#ef4444' }} aria-hidden="true" />
+                <p className="text-xs flex-1" style={{ color: '#ef7a7a' }}>{urlError}</p>
+                <button
+                  type="button"
+                  onClick={() => setUrlError(null)}
+                  className="text-[10px] uppercase tracking-wide font-bold text-rmpg-500 hover:text-rmpg-200 transition-colors"
+                  aria-label="Dismiss notice"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {/* `?reset=1` success flash — comes from ResetPasswordPage */}
+            {resetSuccess && !forgotPwActive && (
+              <div className="flex items-center gap-2 p-2.5 mb-4 animate-fade-in" role="status" aria-live="polite" style={{
+                background: 'rgba(34, 197, 94, 0.08)',
+                border: '1px solid #166534',
+              }}>
+                <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#22c55e' }} aria-hidden="true" />
+                <p className="text-xs flex-1" style={{ color: '#86efac' }}>
+                  Password reset complete. Sign in with your new password.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setResetSuccess(false)}
+                  className="text-[10px] uppercase tracking-wide font-bold text-rmpg-500 hover:text-rmpg-200 transition-colors"
+                  aria-label="Dismiss notice"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
             {/* Last login info banner */}
             {lastLoginInfo && (
               <div className="flex items-center gap-2 p-2 mb-4 animate-fade-in" style={{ background: 'rgba(34, 197, 94, 0.08)', border: '1px solid #166534' }}>
@@ -546,7 +669,9 @@ export default function LoginPage() {
             )}
 
             {/* ══════ CREDENTIALS STEP (username + password on one screen) ══════ */}
-            {isCredentialStep && (
+            {/* Hidden while the forgot-password panel is open so the operator
+                isn't looking at two parallel forms. */}
+            {isCredentialStep && !forgotPwActive && (
               <form onSubmit={handleCredentialsSubmit} className="space-y-3">
                 <div>
                   <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
@@ -555,6 +680,7 @@ export default function LoginPage() {
                   <input
                     ref={usernameRef}
                     id="username"
+                    name="username"
                     type="text"
                     className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                     placeholder="Enter your username"
@@ -573,6 +699,7 @@ export default function LoginPage() {
                     <input
                       ref={passwordRef}
                       id="password"
+                      name="password"
                       type={showPassword ? 'text' : 'password'}
                       className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0 pr-8"
                       placeholder="Enter your password"
@@ -1266,8 +1393,11 @@ export default function LoginPage() {
         </div>
 
         {/* ── System Info + Device Info Panels ─────────── */}
-        {/* Hidden on phones to keep login form above fold. Uses CSS class. */}
-        {isCredentialStep && (
+        {/* Hidden on phones to keep login form above fold. Uses CSS class.
+            Also hidden while forgot-password is open — the panel itself is
+            tall enough that the extra two panels push the action button off
+            the fold. */}
+        {isCredentialStep && !forgotPwActive && (
           <div className="login-system-info grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
             {/* System Info */}
             <div className="panel-beveled bg-surface-base overflow-hidden">

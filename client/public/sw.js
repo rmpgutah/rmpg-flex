@@ -59,131 +59,67 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
-// v1062: Jail Management (/jail) — Page 45 of the full-app frontend pass.
-//        JailPage.tsx was a 184-line manual-booking screen for the
-//        in-house `inmates` table (scraped county rosters live separately
-//        on Arrest Records — the existing one-shot Database banner on
-//        this page links there). The audit caught that every cross-page
-//        v1024–v1058 contract was missing: no court-ready PDF for the
-//        booking sheet (the chain-of-custody artifact a defense attorney
-//        pulls during discovery), no deep-link contract so a notification
-//        or warrant cross-ref couldn't land on the right inmate, the
-//        delete flow used a hand-rolled inline modal that lacked the
-//        keyboard-trap / Cancel-pre-focus protections of ConfirmDialog,
-//        Esc only closed the modal (no smart-cascade), no N shortcut
-//        (matched v1054 Training / v1055 Equipment), no search / status
-//        filter, no distinct empty states ("0 in custody" vs "0 match
-//        your filters"), no sync-status pill for the 4h jail-roster
-//        cron (the operator couldn't tell whether the scraper was
-//        healthy), the JailFormModal's draft key was global rather than
-//        per-user (operator A's half-typed booking would auto-restore
-//        on a shared MDT for operator B), and JailFormModal carried a
-//        dead `localToday` import.
+// v1065: Skip Tracker (/skip-tracer) — Page 48 of the full-app frontend pass.
+//        Two-part fix. (1) The page's server surface was dead: every
+//        client search hit /skiptracer/search/{byname,byaddress,bynameaddress,
+//        byphone,byemail}, /skiptracer/person/:id, and /api/skiptracer/export/csv
+//        — none of which existed on the rewrite Worker. The legacy VPS
+//        "v2 worker" that historically owned those round-trips was
+//        decommissioned 2026-06-15 (memory: project-vps-decommissioned),
+//        so every search 404'd silently. src/routes/skiptracer.ts now
+//        implements the full surface against the rewrite's own D1 corpus
+//        — persons + dl_records + microbilt_searches as a search cache —
+//        with per-mode audit_log entries via recordAudit. Result rows are
+//        returned in the legacy "PeopleDetails" envelope so the client
+//        (and NcicQueryPanel which also calls these paths from the QS
+//        cross-reference) doesn't need a parser branch for local-vs-
+//        external. Microbilt-style "Lives in"/"Person ID" fields are
+//        synthesised from the local row so the same renderer works.
+//        (2) The page itself is brought up to the audit-series contract:
+//          • URL deep-link: ?subject_id=<n>&mode=<m>&search=<q> — consumed
+//            once and stripped (replace:true) so a refresh doesn't loop.
+//          • ConfirmDialog over silent destroy: "Clear" search history
+//            was a one-click localStorage.removeItem — now a danger-
+//            variant dialog with the entry count + most-recent query in
+//            the detail block. Matches FlexCam / Geography / DAR pattern.
+//          • Esc smart-cascade: extended detail → selected → error →
+//            results → empty. Suppressed while typing.
+//          • `N` shortcut: clears the form + focuses the active mode's
+//            input. Suppressed inside fields/dialogs/modifier chords.
+//          • Per-user search-history (DlSearch #1601 pattern): the bare
+//            `rmpg_skiptracer_history` key leaked one operator's name/
+//            phone queries to the next person to use a shared MDT. Scope
+//            is now `rmpg_skiptracer_history_${user.id}` with a one-time
+//            read-through migration so existing local history isn't lost.
+//          • Court-ready investigator-handoff PDF: new client/src/utils/
+//            skipTracerReportPdf.ts (5 unit tests covering Microbilt
+//            envelope shape, lower_snake local rows, mixed-shape arrays,
+//            empty subjects, and officer-attribution footer). Operators
+//            previously screenshotted the detail pane to file a lead in
+//            a case folder. Toolbar PDF button appears once a subject is
+//            selected; same generator is also wired into the result-row
+//            right-click menu.
+//          • Empty-state distinction: "no search yet" vs "search ran, 0
+//            hits" — the right pane now shows a "Start over" CTA on
+//            zero-results so the operator has a one-click reset instead
+//            of having to re-find the form on a mobile collapse.
+//          • setTimeout(handleSearch, 100) race in rerunSearch replaced
+//            with an effect-driven pendingRerunRef that waits for the
+//            updated handleSearch closure to see the freshly-set query
+//            state before firing. The 100ms guess was visibly flaky on
+//            slow MDTs (search ran with the previous query).
 //
-//        Court-ready booking sheet PDF + roster snapshot PDF
-//        - New client/src/utils/jailBookingSheetPdf.ts ships TWO outputs
-//          off the same Arial + RMPG-gold idiom:
-//            * openJailBookingSheetPdf({ inmate, charges, preparedBy })
-//              — single-inmate full intake packet. Banner with booking #,
-//              agency strap, subject name in 12pt bold, in-custody alert
-//              banner (UNIT / CELL inline so the relief shift sees them
-//              first), consistency banner that flags a release_date
-//              recorded on an in-custody status (or vice versa — a
-//              quiet schema bug we'd otherwise leak into a discovery
-//              packet), subject / custody / notes blocks, charges table
-//              fetched on-demand from /jail/inmates/:id/charges (charge
-//              description / statute / level / bond / docket), two-
-//              signature block (booking officer / inmate), generated-on
-//              footer. Pure helpers (formatHeight, formatWeight,
-//              formatBail, prettyStatus, isInCustody,
-//              bookingConsistencyAlert) covered by 24 unit tests in
-//              client/src/utils/__tests__/jailBookingSheetPdf.test.ts.
-//            * openJailRosterSnapshotPdf({ rows, scope, preparedBy }) —
-//              shift-handoff roster used by the off-going supervisor
-//              before relief shows up. Banner with row count + scope
-//              ("All in-custody" / "Filtered: status=booked"), paginated
-//              table (booking # / name / status / unit / cell / DOB /
-//              booked), two-signature block (off-going / on-coming
-//              supervisor). Defaults to the page's current filtered view
-//              so the operator can print a search hit list.
-//        - FileText action on each row + "Print booking sheet" context-
-//          menu entry. Disabled while the per-row charges fetch is in
-//          flight (single-flight; printingId state).
-//        - Roster PDF toolbar button next to "New Inmate" pulls the
-//          filtered view + the operator name as preparedBy.
+//        Theme: per-mode chip accent hex values kept (decorative
+//        per-mode icon tints that don't re-theme in either direction);
+//        the single rgba(136,136,136,0.15) avatar background tile
+//        migrated to var(--surface-raised).
 //
-//        URL deep-link contract (matches the v1024-v1058 cross-page
-//        pattern)
-//        - /jail?inmate_id=<n> or ?booking_id=<n> — opens the Edit
-//          modal for that row, scrolls into view, flash-highlights for
-//          3s. Miss surfaces "Inmate #<id> not found in current view"
-//          toast (the operator may have a status filter set that hid
-//          the row — same idiom as v1048 ServePage's job_id deep-link).
-//        - /jail?booking_number=BK-26-0042 — same flow keyed by the
-//          human-readable booking #. Useful for cross-page links from
-//          the warrants / arrests routes that don't have the raw id.
-//        - /jail?status=<booked|housed|court|medical|released|transferred>
-//          — preselects the status filter; warrants the v1056-style
-//          per-page filter persistence without polluting localStorage.
-//        - /jail?q=<term> — seeds the search box (booking# / name /
-//          unit / cell substring match).
-//        - All five params consumed once and stripped (replace:true)
-//          so a manual refresh doesn't re-pop the modal.
+//        Worker: src/routes/skiptracer.ts gains 7 endpoints. No D1
+//        migration — only reads existing tables. recordAudit wired so
+//        every skip-trace becomes part of the central audit seam (and
+//        therefore reaches flex_events). Existing /status, /stats,
+//        /dossiers, /dossiers/:id endpoints untouched.
 //
-//        Native delete modal → ConfirmDialog
-//        - The original hand-rolled inline modal lacked the focus-
-//          trap / Cancel-pre-focus / data-confirm-cancel selector that
-//          the audit-day v1009 lock pattern caught: Enter on the X
-//          close button would fire the destructive action. The new
-//          ConfirmDialog flow shows booking # / name / status / housing
-//          as the destructive-action context (the v1056 / v1057
-//          confirm-shows-the-row-identifying-data pattern), and uses
-//          isLoading={deleting} so a slow delete doesn't double-fire.
-//
-//        Esc smart-cascade
-//        - Smallest-open-first: delete confirm → form modal (FormModal
-//          owns its own Esc) → clear-filter chip. Falls through (no
-//          preventDefault) when nothing is open. Previous handler:
-//          none — Esc on /jail just hit the JailFormModal handler.
-//
-//        N shortcut → open "New Inmate" (typing-suppressed so search /
-//        select / textarea / contentEditable don't swallow the key).
-//        Suppressed while the form / delete confirm is already open.
-//
-//        Filter strip + distinct empty states
-//        - New search input (booking # / name / middle / housing-unit /
-//          housing-cell substring) + status select (the six booking
-//          states the API exposes). "X of N shown" counter on the right.
-//        - Empty state distinguishes the three cases now: trueEmpty
-//          ("No inmates booked yet. Press N…") vs filteredEmpty
-//          ("No inmates match these filters (0 of N).") with a
-//          one-click "Clear filters" recovery button vs the legacy
-//          generic message when both rows and filters are absent.
-//
-//        Roster sync indicator
-//        - Pulls the most-recent recent_syncs[0] from
-//          /jail-roster/statistics (the 4h cron stamps this row) and
-//          renders "Roster OK · 2h ago" (success) or "Roster ERROR ·
-//          12h ago" (amber) inline with the scraped-county-roster
-//          banner. Title attribute shows the absolute timestamp on
-//          hover. The page only renders the banner at all when
-//          rosterCount > 0 so an unprovisioned env (no scraper) stays
-//          quiet.
-//
-//        Per-user form draft scope
-//        - JailFormModal's useFormDraft storageKey now scopes to
-//          rmpg_jail_form_<user.id> so a half-typed booking from
-//          operator A doesn't auto-restore for operator B on a shared
-//          MDT. Falls back to the legacy global key when there's no
-//          user (login screen, etc.) so we never lose existing
-//          drafts during the rollout — matches the v1055 / v1056
-//          per-user privacy pattern.
-//        - Dead `localToday` import removed.
-//
-//        No D1 migration, no Worker route changes — client-only.
-//        Reuses the existing /jail/inmates / /jail/stats /
-//        /jail/inmates/:id/charges / /jail-roster/statistics routes
-//        without modification.
 // v1057: Audit Log (/audit) — Page 40 of the full-app frontend pass.
 //        The audit log is THE highest-evidentiary surface in the app: it
 //        proves chain-of-custody, who saw/edited what, and when. Defense
@@ -865,6 +801,80 @@
 //            Lucide would require a layout-affecting size pass on every
 //            row, deferred until the rail itself is up for review.
 //
+// v1061: Use of Force (/use-of-force) — Page 44 of the full-app frontend
+//        pass. UoF reports are simultaneously court-admissible, IA-
+//        reviewable, and Utah POST state-DOJ reportable — among the
+//        highest-stakes records in the system. The page had a working
+//        list + create flow but was missing every operator affordance
+//        the adjacent court surfaces (BWC, dashcam, audit) had landed:
+//        - URL deep-link contract: ?uof_id=<n> opens that report (with
+//          a /:id direct-fetch fallback when it's outside the current
+//          50-row slice, plus a toast on 404 instead of silent miss);
+//          ?incident_id=<n> + ?subject_id=<n> pre-filter the list AND
+//          pre-fill the create-form's pickers so an officer drilling
+//          in from a person/incident record doesn't re-pick the entity.
+//          uof_id is mirror-stripped after consumption; the two filter
+//          deep-links are also stripped so a refresh doesn't silently
+//          re-apply over operator edits.
+//        - Court-ready PDF: useOfForceReportPdf.ts — RMPG-gold banner,
+//          stacked lethal-force + injuries alerts, incident block,
+//          officer/subject demographics, force details, justification,
+//          de-escalation, injuries, narrative, linked footage table
+//          (BWC + dashcam clips fetched from the new /:id/footage
+//          endpoint which joins footage_evidence_links populated by
+//          autoPreserve at submission), supervisor review block, and a
+//          two-signature block for reporting officer + reviewer. Mountain
+//          Time everywhere. Helpers unit-tested. Print available from
+//          both the detail panel header and the row right-click menu.
+//        - Server additions: GET /use-of-force/:id (single-row fetch
+//          for the deep-link fallback) + GET /use-of-force/:id/footage
+//          (returns { flexcam: FootageRequest[], bodycam: BodycamVideo[] }
+//          — schema-tolerant so older D1 column gaps soft-fail the join
+//          instead of 500'ing). No migration needed; both endpoints sit
+//          on top of existing tables and the autoPreserve entity_type
+//          'use_of_force' linkage that's been in place since #1261.
+//        - Esc smart-cascade: closes the create modal → review confirm
+//          dialog → error banner → detail-panel selection → active
+//          filter set (in that order). Ignores typing surfaces.
+//        - N shortcut: opens the New Report modal from anywhere on the
+//          page that isn't a typing surface (matches Records / Citations
+//          / Incidents). Modifier-keys skip the shortcut so OS bindings
+//          (Cmd-N) aren't hijacked.
+//        - Per-user form draft (24h TTL via useFormDraft, keyed on
+//          user id) — UoF narratives are long-form and the prior loss
+//          of a half-typed report to an accidental tab close was a real
+//          operator complaint. "Draft restored" banner inside the modal
+//          with a one-click Discard.
+//        - ConfirmDialog for supervisor Approve / Return: previously
+//          a single click immediately mutated the report; now both
+//          decisions route through the shared dialog with an optional
+//          (recommended for Return) review-notes textarea that round-
+//          trips to the server's `notes` body field and lands in the
+//          new "Supervisor Review" detail block.
+//        - Linked-footage panel on the detail surface: lists BWC clips
+//          + FlexCam dashcam requests tied to the report, with the
+//          evidence-locked chip + evidence number when present, so an
+//          IA reviewer can see at a glance what video evidence backs
+//          the report without leaving the page.
+//        - Theme tokens: STATUS_COLORS' hard #888888/#22c55e/#f59e0b
+//          hex strings are now token-backed tones (text-rmpg-300/
+//          text-green-400/text-amber-400 + matching swatch + border
+//          classes) so the status pills + stat counters re-theme
+//          between night (steel-blue) and day (light-grey).
+//        - Empty-state distinction: loading spinner with "Loading
+//          reports…" label, hard error with the message, and a zero-
+//          rows panel that branches between "no reports filed" (cold
+//          start) and "no matching reports" (filters applied) — the
+//          previous shared "No reports" string left operators unsure
+//          whether to wait, escalate, or widen filters.
+//        - Notification routing: added 'use_of_force' → /use-of-force?
+//          uof_id= to notificationRouting.ts so an IA-emitted alert
+//          like "UoF #42 returned for revision" deep-links to the
+//          report instead of dumping the operator on the list page.
+//        - Migration: none. The /:id and /:id/footage routes are net-
+//          new but read from existing tables (use_of_force + the
+//          footage_evidence_links table already in place since #1261);
+//          no column adds. recordAudit still fires on CREATE / REVIEW.
 // v1058: FlexCam — Page 41 of the full-app frontend pass. FlexCamPage
 //        (327 lines, request list) + FlexCamFootagePage (1225 lines,
 //        MDT-style chunk player with evidence lock / court package /
@@ -915,6 +925,47 @@
 //          status.
 //        - No migration; no server route changes; no SW behavior changes
 //          (this version is a content bump only).
+// v1063: Plate Log (/intel/plate-log) — Page 46 of the full-app frontend
+//        pass. PlateLogPage.tsx is the manual + ALPR-camera plate sighting
+//        surface that an officer uses on a felony stop or a pursuit; every
+//        capture is a potential court exhibit, and the page already had the
+//        review queue, gallery, and dossier wired up.
+//
+//        What the audit caught and what changed:
+//        - `?capture_id=` deep-link was DECLARED in notificationRouting.ts
+//          (`alpr_capture → /plate-log?capture_id=`) but the page never read
+//          it. Clicking an ALPR-capture notification dropped the operator
+//          on the page with no context. The page now hydrates the scan tile
+//          from `GET /api/alpr/capture/:id` and switches to the SCAN view.
+//          `?plate=ABC123` opens the per-plate dossier directly. Both are
+//          one-shot — params are stripped after first paint (FlexCam pattern).
+//        - Court-record PDF — new client/src/utils/plateCapturePdf.ts (same
+//          RMPG-gold banner + signature-block contract as dashcamReviewPdf,
+//          evidenceItemPdf, auditLogPdf). Renders the annotated image +
+//          plate/state/vehicle/trust/source/device, an UNVERIFIED-READ alert
+//          banner when review_status is anything but `confirmed*` (the v963
+//          TrustBadge audit catches the false-100% case at the screen layer;
+//          this is the same protection at the printed-page layer), screening
+//          hits, GPS + location + linked call/incident #, AND the full review
+//          history pulled from /api/alpr/capture/:id/history so the chain-of-
+//          review is embedded in the printout. New "COURT PDF" header button
+//          on the scan tile.
+//        - Esc smart-cascade — close-newest-open-first: dossier → editing
+//          modal → reviewMsg banner → scanErr → scan tile. Skips while
+//          typing in any field so plate/notes editing isn't disrupted.
+//        - `N` shortcut focuses the plate input from anywhere on the page
+//          (same convention as the dispatch board's `N` for new call) and
+//          auto-switches the view back to SCAN if the operator was in the
+//          CAPTURES gallery — previously the only way to start a manual
+//          entry was to scroll-and-tap, awkward on a mobile keyboard.
+//        - `⚠` glyph in HitBanners replaced by Lucide AlertTriangle. The
+//          glyph rendered as tofu on some Android WebView builds and on the
+//          iOS app's older fallback font (same symptom the FieldInterviews
+//          audit flagged) — Lucide is consistent across every platform.
+//        - No migration; no server route changes; no SW behavior changes;
+//          all existing endpoints (the /capture/:id GET and /capture/:id/
+//          history GET were already shipping from PR #1269/#1278).
+//
 // v1056: Notifications — Page 39 of the full-app frontend pass. The
 //        /notifications page (NotificationsPage.tsx, 452 lines) plus the
 //        global NotificationCenter dropdown (NotificationCenter.tsx, 567
