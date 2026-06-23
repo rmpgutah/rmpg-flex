@@ -120,6 +120,162 @@
 //        therefore reaches flex_events). Existing /status, /stats,
 //        /dossiers, /dossiers/:id endpoints untouched.
 //
+// v1066: Forensic Lab (/forensic-lab) — Page 49 of the full-app frontend pass.
+//        Forensic case files are direct court-record material: defense
+//        counsel subpoenas them during discovery to challenge lab
+//        methodology and exhibit chain-of-custody. The page shipped with
+//        rich in-app detail panels (case header, exhibits with custody
+//        chain, analyses, QC, timeline) but had no print path, no URL
+//        deep-link contract, two `window.prompt()` calls capturing court-
+//        record results as single-line text, a one-line Esc handler that
+//        ignored every modal except the analysis one, and silently broken
+//        case-detail hydration (the `apiFetch<ForensicCase>` typing did
+//        not match the server's `{ data: row }` envelope, so the entire
+//        detail view was populated with `undefined` fields and rendered
+//        the empty-state path).
+//
+//        What changed:
+//          • client/src/utils/forensicCasePdf.ts — new court-ready PDF
+//            generator (gold banner, agency strap, TAMPER-EVIDENCE
+//            statement, overdue alert, full case header, synopsis,
+//            exhibits with mini chain-of-custody tables, analyses with
+//            methodology/results/conclusion, findings/conclusion,
+//            DOCUMENT INTEGRITY trailer with grouped SHA-256 payload
+//            hash + per-page footer carrying the hash prefix, lead-
+//            examiner + reviewing-supervisor signature lines). Same
+//            Arial + RMPG-gold visual contract as evidenceItemPdf /
+//            auditLogPdf / bodycamVideoCustodyPdf / equipmentCustodyPdf
+//            so a multi-surface court binder keeps a consistent look.
+//            Payload hash is computed via pdfIntegrity.computePayloadHash
+//            on the canonical case + exhibits + analyses bundle BEFORE
+//            generation, so the same hash printed in the trailer is what
+//            a future Ed25519 signer (the existing /api/pdf-tools/sign-
+//            payload endpoint) would sign over. Generator + helpers are
+//            unit-tested in tests/forensicCasePdf.test.ts (12 cases —
+//            empty case, full case with hash, no hash, many exhibits
+//            paginating, missing chain_of_custody, findings/conclusion,
+//            overdue-alert path, the wrapText / fmtTimestamp / fmtDate /
+//            parseChain / prettyLabel helpers). New "Court PDF" button
+//            sits next to "View Connections" on the case overview tab,
+//            with a loading spinner.
+//          • fetchCaseDetail unwrap fix — `apiFetch<ForensicCase>` used
+//            to discard the server's `{ data: row }` envelope, so every
+//            field on `selectedCase` was undefined. Now reads `raw.data
+//            ?? raw` so both shapes work. This was THE bug that made
+//            the detail view's Exhibits / Analyses / Timeline tabs
+//            silently render "no exhibits yet" even when the underlying
+//            case had data — the apiFetch return-type lie cascaded into
+//            every detail-tab JSX branch.
+//          • lab_case_number → lab_number column alignment — the
+//            client interface declared `lab_case_number: string` but
+//            the server column is `lab_number` (forensics.ts row shape).
+//            Renders fell back to undefined → blank chip. Added a
+//            `lab_number` field on the interface + a deprecated alias
+//            for `lab_case_number`, and updated the 3 render sites to
+//            read either, with a `FC-${id}` fallback.
+//          • URL deep-link contract — `?case_id=<n>` opens the case
+//            detail, `?tab=<overview|exhibits|analyses|timeline|links|
+//            hashes|qc|turnaround>` jumps to that detail tab, `?new=1`
+//            opens the New Case wizard. Params are stripped after first
+//            paint so a refresh doesn't repeatedly re-pin the operator
+//            to a stale link. One-shot guard via a useRef so React
+//            strict-mode's double-invoke doesn't fire twice.
+//          • Two `window.prompt()` → real modal — the "Mark Complete"
+//            (exhibit) and "Complete Analysis" buttons captured
+//            examination results + conclusion via single-line browser
+//            prompts. Both now go through a state-driven FormModal
+//            with required multi-line RichTextArea Results + optional
+//            Conclusion (analyses only) + busy state on submit + an
+//            info banner reminding the examiner the text becomes part
+//            of the court record. The Conclusion field is hidden for
+//            exhibits since the underlying API ignores it there.
+//          • `window.confirm` → ConfirmDialog — `handleUnlinkEntity`
+//            used the native confirm for removing a linked entity;
+//            now opens a themed ConfirmDialog with danger variant +
+//            busy state + a description that clarifies the underlying
+//            person/vehicle/case row is NOT affected by the unlink.
+//          • Esc smart-cascade — previously closed the analysis modal
+//            only. Now cascades topmost-open-first: complete-modal →
+//            unlink-confirm → analysis modal → exhibit modal → edit
+//            modal → custody modal → link search results → filter
+//            chip → error banner → back to list. Typing-surface
+//            targets (INPUT/TEXTAREA/SELECT) are ignored so native
+//            blur-on-Esc still works in the filter inputs.
+//          • `N` shortcut — jumps to the New Case tab from the list
+//            view (mirrors the audit-pass convention). Suppressed
+//            when a modal is open or a case is selected so it doesn't
+//            fight a richtext field somewhere in the detail panels.
+//          • Empty-state distinction — `cases.length === 0` previously
+//            rendered the same "No forensic cases found" copy whether
+//            the operator's filter selected an impossible slice or the
+//            DB was actually empty. Now branches on hasActiveFilters
+//            and the filtered case shows the active filter summary +
+//            a one-click "Clear all filters" CTA. The genuine-empty
+//            copy nudges N for keyboard-first operators.
+//          • Theme tokens — 14 hardcoded hex values in PRIORITIES,
+//            STATUS_CONFIG, the exhibit/analysis status pickers, and
+//            the wizard priority selector replaced with severity
+//            tokens (`--sev-warn`, `--sev-critical`, `--sev-ok`,
+//            `--sev-ok-soft`, `--sev-warn-soft`, `--sev-special-soft`,
+//            `--text-muted`) from theme-palettes.css. Re-themes
+//            automatically between night (steel-blue) and day (light-
+//            grey) without baking the legacy hex in.
+//          • Server-side chain-of-custody view-event emit — GET
+//            /api/forensics/:id now logs `case_viewed` to
+//            forensic_activity_log on every successful read (skipped
+//            when Cache-Control: no-cache, i.e. a useLiveSync poll, so
+//            polling doesn't spam the activity log). Mirrors the body
+//            cameras "case opened" pattern from PR #1619. Defense can
+//            now reconstruct "who saw this file, when" from the audit
+//            trail without relying on web-server logs.
+//          • Dead state purge — removed `labQueue` / `reportTemplates`
+//            / `capacity` / `analysisTemplates` state + the 4 fetcher
+//            handlers (`handleLoadLabQueue`, `handleLoadTemplates`,
+//            `handleLoadCapacity`, `fetchAnalysisTemplates`,
+//            `handleEvidenceIntake`) — declared in v1024+ but never
+//            wired to a UI. The /forensics/queue/priority, /templates/
+//            report, /capacity/planning, /:id/evidence-intake server
+//            endpoints they targeted also don't exist on live; bringing
+//            them back belongs in the PR that ships the corresponding
+//            tabs, not a frontend audit.
+//          • Dead client/src/pages/ForensicsPage.tsx deletion — 954
+//            lines of unused code (an older Canvas-based reimplemen-
+//            tation of Connection Analysis using react-force-graph-2d).
+//            The /forensics route already redirects to /connections,
+//            which renders ConnectionsPage (the live d3-force version).
+//            ForensicsPage.tsx was the only consumer of the
+//            react-force-graph-2d dependency + the vendor-graph chunk
+//            in vite.config.ts — both removed. Net bundle reduction
+//            around 120KB.
+//          • Unused PanelTitleBar import removed (the detail header
+//            was hand-rolled, the import was lint noise).
+//
+//        Privacy / role-gating — re-verified. /api/forensics is gated
+//        by authMiddleware (forensics router mounted with auth:
+//        'required'). Write endpoints (POST/PUT/DELETE) call
+//        requireRole('admin', 'manager', 'officer', 'supervisor') —
+//        non-officers get 403. The new GET /:id view-event respects
+//        the same gate; no PII is leaked by the activity log row (just
+//        userId + full_name from the users table, which the operator
+//        could already see in the case header).
+//
+//        Out of scope (deferred):
+//          • Server endpoints for `/links`, `/hashes`, `/timeline` —
+//            the client calls these but they're not yet implemented in
+//            src/routes/forensics.ts. The detail tabs continue to render
+//            empty states; building those endpoints is its own PR.
+//          • Photo evidence attach to exhibits — needs a server schema
+//            column on forensic_exhibits + an R2 upload path. Treat as
+//            a separate spike alongside the missing endpoints.
+//          • Structured DNA / chemistry / ballistics result fields —
+//            today everything is free-text. Significant scope, needs
+//            domain-specific validation, separate PR.
+//          • Privacy redaction of examiner / QC reviewer names for
+//            non-admin viewers — currently every authenticated user
+//            sees the full chain. A role-aware redaction layer is a
+//            cross-cutting concern (also affects evidence / equipment),
+//            tracked separately.
+
 // v1057: Audit Log (/audit) — Page 40 of the full-app frontend pass.
 //        The audit log is THE highest-evidentiary surface in the app: it
 //        proves chain-of-custody, who saw/edited what, and when. Defense

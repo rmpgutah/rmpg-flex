@@ -222,6 +222,16 @@ forensics.get('/analysis-templates', async (c) => {
 // GET /:id — single case. MUST come AFTER every single-segment static literal
 // above (/stats, /turnaround-times, /analysis-templates) since Hono's
 // TrieRouter resolves overlapping static vs param routes in registration order.
+//
+// Chain-of-custody view-event emit: forensic case files are court-record
+// material — defense counsel routinely asks "who opened this file, when?"
+// during discovery. Every successful read writes a `case_viewed` row to
+// forensic_activity_log so the timeline tab + court PDF carry a complete
+// access record. Mirrors the Body Cameras "case opened" emit pattern that
+// shipped in PR #1619. Failure to log is non-fatal — the case still
+// returns — but the gap is observable via `console.error` in worker logs.
+// Polls (Cache-Control: no-cache from useLiveSync) are skipped so live-
+// sync chatter doesn't fill the activity log with junk rows.
 forensics.get('/:id', async (c) => {
   try {
     const db = getDb(c.env);
@@ -236,6 +246,25 @@ forensics.get('/:id', async (c) => {
       id,
     );
     if (!row) return c.json({ error: 'Forensics case not found', code: 'NOT_FOUND' }, 404);
+
+    // Best-effort chain-of-custody view event. Skips when the page is
+    // polling via useLiveSync (Cache-Control: no-cache header); a real
+    // operator open emits at most one row per case-load.
+    try {
+      const userId = c.get('userId') as number | undefined;
+      if (userId) {
+        const cacheControl = c.req.header('cache-control') || '';
+        if (!cacheControl.includes('no-cache')) {
+          const viewer = await queryFirst<{ full_name: string }>(
+            db, 'SELECT full_name FROM users WHERE id = ?', userId,
+          );
+          await logActivity(db, id, 'case_viewed', null, userId, viewer?.full_name ?? '');
+        }
+      }
+    } catch (err) {
+      console.error('[forensics] view-event emit failed:', err);
+    }
+
     return c.json({ data: row });
   } catch (err) {
     return c.json({ error: 'Failed to get forensics case', code: 'GET_ERROR' }, 500);
