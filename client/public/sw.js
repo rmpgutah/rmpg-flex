@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1139: Serve — role gates (canManage: admin/manager/supervisor) on Add Job button, N shortcut, Edit job menu item; Esc cascade adds e.stopPropagation(); dead code removed (affidavitData, handleGenerateAffidavit, handleNotifyCompletion); brand tokens (#d4a017→text-brand-gold-500, #888888→rmpg-500, #141414→CSS vars); map popup CSS vars; duplicate id fixed on Apt/Unit input.
 // v1133: Connections Analyst — ?connection_id=+?type= deep-link (strip after mount), N shortcut saves investigation (canManage), Esc cascade (annotation→save modal→load dropdown→path mode), ConfirmDialog for delete-investigation, role gate save/delete (admin/manager/supervisor), no-seed + no-results empty states, brand token migration (var(--brand-gold)/var(--surface-sunken)/brand-400 Tailwind tokens).
 // v1132: Admin — brand token pass: replace hardcoded #1a1a1a/#888888/rgba(136,136,136,…) in header gradient, mobile tab strip, and desktop sidebar with CSS variable tokens (var(--surface-base), rgb(var(--rmpg-500-rgb)), var(--text-primary), var(--text-muted)); hover class migrated to hover:bg-rmpg-500/[0.08].
 // v1131: Audit Log — N shortcut focuses search-details input, in-page role gate (admin/manager) with restricted empty state, hex tokens replaced with CSS vars (--green-500/--amber-500), Esc cascade refactored to stable refs, dead comment cleanup.
