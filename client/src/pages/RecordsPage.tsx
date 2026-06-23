@@ -73,6 +73,8 @@ export default function RecordsPage() {
 
   // ── Cross-module URL deep-link contract ──
   // Accepts: ?tab=<persons|vehicles|properties|businesses|evidence>
+  //          &record_id=<id> (generic alias when tab= is also set)
+  //          &type=<persons|vehicles|properties|businesses|evidence> (alias for tab=)
   //          &person_id= | &vehicle_id= | &property_id= | &business_id= | &evidence_id=
   //          (legacy camelCase: personId, vehicleId, propertyId, businessId, evidenceId
   //           and `id` when paired with a `tab`)
@@ -82,19 +84,20 @@ export default function RecordsPage() {
   // doesn't re-trigger. Pending id sits in pendingIdRef across re-renders.
   const pendingIdRef = useRef<{ tab: TabId; id: string } | null>(null);
   useEffect(() => {
-    const tab = urlParams.get('tab');
+    const tab = urlParams.get('tab') || urlParams.get('type');
     const q = urlParams.get('q');
     const validTab = tab && (['persons', 'vehicles', 'properties', 'businesses', 'evidence'] as const).includes(tab as TabId)
       ? (tab as TabId) : null;
+    const recordId = urlParams.get('record_id');
     // Infer target tab from whichever *_id is present, even if tab= is omitted.
     const idByTab: Record<TabId, string | null> = {
-      persons:    urlParams.get('person_id')   || urlParams.get('personId')   || (validTab === 'persons'    ? urlParams.get('id') : null),
-      vehicles:   urlParams.get('vehicle_id')  || urlParams.get('vehicleId')  || (validTab === 'vehicles'   ? urlParams.get('id') : null),
-      properties: urlParams.get('property_id') || urlParams.get('propertyId') || (validTab === 'properties' ? urlParams.get('id') : null),
-      businesses: urlParams.get('business_id') || urlParams.get('businessId') || (validTab === 'businesses' ? urlParams.get('id') : null),
-      evidence:   urlParams.get('evidence_id') || urlParams.get('evidenceId') || (validTab === 'evidence'   ? urlParams.get('id') : null),
+      persons:    urlParams.get('person_id')   || urlParams.get('personId')   || (validTab === 'persons'    ? (recordId || urlParams.get('id')) : null),
+      vehicles:   urlParams.get('vehicle_id')  || urlParams.get('vehicleId')  || (validTab === 'vehicles'   ? (recordId || urlParams.get('id')) : null),
+      properties: urlParams.get('property_id') || urlParams.get('propertyId') || (validTab === 'properties' ? (recordId || urlParams.get('id')) : null),
+      businesses: urlParams.get('business_id') || urlParams.get('businessId') || (validTab === 'businesses' ? (recordId || urlParams.get('id')) : null),
+      evidence:   urlParams.get('evidence_id') || urlParams.get('evidenceId') || (validTab === 'evidence'   ? (recordId || urlParams.get('id')) : null),
     };
-    // Pick the tab to land on: explicit tab=, else the first *_id that's set.
+    // Pick the tab to land on: explicit tab=/type=, else the first *_id that's set.
     const tabsOrder: TabId[] = ['persons', 'vehicles', 'properties', 'businesses', 'evidence'];
     const inferredTab: TabId | null = validTab ?? tabsOrder.find((t) => idByTab[t]) ?? null;
     if (inferredTab) {
@@ -351,7 +354,7 @@ export default function RecordsPage() {
     const stripParams = () => {
       const next = new URLSearchParams(urlParams);
       ['person_id', 'personId', 'vehicle_id', 'vehicleId', 'property_id', 'propertyId',
-       'business_id', 'businessId', 'evidence_id', 'evidenceId', 'id'].forEach((k) => next.delete(k));
+       'business_id', 'businessId', 'evidence_id', 'evidenceId', 'id', 'record_id', 'type'].forEach((k) => next.delete(k));
       setUrlParams(next, { replace: true });
     };
     const handleMissing = (label: string) => {
@@ -452,8 +455,6 @@ export default function RecordsPage() {
 
   // ── Derived ──────────────────────────────────────────
 
-  const isLoading = loadingPersons || loadingVehicles || loadingProperties || loadingEvidence;
-
   const tabs: { id: TabId; label: string; icon: React.ElementType; count: number }[] = [
     { id: 'persons', label: 'Persons', icon: UserCircle, count: persons.length },
     { id: 'vehicles', label: 'Vehicles', icon: Car, count: vehicles.length },
@@ -544,7 +545,7 @@ export default function RecordsPage() {
               <Users className="w-3.5 h-3.5" />
               Duplicates
             </button>
-            {!showArchived && (
+            {!showArchived && isAdminOrManager && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPersonTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Person
@@ -555,7 +556,7 @@ export default function RecordsPage() {
         {activeTab === 'vehicles' && (
           <>
             <ExportButton exportUrl={`/records/vehicles/export?format=csv&archived=${showArchived}`} exportFilename="vehicles_export.csv" />
-            {!showArchived && (
+            {!showArchived && isAdminOrManager && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewVehicleTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Vehicle
@@ -566,7 +567,7 @@ export default function RecordsPage() {
         {activeTab === 'properties' && (
           <>
             <AssessorBackfillButton isAdminOrManager={isAdminOrManager} />
-            {!showArchived && (
+            {!showArchived && isAdminOrManager && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPropertyTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Property
@@ -577,7 +578,7 @@ export default function RecordsPage() {
         {activeTab === 'businesses' && (
           <>
             <AssessorBackfillButton isAdminOrManager={isAdminOrManager} />
-            {!showArchived && (
+            {!showArchived && isAdminOrManager && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => businessState.setShowFormModal(true)}>
                 <Plus className="w-3.5 h-3.5" /> New Business
               </button>
@@ -587,7 +588,7 @@ export default function RecordsPage() {
         {activeTab === 'evidence' && (
           <>
             <ExportButton exportUrl={`/records/evidence/export?format=csv&archived=${showArchived}`} exportFilename="evidence_export.csv" />
-            {!showArchived && (
+            {!showArchived && isAdminOrManager && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewEvidenceTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Evidence
@@ -598,13 +599,13 @@ export default function RecordsPage() {
       </PanelTitleBar>
 
       <SpillmanMenuBar
-        onNew={() => {
+        onNew={isAdminOrManager && !showArchived ? () => {
           if (activeTab === 'persons') setNewPersonTrigger(t => t + 1);
           else if (activeTab === 'vehicles') setNewVehicleTrigger(t => t + 1);
           else if (activeTab === 'properties') setNewPropertyTrigger(t => t + 1);
           else if (activeTab === 'businesses') businessState.setShowFormModal(true);
           else if (activeTab === 'evidence') setNewEvidenceTrigger(t => t + 1);
-        }}
+        } : undefined}
         onFind={() => {
           const el = document.querySelector<HTMLInputElement>('.records-page input[type="search"], .records-page input[type="text"]');
           el?.focus();
@@ -747,18 +748,42 @@ export default function RecordsPage() {
         <AssessorReviewQueueBanner />
       </div>
 
-      {/* Active TabList Content */}
+      {/* Active TabList Content — per-tab loading/no-data/no-results distinct states */}
       <div className="flex-1 overflow-hidden" role="tabpanel" aria-label={`${activeTab} records`} style={{ overscrollBehavior: 'contain' }}>
-        {isLoading && (
+        {activeTab === 'persons' && loadingPersons && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading records" />
-            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading records...</span>
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading persons" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading persons...</span>
+          </div>
+        )}
+        {activeTab === 'vehicles' && loadingVehicles && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading vehicles" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading vehicles...</span>
+          </div>
+        )}
+        {activeTab === 'properties' && loadingProperties && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading properties" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading properties...</span>
+          </div>
+        )}
+        {activeTab === 'evidence' && loadingEvidence && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading evidence" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading evidence...</span>
+          </div>
+        )}
+        {activeTab === 'businesses' && businessState.loading && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading businesses" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading businesses...</span>
           </div>
         )}
         {activeTab === 'persons' && !loadingPersons && <PersonsTabList state={personsState} />}
         {activeTab === 'vehicles' && !loadingVehicles && <VehiclesTabList state={vehiclesState} />}
         {activeTab === 'properties' && !loadingProperties && <PropertiesTabList state={propertiesState} />}
-        {activeTab === 'businesses' && <BusinessTabList state={businessState} />}
+        {activeTab === 'businesses' && !businessState.loading && <BusinessTabList state={businessState} />}
         {activeTab === 'evidence' && !loadingEvidence && <EvidenceTabList state={evidenceState} />}
       </div>
     </div>
@@ -829,21 +854,21 @@ export default function RecordsPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (deleteTarget !== null) { setDeleteTarget(null); return; }
-      if (showDuplicatesModal) { setShowDuplicatesModal(false); return; }
-      if (businessState.showFormModal) { businessState.setShowFormModal(false); return; }
-      if (linkModalOpen) { setLinkModalOpen(false); setLinkSource(null); return; }
-      if (hasSelection) { closeSelection(); return; }
+      if (deleteTarget !== null) { e.stopPropagation(); setDeleteTarget(null); return; }
+      if (showDuplicatesModal) { e.stopPropagation(); setShowDuplicatesModal(false); return; }
+      if (businessState.showFormModal) { e.stopPropagation(); businessState.setShowFormModal(false); return; }
+      if (linkModalOpen) { e.stopPropagation(); setLinkModalOpen(false); setLinkSource(null); return; }
+      if (hasSelection) { e.stopPropagation(); closeSelection(); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [deleteTarget, showDuplicatesModal, businessState, linkModalOpen, hasSelection]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [deleteTarget, showDuplicatesModal, businessState, linkModalOpen, hasSelection, closeSelection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // "N" keyboard shortcut → opens the active tab's New record flow.
   // Typing-suppressed (skipped while focus is in any input/textarea/
   // contenteditable). Skipped while any modal/overlay is open so it
-  // doesn't fight focus traps. Same contract used across MDT / Patrol /
-  // Field Interviews / Cases / Court Tracker.
+  // doesn't fight focus traps. Gated to admin/manager (create role gate).
+  // Same contract used across MDT / Patrol / Field Interviews / Cases / Court Tracker.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'n' && e.key !== 'N') return;
@@ -856,6 +881,7 @@ export default function RecordsPage() {
       // Don't open New on top of an already-open modal/picker.
       if (deleteTarget !== null || showDuplicatesModal || linkModalOpen || businessState.showFormModal) return;
       if (showArchived) return; // archives mode is read-only
+      if (!isAdminOrManager) return; // create gated to admin/manager
       e.preventDefault();
       if (activeTab === 'persons') setNewPersonTrigger(n => n + 1);
       else if (activeTab === 'vehicles') setNewVehicleTrigger(n => n + 1);
@@ -865,7 +891,7 @@ export default function RecordsPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeTab, deleteTarget, showDuplicatesModal, linkModalOpen, businessState, showArchived]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, deleteTarget, showDuplicatesModal, linkModalOpen, businessState, showArchived, isAdminOrManager]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="records-page flex flex-col h-full animate-fade-in">
