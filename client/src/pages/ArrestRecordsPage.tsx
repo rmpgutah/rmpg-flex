@@ -201,6 +201,10 @@ function exportCsv(records: ArrestRecord[]) {
   URL.revokeObjectURL(url);
 }
 
+// ── Role helpers ─────────────────────────────────────────
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
 // ── Component ─────────────────────────────────────────────
 
 export default function ArrestRecordsPage() {
@@ -212,6 +216,8 @@ export default function ArrestRecordsPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // admin + manager + supervisor can create/edit/delete arrest records.
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
 
   // Right-click context menu (reusable global system)
   const { openMenu } = useContextMenu();
@@ -455,7 +461,7 @@ export default function ArrestRecordsPage() {
       rec.linked_person?.name ||
       (rec.full_name && rec.full_name.trim()) ||
       `${rec.first_name ?? ''} ${rec.last_name ?? ''}`.trim();
-    const canModify = isManualRecord(rec) || isAdmin;
+    const canModify = isManualRecord(rec) || canManage;
     return [
       m.action('Open record', () => setSelectedRecord(rec), { icon: <Eye size={12} /> }),
       ...(canModify
@@ -744,9 +750,11 @@ export default function ArrestRecordsPage() {
 
         {/* Action buttons */}
         <div className="flex items-center gap-1">
-          <button type="button" onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[9px] flex items-center gap-1 px-2 py-1">
-            <Plus className="w-3 h-3" /> New Booking
-          </button>
+          {canManage && (
+            <button type="button" onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[9px] flex items-center gap-1 px-2 py-1">
+              <Plus className="w-3 h-3" /> New Booking
+            </button>
+          )}
           <ExportButton exportUrl="/api/arrests/export/csv" exportFilename="arrests.csv" />
           <button type="button" onClick={() => exportCsv(sortedRecords)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
             <Download className="w-3 h-3" /> CSV
@@ -788,8 +796,8 @@ export default function ArrestRecordsPage() {
             <EmptyState
               icon={UserX}
               title="No bookings yet"
-              description="Press N (or click New Booking) to create the first record."
-              action={{ label: 'New Booking', onClick: openNew }}
+              description={canManage ? 'Press N (or click New Booking) to create the first record.' : 'No arrest records have been entered yet.'}
+              action={canManage ? { label: 'New Booking', onClick: openNew } : undefined}
             />
           )
         ) : (
@@ -941,17 +949,19 @@ export default function ArrestRecordsPage() {
               entityType="arrest"
               entityId={rec.id}
             />
-            {(isManual || isAdmin) && (
+            {(isManual || canManage) && (
               <>
                 <button type="button" onClick={() => openEdit(rec)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
                   <Pencil className="w-3 h-3" /> Edit
                 </button>
-                <button type="button"
-                  onClick={() => setDeleteConfirm(rec.id)}
-                  className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1 text-red-400 hover:text-red-300"
-                >
-                  <Trash2 className="w-3 h-3" /> Delete
-                </button>
+                {canManage && (
+                  <button type="button"
+                    onClick={() => setDeleteConfirm(rec.id)}
+                    className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1 text-red-400 hover:text-red-300"
+                  >
+                    <Trash2 className="w-3 h-3" /> Delete
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -1164,17 +1174,17 @@ export default function ArrestRecordsPage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (deleteConfirm !== null) { setDeleteConfirm(null); return; }
-        if (formOpen) { setFormOpen(false); setEditingRecord(undefined); return; }
-        if (linkingId !== null) { setLinkingId(null); setPersonSearch(''); setPersonResults([]); return; }
-        if (error) { setError(null); return; }
-        if (hasFiltersActive) { clearFilters(); return; }
-        if (selectedRecord) { setSelectedRecord(null); return; }
+        if (deleteConfirm !== null) { e.stopPropagation(); setDeleteConfirm(null); return; }
+        if (formOpen) { e.stopPropagation(); setFormOpen(false); setEditingRecord(undefined); return; }
+        if (linkingId !== null) { e.stopPropagation(); setLinkingId(null); setPersonSearch(''); setPersonResults([]); return; }
+        if (error) { e.stopPropagation(); setError(null); return; }
+        if (hasFiltersActive) { e.stopPropagation(); clearFilters(); return; }
+        if (selectedRecord) { e.stopPropagation(); setSelectedRecord(null); return; }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
-      if (e.key === 'n' || e.key === 'N') {
+      if ((e.key === 'n' || e.key === 'N') && canManage) {
         e.preventDefault();
         openNew();
       }
@@ -1182,7 +1192,7 @@ export default function ArrestRecordsPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deleteConfirm, formOpen, linkingId, error, hasFiltersActive, selectedRecord]);
+  }, [deleteConfirm, formOpen, linkingId, error, hasFiltersActive, selectedRecord, canManage]);
 
   return (
     <div className="h-full flex flex-col bg-surface-base">
