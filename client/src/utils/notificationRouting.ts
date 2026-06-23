@@ -69,6 +69,14 @@ const TYPE_DEFAULT_ROUTE: Record<string, string> = {
  *  - email_message  → /communications?tab=messages&message_id=
  *  - alpr_capture   → /plate-log?capture_id= (best-effort fallback)
  *  - use_of_force   → /use-of-force?uof_id=
+ *  - arrest_record  → /arrest-records?arrest_id= (canonical)
+ *  - arrest         → /arrest-records?arrest_id= (legacy alias used by older
+ *                     server emitters — kept so notifications generated before
+ *                     the canonical name landed still route correctly)
+ *  - court_event    → /court-records?event_id= (historical disposition view;
+ *                     /court (Court Tracker) accepts the same param for the
+ *                     upcoming-dates view, so a notification deep-link works
+ *                     equivalently from either page)
  */
 const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   call: (id) => `/dispatch?call_id=${encodeURIComponent(id)}`,
@@ -97,6 +105,7 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   // page can scroll/highlight the row inside the complaint detail.
   ia_complaint: (id) => `/affairs?complaint_id=${encodeURIComponent(id)}`,
   ia_investigation: (id) => `/affairs?investigation_id=${encodeURIComponent(id)}`,
+  court_event: (id) => `/court-records?event_id=${encodeURIComponent(id)}`,
 };
 
 /**
