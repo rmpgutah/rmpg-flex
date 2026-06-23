@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1157: Citations — role gates (canManage: admin/manager/supervisor) on New/Edit/Void/context-menu/mobile-FAB, N shortcut gated on canManage, Esc cascade adds e.stopPropagation() per branch, ?citation_id= deep-link already present.
 // v1154: Person Dossier — ?person_id= deep-link (strip after mount), Esc stopPropagation in photoOpen branch, N shortcut (canManage→open record), role-gate watchlist toggle (admin/manager/supervisor), text-rmpg-400/text-brand-400 token migration.
 // v1153: Module Directory — ?module= deep-link (strip after mount), N shortcut focuses search, Esc cascade (clear search→blur), 3-state empty (loading badges/no-results/empty-favorites), brand token migration (hex→CSS var), dead PanelTitleBar clone removed (import shared component), apiFetch types tightened (any→typed), useSearchParams replaces manual URL param read.
 // v1152: Recon Connect — ConfirmDialog for stop session (admin/manager gate), ?category= deep-link (strip after mount), N shortcut focuses catalog search, Esc cascade (stop-confirm→launchMsg), idle terminal empty state, role-gated Stop button (admin/manager), brand token migration (#d4a017→brand-400, #888→rmpg-400), apiFetch cases shape fix (.data unwrap), GlobalCatalogSearch searchRef prop.
