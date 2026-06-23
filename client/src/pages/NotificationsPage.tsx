@@ -101,6 +101,8 @@ export default function NotificationsPage() {
   const [confirmClearRead, setConfirmClearRead] = useState(false);
   const [confirmCleanupOld, setConfirmCleanupOld] = useState(false);
   const [sweepBusy, setSweepBusy] = useState(false);
+  // Per-row delete confirmation — gated to admin/manager/supervisor only.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   // Fetch notifications
   const fetchNotifications = useCallback(async (page = 1) => {
@@ -180,6 +182,7 @@ export default function NotificationsPage() {
       if (e.key !== 'Escape') return;
       // ConfirmDialog owns its own Esc (cancels the confirm) \u2014 short-circuit
       // before the cascade so we don't double-close it.
+      if (confirmDeleteId !== null) return;
       if (confirmClearRead) return;
       if (confirmCleanupOld) return;
       if (showPrefs) {
@@ -200,7 +203,7 @@ export default function NotificationsPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [confirmClearRead, confirmCleanupOld, showPrefs, filterType, filterRead, fetchNotifications]);
+  }, [confirmDeleteId, confirmClearRead, confirmCleanupOld, showPrefs, filterType, filterRead, fetchNotifications]);
 
   // \u2500\u2500 Deep-link resolver \u2500\u2500
   // Runs once notifications hydrate. If the target id is in the current
@@ -282,7 +285,7 @@ export default function NotificationsPage() {
         const tag = t.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
       }
-      if (confirmClearRead || confirmCleanupOld || showPrefs) return;
+      if (confirmDeleteId !== null || confirmClearRead || confirmCleanupOld || showPrefs) return;
       if (!stats || stats.totalUnread === 0) return;
       e.preventDefault();
       void markAllRead();
@@ -290,7 +293,7 @@ export default function NotificationsPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmClearRead, confirmCleanupOld, showPrefs, stats]);
+  }, [confirmDeleteId, confirmClearRead, confirmCleanupOld, showPrefs, stats]);
 
   const deleteNotification = async (id: number) => {
     try {
@@ -399,8 +402,10 @@ export default function NotificationsPage() {
     m.separator(),
     m.copy('Copy title', n.title),
     m.copyId(n.id),
-    m.separator(),
-    m.action('Delete', () => deleteNotification(n.id), { icon: <Trash2 size={12} />, danger: true }),
+    ...(canManage ? [
+      m.separator(),
+      m.action('Delete', () => setConfirmDeleteId(n.id), { icon: <Trash2 size={12} />, danger: true }),
+    ] : []),
   ];
 
   // The total count for the "All" sidebar entry should reflect what the
@@ -638,9 +643,11 @@ export default function NotificationsPage() {
                         <ArrowUpRight className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    <button type="button" onClick={() => deleteNotification(n.id)} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                    {canManage && (
+                      <button type="button" onClick={() => setConfirmDeleteId(n.id)} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete notification (admin/manager/supervisor only)">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -673,6 +680,20 @@ export default function NotificationsPage() {
           )}
         </div>
       </div>
+
+      {/* ── Per-row delete confirmation ── */}
+      <ConfirmDialog
+        isOpen={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={() => {
+          if (confirmDeleteId !== null) void deleteNotification(confirmDeleteId);
+          setConfirmDeleteId(null);
+        }}
+        title="Delete this notification?"
+        message="This permanently removes the notification from your inbox. This action cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
 
       {/* ── Destructive bulk-sweep confirmations ──
             "Clear Read" and "Cleanup 30d+" both used to fire DELETE on
