@@ -9,7 +9,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { useAuth } from '../context/AuthContext';
 import { Brain, Heart, PhoneCall, Users, Plus, Pencil, Trash2 } from 'lucide-react';
 
-import DeleteRecordModal from '../components/DeleteRecordModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 interface CrisisIncident {
   id: number;
@@ -53,7 +53,7 @@ export default function CrisisResponsePage() {
     diversionRate: 0,
     teamsAvailable: 0,
   });
-  const [loading, setLoading] = useState(true);
+  const [loadState, setLoadState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<CrisisIncident | null>(null);
@@ -84,8 +84,9 @@ export default function CrisisResponsePage() {
       ]);
       setIncidents(i);
       setStats(s);
-    } finally {
-      setLoading(false);
+      setLoadState('ok');
+    } catch {
+      setLoadState('error');
     }
   }, []);
 
@@ -95,7 +96,7 @@ export default function CrisisResponsePage() {
 
   // Strip deep-link params after data loads and open the targeted record
   useEffect(() => {
-    if (loading) return;
+    if (loadState !== 'ok') return;
     const targetId = pendingIdRef.current;
     if (!targetId) return;
     pendingIdRef.current = null;
@@ -117,7 +118,7 @@ export default function CrisisResponsePage() {
       addToast(`Crisis incident #${targetId} not found`, 'error');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+  }, [loadState]);
 
   // ── Filtered view ─────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -280,15 +281,12 @@ export default function CrisisResponsePage() {
   ];
 
   // ── Empty state message ──────────────────────────────────────
-  const emptyMessage = loading
-    ? 'Loading crisis response data...'
-    : incidents.length === 0
-      ? canCreate
-        ? 'No crisis incidents recorded. Press N to create the first one.'
-        : 'No crisis incidents recorded.'
-      : hasSearch
-        ? `No incidents match "${search}". Clear the search to see all ${incidents.length} record${incidents.length !== 1 ? 's' : ''}.`
-        : 'No crisis incidents recorded.';
+  const emptyMessage =
+    loadState === 'loading' ? 'Loading crisis response data...'
+    : loadState === 'error'  ? 'Failed to load crisis incidents'
+    : hasSearch              ? `No incidents match "${search}". Clear the search to see all ${incidents.length} record${incidents.length !== 1 ? 's' : ''}.`
+    : canCreate              ? 'No crisis incidents recorded. Press N to create the first one.'
+    :                          'No crisis incidents recorded.';
 
   return (
     <div className="p-4 space-y-4">
@@ -501,25 +499,28 @@ export default function CrisisResponsePage() {
         </div>
       )}
 
-      <DeleteRecordModal
+      <ConfirmDialog
         isOpen={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
-        recordType="crisis incident"
-        recordLabel={deleteTarget?.incident_number || deleteTarget?.subject_name}
+        title="Delete Crisis Incident"
+        message="Permanently delete this crisis incident? This cannot be undone."
         details={
-          deleteTarget && (
+          deleteTarget ? (
             <>
+              {deleteTarget.incident_number && <div>Incident #{deleteTarget.incident_number}</div>}
               {deleteTarget.subject_name && <div>Subject: {deleteTarget.subject_name}</div>}
-              {deleteTarget.incident_type && <div>{deleteTarget.incident_type}</div>}
+              {deleteTarget.incident_type && <div>{deleteTarget.incident_type.replace(/_/g, ' ')}</div>}
               {deleteTarget.location && <div className="text-rmpg-500">{deleteTarget.location}</div>}
               {deleteTarget.disposition && (
                 <div className="text-rmpg-500">Disposition: {deleteTarget.disposition}</div>
               )}
             </>
-          )
+          ) : undefined
         }
-        isDeleting={deleting}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={deleting}
       />
     </div>
   );
