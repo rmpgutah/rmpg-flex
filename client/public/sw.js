@@ -3,6 +3,10 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1110: Interagency (/interagency) — ConfirmDialog replaces hand-rolled delete modal,
+//        ?agency_id= deep-link (strip with replace:true), N shortcut for New Partner,
+//        Esc cascade closes form/dialog, 3-state empty states (loading/no-data/no-results),
+//        admin|manager role gates on edit/delete UI, search filter, typed Partner interface.
 // v1109: Risk Management (/risk) — Page 86 frontend audit. Replaced inline
 //        delete div with ConfirmDialog. Added ?risk_id= deep-link (opens edit
 //        modal, stripped with replace:true). N shortcut opens New Assessment
