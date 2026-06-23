@@ -59,6 +59,131 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1072: Court Records (/court-records) — Page 54 of the full-app frontend
+//        pass. CourtRecordsPage is the historical-disposition counterpart to
+//        CourtTrackerPage (/court, which is the upcoming-dates view); both
+//        sit on the same court_events table. The page shipped with the
+//        right column set and a usable filter bar but had a one-line Esc
+//        handler that wrote `setShowCreateModal(false); setShowCreateModal(
+//        false)` twice — a duplicate that not only never closed the
+//        Outcome modal but also obviously survived a copy/paste — no
+//        deep-link contract, no print path even though the renderer
+//        (courtAppearancePdf, already wired into Court Tracker) was
+//        sitting one import away, no confirmation on the outcome submit
+//        (recording an outcome legally closes the docket entry with no
+//        silent undo), and `useFormDraft` keys leaking half-typed case
+//        numbers / fines / sentences between operators on shared MDTs.
+//        Operators jumping from a notification or context-menu link had
+//        nowhere to land — every "open court event" deep link 404'd at
+//        the routing layer because no `court_event` entry existed in
+//        ENTITY_ROUTE_BUILDERS (and during the audit, the `arrest_record`
+//        / `arrest` entries the Page 43 PR added tests for had ALSO never
+//        been merged into the routing map — fixed alongside).
+//
+//        What changed:
+//          • URL deep-link contract: ?event_id=<n> / ?court_event_id=<n>
+//            (the alias matches Court Tracker's contract so a single
+//            notification deep-link works from both pages), ?case_id=<n>
+//            (resolves to the case's court_case_number via /cases/:id and
+//            seeds the search), ?docket=<str> (free-text docket lookup
+//            seeding the search box), ?status=<scheduled|continued|…>
+//            and ?type=<arraignment|trial|…> (preselect filters BEFORE
+//            the first fetch settles, so the request already hits the
+//            filtered server view and there's no flash of unfiltered
+//            data). All one-shot — params are consumed and stripped with
+//            replace:true so a refresh doesn't re-pin. Direct-fetch
+//            fallback when the event id isn't in the current paged view
+//            (prepend pattern, matching ArrestRecordsPage).
+//          • notificationRouting: `court_event` → /court-records?event_id=
+//            entry added so a "hearing reminder" / "outcome recorded" /
+//            "continuance granted" notification lands on the docket entry
+//            itself rather than fall through to the null default. While
+//            in that file the audit caught that the Page 43 PR (#1655)
+//            added two routing tests for `arrest_record` and `arrest`
+//            but never actually merged the matching entries into
+//            ENTITY_ROUTE_BUILDERS — every arrest notification was
+//            silently routing to "/" via the type-fallback path. Both
+//            entries added alongside (3 routing tests now green).
+//          • Court-ready PDF: reuses the courtAppearancePdf renderer
+//            CourtTrackerPage uses — Arial + RMPG-gold-banner courtroom
+//            sheet covering case header, parties, judge, witnesses, fees,
+//            bail, continuances, outcome, signature line. Wired into the
+//            expanded-row toolbar AND the right-click menu; PDF reads
+//            from the hydrated single-event detail (which parses the
+//            witnesses / officer_confirmations / continuance_log /
+//            court_fees JSON columns) when available, falls back to the
+//            list-row snapshot when not. Operator-attribution footer
+//            pulled from the logged-in user.
+//          • Native dialogs → ConfirmDialog: the Outcome modal's "Save
+//            Outcome" was a single-click submit that wrote outcome +
+//            sentence + fine + status='completed' in one shot. Now
+//            ConfirmDialog (warning variant) intercepts with the
+//            event #, defendant, case #, selected outcome label,
+//            sentence, and fine in the details slot so the operator
+//            sees what they're about to legally finalize. Saving and
+//            cancellation flows preserved.
+//          • Esc smart-cascade (highest-priority layer first): outcome
+//            confirm → outcome modal → create modal → expanded row →
+//            error banner → active filters. Each branch returns so a
+//            single Esc doesn't collapse multiple layers. The previous
+//            duplicated handler only ever closed the create modal — and
+//            even that was the literal repeated line.
+//          • N shortcut: opens New Event (typing-suppressed; suppressed
+//            inside open modals/dialogs). Matches the Trespass / Field
+//            Interview / Equipment / Notifications / Arrests / Forensic
+//            Lab / Skip Tracker / Use of Force / Tasks / CRM / Court
+//            Records muscle memory built up over the page-pass sweep.
+//          • Per-user form drafts: bare `rmpg_court_records_create` /
+//            `_outcome` keys would leak a half-typed prosecutor name,
+//            sentence string, or fine amount from operator A's screen
+//            to operator B on a shared MDT — especially bad for outcomes,
+//            where the leaked text is a literal pre-decided ruling.
+//            Scoped to user.id; outcome-form key further scoped to the
+//            event id so switching events doesn't carry the prior
+//            event's draft sentence forward (the most reported source of
+//            cross-event outcome contamination during the audit).
+//          • Hydrate state from server: expanding a row now fetches
+//            /court/events/:id (which parses the witnesses /
+//            officer_confirmations / continuance_log / court_fees JSON
+//            columns and includes judge_notes / bail_*). The list
+//            endpoint returned the bare row, which the PDF could only
+//            render partially. Used for both detail-pane display and
+//            the court-ready PDF.
+//          • Cross-link to Court Tracker (#1613): expanded row + right-
+//            click menu both offer "Open in Court Tracker" (navigates
+//            to /court?event_id=<id>) and "Open linked case" when
+//            case_id is set — closing the loop between the two
+//            counterpart pages on the same court_events table.
+//          • Empty-state distinction: collapsed "no records" and
+//            "filters hiding everything" into one ambiguous string.
+//            Filter-empty state surfaces the unfiltered total + Clear
+//            button; no-data state shows the create CTA + N hint.
+//          • Document title: reflects the expanded event ("CRT-2026-
+//            00042 — Court Records") so a tab switcher can tell two
+//            court-record panels apart.
+//          • Theme tokens: three hardcoded `text-[#d4a017]` heading
+//            colors → `text-brand-gold-500` so the gold re-themes
+//            correctly between night and day (Spillman day/night theme
+//            compliance — see project-systemwide-daynight-theme).
+//          • A11y: added aria-label to the previously unlabeled error-
+//            dismiss X button, status/type/date filter selects, the
+//            paging Previous/Next buttons, both modal close-X buttons,
+//            and both modal dialog containers (aria-label on the
+//            role=dialog element so a screen-reader announces which
+//            modal opened).
+//          • Bug fix — Esc handler was the literal duplicated line
+//            `setShowCreateModal(false); setShowCreateModal(false);`
+//            with no outcome-modal branch, no expanded-row branch, and
+//            no filter branch. The Outcome modal therefore could only be
+//            dismissed by clicking the X — the rest of the cascade is
+//            new contract.
+//
+//        No D1 migration, no Worker route changes — client-only. The
+//        court_event routing test plus the previously-failing arrest
+//        routing tests now all pass; 16/16 notificationRouting tests
+//        green where the baseline was 15/16 (the broken arrest test
+//        was the one chronic failure on main).
+
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
