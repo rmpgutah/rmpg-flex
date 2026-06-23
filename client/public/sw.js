@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1199: Gang Intel — canCreate (admin|manager) gates New Member button + N shortcut, ?person_id= deep-link alias + missing-target toast, gangs dead-fetch removed, bg-black/70 token replaces rgba(0,0,0,0.70), Gang interface removed.
 // v1194: DL Search — brand-gold-500 tokens replace text/bg/border [var(--brand-gold)] (19 sites), fromDeepLinkRef guard toasts on no-results deep-link, addToast in handleSearch deps.
 // v1191: Dashboard — ?panel=/?widget= deep-link (scroll+strip+useRef guard), N shortcut opens New Call (canCreate gate), Esc cascade (NewCallModal→IncidentModal stopPropagation per branch), canCreate gates newCall/newIncident/newCitation/quickCapture toolbar buttons, 3-state activeBolos empty (loading/no-BOLOs/list), panel id attrs for deep-link targets.
 // v1190: DashCameras — e.stopPropagation() per Esc cascade branch (videoToDelete→editing→linking→upload→playing→detail), ?camera_id= deep-link (was clip_id), isAdminOrManager gates upload/delete/N-shortcut, list-view 3-state empty (loading/no-data/no-results), parseTimestamp replaces new Date(string) in delete-label/details, purple led-dot uses --sev-special/--sev-special-rgb, camera-channel overlay migrated to rmpg/purple Tailwind tokens.
