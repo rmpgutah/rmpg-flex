@@ -59,6 +59,104 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1060: Arrest Records (/arrest-records) — Page 43 of the full-app frontend
+//        pass. ArrestRecordsPage.tsx (1029 lines, split-panel jail roster
+//        with manual booking CRUD, county statistics, person linking,
+//        criminal history integration, multi-source filtering scraper /
+//        manual / CSV) is the operator surface for the booking-side of the
+//        custody chain. arrest_records is one of the highest-PII tables in
+//        the app — bail amounts, charges, booking notes — so the privacy
+//        and confirmation surfaces matter as much as the print path.
+//        - Court-ready PDF: the JAIL BOOKING SHEET (Form PS-601) renderer
+//          in recordPdfGeneratorExt was already wired into the generic
+//          `jail_booking` recordType but had NO entry point on the page
+//          itself — operators were exporting to CSV and reprinting from
+//          Word. The detail-panel header now drops in PrintRecordButton
+//          recordType="jail_booking" (preview / office print / mobile
+//          print on the in-vehicle Brother PJ / sign & export / email),
+//          rendering the existing watermarked Arial PDF with charges
+//          parsed from JSON-array form, caution-flag synthesis (felony /
+//          violent / weapons / flight-risk), and the booking-officer
+//          signature line. Available regardless of entry_source —
+//          scraper-imported records are still legitimate documentation
+//          to print.
+//        - URL deep-link contract — ?arrest_id=<id> auto-selects the row
+//          (direct-fetch /arrests/manual/:id fallback when the id isn't
+//          in the current paged/filtered view, e.g. linked from a case
+//          file three pages deep). ?county=<key> preselects the county
+//          filter. ?person_id=<id> seeds the name search with the linked
+//          subject's "Last First" (best-effort — there's no per-person
+//          arrest endpoint yet so this is a name-search fallback). All
+//          three params are one-shot and stripped after consumption with
+//          replace:true so a manual refresh doesn't re-pin. Mirrors the
+//          v1019/v1041/v1044/v1048/v1057 cross-page contract.
+//        - Notification routing: client/src/utils/notificationRouting.ts
+//          gained `arrest_record` (canonical) + `arrest` (legacy alias)
+//          entity-type mappings → /arrest-records?arrest_id=. A "criminal
+//          history hit on John Doe" notification can now land on the
+//          actual booking detail panel instead of a generic page.
+//        - Native dialogs → ConfirmDialog: the inline "Delete Booking"
+//          modal was a bespoke surface missing body-scroll-lock, ARIA
+//          titling, pre-focused Cancel, and (critically) the row's
+//          identifying context — operators saw a generic "are you sure?"
+//          on a high-stakes destructive action with no way to verify
+//          which subject/booking was about to be permanently deleted.
+//          Migrated to the shared ConfirmDialog with name + booking
+//          number + booking date + county in the details slot.
+//        - Esc smart-cascade (close highest-priority open layer first):
+//          delete confirm → form modal → person-link panel → error
+//          banner → active filters → selection. Previously Esc only
+//          closed the form modal, leaving every other modal/panel/filter
+//          stuck open.
+//        - N shortcut: typing-suppressed `N` opens the New Booking form
+//          to match Trespass/FI/Equipment/Notifications muscle memory.
+//        - Empty-state distinction: the single "No records found" path
+//          collapsed "no bookings exist yet" and "filters are hiding all
+//          records" into one ambiguous string. Now distinguishes the two
+//          — the no-data state surfaces the N shortcut hint and a New
+//          Booking action; the filter-empty state shows the unfiltered
+//          total count and a one-click Clear Filters action.
+//        - Hydrate state from server: selecting a row in the list left
+//          the detail panel rendering the row snapshot, which omits the
+//          freshest linked_person / charges payload if another operator
+//          had just edited the record. A useEffect on
+//          selectedRecord?.id now re-fetches /arrests/manual/:id on
+//          selection change (silent failure path keeps the list-row
+//          snapshot — a red banner here was louder than useful).
+//        - Bug fix: the post-edit re-hydrate at handleFormSubmit was
+//          calling `apiFetch<ArrestRecord>(`/arrests/manual/${id}`)`
+//          and writing the result straight into setSelectedRecord —
+//          but /arrests/manual/:id returns `{ data: ArrestRecord }`,
+//          not a bare row. The detail panel then crashed on every
+//          field access because rec.full_name / rec.charges /
+//          rec.booking_date were all undefined. Fixed to unwrap .data
+//          (matches the working /link-person flow above).
+//        - Privacy: ArrestFormModal's useFormDraft storageKey was the
+//          global `rmpg_arrest_form` — a half-typed bail amount,
+//          charge list, or booking note from operator A would surface
+//          for operator B on a shared MDT. Scoped to user.id
+//          (`rmpg_arrest_form_<uid>`) matching the EquipmentFormModal
+//          + tabKey precedent, with the legacy global key as a
+//          pre-auth fallback only.
+//        - Server stats surfacing: getStatistics already returned
+//          intakes_today + releases_today on population_summary, but
+//          the page declared the type and silently dropped both
+//          values. Added 4th/5th summary cards so the daily activity
+//          read is visible without drilling into per-county stats.
+//        - Lucide replacement: pagination ← Prev / Next → unicode
+//          arrows → ChevronLeft / ChevronRight glyphs with proper
+//          aria-labels.
+//        - Document title: now reflects the selected booking name
+//          ("Smith, J — Arrest Records") so a tab switcher can tell
+//          two booking panels apart.
+//        - Dead-code cleanup: useWebSocket().subscribe was destructured
+//          but never bound to anything (the previous record_update
+//          listener had been removed as dead; the import + destructure
+//          stayed). Both removed; useLiveSync('arrests') owns
+//          cross-device sync.
+//        - No D1 migration, no Worker route changes — client-only.
+//          notificationRouting got a new entity_type, covered by the
+//          existing routing test (2 new assertions).
 // v1057: Audit Log (/audit) — Page 40 of the full-app frontend pass.
 //        The audit log is THE highest-evidentiary surface in the app: it
 //        proves chain-of-custody, who saw/edited what, and when. Defense

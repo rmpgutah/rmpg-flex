@@ -68,6 +68,7 @@ const TYPE_DEFAULT_ROUTE: Record<string, string> = {
  *  - incident       → /incidents?incident_id=
  *  - email_message  → /communications?tab=messages&message_id=
  *  - alpr_capture   → /plate-log?capture_id= (best-effort fallback)
+ *  - arrest_record  → /arrest-records?arrest_id= (Page 43)
  */
 const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   call: (id) => `/dispatch?call_id=${encodeURIComponent(id)}`,
@@ -85,6 +86,8 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   incident: (id) => `/incidents?incident_id=${encodeURIComponent(id)}`,
   email_message: (id) => `/communications?tab=messages&message_id=${encodeURIComponent(id)}`,
   alpr_capture: (id) => `/plate-log?capture_id=${encodeURIComponent(id)}`,
+  arrest_record: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
+  arrest: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
 };
 
 /**
