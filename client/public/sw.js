@@ -59,83 +59,67 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
-// v1059: Login (/login) — Page 42 of the full-app frontend pass. The login
-//        page is every operator's first impression and the only un-authed
-//        surface other than the password-reset link target, so the audit
-//        focused on the deep-link / post-auth-redirect contract, the dual-
-//        purpose forgot-password panel, and password-manager fidelity.
+// v1065: Skip Tracker (/skip-tracer) — Page 48 of the full-app frontend pass.
+//        Two-part fix. (1) The page's server surface was dead: every
+//        client search hit /skiptracer/search/{byname,byaddress,bynameaddress,
+//        byphone,byemail}, /skiptracer/person/:id, and /api/skiptracer/export/csv
+//        — none of which existed on the rewrite Worker. The legacy VPS
+//        "v2 worker" that historically owned those round-trips was
+//        decommissioned 2026-06-15 (memory: project-vps-decommissioned),
+//        so every search 404'd silently. src/routes/skiptracer.ts now
+//        implements the full surface against the rewrite's own D1 corpus
+//        — persons + dl_records + microbilt_searches as a search cache —
+//        with per-mode audit_log entries via recordAudit. Result rows are
+//        returned in the legacy "PeopleDetails" envelope so the client
+//        (and NcicQueryPanel which also calls these paths from the QS
+//        cross-reference) doesn't need a parser branch for local-vs-
+//        external. Microbilt-style "Lives in"/"Person ID" fields are
+//        synthesised from the local row so the same renderer works.
+//        (2) The page itself is brought up to the audit-series contract:
+//          • URL deep-link: ?subject_id=<n>&mode=<m>&search=<q> — consumed
+//            once and stripped (replace:true) so a refresh doesn't loop.
+//          • ConfirmDialog over silent destroy: "Clear" search history
+//            was a one-click localStorage.removeItem — now a danger-
+//            variant dialog with the entry count + most-recent query in
+//            the detail block. Matches FlexCam / Geography / DAR pattern.
+//          • Esc smart-cascade: extended detail → selected → error →
+//            results → empty. Suppressed while typing.
+//          • `N` shortcut: clears the form + focuses the active mode's
+//            input. Suppressed inside fields/dialogs/modifier chords.
+//          • Per-user search-history (DlSearch #1601 pattern): the bare
+//            `rmpg_skiptracer_history` key leaked one operator's name/
+//            phone queries to the next person to use a shared MDT. Scope
+//            is now `rmpg_skiptracer_history_${user.id}` with a one-time
+//            read-through migration so existing local history isn't lost.
+//          • Court-ready investigator-handoff PDF: new client/src/utils/
+//            skipTracerReportPdf.ts (5 unit tests covering Microbilt
+//            envelope shape, lower_snake local rows, mixed-shape arrays,
+//            empty subjects, and officer-attribution footer). Operators
+//            previously screenshotted the detail pane to file a lead in
+//            a case folder. Toolbar PDF button appears once a subject is
+//            selected; same generator is also wired into the result-row
+//            right-click menu.
+//          • Empty-state distinction: "no search yet" vs "search ran, 0
+//            hits" — the right pane now shows a "Start over" CTA on
+//            zero-results so the operator has a one-click reset instead
+//            of having to re-find the form on a mobile collapse.
+//          • setTimeout(handleSearch, 100) race in rerunSearch replaced
+//            with an effect-driven pendingRerunRef that waits for the
+//            updated handleSearch closure to see the freshly-set query
+//            state before firing. The 100ms guess was visibly flaky on
+//            slow MDTs (search ran with the previous query).
 //
-//        What changed:
-//          • URL deep-link contract — LoginPage now reads `?return=<path>`
-//            (same-origin only; `//external.com` is rejected so a phisher
-//            can't bounce a freshly-authed officer off-site), `?reset=1`
-//            (success flash after a password-reset round-trip — green
-//            banner, auto-dismiss after 6s), `?error=session_expired`
-//            (red banner; `unauthorized` / `logged_out` codes also map),
-//            and `?forgot=1` (auto-opens the in-page forgot-password
-//            panel — used by the /forgot-password → /login redirect).
-//            All four are consumed once and stripped from the URL on
-//            mount so a refresh doesn't re-pin a stale banner. `return`
-//            survives the strip because the post-auth navigate still
-//            needs it.
-//          • Post-auth return — ProtectedRoute in App.tsx now stamps
-//            `?return=<original-pathname+search>` onto its /login
-//            redirect (URL-encoded; loop-guarded against /login itself).
-//            LoginPage's `loginStep === 'complete'` effect then
-//            `navigate(returnUrl, { replace: true })` so a supervisor
-//            pasting a deep link to /warrants?warrant_id=47 without
-//            being authed lands back on that page after sign-in
-//            instead of the dashboard.
-//          • Forgot-password page consolidation — the legacy standalone
-//            /forgot-password page posted {email} but the live API
-//            (/api/auth/forgot-password) takes {username} + 3 security-
-//            question answers, so the page had been a dead-end since
-//            the contract changed. The route now redirects to
-//            /login?forgot=1, the working in-page flow auto-opens, and
-//            the orphan import was removed (the .tsx file itself stays
-//            on disk; the route is the only entry point in the app).
-//            ResetPasswordPage's "Sign In" success link now points at
-//            /login?reset=1 so the new green flash banner fires.
-//          • Esc smart-cascade — top-of-stack first: url-error banner,
-//            then reset-success flash, then unmask-password (a security
-//            win — Esc re-masks an exposed password when an officer
-//            walks away from their MDT), then the open forgot-password
-//            panel. Esc is intentionally NOT wired through the 2FA
-//            verify / setup steps because those have their own "Back"
-//            controls and a stray Esc mid-verification would discard a
-//            partially-entered code.
-//          • Password-manager fidelity — `name="username"` and
-//            `name="password"` added to the two credential inputs.
-//            autocomplete tokens were already correct; some legacy
-//            password managers (KeePassXC browser extension, older
-//            1Password) also key off `name=` for autofill.
-//          • Forgot-password panel + credentials form no longer render
-//            simultaneously — opening forgot-pw now hides the
-//            credentials form AND the system/device info panels (the
-//            stacked-form layout pushed the action button off the fold
-//            on mobile). Closing forgot-pw restores the original view.
-//          • Removed dead-state writer — local `setTwoFactorMethods`
-//            was never called (the real source of truth lives in
-//            AuthContext, which doesn't expose the method list). The
-//            local state default of `{}` made `getEffectiveMode()`
-//            always fall through to 'totp', and that's actually the
-//            today-correct behavior since WebAuthn-only users are not
-//            yet supported on this surface. Renamed the setter to
-//            `_setTwoFactorMethods` (with an explain-it comment) so a
-//            future wiring pass can re-enable it without re-typing the
-//            shape, but the misleading "this is reactive" signal is
-//            gone.
-//          • Privacy verification (no code change needed) — verified
-//            `rmpg_cached_user` IS cleared on logout via the existing
-//            `user`-change effect in AuthContext.tsx that does
-//            `localStorage.removeItem(CACHED_USER_KEY)` when user is
-//            null. Also verified no native dialogs (alert/confirm/
-//            prompt) on any of the three auth surfaces (LoginPage,
-//            ForgotPasswordPage, ResetPasswordPage), no console.log of
-//            credentials, and no PII (username / password / 2FA code)
-//            written into URL params at any point.
-//          • No migration; no server route changes; no SW behavior
-//            changes (this version is a content bump only).
+//        Theme: per-mode chip accent hex values kept (decorative
+//        per-mode icon tints that don't re-theme in either direction);
+//        the single rgba(136,136,136,0.15) avatar background tile
+//        migrated to var(--surface-raised).
+//
+//        Worker: src/routes/skiptracer.ts gains 7 endpoints. No D1
+//        migration — only reads existing tables. recordAudit wired so
+//        every skip-trace becomes part of the central audit seam (and
+//        therefore reaches flex_events). Existing /status, /stats,
+//        /dossiers, /dossiers/:id endpoints untouched.
+//
 // v1057: Audit Log (/audit) — Page 40 of the full-app frontend pass.
 //        The audit log is THE highest-evidentiary surface in the app: it
 //        proves chain-of-custody, who saw/edited what, and when. Defense
