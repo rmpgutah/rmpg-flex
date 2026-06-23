@@ -544,9 +544,47 @@ export interface CommitInput {
   // derivation. All geo enrichment is best-effort — a miss never blocks commit.
   // (Both callers — /upload and /intake — already pass `env: c.env`.)
   env: Bindings;
+  // Phase 1 Quality Gate — multi-defendant fan-out. When null/undefined, the
+  // existing single-recipient path runs. When non-empty, the function loops
+  // over each name, creating one full intake per defendant linked to a single
+  // shared case_file_id. Operator picks come from the review-panel picker.
+  defendantsSelected?: string[] | null;
+  // FK back to serve_intake_judge_runs.id, stamped onto every serve_queue row
+  // created in this commit so a reviewer can drill from a flagged queue row
+  // to the per-field verdict + raw model response.
+  judgeRunId?: number | null;
+  // From the judgeResult — persisted to serve_queue.quality_status on every
+  // row created. 'clean' | 'needs_review' | 'error'. Defaults to 'clean'.
+  qualityStatus?: 'clean' | 'needs_review' | 'error';
 }
 
 export async function commitIntake(db: D1Database, input: CommitInput): Promise<CommitResult> {
+  const picks = input.defendantsSelected;
+  if (!picks || picks.length <= 1) {
+    return commitOneIntake(db, input);
+  }
+  let firstResult: CommitResult | null = null;
+  for (let i = 0; i < picks.length; i++) {
+    const fullName = picks[i].trim();
+    const { first, last } = splitFullName(fullName);
+    const perFields = {
+      ...input.fields,
+      recipient_first_name: { value: first, confidence: 1.0 },
+      recipient_last_name: { value: last, confidence: 1.0 },
+      recipient_business_name: { value: '', confidence: 0 },
+    };
+    const perQueueRow = { ...input.queueRow, recipient_name: fullName };
+    const res = await commitOneIntake(db, {
+      ...input,
+      fields: perFields,
+      queueRow: perQueueRow,
+    });
+    if (!firstResult) firstResult = res;
+  }
+  return firstResult!;
+}
+
+async function commitOneIntake(db: D1Database, input: CommitInput): Promise<CommitResult> {
   const { fields, queueRow, userId } = input;
   const get = (k: string) => (fields[k]?.value || '').trim();
   const nowIso = new Date().toISOString();
@@ -918,8 +956,9 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
         client_id, client_name, attorney_name, priority, deadline,
         service_instructions, notes,
         plaintiff_name, defendant_name, court_date, parsed_data, status,
-        geo_cluster_id, urgency_tier, urgency_computed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        geo_cluster_id, urgency_tier, urgency_computed_at,
+        quality_status, judge_run_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
       callId, userId,
       queueRow.recipient_name, person.id || null,
       queueRow.recipient_address, queueRow.recipient_city,
@@ -933,6 +972,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       queueRow.service_instructions, queueNotes,
       queueRow.plaintiff, queueRow.defendant, queueRow.court_date, parsedData,
       geoClusterId, urgencyTier, urgencyComputedAt,
+      input.qualityStatus ?? 'clean', input.judgeRunId ?? null,
     );
     queueId = Number(ins.meta.last_row_id);
 
