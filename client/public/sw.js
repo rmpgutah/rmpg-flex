@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1189: DashCam Detail — ConfirmDialog for Burn HUD (admin/manager gate), ?clip_id= deep-link, N triggers Download Original, Esc cascade (burnConfirm→editModal→fullscreen→back) stopPropagation, 3-state empty (loading/error/no-data), isAdminOrManager gates reclassify+burn, .data envelope unwrap, dead duplicate useEffects removed, Video icon for no-data state.
 // v1179: Body Cameras — Esc cascade e.stopPropagation() per branch, parseTimestamp replaces new Date(string) in video-delete label/details.
 // v1181: Code Enforcement — Esc cascade e.stopPropagation() per branch (confirmOpen→showReinspection→tFormOpen→vFormOpen), canEnforce added to keyboard-effect deps, text-[var(--brand-gold)] → text-brand-gold-500 token migration (6 sites).
 // v1180: Case Management — ConfirmDialog for delete-case, N shortcut opens new-case modal, Esc cascade stopPropagation per branch + caseToDelete guard, canDelete/canArchive (admin|manager) + canAssign (admin|manager|supervisor) role gates, 3-state empty (loading/no-data/no-results), dead StatusBadge import removed, rgba(0,0,0,0.55) inline → bg-black/60 backdrop-blur-sm token.
