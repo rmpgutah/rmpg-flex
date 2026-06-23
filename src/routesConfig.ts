@@ -142,6 +142,7 @@ import microbilt from './routes/microbilt';
 import screening from './routes/screening';
 import sorSources from './routes/sorSources';
 import nsopw from './routes/nsopw';
+import personIntel from './routes/personIntel';
 import serve from './routes/serve';
 
 import settings from './routes/settings';
@@ -398,6 +399,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
   { prefix: '/api/patrol', router: patrolMileage, auth: 'required',
     note: 'Mileage anchor (auto-pickup) + admin fix/audit chain rewrite + FORM PS-211 trip-log payload' },
+  { prefix: '/api/person-intel', router: personIntel, auth: 'required',
+    note: 'Person Intelligence Dossier: create/list/get dossier + officer data-point annotations + delete' },
   { prefix: '/api/radio', router: radio, auth: 'required',
     note: 'Channels + transmissions (append-only) + per-user recordings + stats' },
   { prefix: '/api/recruitment', router: recruitment, auth: 'required',
