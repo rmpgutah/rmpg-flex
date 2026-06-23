@@ -3,6 +3,16 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1095: Personnel (/personnel) — Page 72 of the full-app frontend pass.
+//        Removed dead state (analytics, analyticsLoading, dashcamEvents,
+//        deviceMappings, dashcamLoading, refreshDashcamData — never read).
+//        Role gate: terminate/archive/restore buttons in detail panel now
+//        hidden for officer/dispatcher/client_viewer (admin|manager|supervisor|
+//        human_resources only). N shortcut extended to credentials, training,
+//        and deployment tabs (was roster+equipment only). Fixed hex tokens:
+//        #0a1a0a → bg-green-950/30 (DutyBoard/Deployment/Training),
+//        #1a0a0a → bg-red-950/30 (DashCam impact alert). FitnessCommendations
+//        apiFetch now guards against wrapper objects {data:[]} on both loads.
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate
