@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1138: Training Management — ?course_id= deep-link (strip after mount), search/filter in toolbar, distinct no-data vs no-results empty states, Esc stopPropagation, ConfirmDialog + role gates + N shortcut already present.
 // v1137: Statute Analytics — ?statute=+?date_range= deep-link (strip after mount), N shortcut focuses statute search, Esc cascade (clearConfirm→search→penaltyResult→topCharged), ConfirmDialog for clear-cache (admin/manager), role gate clear button, 3-state empty (loading/no-data/no-search-results), LEVEL_COLORS hex → CSS var tokens (rgb(var(--*-rgb))), ?? nullish-coalescing replaces ||, dead inline-style replaced with Tailwind tokens.
 // v1135: Settings — ConfirmDialog for reset-tones/reset-map, useSearchParams replaces window.history.replaceState for ?section= deep-link strip, N shortcut (admin/manager publishes org defaults), Esc cascade (confirmResetTones→confirmResetMap→capturingKey).
 // v1133: Connections Analyst — ?connection_id=+?type= deep-link (strip after mount), N shortcut saves investigation (canManage), Esc cascade (annotation→save modal→load dropdown→path mode), ConfirmDialog for delete-investigation, role gate save/delete (admin/manager/supervisor), no-seed + no-results empty states, brand token migration (var(--brand-gold)/var(--surface-sunken)/brand-400 Tailwind tokens).
